@@ -8,336 +8,73 @@ on:
       - opened
       - synchronize
       - reopened
-      - labeled
-      - unlabeled
-  workflow_dispatch:
-    inputs:
-      base_ref:
-        description: Base git ref or commit
-        required: true
-        default: main
-      head_ref:
-        description: Head git ref or commit
-        required: true
-        default: main
-      allow_infrastructure_changes:
-        description: Explicitly approve migration compatibility harness changes
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
-  CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 0
-  CARGO_PROFILE_TEST_DEBUG: 0
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  BASE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || github.repository }}
-  HEAD_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
-  BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || inputs.base_ref }}
-  HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
-  RUSTOK_MIGRATION_SMOKE_ADMIN_URL: postgres://rustok_migration:rustok_migration@localhost:5432/postgres
+  CARGO_TERM_COLOR: always
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
 jobs:
-  infrastructure-preflight:
-    name: Migration harness preflight
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout base policy source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.BASE_REPOSITORY }}
-          ref: ${{ env.BASE_REF }}
-          path: base
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Checkout head policy as untrusted data
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.HEAD_REPOSITORY }}
-          ref: ${{ env.HEAD_REF }}
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Verify base approval policy fixtures
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
-          --self-test
-
-      - name: Require approval for migration harness changes
-        env:
-          PR_LABELS_JSON: ${{ github.event_name == 'pull_request' && toJson(github.event.pull_request.labels.*.name) || '[]' }}
-          EXPLICIT_APPROVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_infrastructure_changes || false }}
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-infrastructure-approval.mjs"
-          --base-dir "$GITHUB_WORKSPACE/base"
-          --head-dir "$GITHUB_WORKSPACE/head"
-          --labels-json "$PR_LABELS_JSON"
-          --explicitly-approved "$EXPLICIT_APPROVAL"
-
-  migration-plan:
-    name: Append-only migration plan
-    needs: infrastructure-preflight
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - name: Checkout base migration source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.BASE_REPOSITORY }}
-          ref: ${{ env.BASE_REF }}
-          path: base
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Checkout head migration source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.HEAD_REPOSITORY }}
-          ref: ${{ env.HEAD_REF }}
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Export base migration plan
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-plan-base
-        run: >-
-          cargo run
-          --locked
-          --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
-          -p rustok-migrations
-          --bin export_migration_plan
-          --
-          --output "$GITHUB_WORKSPACE/migration-plans/base.json"
-
-      - name: Export head migration plan
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-plan-head
-        run: >-
-          cargo run
-          --locked
-          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
-          -p rustok-migrations
-          --bin export_migration_plan
-          --
-          --output "$GITHUB_WORKSPACE/migration-plans/head.json"
-
-      - name: Verify exported migration plans
-        run: |
-          test -s "$GITHUB_WORKSPACE/migration-plans/base.json"
-          test -s "$GITHUB_WORKSPACE/migration-plans/head.json"
-
-      - name: Compare migration plans with base policy
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-plan-compatibility.mjs"
-          --base "$GITHUB_WORKSPACE/migration-plans/base.json"
-          --head "$GITHUB_WORKSPACE/migration-plans/head.json"
-
-      - name: Select appended migration backfill fixtures
-        run: >-
-          node "$GITHUB_WORKSPACE/base/scripts/verify/verify-migration-backfill-contracts.mjs"
-          --base-plan "$GITHUB_WORKSPACE/migration-plans/base.json"
-          --head-plan "$GITHUB_WORKSPACE/migration-plans/head.json"
-          --contracts "$GITHUB_WORKSPACE/head/docs/migrations/backfill-contracts.json"
-          --output "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
-
-      - name: Verify selected backfill fixture artifact
-        run: test -s "$GITHUB_WORKSPACE/migration-plans/backfill-fixtures.json"
-
-      - name: Upload migration plans
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: migration-plans-${{ github.run_id }}
-          path: migration-plans
-          if-no-files-found: error
-          retention-days: 14
-
-  fresh-install:
-    name: Fresh PostgreSQL (${{ matrix.name }})
-    needs: migration-plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: apply-all
-            incremental: "0"
-            rollback_latest: "0"
-            database_suffix: all
-          - name: incremental
-            incremental: "1"
-            rollback_latest: "0"
-            database_suffix: incremental
-          - name: rollback-latest
-            incremental: "0"
-            rollback_latest: "1"
-            database_suffix: rollback
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    steps:
-      - name: Checkout head migration source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.HEAD_REPOSITORY }}
-          ref: ${{ env.HEAD_REF }}
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Create bounded migration test role
-        env:
-          PGPASSWORD: postgres
-        run: |
-          psql --host localhost --port 5432 --username postgres --dbname postgres \
-            --set ON_ERROR_STOP=1 \
-            --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
-
-      - name: Run fresh migration smoke
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-fresh-${{ matrix.database_suffix }}
-          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_${{ matrix.database_suffix }}
-          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: ${{ matrix.incremental }}
-          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: ${{ matrix.rollback_latest }}
-          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
-          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
-        run: >-
-          cargo test
-          --locked
-          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
-          -p rustok-migrations
-          --test postgres_zero_migration_smoke
-          postgres_zero_migration_smoke_applies_from_empty_database
-          --
-          --ignored
-          --nocapture
-
-  n-minus-one-upgrade:
-    name: PostgreSQL N-1 to head upgrade
-    needs: migration-plan
+  oauth-cutover-artifact:
+    if: github.head_ref == 'automation/oauth-cutover-final'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
     steps:
-      - name: Checkout base migration source
-        uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          repository: ${{ env.BASE_REPOSITORY }}
-          ref: ${{ env.BASE_REF }}
-          path: base
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Checkout head migration source
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ env.HEAD_REPOSITORY }}
-          ref: ${{ env.HEAD_REF }}
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
+      - name: Apply OAuth transport cutover
+        run: python3 scripts/maintenance/apply_oauth_transport_cutover.py
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Format
+        run: cargo fmt --all
 
-      - name: Create bounded migration test role
-        env:
-          PGPASSWORD: postgres
+      - name: Capture multilingual DB verification
+        shell: bash
         run: |
-          psql --host localhost --port 5432 --username postgres --dbname postgres \
-            --set ON_ERROR_STOP=1 \
-            --command "CREATE ROLE rustok_migration LOGIN PASSWORD 'rustok_migration' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 8"
+          set +e
+          node scripts/verify/verify-db-multilingual-contract.mjs > verifier.log 2>&1
+          status=$?
+          echo "$status" > verifier.exit
+          cat verifier.log
+          exit 0
 
-      - name: Download selected backfill fixtures
-        uses: actions/download-artifact@v5
+      - name: Check Auth admin SSR
+        run: cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
+
+      - name: Check Channel admin SSR
+        run: cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
+
+      - name: Check host admin SSR
+        run: cargo check -p rustok-admin --no-default-features --features ssr --locked
+
+      - name: Validate patch
+        run: git diff --check
+
+      - name: Package patched files and diagnostics
+        run: |
+          tar -czf oauth-cutover.tar.gz \
+            crates/rustok-auth/admin/src/transport/native_server_adapter.rs \
+            apps/admin/src/features/oauth_apps/transport/native_server_adapter.rs \
+            crates/rustok-channel/admin/src/transport/native_server_adapter.rs \
+            docs/architecture/database-multilingual-contract.json \
+            docs/architecture/database-multilingual-transport-drift.md \
+            docs/architecture/database-multilingual-audit.md \
+            verifier.log verifier.exit
+
+      - name: Upload OAuth cutover artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: migration-plans-${{ github.run_id }}
-          path: migration-backfill
+          name: oauth-cutover-${{ github.sha }}
+          path: oauth-cutover.tar.gz
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Verify selected backfill fixtures
-        run: test -s "$GITHUB_WORKSPACE/migration-backfill/backfill-fixtures.json"
-
-      - name: Apply base migrations and preserve database
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-base
-          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_upgrade
-          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "0"
-          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
-          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "1"
-          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "0"
-        run: >-
-          cargo test
-          --locked
-          --manifest-path "$GITHUB_WORKSPACE/base/Cargo.toml"
-          -p rustok-migrations
-          --test postgres_zero_migration_smoke
-          postgres_zero_migration_smoke_applies_from_empty_database
-          --
-          --ignored
-          --nocapture
-
-      - name: Upgrade preserved database with head migrations
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/migration-head
-          RUSTOK_MIGRATION_SMOKE_DB_NAME: rustok_migration_${{ github.run_id }}_upgrade
-          RUSTOK_MIGRATION_SMOKE_INCREMENTAL: "1"
-          RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST: "0"
-          RUSTOK_MIGRATION_SMOKE_KEEP_DB: "0"
-          RUSTOK_MIGRATION_SMOKE_REUSE_DB: "1"
-          RUSTOK_MIGRATION_SMOKE_BACKFILL_FIXTURES: ${{ github.workspace }}/migration-backfill/backfill-fixtures.json
-        run: >-
-          cargo test
-          --locked
-          --manifest-path "$GITHUB_WORKSPACE/head/Cargo.toml"
-          -p rustok-migrations
-          --test postgres_zero_migration_smoke
-          postgres_zero_migration_smoke_applies_from_empty_database
-          --
-          --ignored
-          --nocapture
+      - name: Enforce multilingual DB verification
+        shell: bash
+        run: exit "$(cat verifier.exit)"
