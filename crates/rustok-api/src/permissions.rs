@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// Ресурсы системы
+/// Platform resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resource {
@@ -17,6 +17,7 @@ pub enum Resource {
     Orders,
     Customers,
     Profiles,
+    Groups,
     Regions,
     Payments,
     Fulfillments,
@@ -35,13 +36,10 @@ pub enum Resource {
     Analytics,
     Logs,
     Webhooks,
-    // Blog domain resources
     BlogPosts,
-    // Forum domain resources
     ForumCategories,
     ForumTopics,
     ForumReplies,
-    // Scripting (alloy)
     Scripts,
     Mcp,
     AiProviders,
@@ -55,7 +53,6 @@ pub enum Resource {
     AiCodeTasks,
     AiAlloyTasks,
     AiMultimodalTasks,
-    // Workflow automation
     Workflows,
     WorkflowExecutions,
 }
@@ -74,6 +71,7 @@ impl fmt::Display for Resource {
             Self::Orders => "orders",
             Self::Customers => "customers",
             Self::Profiles => "profiles",
+            Self::Groups => "groups",
             Self::Regions => "regions",
             Self::Payments => "payments",
             Self::Fulfillments => "fulfillments",
@@ -132,6 +130,7 @@ impl FromStr for Resource {
             "orders" => Ok(Self::Orders),
             "customers" => Ok(Self::Customers),
             "profiles" => Ok(Self::Profiles),
+            "groups" => Ok(Self::Groups),
             "regions" => Ok(Self::Regions),
             "payments" => Ok(Self::Payments),
             "fulfillments" => Ok(Self::Fulfillments),
@@ -174,7 +173,7 @@ impl FromStr for Resource {
     }
 }
 
-/// Действия над ресурсами
+/// Actions over platform resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -243,7 +242,6 @@ impl FromStr for Action {
     }
 }
 
-/// Permission = Resource + Action
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Permission {
     pub resource: Resource,
@@ -263,9 +261,10 @@ impl FromStr for Permission {
         let (resource, action) = value
             .rsplit_once(':')
             .ok_or_else(|| "Missing action".to_string())?;
-        let resource = Resource::from_str(resource)?;
-        let action = Action::from_str(action)?;
-        Ok(Self { resource, action })
+        Ok(Self {
+            resource: Resource::from_str(resource)?,
+            action: Action::from_str(action)?,
+        })
     }
 }
 
@@ -324,6 +323,14 @@ impl Permission {
     pub const PROFILES_LIST: Self = Self::new(Resource::Profiles, Action::List);
     pub const PROFILES_MANAGE: Self = Self::new(Resource::Profiles, Action::Manage);
 
+    pub const GROUPS_CREATE: Self = Self::new(Resource::Groups, Action::Create);
+    pub const GROUPS_READ: Self = Self::new(Resource::Groups, Action::Read);
+    pub const GROUPS_UPDATE: Self = Self::new(Resource::Groups, Action::Update);
+    pub const GROUPS_DELETE: Self = Self::new(Resource::Groups, Action::Delete);
+    pub const GROUPS_LIST: Self = Self::new(Resource::Groups, Action::List);
+    pub const GROUPS_MODERATE: Self = Self::new(Resource::Groups, Action::Moderate);
+    pub const GROUPS_MANAGE: Self = Self::new(Resource::Groups, Action::Manage);
+
     pub const REGIONS_CREATE: Self = Self::new(Resource::Regions, Action::Create);
     pub const REGIONS_READ: Self = Self::new(Resource::Regions, Action::Read);
     pub const REGIONS_UPDATE: Self = Self::new(Resource::Regions, Action::Update);
@@ -352,35 +359,21 @@ impl Permission {
     pub const FULFILLMENTS_LIST: Self = Self::new(Resource::Fulfillments, Action::List);
     pub const FULFILLMENTS_MANAGE: Self = Self::new(Resource::Fulfillments, Action::Manage);
 
-    pub const MARKETPLACE_SELLERS_CREATE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Create);
-    pub const MARKETPLACE_SELLERS_READ: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Read);
-    pub const MARKETPLACE_SELLERS_UPDATE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Update);
-    pub const MARKETPLACE_SELLERS_DELETE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Delete);
-    pub const MARKETPLACE_SELLERS_LIST: Self =
-        Self::new(Resource::MarketplaceSellers, Action::List);
-    pub const MARKETPLACE_SELLERS_MANAGE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Manage);
+    pub const MARKETPLACE_SELLERS_CREATE: Self = Self::new(Resource::MarketplaceSellers, Action::Create);
+    pub const MARKETPLACE_SELLERS_READ: Self = Self::new(Resource::MarketplaceSellers, Action::Read);
+    pub const MARKETPLACE_SELLERS_UPDATE: Self = Self::new(Resource::MarketplaceSellers, Action::Update);
+    pub const MARKETPLACE_SELLERS_DELETE: Self = Self::new(Resource::MarketplaceSellers, Action::Delete);
+    pub const MARKETPLACE_SELLERS_LIST: Self = Self::new(Resource::MarketplaceSellers, Action::List);
+    pub const MARKETPLACE_SELLERS_MANAGE: Self = Self::new(Resource::MarketplaceSellers, Action::Manage);
 
-    pub const MARKETPLACE_LISTINGS_CREATE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Create);
-    pub const MARKETPLACE_LISTINGS_READ: Self =
-        Self::new(Resource::MarketplaceListings, Action::Read);
-    pub const MARKETPLACE_LISTINGS_UPDATE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Update);
-    pub const MARKETPLACE_LISTINGS_DELETE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Delete);
-    pub const MARKETPLACE_LISTINGS_LIST: Self =
-        Self::new(Resource::MarketplaceListings, Action::List);
-    pub const MARKETPLACE_LISTINGS_MANAGE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Manage);
-    pub const MARKETPLACE_LISTINGS_PUBLISH: Self =
-        Self::new(Resource::MarketplaceListings, Action::Publish);
-    pub const MARKETPLACE_LISTINGS_MODERATE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Moderate);
+    pub const MARKETPLACE_LISTINGS_CREATE: Self = Self::new(Resource::MarketplaceListings, Action::Create);
+    pub const MARKETPLACE_LISTINGS_READ: Self = Self::new(Resource::MarketplaceListings, Action::Read);
+    pub const MARKETPLACE_LISTINGS_UPDATE: Self = Self::new(Resource::MarketplaceListings, Action::Update);
+    pub const MARKETPLACE_LISTINGS_DELETE: Self = Self::new(Resource::MarketplaceListings, Action::Delete);
+    pub const MARKETPLACE_LISTINGS_LIST: Self = Self::new(Resource::MarketplaceListings, Action::List);
+    pub const MARKETPLACE_LISTINGS_MANAGE: Self = Self::new(Resource::MarketplaceListings, Action::Manage);
+    pub const MARKETPLACE_LISTINGS_PUBLISH: Self = Self::new(Resource::MarketplaceListings, Action::Publish);
+    pub const MARKETPLACE_LISTINGS_MODERATE: Self = Self::new(Resource::MarketplaceListings, Action::Moderate);
 
     pub const POSTS_CREATE: Self = Self::new(Resource::Posts, Action::Create);
     pub const POSTS_READ: Self = Self::new(Resource::Posts, Action::Read);
@@ -429,7 +422,6 @@ impl Permission {
 
     pub const ANALYTICS_READ: Self = Self::new(Resource::Analytics, Action::Read);
     pub const ANALYTICS_EXPORT: Self = Self::new(Resource::Analytics, Action::Export);
-
     pub const LOGS_READ: Self = Self::new(Resource::Logs, Action::Read);
     pub const LOGS_LIST: Self = Self::new(Resource::Logs, Action::List);
 
@@ -508,9 +500,6 @@ impl Permission {
     pub const WORKFLOWS_LIST: Self = Self::new(Resource::Workflows, Action::List);
     pub const WORKFLOWS_EXECUTE: Self = Self::new(Resource::Workflows, Action::Execute);
     pub const WORKFLOWS_MANAGE: Self = Self::new(Resource::Workflows, Action::Manage);
-
-    pub const WORKFLOW_EXECUTIONS_READ: Self =
-        Self::new(Resource::WorkflowExecutions, Action::Read);
-    pub const WORKFLOW_EXECUTIONS_LIST: Self =
-        Self::new(Resource::WorkflowExecutions, Action::List);
+    pub const WORKFLOW_EXECUTIONS_READ: Self = Self::new(Resource::WorkflowExecutions, Action::Read);
+    pub const WORKFLOW_EXECUTIONS_LIST: Self = Self::new(Resource::WorkflowExecutions, Action::List);
 }
