@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "graphql_rate_limit",
+  "status": "executable_no_compile",
+  "compile_policy": "not_run_by_request",
+  "test_target": "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
+  "production_contract": {
+    "policy": "crates/rustok-blog/src/graphql/rate_limit.rs",
+    "host_adapter": "apps/server/src/graphql/blog_rate_limit.rs",
+    "schema_wiring": "apps/server/src/graphql/schema.rs"
+  },
+  "cases": [
+    {
+      "name": "allowed_public_read",
+      "expected": "resolver executes and one tenant-scoped trusted-IP key is consumed"
+    },
+    {
+      "name": "read_limit_exceeded",
+      "expected": "GraphQL error contains BLOG_RATE_LIMITED, surface, limit, and retryAfter extensions"
+    },
+    {
+      "name": "backend_unavailable",
+      "expected": "request fails closed with BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE"
+    },
+    {
+      "name": "authorized_write",
+      "expected": "write limiter key uses authenticated user identity and operation surface"
+    },
+    {
+      "name": "unauthorized_write",
+      "expected": "module limiter is skipped so resolver authentication and RBAC remain authoritative"
+    },
+    {
+      "name": "moderation_write",
+      "expected": "blog_posts:manage maps to the dedicated moderate_comment surface"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute the integration target against the configured in-memory limiter",
+    "execute mounted GraphQL requests against Redis-backed host composition",
+    "retain HTTP Retry-After and GraphQL extension evidence",
+    "retain publication, channel visibility, tenant isolation, and RBAC non-regression evidence"
+  ]
+}
