@@ -14,6 +14,8 @@
 - `CategoryService::topic_policy(tenant_id, category_id, security) -> CategoryTopicPolicyResponse`
 - `CategoryService::set_topic_policy(tenant_id, category_id, security, UpdateCategoryTopicPolicyInput) -> CategoryTopicPolicyResponse`
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
+- `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
+- `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -65,6 +67,8 @@
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
 - `CategoryCoverMediaCandidate` is the transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
 - `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
+- `resolve_category_cover_for_write` calls the Media owner port and fails with stable code `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed; it never treats a missing capability as a clear-cover command.
+- `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled deployment profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
 - Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
 - Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
 - Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
@@ -121,7 +125,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
-- `rustok-media` for transport-neutral image descriptors and candidate validation
+- `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
 - `rustok-outbox`
 
 ## Common AI Mistakes
@@ -135,6 +139,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
 - Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
 - Stores a category image URL/path or reads Media tables instead of using the Media owner port.
+- Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
@@ -153,6 +158,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
+- Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
@@ -162,3 +168,4 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 ### Errors / Failure Codes
 - Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
 - For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+- Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.

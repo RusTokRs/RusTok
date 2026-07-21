@@ -28,6 +28,7 @@ function reject(source, pattern, message) {
 }
 
 const contractPath = "crates/rustok-forum/src/category_presentation.rs";
+const errorPath = "crates/rustok-forum/src/error.rs";
 const entityPath = "crates/rustok-forum/src/entities/forum_category.rs";
 const dtoPath = "crates/rustok-forum/src/dto/category.rs";
 const treeDtoPath = "crates/rustok-forum/src/dto/category_tree.rs";
@@ -37,6 +38,7 @@ const planPath = "crates/rustok-forum/docs/implementation-plan.md";
 const crateApiPath = "crates/rustok-forum/CRATE_API.md";
 
 const contract = read(contractPath);
+const errors = read(errorPath);
 const entity = read(entityPath);
 const plan = read(planPath);
 const crateApi = read(crateApiPath);
@@ -82,6 +84,26 @@ requireText(
   "Quarantine/deletion state is not currently published",
   `${contractPath}: unresolved Media owner state must remain explicit`,
 );
+for (const marker of [
+  "CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE",
+  "resolve_category_cover_for_write",
+  "hydrate_category_cover_for_read",
+  "media_port.ok_or_else(category_cover_media_capability_unavailable)",
+  "let Some(media_port) = media_port else",
+  "map_category_cover_media_port_error",
+]) {
+  requireText(contract, marker, `${contractPath}: optional Media capability marker is missing: ${marker}`);
+}
+requireText(
+  errors,
+  "CapabilityUnavailable",
+  `${errorPath}: typed capability-unavailable error is missing`,
+);
+requireText(
+  errors,
+  "pub const fn stable_code",
+  `${errorPath}: stable Forum error-code mapping is missing`,
+);
 requireText(
   entity,
   "normalize_category_icon_key",
@@ -98,18 +120,27 @@ reject(
   /\b(?:cover|image)_(?:url|path)\b/i,
   "forum category presentation must not store an arbitrary image URL or path",
 );
+reject(
+  contract,
+  /map_category_cover_media_port_error[\s\S]{0,800}\.(?:ok|unwrap_or_default)\s*\(/,
+  "forum category cover hydration must not swallow Media provider failures",
+);
 
 requireText(plan, "Delivered in `FORUM-13A`", `${planPath}: FORUM-13A delivery is not recorded`);
+requireText(plan, "Delivered in `FORUM-13B`", `${planPath}: FORUM-13B delivery is not recorded`);
 requireText(
   plan,
   "quarantine/deletion",
   `${planPath}: remaining Media state dependency is not recorded`,
 );
-requireText(
-  crateApi,
+for (const marker of [
   "CategoryCoverMediaCandidate",
-  `${crateApiPath}: category presentation contract is not documented`,
-);
+  "resolve_category_cover_for_write",
+  "hydrate_category_cover_for_read",
+  "FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE",
+]) {
+  requireText(crateApi, marker, `${crateApiPath}: category presentation marker is missing: ${marker}`);
+}
 
 if (failures.length > 0) {
   console.error("forum category presentation verification failed:");
