@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -18,9 +18,7 @@ use crate::dto::{
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
-use crate::services::rbac::enforce_any_scope;
-
-const CATEGORY_PERMISSION_RESOURCES: [Resource; 2] = [Resource::BlogPosts, Resource::Categories];
+use crate::services::rbac::enforce_scope;
 
 pub struct CategoryService {
     db: DatabaseConnection,
@@ -52,11 +50,7 @@ impl CategoryService {
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
-        enforce_any_scope(
-            &security,
-            &CATEGORY_PERMISSION_RESOURCES,
-            Action::Create,
-        )?;
+        enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
         validate_category_name(&input.name)?;
         let slug = normalize_category_slug(input.slug.as_deref(), &input.name)?;
         let locale = normalize_locale(&input.locale)?;
@@ -98,7 +92,7 @@ impl CategoryService {
         Ok(id)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get(
         &self,
         tenant_id: Uuid,
@@ -106,7 +100,7 @@ impl CategoryService {
         category_id: Uuid,
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
-        enforce_any_scope(&security, &CATEGORY_PERMISSION_RESOURCES, Action::Read)?;
+        enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -130,11 +124,7 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
-        enforce_any_scope(
-            &security,
-            &CATEGORY_PERMISSION_RESOURCES,
-            Action::Update,
-        )?;
+        enforce_scope(&security, Resource::BlogCategories, Action::Update)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
@@ -223,11 +213,7 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
-        enforce_any_scope(
-            &security,
-            &CATEGORY_PERMISSION_RESOURCES,
-            Action::Delete,
-        )?;
+        enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
@@ -257,7 +243,7 @@ impl CategoryService {
         security: SecurityContext,
         filter: ListCategoriesFilter,
     ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
-        enforce_any_scope(&security, &CATEGORY_PERMISSION_RESOURCES, Action::List)?;
+        enforce_scope(&security, Resource::BlogCategories, Action::List)?;
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
