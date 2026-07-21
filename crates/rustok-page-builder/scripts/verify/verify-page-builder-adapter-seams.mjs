@@ -162,6 +162,9 @@ for (const port of Object.values(contract.ports ?? {})) {
   if (port.input) {
     requireMarker(portSource, port.input, `port ${port.trait} input`);
   }
+  for (const marker of port.runtime_validation_markers ?? []) {
+    requireMarker(flyService, marker, `port ${port.trait} runtime validation`);
+  }
   if (port.save_result) {
     requireMarker(service, `pub struct ${port.save_result}`, "persistence save result");
     requireMarker(
