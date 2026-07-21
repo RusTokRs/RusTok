@@ -260,6 +260,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       ["m20260407_000001_split_flex_entry_localized_values", { owner: "flex", mode: "fixture" }],
       ["m20260721_000005_drop_seller_legacy_prose_columns", { owner: "rustok-marketplace-seller", mode: "none" }],
       ["m20260721_000009_move_oauth_app_copy_to_translations", { owner: "rustok-auth", mode: "fixture" }],
+      ["m20260721_000117_add_order_change_source_locale", { owner: "rustok-order", mode: "fixture" }],
       ["m20260721_000105_expand_customer_locale_contract", { owner: "rustok-customer", mode: "none" }],
     ]);
 
