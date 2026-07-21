@@ -8,6 +8,7 @@ use crate::core::{
 use crate::i18n::t;
 use crate::model::GroupsStorefrontDirectory;
 use crate::transport::{load_groups_storefront_directory, GroupsStorefrontTransportContext};
+use crate::ui::invitation_acceptance::GroupsInvitationAcceptance;
 
 #[component]
 pub fn GroupsView() -> impl IntoView {
@@ -15,9 +16,10 @@ pub fn GroupsView() -> impl IntoView {
     let locale = route_context.locale.clone();
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
     let transport = transport_context(profile);
+    let directory_transport = transport.clone();
     let filters = default_groups_storefront_filters();
     let directory = LocalResource::new(move || {
-        let context = transport.clone();
+        let context = directory_transport.clone();
         let request = filters.clone();
         async move { load_groups_storefront_directory(context, request).await }
     });
@@ -45,12 +47,15 @@ pub fn GroupsView() -> impl IntoView {
     let members_label = t(locale.as_deref(), "groups.storefront.members", "members");
 
     view! {
-        <section class="groups-storefront">
+        <section class="groups-storefront space-y-8">
             <header>
                 <h1>{title}</h1>
                 <p>{body}</p>
                 <small>{format!("transport: {}", profile.as_str())}</small>
             </header>
+
+            <GroupsInvitationAcceptance transport=transport />
+
             <Suspense fallback=move || view! { <p>{loading.clone()}</p> }>
                 {move || directory.get().map(|result| match result {
                     Ok(directory) => render_directory(directory, &empty, &members_label).into_any(),
