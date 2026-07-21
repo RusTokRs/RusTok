@@ -165,6 +165,6 @@
     "verify:search:fba:runtime-contract": "node scripts/verify/verify-search-fba-runtime-contract.mjs"
   },
   "dependencies": {
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.0"
   }
 }
