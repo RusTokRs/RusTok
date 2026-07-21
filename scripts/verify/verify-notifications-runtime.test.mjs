@@ -93,7 +93,10 @@ const files = {
     db.execute_unprepared("DROP TABLE forum_domain_events");
     let error = Internal { retryable: true };
   `,
-  "crates/rustok-forum/docs/implementation-plan.md": "### Delivered in `NOTIFY-00B`",
+  "crates/rustok-notifications/docs/implementation-plan.md": `
+    NOTIFY-00 remains \`in_progress\` until maintainer-run verification.
+    ### Delivered in \`NOTIFY-00B\`
+  `,
 };
 
 try {
