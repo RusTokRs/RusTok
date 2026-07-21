@@ -1,8 +1,10 @@
+use rustok_api::normalize_locale_tag;
 use uuid::Uuid;
 
 use crate::model::{
-    ChangeGroupRoleCommand, GroupsAdminAssignableRole, GroupsAdminFilters,
-    TransferGroupOwnershipCommand,
+    ChangeGroupRoleCommand, DeleteGroupTranslationCommand, GroupsAdminAssignableRole,
+    GroupsAdminFilters, GroupsAdminTranslationQuery, TransferGroupOwnershipCommand,
+    UpsertGroupTranslationCommand,
 };
 
 pub const DEFAULT_GROUPS_PAGE: u64 = 1;
@@ -73,6 +75,15 @@ pub enum GroupsAdminGovernanceInputError {
     InvalidNewOwnerUserId,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupsAdminLocalizationInputError {
+    InvalidGroupId,
+    InvalidLocale,
+    MissingTitle,
+    TitleTooLong,
+    SummaryTooLong,
+}
+
 pub fn prepare_change_group_role(
     group_id: &str,
     target_user_id: &str,
@@ -105,8 +116,73 @@ pub fn prepare_transfer_group_ownership(
     })
 }
 
+pub fn prepare_group_translation_query(
+    group_id: &str,
+) -> Result<GroupsAdminTranslationQuery, GroupsAdminLocalizationInputError> {
+    let group_id = normalize_uuid(group_id)
+        .map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
+    Ok(GroupsAdminTranslationQuery { group_id })
+}
+
+pub fn prepare_upsert_group_translation(
+    group_id: &str,
+    locale: &str,
+    title: &str,
+    summary: Option<String>,
+    body: Option<String>,
+) -> Result<UpsertGroupTranslationCommand, GroupsAdminLocalizationInputError> {
+    let group_id = normalize_uuid(group_id)
+        .map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
+    let locale = normalize_locale_tag(locale)
+        .ok_or(GroupsAdminLocalizationInputError::InvalidLocale)?;
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(GroupsAdminLocalizationInputError::MissingTitle);
+    }
+    if title.chars().count() > 240 {
+        return Err(GroupsAdminLocalizationInputError::TitleTooLong);
+    }
+    let summary = normalize_optional_text(summary);
+    if summary
+        .as_deref()
+        .is_some_and(|value| value.chars().count() > 500)
+    {
+        return Err(GroupsAdminLocalizationInputError::SummaryTooLong);
+    }
+    Ok(UpsertGroupTranslationCommand {
+        idempotency_key: format!("groups-admin-upsert-translation-{}", Uuid::new_v4()),
+        group_id,
+        locale,
+        title: title.to_string(),
+        summary,
+        body: normalize_optional_text(body),
+    })
+}
+
+pub fn prepare_delete_group_translation(
+    group_id: &str,
+    locale: &str,
+) -> Result<DeleteGroupTranslationCommand, GroupsAdminLocalizationInputError> {
+    let group_id = normalize_uuid(group_id)
+        .map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
+    let locale = normalize_locale_tag(locale)
+        .ok_or(GroupsAdminLocalizationInputError::InvalidLocale)?;
+    Ok(DeleteGroupTranslationCommand {
+        idempotency_key: format!("groups-admin-delete-translation-{}", Uuid::new_v4()),
+        group_id,
+        locale,
+    })
+}
+
 fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {
     Uuid::parse_str(value.trim()).map(|value| value.to_string())
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -131,5 +207,18 @@ mod tests {
             selected_transport_profile(Some("native")),
             GroupsAdminTransportProfile::Native
         );
+    }
+
+    #[test]
+    fn localization_preparation_normalizes_locale() {
+        let command = prepare_upsert_group_translation(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "pt_br",
+            "Grupo",
+            None,
+            None,
+        )
+        .expect("valid localization command");
+        assert_eq!(command.locale, "pt-BR");
     }
 }
