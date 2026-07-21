@@ -6,9 +6,68 @@ const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
 const TOKEN_KEY = "rustok-admin-token";
 const TENANT_KEY = "rustok-admin-tenant";
 const DRAFT_PREFIX = "fly:ssr-draft:";
+const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
+
+/**
+ * @typedef {"external" | "timeout" | "adapter_stop"} IntentAbortKind
+ * @typedef {{
+ *   code?: string,
+ *   kind?: IntentAbortKind,
+ *   error?: string,
+ * }} IntentAbortMetadata
+ * @typedef {{
+ *   signal?: AbortSignal,
+ *   abort?: IntentAbortMetadata,
+ * }} IntentTransportOptions
+ */
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAbortSignal(value) {
+  return typeof AbortSignal === "function" && value instanceof AbortSignal;
+}
+
+function normalizedTransportOptions(value) {
+  const transport = isObject(value) ? value : {};
+  return {
+    signal: isAbortSignal(transport.signal) ? transport.signal : undefined,
+    abort: isObject(transport.abort) ? transport.abort : {},
+  };
+}
+
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function abortError(transport, error) {
+  const configured = nonEmptyString(transport.abort.error);
+  if (configured) return configured;
+  if (transport.signal?.reason !== undefined)
+    return String(transport.signal.reason);
+  return String(error);
+}
+
+function intentAbortDetail(
+  adapter,
+  transport,
+  request,
+  requestGeneration,
+  current,
+  error,
+) {
+  return {
+    code: nonEmptyString(transport.abort.code) || INTENT_REQUEST_ABORTED_CODE,
+    kind: nonEmptyString(transport.abort.kind) || "external",
+    error: abortError(transport, error),
+    intent: request.intent || null,
+    request,
+    requestGeneration,
+    current,
+    instanceId: adapter.instanceId,
+    pageId: adapter.pageId,
+  };
 }
 
 function storedString(key) {
@@ -38,7 +97,9 @@ function readDraftSession(pageId) {
     if (!isObject(parsed) || typeof parsed.token !== "string") return null;
     return {
       token: parsed.token,
-      generation: Number.isSafeInteger(parsed.generation) ? parsed.generation : null,
+      generation: Number.isSafeInteger(parsed.generation)
+        ? parsed.generation
+        : null,
     };
   } catch (_) {
     return null;
@@ -64,8 +125,13 @@ function parseEnvelope(raw) {
     if (!isObject(envelope)) return null;
     if (envelope.protocol !== FLY_PROTOCOL) return null;
     if (typeof envelope.instance_id !== "string") return null;
-    if (!Number.isSafeInteger(envelope.sequence) || envelope.sequence < 0) return null;
-    if (!isObject(envelope.message) || typeof envelope.message.type !== "string") return null;
+    if (!Number.isSafeInteger(envelope.sequence) || envelope.sequence < 0)
+      return null;
+    if (
+      !isObject(envelope.message) ||
+      typeof envelope.message.type !== "string"
+    )
+      return null;
     return envelope;
   } catch (_) {
     return null;
@@ -84,7 +150,8 @@ function ensureOverlay(frameHost, kind) {
   overlay = document.createElement("div");
   overlay.dataset.flyBrowserOverlay = kind;
   overlay.setAttribute("aria-hidden", "true");
-  overlay.style.cssText = "display:none;position:absolute;pointer-events:none;z-index:30;box-sizing:border-box";
+  overlay.style.cssText =
+    "display:none;position:absolute;pointer-events:none;z-index:30;box-sizing:border-box";
   if (kind === "hovered") overlay.style.border = "1px dashed rgb(96 165 250)";
   if (kind === "selected") overlay.style.border = "2px solid rgb(37 99 235)";
   if (kind === "insertion") {
@@ -110,7 +177,9 @@ function applyRect(overlay, rect, zoom) {
 
 function normalizedIntent(adapter, input) {
   const message = isObject(input.message) ? input.message : null;
-  const intent = String(input.intent || input.type || message?.type || "").trim().toLowerCase();
+  const intent = String(input.intent || input.type || message?.type || "")
+    .trim()
+    .toLowerCase();
   const payload = isObject(input.payload)
     ? { ...input.payload }
     : message
@@ -141,11 +210,14 @@ function containsPoint(rect, point) {
   const top = Number(rect?.top || 0);
   const width = Number(rect?.width || 0);
   const height = Number(rect?.height || 0);
-  return width >= 0 && height >= 0
-    && point.x >= left
-    && point.y >= top
-    && point.x <= left + width
-    && point.y <= top + height;
+  return (
+    width >= 0 &&
+    height >= 0 &&
+    point.x >= left &&
+    point.y >= top &&
+    point.x <= left + width &&
+    point.y <= top + height
+  );
 }
 
 function dropPosition(rect, point) {
@@ -159,9 +231,10 @@ function dropPosition(rect, point) {
 function dropOverlayRect(rect, position) {
   if (!rect || position === "inside") return rect;
   const line = 4;
-  const top = position === "before"
-    ? Number(rect.top || 0) - line / 2
-    : Number(rect.top || 0) + Number(rect.height || 0) - line / 2;
+  const top =
+    position === "before"
+      ? Number(rect.top || 0) - line / 2
+      : Number(rect.top || 0) + Number(rect.height || 0) - line / 2;
   return {
     left: Number(rect.left || 0),
     top,
@@ -172,17 +245,23 @@ function dropOverlayRect(rect, position) {
 
 export class FlyBrowserAdapter {
   constructor(root, options = {}) {
-    if (!(root instanceof Element)) throw new TypeError("Fly browser root must be an Element");
+    if (!(root instanceof Element)) {
+      throw new TypeError("Fly browser root must be an Element");
+    }
     this.root = root;
     this.options = options;
     this.iframe = root.querySelector(options.iframeSelector || IFRAME_SELECTOR);
     if (!(this.iframe instanceof HTMLIFrameElement)) {
-      throw new Error("Fly iframe canvas was not found inside the browser root");
+      throw new Error(
+        "Fly iframe canvas was not found inside the browser root",
+      );
     }
     this.instanceId = instanceIdFor(this.iframe);
     this.pageId = root.dataset.flyPageId || null;
-    this.expectedOrigin = options.expectedOrigin || root.dataset.flyExpectedOrigin || "null";
-    this.intentEndpoint = options.intentEndpoint || root.dataset.flyIntentEndpoint || null;
+    this.expectedOrigin =
+      options.expectedOrigin || root.dataset.flyExpectedOrigin || "null";
+    this.intentEndpoint =
+      options.intentEndpoint || root.dataset.flyIntentEndpoint || null;
     this.csrfToken = options.csrfToken || root.dataset.flyCsrfToken || null;
     this.accessToken = options.accessToken || storedString(TOKEN_KEY);
     this.tenantSlug = options.tenantSlug || storedString(TENANT_KEY);
@@ -211,24 +290,46 @@ export class FlyBrowserAdapter {
 
   start() {
     const { signal } = this.abortController;
-    window.addEventListener("message", (event) => this.onMessage(event), { signal });
-    this.root.addEventListener("fly:select", (event) => {
-      this.selectedId = event.detail?.componentId || null;
-      this.drawSelection();
-    }, { signal });
-    this.root.addEventListener("fly:hover", (event) => {
-      this.hoveredId = event.detail?.componentId || null;
-      this.drawSelection();
-    }, { signal });
-    this.root.addEventListener("fly:insertion-overlay", (event) => {
-      if (this.overlays) applyRect(this.overlays.insertion, event.detail?.rect || null, this.zoom);
-    }, { signal });
+    window.addEventListener("message", (event) => this.onMessage(event), {
+      signal,
+    });
+    this.root.addEventListener(
+      "fly:select",
+      (event) => {
+        this.selectedId = event.detail?.componentId || null;
+        this.drawSelection();
+      },
+      { signal },
+    );
+    this.root.addEventListener(
+      "fly:hover",
+      (event) => {
+        this.hoveredId = event.detail?.componentId || null;
+        this.drawSelection();
+      },
+      { signal },
+    );
+    this.root.addEventListener(
+      "fly:insertion-overlay",
+      (event) => {
+        if (this.overlays) {
+          applyRect(
+            this.overlays.insertion,
+            event.detail?.rect || null,
+            this.zoom,
+          );
+        }
+      },
+      { signal },
+    );
     this.bindSsrControls(signal);
     this.root.dataset.flyBrowserMounted = "true";
-    this.root.dispatchEvent(new CustomEvent("fly:browser-ready", {
-      bubbles: true,
-      detail: { instanceId: this.instanceId, adapter: this },
-    }));
+    this.root.dispatchEvent(
+      new CustomEvent("fly:browser-ready", {
+        bubbles: true,
+        detail: { instanceId: this.instanceId, adapter: this },
+      }),
+    );
     return this;
   }
 
@@ -253,7 +354,8 @@ export class FlyBrowserAdapter {
     if (event.origin !== this.expectedOrigin) return;
     const envelope = parseEnvelope(event.data);
     if (!envelope || envelope.instance_id !== this.instanceId) return;
-    if (this.lastSequence !== null && envelope.sequence <= this.lastSequence) return;
+    if (this.lastSequence !== null && envelope.sequence <= this.lastSequence)
+      return;
     this.lastSequence = envelope.sequence;
     this.applyBrowserMessage(envelope.message);
     const detail = {
@@ -266,8 +368,12 @@ export class FlyBrowserAdapter {
       revision: this.root.dataset.flyRevision || null,
       projectHash: this.root.dataset.flyProjectHash || null,
     };
-    this.root.dispatchEvent(new CustomEvent("fly:canvas-message", { bubbles: true, detail }));
-    if (this.postIntents && this.shouldPost(envelope.message.type)) void this.postIntent(detail);
+    this.root.dispatchEvent(
+      new CustomEvent("fly:canvas-message", { bubbles: true, detail }),
+    );
+    if (this.postIntents && this.shouldPost(envelope.message.type)) {
+      void this.postIntent(detail);
+    }
   }
 
   applyBrowserMessage(message) {
@@ -276,7 +382,10 @@ export class FlyBrowserAdapter {
         this.root.dataset.flyCanvasConnected = "true";
         break;
       case "viewport_changed":
-        this.zoom = Number.isFinite(message.zoom) && message.zoom > 0 ? message.zoom : this.zoom;
+        this.zoom =
+          Number.isFinite(message.zoom) && message.zoom > 0
+            ? message.zoom
+            : this.zoom;
         this.drawSelection();
         this.drawDrop();
         break;
@@ -293,10 +402,12 @@ export class FlyBrowserAdapter {
       case "focus_requested":
         this.selectedId = message.component_id || null;
         this.drawSelection();
-        this.root.dispatchEvent(new CustomEvent("fly:select", {
-          bubbles: true,
-          detail: { componentId: this.selectedId, source: "iframe" },
-        }));
+        this.root.dispatchEvent(
+          new CustomEvent("fly:select", {
+            bubbles: true,
+            detail: { componentId: this.selectedId, source: "iframe" },
+          }),
+        );
         break;
       case "hover_requested":
         this.hoveredId = message.component_id || null;
@@ -327,93 +438,126 @@ export class FlyBrowserAdapter {
   bindSsrControls(signal) {
     for (const element of this.root.querySelectorAll("[data-fly-block-id]")) {
       element.setAttribute("draggable", "true");
-      element.addEventListener("dragstart", (event) => {
-        const blockId = element.dataset.flyBlockId;
-        if (!blockId) return;
-        event.dataTransfer?.setData("application/x-fly-block", blockId);
-        event.dataTransfer?.setData("text/plain", blockId);
-        this.activeDrag = { kind: "block", block_id: blockId };
-        this.activeDrop = null;
-        this.root.dataset.flyDragging = "block";
-      }, { signal });
+      element.addEventListener(
+        "dragstart",
+        (event) => {
+          const blockId = element.dataset.flyBlockId;
+          if (!blockId) return;
+          event.dataTransfer?.setData("application/x-fly-block", blockId);
+          event.dataTransfer?.setData("text/plain", blockId);
+          this.activeDrag = { kind: "block", block_id: blockId };
+          this.activeDrop = null;
+          this.root.dataset.flyDragging = "block";
+        },
+        { signal },
+      );
       element.addEventListener("dragend", () => this.cancelDrag(), { signal });
     }
-    for (const element of this.root.querySelectorAll("[data-fly-component-id]")) {
+    for (const element of this.root.querySelectorAll(
+      "[data-fly-component-id]",
+    )) {
       const componentId = element.dataset.flyComponentId;
-      element.addEventListener("click", () => {
-        this.selectedId = componentId || null;
-        this.drawSelection();
-        this.root.dispatchEvent(new CustomEvent("fly:select", {
-          bubbles: true,
-          detail: { componentId: this.selectedId, source: "ssr-control" },
-        }));
-      }, { signal });
+      element.addEventListener(
+        "click",
+        () => {
+          this.selectedId = componentId || null;
+          this.drawSelection();
+          this.root.dispatchEvent(
+            new CustomEvent("fly:select", {
+              bubbles: true,
+              detail: { componentId: this.selectedId, source: "ssr-control" },
+            }),
+          );
+        },
+        { signal },
+      );
       element.setAttribute("draggable", "true");
-      element.addEventListener("dragstart", (event) => {
-        if (!componentId) return;
-        event.dataTransfer?.setData("application/x-fly-component", componentId);
-        event.dataTransfer?.setData("text/plain", componentId);
-        this.selectedId = componentId;
-        this.activeDrag = { kind: "component", component_id: componentId };
-        this.activeDrop = null;
-        this.root.dataset.flyDragging = "component";
-      }, { signal });
+      element.addEventListener(
+        "dragstart",
+        (event) => {
+          if (!componentId) return;
+          event.dataTransfer?.setData(
+            "application/x-fly-component",
+            componentId,
+          );
+          event.dataTransfer?.setData("text/plain", componentId);
+          this.selectedId = componentId;
+          this.activeDrag = { kind: "component", component_id: componentId };
+          this.activeDrop = null;
+          this.root.dataset.flyDragging = "component";
+        },
+        { signal },
+      );
       element.addEventListener("dragend", () => this.cancelDrag(), { signal });
     }
-    this.root.addEventListener("click", (event) => {
-      const actionElement = event.target instanceof Element
-        ? event.target.closest("[data-fly-action]")
-        : null;
-      if (!(actionElement instanceof Element)) return;
-      const action = actionElement.dataset.flyAction;
-      if (!action) return;
-      switch (action) {
-        case "insert-block": {
-          event.preventDefault();
-          const blockId = actionElement.closest("[data-fly-block-id]")?.dataset.flyBlockId;
-          if (blockId) void this.emitIntent("insert_block", { block_id: blockId });
-          break;
-        }
-        case "begin-block-drag": {
-          event.preventDefault();
-          const blockId = actionElement.closest("[data-fly-block-id]")?.dataset.flyBlockId;
-          if (blockId) {
-            this.activeDrag = { kind: "block", block_id: blockId };
-            this.activeDrop = null;
-            this.root.dataset.flyDragging = "block";
+    this.root.addEventListener(
+      "click",
+      (event) => {
+        const actionElement =
+          event.target instanceof Element
+            ? event.target.closest("[data-fly-action]")
+            : null;
+        if (!(actionElement instanceof Element)) return;
+        const action = actionElement.dataset.flyAction;
+        if (!action) return;
+        switch (action) {
+          case "insert-block": {
+            event.preventDefault();
+            const blockId = actionElement.closest("[data-fly-block-id]")
+              ?.dataset.flyBlockId;
+            if (blockId)
+              void this.emitIntent("insert_block", { block_id: blockId });
+            break;
           }
-          break;
-        }
-        case "select-component": {
-          this.selectedId = actionElement.dataset.flyComponentId || null;
-          this.drawSelection();
-          break;
-        }
-        default: {
-          if (!action.startsWith("intent:")) break;
-          event.preventDefault();
-          const intent = action.slice(7);
-          if (intent === "begin_selected_move") {
-            if (this.selectedId) {
-              this.activeDrag = { kind: "component", component_id: this.selectedId };
+          case "begin-block-drag": {
+            event.preventDefault();
+            const blockId = actionElement.closest("[data-fly-block-id]")
+              ?.dataset.flyBlockId;
+            if (blockId) {
+              this.activeDrag = { kind: "block", block_id: blockId };
               this.activeDrop = null;
-              this.root.dataset.flyDragging = "component";
+              this.root.dataset.flyDragging = "block";
             }
-          } else if (intent === "cancel_drag") {
-            this.cancelDrag();
-          } else {
-            void this.emitIntent(intent, {});
+            break;
+          }
+          case "select-component":
+            this.selectedId = actionElement.dataset.flyComponentId || null;
+            this.drawSelection();
+            break;
+          default: {
+            if (!action.startsWith("intent:")) break;
+            event.preventDefault();
+            const intent = action.slice(7);
+            if (intent === "begin_selected_move") {
+              if (this.selectedId) {
+                this.activeDrag = {
+                  kind: "component",
+                  component_id: this.selectedId,
+                };
+                this.activeDrop = null;
+                this.root.dataset.flyDragging = "component";
+              }
+            } else if (intent === "cancel_drag") {
+              this.cancelDrag();
+            } else {
+              void this.emitIntent(intent, {});
+            }
           }
         }
-      }
-    }, { signal });
-    this.iframe.addEventListener("load", () => {
-      this.lastSequence = null;
-      this.geometry.clear();
-      this.activeDrop = null;
-      this.drawSelection();
-      this.drawDrop();
-    }, { signal });
+      },
+      { signal },
+    );
+    this.iframe.addEventListener(
+      "load",
+      () => {
+        this.lastSequence = null;
+        this.geometry.clear();
+        this.activeDrop = null;
+        this.drawSelection();
+        this.drawDrop();
+      },
+      { signal },
+    );
   }
 
   updateDropCandidate(point) {
@@ -424,14 +568,19 @@ export class FlyBrowserAdapter {
     }
     const candidates = [];
     for (const [componentId, rect] of this.geometry.entries()) {
-      if (this.activeDrag.kind === "component" && this.activeDrag.component_id === componentId) {
+      if (
+        this.activeDrag.kind === "component" &&
+        this.activeDrag.component_id === componentId
+      ) {
         continue;
       }
       if (!containsPoint(rect, point)) continue;
       candidates.push({
         componentId,
         rect,
-        area: Math.max(Number(rect.width || 0), 0) * Math.max(Number(rect.height || 0), 0),
+        area:
+          Math.max(Number(rect.width || 0), 0) *
+          Math.max(Number(rect.height || 0), 0),
       });
     }
     candidates.sort((left, right) => left.area - right.area);
@@ -471,10 +620,12 @@ export class FlyBrowserAdapter {
 
   emitIntent(intent, payload = {}) {
     const request = normalizedIntent(this, { intent, payload });
-    this.root.dispatchEvent(new CustomEvent("fly:browser-intent", {
-      bubbles: true,
-      detail: request,
-    }));
+    this.root.dispatchEvent(
+      new CustomEvent("fly:browser-intent", {
+        bubbles: true,
+        detail: request,
+      }),
+    );
     if (this.postIntents) return this.postIntent(request);
     return Promise.resolve(null);
   }
@@ -483,10 +634,15 @@ export class FlyBrowserAdapter {
     return ["key_stroke"].includes(type);
   }
 
+  /**
+   * @param {unknown} input
+   * @param {IntentTransportOptions} requestOptions
+   */
   async postIntent(input, requestOptions = {}) {
     if (!this.intentEndpoint) return null;
     const request = normalizedIntent(this, input);
     if (!request.intent) return null;
+    const transport = normalizedTransportOptions(requestOptions);
     const requestGeneration = ++this.intentRequestGeneration;
     this.latestIntentRequestGeneration = requestGeneration;
     const headers = {
@@ -505,27 +661,35 @@ export class FlyBrowserAdapter {
         credentials: "same-origin",
         headers,
         body: JSON.stringify(request),
-        signal: requestOptions?.signal,
+        signal: transport.signal,
       });
-      const result = response.headers.get("content-type")?.includes("application/json")
+      const result = response.headers
+        .get("content-type")
+        ?.includes("application/json")
         ? await response.json()
         : await response.text();
       const current = requestGeneration === this.latestIntentRequestGeneration;
-      this.root.dispatchEvent(new CustomEvent("fly:browser-intent-response", {
-        bubbles: true,
-        detail: {
-          ok: response.ok,
-          status: response.status,
-          result,
-          request,
-          requestGeneration,
-          current,
-        },
-      }));
+      this.root.dispatchEvent(
+        new CustomEvent("fly:browser-intent-response", {
+          bubbles: true,
+          detail: {
+            ok: response.ok,
+            status: response.status,
+            result,
+            request,
+            requestGeneration,
+            current,
+          },
+        }),
+      );
       if (current && response.ok && isObject(result)) {
         const state = isObject(result.result) ? result.result : result;
-        if (typeof state.revision_id === "string") this.root.dataset.flyRevision = state.revision_id;
-        if (typeof state.project_hash === "string") this.root.dataset.flyProjectHash = state.project_hash;
+        if (typeof state.revision_id === "string") {
+          this.root.dataset.flyRevision = state.revision_id;
+        }
+        if (typeof state.project_hash === "string") {
+          this.root.dataset.flyProjectHash = state.project_hash;
+        }
         if (typeof result.draft_token === "string") {
           this.draftSession = {
             token: result.draft_token,
@@ -533,7 +697,11 @@ export class FlyBrowserAdapter {
               ? result.draft_generation
               : null,
           };
-          writeDraftSession(this.pageId, this.draftSession.token, this.draftSession.generation);
+          writeDraftSession(
+            this.pageId,
+            this.draftSession.token,
+            this.draftSession.generation,
+          );
         }
         if (result.reload === true) {
           globalThis.location.reload();
@@ -544,18 +712,49 @@ export class FlyBrowserAdapter {
       return result;
     } catch (error) {
       const current = requestGeneration === this.latestIntentRequestGeneration;
-      this.root.dispatchEvent(new CustomEvent("fly:browser-error", {
-        bubbles: true,
-        detail: { error: String(error), request, requestGeneration, current },
-      }));
+      if (transport.signal?.aborted) {
+        this.root.dispatchEvent(
+          new CustomEvent("fly:browser-intent-aborted", {
+            bubbles: true,
+            detail: intentAbortDetail(
+              this,
+              transport,
+              request,
+              requestGeneration,
+              current,
+              error,
+            ),
+          }),
+        );
+        return null;
+      }
+      this.root.dispatchEvent(
+        new CustomEvent("fly:browser-error", {
+          bubbles: true,
+          detail: {
+            error: String(error),
+            request,
+            requestGeneration,
+            current,
+          },
+        }),
+      );
       return null;
     }
   }
 
   drawSelection() {
     if (!this.overlays) return;
-    applyRect(this.overlays.selected, this.selectedId && this.geometry.get(this.selectedId), this.zoom);
-    applyRect(this.overlays.hovered, this.hoveredId && this.geometry.get(this.hoveredId), this.zoom);
+    applyRect(
+      this.overlays.selected,
+      this.selectedId && this.geometry.get(this.selectedId),
+      this.zoom,
+    );
+    applyRect(
+      this.overlays.hovered,
+      this.hoveredId && this.geometry.get(this.hoveredId),
+      this.zoom,
+    );
   }
 
   drawDrop() {
@@ -588,7 +787,8 @@ export function bootstrapFlyBrowsers(options = {}) {
 }
 
 export function unmountAllFlyBrowsers(selector = ROOT_SELECTOR) {
-  for (const root of document.querySelectorAll(selector)) root[ADAPTER_KEY]?.stop();
+  for (const root of document.querySelectorAll(selector))
+    root[ADAPTER_KEY]?.stop();
 }
 
 const api = {
