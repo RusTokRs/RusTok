@@ -14,6 +14,7 @@ Leptos admin UI package for the `rustok-blog` module.
 - Participates in the manifest-driven UI composition path through `rustok-module.toml`.
 - Owns the standard GraphQL-first blog CRUD flow through a module-owned `admin/src/transport/mod.rs` facade backed by `admin/src/transport/graphql_adapter.rs`: list/create/edit/update/publish/archive/delete.
 - Owns a separate comment-moderation slice through `admin/src/moderation.rs` and `transport/moderation_adapter.rs`; selecting a post loads its non-deleted owner queue and supports approve/spam/trash actions through `moderateComment`.
+- Paginates the moderation queue with bounded GraphQL `page/perPage` variables, resets page state when the selected post changes, and prevents navigation outside the server-reported total.
 - Keeps moderation separate from the post detail query so editors without `blog_posts:manage` retain normal CRUD behavior and reduced GraphQL builds can degrade only the moderation panel.
 - Embeds owner-side post SEO editing through `rustok-seo-admin-support` instead of relying on a central SEO entity editor.
 - Keeps Leptos render/bind code in `admin/src/ui/leptos.rs`; the crate root composes that editor with `BlogModerationPanel`, while transport-specific GraphQL code stays under `admin/src/transport/`.
