@@ -8,21 +8,29 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+// Existing absolute owner paths inside this crate now resolve to Product itself.
+// This alias is crate-local; no foundation compatibility surface is exported.
+extern crate self as rustok_commerce_foundation;
+
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
+pub mod dto;
 pub mod entities;
-pub mod dto {
-    pub use rustok_commerce_foundation::dto::*;
+pub mod error {
+    // Error ownership still crosses the legacy commerce boundary. Keep the exact
+    // type identity until Inventory/Pricing return owner-specific errors.
+    pub use commerce_foundation::error::*;
 }
 pub mod migrations;
 pub mod ports;
 mod seo_targets;
 pub mod services;
 
+pub use error::{CommerceError, CommerceResult};
 pub use ports::*;
 pub use services::{
     CatalogService, ProductCatalogSchemaService, StorefrontProductList, StorefrontProductListItem,
@@ -86,3 +94,6 @@ impl MigrationSource for ProductModule {
         migrations::migration_dependencies()
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
