@@ -1,22 +1,20 @@
 name: Apply guarded FORUM-13A plan patch
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
 
 jobs:
   patch-plan:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/forum-13a-category-presentation-contract' }}
+    if: ${{ github.event.issue.pull_request && github.event.issue.number == 1869 && github.event.comment.body == '/apply-forum-13a-plan' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: agent/forum-13a-category-presentation-contract
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Update canonical plan
@@ -99,4 +97,4 @@ cargo xtask module validate forum
             exit 0
           fi
           git commit -m 'docs(forum): record FORUM-13A [forum-13a-plan]'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:agent/forum-13a-category-presentation-contract
