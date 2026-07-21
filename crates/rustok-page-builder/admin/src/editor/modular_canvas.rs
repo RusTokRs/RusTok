@@ -3,9 +3,9 @@ use crate::editor::{
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
     ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrActionsFormsPanel, SsrAssetPanel,
-    SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
-    SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel,
+    SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
+    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -98,6 +98,7 @@ pub fn AdminCanvas(
     let root_intent_endpoint = browser_intent_endpoint.clone();
     let root_csrf_token = browser_csrf_token.clone();
     let toolbar_runtime = runtime.clone();
+    let server_preview_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
@@ -143,6 +144,7 @@ pub fn AdminCanvas(
                 csrf_token=browser_csrf_token
             />
             <AuthoringToolbar runtime=toolbar_runtime />
+            <ServerPreviewPanel runtime=server_preview_runtime />
             <div class="grid min-h-[680px] grid-cols-[minmax(240px,300px)_minmax(420px,1fr)_minmax(280px,360px)] gap-3">
                 <div class="space-y-3 overflow-auto">
                     <PageManagerPanel runtime=page_runtime />
