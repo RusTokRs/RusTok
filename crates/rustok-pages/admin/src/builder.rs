@@ -1,8 +1,9 @@
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
+use leptos::prelude::*;
 use rustok_page_builder::dto::{
-    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderInput,
-    PublishPageBuilderResult,
+    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
+    PublishPageBuilderInput, PublishPageBuilderResult,
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
@@ -70,28 +71,144 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
         let snapshot = (self.snapshot)();
         let on_saved = Arc::clone(&self.on_saved);
         Box::pin(async move {
-            let PageBuilderCapabilityRequest::Publish(input) = request else {
-                return Err(PageBuilderAdminFacadeError::new(
-                    "Pages consumer facade accepts only Page Builder publish requests",
-                ));
-            };
-            ensure_requested_page(&snapshot, &input)?;
-            execute_publish(snapshot, on_saved, input).await
+            match request {
+                PageBuilderCapabilityRequest::Preview(input) => {
+                    ensure_requested_page(&snapshot, &input.page_id)?;
+                    execute_preview(snapshot, input).await
+                }
+                PageBuilderCapabilityRequest::Publish(input) => {
+                    ensure_requested_page(&snapshot, &input.page_id)?;
+                    execute_publish(snapshot, on_saved, input).await
+                }
+                request => Err(PageBuilderAdminFacadeError::new(format!(
+                    "Pages consumer facade does not support Page Builder `{}` requests",
+                    request.capability()
+                ))),
+            }
         })
     }
 }
 
 fn ensure_requested_page(
     snapshot: &PagesBuilderSaveSnapshot,
-    input: &PublishPageBuilderInput,
+    requested_page_id: &str,
 ) -> Result<(), PageBuilderAdminFacadeError> {
-    if input.page_id == snapshot.page_id {
+    if requested_page_id == snapshot.page_id {
         Ok(())
     } else {
         Err(PageBuilderAdminFacadeError::new(format!(
-            "Page Builder requested page `{}`, but Pages is editing `{}`",
-            input.page_id, snapshot.page_id
+            "Page Builder requested page `{requested_page_id}`, but Pages is editing `{}`",
+            snapshot.page_id
         )))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "pages/page-builder-preview")]
+async fn pages_page_builder_preview(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+    default_locale: String,
+    project_data: Value,
+) -> Result<PageBuilderCapabilityResponse, ServerFnError> {
+    execute_preview(
+        PagesBuilderSaveSnapshot {
+            token,
+            tenant_slug,
+            page_id: page_id.clone(),
+            default_locale,
+        },
+        PreviewPageBuilderInput::new(page_id, project_data),
+    )
+    .await
+    .map_err(|error| ServerFnError::ServerError(error.to_string()))
+}
+
+#[cfg(feature = "ssr")]
+async fn execute_preview(
+    snapshot: PagesBuilderSaveSnapshot,
+    input: PreviewPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    let token = required_snapshot_value(snapshot.token, "access token")?;
+    let tenant_slug = required_snapshot_value(snapshot.tenant_slug, "tenant")?;
+    let verified_user = leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
+        .await
+        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+        .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
+    let permissions = page_builder_permissions_for_role(&verified_user.role);
+    let actor_id = verified_user.id;
+    let auth = PageBuilderRequestAuth::new(permissions);
+    let context = PortContext::new(
+        tenant_slug.clone(),
+        PortActor::user(actor_id.clone()),
+        snapshot.default_locale.clone(),
+        format!("page-builder-preview:{}", input.page_id),
+    )
+    .with_deadline(PAGE_BUILDER_PORT_DEADLINE);
+
+    let renderer = PagesPageBuilderRenderer {
+        tenant_slug: tenant_slug.clone(),
+        actor_id: actor_id.clone(),
+    };
+    let store = PagesPageBuilderProjectStore {
+        token,
+        tenant_slug,
+        actor_id,
+        page_id: snapshot.page_id,
+        default_locale: snapshot.default_locale,
+        on_saved: Arc::new(|_, _| {}),
+    };
+    let handlers = compose_fly_page_builder_handlers(
+        store,
+        renderer,
+        BuilderCapabilityFlags::default(),
+    )
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    match handlers
+        .handle(
+            &context,
+            &auth,
+            PageBuilderCapabilityRequest::Preview(input),
+        )
+        .await
+        .map_err(facade_service_error)?
+    {
+        response @ PageBuilderCapabilityResponse::Preview(_) => Ok(response),
+        _ => Err(PageBuilderAdminFacadeError::new(
+            "Page Builder composition returned an unexpected preview response",
+        )),
+    }
+}
+
+#[cfg(not(feature = "ssr"))]
+async fn execute_preview(
+    snapshot: PagesBuilderSaveSnapshot,
+    input: PreviewPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    let requested_page_id = input.page_id.clone();
+    let response = pages_page_builder_preview(
+        snapshot.token,
+        snapshot.tenant_slug,
+        snapshot.page_id,
+        snapshot.default_locale,
+        input.project_data,
+    )
+    .await
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    match response {
+        PageBuilderCapabilityResponse::Preview(result) if result.page_id == requested_page_id => {
+            Ok(PageBuilderCapabilityResponse::Preview(result))
+        }
+        PageBuilderCapabilityResponse::Preview(result) => Err(PageBuilderAdminFacadeError::new(
+            format!(
+                "Page Builder preview returned page `{}`, but Pages requested `{requested_page_id}`",
+                result.page_id
+            ),
+        )),
+        response => Err(PageBuilderAdminFacadeError::new(format!(
+            "Page Builder preview transport returned `{}`",
+            response.capability()
+        ))),
     }
 }
 
@@ -122,6 +239,10 @@ async fn execute_publish(
         input.page_id, input.revision_id
     ));
 
+    let renderer = PagesPageBuilderRenderer {
+        tenant_slug: tenant_slug.clone(),
+        actor_id: actor_id.clone(),
+    };
     let store = PagesPageBuilderProjectStore {
         token,
         tenant_slug,
@@ -132,7 +253,7 @@ async fn execute_publish(
     };
     let handlers = compose_fly_page_builder_handlers(
         store,
-        PagesPageBuilderRenderer,
+        renderer,
         BuilderCapabilityFlags::default(),
     )
     .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
@@ -254,11 +375,11 @@ fn required_snapshot_value(
 #[cfg(feature = "ssr")]
 fn page_builder_permissions_for_role(role: &str) -> Vec<Permission> {
     let capabilities = crate::access::pages_editor_permissions_for_role(Some(role));
+    let mut permissions = vec![Permission::new(Resource::Pages, Action::Read)];
     if capabilities.publish {
-        vec![Permission::new(Resource::Pages, Action::Publish)]
-    } else {
-        Vec::new()
+        permissions.push(Permission::new(Resource::Pages, Action::Publish));
     }
+    permissions
 }
 
 #[cfg(feature = "ssr")]
@@ -286,19 +407,7 @@ struct PagesPageBuilderProjectStore {
 #[cfg(feature = "ssr")]
 impl PagesPageBuilderProjectStore {
     fn ensure_context(&self, context: &PortContext) -> PageBuilderServiceResult<()> {
-        if context.tenant_id.as_str() != self.tenant_slug.as_str() {
-            return Err(PageBuilderServiceError::Forbidden(format!(
-                "Page Builder context tenant `{}` does not match Pages store tenant `{}`",
-                context.tenant_id, self.tenant_slug
-            )));
-        }
-        if context.actor.id.as_str() != self.actor_id.as_str() {
-            return Err(PageBuilderServiceError::Forbidden(format!(
-                "Page Builder context actor `{}` does not match verified Pages actor `{}`",
-                context.actor.id, self.actor_id
-            )));
-        }
-        Ok(())
+        ensure_port_context(context, &self.tenant_slug, &self.actor_id, "store")
     }
 
     fn ensure_page_id(&self, page_id: &str) -> PageBuilderServiceResult<()> {
@@ -395,17 +504,21 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
 }
 
 #[cfg(feature = "ssr")]
-#[derive(Debug, Clone, Copy)]
-struct PagesPageBuilderRenderer;
+#[derive(Debug, Clone)]
+struct PagesPageBuilderRenderer {
+    tenant_slug: String,
+    actor_id: String,
+}
 
 #[cfg(feature = "ssr")]
 #[async_trait]
 impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer {
     async fn render_preview(
         &self,
-        _context: &PortContext,
+        context: &PortContext,
         project_data: &Value,
     ) -> PageBuilderServiceResult<String> {
+        ensure_port_context(context, &self.tenant_slug, &self.actor_id, "renderer")?;
         PageBuilderRenderer
             .render_document_html(
                 project_data.clone(),
@@ -414,6 +527,28 @@ impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer {
             )
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))
     }
+}
+
+#[cfg(feature = "ssr")]
+fn ensure_port_context(
+    context: &PortContext,
+    tenant_slug: &str,
+    actor_id: &str,
+    port: &str,
+) -> PageBuilderServiceResult<()> {
+    if context.tenant_id.as_str() != tenant_slug {
+        return Err(PageBuilderServiceError::Forbidden(format!(
+            "Page Builder context tenant `{}` does not match Pages {port} tenant `{tenant_slug}`",
+            context.tenant_id
+        )));
+    }
+    if context.actor.id.as_str() != actor_id {
+        return Err(PageBuilderServiceError::Forbidden(format!(
+            "Page Builder context actor `{}` does not match verified Pages {port} actor `{actor_id}`",
+            context.actor.id
+        )));
+    }
+    Ok(())
 }
 
 pub fn controller_from_project(
