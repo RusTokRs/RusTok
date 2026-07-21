@@ -98,7 +98,9 @@ impl CategoryCommandService {
             .find(|placement| placement.id == category_id)
             .cloned()
             .ok_or_else(|| {
-                ForumError::Validation("Moved category was not persisted in sibling order".to_string())
+                ForumError::Validation(
+                    "Moved category was not persisted in sibling order".to_string(),
+                )
             })?;
 
         txn.commit().await?;
@@ -127,12 +129,11 @@ impl CategoryCommandService {
             .map(|category| (category.id, category))
             .collect::<HashMap<_, _>>();
         ensure_parent_exists(&models, input.parent_id)?;
-        validate_parent_map(
-            &models
-                .values()
-                .map(|category| (category.id, category.parent_id))
-                .collect(),
-        )?;
+        let parent_by_id = models
+            .values()
+            .map(|category| (category.id, category.parent_id))
+            .collect::<HashMap<_, _>>();
+        validate_parent_map(&parent_by_id)?;
 
         let current = sibling_ids(&categories, input.parent_id, None);
         let requested = input.ordered_category_ids;
@@ -158,23 +159,7 @@ impl CategoryCommandService {
     }
 }
 
-pub(super) async fn validate_new_category_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    category_id: Uuid,
-    parent_id: Option<Uuid>,
-) -> ForumResult<()> {
-    lock_category_tree_in_tx(txn, tenant_id).await?;
-    let categories = load_categories_in_tx(txn, tenant_id).await?;
-    let mut parent_by_id = categories
-        .into_iter()
-        .map(|category| (category.id, category.parent_id))
-        .collect::<HashMap<_, _>>();
-    parent_by_id.insert(category_id, parent_id);
-    validate_parent_map(&parent_by_id)
-}
-
-pub(super) async fn lock_category_tree_in_tx(
+async fn lock_category_tree_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> ForumResult<()> {
