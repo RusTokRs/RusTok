@@ -29,6 +29,7 @@ pub struct AdminEditorRuntime {
     pub active_runtime_scenario: RwSignal<Option<String>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
+    preview_request: RwSignal<Option<(ProjectHash, usize)>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
@@ -57,6 +58,7 @@ impl AdminEditorRuntime {
             active_runtime_scenario: RwSignal::new(None),
             runtime_publish_gate_policy: None,
             runtime_publish_gate_evaluation: RwSignal::new(None),
+            preview_request: RwSignal::new(None),
             facade,
             on_request,
             facade_missing: facade_missing.into(),
@@ -123,6 +125,7 @@ impl AdminEditorRuntime {
         self.runtime_context_configured.set(true);
         self.active_runtime_scenario.set(Some(scenario.id.clone()));
         self.runtime_publish_gate_evaluation.set(None);
+        self.server_preview_html.set(None);
         self.last_error.set(None);
         self.announce(format!("Preview scenario applied: {}", scenario.label));
         true
@@ -133,6 +136,7 @@ impl AdminEditorRuntime {
         self.runtime_context_configured.set(true);
         self.active_runtime_scenario.set(None);
         self.runtime_publish_gate_evaluation.set(None);
+        self.server_preview_html.set(None);
     }
 
     pub fn evaluate_runtime_publish_gate(&self) -> Option<RuntimePublishGateEvaluation> {
@@ -154,17 +158,34 @@ impl AdminEditorRuntime {
             return;
         }
         let request = self.controller.with(|controller| {
-            GrapesJsCodec::encode_value(controller.editor().document())
+            let active_page_index = controller.active_page_index();
+            let mut document = controller.editor().document().clone();
+            document.project.pages = document
+                .project
+                .pages
+                .get(active_page_index)
+                .cloned()
+                .into_iter()
+                .collect();
+            GrapesJsCodec::encode_value(&document)
                 .map(|project_data| {
-                    PageBuilderCapabilityRequest::Preview(PreviewPageBuilderInput::new(
-                        controller.page_id(),
-                        project_data,
-                    ))
+                    (
+                        PageBuilderCapabilityRequest::Preview(PreviewPageBuilderInput::new(
+                            controller.page_id(),
+                            project_data,
+                        )),
+                        controller.editor().revision().project_hash,
+                        active_page_index,
+                    )
                 })
                 .map_err(|error| error.to_string())
         });
         match request {
-            Ok(request) => self.execute_request(request, None),
+            Ok((request, project_hash, active_page_index)) => {
+                self.preview_request
+                    .set(Some((project_hash, active_page_index)));
+                self.execute_request(request, None);
+            }
             Err(error) => self.fail(error),
         }
     }
@@ -172,7 +193,7 @@ impl AdminEditorRuntime {
     pub fn dispatch(&self, intent: UiIntent) {
         if matches!(
             &intent,
-            UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo
+            UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo | UiIntent::ActivatePage { .. }
         ) {
             self.runtime_publish_gate_evaluation.set(None);
             self.server_preview_html.set(None);
@@ -273,15 +294,29 @@ impl AdminEditorRuntime {
                     Ok(PageBuilderCapabilityResponse::Preview(response))
                         if capability == BuilderCapabilityKind::Preview =>
                     {
-                        let expected_page_id = runtime
-                            .controller
-                            .with(|controller| controller.page_id().to_string());
+                        let preview_request = runtime.preview_request.get_untracked();
+                        runtime.preview_request.set(None);
                         runtime.preview_in_progress.set(false);
-                        if response.page_id != expected_page_id {
+                        let current = runtime.controller.with(|controller| {
+                            (
+                                controller.page_id().to_string(),
+                                controller.editor().revision().project_hash,
+                                controller.active_page_index(),
+                            )
+                        });
+                        if response.page_id != current.0 {
                             runtime.fail(format!(
-                                "Page Builder preview returned page `{}` for `{expected_page_id}`",
-                                response.page_id
+                                "Page Builder preview returned page `{}` for `{}`",
+                                response.page_id, current.0
                             ));
+                            return;
+                        }
+                        if preview_request
+                            .is_none_or(|expected| expected != (current.1, current.2))
+                        {
+                            runtime.fail(
+                                "Page Builder project changed while the server preview was rendering; refresh the preview",
+                            );
                             return;
                         }
                         runtime.server_preview_html.set(Some(response.html));
@@ -337,9 +372,11 @@ impl AdminEditorRuntime {
             });
         } else if let Some(callback) = self.on_request.as_ref() {
             self.preview_in_progress.set(false);
+            self.preview_request.set(None);
             callback.run(request);
         } else {
             self.preview_in_progress.set(false);
+            self.preview_request.set(None);
             self.fail(self.facade_missing.clone());
         }
     }
@@ -347,7 +384,10 @@ impl AdminEditorRuntime {
     fn finish_failed_request(&self, capability: BuilderCapabilityKind) {
         match capability {
             BuilderCapabilityKind::Publish => self.mark_save_failed(),
-            BuilderCapabilityKind::Preview => self.preview_in_progress.set(false),
+            BuilderCapabilityKind::Preview => {
+                self.preview_in_progress.set(false);
+                self.preview_request.set(None);
+            }
             BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => {}
         }
     }
