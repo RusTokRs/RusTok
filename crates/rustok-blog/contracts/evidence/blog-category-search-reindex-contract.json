@@ -6,6 +6,8 @@
   "compile_policy": "not_run_by_request",
   "production_contract": {
     "owner_service": "crates/rustok-blog/src/services/category.rs",
+    "owner_rbac": "crates/rustok-blog/src/services/rbac.rs",
+    "module_permissions": "crates/rustok-blog/src/lib.rs",
     "http_adapter": "crates/rustok-blog/src/controllers/categories.rs",
     "router": "crates/rustok-blog/src/controllers/mod.rs",
     "openapi": "crates/rustok-blog/src/openapi.rs",
@@ -34,6 +36,14 @@
       "expected": "create and translation upsert reject normalized slugs that contain no ASCII letter or digit instead of persisting an empty route key"
     },
     {
+      "name": "bounded_permission_namespace",
+      "expected": "blog_posts actions are the primary Blog category capability; generic categories actions are accepted only as a temporary legacy fallback and are not advertised by BlogModule"
+    },
+    {
+      "name": "category_has_no_owner_scope",
+      "expected": "category update/delete use resource scope rather than comparing the authenticated user UUID to the category UUID"
+    },
+    {
       "name": "mounted_http_write_path",
       "expected": "Blog category HTTP mutations construct CategoryService with TransactionalEventBus from HostRuntimeContext"
     },
@@ -51,7 +61,9 @@
     }
   ],
   "runtime_promotion_requirements": [
-    "execute category create/update/delete HTTP requests with real RBAC",
+    "execute category create/update/delete HTTP requests with blog_posts RBAC",
+    "execute the same requests with legacy categories RBAC during the compatibility window",
+    "verify BlogModule registration does not seed catalog categories permissions",
     "verify one outbox record is committed for category update and delete",
     "verify an outbox write failure rolls back the category mutation",
     "run Search ingestion and confirm category_name/category_slug change in related Blog documents",
