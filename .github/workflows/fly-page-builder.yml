@@ -8,34 +8,43 @@ on:
       - ".github/workflows/fly-page-builder.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-current-only-pages-clippy:
+  publish-current-only-pages-clippy-fix:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/pages-current-only-compile-fix
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.93.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: pages-current-only-clippy-fix
-      - name: Run current-only Pages Clippy and capture log
+      - name: Apply and verify Pages-only Clippy fix
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           python scripts/temporary/remove_unused_pages_binding.py
           cargo fmt -p rustok-pages
-          cargo clippy -p rustok-pages --lib --tests -- -D warnings 2>&1 | tee /tmp/pages-current-only-clippy.log
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > /tmp/pages-current-only-clippy.status
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pages-current-only-clippy-diagnostics
-          path: |
-            /tmp/pages-current-only-clippy.log
-            /tmp/pages-current-only-clippy.status
-          if-no-files-found: error
+          cargo test -p rustok-pages --lib --tests --no-run
+          cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings
+      - name: Remove diagnostic files and publish product commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/workflows/fly-page-builder.yml > .github/workflows/fly-page-builder.yml
+          rm scripts/temporary/remove_unused_pages_binding.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/fly-page-builder.yml \
+            scripts/temporary/remove_unused_pages_binding.py \
+            crates/rustok-pages/src/services/page_builder_artifact.rs
+          git commit -m "fix(pages): remove unused artifact binding helper"
+          git push origin HEAD:agent/pages-current-only-compile-fix
