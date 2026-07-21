@@ -33,6 +33,7 @@
   },
   "pages_consumer": {
     "source": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "error_source": "crates/rustok-pages/src/error.rs",
     "entrypoints": [
       "publish_reviewed",
       "publish_reviewed_if_current"
@@ -64,6 +65,7 @@
       "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID",
       "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH"
     ],
+    "typed_errors": true,
     "raw_context_persisted": false,
     "legacy_publish_path": "pending_atomic_migration",
     "atomic_pipeline": "pending"
