@@ -31,7 +31,6 @@ async fn create_page(
     tenant_id: Uuid,
     security: SecurityContext,
     slug: &str,
-    publish: bool,
 ) -> rustok_pages::dto::PageResponse {
     service
         .create(
@@ -48,7 +47,7 @@ async fn create_page(
                 template: Some("default".to_string()),
                 body: None,
                 channel_slugs: None,
-                publish,
+                publish: false,
             },
         )
         .await
@@ -56,7 +55,7 @@ async fn create_page(
 }
 
 #[tokio::test]
-async fn manager_cannot_publish_during_create_or_lifecycle_transition() {
+async fn manager_cannot_publish_during_create_or_non_builder_lifecycle_transition() {
     let (service, tenant_id) = setup().await;
     let manager = manager_context();
     let create = service
@@ -78,11 +77,11 @@ async fn manager_cannot_publish_during_create_or_lifecycle_transition() {
             },
         )
         .await;
-    assert!(matches!(create, Err(PagesError::Forbidden(_))));
+    assert!(matches!(create, Err(PagesError::Validation(_))));
 
-    let draft = create_page(&service, tenant_id, manager.clone(), "draft", false).await;
+    let draft = create_page(&service, tenant_id, manager.clone(), "draft").await;
     let publish = service
-        .publish_if_current(tenant_id, manager, draft.id, Some(draft.version))
+        .publish_non_builder_if_current(tenant_id, manager, draft.id, Some(draft.version))
         .await;
     assert!(matches!(publish, Err(PagesError::Forbidden(_))));
 }
@@ -92,8 +91,17 @@ async fn customer_reads_only_published_pages() {
     let (service, tenant_id) = setup().await;
     let admin = admin_context();
     let customer = customer_context();
-    let draft = create_page(&service, tenant_id, admin.clone(), "draft", false).await;
-    let published = create_page(&service, tenant_id, admin, "published", true).await;
+    let draft = create_page(&service, tenant_id, admin.clone(), "draft").await;
+    let publish_draft = create_page(&service, tenant_id, admin.clone(), "published").await;
+    let published = service
+        .publish_non_builder_if_current(
+            tenant_id,
+            admin,
+            publish_draft.id,
+            Some(publish_draft.version),
+        )
+        .await
+        .expect("non-builder publish");
 
     assert!(matches!(
         service.get(tenant_id, customer.clone(), draft.id).await,
