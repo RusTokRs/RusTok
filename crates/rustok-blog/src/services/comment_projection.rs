@@ -1,11 +1,12 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
+use rustok_core::Error;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, Set,
+    TransactionTrait, sea_query::Expr,
 };
 use std::sync::Arc;
 
@@ -13,12 +14,13 @@ use crate::entities::{blog_comment_projection_delivery, blog_post};
 
 const BLOG_POST_TARGET_TYPE: &str = "blog_post";
 const FALLBACK_LOCALE: &str = "en";
+const MAX_PROJECTION_UPDATE_ATTEMPTS: usize = 8;
 
 /// Projects Comments lifecycle events into Blog-owned reply-count state.
 ///
 /// The delivery row, counter update, and BlogPostUpdated outbox record share one
-/// transaction. A delivery row is written before the projection work, so retries
-/// cannot apply the same event more than once.
+/// transaction. Missing Blog posts fail the delivery so the event runtime can
+/// retry instead of permanently acknowledging an out-of-order event.
 pub struct BlogCommentProjectionHandler {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -57,6 +59,11 @@ impl BlogCommentProjectionHandler {
             return Ok(());
         }
 
+        update_comment_count_in_tx(&txn, envelope.tenant_id, post_id, delta).await?;
+
+        // The delivery marker is committed with the counter and outbox event. If
+        // a concurrent duplicate wins this unique insert, this transaction rolls
+        // back its optimistic counter update and the runtime can safely retry.
         blog_comment_projection_delivery::ActiveModel {
             event_id: Set(envelope.id),
             tenant_id: Set(envelope.tenant_id),
@@ -67,21 +74,6 @@ impl BlogCommentProjectionHandler {
         }
         .insert(&txn)
         .await?;
-
-        let Some(post) = blog_post::Entity::find_by_id(post_id)
-            .filter(blog_post::Column::TenantId.eq(envelope.tenant_id))
-            .one(&txn)
-            .await?
-        else {
-            txn.commit().await?;
-            return Ok(());
-        };
-
-        let mut active: blog_post::ActiveModel = post.clone().into();
-        active.comment_count = Set((post.comment_count + delta).max(0));
-        active.updated_at = Set(Utc::now().into());
-        active.version = Set(post.version + 1);
-        active.update(&txn).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -97,6 +89,51 @@ impl BlogCommentProjectionHandler {
         txn.commit().await?;
         Ok(())
     }
+}
+
+async fn update_comment_count_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    post_id: uuid::Uuid,
+    delta: i32,
+) -> HandlerResult {
+    for _ in 0..MAX_PROJECTION_UPDATE_ATTEMPTS {
+        let Some(post) = blog_post::Entity::find_by_id(post_id)
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .one(txn)
+            .await?
+        else {
+            return Err(Error::NotFound(format!(
+                "blog post {post_id} for comment projection was not found in tenant {tenant_id}"
+            )));
+        };
+
+        let next_comment_count = post.comment_count.saturating_add(delta).max(0);
+        let next_version = post.version.saturating_add(1);
+        let result = blog_post::Entity::update_many()
+            .col_expr(
+                blog_post::Column::CommentCount,
+                Expr::value(next_comment_count),
+            )
+            .col_expr(
+                blog_post::Column::UpdatedAt,
+                Expr::value(Utc::now().fixed_offset()),
+            )
+            .col_expr(blog_post::Column::Version, Expr::value(next_version))
+            .filter(blog_post::Column::Id.eq(post_id))
+            .filter(blog_post::Column::TenantId.eq(tenant_id))
+            .filter(blog_post::Column::Version.eq(post.version))
+            .exec(txn)
+            .await?;
+
+        if result.rows_affected == 1 {
+            return Ok(());
+        }
+    }
+
+    Err(Error::External(format!(
+        "blog comment projection could not update post {post_id} after {MAX_PROJECTION_UPDATE_ATTEMPTS} concurrent attempts"
+    )))
 }
 
 #[async_trait]
