@@ -1,13 +1,12 @@
 name: OAuth transport cutover
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/oauth-transport-cutover.yml
+  pull_request_target:
+    types: [opened]
 
 permissions:
   contents: write
+  pull-requests: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -21,21 +20,20 @@ concurrency:
 jobs:
   apply-and-verify:
     if: >-
-      github.event.head_commit.message == 'fix(i18n): execute OAuth transport cutover'
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'automation/oauth-transport-cutover'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          ref: main
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          token: ${{ github.token }}
 
       - name: Apply cutover
-        shell: bash
-        run: |
-          set -euo pipefail
-          git pull --rebase origin main
-          python3 scripts/maintenance/apply_oauth_transport_cutover.py
+        run: python3 scripts/maintenance/apply_oauth_transport_cutover.py
 
       - name: Format
         run: cargo fmt --all
@@ -55,7 +53,7 @@ jobs:
       - name: Validate patch
         run: git diff --check
 
-      - name: Commit verified cutover
+      - name: Commit verified cutover to PR branch
         shell: bash
         run: |
           set -euo pipefail
@@ -65,18 +63,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'fix(i18n): cut OAuth transports over to exact locale copy'
-          for attempt in 1 2 3; do
-            git fetch origin main
-            if ! git merge-base --is-ancestor origin/main HEAD; then
-              git rebase origin/main
-              node scripts/verify/verify-db-multilingual-contract.mjs
-              cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
-              cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
-              cargo check -p rustok-admin --no-default-features --features ssr --locked
-              git diff --check
-            fi
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-          done
-          exit 1
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
