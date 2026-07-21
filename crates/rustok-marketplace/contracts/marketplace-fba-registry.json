@@ -1,51 +1,93 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "module": "marketplace",
   "role": "consumer",
   "status": "in_progress",
-  "contract_version": "marketplace.family.v1",
+  "source_status": "financial_reversal_orchestration_source_ready_unvalidated",
+  "contract_version": "marketplace.family.v2",
   "dependencies": [
     {
       "provider": "marketplace_seller",
       "port": "MarketplaceSellerReadPort",
       "profile": "marketplace_seller_directory",
-      "required_operations": [
-        "read_seller",
-        "list_sellers"
-      ],
+      "required_operations": ["read_seller", "list_sellers"],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "deadline_required": true,
       "idempotency_required": false,
-      "degraded_modes": [
-        "seller_directory_unavailable"
-      ],
-      "fallback_profiles": [
-        "embedded_native",
-        "remote_adapter_placeholder"
-      ]
+      "foreign_entities_imported": false
     },
     {
       "provider": "marketplace_listing",
       "port": "MarketplaceListingReadPort",
       "profile": "marketplace_listing_directory",
+      "required_operations": ["read_listing", "list_listings", "list_eligibility"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "idempotency_required": false,
+      "foreign_entities_imported": false
+    },
+    {
+      "provider": "marketplace_allocation",
+      "port": "MarketplaceAllocationReadPort",
+      "profile": "marketplace_allocation_directory",
       "required_operations": [
-        "read_listing",
-        "list_listings",
-        "list_eligibility"
+        "read_allocation_by_line",
+        "list_allocations_by_order",
+        "list_allocations_by_seller"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
       "deadline_required": true,
       "idempotency_required": false,
-      "degraded_modes": [
-        "listing_directory_unavailable",
-        "listing_eligibility_unavailable"
+      "foreign_entities_imported": false
+    },
+    {
+      "provider": "marketplace_commission",
+      "ports": ["MarketplaceCommissionReadPort", "MarketplaceCommissionCommandPort"],
+      "profile": "marketplace_commission_financial_stage",
+      "required_operations": [
+        "read_assessment",
+        "list_assessments_by_order",
+        "list_assessments_by_seller",
+        "list_rules",
+        "assess_order"
       ],
-      "fallback_profiles": [
-        "embedded_native",
-        "remote_adapter_placeholder"
-      ]
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "write_idempotency_required": true,
+      "foreign_entities_imported": false
+    },
+    {
+      "provider": "marketplace_ledger",
+      "ports": ["MarketplaceLedgerReadPort", "MarketplaceLedgerCommandPort"],
+      "profile": "marketplace_ledger_financial_stage",
+      "required_operations": [
+        "read_order_ledger",
+        "list_seller_entries",
+        "read_seller_balance",
+        "post_order_commissions",
+        "post_financial_reversal",
+        "rebuild_seller_balance"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "write_idempotency_required": true,
+      "foreign_entities_imported": false
+    },
+    {
+      "provider": "marketplace_payout",
+      "port": "MarketplacePayoutReadPort",
+      "profile": "marketplace_payout_directory",
+      "required_operations": ["read_payout", "list_seller_payouts"],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "deadline_required": true,
+      "idempotency_required": false,
+      "foreign_entities_imported": false
     }
   ],
   "ownership": {
@@ -55,60 +97,78 @@
       "marketplace_seller_members",
       "marketplace_listings",
       "marketplace_listing_terms",
-      "marketplace_commission_policies",
+      "marketplace_order_allocations",
+      "marketplace_commission_rules",
+      "marketplace_commission_assessments",
+      "marketplace_ledger_transactions",
       "marketplace_ledger_entries",
-      "marketplace_payouts"
-    ]
+      "marketplace_ledger_reversals",
+      "marketplace_ledger_reversal_lines",
+      "marketplace_seller_balance_projections",
+      "marketplace_payouts",
+      "marketplace_payout_items"
+    ],
+    "financial_orchestration_state": false,
+    "provider_payload_parsing": false
+  },
+  "financial_orchestration": {
+    "contract": "crates/rustok-marketplace/contracts/financial-orchestration-v2.json",
+    "operations": [
+      {
+        "name": "process_order_financials",
+        "child_keys": [":commission:v1", ":ledger:v1"],
+        "owner_stages": ["marketplace_commission.assess_order", "marketplace_ledger.post_order_commissions"]
+      },
+      {
+        "name": "process_financial_reversal",
+        "child_keys": [":ledger-reversal:v1"],
+        "owner_stages": ["marketplace_ledger.post_financial_reversal"],
+        "normalized_facts_required": true,
+        "raw_provider_payload_allowed": false,
+        "commission_reassessment_allowed": false
+      }
+    ],
+    "root_receipt": false,
+    "owner_receipts_are_authoritative": true
   },
   "evidence": {
     "local_plan": "crates/rustok-marketplace/docs/implementation-plan.md",
     "central_plan": "crates/rustok-commerce/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-marketplace-family-boundary.mjs",
+    "financial_orchestration_contract": "crates/rustok-marketplace/contracts/financial-orchestration-v2.json",
+    "financial_orchestration_tests": [
+      "crates/rustok-marketplace/src/financial_orchestration_tests.rs",
+      "crates/rustok-marketplace/tests/financial_reversal_orchestration_test.rs"
+    ],
     "seller_consumer": "crates/rustok-marketplace/src/seller_directory.rs",
-    "listing_consumer": "crates/rustok-marketplace/src/listing_directory.rs"
+    "listing_consumer": "crates/rustok-marketplace/src/listing_directory.rs",
+    "allocation_consumer": "crates/rustok-marketplace/src/allocation_directory.rs",
+    "commission_consumer": "crates/rustok-marketplace/src/commission_directory.rs",
+    "ledger_consumer": "crates/rustok-marketplace/src/ledger_directory.rs",
+    "payout_consumer": "crates/rustok-marketplace/src/payout_directory.rs"
   },
   "contract_tests": {
-    "status": "planned_cases_locked",
-    "profiles": [
-      "in_process",
-      "remote_adapter_placeholder"
-    ],
+    "status": "source_cases_added_unvalidated",
+    "profiles": ["in_process", "remote_adapter_placeholder"],
     "cases": [
-      {
-        "operation": "read_seller",
-        "assertions": [
-          "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "tenant_scope_preserved"
-        ]
-      },
-      {
-        "operation": "list_sellers",
-        "assertions": [
-          "typed_port_error_mapping",
-          "bounded_pagination",
-          "context_deadline_preserved"
-        ]
-      },
-      {
-        "operation": "list_listings",
-        "assertions": [
-          "typed_port_error_mapping",
-          "bounded_pagination",
-          "context_deadline_preserved",
-          "listing_entities_not_imported"
-        ]
-      },
-      {
-        "operation": "list_eligibility",
-        "assertions": [
-          "typed_port_error_mapping",
-          "context_deadline_preserved",
-          "reason_codes_preserved",
-          "buy_box_ranking_not_added"
-        ]
-      }
+      "typed port error mapping",
+      "context deadline preserved",
+      "tenant scope preserved",
+      "bounded directory pagination",
+      "stable order financial child keys",
+      "stable financial reversal child key",
+      "financial reversal skips commission reassessment",
+      "financial reversal result identity validation",
+      "financial reversal balanced total validation"
     ]
-  }
+  },
+  "known_gaps": [
+    "normalized payment refund and chargeback event adapter",
+    "durable financial reversal inbox and scheduled recovery",
+    "available, reserved, and paid seller balance transfer transactions",
+    "payout settlement and payout reversal orchestration",
+    "live remote FBA evidence",
+    "production validation evidence"
+  ]
 }
