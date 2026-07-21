@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS forum_relation_revisions (
     target_kind VARCHAR(16) NOT NULL,
     target_id UUID NOT NULL,
     locale VARCHAR(32) NOT NULL,
-    projection_fingerprint VARCHAR(16) NOT NULL,
+    projection_fingerprint VARCHAR(64) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_forum_relation_revision_kind
         CHECK (target_kind IN ('topic', 'reply')),
@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS forum_user_mentions (
         source_revision_id,
         mentioned_user_id
     ),
+    CONSTRAINT chk_forum_user_mentions_source_kind
+        CHECK (source_kind IN ('topic', 'reply')),
+    CONSTRAINT chk_forum_user_mentions_handle
+        CHECK (char_length(handle_snapshot) BETWEEN 3 AND 32),
     CONSTRAINT fk_forum_user_mentions_revision
         FOREIGN KEY (source_revision_id)
         REFERENCES forum_relation_revisions (revision_id)
@@ -89,6 +93,8 @@ CREATE TABLE IF NOT EXISTS forum_audience_mentions (
         source_revision_id,
         audience
     ),
+    CONSTRAINT chk_forum_audience_mentions_source_kind
+        CHECK (source_kind IN ('topic', 'reply')),
     CONSTRAINT chk_forum_audience_mentions_audience
         CHECK (audience IN ('moderators')),
     CONSTRAINT fk_forum_audience_mentions_revision
@@ -161,10 +167,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION forum_reject_relation_revision_update()
+CREATE OR REPLACE FUNCTION forum_reject_relation_update()
 RETURNS trigger AS $$
 BEGIN
-    RAISE EXCEPTION 'forum relation revisions are immutable';
+    RAISE EXCEPTION 'forum relation projections are immutable';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -215,33 +221,53 @@ DROP TRIGGER IF EXISTS forum_relation_revision_immutable_guard
 CREATE TRIGGER forum_relation_revision_immutable_guard
 BEFORE UPDATE ON forum_relation_revisions
 FOR EACH ROW
-EXECUTE FUNCTION forum_reject_relation_revision_update();
+EXECUTE FUNCTION forum_reject_relation_update();
 
 DROP TRIGGER IF EXISTS forum_user_mentions_source_guard
     ON forum_user_mentions;
 CREATE TRIGGER forum_user_mentions_source_guard
-BEFORE INSERT OR UPDATE ON forum_user_mentions
+BEFORE INSERT ON forum_user_mentions
 FOR EACH ROW
 EXECUTE FUNCTION forum_validate_relation_child_source();
+
+DROP TRIGGER IF EXISTS forum_user_mentions_immutable_guard
+    ON forum_user_mentions;
+CREATE TRIGGER forum_user_mentions_immutable_guard
+BEFORE UPDATE ON forum_user_mentions
+FOR EACH ROW
+EXECUTE FUNCTION forum_reject_relation_update();
 
 DROP TRIGGER IF EXISTS forum_audience_mentions_source_guard
     ON forum_audience_mentions;
 CREATE TRIGGER forum_audience_mentions_source_guard
-BEFORE INSERT OR UPDATE ON forum_audience_mentions
+BEFORE INSERT ON forum_audience_mentions
 FOR EACH ROW
 EXECUTE FUNCTION forum_validate_relation_child_source();
 
+DROP TRIGGER IF EXISTS forum_audience_mentions_immutable_guard
+    ON forum_audience_mentions;
+CREATE TRIGGER forum_audience_mentions_immutable_guard
+BEFORE UPDATE ON forum_audience_mentions
+FOR EACH ROW
+EXECUTE FUNCTION forum_reject_relation_update();
+
 DROP TRIGGER IF EXISTS forum_quotes_source_guard ON forum_quotes;
 CREATE TRIGGER forum_quotes_source_guard
-BEFORE INSERT OR UPDATE ON forum_quotes
+BEFORE INSERT ON forum_quotes
 FOR EACH ROW
 EXECUTE FUNCTION forum_validate_relation_child_source();
 
 DROP TRIGGER IF EXISTS forum_quotes_target_guard ON forum_quotes;
 CREATE TRIGGER forum_quotes_target_guard
-BEFORE INSERT OR UPDATE ON forum_quotes
+BEFORE INSERT ON forum_quotes
 FOR EACH ROW
 EXECUTE FUNCTION forum_validate_quote_target();
+
+DROP TRIGGER IF EXISTS forum_quotes_immutable_guard ON forum_quotes;
+CREATE TRIGGER forum_quotes_immutable_guard
+BEFORE UPDATE ON forum_quotes
+FOR EACH ROW
+EXECUTE FUNCTION forum_reject_relation_update();
 
 INSERT INTO forum_relation_revisions (
     tenant_id,
@@ -299,15 +325,18 @@ async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
+DROP TRIGGER IF EXISTS forum_quotes_immutable_guard ON forum_quotes;
 DROP TRIGGER IF EXISTS forum_quotes_target_guard ON forum_quotes;
 DROP TRIGGER IF EXISTS forum_quotes_source_guard ON forum_quotes;
+DROP TRIGGER IF EXISTS forum_audience_mentions_immutable_guard ON forum_audience_mentions;
 DROP TRIGGER IF EXISTS forum_audience_mentions_source_guard ON forum_audience_mentions;
+DROP TRIGGER IF EXISTS forum_user_mentions_immutable_guard ON forum_user_mentions;
 DROP TRIGGER IF EXISTS forum_user_mentions_source_guard ON forum_user_mentions;
 DROP TRIGGER IF EXISTS forum_relation_revision_immutable_guard ON forum_relation_revisions;
 DROP TRIGGER IF EXISTS forum_relation_revision_source_guard ON forum_relation_revisions;
 DROP FUNCTION IF EXISTS forum_validate_quote_target();
 DROP FUNCTION IF EXISTS forum_validate_relation_child_source();
-DROP FUNCTION IF EXISTS forum_reject_relation_revision_update();
+DROP FUNCTION IF EXISTS forum_reject_relation_update();
 DROP FUNCTION IF EXISTS forum_validate_relation_revision_source();
 DROP TABLE IF EXISTS forum_quotes;
 DROP TABLE IF EXISTS forum_audience_mentions;
@@ -328,7 +357,7 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             target_kind TEXT NOT NULL CHECK (target_kind IN ('topic', 'reply')),
             target_id TEXT NOT NULL,
             locale TEXT NOT NULL,
-            projection_fingerprint TEXT NOT NULL,
+            projection_fingerprint TEXT NOT NULL CHECK (length(projection_fingerprint) <= 64),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (tenant_id, target_kind, target_id, locale, revision_id)
         )"#,
@@ -337,12 +366,12 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 (tenant_id, target_kind, target_id, locale, revision_id DESC)"#,
         r#"CREATE TABLE IF NOT EXISTS forum_user_mentions (
             tenant_id TEXT NOT NULL,
-            source_kind TEXT NOT NULL,
+            source_kind TEXT NOT NULL CHECK (source_kind IN ('topic', 'reply')),
             source_id TEXT NOT NULL,
             source_locale TEXT NOT NULL,
             source_revision_id INTEGER NOT NULL,
             mentioned_user_id TEXT NOT NULL,
-            handle_snapshot TEXT NOT NULL,
+            handle_snapshot TEXT NOT NULL CHECK (length(handle_snapshot) BETWEEN 3 AND 32),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (
                 tenant_id, source_kind, source_id, source_locale,
@@ -354,7 +383,7 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         )"#,
         r#"CREATE TABLE IF NOT EXISTS forum_audience_mentions (
             tenant_id TEXT NOT NULL,
-            source_kind TEXT NOT NULL,
+            source_kind TEXT NOT NULL CHECK (source_kind IN ('topic', 'reply')),
             source_id TEXT NOT NULL,
             source_locale TEXT NOT NULL,
             source_revision_id INTEGER NOT NULL,
@@ -418,7 +447,7 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             BEFORE UPDATE ON forum_relation_revisions
             FOR EACH ROW
             BEGIN
-                SELECT RAISE(ABORT, 'forum relation revisions are immutable');
+                SELECT RAISE(ABORT, 'forum relation projections are immutable');
             END"#,
         "DROP TRIGGER IF EXISTS forum_user_mentions_source_guard",
         r#"CREATE TRIGGER forum_user_mentions_source_guard
@@ -435,6 +464,13 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             BEGIN
                 SELECT RAISE(ABORT, 'forum relation child source mismatch');
             END"#,
+        "DROP TRIGGER IF EXISTS forum_user_mentions_immutable_guard",
+        r#"CREATE TRIGGER forum_user_mentions_immutable_guard
+            BEFORE UPDATE ON forum_user_mentions
+            FOR EACH ROW
+            BEGIN
+                SELECT RAISE(ABORT, 'forum relation projections are immutable');
+            END"#,
         "DROP TRIGGER IF EXISTS forum_audience_mentions_source_guard",
         r#"CREATE TRIGGER forum_audience_mentions_source_guard
             BEFORE INSERT ON forum_audience_mentions
@@ -449,6 +485,13 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             )
             BEGIN
                 SELECT RAISE(ABORT, 'forum relation child source mismatch');
+            END"#,
+        "DROP TRIGGER IF EXISTS forum_audience_mentions_immutable_guard",
+        r#"CREATE TRIGGER forum_audience_mentions_immutable_guard
+            BEFORE UPDATE ON forum_audience_mentions
+            FOR EACH ROW
+            BEGIN
+                SELECT RAISE(ABORT, 'forum relation projections are immutable');
             END"#,
         "DROP TRIGGER IF EXISTS forum_quotes_source_guard",
         r#"CREATE TRIGGER forum_quotes_source_guard
@@ -478,6 +521,13 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             )
             BEGIN
                 SELECT RAISE(ABORT, 'forum quote target mismatch');
+            END"#,
+        "DROP TRIGGER IF EXISTS forum_quotes_immutable_guard",
+        r#"CREATE TRIGGER forum_quotes_immutable_guard
+            BEFORE UPDATE ON forum_quotes
+            FOR EACH ROW
+            BEGIN
+                SELECT RAISE(ABORT, 'forum relation projections are immutable');
             END"#,
         r#"INSERT INTO forum_relation_revisions (
                 tenant_id, target_kind, target_id, locale, projection_fingerprint
@@ -522,9 +572,12 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
+        "DROP TRIGGER IF EXISTS forum_quotes_immutable_guard",
         "DROP TRIGGER IF EXISTS forum_quotes_target_guard",
         "DROP TRIGGER IF EXISTS forum_quotes_source_guard",
+        "DROP TRIGGER IF EXISTS forum_audience_mentions_immutable_guard",
         "DROP TRIGGER IF EXISTS forum_audience_mentions_source_guard",
+        "DROP TRIGGER IF EXISTS forum_user_mentions_immutable_guard",
         "DROP TRIGGER IF EXISTS forum_user_mentions_source_guard",
         "DROP TRIGGER IF EXISTS forum_relation_revision_immutable_guard",
         "DROP TRIGGER IF EXISTS forum_relation_revision_source_guard",
