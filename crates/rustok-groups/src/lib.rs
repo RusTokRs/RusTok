@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_notifications_api::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
 pub mod domain;
@@ -17,12 +18,15 @@ pub mod graphql_invitations;
 pub mod graphql_localization;
 pub mod governance;
 pub mod governance_entities;
+pub mod group_event_entities;
 pub mod invitation_entities;
 pub mod invitations;
 pub mod localization;
 pub mod migrations;
+mod notification_source;
 pub mod ports;
 pub mod service;
+pub mod targeted_invitations;
 
 pub use domain::*;
 pub use dto::*;
@@ -32,6 +36,7 @@ pub use invitations::*;
 pub use localization::GroupLocalizationService;
 pub use ports::*;
 pub use service::GroupsService;
+pub use targeted_invitations::*;
 
 /// Social group identity, membership, privacy, and modular feature owner.
 pub struct GroupsModule;
@@ -71,6 +76,15 @@ impl RusToKModule for GroupsModule {
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
         extensions.insert(GroupCapabilityDescriptor::default());
+        register_notification_source_provider_factory(
+            extensions,
+            notification_source::GroupsNotificationSourceProviderFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "groups notification source factory registration failed: {error}"
+            ))
+        })?;
         Ok(())
     }
 }
@@ -91,7 +105,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 4);
+        assert_eq!(module.migrations().len(), 5);
         assert_eq!(module.permissions().len(), 7);
     }
 

@@ -34,6 +34,12 @@ pub struct AcceptGroupInvitationCommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceptTargetedGroupInvitationCommand {
+    pub idempotency_key: String,
+    pub invitation_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsStorefrontMembership {
     pub id: String,
     pub group_id: String,
