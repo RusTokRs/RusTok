@@ -13,9 +13,10 @@ FFA, FBA, multilingual storage, tenant isolation, and headless transport rules.
 - group identity, tenant, owner, handle, status, visibility, and join policy;
 - localized title, summary, and body;
 - memberships, local role and local membership state;
+- invitation records, token digests, bounded redemption state, and revocation;
 - feature bindings and provider-specific versioned configuration;
-- group rules, membership questions, invitations, bans, audit, receipts, and
-  owner events as their program slices are completed.
+- group rules, membership questions, bans, owner events, and additional local
+  moderation state as their program slices are completed.
 
 ### State owned elsewhere
 
@@ -26,7 +27,8 @@ FFA, FBA, multilingual storage, tenant isolation, and headless transport rules.
 - blog posts and comments;
 - Pages documents and Page Builder artifacts;
 - products, marketplace listings, carts, orders, payments, and fulfillment;
-- notifications inbox, search projections, feed entries, and analytics.
+- notifications inbox, delivery preferences, search projections, feed entries, and
+  analytics.
 
 No Groups table has a foreign key to another optional domain module. Cross-domain
 references are logical typed identifiers and are resolved through public ports.
@@ -141,12 +143,42 @@ Local roles are `owner`, `admin`, `moderator`, and `member`. They do not replace
 platform RBAC. Platform RBAC authorizes operator surfaces; Groups policy authorizes
 operations inside one group. Owner services re-check both boundaries.
 
+## Invitation contract
+
+`GroupInvitationReadPort` owns manager-visible invitation listings.
+`GroupInvitationCommandPort` owns create, revoke, and accept operations.
+
+- active owner, administrator, moderator, or platform `groups:manage` authority may
+  create, list, and revoke invitations;
+- acceptance requires an authenticated user and either a matching targeted invite
+  or possession of a valid shareable token;
+- targeted invitations have exactly one use;
+- shareable links are bounded to at most 100 uses;
+- expiry is bounded from 300 seconds to 30 days;
+- Groups generates high-entropy opaque tokens, returns plaintext only from the first
+  successful create response, and stores only a 64-character SHA-256 digest;
+- create replay returns the receipt-backed invitation with `token = null`, so
+  plaintext is never persisted in command receipts;
+- revocation is owner state and immediately makes the token unavailable;
+- acceptance locks the invitation row where supported, checks expiry/revocation/use
+  limits and target identity, inserts one unique redemption per user, activates the
+  membership, increments the member count and group version, appends audit, and
+  stores the command receipt in one transaction;
+- Groups does not synchronously send email, push, or notification messages. A future
+  Notifications integration may consume committed owner events without becoming a
+  command dependency.
+
+Invitation listings never expose token digests. Invalid, expired, exhausted,
+revoked, or wrong-target tokens return the same unavailable result so token state is
+not disclosed. Runtime concurrency, replay, transport parity, and delivery evidence
+remain explicit release gates.
+
 ## FBA contract
 
 `GroupSummaryReadPort`, `GroupMembershipReadPort`, `GroupAccessReadPort`,
-`GroupLocalizationReadPort`, `GroupCommandPort`,
-`GroupLocalizationCommandPort`, and `GroupGovernanceCommandPort` use
-`PortContext`, `PortCallPolicy`, and `PortError`.
+`GroupLocalizationReadPort`, `GroupInvitationReadPort`, `GroupCommandPort`,
+`GroupLocalizationCommandPort`, `GroupInvitationCommandPort`, and
+`GroupGovernanceCommandPort` use `PortContext`, `PortCallPolicy`, and `PortError`.
 
 Required context semantics:
 
@@ -158,8 +190,16 @@ Required context semantics:
 - an unavailable optional feature provider hides or downgrades only that feature,
   never the group shell;
 - localization row and group version commit in one owner transaction;
+- invitation state, redemption/membership state, receipt, audit, and group version
+  commit in one owner transaction;
 - governance state, idempotency receipt, and immutable audit entry commit in one
   owner transaction.
+
+Invitation commands are exposed through typed Rust ports, the final merged
+`graphql_invitations::GroupsQueryRoot` / `GroupsMutationRoot`, and module-owned
+Leptos server functions. All surfaces construct the same `PortContext` fields and
+call `GroupInvitationService`; they do not copy token, role, expiry, or redemption
+policy.
 
 Governance commands are exposed through the typed Rust port, the merged
 `graphql_governance::GroupsMutationRoot`, and module-owned Leptos server functions.
@@ -173,17 +213,20 @@ Consumers must not import Groups entities or query Groups tables directly.
 ## FFA contract
 
 The module-owned admin/storefront packages retain the `core → transport → UI`
-shape. Localization adds dedicated native and UI files without bypassing the
-facade:
+shape. Localization and invitations add dedicated native/GraphQL/UI files without
+bypassing the facade:
 
 ```text
 core.rs
 transport.rs
 transport/native_server_adapter.rs
 transport/native_localization_adapter.rs
+transport/native_invitations_adapter.rs
 transport/graphql_adapter.rs
+transport/graphql_invitations_adapter.rs
 ui/leptos.rs
 ui/localization.rs
+ui/invitations.rs
 ui/root.rs
 ```
 
@@ -195,13 +238,14 @@ ui/root.rs
 - locale comes only from host-provided `UiRouteContext.locale`;
 - reusable UI primitives come from shared UI crates.
 
-The admin core validates and normalizes governance UUID input and localization
-UUID/locale/text input, creating a fresh idempotency key for each deliberate
-mutation. The composed Leptos root renders directory, governance, and exact-locale
-translation management workspaces and calls only the selected transport facade. It
-does not decide local-role, ownership, or fallback policy. Group/member pickers,
-confirmation, localization receipts, audit history, accessibility evidence, and
-executed transport parity remain later work.
+The admin core validates governance, localization, and invitation input and creates
+a fresh idempotency key for every deliberate mutation. The composed Leptos root
+renders directory, governance, exact-locale translation, and invitation management
+workspaces and calls only the selected transport facade. The create form displays a
+plaintext invitation token only when the owner response supplies it. It does not
+decide local-role, ownership, fallback, token, or redemption policy. Group/member
+pickers, explicit confirmation, audit history, accessibility evidence, user-facing
+acceptance UI, and executed transport parity remain later work.
 
 ## Integration
 
@@ -230,6 +274,8 @@ cargo check -p rustok-groups --features graphql
 cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-groups-localization-boundary.mjs
+node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
