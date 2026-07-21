@@ -77,6 +77,18 @@ pub async fn fetch_categories() {
 pub async fn fetch_category() {}
 pub async fn create_category() {}
 pub async fn update_category() {}
+pub async fn move_category() {
+  match graphql_adapter::move_category().await {
+    Ok(()) => Ok(()),
+    Err(_) => rest_adapter::move_category().await,
+  }
+}
+pub async fn reorder_category_siblings() {
+  match graphql_adapter::reorder_category_siblings().await {
+    Ok(()) => Ok(()),
+    Err(_) => rest_adapter::reorder_category_siblings().await,
+  }
+}
 pub async fn delete_category() {}
 pub async fn fetch_topics() {}
 pub async fn fetch_topic() {}
@@ -84,6 +96,26 @@ pub async fn create_topic() {}
 pub async fn update_topic() {}
 pub async fn delete_topic() {}
 pub async fn fetch_replies() {}
+`;
+}
+
+function graphqlAdapterSource() {
+  return `
+pub async fn fetch_categories() {}
+pub async fn move_category() {}
+pub async fn reorder_category_siblings() {}
+const MOVE: &str = "moveForumCategory";
+const REORDER: &str = "reorderForumCategorySiblings";
+`;
+}
+
+function restAdapterSource({ rawPlacementBypass = false } = {}) {
+  return `
+use reqwest;
+pub async fn fetch_categories() {}
+pub async fn move_category() { let _ = "/categories/{id}/move"; }
+pub async fn reorder_category_siblings() { let _ = "/categories/reorder"; }
+${rawPlacementBypass ? "fn bypass() { let _ = position: Some(draft.position); }" : ""}
 `;
 }
 
@@ -103,8 +135,8 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/rustok-forum/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/transport.rs", transportSource());
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", "pub async fn fetch_categories() {}\n");
-  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", "use reqwest;\npub async fn fetch_categories() {}\n");
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource());
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", restAdapterSource(options));
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
   writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-admin-boundary.mjs forum-wave1-rollout-evidence.json");
@@ -162,6 +194,13 @@ test("forum admin boundary verifier rejects raw busy-key strings from UI", () =>
   withTempFixture({ rawBusy: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /busy-key strings must stay in core helper/);
+  });
+});
+
+test("forum admin boundary verifier rejects generic category position bypass", () => {
+  withTempFixture({ rawPlacementBypass: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not bypass placement owner commands/);
   });
 });
 
