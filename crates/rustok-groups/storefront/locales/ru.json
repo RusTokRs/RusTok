@@ -4,5 +4,18 @@
   "groups.storefront.loading": "Загрузка сообществ...",
   "groups.storefront.loadError": "Не удалось загрузить сообщества",
   "groups.storefront.empty": "Открытых групп пока нет.",
-  "groups.storefront.members": "участников"
+  "groups.storefront.members": "участников",
+  "groups.storefront.invitation.title": "Принять приглашение в группу",
+  "groups.storefront.invitation.body": "Войдите в аккаунт, проверьте токен приглашения и присоединитесь к группе. После отправки команды токен удаляется из URL.",
+  "groups.storefront.invitation.tokenLabel": "Токен приглашения",
+  "groups.storefront.invitation.tokenHint": "Вставьте непрозрачный токен из приглашения. После принятия он больше не отображается.",
+  "groups.storefront.invitation.accept": "Принять приглашение",
+  "groups.storefront.invitation.busy": "Приглашение принимается...",
+  "groups.storefront.invitation.error": "Не удалось принять приглашение",
+  "groups.storefront.invitation.success": "Приглашение принято. Вы стали участником группы.",
+  "groups.storefront.invitation.group": "Группа",
+  "groups.storefront.invitation.role": "Роль",
+  "groups.storefront.invitation.status": "Статус участия",
+  "groups.storefront.invitation.missingToken": "Введите токен приглашения.",
+  "groups.storefront.invitation.invalidToken": "Недопустимая длина токена приглашения."
 }
