@@ -35,6 +35,7 @@ mod marketplace_financial_runtime;
 mod marketplace_paid_event_inbox;
 mod marketplace_paid_order_financial;
 mod marketplace_provider_paid_event_adapter;
+mod marketplace_provider_reversal_backfill;
 mod marketplace_provider_reversal_event_adapter;
 mod marketplace_reversal_adaptation_failure;
 mod marketplace_reversal_event_inbox;
@@ -160,6 +161,10 @@ pub(crate) use marketplace_paid_order_financial::MarketplacePaidOrderFinancialHa
 pub use marketplace_provider_paid_event_adapter::{
     MarketplaceProviderPaidEventAdapter, MarketplaceProviderPaidEventAdapterError,
     MarketplaceProviderPaidEventAdapterResult,
+};
+pub use marketplace_provider_reversal_backfill::{
+    MarketplaceProviderReversalBackfillError, MarketplaceProviderReversalBackfillResult,
+    MarketplaceProviderReversalBackfillService,
 };
 pub use marketplace_provider_reversal_event_adapter::{
     MarketplaceProviderReversalAdaptFailure, MarketplaceProviderReversalAdaptReport,
