@@ -130,17 +130,17 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
+        enforce_any_scope(
+            &security,
+            &CATEGORY_PERMISSION_RESOURCES,
+            Action::Update,
+        )?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_any_scope(
-            &security,
-            &CATEGORY_PERMISSION_RESOURCES,
-            Action::Update,
-        )?;
 
         let mut active: blog_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
@@ -223,17 +223,17 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_any_scope(
+            &security,
+            &CATEGORY_PERMISSION_RESOURCES,
+            Action::Delete,
+        )?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_any_scope(
-            &security,
-            &CATEGORY_PERMISSION_RESOURCES,
-            Action::Delete,
-        )?;
 
         blog_category_translation::Entity::delete_many()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
