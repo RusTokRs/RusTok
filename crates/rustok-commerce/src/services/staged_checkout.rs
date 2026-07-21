@@ -378,6 +378,9 @@ fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDi
         | CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(
             CheckoutMarketplaceEconomicsCheckpointError::Database(_),
         ) => FailureDisposition::Retryable,
+        CheckoutStagePipelineError::MarketplaceFinancial(error) if error.retryable() => {
+            FailureDisposition::Retryable
+        }
         _ => FailureDisposition::CompensationRequired,
     }
 }
@@ -407,6 +410,12 @@ fn pipeline_error_code(error: &CheckoutStagePipelineError) -> String {
         ) => "checkout.marketplace_economics_checkpoint_unavailable".to_string(),
         CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(_) => {
             "checkout.marketplace_economics_checkpoint_conflict".to_string()
+        }
+        CheckoutStagePipelineError::MarketplaceFinancial(error) if error.retryable() => {
+            "checkout.marketplace_financial_retryable".to_string()
+        }
+        CheckoutStagePipelineError::MarketplaceFinancial(_) => {
+            "checkout.marketplace_financial_operator_review".to_string()
         }
         _ => "checkout.pipeline_failed".to_string(),
     }
