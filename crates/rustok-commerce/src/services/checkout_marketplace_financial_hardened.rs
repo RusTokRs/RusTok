@@ -101,7 +101,7 @@ impl CheckoutMarketplaceFinancialStage {
     pub async fn post_after_capture_if_present(
         &self,
         tenant_id: Uuid,
-        actor_id: Uuid,
+        _actor_id: Uuid,
         checkout_lease_owner: &str,
         captured: &CheckoutPaymentCapturedState,
     ) -> CheckoutMarketplaceFinancialResult<()> {
@@ -110,12 +110,15 @@ impl CheckoutMarketplaceFinancialStage {
         }
         validate_captured_payment(captured)?;
         let payment = &captured.payment_collection;
-        let posted_at = payment.captured_at.ok_or_else(|| {
-            CheckoutMarketplaceFinancialError::Invariant(format!(
-                "captured payment collection {} has no captured_at timestamp",
-                payment.id
-            ))
-        })?.fixed_offset();
+        let posted_at = payment
+            .captured_at
+            .ok_or_else(|| {
+                CheckoutMarketplaceFinancialError::Invariant(format!(
+                    "captured payment collection {} has no captured_at timestamp",
+                    payment.id
+                ))
+            })?
+            .fixed_offset();
 
         let checkpoint = self
             .economics_journal
@@ -187,7 +190,7 @@ impl CheckoutMarketplaceFinancialStage {
 
         let mut context = PortContext::new(
             tenant_id.to_string(),
-            PortActor::user(actor_id.to_string()),
+            PortActor::service(captured.operation_id.to_string()),
             captured.plan.payload.context.locale.clone(),
             format!("checkout-marketplace-ledger-{}", captured.operation_id),
         )
