@@ -40,6 +40,8 @@ pub struct CategoryTreeNode {
     pub icon: Option<String>,
     pub color: Option<String>,
     pub moderated: bool,
+    /// Whether new topics may be created directly in this category.
+    pub allows_topics: bool,
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,
