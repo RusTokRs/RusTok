@@ -96,11 +96,11 @@ impl ModuleRegistry {
 
     /// Builds all module-owned runtime capabilities and returns a contextual
     /// startup error instead of allowing module registration failures to panic.
-    pub fn try_build_runtime_extensions(&self) -> crate::Result<ModuleRuntimeExtensions> {
+    pub fn build_runtime_extensions(&self) -> crate::Result<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
         for module in self.list() {
             module
-                .try_register_runtime_extensions(&mut extensions)
+                .register_runtime_extensions(&mut extensions)
                 .map_err(|error| {
                     crate::Error::Validation(format!(
                         "module `{}` runtime extension registration failed: {error}",
@@ -109,14 +109,6 @@ impl ModuleRegistry {
                 })?;
         }
         Ok(extensions)
-    }
-
-    /// Backward-compatible infallible builder for tests and legacy callers.
-    /// Production bootstrap must use `try_build_runtime_extensions`.
-    pub fn build_runtime_extensions(&self) -> ModuleRuntimeExtensions {
-        self.try_build_runtime_extensions().unwrap_or_else(|error| {
-            panic!("module runtime extension registration failed: {error}")
-        })
     }
 
     pub fn build_event_listeners(
@@ -219,10 +211,14 @@ mod tests {
             self.kind
         }
 
-        fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        fn register_runtime_extensions(
+            &self,
+            extensions: &mut ModuleRuntimeExtensions,
+        ) -> crate::Result<()> {
             extensions
                 .get_or_insert_with::<Vec<&'static str>, _>(Vec::new)
                 .push(self.slug);
+            Ok(())
         }
 
         fn register_event_listeners(
@@ -264,7 +260,7 @@ mod tests {
             "0.1.0"
         }
 
-        fn try_register_runtime_extensions(
+        fn register_runtime_extensions(
             &self,
             _extensions: &mut ModuleRuntimeExtensions,
         ) -> crate::Result<()> {
@@ -278,7 +274,9 @@ mod tests {
             .register(DemoModule::optional("one"))
             .register(DemoModule::optional("two"));
 
-        let extensions = registry.build_runtime_extensions();
+        let extensions = registry
+            .build_runtime_extensions()
+            .expect("runtime extensions should initialize");
 
         assert_eq!(
             extensions
@@ -292,8 +290,9 @@ mod tests {
     fn fallible_runtime_extension_builder_preserves_module_context() {
         let error = ModuleRegistry::new()
             .register(FailingModule)
-            .try_build_runtime_extensions()
-            .expect_err("registration must fail");
+            .build_runtime_extensions()
+            .err()
+            .expect("registration must fail");
 
         assert!(error
             .to_string()
