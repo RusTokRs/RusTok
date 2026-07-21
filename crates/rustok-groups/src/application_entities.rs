@@ -48,6 +48,34 @@ pub mod membership_policy_translation {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
+pub mod membership_policy_revision {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+    #[sea_orm(table_name = "group_membership_policy_revisions")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        pub group_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub policy_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub revision: i64,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub locale: String,
+        pub enabled: bool,
+        pub questions: Json,
+        pub rules: Json,
+        pub created_by_user_id: Uuid,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
 pub mod membership_application {
     use super::*;
 
