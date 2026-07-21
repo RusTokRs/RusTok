@@ -9,7 +9,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use rustok_page_builder::dto::{
     BuilderCapabilityKind, PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
-    PreviewPageBuilderInput,
+    PageBuilderPreviewRuntime, PreviewPageBuilderInput,
 };
 use serde_json::{Map, Value};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub struct AdminEditorRuntime {
     pub active_runtime_scenario: RwSignal<Option<String>>,
     pub runtime_publish_gate_policy: Option<Arc<RuntimePublishGatePolicy>>,
     pub runtime_publish_gate_evaluation: RwSignal<Option<RuntimePublishGateEvaluation>>,
-    preview_request: RwSignal<Option<(ProjectHash, usize)>>,
+    preview_request: RwSignal<Option<(ProjectHash, usize, Value, Option<String>)>>,
     facade: Option<Arc<dyn PageBuilderAdminFacade>>,
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     facade_missing: String,
@@ -157,6 +157,12 @@ impl AdminEditorRuntime {
         if self.preview_in_progress.get_untracked() {
             return;
         }
+        let runtime_context = if self.runtime_context_configured.get_untracked() {
+            self.runtime_context.get_untracked()
+        } else {
+            Value::Object(Map::new())
+        };
+        let runtime_scenario_id = self.active_runtime_scenario.get_untracked();
         let request = self.controller.with(|controller| {
             let active_page_index = controller.active_page_index();
             let mut document = controller.editor().document().clone();
@@ -170,20 +176,29 @@ impl AdminEditorRuntime {
             GrapesJsCodec::encode_value(&document)
                 .map(|project_data| {
                     (
-                        PageBuilderCapabilityRequest::Preview(PreviewPageBuilderInput::new(
-                            controller.page_id(),
-                            project_data,
-                        )),
+                        PageBuilderCapabilityRequest::Preview(
+                            PreviewPageBuilderInput::new(controller.page_id(), project_data)
+                                .with_runtime(PageBuilderPreviewRuntime::new(
+                                    runtime_context.clone(),
+                                    runtime_scenario_id.clone(),
+                                )),
+                        ),
                         controller.editor().revision().project_hash,
                         active_page_index,
+                        runtime_context.clone(),
+                        runtime_scenario_id.clone(),
                     )
                 })
                 .map_err(|error| error.to_string())
         });
         match request {
-            Ok((request, project_hash, active_page_index)) => {
-                self.preview_request
-                    .set(Some((project_hash, active_page_index)));
+            Ok((request, project_hash, active_page_index, runtime_context, scenario_id)) => {
+                self.preview_request.set(Some((
+                    project_hash,
+                    active_page_index,
+                    runtime_context,
+                    scenario_id,
+                )));
                 self.execute_request(request, None);
             }
             Err(error) => self.fail(error),
@@ -297,6 +312,14 @@ impl AdminEditorRuntime {
                         let preview_request = runtime.preview_request.get_untracked();
                         runtime.preview_request.set(None);
                         runtime.preview_in_progress.set(false);
+                        let current_runtime_context =
+                            if runtime.runtime_context_configured.get_untracked() {
+                                runtime.runtime_context.get_untracked()
+                            } else {
+                                Value::Object(Map::new())
+                            };
+                        let current_runtime_scenario =
+                            runtime.active_runtime_scenario.get_untracked();
                         let current = runtime.controller.with(|controller| {
                             (
                                 controller.page_id().to_string(),
@@ -311,11 +334,23 @@ impl AdminEditorRuntime {
                             ));
                             return;
                         }
-                        if preview_request
-                            .is_none_or(|expected| expected != (current.1, current.2))
-                        {
+                        if response.runtime_scenario_id != current_runtime_scenario {
                             runtime.fail(
-                                "Page Builder project changed while the server preview was rendering; refresh the preview",
+                                "Page Builder preview returned a different runtime scenario; refresh the preview",
+                            );
+                            return;
+                        }
+                        if preview_request.is_none_or(|expected| {
+                            expected
+                                != (
+                                    current.1,
+                                    current.2,
+                                    current_runtime_context,
+                                    current_runtime_scenario,
+                                )
+                        }) {
+                            runtime.fail(
+                                "Page Builder project or runtime context changed while the server preview was rendering; refresh the preview",
                             );
                             return;
                         }
