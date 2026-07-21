@@ -51,7 +51,7 @@ pub enum ForumError {
         code: &'static str,
     },
 
-    #[error("Capability `{capability}` failed with `{source_code}`: {message}")]
+    #[error("Capability `{capability}` failed with `{source_code}`")]
     CapabilityFailure {
         capability: &'static str,
         source_code: String,
