@@ -28,7 +28,6 @@ pub fn scope_matches(allowed: &[String], requested: &str) -> bool {
             }
         }
     }
-
     false
 }
 
@@ -55,7 +54,6 @@ pub fn restrict_permissions_to_scopes(
             if scopes_allow_permission(scopes, permission) && seen.insert(*permission) {
                 restricted.push(*permission);
             }
-
             for action in SCOPABLE_ACTIONS {
                 let concrete = Permission::new(permission.resource, action);
                 if scopes_allow_permission(scopes, &concrete) && seen.insert(concrete) {
@@ -103,7 +101,7 @@ fn scope_allows_permission(scope: &str, permission: &Permission) -> bool {
             return matches!(
                 permission.resource,
                 Resource::Users | Resource::Customers | Resource::Profiles
-            )
+            );
         }
         "admin:tenants" => return permission.resource == Resource::Tenants,
         "admin:modules" => return permission.resource == Resource::Modules,
@@ -112,7 +110,7 @@ fn scope_allows_permission(scope: &str, permission: &Permission) -> bool {
             return matches!(
                 permission.resource,
                 Resource::Workflows | Resource::WorkflowExecutions
-            )
+            );
         }
         "storefront:*" => return is_storefront_resource(permission.resource),
         _ => {}
@@ -147,6 +145,7 @@ fn resource_selector_matches(selector: &str, resource: Resource) -> bool {
                 | Resource::FlexEntries
                 | Resource::Posts
                 | Resource::BlogPosts
+                | Resource::BlogCategories
                 | Resource::Pages
                 | Resource::Nodes
                 | Resource::Media
@@ -206,6 +205,7 @@ fn is_storefront_resource(resource: Resource) -> bool {
             | Resource::Discounts
             | Resource::Posts
             | Resource::BlogPosts
+            | Resource::BlogCategories
             | Resource::Pages
             | Resource::Nodes
             | Resource::Media
@@ -252,11 +252,9 @@ impl AuthContext {
         if self.client_id.is_none() {
             return Ok(());
         }
-
         if scope_matches(&self.scopes, required) {
             return Ok(());
         }
-
         Err(async_graphql::Error::new(format!(
             "Insufficient scope: required '{}', granted: {:?}",
             required, self.scopes
@@ -397,11 +395,34 @@ mod tests {
             &[Permission::PRODUCTS_MANAGE],
             &["catalog:read".to_string()],
         );
-
         assert!(restricted.contains(&Permission::PRODUCTS_READ));
         assert!(restricted.contains(&Permission::PRODUCTS_LIST));
         assert!(!restricted.contains(&Permission::PRODUCTS_UPDATE));
         assert!(!restricted.contains(&Permission::PRODUCTS_MANAGE));
+    }
+
+    #[test]
+    fn blog_categories_are_content_not_catalog() {
+        let permissions = [
+            Permission::BLOG_CATEGORIES_READ,
+            Permission::BLOG_CATEGORIES_UPDATE,
+        ];
+        let catalog = restrict_permissions_to_scopes(&permissions, &["catalog:*".to_string()]);
+        assert!(catalog.is_empty());
+
+        let content_read =
+            restrict_permissions_to_scopes(&permissions, &["content:read".to_string()]);
+        assert_eq!(content_read, vec![Permission::BLOG_CATEGORIES_READ]);
+    }
+
+    #[test]
+    fn storefront_scope_admits_blog_category_reads() {
+        let restricted = restrict_permissions_to_scopes(
+            &[Permission::BLOG_CATEGORIES_MANAGE],
+            &["storefront:*".to_string()],
+        );
+        assert!(restricted.contains(&Permission::BLOG_CATEGORIES_READ));
+        assert!(restricted.contains(&Permission::BLOG_CATEGORIES_LIST));
     }
 
     #[test]
