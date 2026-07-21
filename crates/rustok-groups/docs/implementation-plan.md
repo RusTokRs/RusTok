@@ -51,6 +51,10 @@ The current owner foundation provides:
 - exact host-effective-locale reads and locale-scoped catalog/search without a
   module-owned English or arbitrary-row fallback;
 - Unicode-scalar title and summary limits rather than UTF-8 byte limits;
+- `GroupLocalizationReadPort` and `GroupLocalizationCommandPort` with exact-locale
+  list/upsert/delete operations;
+- transactional translation mutation plus group-version increment, with deletion
+  of the final translation row rejected;
 - group membership and feature-binding storage;
 - typed domain enums and DTOs;
 - `GroupSummaryReadPort`, `GroupMembershipReadPort`, and
@@ -63,40 +67,43 @@ The current owner foundation provides:
 - `GroupGovernanceCommandPort` with role delegation and atomic ownership transfer;
 - transactional `group_command_receipts` and immutable `group_audit_entries` for
   governance commands;
-- a merged GraphQL mutation root exposing role delegation and ownership transfer;
-- native Leptos server functions and a selected native/GraphQL admin transport
-  facade for the same governance commands;
-- localized module-owned governance forms with framework-neutral UUID
-  normalization and idempotent command preparation;
+- merged GraphQL query/mutation roots exposing directory, localization, and
+  governance surfaces;
+- native Leptos server functions and selected native/GraphQL admin facades for
+  governance and localization commands;
+- localized module-owned governance and exact-locale translation workspaces with
+  framework-neutral command preparation;
 - admin/storefront FFA package structure with host locale and explicit transports;
 - FBA registry and source guardrail;
 - module-local documentation and platform registry integration.
 
-This is a functional foundation, not full phpFox feature parity. Governance
-commands are available through typed Rust, GraphQL, native server-function, and
-module-owned admin UI surfaces. Group/member pickers, confirmation workflow,
-audit history, accessibility, and executable parity evidence remain.
+This is a functional foundation, not full phpFox feature parity. Localization and
+governance operations are available through typed Rust, GraphQL, native
+server-function, and module-owned admin UI surfaces. Group/member pickers,
+confirmation workflow, localization receipts, audit history, accessibility, and
+executable parity evidence remain.
 
 ## FFA/FBA status
 
 - FFA status: `in_progress`.
 - FBA status: `in_progress`.
 - Structural shape: `core_transport_ui`.
-- Admin evidence: framework-neutral command preparation, selected native/GraphQL
-  transport, host locale, localized governance forms, and thin Leptos binding are
-  present.
+- Admin evidence: framework-neutral governance/localization command preparation,
+  selected native/GraphQL transport, host locale, localized forms, and a composed
+  Leptos root are present.
 - Storefront evidence: framework-neutral core, selected native/GraphQL transport,
   host locale, and thin Leptos binding are present.
-- Backend evidence: typed read/write ports, request context, stable errors, owner
-  services, language-agnostic DB constraints/triggers for translations and all
-  Groups-owned base JSON, exact effective-locale selection, locale-scoped
-  catalog/search, closed-shell/private-content action separation, governance
-  audit/receipt persistence, merged GraphQL root, native server functions, and
-  machine-readable registries are present.
+- Backend evidence: typed read/write/localization ports, request context, stable
+  errors, owner services, language-agnostic DB constraints/triggers, exact
+  effective-locale selection, locale-scoped catalog/search,
+  closed-shell/private-content action separation, localization version
+  transactions, governance audit/receipt persistence, merged GraphQL roots, native
+  server functions, and machine-readable registries are present.
 - Remaining FBA evidence: runtime provider/consumer order, fallback execution,
   PostgreSQL/SQLite multilingual migration execution, missing-translation behavior,
-  closed/secret leakage evidence, native/GraphQL governance parity execution,
-  governance concurrency/replay races, retry/recovery, and remote-adapter smoke.
+  localization idempotent receipts/replay, localization concurrency and
+  native/GraphQL parity, closed/secret leakage evidence, governance parity and
+  concurrency/replay races, retry/recovery, and remote-adapter smoke.
 - Last verified at (UTC): not executed in these changes.
 - Owner: `rustok-groups`.
 
@@ -128,10 +135,10 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     command receipt, and immutable audit entry commit in one transaction.
 16. Closed-group discoverability exposes only the localized shell; it never grants
     body, feature-binding, member-list, or provider-owned content access.
-17. Governance transport selection is explicit and never retries through another
-    transport after an owner command error.
-18. Governance UI prepares transport-neutral commands in `core` and never
-    reimplements local-role authorization or ownership policy.
+17. Transport selection is explicit and never retries through another transport
+    after an owner command error.
+18. Governance/localization UI prepares transport-neutral commands in `core` and
+    never reimplements local-role, ownership, or fallback policy.
 19. The host/runtime resolves locale preference and fallback before invoking Groups;
     Groups requires the exact normalized effective-locale row and never privileges
     English or an arbitrary first stored translation.
@@ -140,6 +147,12 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     `group_feature_bindings.configuration` remain language-agnostic. Reserved
     top-level presentation fields cannot become shadow translation storage, while
     nested technical provider-schema fields remain valid non-copy configuration.
+22. Localization management targets one exact normalized locale and never copies a
+    fallback translation into another row.
+23. Translation upsert/delete and group-version increment commit atomically; the last
+    translation row cannot be deleted.
+24. Localization command idempotency keys are required, but parity/ready status stays
+    blocked until durable receipts and replay/concurrency evidence exist.
 
 ## Program ledger
 
@@ -147,7 +160,7 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | --- | --- | --- |
 | `GROUPS-00` | `done` | Ownership, naming, FFA/FBA, multilingual, privacy, and integration contracts are documented. |
 | `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central navigation are connected. |
-| `GROUPS-02` | `in_progress` | Base schema/service, language-agnostic DB constraints/triggers across translations and all Groups-owned base JSON, exact effective-locale selection, governance audit, and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, executed PostgreSQL/SQLite evidence, and missing-translation fixtures remain. |
+| `GROUPS-02` | `in_progress` | Base schema/service, language-agnostic DB constraints/triggers, exact effective-locale selection, transactional translation versioning, governance audit, and governance replay receipts exist; semantic events/outbox, archive lifecycle, localization receipts, receipt-race recovery, executed PostgreSQL/SQLite evidence, and fixtures remain. |
 | `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed shells are discoverable while body/features remain membership-gated, and the complete granular action matrix plus leakage evidence remain. |
 | `GROUPS-04` | `in_progress` | Role delegation and atomic ownership transfer have typed Rust, GraphQL, native server-function, and localized admin form surfaces with audit/receipts; confirmation UX, concurrent-owner proof, parity execution, and recovery remain. |
 | `GROUPS-05` | `planned` | Invitations, invitation links, expiry, token hashing, revocation, and bounded delivery. |
@@ -156,10 +169,10 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | `GROUPS-08` | `in_progress` | Versioned namespaced feature bindings exist; provider registry, health, settings schemas, and UI contributions remain. |
 | `GROUPS-09` | `planned` | Media-owned avatar/cover/gallery references and quarantine/deletion reconciliation. |
 | `GROUPS-10` | `planned` | SEO targets, canonical localized routes, aliases, redirects, and secret-group exclusions. |
-| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature/governance surface exists; localized reads and catalog/search use the host-effective locale and retain closed-shell redaction; REST remains deferred until explicit integration demand. |
-| `GROUPS-12` | `in_progress` | Admin FFA has native/GraphQL directory and governance facades plus localized UUID-based role/ownership forms; group/member pickers, confirmation, categories, moderation, settings, and audit history remain. |
+| `GROUPS-11` | `in_progress` | GraphQL directory/read/create/join/leave/feature/governance/localization surfaces exist; localized reads and catalog/search use the host-effective locale, management uses exact locale rows, and REST remains deferred. |
+| `GROUPS-12` | `in_progress` | Admin FFA has native/GraphQL directory, governance, and localization facades plus localized UUID/locale forms; pickers, confirmation, categories, moderation, settings, receipts, and audit history remain. |
 | `GROUPS-13` | `in_progress` | Storefront FFA catalog exposes public and closed shells only when an exact host-effective-locale translation exists and never exposes private body/features; detail routing, role-aware management, and accessibility remain. |
-| `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist across Rust/GraphQL/native surfaces; executable provider/consumer, locale/fallback, parity, and degraded-mode evidence remain. |
+| `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist across Rust/GraphQL/native surfaces, including localization; executable provider/consumer, locale/fallback, parity, replay, and degraded-mode evidence remain. |
 | `GROUPS-15` | `planned` | Forum group-context provider, ACL inheritance, local category binding, and leakage tests. |
 | `GROUPS-16` | `planned` | Blog group-context binding and author/publish policy. |
 | `GROUPS-17` | `planned` | Pages/Wiki binding without shadow documents or group-owned blocks. |
@@ -176,9 +189,9 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 
 ### Milestone A — owner foundation
 
-Complete `GROUPS-00` through `GROUPS-04`, including governance transport,
-transactional ownership transfer, command receipts, semantic events, and
-PostgreSQL integrity/concurrency tests.
+Complete `GROUPS-00` through `GROUPS-04`, including governance/localization
+transport, transactional ownership transfer, durable command receipts, semantic
+events, and PostgreSQL integrity/concurrency tests.
 
 ### Milestone B — membership product
 
@@ -234,15 +247,21 @@ PostgreSQL and SQLite verification must eventually cover:
 - rejection of top-level localized presentation copies in `groups.metadata`,
   `group_memberships.metadata`, and `group_feature_bindings.configuration`,
   including direct SQL writes, while nested non-copy provider schema remains valid;
+- exact-locale translation list/upsert/delete authorization;
+- last-translation delete rejection;
+- atomic translation mutation plus group-version increment;
+- localization idempotency replay, key-payload conflict, concurrent upsert/delete,
+  and native/GraphQL result/error parity;
 - tenant-composite identity and relation integrity;
 - locale uniqueness and host-owned fallback behavior;
 - concurrent handle creation;
 - concurrent join/leave and member counts;
 - owner transfer and last-owner protection;
-- idempotent command replay, key-payload conflicts, and simultaneous first writes;
+- governance idempotent replay, key-payload conflicts, and simultaneous first writes;
 - audit/receipt rollback when a governance command fails;
 - native/GraphQL governance result and error parity;
-- governance UI loading, validation, success, error, replay, and confirmation states;
+- governance/localization UI loading, validation, success, error, replay, and
+  confirmation states;
 - public/closed catalog visibility, closed shell redaction, and member content access;
 - secret-group query/search/SEO/direct-read leakage;
 - feature-provider unavailable/read-only/hidden profiles;
