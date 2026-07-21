@@ -20,8 +20,8 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    BlockResponse, BlockService, CreateBlockInput, CreatePageInput, PageBuilderArtifactService,
-    PageResponse, PageService, PagesError, UpdateBlockInput, UpdatePageInput,
+    CreatePageInput, PageBuilderArtifactService, PageResponse, PageService, PagesError,
+    UpdatePageInput,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
@@ -36,11 +36,6 @@ pub struct GetPageParams {
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct GetPageArtifactParams {
     pub locale: String,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ReorderBlocksInput {
-    pub block_ids: Vec<Uuid>,
 }
 
 #[derive(Clone)]
@@ -222,7 +217,10 @@ pub async fn create_page(
 ) -> HttpResult<(StatusCode, Json<PageResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
     if input.publish {
-        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
+        ensure_pages_permission(
+            &auth,
+            Permission::new(Resource::Pages, Action::Publish),
+        )?;
     }
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
@@ -255,7 +253,10 @@ pub async fn update_page(
 ) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
     if input.status.is_some() {
-        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
+        ensure_pages_permission(
+            &auth,
+            Permission::new(Resource::Pages, Action::Publish),
+        )?;
     }
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
@@ -293,131 +294,6 @@ pub async fn delete_page(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/admin/pages/{id}/blocks",
-    tag = "pages",
-    params(("id" = Uuid, Path, description = "Page ID")),
-    request_body = CreateBlockInput,
-    responses(
-        (status = 201, description = "Block created", body = BlockResponse),
-        (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn create_block(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<CreateBlockInput>,
-) -> HttpResult<(StatusCode, Json<BlockResponse>)> {
-    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
-
-    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
-    let block = service
-        .create(tenant.id, page_security(&auth), id, input)
-        .await
-        .map_err(map_pages_error)?;
-    Ok((StatusCode::CREATED, Json(block)))
-}
-
-#[utoipa::path(
-    put,
-    path = "/api/admin/pages/{page_id}/blocks/{block_id}",
-    tag = "pages",
-    params(
-        ("page_id" = Uuid, Path, description = "Page ID"),
-        ("block_id" = Uuid, Path, description = "Block ID")
-    ),
-    request_body = UpdateBlockInput,
-    responses(
-        (status = 200, description = "Block updated", body = BlockResponse),
-        (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn update_block(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(path): Path<(Uuid, Uuid)>,
-    Json(input): Json<UpdateBlockInput>,
-) -> HttpResult<Json<BlockResponse>> {
-    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
-
-    let (_, block_id) = path;
-    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
-    let block = service
-        .update(tenant.id, page_security(&auth), block_id, input)
-        .await
-        .map_err(map_pages_error)?;
-    Ok(Json(block))
-}
-
-#[utoipa::path(
-    delete,
-    path = "/api/admin/pages/{page_id}/blocks/{block_id}",
-    tag = "pages",
-    params(
-        ("page_id" = Uuid, Path, description = "Page ID"),
-        ("block_id" = Uuid, Path, description = "Block ID")
-    ),
-    responses(
-        (status = 204, description = "Block deleted"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn delete_block(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(path): Path<(Uuid, Uuid)>,
-) -> HttpResult<StatusCode> {
-    ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
-
-    let (_, block_id) = path;
-    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
-    service
-        .delete(tenant.id, page_security(&auth), block_id)
-        .await
-        .map_err(map_pages_error)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/admin/pages/{id}/blocks/reorder",
-    tag = "pages",
-    params(("id" = Uuid, Path, description = "Page ID")),
-    request_body = ReorderBlocksInput,
-    responses(
-        (status = 204, description = "Blocks reordered"),
-        (status = 400, description = "Invalid input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn reorder_blocks(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    Path(id): Path<Uuid>,
-    Json(input): Json<ReorderBlocksInput>,
-) -> HttpResult<StatusCode> {
-    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
-
-    let service = BlockService::new(runtime.db_clone(), runtime.event_bus());
-    service
-        .reorder(tenant.id, page_security(&auth), id, input.block_ids)
-        .await
-        .map_err(map_pages_error)?;
-    Ok(StatusCode::NO_CONTENT)
-}
-
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
     let state = PagesHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
@@ -430,18 +306,6 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .route(
             "/api/admin/pages/{id}",
             axum::routing::put(update_page).delete(delete_page),
-        )
-        .route(
-            "/api/admin/pages/{id}/blocks",
-            axum::routing::post(create_block),
-        )
-        .route(
-            "/api/admin/pages/{page_id}/blocks/{block_id}",
-            axum::routing::put(update_block).delete(delete_block),
-        )
-        .route(
-            "/api/admin/pages/{id}/blocks/reorder",
-            axum::routing::post(reorder_blocks),
         )
         .with_state(state))
 }
