@@ -56,6 +56,15 @@
       "idempotency_key",
       "runtime.review_hash"
     ],
+    "builder_sources": {
+      "required": true,
+      "ordering": "normalized_locale_ascending",
+      "shared_by": [
+        "scenario_release_gate",
+        "sanitization",
+        "materialization"
+      ]
+    },
     "receipt": {
       "entity": "page_publish_operation",
       "entity_source": "crates/rustok-pages/src/entities/page_publish_operation.rs",
@@ -79,6 +88,8 @@
     "new_operation_order": [
       "enforce_expected_version",
       "load_bodies_for_reviewed_publish",
+      "require_builder_sources",
+      "parse_builder_project_values",
       "ensure_builder_publish_enabled_in_tx",
       "ensure_candidates_allowed_in_tx",
       "compile_builder_sources_with_reviewed_runtime",
