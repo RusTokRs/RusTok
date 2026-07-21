@@ -1,0 +1,52 @@
+{
+  "module": "page_builder",
+  "domain_owner": "fly",
+  "service": "FlyAdapterBackedPageBuilderService",
+  "capabilities": [
+    "preview",
+    "tree",
+    "properties",
+    "publish"
+  ],
+  "ports": {
+    "persistence": {
+      "trait": "PageBuilderProjectStore",
+      "methods": [
+        "load_project",
+        "save_project"
+      ],
+      "tenant_context_source": "PortContext"
+    },
+    "preview_rendering": {
+      "trait": "PageBuilderRenderingAdapter",
+      "methods": [
+        "render_preview"
+      ],
+      "invocation_order": "after Fly decode and validation"
+    },
+    "runtime_telemetry": {
+      "trait": "PageBuilderRuntimeTelemetry",
+      "evidence": "PageBuilderRuntimeCallEvidence",
+      "statuses": [
+        "started",
+        "succeeded",
+        "failed"
+      ]
+    }
+  },
+  "guards": [
+    "CapabilityGuardedService",
+    "AuthorizedPageBuilderHandlers"
+  ],
+  "transport_entrypoints": [
+    "handle_page_builder_graphql_endpoint",
+    "handle_page_builder_leptos_server_function_endpoint"
+  ],
+  "forbidden_symbols": [
+    "ReferencePageBuilderRenderingAdapter",
+    "ReferencePageBuilderService",
+    "AdapterBackedPageBuilderService",
+    "render_preview_html",
+    "extract_tree_nodes"
+  ]
+}
