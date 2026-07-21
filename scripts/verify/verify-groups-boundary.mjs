@@ -9,8 +9,12 @@ const required = [
   "crates/rustok-groups/docs/README.md",
   "crates/rustok-groups/docs/implementation-plan.md",
   "crates/rustok-groups/contracts/groups-fba-registry.json",
+  "crates/rustok-groups/src/domain.rs",
   "crates/rustok-groups/src/ports.rs",
   "crates/rustok-groups/src/service.rs",
+  "crates/rustok-groups/src/governance.rs",
+  "crates/rustok-groups/src/governance_entities.rs",
+  "crates/rustok-groups/src/migrations/m20260721_000002_create_group_governance.rs",
   "crates/rustok-groups/admin/src/core.rs",
   "crates/rustok-groups/admin/src/transport.rs",
   "crates/rustok-groups/admin/src/transport/native_server_adapter.rs",
@@ -76,6 +80,38 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/src/service.rs"))) {
   if (!service.includes("PortCallPolicy::read()") || !service.includes("PortCallPolicy::write()")) {
     failures.push("Groups ports must enforce read/write call policies");
   }
+  for (const privacyMarker of [
+    "GroupAction::ViewSummary",
+    "GroupVisibility::Closed.as_str()",
+    "include_private_content",
+    "return Err(GroupsError::NotFound)",
+  ]) {
+    if (!service.includes(privacyMarker)) {
+      failures.push(`Groups closed/secret privacy split is missing marker: ${privacyMarker}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/src/domain.rs"))) {
+  const domain = read("crates/rustok-groups/src/domain.rs");
+  if (!domain.includes('ViewSummary => "view_summary"')) {
+    failures.push("Groups domain must separate shell access from private content access");
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/src/governance.rs"))) {
+  const governance = read("crates/rustok-groups/src/governance.rs");
+  for (const marker of [
+    "GroupGovernanceCommandPort",
+    "PortCallPolicy::write()",
+    "command_receipt",
+    "audit_entry",
+    "transfer_group_ownership",
+  ]) {
+    if (!governance.includes(marker)) {
+      failures.push(`Groups governance boundary is missing marker: ${marker}`);
+    }
+  }
 }
 
 if (fs.existsSync(path.join(root, "crates/rustok-groups/contracts/groups-fba-registry.json"))) {
@@ -83,8 +119,23 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/contracts/groups-fba-reg
   if (registry?.privacy?.default_on_provider_unavailable !== "deny_private_content") {
     failures.push("Groups FBA privacy fallback must fail closed");
   }
+  if (registry?.privacy?.closed_group_discovery !== "summary_shell") {
+    failures.push("Closed groups must publish only a discoverable summary shell");
+  }
+  if (registry?.privacy?.closed_group_private_content !== "active_membership_or_platform_manage") {
+    failures.push("Closed group private content must remain membership-gated");
+  }
+  if (registry?.privacy?.secret_group_direct_read !== "not_found_without_membership_or_platform_manage") {
+    failures.push("Secret group direct reads must preserve non-disclosure semantics");
+  }
   if (registry?.feature_provider?.implicit_fallback !== false) {
     failures.push("Groups feature transport must not use implicit fallback");
+  }
+  const governancePort = registry?.provider?.ports?.find(
+    (port) => port?.name === "GroupGovernanceCommandPort",
+  );
+  if (!governancePort?.transactional_receipt || !governancePort?.transactional_audit) {
+    failures.push("Groups governance port must declare transactional receipt and audit");
   }
 }
 
@@ -105,4 +156,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups FFA/FBA, multilingual, and ownership boundary checks passed.");
+console.log("Groups FFA/FBA, privacy, governance, multilingual, and ownership boundary checks passed.");
