@@ -12,6 +12,8 @@ use axum::http::HeaderMap;
 use rustok_api::{has_any_effective_permission, AuthContext, Permission, TenantContext};
 use rustok_telemetry::metrics;
 
+const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogGraphqlRateLimitExceeded {
     pub limit: usize,
@@ -169,20 +171,11 @@ fn classify_blog_graphql_document(request: &mut Request) -> ServerResult<()> {
 }
 
 fn extract_client_ip(headers: Option<&HeaderMap>) -> Option<IpAddr> {
-    let headers = headers?;
-    headers
-        .get("x-forwarded-for")
+    headers?
+        .get(TRUSTED_CLIENT_IP_HEADER)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
         .map(str::trim)
         .and_then(|value| value.parse().ok())
-        .or_else(|| {
-            headers
-                .get("x-real-ip")
-                .and_then(|value| value.to_str().ok())
-                .map(str::trim)
-                .and_then(|value| value.parse().ok())
-        })
 }
 
 fn build_rate_limit_key(
@@ -382,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn builds_tenant_scoped_user_and_ip_keys() {
+    fn builds_tenant_scoped_user_and_trusted_ip_keys() {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);
         let auth = auth(tenant_id, vec![Permission::BLOG_POSTS_CREATE]);
@@ -401,7 +394,7 @@ mod tests {
         );
 
         let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "203.0.113.7, 10.0.0.1".parse().unwrap());
+        headers.insert(TRUSTED_CLIENT_IP_HEADER, "203.0.113.7".parse().unwrap());
         let ip_key = build_rate_limit_key(
             &tenant,
             None,
@@ -411,6 +404,24 @@ mod tests {
         assert_eq!(
             ip_key,
             format!("tenant:{tenant_id}:blog:graphql:read:posts:ip:203.0.113.7")
+        );
+    }
+
+    #[test]
+    fn raw_forwarded_headers_do_not_define_the_actor_key() {
+        let tenant_id = Uuid::new_v4();
+        let tenant = tenant(tenant_id);
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "203.0.113.99".parse().unwrap());
+
+        assert_eq!(
+            build_rate_limit_key(
+                &tenant,
+                None,
+                Some(&headers),
+                BlogGraphqlSurface::Posts,
+            ),
+            format!("tenant:{tenant_id}:blog:graphql:read:posts:anonymous")
         );
     }
 
