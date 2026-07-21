@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
 use rustok_core::{
@@ -15,6 +17,7 @@ use rustok_core::{
     ModuleRuntimeExtensions, RusToKModule,
 };
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm_migration::MigrationTrait;
 
 pub mod controllers;
@@ -145,6 +148,30 @@ impl RusToKModule for CommerceModule {
         registry.register(services::PaidOrderCreateLabelHandler::new(
             ctx.db.clone(),
             fulfillment_registry,
+        ));
+
+        let allocation_service = Arc::new(
+            rustok_marketplace_allocation::MarketplaceAllocationService::new(ctx.db.clone()),
+        );
+        let commission_service = Arc::new(
+            rustok_marketplace_commission::MarketplaceCommissionService::new(
+                ctx.db.clone(),
+                allocation_service,
+            ),
+        );
+        let ledger_service = Arc::new(
+            rustok_marketplace_ledger::MarketplaceLedgerService::new(
+                ctx.db.clone(),
+                commission_service,
+            ),
+        );
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
+            ctx.db.clone(),
+        )));
+        registry.register(services::MarketplacePaidOrderFinancialHandler::new(
+            ctx.db.clone(),
+            event_bus,
+            ledger_service,
         ));
     }
 
