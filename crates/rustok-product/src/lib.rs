@@ -94,3 +94,6 @@ impl MigrationSource for ProductModule {
         migrations::migration_dependencies()
     }
 }
+
+#[cfg(test)]
+mod contract_tests;
