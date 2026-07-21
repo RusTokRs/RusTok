@@ -21,6 +21,7 @@ rustok-inventory.workspace = true
 rustok-order.workspace = true
 rustok-payment.workspace = true
 rustok-fulfillment.workspace = true
+rustok-marketplace = { path = "../rustok-marketplace" }
 rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
 rustok-marketplace-commission = { path = "../rustok-marketplace-commission" }
 rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger" }
