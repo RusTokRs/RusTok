@@ -8,7 +8,9 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{PostService, UpdatePostInput as DomainUpdatePostInput};
+use crate::{
+    CommentService, ModerateCommentInput, PostService, UpdatePostInput as DomainUpdatePostInput,
+};
 
 use super::types::*;
 
@@ -233,6 +235,51 @@ impl BlogMutation {
                     &auth.permissions,
                 ),
                 reason,
+            )
+            .await?;
+
+        Ok(true)
+    }
+
+    async fn moderate_comment(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        status: GqlModerateCommentStatus,
+        locale: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<bool> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_blog_permission(
+            ctx,
+            &[Permission::BLOG_POSTS_MANAGE],
+            "Permission denied: blog_posts:manage required",
+        )?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+        let locale = locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| tenant.default_locale.clone());
+
+        CommentService::new(db.clone(), event_bus.clone())
+            .moderate_comment(
+                tenant_id,
+                id,
+                rustok_core::security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                ModerateCommentInput {
+                    status: status.into(),
+                    locale: Some(locale),
+                },
+                Some(tenant.default_locale.as_str()),
             )
             .await?;
 
