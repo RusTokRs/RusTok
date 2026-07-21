@@ -27,7 +27,7 @@ ProfileService::normalize_handle();
 ProfilesReader;
 ProfileVisibility::Public | ProfileVisibility::Authenticated;
 ForumRevisionIdentity;
-ForumQuoteReference;
+ForumQuoteReference::new();
 resolved: ForumResolvedMentions;
 diff_forum_mentions();
 Forum mention replay changed an existing revision projection;
@@ -39,6 +39,7 @@ ${options.profilePersistence ? "rustok_profiles::entities::profile::Entity;" : "
 ${options.forumPersistence ? "ActiveModel.insert();" : ""}
 ${options.uncheckedDeserialize ? "#[derive(Deserialize)]" : ""}
 ${options.publicDiff ? "pub added_users: Vec<User>" : ""}
+${options.publicValidatedField ? "pub revision_id: i64" : ""}
 ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
 `;
   writeFixture(
@@ -51,7 +52,9 @@ ${options.missingCap ? "// FORUM_MAX_MENTION_TARGETS_PER_REVISION removed" : ""}
   writeFixture(
     root,
     "crates/rustok-forum/src/error.rs",
-    'MentionTargetUnavailable\n"FORUM_MENTION_TARGET_UNAVAILABLE"\n',
+    options.errorCarriesHandle
+      ? 'MentionTargetUnavailable { handle: String }\n"FORUM_MENTION_TARGET_UNAVAILABLE"\n'
+      : 'MentionTargetUnavailable,\n"FORUM_MENTION_TARGET_UNAVAILABLE"\n',
   );
   writeFixture(
     root,
@@ -140,6 +143,20 @@ test("mention verifier rejects mutable diff collections", () => {
   withFixture({ publicDiff: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must remain immutable/);
+  });
+});
+
+test("mention verifier rejects public validated DTO fields", () => {
+  withFixture({ publicValidatedField: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must remain constructor-only/);
+  });
+});
+
+test("mention verifier rejects identifiers in safe target errors", () => {
+  withFixture({ errorCarriesHandle: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not retain requested identifiers/);
   });
 });
 
