@@ -1,7 +1,7 @@
 # rustok-forum / CRATE_API
 
 ## Public Modules
-`category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`.
+`category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `mentions`, `services`.
 
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
@@ -16,6 +16,11 @@
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
 - `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
 - `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
+- `extract_forum_mention_candidates(body, body_format, locale, policy) -> ForumResult<ForumMentionCandidates>`
+- `resolve_forum_mentions(profiles, tenant_id, candidates, requested_locale, tenant_default_locale) -> ForumResult<ForumResolvedMentions>`
+- `validate_forum_quote_references(source, references) -> ForumResult<Vec<ForumQuoteReference>>`
+- `diff_forum_mentions(previous, current) -> ForumResult<ForumMentionDiff>`
+- `ForumRevisionIdentity`, `ForumMentionRevisionProjection`, `ForumMentionEventCandidate`, `ForumQuoteReference`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -72,6 +77,17 @@
 - Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
 - Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
 - Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
+### Mention and quote revision contract
+- Markdown extraction ignores fenced code, inline code, escaped text and email-address `@` tokens.
+- `rt_json_v1` extraction first uses the canonical `rustok-core` sanitizer and ignores `code_block` nodes and text with a `code` mark.
+- Ordinary handles use `ProfileService::normalize_handle`; the `moderators` audience is a separate typed target and requires explicit moderation policy.
+- Every revision is capped at 32 unique mention targets and 32 unique quote references.
+- `resolve_forum_mentions` uses the tenant-scoped `ProfilesReader` contract. Missing, hidden, blocked, private, followers-only, foreign-tenant or mismatched targets all fail with the same safe `FORUM_MENTION_TARGET_UNAVAILABLE` class.
+- `ForumQuoteReference` stores target identity plus quoted revision identity; the renderer never infers historical identity from display text.
+- `diff_forum_mentions` is deterministic by resolved user identity. Only added targets produce `ForumMentionEventCandidate`; unchanged and removed targets never become delivery candidates.
+- Replaying the same source revision with changed targets fails closed. A byte-identical replay produces no added candidates.
+- FORUM-12A contains no persistence, event publication, notification call or transport surface. Those remain owner slices after schema and event contracts are added.
+- Run `node scripts/verify/verify-forum-mention-contract.mjs` after changing this boundary.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -110,10 +126,11 @@ Publishes forum domain events through the outbox pipeline:
 - `ForumTopicCreated` — when a topic is created
 - `ForumTopicReplied` — when a reply is added
 - `ForumTopicStatusChanged` — when topic status changes (close/archive)
-- `ForumTopicPinned` — when topic is pinned/unpinned
+- `ForumTopicPinned` — when a topic is pinned/unpinned
 - `ForumReplyStatusChanged` — when a reply is moderated (approve/reject/hide)
 
 All new forum events are defined in `rustok-core::events::DomainEvent`.
+Mention event candidates are currently pure owner projections; FORUM-12A does not publish them.
 
 ## Owner Service Boundary
 - Public topic and reply workflows use the root `TopicService` and `ReplyService` facade exports.
@@ -127,6 +144,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - `rustok-core`
 - `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
 - `rustok-outbox`
+- `rustok-profiles` for tenant-scoped mention handle resolution through `ProfilesReader`
 
 ## Common AI Mistakes
 - Incorrectly uses moderation limits/constants from `constants`.
@@ -140,6 +158,9 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
 - Stores a category image URL/path or reads Media tables instead of using the Media owner port.
 - Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
+- Parses mentions from code blocks, escaped text or unsanitized `rt_json_v1`.
+- Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
+- Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
@@ -159,13 +180,18 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
 - Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
+- Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
+- Mention revision diffs are immutable on replay and only added resolved targets become future event candidates.
+- Quote relations retain target revision identity and cannot self-reference their own source revision.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
+- FORUM-12A creates no outbox side effect; mention events begin only in the persistence/event slice.
 
 ### Errors / Failure Codes
 - Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
 - For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
 - Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.
+- Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
