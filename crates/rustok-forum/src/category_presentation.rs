@@ -326,7 +326,7 @@ mod tests {
         .await
         .expect_err("write must fail when Media owner is absent");
 
-        assert!(matches!(error, ForumError::CapabilityUnavailable { .. }));
+        assert!(matches!(&error, ForumError::CapabilityUnavailable { .. }));
         assert_eq!(error.stable_code(), CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE);
         assert!(!error.is_retryable());
     }
