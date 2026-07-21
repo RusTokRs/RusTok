@@ -22,6 +22,7 @@ rustok-order.workspace = true
 rustok-payment.workspace = true
 rustok-fulfillment.workspace = true
 rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation" }
+rustok-marketplace-commission = { path = "../rustok-marketplace-commission" }
 flex.workspace = true
 async-trait.workspace = true
 axum.workspace = true
