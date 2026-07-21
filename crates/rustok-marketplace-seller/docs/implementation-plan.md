@@ -1,6 +1,6 @@
 # Marketplace seller implementation plan
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-21
 
 ## Status
 
@@ -48,8 +48,11 @@ migration, contention, mounted-transport, and remote-profile evidence.
   typed result snapshot, and completed timestamp.
 - [x] Include effective locale in localized command request identity and commit the
   translation upsert, owner mutation, receipt, and response snapshot atomically.
-- [x] Use database `ON CONFLICT` for translation upsert so concurrent locale writes do
-  not abort a PostgreSQL transaction after a unique violation.
+- [x] Bind effective locale into add/update member command identity and commit member
+  state, immutable seller event, completed receipt, and response snapshot in one
+  transaction.
+- [x] Use database `ON CONFLICT` for translation upsert so concurrent locale writes
+  do not abort a PostgreSQL transaction after a unique violation.
 - [x] Reject reuse of an idempotency key for another command kind, actor, locale, or
   payload.
 - [x] Own append-only `marketplace_seller_events` with tenant/seller scope, typed event
@@ -59,22 +62,22 @@ migration, contention, mounted-transport, and remote-profile evidence.
   tenant/seller foreign key.
 - [x] Publish a bounded newest-first owner timeline read through
   `MarketplaceSellerReadPort::list_seller_events`.
-- [x] Commit create, profile update, onboarding submit/review, suspension, and
-  reactivation state, immutable command event, completed receipt, and normalized
-  response snapshot in one transaction.
+- [x] Commit create, profile update, onboarding submit/review, suspension,
+  reactivation, member add, and member update state, immutable command event,
+  completed receipt, and normalized response snapshot in one transaction.
 - [x] Keep lost-response replay outside event append so one idempotency key produces
   exactly one seller event.
 - [x] Roll back owner state and the pending receipt when seller event persistence
   fails.
-- [x] Fail closed when a completed seller response has no immutable event mapping.
+- [x] Fail closed when a completed seller or member response has no immutable event
+  mapping.
+- [x] Publish every completed live seller/member command contract through the
+  transactional outbox before receipt completion and transaction commit.
 
 ## Ownership remaining
 
-- [ ] Bind effective locale into member command identity and route add/update member
-  writes through atomic member state + seller event + receipt transactions.
 - [ ] Backfill existing onboarding/suspension prose snapshots and remove mutable
   compatibility columns only after live command event coverage is complete.
-- [ ] Publish seller lifecycle events through the transactional outbox.
 - [ ] Add normalized verification facts and a KYC provider SPI without raw provider
   payload persistence.
 
@@ -93,23 +96,26 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - [x] Publish the in-process provider registry and planned remote-adapter cases.
 - [x] Add source guards for multilingual schema, exact locale resolution, replay,
   conflict, typed response snapshots, transport wiring, immutable event storage,
-  truthful provenance, bounded timeline reads, seller response mapping, completion
-  order, and root/owner non-bypass rules.
+  truthful provenance, bounded timeline reads, seller response mapping, member
+  response mapping, completion order, transactional outbox publication, and
+  root/owner non-bypass rules.
 - [x] Execute SQLite proof for one-event replay semantics and event-insert rollback of
   lifecycle state plus the pending receipt.
 - [x] Execute SQLite proof that create/profile/onboarding-submit each commit exactly one
   locale-attributed event and completed replay does not append another event.
+- [x] Implement locale-bound add/update member receipts and immutable event mapping.
+- [x] Publish live seller/member contract events through
+  `EventBus::publish_contract_in_tx` in the receipt transaction.
 - [x] Aggregate marketplace family and seller transport verifiers into the root npm
   verification entry points.
 
 ## FBA remaining
 
-- [ ] Add effective-locale identity and immutable events to add/update member commands.
 - [ ] Compile the provider and GraphQL contracts.
 - [ ] Apply seller/translation/receipt/event migrations on clean and upgraded
   SQLite/PostgreSQL graphs.
-- [ ] Execute same-key contention, lifecycle contention, cross-tenant, and PostgreSQL
-  event atomicity scenarios.
+- [ ] Execute same-key contention, lifecycle/member contention, cross-tenant, and
+  PostgreSQL event/outbox atomicity scenarios.
 - [ ] Retain timeout, degraded, remote-profile, and fallback execution evidence before
   promoting FBA to `transport_verified`.
 
@@ -132,13 +138,15 @@ migration, contention, mounted-transport, and remote-profile evidence.
   explicit retry action that reuses the same command and key.
 - [x] Wire seller GraphQL roots into module manifest/server features and seller UI
   into manifest-driven admin host composition without default-enabling Marketplace.
+- [x] Add bounded lifecycle/member event history DTOs, native server transport,
+  GraphQL adapter, timeline model, and Leptos history surface over the owner read
+  operation.
 
 ## FFA remaining
 
-- [ ] Add lifecycle/moderation history to native and GraphQL DTOs and workflows over
-  the new owner event read operation.
-- [ ] Retain native/GraphQL parity, localized errors, route state, retries, and mounted
-  authenticated host evidence before promoting FFA to `phase_b_ready`.
+- [ ] Retain native/GraphQL event-history parity, localized errors, route state,
+  retries, and mounted authenticated host evidence before promoting FFA to
+  `phase_b_ready`.
 
 ## Immediate execution order
 
@@ -148,14 +156,14 @@ migration, contention, mounted-transport, and remote-profile evidence.
    state + event + receipt transactions.
 3. [x] Route create, profile update, and onboarding submit through atomic
    state + event + receipt transactions.
-4. [ ] Bind effective locale to member command identity and emit add/update member
+4. [x] Bind effective locale to member command identity and emit add/update member
    events atomically.
-5. [ ] Add event history to native and GraphQL FFA transports.
+5. [x] Add event history to native and GraphQL FFA transports.
 6. [ ] Backfill/remove mutable prose snapshots.
-7. [ ] Publish live seller events through the transactional outbox.
+7. [x] Publish live seller/member events through the transactional outbox.
 8. [ ] Add normalized verification/KYC facts and provider SPI.
-9. [ ] Compile and execute database, contention, replay, tenant, and mounted transport
-   evidence.
+9. [ ] Compile and execute database, contention, replay, tenant, outbox, and mounted
+   transport evidence.
 
 ## Source evidence
 
@@ -172,14 +180,21 @@ migration, contention, mounted-transport, and remote-profile evidence.
 - `src/seller_events.rs`
 - `src/seller_events_tests.rs`
 - `src/seller_response_events_tests.rs`
+- `src/seller_member_events_tests.rs`
 - `src/ports.rs`
 - `src/graphql.rs`
+- `src/graphql_events.rs`
 - `admin/src/model.rs`
 - `admin/src/transport.rs`
 - `admin/src/transport/native_server_adapter.rs`
 - `admin/src/transport/graphql_adapter.rs`
+- `admin/src/transport/event_history_native.rs`
+- `admin/src/transport/event_history_graphql.rs`
+- `admin/src/ui/event_history_panel.rs`
+- `admin/src/ui/event_timeline.rs`
 - `admin/src/ui/leptos.rs`
 - `contracts/marketplace-seller-fba-registry.json`
+- `../rustok-events/src/marketplace_seller.rs`
 - `../../apps/server/tests/marketplace_family_boundary_guard.rs`
 - `../../apps/server/tests/marketplace_seller_transport_guard.rs`
 - `../../scripts/verify/verify-marketplace-family-boundary.mjs`
