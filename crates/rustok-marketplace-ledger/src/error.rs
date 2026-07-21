@@ -11,6 +11,13 @@ pub enum MarketplaceLedgerError {
     OrderAlreadyPosted(Uuid),
     #[error("commission assessment {0} is already posted")]
     AssessmentAlreadyPosted(Uuid),
+    #[error("marketplace ledger reversal source {0} is already posted")]
+    ReversalAlreadyPosted(Uuid),
+    #[error("marketplace seller balance for seller {seller_id} and currency {currency_code} was not found")]
+    SellerBalanceNotFound {
+        seller_id: Uuid,
+        currency_code: String,
+    },
     #[error("marketplace ledger idempotency key is already bound to another request")]
     IdempotencyConflict,
     #[error("marketplace ledger receipt is incomplete or corrupt")]
