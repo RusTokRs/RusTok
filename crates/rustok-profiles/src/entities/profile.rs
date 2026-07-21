@@ -10,7 +10,6 @@ pub struct Model {
     pub user_id: Uuid,
     pub tenant_id: Uuid,
     pub handle: String,
-    pub display_name: String,
     pub avatar_media_id: Option<Uuid>,
     pub banner_media_id: Option<Uuid>,
     pub preferred_locale: Option<String>,
