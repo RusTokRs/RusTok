@@ -9,7 +9,16 @@ ui_classification = "api_only"
 
 [marketplace]
 category = "commerce"
-tags = ["marketplace", "ledger", "accounting", "commission", "seller-payable"]
+tags = [
+    "marketplace",
+    "ledger",
+    "accounting",
+    "commission",
+    "seller-payable",
+    "refund",
+    "chargeback",
+    "seller-balance",
+]
 
 [crate]
 entry_type = "MarketplaceLedgerModule"
@@ -17,11 +26,18 @@ entry_type = "MarketplaceLedgerModule"
 [fba.provider]
 status = "in_progress"
 role = "provider"
-contract_version = "marketplace.ledger.v1"
+contract_version = "marketplace.ledger.v2"
 registry = "contracts/marketplace-ledger-fba-registry.json"
 context = "rustok_api::ports::PortContext"
 error = "rustok_api::ports::PortError"
 
 [fba.provider.rollout]
 fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
-degraded_modes = ["ledger_storage_unavailable", "commission_provider_unavailable", "ledger_receipt_requires_review"]
+degraded_modes = [
+    "ledger_storage_unavailable",
+    "commission_provider_unavailable",
+    "ledger_receipt_requires_review",
+    "reversal_not_supported",
+    "seller_balance_projection_missing",
+    "seller_balance_rebuild_required",
+]
