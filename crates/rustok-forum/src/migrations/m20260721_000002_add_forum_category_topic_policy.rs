@@ -93,6 +93,28 @@ async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
+CREATE OR REPLACE FUNCTION forum_validate_category_policy_tenant()
+RETURNS trigger AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM forum_categories category
+        WHERE category.id = NEW.category_id
+          AND category.tenant_id = NEW.tenant_id
+    ) THEN
+        RAISE EXCEPTION 'forum category topic policy tenant mismatch';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS forum_category_policies_tenant_guard ON forum_category_policies;
+CREATE TRIGGER forum_category_policies_tenant_guard
+BEFORE INSERT OR UPDATE OF tenant_id, category_id
+ON forum_category_policies
+FOR EACH ROW
+EXECUTE FUNCTION forum_validate_category_policy_tenant();
+
 CREATE OR REPLACE FUNCTION forum_validate_topic_category_policy()
 RETURNS trigger AS $$
 BEGIN
@@ -128,6 +150,8 @@ async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             r#"
 DROP TRIGGER IF EXISTS forum_topics_category_policy_guard ON forum_topics;
 DROP FUNCTION IF EXISTS forum_validate_topic_category_policy();
+DROP TRIGGER IF EXISTS forum_category_policies_tenant_guard ON forum_category_policies;
+DROP FUNCTION IF EXISTS forum_validate_category_policy_tenant();
 "#,
         )
         .await?;
@@ -137,8 +161,34 @@ DROP FUNCTION IF EXISTS forum_validate_topic_category_policy();
 async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     for statement in [
+        "DROP TRIGGER IF EXISTS forum_category_policies_tenant_insert",
+        "DROP TRIGGER IF EXISTS forum_category_policies_tenant_update",
         "DROP TRIGGER IF EXISTS forum_topics_category_policy_insert",
         "DROP TRIGGER IF EXISTS forum_topics_category_policy_update",
+        r#"CREATE TRIGGER forum_category_policies_tenant_insert
+           BEFORE INSERT ON forum_category_policies
+           FOR EACH ROW
+           WHEN NOT EXISTS (
+               SELECT 1
+               FROM forum_categories category
+               WHERE category.id = NEW.category_id
+                 AND category.tenant_id = NEW.tenant_id
+           )
+           BEGIN
+               SELECT RAISE(ABORT, 'forum category topic policy tenant mismatch');
+           END"#,
+        r#"CREATE TRIGGER forum_category_policies_tenant_update
+           BEFORE UPDATE OF tenant_id, category_id ON forum_category_policies
+           FOR EACH ROW
+           WHEN NOT EXISTS (
+               SELECT 1
+               FROM forum_categories category
+               WHERE category.id = NEW.category_id
+                 AND category.tenant_id = NEW.tenant_id
+           )
+           BEGIN
+               SELECT RAISE(ABORT, 'forum category topic policy tenant mismatch');
+           END"#,
         r#"CREATE TRIGGER forum_topics_category_policy_insert
            BEFORE INSERT ON forum_topics
            FOR EACH ROW
@@ -176,6 +226,8 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     for statement in [
         "DROP TRIGGER IF EXISTS forum_topics_category_policy_insert",
         "DROP TRIGGER IF EXISTS forum_topics_category_policy_update",
+        "DROP TRIGGER IF EXISTS forum_category_policies_tenant_insert",
+        "DROP TRIGGER IF EXISTS forum_category_policies_tenant_update",
     ] {
         connection.execute_unprepared(statement).await?;
     }
