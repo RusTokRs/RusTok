@@ -27,3 +27,55 @@ pub struct GroupsAdminDirectory {
     pub page: u64,
     pub per_page: u64,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupsAdminAssignableRole {
+    Admin,
+    Moderator,
+    Member,
+}
+
+impl GroupsAdminAssignableRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Admin => "admin",
+            Self::Moderator => "moderator",
+            Self::Member => "member",
+        }
+    }
+
+    pub const fn as_graphql_enum(self) -> &'static str {
+        match self {
+            Self::Admin => "ADMIN",
+            Self::Moderator => "MODERATOR",
+            Self::Member => "MEMBER",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChangeGroupRoleCommand {
+    pub idempotency_key: String,
+    pub group_id: String,
+    pub target_user_id: String,
+    pub role: GroupsAdminAssignableRole,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransferGroupOwnershipCommand {
+    pub idempotency_key: String,
+    pub group_id: String,
+    pub new_owner_user_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminGovernanceResult {
+    pub group_id: String,
+    pub actor_user_id: String,
+    pub target_user_id: String,
+    pub previous_role: String,
+    pub current_role: String,
+    pub group_version: u64,
+    pub replayed: bool,
+}
