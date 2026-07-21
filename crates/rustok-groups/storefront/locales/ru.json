@@ -7,8 +7,10 @@
   "groups.storefront.members": "участников",
   "groups.storefront.invitation.title": "Принять приглашение в группу",
   "groups.storefront.invitation.body": "Войдите в аккаунт, проверьте токен приглашения и присоединитесь к группе. После отправки команды токен удаляется из URL.",
+  "groups.storefront.invitation.targetedBody": "Это приглашение адресовано вашему аккаунту. Войдите и примите его без раскрытия токена приглашения.",
   "groups.storefront.invitation.tokenLabel": "Токен приглашения",
   "groups.storefront.invitation.tokenHint": "Вставьте непрозрачный токен из приглашения. После принятия он больше не отображается.",
+  "groups.storefront.invitation.targetedHint": "Идентификатор приглашения получен из авторизованного маршрута уведомления и может быть принят только указанным получателем.",
   "groups.storefront.invitation.accept": "Принять приглашение",
   "groups.storefront.invitation.busy": "Приглашение принимается...",
   "groups.storefront.invitation.error": "Не удалось принять приглашение",
@@ -17,5 +19,6 @@
   "groups.storefront.invitation.role": "Роль",
   "groups.storefront.invitation.status": "Статус участия",
   "groups.storefront.invitation.missingToken": "Введите токен приглашения.",
-  "groups.storefront.invitation.invalidToken": "Недопустимая длина токена приглашения."
+  "groups.storefront.invitation.invalidToken": "Недопустимая длина токена приглашения.",
+  "groups.storefront.invitation.invalidInvitationId": "Недопустимый идентификатор адресного приглашения."
 }
