@@ -10,6 +10,7 @@ use utoipa::OpenApi;
         crate::controllers::create_menu,
         crate::controllers::patch_page_metadata,
         crate::controllers::save_page_document,
+        crate::http::publish_page,
         crate::controllers::delete_page,
     ),
     components(
@@ -17,6 +18,10 @@ use utoipa::OpenApi;
             crate::CreatePageInput,
             crate::PatchPageMetadataInput,
             crate::SavePageDocumentInput,
+            crate::PublishPageInput,
+            crate::PublishPageResult,
+            crate::PageBodyRevisionInput,
+            crate::ReviewedPagePublishRuntimeInput,
             crate::PageBodyInput,
             crate::PageResponse,
             crate::CreateMenuInput,
