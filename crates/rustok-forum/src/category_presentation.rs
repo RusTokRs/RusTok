@@ -1,12 +1,13 @@
-use rustok_media::{MediaImageDescriptor, MediaItem};
+use rustok_media::MediaImageDescriptor;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
 
-pub(crate) const CATEGORY_ICON_KEY_MAX_BYTES: usize = 64;
-pub(crate) const CATEGORY_COVER_MAX_BYTES: i64 = 10 * 1024 * 1024;
-pub(crate) const CATEGORY_COVER_MIN_DIMENSION: i32 = 64;
-pub(crate) const CATEGORY_COVER_MAX_DIMENSION: i32 = 8_192;
+pub const CATEGORY_ICON_KEY_MAX_BYTES: usize = 64;
+pub const CATEGORY_COVER_MAX_BYTES: i64 = 10 * 1024 * 1024;
+pub const CATEGORY_COVER_MIN_DIMENSION: i32 = 64;
+pub const CATEGORY_COVER_MAX_DIMENSION: i32 = 8_192;
 
 const CATEGORY_COVER_MIME_TYPES: &[&str] = &[
     "image/avif",
@@ -16,11 +17,26 @@ const CATEGORY_COVER_MIME_TYPES: &[&str] = &[
     "image/webp",
 ];
 
+/// Transport-neutral Media metadata required to evaluate a category cover.
+///
+/// A Media adapter may construct this value from `MediaAssetReadPort` results,
+/// but storage paths, drivers, credentials and blob data never enter Forum.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CategoryCoverMediaCandidate {
+    pub media_id: Uuid,
+    pub tenant_id: Uuid,
+    pub mime_type: String,
+    pub size: i64,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub descriptor: Option<MediaImageDescriptor>,
+}
+
 /// Normalize a category icon into a bounded design-system token.
 ///
 /// Forum stores only a semantic kebab-case key. CSS classes, markup, URLs and
 /// arbitrary file paths are intentionally outside this contract.
-pub(crate) fn normalize_category_icon_key(value: &str) -> Option<String> {
+pub fn normalize_category_icon_key(value: &str) -> Option<String> {
     let normalized = value.trim().to_ascii_lowercase();
     if normalized.is_empty() || normalized.len() > CATEGORY_ICON_KEY_MAX_BYTES {
         return None;
@@ -40,38 +56,35 @@ pub(crate) fn normalize_category_icon_key(value: &str) -> Option<String> {
     (!previous_was_separator).then_some(normalized)
 }
 
-/// Validate the media-owned metadata currently available for a category cover.
+/// Validate the Media-owned metadata currently available for a category cover.
 ///
-/// This deliberately accepts a `MediaItem` and descriptor obtained through the
-/// Media read port. It must not be used as permission to read Media tables.
-/// Quarantine/deletion state is not currently published by the Media port, so a
-/// persistent `cover_media_id` command must remain disabled until that state is
-/// part of the owner contract.
-pub(crate) fn validate_category_cover_candidate(
+/// Quarantine/deletion state is not currently published by the Media read port.
+/// A persistent `cover_media_id` command must remain disabled until those owner
+/// states are included in the candidate produced by the Media adapter.
+pub fn validate_category_cover_candidate(
     expected_tenant_id: Uuid,
-    item: &MediaItem,
-    descriptor: Option<MediaImageDescriptor>,
+    candidate: &CategoryCoverMediaCandidate,
 ) -> ForumResult<MediaImageDescriptor> {
-    if item.tenant_id != expected_tenant_id {
+    if candidate.tenant_id != expected_tenant_id {
         return Err(ForumError::Validation(
             "Category cover media belongs to another tenant".to_string(),
         ));
     }
 
-    let mime_type = item.mime_type.trim().to_ascii_lowercase();
+    let mime_type = candidate.mime_type.trim().to_ascii_lowercase();
     if !CATEGORY_COVER_MIME_TYPES.contains(&mime_type.as_str()) {
         return Err(ForumError::Validation(
             "Category cover media must be a supported public image".to_string(),
         ));
     }
 
-    if !(1..=CATEGORY_COVER_MAX_BYTES).contains(&item.size) {
+    if !(1..=CATEGORY_COVER_MAX_BYTES).contains(&candidate.size) {
         return Err(ForumError::Validation(format!(
             "Category cover media must be between 1 and {CATEGORY_COVER_MAX_BYTES} bytes"
         )));
     }
 
-    let (Some(width), Some(height)) = (item.width, item.height) else {
+    let (Some(width), Some(height)) = (candidate.width, candidate.height) else {
         return Err(ForumError::Validation(
             "Category cover media requires known image dimensions".to_string(),
         ));
@@ -84,7 +97,7 @@ pub(crate) fn validate_category_cover_candidate(
         )));
     }
 
-    let descriptor = descriptor.ok_or_else(|| {
+    let descriptor = candidate.descriptor.clone().ok_or_else(|| {
         ForumError::Validation("Category cover media has no image descriptor".to_string())
     })?;
     if !descriptor.should_emit_to_public_metadata() {
@@ -108,28 +121,23 @@ pub(crate) fn validate_category_cover_candidate(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
-    use rustok_media::{MediaImageDescriptor, MediaItem};
+    use rustok_media::MediaImageDescriptor;
     use uuid::Uuid;
 
-    use super::{normalize_category_icon_key, validate_category_cover_candidate};
+    use super::{
+        normalize_category_icon_key, validate_category_cover_candidate,
+        CategoryCoverMediaCandidate,
+    };
 
-    fn image_item(tenant_id: Uuid) -> MediaItem {
-        MediaItem {
-            id: Uuid::new_v4(),
+    fn image_candidate(tenant_id: Uuid) -> CategoryCoverMediaCandidate {
+        CategoryCoverMediaCandidate {
+            media_id: Uuid::new_v4(),
             tenant_id,
-            uploaded_by: None,
-            filename: "cover.webp".to_string(),
-            original_name: "cover.webp".to_string(),
             mime_type: "image/webp".to_string(),
             size: 1024,
-            storage_path: "tenant/cover.webp".to_string(),
-            storage_driver: "memory".to_string(),
-            public_url: "/media/cover.webp".to_string(),
             width: Some(1200),
             height: Some(630),
-            metadata: serde_json::json!({}),
-            created_at: Utc::now(),
+            descriptor: Some(image_descriptor()),
         }
     }
 
@@ -172,36 +180,26 @@ mod tests {
     #[test]
     fn cover_candidate_requires_tenant_image_bounds_and_public_descriptor() {
         let tenant_id = Uuid::new_v4();
-        let item = image_item(tenant_id);
-        let descriptor = validate_category_cover_candidate(
-            tenant_id,
-            &item,
-            Some(image_descriptor()),
-        )
-        .expect("valid public image should pass");
+        let candidate = image_candidate(tenant_id);
+        let descriptor = validate_category_cover_candidate(tenant_id, &candidate)
+            .expect("valid public image should pass");
         assert_eq!(descriptor.mime_type.as_deref(), Some("image/webp"));
     }
 
     #[test]
     fn cover_candidate_rejects_foreign_or_non_public_media() {
         let tenant_id = Uuid::new_v4();
-        let item = image_item(Uuid::new_v4());
-        assert!(validate_category_cover_candidate(
-            tenant_id,
-            &item,
-            Some(image_descriptor())
-        )
-        .is_err());
+        let candidate = image_candidate(Uuid::new_v4());
+        assert!(validate_category_cover_candidate(tenant_id, &candidate).is_err());
 
-        let item = image_item(tenant_id);
-        let opaque = MediaImageDescriptor::from_parts(
+        let mut candidate = image_candidate(tenant_id);
+        candidate.descriptor = MediaImageDescriptor::from_parts(
             "opaque-reference",
             None,
             Some(1200),
             Some(630),
             Some("image/webp".to_string()),
-        )
-        .expect("opaque descriptor should still materialize");
-        assert!(validate_category_cover_candidate(tenant_id, &item, Some(opaque)).is_err());
+        );
+        assert!(validate_category_cover_candidate(tenant_id, &candidate).is_err());
     }
 }
