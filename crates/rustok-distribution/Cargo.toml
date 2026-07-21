@@ -11,6 +11,7 @@ mod-cart = ["dep:rustok-cart"]
 mod-customer = ["dep:rustok-customer"]
 mod-product = ["dep:rustok-product", "mod-taxonomy"]
 mod-profiles = ["dep:rustok-profiles", "mod-taxonomy"]
+mod-groups = ["dep:rustok-groups"]
 mod-region = ["dep:rustok-region"]
 mod-pricing = ["dep:rustok-pricing", "mod-product"]
 mod-inventory = ["dep:rustok-inventory", "mod-product"]
@@ -57,6 +58,7 @@ rustok-cart = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-profiles = { workspace = true, optional = true }
+rustok-groups = { path = "../rustok-groups", optional = true }
 rustok-region = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
