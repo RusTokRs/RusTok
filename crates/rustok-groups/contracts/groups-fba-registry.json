@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "module": "groups",
+  "status": "in_progress",
+  "provider": {
+    "owner": "rustok-groups",
+    "contract_version": "groups.access.v1",
+    "context_type": "rustok_api::PortContext",
+    "error_type": "rustok_api::PortError",
+    "ports": [
+      {
+        "name": "GroupSummaryReadPort",
+        "operations": ["read_group", "list_groups"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false
+      },
+      {
+        "name": "GroupMembershipReadPort",
+        "operations": ["read_membership", "list_memberships"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false
+      },
+      {
+        "name": "GroupAccessReadPort",
+        "operations": ["decide_group_access", "enabled_group_features"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false
+      },
+      {
+        "name": "GroupCommandPort",
+        "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true
+      }
+    ]
+  },
+  "privacy": {
+    "default_on_provider_unavailable": "deny_private_content",
+    "public_summary_degraded_mode": "minimal_safe_summary_or_unavailable",
+    "secret_group_discovery": "never_disclose"
+  },
+  "feature_provider": {
+    "identity": "namespaced_key_plus_contract_version",
+    "examples": [
+      "forum.discussions",
+      "blog.posts",
+      "pages.wiki",
+      "marketplace.store",
+      "media.gallery"
+    ],
+    "degraded_modes": ["hidden", "readonly", "unavailable"],
+    "implicit_fallback": false
+  },
+  "transport_profiles": [
+    {
+      "name": "embedded_native",
+      "provider": "GroupsService",
+      "status": "implemented"
+    },
+    {
+      "name": "remote_adapter_placeholder",
+      "provider": null,
+      "status": "planned"
+    }
+  ],
+  "evidence": {
+    "static_boundary": "scripts/verify/verify-groups-boundary.mjs",
+    "runtime_provider_consumer": null,
+    "runtime_fallback": null,
+    "runtime_retry_recovery": null
+  }
+}
