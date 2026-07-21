@@ -8,8 +8,6 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
 use rustok_core::{
@@ -17,7 +15,7 @@ use rustok_core::{
     ModuleRuntimeExtensions, RusToKModule,
 };
 use rustok_fulfillment::providers::FulfillmentProviderRegistry;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_outbox::TransactionalEventBus;
 use sea_orm_migration::MigrationTrait;
 
 pub mod controllers;
@@ -157,14 +155,16 @@ impl RusToKModule for CommerceModule {
             .extensions
             .get::<MarketplaceFinancialRuntime>()
             .cloned()
-            .unwrap_or_else(|| MarketplaceFinancialRuntime::in_process(ctx.db.clone()));
+            .expect(
+                "commerce module requires MarketplaceFinancialRuntime in ModuleRuntimeExtensions",
+            );
         let event_bus = ctx
             .extensions
             .get::<TransactionalEventBus>()
             .cloned()
-            .unwrap_or_else(|| {
-                TransactionalEventBus::new(Arc::new(OutboxTransport::new(ctx.db.clone())))
-            });
+            .expect(
+                "commerce module requires TransactionalEventBus in ModuleRuntimeExtensions",
+            );
         registry.register(services::MarketplacePaidOrderFinancialHandler::new(
             ctx.db.clone(),
             event_bus,
