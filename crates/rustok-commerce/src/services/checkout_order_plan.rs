@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rustok_cart::CartMarketplaceLineSnapshot;
 use rustok_order::CreateOrderInput;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,12 @@ pub struct CheckoutFulfillmentPlan {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CheckoutMarketplaceLineSnapshot {
+    pub order_line_index: usize,
+    pub snapshot: CartMarketplaceLineSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CheckoutOrderPlanPayload {
     pub order_input: CreateOrderInput,
     pub channel_id: Option<Uuid>,
@@ -40,6 +47,8 @@ pub struct CheckoutOrderPlanPayload {
     pub create_fulfillment: bool,
     #[serde(default)]
     pub fulfillment_plans: Vec<CheckoutFulfillmentPlan>,
+    #[serde(default)]
+    pub marketplace_lines: Vec<CheckoutMarketplaceLineSnapshot>,
     pub checkout_metadata: Value,
 }
 
@@ -203,6 +212,49 @@ fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResu
                     item.cart_line_item_id
                 )));
             }
+        }
+    }
+
+    let mut marketplace_indexes = HashSet::new();
+    let mut marketplace_cart_lines = HashSet::new();
+    for line in &payload.marketplace_lines {
+        if !marketplace_indexes.insert(line.order_line_index) {
+            return Err(CheckoutOrderPlanError::Validation(format!(
+                "order line index {} has multiple marketplace snapshots",
+                line.order_line_index
+            )));
+        }
+        if !marketplace_cart_lines.insert(line.snapshot.cart_line_item_id) {
+            return Err(CheckoutOrderPlanError::Validation(format!(
+                "cart line {} has multiple marketplace snapshots",
+                line.snapshot.cart_line_item_id
+            )));
+        }
+        let order_line = payload
+            .order_input
+            .line_items
+            .get(line.order_line_index)
+            .ok_or_else(|| {
+                CheckoutOrderPlanError::Validation(format!(
+                    "marketplace snapshot references missing order line index {}",
+                    line.order_line_index
+                ))
+            })?;
+        if order_line.product_id != Some(line.snapshot.master_product_id)
+            || order_line.variant_id != Some(line.snapshot.master_variant_id)
+            || i64::from(order_line.quantity) * line.snapshot.unit_amount
+                != line.snapshot.subtotal_amount
+        {
+            return Err(CheckoutOrderPlanError::Validation(format!(
+                "marketplace snapshot for cart line {} does not match its immutable order line",
+                line.snapshot.cart_line_item_id
+            )));
+        }
+        if order_line.seller_id.as_deref() != Some(line.snapshot.seller_id.to_string().as_str()) {
+            return Err(CheckoutOrderPlanError::Validation(format!(
+                "marketplace snapshot for cart line {} does not match seller identity",
+                line.snapshot.cart_line_item_id
+            )));
         }
     }
     Ok(())
