@@ -1,4 +1,5 @@
 use super::FlyProjectInspection;
+use crate::preview_port::PageBuilderPreviewRenderingPort;
 use crate::runtime_scenario_release::{
     release_gate_error, NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
 };
@@ -6,8 +7,8 @@ use crate::runtime_telemetry::{
     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
 };
 use crate::service::{
-    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
-    PageBuilderServiceError, PageBuilderServiceResult,
+    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderServiceError,
+    PageBuilderServiceResult,
 };
 use async_trait::async_trait;
 use fly::{
@@ -16,6 +17,8 @@ use fly::{
 };
 use rustok_api::PortContext;
 use serde_json::Value;
+
+const MAX_PREVIEW_SCENARIO_ID_BYTES: usize = 128;
 
 /// Fly-backed current provider that keeps the existing storage/rendering ports while making Fly
 /// authoritative for project decode, structural validation, layers traversal, component lookup,
@@ -101,11 +104,34 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
     }
 }
 
+fn validate_preview_runtime(
+    runtime: &crate::dto::PageBuilderPreviewRuntime,
+) -> PageBuilderServiceResult<()> {
+    if !runtime.context.is_object() {
+        return Err(PageBuilderServiceError::Validation(
+            "preview runtime context must be a JSON object".to_string(),
+        ));
+    }
+    if let Some(scenario_id) = runtime.scenario_id.as_deref() {
+        if scenario_id.is_empty() || scenario_id.trim() != scenario_id {
+            return Err(PageBuilderServiceError::Validation(
+                "preview runtime scenario_id must be a non-empty normalized string".to_string(),
+            ));
+        }
+        if scenario_id.len() > MAX_PREVIEW_SCENARIO_ID_BYTES {
+            return Err(PageBuilderServiceError::Validation(format!(
+                "preview runtime scenario_id exceeds {MAX_PREVIEW_SCENARIO_ID_BYTES} bytes"
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl<S, R, T, B> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderService<S, R, T, B>
 where
     S: PageBuilderProjectStore,
-    R: PageBuilderRenderingAdapter,
+    R: PageBuilderPreviewRenderingPort,
     T: PageBuilderRuntimeTelemetry,
     B: PageBuilderScenarioBaselineStore,
 {
@@ -115,13 +141,10 @@ where
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
         self.inspect(&input.project_data)?;
+        validate_preview_runtime(&input.runtime)?;
         let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
-        let html = match self
-            .renderer
-            .render_preview(context, &input.project_data)
-            .await
-        {
+        let html = match self.renderer.render_preview(context, &input).await {
             Ok(html) => {
                 self.telemetry.record_runtime_call(&evidence.succeeded());
                 html
@@ -135,6 +158,7 @@ where
         Ok(crate::dto::PreviewPageBuilderResult {
             page_id: input.page_id,
             html,
+            runtime_scenario_id: input.runtime.scenario_id,
         })
     }
 
