@@ -7,13 +7,16 @@ use fly::{
 };
 use rustok_api::{PortActor, PortContext};
 use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;
-use rustok_page_builder::dto::{PublishPageBuilderInput, PublishPageBuilderResult};
+use rustok_page_builder::dto::{
+    PreviewPageBuilderInput, PublishPageBuilderInput, PublishPageBuilderResult,
+};
+use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
 use rustok_page_builder::runtime_scenario_release::{
     PageBuilderScenarioBaselineStore, PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
 };
 use rustok_page_builder::service::{
     PageBuilderCapabilityService, PageBuilderProjectSaveResult, PageBuilderProjectStore,
-    PageBuilderRenderingAdapter, PageBuilderServiceResult,
+    PageBuilderServiceResult,
 };
 use serde_json::{json, Value};
 use std::sync::{
@@ -56,11 +59,11 @@ impl PageBuilderProjectStore for CountingProjectStore {
 struct NoopRenderer;
 
 #[async_trait]
-impl PageBuilderRenderingAdapter for NoopRenderer {
+impl PageBuilderPreviewRenderingPort for NoopRenderer {
     async fn render_preview(
         &self,
         _context: &PortContext,
-        _project_data: &Value,
+        _input: &PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<String> {
         Ok(String::new())
     }
