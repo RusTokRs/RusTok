@@ -37,6 +37,16 @@ function requireMarkers(source, markers, label, failures) {
   }
 }
 
+function forbidMarkers(source, markers, label, failures) {
+  for (const marker of markers ?? []) {
+    if (typeof marker !== "string" || marker.trim() === "") {
+      failures.push(`${label}: forbidden marker must be a non-empty string`);
+    } else if (source.includes(marker)) {
+      failures.push(`${label}: contains forbidden marker ${JSON.stringify(marker)}`);
+    }
+  }
+}
+
 function requireNonEmptyString(value, label, failures) {
   if (typeof value !== "string" || value.trim() === "") {
     failures.push(`${label} must be a non-empty string`);
@@ -71,6 +81,8 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     tenant_locale_policy_owns_fields: false,
     normalized_locale_min_varchar_width: 32,
     locale_width_rollback: "never_narrow",
+    legacy_unknown_locale: "und_or_null_with_explicit_provenance",
+    runtime_fallback_is_storage_provenance: false,
   };
   for (const [key, expected] of Object.entries(expectedRules)) {
     if (rules[key] !== expected) {
@@ -104,6 +116,15 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
         "base business rows store only language-agnostic state",
         "short localized text lives in parallel `*_translations` records",
         "platform-safe column width of `VARCHAR(32)`",
+      ],
+    ],
+    [
+      "DECISIONS/2026-07-21-language-agnostic-legacy-locale-provenance.md",
+      [
+        "store `locale = NULL` together with explicit legacy/unknown provenance",
+        "store the normalized BCP47 language tag `und`",
+        "must not be inserted into `tenant_locales`",
+        "must never bind unknown text to `PLATFORM_FALLBACK_LOCALE`",
       ],
     ],
   ]);
@@ -142,7 +163,9 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
         const fileLabel = `${label}.files[${fileIndex}]`;
         requireNonEmptyString(file.path, `${fileLabel}.path`, failures);
         if (typeof file.path !== "string" || !requireFile(root, file.path, failures)) continue;
-        requireMarkers(read(root, file.path), file.required_markers, file.path, failures);
+        const source = read(root, file.path);
+        requireMarkers(source, file.required_markers, file.path, failures);
+        forbidMarkers(source, file.forbidden_markers, file.path, failures);
       }
     }
   }
