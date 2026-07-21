@@ -12,8 +12,14 @@ The service:
 2. validates the Fly document before preview or publish;
 3. evaluates the optional runtime-scenario release gate;
 4. invokes the selected rendering or persistence port;
-5. records `PageBuilderRuntimeCallEvidence`;
-6. returns the canonical typed capability response.
+5. validates the persisted page identity and non-empty revision returned by the store;
+6. records `PageBuilderRuntimeCallEvidence` with success only after the persisted result is valid;
+7. returns the canonical typed capability response.
+
+The persistence port returns `PageBuilderProjectSaveResult` directly. The result carries the actual
+persisted page id, revision id and publication state. `FlyAdapterBackedPageBuilderService` converts
+that domain result into `PublishPageBuilderResult`; consumers no longer use shared mutable state or
+string parsing to recover persistence output.
 
 The module-owned `compose_fly_page_builder_handlers` entrypoint fixes the server composition order.
 It validates rollout flags, wraps the Fly service with `CapabilityGuardedService`, and then creates
@@ -27,13 +33,15 @@ transport envelopes.
 verifies the backend actor, builds a tenant-scoped `PortContext` with deadline and idempotency, and
 dispatches through `AuthorizedPageBuilderHandlers` before the Pages store can read or write tenant
 persistence. `PagesPageBuilderProjectStore` revalidates tenant and actor identity at the port
-boundary and returns the actual persisted `PublishPageBuilderResult`. CSR and hydrate remain a
-transport-only FFA path.
+boundary and returns the actual persisted `PageBuilderProjectSaveResult`. The Fly service validates
+and maps that result into the canonical publish response. CSR and hydrate remain a transport-only
+FFA path.
 
 The current machine-readable service contract is
-`contracts/page-builder-service-boundary.json`. It records the composition root, the Pages
-production-consumer order and tenant-context guards, and forbids reference services, migration
-decorators and manual JSON preview rendering.
+`contracts/page-builder-service-boundary.json`. It records the composition root, persisted save
+result and validation order, the Pages production-consumer order and tenant-context guards, and
+forbids reference services, migration decorators, manual JSON preview rendering and the removed
+Pages mutex save-result side channel.
 
 ## FFA/FBA status
 
@@ -59,10 +67,11 @@ decorators and manual JSON preview rendering.
 ## Open results
 
 1. Connect the next production consumer's concrete tenant-scoped store and preview renderer to
-   `compose_fly_page_builder_handlers` (or its configured variant). It must follow the Pages
-   reference order: verify backend identity, construct canonical auth/context, dispatch handlers,
-   then access tenant ports. Consumer-local service/guard pipelines and pre-authorization persistence
-   reads are forbidden.
+   `compose_fly_page_builder_handlers` (or its configured variant). It must return
+   `PageBuilderProjectSaveResult` and follow the Pages reference order: verify backend identity,
+   construct canonical auth/context, dispatch handlers, then access tenant ports. Consumer-local
+   service/guard pipelines, pre-authorization persistence reads and save-result side channels are
+   forbidden.
 2. Extend the Pages production consumer from the publish/write path to server preview delivery
    through the same composition root. The admin runtime must consume the canonical preview response
    without introducing a Pages-local renderer pipeline.
