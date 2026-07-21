@@ -23,6 +23,7 @@ mod m20260716_000003_add_order_field_cache_generation_trigger;
 mod m20260716_000004_create_return_completion_operations;
 mod m20260716_000005_enforce_return_completion_resolution_identity;
 mod m20260716_000006_create_return_completion_commands;
+mod m20260721_000001_create_checkout_marketplace_economics_checkpoints;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -52,6 +53,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000004_create_return_completion_operations::Migration),
         Box::new(m20260716_000005_enforce_return_completion_resolution_identity::Migration),
         Box::new(m20260716_000006_create_return_completion_commands::Migration),
+        Box::new(
+            m20260721_000001_create_checkout_marketplace_economics_checkpoints::Migration,
+        ),
     ]
 }
 
@@ -162,6 +166,14 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260716_000006_create_return_completion_commands",
             vec!["m20260716_000005_enforce_return_completion_resolution_identity"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260721_000001_create_checkout_marketplace_economics_checkpoints",
+            vec![
+                "m20260713_000014_create_checkout_order_plans",
+                "m20260718_000001_create_marketplace_order_allocations",
+                "m20260718_000001_create_marketplace_commission",
+            ],
         ),
     ]
 }
