@@ -16,9 +16,11 @@ use crate::graphql::GroupMembershipGql;
 use crate::graphql_governance::GroupsMutationRoot as GroupsBaseMutationRoot;
 use crate::graphql_localization::GroupsQueryRoot as GroupsBaseQueryRoot;
 use crate::{
-    AcceptGroupInvitationRequest, AcceptGroupInvitationResult, CreateGroupInvitationRequest,
+    AcceptGroupInvitationRequest, AcceptGroupInvitationResult,
+    AcceptTargetedGroupInvitationRequest, CreateGroupInvitationRequest,
     CreateGroupInvitationResult, GroupInvitation, GroupInvitationCommandPort,
     GroupInvitationConnection, GroupInvitationReadPort, GroupInvitationService,
+    GroupTargetedInvitationCommandPort, GroupTargetedInvitationService,
     ListGroupInvitationsRequest, RevokeGroupInvitationRequest, RevokeGroupInvitationResult,
 };
 
@@ -130,6 +132,24 @@ impl GroupsInvitationsMutation {
             &service,
             port_context(ctx, auth, Some(idempotency_key))?,
             AcceptGroupInvitationRequest { token },
+        )
+        .await
+        .map(Into::into)
+        .map_err(map_port_error)
+    }
+
+    async fn accept_targeted_group_invitation(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        invitation_id: Uuid,
+    ) -> Result<AcceptGroupInvitationResultGql> {
+        let auth = require_authenticated(ctx)?;
+        let service = targeted_invitation_service(ctx)?;
+        GroupTargetedInvitationCommandPort::accept_targeted_group_invitation(
+            &service,
+            port_context(ctx, auth, Some(idempotency_key))?,
+            AcceptTargetedGroupInvitationRequest { invitation_id },
         )
         .await
         .map(Into::into)
@@ -258,6 +278,13 @@ fn invitation_service(ctx: &Context<'_>) -> Result<GroupInvitationService> {
         <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
     })?;
     Ok(GroupInvitationService::new(runtime.db_clone()))
+}
+
+fn targeted_invitation_service(ctx: &Context<'_>) -> Result<GroupTargetedInvitationService> {
+    let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
+        <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
+    })?;
+    Ok(GroupTargetedInvitationService::new(runtime.db_clone()))
 }
 
 fn require_authenticated<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
