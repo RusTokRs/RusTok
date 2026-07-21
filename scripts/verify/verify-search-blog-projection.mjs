@@ -30,12 +30,14 @@ function rejectMarker(source, marker, label) {
 }
 
 const projectorPath = "crates/rustok-search/src/blog_projector.rs";
+const ingestionPath = "crates/rustok-search/src/ingestion.rs";
 const routingTestPath = "crates/rustok-search/tests/blog_ingestion_contract_test.rs";
 const postgresTestPath = "crates/rustok-search/tests/blog_projection_postgres_test.rs";
 const evidencePath = "crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json";
 const planPath = "crates/rustok-search/docs/implementation-plan.md";
 
 const projector = read(projectorPath);
+const ingestion = read(ingestionPath);
 const routingTest = read(routingTestPath);
 const postgresTest = read(postgresTestPath);
 const plan = read(planPath);
@@ -55,9 +57,26 @@ for (const table of [
   requireMarker(projector, `to_regclass('${table}')`, projectorPath);
 }
 rejectMarker(projector, "to_regclass('public.blog_", projectorPath);
-requireMarker(projector, "FROM blog_posts p", projectorPath);
-requireMarker(projector, "INSERT INTO search_documents", projectorPath);
-requireMarker(projector, "DELETE FROM search_documents", projectorPath);
+for (const marker of [
+  "FROM blog_posts p",
+  "INSERT INTO search_documents",
+  "DELETE FROM search_documents",
+  "pub(crate) async fn delete_tenant",
+  '"delete_blog_scope"',
+]) {
+  requireMarker(projector, marker, projectorPath);
+}
+
+for (const marker of [
+  "DomainEvent::TenantModuleToggled",
+  'module_slug == "blog"',
+  "handle_blog_module_toggle",
+  "blog_projector.delete_tenant",
+  '"delete_blog_scope"',
+  '"rebuild_blog_scope"',
+]) {
+  requireMarker(ingestion, marker, ingestionPath);
+}
 
 for (const marker of [
   "DomainEvent::BlogPostCreated",
@@ -66,6 +85,7 @@ for (const marker of [
   "DomainEvent::BlogPostUpdated",
   "DomainEvent::BlogPostArchived",
   "DomainEvent::BlogPostDeleted",
+  "DomainEvent::TenantModuleToggled",
   'target_type: "blog".to_string()',
 ]) {
   requireMarker(routingTest, marker, routingTestPath);
@@ -79,6 +99,8 @@ for (const marker of [
   'SET search_path TO "{schema_name}", public',
   "full_blog_reindex_replaces_only_current_tenant_blog_documents",
   "blog_events_upsert_publish_archive_and_delete_search_document",
+  "blog_module_disable_cleans_scope_and_enable_rebuilds_it",
+  "targeted_reindex_removes_stale_document_when_source_post_is_missing",
 ]) {
   requireMarker(postgresTest, marker, postgresTestPath);
 }
@@ -95,12 +117,18 @@ if (evidence) {
   for (const target of [routingTestPath, postgresTestPath]) {
     if (!targets.includes(target)) failures.push(`${evidencePath}: missing test target ${target}`);
   }
+  const caseNames = new Set((evidence.cases ?? []).map((item) => item.name));
+  for (const caseName of ["module_toggle_cleanup_rebuild", "targeted_missing_post_cleanup"]) {
+    if (!caseNames.has(caseName)) failures.push(`${evidencePath}: missing case ${caseName}`);
+  }
 }
 
 for (const marker of [
   "search-blog-projection-postgres-harness.json",
   "RUSTOK_SEARCH_TEST_DATABASE_URL",
   "search_path",
+  "module-disabled cleanup",
+  "targeted missing-post",
 ]) {
   requireMarker(plan, marker, planPath);
 }
