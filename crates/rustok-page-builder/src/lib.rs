@@ -87,6 +87,7 @@ mod tests {
     use crate::dto::{
         BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderCapabilityRequest,
         PageBuilderCapabilityResponse, PageBuilderErrorKind, PageBuilderModuleMetadata,
+        PageBuilderPreviewRuntime, PreviewPageBuilderInput, PreviewPageBuilderResult,
         PublishPageBuilderInput, PublishPageBuilderResult, PAGE_BUILDER_ERROR_CATALOG,
         PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
     };
@@ -117,6 +118,38 @@ mod tests {
             PublishPageBuilderInput::new("home", "rev-1", serde_json::json!({ "pages": [] }));
         let encoded = serde_json::to_value(&input).expect("serialize input");
         assert_eq!(encoded["page_id"], "home");
+
+        let preview = PreviewPageBuilderInput::new(
+            "home",
+            serde_json::json!({ "pages": [] }),
+        )
+        .with_runtime(PageBuilderPreviewRuntime::new(
+            serde_json::json!({ "page": { "title": "Welcome" } }),
+            Some("desktop".to_string()),
+        ));
+        let preview_json = serde_json::to_value(&preview).expect("serialize preview input");
+        assert_eq!(preview_json["runtime"]["context"]["page"]["title"], "Welcome");
+        assert_eq!(preview_json["runtime"]["scenario_id"], "desktop");
+        let decoded_preview: PreviewPageBuilderInput =
+            serde_json::from_value(preview_json).expect("deserialize preview input");
+        assert_eq!(decoded_preview, preview);
+
+        let legacy_preview: PreviewPageBuilderInput = serde_json::from_value(serde_json::json!({
+            "page_id": "home",
+            "project_data": { "pages": [] }
+        }))
+        .expect("legacy preview payload uses default runtime");
+        assert!(legacy_preview.runtime.context.is_object());
+        assert_eq!(legacy_preview.runtime.scenario_id, None);
+
+        let preview_result = PreviewPageBuilderResult {
+            page_id: "home".to_string(),
+            html: "<main/>".to_string(),
+            runtime_scenario_id: Some("desktop".to_string()),
+        };
+        let preview_result_json =
+            serde_json::to_value(&preview_result).expect("serialize preview result");
+        assert_eq!(preview_result_json["runtime_scenario_id"], "desktop");
 
         let props = BuilderNodePropertiesInput {
             page_id: "home".to_string(),
@@ -209,6 +242,7 @@ mod tests {
 
         let evidence = ProviderHealthEvidence::from_observations(observed);
         assert_eq!(evidence.module_slug, "page_builder");
+        assert_eq!(evidence.builder_contract_version, "1.1");
         assert_eq!(evidence.slo_evaluation.overall, ProviderSloStatus::Fail);
     }
 }
