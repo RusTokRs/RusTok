@@ -25,8 +25,8 @@
   const ROOT_SELECTOR = "[data-fly-browser-root]";
 
   /**
-   * @typedef {"external" | "timeout" | "adapter_stop"} IntentAbortKind
    * @typedef {{ signal?: AbortSignal }} IntentTransportOptions
+   * @typedef {{ code: string, kind: string, error: string }} IntentAbortMetadata
    */
 
   const isObject = (value) =>
@@ -35,13 +35,16 @@
   const isAbortSignal = (value) =>
     typeof AbortSignal === "function" && value instanceof AbortSignal;
 
-  const normalizedTransportOptions = (value) => {
-    const transport = isObject(value) ? value : {};
-    return {
-      ...transport,
-      signal: isAbortSignal(transport.signal) ? transport.signal : undefined,
-    };
-  };
+  const normalizedTransportOptions = (value) => ({
+    signal:
+      isObject(value) && isAbortSignal(value.signal) ? value.signal : undefined,
+  });
+
+  const newAbortMetadata = () => ({
+    code: INTENT_REQUEST_ABORTED_CODE,
+    kind: INTENT_ABORT_KIND.EXTERNAL,
+    error: "Editor action cancelled.",
+  });
 
   const boundedPositiveInteger = (value, fallback) => {
     const parsed = Number(value);
@@ -167,20 +170,20 @@
       ? "Editor action cancelled."
       : String(signal.reason);
 
-  const forwardAbortSignal = (signal, controller, record) => {
-    if (!isAbortSignal(signal)) return null;
-    const abort = () => {
-      record.abortCode = INTENT_REQUEST_ABORTED_CODE;
-      record.abortKind = INTENT_ABORT_KIND.EXTERNAL;
-      record.error = forwardedAbortError(signal);
+  const forwardAbortSignal = (signal, controller, abort) => {
+    if (!signal) return null;
+    const forward = () => {
+      abort.code = INTENT_REQUEST_ABORTED_CODE;
+      abort.kind = INTENT_ABORT_KIND.EXTERNAL;
+      abort.error = forwardedAbortError(signal);
       controller.abort(signal.reason);
     };
     if (signal.aborted) {
-      abort();
+      forward();
       return null;
     }
-    signal.addEventListener("abort", abort, { once: true });
-    return () => signal.removeEventListener("abort", abort);
+    signal.addEventListener("abort", forward, { once: true });
+    return () => signal.removeEventListener("abort", forward);
   };
 
   const intentName = (input) => {
@@ -190,44 +193,6 @@
       .trim()
       .toLowerCase();
     return intent || null;
-  };
-
-  const pendingIntentRecordForGeneration = (adapter, requestGeneration) => {
-    if (!Number.isSafeInteger(requestGeneration)) return null;
-    const controllers = adapter[PENDING_INTENT_CONTROLLERS_KEY];
-    if (!(controllers instanceof Map)) return null;
-    for (const record of controllers.values()) {
-      if (record?.requestGeneration === requestGeneration) return record;
-    }
-    return null;
-  };
-
-  const reportIntentAborted = (adapter, record, detail = {}) => {
-    const current = detail.current !== false;
-    const aborted = {
-      code: record.abortCode || INTENT_REQUEST_ABORTED_CODE,
-      kind: record.abortKind || INTENT_ABORT_KIND.EXTERNAL,
-      error:
-        record.error ||
-        (typeof detail.error === "string" && detail.error
-          ? detail.error
-          : "Editor action cancelled."),
-      intent: record.intent,
-      request: isObject(detail.request) ? detail.request : record.request,
-      requestGeneration: Number.isSafeInteger(detail.requestGeneration)
-        ? detail.requestGeneration
-        : record.requestGeneration,
-      current,
-      instanceId: adapter.instanceId,
-      pageId: adapter.pageId,
-    };
-    adapter.root.dispatchEvent(
-      new CustomEvent("fly:browser-intent-aborted", {
-        bubbles: true,
-        detail: aborted,
-      }),
-    );
-    return aborted;
   };
 
   const rejectPendingIntent = (adapter, input, limit, observed) => {
@@ -269,28 +234,26 @@
     return null;
   };
 
-  const reportIntentTimeout = (adapter, input, record) => {
-    const timeoutMs = record.timeoutMs;
+  const reportIntentTimeout = (adapter, record) => {
     const message =
       adapter.options?.intentRequestTimeoutMessage ||
       adapter.root.dataset.flyIntentRequestTimeoutMessage ||
       "Editor action timed out";
-    const error = `${message} after ${timeoutMs} ms.`;
+    const error = `${message} after ${record.timeoutMs} ms.`;
+    record.abort.code = INTENT_REQUEST_TIMEOUT_CODE;
+    record.abort.kind = INTENT_ABORT_KIND.TIMEOUT;
+    record.abort.error = error;
     const detail = {
-      code: INTENT_REQUEST_TIMEOUT_CODE,
-      error,
+      code: record.abort.code,
+      error: record.abort.error,
       intent: record.intent,
-      timeoutMs,
+      timeoutMs: record.timeoutMs,
       requestGeneration: record.requestGeneration,
       current:
         record.requestGeneration === adapter.latestIntentRequestGeneration,
       instanceId: adapter.instanceId,
       pageId: adapter.pageId,
     };
-    record.abortCode = INTENT_REQUEST_TIMEOUT_CODE;
-    record.abortKind = INTENT_ABORT_KIND.TIMEOUT;
-    record.timedOut = true;
-    record.error = error;
     adapter.root.dispatchEvent(
       new CustomEvent("fly:browser-intent-timeout", {
         bubbles: true,
@@ -305,6 +268,7 @@
     adapter[PROBLEM_REPORTER_KEY] = true;
     const signal = adapter.abortController?.signal;
     const options = signal ? { signal } : undefined;
+
     adapter.root.addEventListener(
       "fly:browser-intent-response",
       (event) => {
@@ -317,32 +281,36 @@
       },
       options,
     );
+
+    adapter.root.addEventListener(
+      "fly:browser-intent-aborted",
+      (event) => {
+        if (
+          event.detail?.current === false ||
+          event.detail?.kind !== INTENT_ABORT_KIND.TIMEOUT
+        ) {
+          return;
+        }
+        reportBrowserProblem(
+          adapter,
+          {
+            status: 0,
+            result: {
+              code: event.detail.code,
+              error: event.detail.error,
+              intent: event.detail.intent,
+            },
+            request: event.detail.request,
+          },
+          INTENT_REQUEST_TIMEOUT_CODE,
+        );
+      },
+      options,
+    );
+
     adapter.root.addEventListener(
       "fly:browser-error",
       (event) => {
-        const record = pendingIntentRecordForGeneration(
-          adapter,
-          event.detail?.requestGeneration,
-        );
-        if (record?.controller?.signal.aborted) {
-          const aborted = reportIntentAborted(adapter, record, event.detail);
-          if (aborted.current && aborted.kind === INTENT_ABORT_KIND.TIMEOUT) {
-            reportBrowserProblem(
-              adapter,
-              {
-                status: 0,
-                result: {
-                  code: aborted.code,
-                  error: aborted.error,
-                  intent: aborted.intent,
-                },
-                request: aborted.request,
-              },
-              INTENT_REQUEST_TIMEOUT_CODE,
-            );
-          }
-          return;
-        }
         if (event.detail?.current === false) return;
         reportBrowserProblem(
           adapter,
@@ -409,11 +377,20 @@
     requestOptions = {},
   ) {
     const transport = normalizedTransportOptions(requestOptions);
+    const abort = newAbortMetadata();
     if (!this.intentEndpoint) {
-      return originalPostIntent.call(this, input, transport);
+      return originalPostIntent.call(this, input, {
+        signal: transport.signal,
+        abort,
+      });
     }
     const intent = intentName(input);
-    if (!intent) return originalPostIntent.call(this, input, transport);
+    if (!intent) {
+      return originalPostIntent.call(this, input, {
+        signal: transport.signal,
+        abort,
+      });
+    }
     const controllers = pendingIntentControllers(this);
     const limit = limitFor(
       this,
@@ -435,28 +412,25 @@
     const controller = new AbortController();
     const requestKey = Symbol("fly.browser.intent.request");
     const record = {
-      abortCode: null,
-      abortKind: null,
+      abort,
       controller,
-      error: null,
       intent,
-      request: isObject(input) ? input : {},
       requestGeneration: null,
-      timedOut: false,
       timeoutId: null,
       timeoutMs,
     };
     const releaseForwardedAbort = forwardAbortSignal(
       transport.signal,
       controller,
-      record,
+      abort,
     );
     controllers.set(requestKey, record);
+
     let pending;
     try {
       pending = originalPostIntent.call(this, input, {
-        ...transport,
         signal: controller.signal,
+        abort,
       });
       record.requestGeneration = Number.isSafeInteger(
         this.intentRequestGeneration,
@@ -466,8 +440,8 @@
       if (!controller.signal.aborted) {
         record.timeoutId = globalThis.setTimeout(() => {
           if (!controllers.has(requestKey) || controller.signal.aborted) return;
-          reportIntentTimeout(this, input, record);
-          controller.abort(record.error);
+          reportIntentTimeout(this, record);
+          controller.abort(record.abort.error);
         }, timeoutMs);
       }
     } catch (error) {
@@ -475,6 +449,7 @@
       controllers.delete(requestKey);
       throw error;
     }
+
     return Promise.resolve(pending).finally(() => {
       if (record.timeoutId !== null) globalThis.clearTimeout(record.timeoutId);
       releaseForwardedAbort?.();
@@ -557,18 +532,15 @@
     const controllers = this[PENDING_INTENT_CONTROLLERS_KEY];
     if (controllers instanceof Map) {
       for (const record of controllers.values()) {
-        if (record?.timeoutId !== null)
+        if (record?.timeoutId !== null) {
           globalThis.clearTimeout(record.timeoutId);
+        }
         if (record?.controller && !record.controller.signal.aborted) {
-          record.abortCode = INTENT_REQUEST_ABORTED_CODE;
-          record.abortKind = INTENT_ABORT_KIND.ADAPTER_STOP;
-          record.error = "Editor action cancelled because the adapter stopped.";
-          reportIntentAborted(this, record, {
-            current: false,
-            request: record.request,
-            requestGeneration: record.requestGeneration,
-          });
-          record.controller.abort(record.error);
+          record.abort.code = INTENT_REQUEST_ABORTED_CODE;
+          record.abort.kind = INTENT_ABORT_KIND.ADAPTER_STOP;
+          record.abort.error =
+            "Editor action cancelled because the adapter stopped.";
+          record.controller.abort(record.abort.error);
         }
       }
       controllers.clear();
