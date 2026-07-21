@@ -150,6 +150,7 @@ impl MentionRelationService {
     ) -> ForumResult<MentionRelationSyncResult> {
         lock_source_in_tx(txn, prepared.tenant_id, prepared.target).await?;
         ensure_prepared_matches_source_in_tx(txn, &prepared).await?;
+        validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;
         let latest = latest_revision_in_tx(
             txn,
             prepared.tenant_id,
@@ -210,7 +211,6 @@ impl MentionRelationService {
             prepared.locale.clone(),
         )?;
         let quotes = validate_forum_quote_references(&source, prepared.quotes)?;
-        validate_quote_targets_in_tx(txn, prepared.tenant_id, &quotes).await?;
 
         for mention in prepared.resolved.users() {
             forum_user_mention::ActiveModel {
