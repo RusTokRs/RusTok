@@ -40,7 +40,7 @@
 //! ```
 
 use async_trait::async_trait;
-use rustok_api::{Action, Permission, Resource};
+use rustok_api::Permission;
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleRuntimeExtensions, RusToKModule,
@@ -111,11 +111,6 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_POSTS_LIST,
             Permission::BLOG_POSTS_PUBLISH,
             Permission::BLOG_POSTS_MANAGE,
-            Permission::new(Resource::Categories, Action::Create),
-            Permission::new(Resource::Categories, Action::Read),
-            Permission::new(Resource::Categories, Action::Update),
-            Permission::new(Resource::Categories, Action::Delete),
-            Permission::new(Resource::Categories, Action::List),
         ]
     }
 
@@ -146,6 +141,7 @@ impl MigrationSource for BlogModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rustok_api::{Action, Resource};
 
     #[test]
     fn module_metadata() {
@@ -171,9 +167,9 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage }));
-        assert!(permissions
+        assert!(!permissions
             .iter()
-            .any(|p| { p.resource == Resource::Categories && p.action == Action::Update }));
+            .any(|p| p.resource == Resource::Categories));
     }
 
     #[test]
