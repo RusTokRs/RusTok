@@ -7,6 +7,48 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "DDL-only widening from VARCHAR(16) to VARCHAR(32); existing locale values require no backfill"
+    },
+    {
+      "id": "content-locale-width-32",
+      "migration": "m20260721_000004_expand_content_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-content",
+      "reason": "DDL-only widening of content translation, body, media, and URL locale columns; existing values require no backfill"
+    },
+    {
+      "id": "blog-locale-width-32",
+      "migration": "m20260721_000005_expand_blog_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-blog",
+      "reason": "DDL-only widening of Blog post and category translation locales; existing values require no backfill"
+    },
+    {
+      "id": "taxonomy-locale-width-32",
+      "migration": "m20260721_000006_expand_taxonomy_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-taxonomy",
+      "reason": "DDL-only widening of taxonomy translation and alias locales; existing values require no backfill"
+    },
+    {
+      "id": "comments-locale-width-32",
+      "migration": "m20260721_000007_expand_comment_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-comments",
+      "reason": "DDL-only widening of comment body locales; existing values require no backfill"
+    },
+    {
+      "id": "profiles-locale-width-32",
+      "migration": "m20260721_000009_expand_profile_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-profiles",
+      "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no backfill"
+    },
+    {
+      "id": "customer-locale-width-32",
+      "migration": "m20260721_000105_expand_customer_locale_contract",
+      "mode": "none",
+      "owner": "rustok-customer",
+      "reason": "Forward locale-width expansion with backend-specific schema preservation; existing locale values require no semantic backfill"
     }
   ]
 }
