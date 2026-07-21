@@ -67,6 +67,23 @@ for (const marker of [
 ]) {
   requireMarker(integration, marker, integrationPath);
 }
+const backendFailureTest = integration.match(
+  /async fn backend_unavailable_returns_fail_closed_graphql_error_without_retry_after\(\)[\s\S]*?(?=\n#\[tokio::test\]|$)/,
+)?.[0];
+if (!backendFailureTest) {
+  failures.push(`${integrationPath}: backend-unavailable test block is missing`);
+} else {
+  requireMarker(
+    backendFailureTest,
+    "assert_eq!(retry_after(&response), None);",
+    `${integrationPath} backend-unavailable test`,
+  );
+  rejectMarker(
+    backendFailureTest,
+    "Some(\"",
+    `${integrationPath} backend-unavailable test`,
+  );
+}
 
 for (const marker of [
   "ServerBlogGraphqlRateLimiter",
