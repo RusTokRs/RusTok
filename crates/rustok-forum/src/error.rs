@@ -68,6 +68,12 @@ impl From<sea_orm::DbErr> for ForumError {
                 "Forum category does not allow topic creation".to_string(),
             );
         }
+        if message.contains("active forum category cannot have archived parent")
+            || message.contains("archived forum category cannot have active child")
+            || message.contains("forum category lifecycle")
+        {
+            return Self::Validation("Forum category archive hierarchy violation".to_string());
+        }
         Self::Database(error)
     }
 }
