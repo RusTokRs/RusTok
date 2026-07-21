@@ -242,7 +242,7 @@ where
             &input.revision_id,
         );
         self.telemetry.record_runtime_call(&evidence);
-        match self
+        let saved = match self
             .store
             .save_project(
                 context,
@@ -252,17 +252,32 @@ where
             )
             .await
         {
-            Ok(()) => self.telemetry.record_runtime_call(&evidence.succeeded()),
+            Ok(saved) => {
+                self.telemetry.record_runtime_call(&evidence.succeeded());
+                saved
+            }
             Err(error) => {
                 self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
+        };
+
+        if saved.page_id != input.page_id {
+            return Err(PageBuilderServiceError::Runtime(format!(
+                "project store persisted page `{}`, expected `{}`",
+                saved.page_id, input.page_id
+            )));
+        }
+        if saved.revision_id.trim().is_empty() {
+            return Err(PageBuilderServiceError::Runtime(
+                "project store returned an empty persisted revision".to_string(),
+            ));
         }
 
         Ok(crate::dto::PublishPageBuilderResult {
-            page_id: input.page_id,
-            revision_id: input.revision_id,
-            published: true,
+            page_id: saved.page_id,
+            revision_id: saved.revision_id,
+            published: saved.published,
         })
     }
 }
