@@ -22,6 +22,15 @@ const adminTransport = read(
 const adminTransportModule = read(
   "crates/rustok-pages/admin/src/transport/mod.rs",
 );
+const publishSelection = read(
+  "crates/rustok-page-builder/admin/src/publish_scenario_selection.rs",
+);
+const publishSelectorPanel = read(
+  "crates/rustok-page-builder/admin/src/editor/publish_scenario_selector.rs",
+);
+const modularCanvas = read(
+  "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+);
 
 function fail(message) {
   console.error(`[verify-page-builder-publish-transport-cutover] ${message}`);
@@ -102,11 +111,52 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "PAGE_BUILDER_PUBLISH_SCENARIO_SELECTION_FORMAT",
+  "publish_scenario_selection_key(page_id: &str, baseline_hash: &str)",
+  "SelectionRequired { count: usize }",
+  "ScenarioNotFound { scenario_id: String }",
+  "session_storage()",
+  "resolve_publish_scenario",
+  "scenarios.len() > 1",
+]) {
+  requireMarker(publishSelection, marker, "Page Builder publish scenario selection");
+}
+for (const marker of [
+  "pub fn PublishScenarioSelectorPanel",
+  "load_publish_scenario_selection",
+  "save_publish_scenario_selection",
+  "Publish remains blocked until one promoted scenario is selected explicitly",
+  "The selection is ephemeral and contains no runtime context",
+]) {
+  requireMarker(publishSelectorPanel, marker, "Page Builder publish scenario selector panel");
+}
+for (const marker of [
+  "let scenario_baseline = RwSignal::new(runtime_scenario_baseline)",
+  "baseline_signal.set(change.baseline.clone())",
+  "<PublishScenarioSelectorPanel",
+  "baseline=scenario_baseline",
+]) {
+  requireMarker(modularCanvas, marker, "Page Builder live baseline selector composition");
+}
+for (const forbidden of [
+  "runtime_context",
+  "scenario.context",
+  "serde_json",
+]) {
+  forbidMarker(
+    publishSelection,
+    forbidden,
+    "ephemeral publish scenario selection storage",
+  );
+}
+
+for (const marker of [
   "$input: PublishGqlPageInput!",
   "publishPage(id: $id, input: $input)",
   "expectedBodyRevisions",
+  "load_publish_scenario_selection(&id, &baseline.baseline_hash)",
+  "resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())",
   "PageBuilderReviewedPublishRuntime::new",
-  "select_single_reviewed_scenario",
   "ProjectHash::from_bytes(&bytes).hex()",
   "PublishPageReceipt",
 ]) {
@@ -117,17 +167,27 @@ forbidMarker(
   "publishPage(id: $id) {",
   "Pages admin publish transport",
 );
+forbidMarker(
+  adminTransport,
+  "select_single_reviewed_scenario",
+  "Pages admin publish transport",
+);
 for (const marker of [
   "pub struct PublishPageReceipt",
+  "pub enum PagePublicationResult",
+  "Published(PublishPageReceipt)",
+  "Unpublished(PageMutationResult)",
   "pub available_locales: Vec<String>",
 ]) {
   requireMarker(adminModel, marker, "Pages admin publish model");
 }
-requireMarker(
-  adminTransportModule,
-  "Result<PublishPageReceipt, TransportError>",
-  "Pages admin transport facade",
-);
+for (const marker of [
+  "Result<PagePublicationResult, TransportError>",
+  ".map(PagePublicationResult::Published)",
+  ".map(PagePublicationResult::Unpublished)",
+]) {
+  requireMarker(adminTransportModule, marker, "Pages admin transport facade");
+}
 
 for (const marker of [
   'path = "/api/admin/pages/{id}/publish"',
