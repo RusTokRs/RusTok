@@ -79,3 +79,44 @@ pub struct GroupsAdminGovernanceResult {
     pub group_version: u64,
     pub replayed: bool,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminTranslation {
+    pub id: String,
+    pub group_id: String,
+    pub locale: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpsertGroupTranslationCommand {
+    pub idempotency_key: String,
+    pub group_id: String,
+    pub locale: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteGroupTranslationCommand {
+    pub idempotency_key: String,
+    pub group_id: String,
+    pub locale: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminTranslationMutationResult {
+    pub translation: GroupsAdminTranslation,
+    pub group_version: u64,
+    pub created: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminDeleteTranslationResult {
+    pub group_id: String,
+    pub locale: String,
+    pub group_version: u64,
+}
