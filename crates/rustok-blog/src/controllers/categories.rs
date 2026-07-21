@@ -27,11 +27,12 @@ fn security_context(auth: &AuthContext) -> rustok_core::SecurityContext {
 }
 
 fn ensure_category_permission(auth: &AuthContext, action: Action) -> HttpResult<()> {
-    let permission = Permission::new(Resource::Categories, action);
-    if !has_any_effective_permission(&auth.permissions, &[permission]) {
+    let primary = Permission::new(Resource::BlogPosts, action);
+    let legacy = Permission::new(Resource::Categories, action);
+    if !has_any_effective_permission(&auth.permissions, &[primary, legacy]) {
         return Err(HttpError::forbidden(
             "blog_category_permission_denied",
-            format!("Permission denied: {permission} required"),
+            format!("Permission denied: {primary} required"),
         ));
     }
     Ok(())
