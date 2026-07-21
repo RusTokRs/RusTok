@@ -65,6 +65,11 @@
         "materialization"
       ]
     },
+    "transactional_gate_reads": {
+      "feature_settings": "shared_lock_when_supported",
+      "scenario_baseline": "shared_lock_when_present",
+      "sqlite": "transaction_serialization"
+    },
     "receipt": {
       "entity": "page_publish_operation",
       "entity_source": "crates/rustok-pages/src/entities/page_publish_operation.rs",
