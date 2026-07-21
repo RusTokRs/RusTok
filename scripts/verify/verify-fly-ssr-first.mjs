@@ -140,18 +140,30 @@ rejectMarker(
 
 requireMarkers('adminCargo', [
   'default = ["ssr", "browser-js"]',
-  'browser-js = []',
-  'wasm-client = ["fly-leptos/wasm-client"]',
+  'browser-js = ["dep:wasm-bindgen", "dep:web-sys"]',
+  'wasm-client = ["fly-leptos/wasm-client", "browser-js"]',
+  'fly-browser = { path = "../../fly-browser" }',
   'fly-leptos = { path = "../../fly-leptos", default-features = false }',
 ], 'Page Builder admin feature boundary');
 requireMarkers('adminAdapter', [
   'FLY_BROWSER_ADAPTER_JS',
-  'data-fly-browser-adapter="fly_browser_v1"',
+  'data-fly-browser-adapter="fly_browser"',
+  'FlyBrowser?.bootstrap?.(__flyBrowserConfig)',
+  'Symbol.for("fly.browser.ssr.controls")',
+  'adapters: new WeakSet()',
+  'fly:browser-ready',
+  'adapter.abortController?.signal',
   'data-fly-intent-form',
   '__flyFormPayload',
   'delete payload[number.name]',
   'history.replaceState',
 ], 'SSR browser adapter component');
+for (const forbidden of [
+  'autoMount === false',
+  'FlyBrowser?.mountAll(__flyBrowserConfig)',
+]) {
+  rejectMarker('adminAdapter', forbidden, `SSR browser adapter must not own ${forbidden}`);
+}
 requireMarkers('adminCanvas', [
   'data-fly-browser-root="true"',
   'data-fly-runtime="ssr"',
