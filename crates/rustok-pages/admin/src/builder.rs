@@ -103,27 +103,18 @@ async fn execute_publish(
     on_saved: SavedHandler,
     input: PublishPageBuilderInput,
 ) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
-    let token = required_snapshot_value(snapshot.token.clone(), "access token")?;
-    let tenant_slug = required_snapshot_value(snapshot.tenant_slug.clone(), "tenant")?;
-    let current_page = transport::fetch_page(
-        Some(token.clone()),
-        Some(tenant_slug.clone()),
-        snapshot.page_id.clone(),
-    )
-    .await
-    .map_err(facade_transport_error)?
-    .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
-    ensure_page_is_editable(&current_page, &input.revision_id)?;
-
-    let verified_user = leptos_auth::api::fetch_current_user(token, tenant_slug.clone())
+    let token = required_snapshot_value(snapshot.token, "access token")?;
+    let tenant_slug = required_snapshot_value(snapshot.tenant_slug, "tenant")?;
+    let verified_user = leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
         .await
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
         .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
     let permissions = page_builder_permissions_for_role(&verified_user.role);
+    let actor_id = verified_user.id;
     let auth = PageBuilderRequestAuth::new(permissions);
     let context = PortContext::new(
-        tenant_slug,
-        PortActor::user(verified_user.id),
+        tenant_slug.clone(),
+        PortActor::user(actor_id.clone()),
         snapshot.default_locale.clone(),
         format!("page-builder:{}:{}", input.page_id, input.revision_id),
     )
@@ -133,11 +124,15 @@ async fn execute_publish(
         input.page_id, input.revision_id
     ));
 
-    let saved_page = Arc::new(Mutex::new(None::<PageDetail>));
+    let persisted_result = Arc::new(Mutex::new(None::<PublishPageBuilderResult>));
     let store = PagesPageBuilderProjectStore {
-        snapshot,
+        token,
+        tenant_slug,
+        actor_id,
+        page_id: snapshot.page_id,
+        default_locale: snapshot.default_locale,
         on_saved,
-        saved_page: Arc::clone(&saved_page),
+        persisted_result: Arc::clone(&persisted_result),
     };
     let handlers = compose_fly_page_builder_handlers(
         store,
@@ -145,21 +140,24 @@ async fn execute_publish(
         BuilderCapabilityFlags::default(),
     )
     .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-    let response = handlers
+    let service_result = match handlers
         .handle(
             &context,
             &auth,
             PageBuilderCapabilityRequest::Publish(input),
         )
         .await
-        .map_err(facade_service_error)?;
-    if !matches!(response, PageBuilderCapabilityResponse::Publish(_)) {
-        return Err(PageBuilderAdminFacadeError::new(
-            "Page Builder composition returned an unexpected capability response",
-        ));
-    }
+        .map_err(facade_service_error)?
+    {
+        PageBuilderCapabilityResponse::Publish(result) => result,
+        _ => {
+            return Err(PageBuilderAdminFacadeError::new(
+                "Page Builder composition returned an unexpected capability response",
+            ));
+        }
+    };
 
-    let saved_page = saved_page
+    let persisted_result = persisted_result
         .lock()
         .map_err(|_| PageBuilderAdminFacadeError::new("Pages save state lock was poisoned"))?
         .take()
@@ -168,14 +166,14 @@ async fn execute_publish(
                 "Page Builder service completed without a persisted Pages document",
             )
         })?;
-    let revision_id = page_revision(&saved_page);
-    Ok(PageBuilderCapabilityResponse::Publish(
-        PublishPageBuilderResult {
-            page_id: saved_page.id.clone(),
-            revision_id,
-            published: saved_page.status.eq_ignore_ascii_case("published"),
-        },
-    ))
+    if service_result.page_id != persisted_result.page_id {
+        return Err(PageBuilderAdminFacadeError::new(format!(
+            "Page Builder service returned page `{}`, but Pages persisted `{}`",
+            service_result.page_id, persisted_result.page_id
+        )));
+    }
+
+    Ok(PageBuilderCapabilityResponse::Publish(persisted_result))
 }
 
 #[cfg(not(feature = "ssr"))]
@@ -301,9 +299,43 @@ fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacad
 #[cfg(feature = "ssr")]
 #[derive(Clone)]
 struct PagesPageBuilderProjectStore {
-    snapshot: PagesBuilderSaveSnapshot,
+    token: String,
+    tenant_slug: String,
+    actor_id: String,
+    page_id: String,
+    default_locale: String,
     on_saved: SavedHandler,
-    saved_page: Arc<Mutex<Option<PageDetail>>>,
+    persisted_result: Arc<Mutex<Option<PublishPageBuilderResult>>>,
+}
+
+#[cfg(feature = "ssr")]
+impl PagesPageBuilderProjectStore {
+    fn ensure_context(&self, context: &PortContext) -> PageBuilderServiceResult<()> {
+        if context.tenant_id.as_str() != self.tenant_slug.as_str() {
+            return Err(PageBuilderServiceError::Forbidden(format!(
+                "Page Builder context tenant `{}` does not match Pages store tenant `{}`",
+                context.tenant_id, self.tenant_slug
+            )));
+        }
+        if context.actor.id.as_str() != self.actor_id.as_str() {
+            return Err(PageBuilderServiceError::Forbidden(format!(
+                "Page Builder context actor `{}` does not match verified Pages actor `{}`",
+                context.actor.id, self.actor_id
+            )));
+        }
+        Ok(())
+    }
+
+    fn ensure_page_id(&self, page_id: &str) -> PageBuilderServiceResult<()> {
+        if page_id == self.page_id {
+            Ok(())
+        } else {
+            Err(PageBuilderServiceError::Validation(format!(
+                "Page Builder requested page `{page_id}`, but Pages store owns `{}`",
+                self.page_id
+            )))
+        }
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -311,24 +343,20 @@ struct PagesPageBuilderProjectStore {
 impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
     async fn load_project(
         &self,
-        _context: &PortContext,
+        context: &PortContext,
         page_id: &str,
     ) -> PageBuilderServiceResult<Option<Value>> {
-        if page_id != self.snapshot.page_id {
-            return Err(PageBuilderServiceError::Validation(format!(
-                "Page Builder requested page `{page_id}`, but Pages store owns `{}`",
-                self.snapshot.page_id
-            )));
-        }
+        self.ensure_context(context)?;
+        self.ensure_page_id(page_id)?;
         let page = transport::fetch_page(
-            self.snapshot.token.clone(),
-            self.snapshot.tenant_slug.clone(),
+            Some(self.token.clone()),
+            Some(self.tenant_slug.clone()),
             page_id.to_string(),
         )
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
         page.map(|page| {
-            let seed = crate::core::edit_form_seed_from_page(&page, &self.snapshot.default_locale);
+            let seed = crate::core::edit_form_seed_from_page(&page, &self.default_locale);
             let project = crate::core::parse_project_data(&seed.project_data_text)
                 .map_err(PageBuilderServiceError::Validation)?;
             canonicalize_builder_project(project)
@@ -339,20 +367,16 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
 
     async fn save_project(
         &self,
-        _context: &PortContext,
+        context: &PortContext,
         page_id: &str,
         revision_id: &str,
         project_data: Value,
     ) -> PageBuilderServiceResult<()> {
-        if page_id != self.snapshot.page_id {
-            return Err(PageBuilderServiceError::Validation(format!(
-                "Page Builder requested page `{page_id}`, but Pages store owns `{}`",
-                self.snapshot.page_id
-            )));
-        }
+        self.ensure_context(context)?;
+        self.ensure_page_id(page_id)?;
         let current_page = transport::fetch_page(
-            self.snapshot.token.clone(),
-            self.snapshot.tenant_slug.clone(),
+            Some(self.token.clone()),
+            Some(self.tenant_slug.clone()),
             page_id.to_string(),
         )
         .await
@@ -372,10 +396,10 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
 
         let project_data = canonicalize_builder_project(project_data)
             .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
-        let locale = page_locale(&current_page, self.snapshot.default_locale.clone());
+        let locale = page_locale(&current_page, self.default_locale.clone());
         let saved_page = transport::save_page_document(
-            self.snapshot.token.clone(),
-            self.snapshot.tenant_slug.clone(),
+            Some(self.token.clone()),
+            Some(self.tenant_slug.clone()),
             page_id.to_string(),
             current_revision,
             locale,
@@ -383,14 +407,17 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         )
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
-        persisted_revision(&saved_page)
+        let revision_id = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        let result = PublishPageBuilderResult {
+            page_id: saved_page.id.clone(),
+            revision_id,
+            published: saved_page.status.eq_ignore_ascii_case("published"),
+        };
+        *self.persisted_result.lock().map_err(|_| {
+            PageBuilderServiceError::Runtime("Pages save state lock was poisoned".into())
+        })? = Some(result);
         (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
-        *self
-            .saved_page
-            .lock()
-            .map_err(|_| PageBuilderServiceError::Runtime("Pages save state lock was poisoned".into()))? =
-            Some(saved_page);
         Ok(())
     }
 }
