@@ -78,6 +78,29 @@ technical names such as `name` or `title` remain valid configuration when they a
 not canonical localized business copy. JSON configuration is allowed; using it as
 a shadow translation store is not.
 
+### Localization management
+
+`GroupLocalizationReadPort` lists the exact stored translation rows for one group.
+`GroupLocalizationCommandPort` owns `upsert_group_translation` and
+`delete_group_translation`.
+
+- management operations require an authenticated active owner/administrator or
+  platform `groups:manage` authority;
+- authorization is re-checked by `GroupLocalizationService`, including inside the
+  write transaction;
+- locale input is normalized once and mutations target only the exact
+  `(tenant_id, group_id, locale)` row;
+- upsert never clones fallback copy into a requested locale;
+- delete rejects removal of the final translation row;
+- translation mutation and group-version increment commit in one transaction;
+- current localization commands require idempotency keys but do not yet persist
+  replay receipts, so replay/concurrency promotion remains blocked.
+
+The management surface is published through typed Rust ports, the merged GraphQL
+query/mutation roots, and module-owned Leptos server functions. Native and GraphQL
+adapters call the same owner service. Source presence does not prove runtime result,
+error, concurrency, or replay parity.
+
 Heavy rich-text evolution may split `body` into a future `group_bodies` table.
 That change must preserve one canonical body authority and must not introduce a
 shadow document.
@@ -121,8 +144,9 @@ operations inside one group. Owner services re-check both boundaries.
 ## FBA contract
 
 `GroupSummaryReadPort`, `GroupMembershipReadPort`, `GroupAccessReadPort`,
-`GroupCommandPort`, and `GroupGovernanceCommandPort` use `PortContext`,
-`PortCallPolicy`, and `PortError`.
+`GroupLocalizationReadPort`, `GroupCommandPort`,
+`GroupLocalizationCommandPort`, and `GroupGovernanceCommandPort` use
+`PortContext`, `PortCallPolicy`, and `PortError`.
 
 Required context semantics:
 
@@ -133,6 +157,7 @@ Required context semantics:
 - private-content decisions fail closed when the Groups provider is unavailable;
 - an unavailable optional feature provider hides or downgrades only that feature,
   never the group shell;
+- localization row and group version commit in one owner transaction;
 - governance state, idempotency receipt, and immutable audit entry commit in one
   owner transaction.
 
@@ -147,14 +172,19 @@ Consumers must not import Groups entities or query Groups tables directly.
 
 ## FFA contract
 
-Both `admin/` and `storefront/` use:
+The module-owned admin/storefront packages retain the `core → transport → UI`
+shape. Localization adds dedicated native and UI files without bypassing the
+facade:
 
 ```text
 core.rs
 transport.rs
 transport/native_server_adapter.rs
+transport/native_localization_adapter.rs
 transport/graphql_adapter.rs
 ui/leptos.rs
+ui/localization.rs
+ui/root.rs
 ```
 
 - `core` has no Leptos imports;
@@ -165,13 +195,13 @@ ui/leptos.rs
 - locale comes only from host-provided `UiRouteContext.locale`;
 - reusable UI primitives come from shared UI crates.
 
-The admin core validates and normalizes governance UUID input and creates a fresh
-idempotency key for each deliberate submission. The Leptos adapter renders
-localized role-delegation and ownership-transfer forms, calls only the selected
-transport facade, and displays group-version/replay evidence. It does not decide
-who may assign a role or transfer ownership. Group/member pickers, explicit
-confirmation, audit history, accessibility evidence, and executed transport parity
-remain later work.
+The admin core validates and normalizes governance UUID input and localization
+UUID/locale/text input, creating a fresh idempotency key for each deliberate
+mutation. The composed Leptos root renders directory, governance, and exact-locale
+translation management workspaces and calls only the selected transport facade. It
+does not decide local-role, ownership, or fallback policy. Group/member pickers,
+confirmation, localization receipts, audit history, accessibility evidence, and
+executed transport parity remain later work.
 
 ## Integration
 
