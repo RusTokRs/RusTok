@@ -7,8 +7,10 @@ use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTranspo
 
 use crate::core::GroupsAdminTransportProfile;
 use crate::model::{
-    ChangeGroupRoleCommand, GroupsAdminDirectory, GroupsAdminFilters,
-    GroupsAdminGovernanceResult, TransferGroupOwnershipCommand,
+    ChangeGroupRoleCommand, DeleteGroupTranslationCommand, GroupsAdminDeleteTranslationResult,
+    GroupsAdminDirectory, GroupsAdminFilters, GroupsAdminGovernanceResult, GroupsAdminTranslation,
+    GroupsAdminTranslationMutationResult, GroupsAdminTranslationQuery,
+    TransferGroupOwnershipCommand, UpsertGroupTranslationCommand,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +89,54 @@ pub async fn transfer_group_admin_ownership(
         context.path(),
         move || native_server_adapter::transfer_group_ownership(native_command),
         move || graphql_adapter::transfer_group_ownership(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn load_group_admin_translations(
+    context: GroupsAdminTransportContext,
+    query: GroupsAdminTranslationQuery,
+) -> UiTransportResult<Vec<GroupsAdminTranslation>> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.admin.localization.list",
+        context.path(),
+        move || native_server_adapter::load_group_translations(native_query),
+        move || graphql_adapter::load_group_translations(token, tenant, query),
+    )
+    .await
+}
+
+pub async fn upsert_group_admin_translation(
+    context: GroupsAdminTransportContext,
+    command: UpsertGroupTranslationCommand,
+) -> UiTransportResult<GroupsAdminTranslationMutationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.localization.upsert",
+        context.path(),
+        move || native_server_adapter::upsert_group_translation(native_command),
+        move || graphql_adapter::upsert_group_translation(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn delete_group_admin_translation(
+    context: GroupsAdminTransportContext,
+    command: DeleteGroupTranslationCommand,
+) -> UiTransportResult<GroupsAdminDeleteTranslationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.localization.delete",
+        context.path(),
+        move || native_server_adapter::delete_group_translation(native_command),
+        move || graphql_adapter::delete_group_translation(token, tenant, command),
     )
     .await
 }
