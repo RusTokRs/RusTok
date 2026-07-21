@@ -218,6 +218,7 @@ pub struct MarketplaceLedgerReversalEntryResponse {
 pub struct MarketplaceLedgerReversalResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
+    pub transaction_id: Uuid,
     pub kind: MarketplaceLedgerReversalKind,
     pub source_id: Uuid,
     pub order_id: Uuid,
