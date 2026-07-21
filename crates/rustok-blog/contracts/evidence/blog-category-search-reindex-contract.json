@@ -5,8 +5,12 @@
   "status": "source_verified_no_compile",
   "compile_policy": "not_run_by_request",
   "production_contract": {
+    "permission_resource": "blog_categories",
     "owner_service": "crates/rustok-blog/src/services/category.rs",
     "owner_rbac": "crates/rustok-blog/src/services/rbac.rs",
+    "platform_permissions": "crates/rustok-api/src/permissions.rs",
+    "platform_rbac": "crates/rustok-core/src/rbac.rs",
+    "oauth_scope_policy": "crates/rustok-api/src/context/auth.rs",
     "module_permissions": "crates/rustok-blog/src/lib.rs",
     "http_adapter": "crates/rustok-blog/src/controllers/categories.rs",
     "router": "crates/rustok-blog/src/controllers/mod.rs",
@@ -36,16 +40,16 @@
       "expected": "create and translation upsert reject normalized slugs that contain no ASCII letter or digit instead of persisting an empty route key"
     },
     {
-      "name": "bounded_permission_namespace",
-      "expected": "blog_posts actions are the primary Blog category capability; generic categories actions are accepted only as a temporary legacy fallback and are not advertised by BlogModule"
+      "name": "dedicated_permission_namespace",
+      "expected": "Blog category operations require blog_categories actions; blog_posts and catalog categories actions do not authorize the owner or HTTP adapter"
     },
     {
       "name": "category_has_no_owner_scope",
-      "expected": "category update/delete use resource scope rather than comparing the authenticated user UUID to the category UUID"
+      "expected": "category update/delete use tenant-wide blog_categories resource scope rather than comparing the authenticated user UUID to the category UUID"
     },
     {
       "name": "authorization_precedes_lookup",
-      "expected": "owner update/delete reject missing authority before opening a transaction or querying a category, preventing existence disclosure through direct service calls"
+      "expected": "owner update/delete reject missing blog_categories authority before opening a transaction or querying a category, preventing existence disclosure through direct service calls"
     },
     {
       "name": "mounted_http_write_path",
@@ -65,9 +69,9 @@
     }
   ],
   "runtime_promotion_requirements": [
-    "execute category create/update/delete HTTP requests with blog_posts RBAC",
-    "execute the same requests with legacy categories RBAC during the compatibility window",
-    "verify BlogModule registration does not seed catalog categories permissions",
+    "execute category create/update/delete HTTP requests with blog_categories RBAC",
+    "verify blog_posts and catalog categories permissions are rejected for Blog category operations",
+    "verify BlogModule registration seeds blog_categories permissions and no catalog category permissions",
     "verify unauthorized direct update/delete calls perform no category lookup",
     "verify one outbox record is committed for category update and delete",
     "verify an outbox write failure rolls back the category mutation",
