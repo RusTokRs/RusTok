@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `module_graph_wired_ports_pending`.
+- Runtime integration status: `checkout_allocation_wired_financial_pending`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -29,6 +29,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Isolated cross-domain moderation owner and replay-safe case service.
 - [x] Workspace aliases, module catalog, distribution/server feature graph, and composed
   migration source wiring for the Marketplace Family and moderation.
+- [x] Cart-owned typed marketplace line identity/economics storage and FBA ports.
+- [x] Immutable typed marketplace checkout plan and real pre-capture allocation hook.
 
 ## Architecture contract
 
@@ -44,7 +46,10 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Avoid cross-owner database foreign keys.
 - [x] Preserve unknown legacy provenance instead of fabricating actor, locale, provider,
   or financial attribution.
-- [ ] Remove every remaining marketplace identity dependency on arbitrary metadata.
+- [x] Stop checkout/allocation from treating arbitrary order-line metadata as marketplace
+  identity or financial truth.
+- [ ] Remove the remaining compatibility seller projection from cart line metadata after
+  delivery-group grouping consumes typed cart marketplace snapshots directly.
 - [ ] Ensure every transport resolves owner ports from runtime composition instead of
   constructing concrete owner services.
 - [ ] Ensure every owner receives infrastructure transports such as the transactional
@@ -96,7 +101,7 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [ ] Mount authenticated native provider composition and real GraphQL roots.
 - [ ] Add the typed checkout-resolution port that validates seller state, listing state,
   terms version, market/channel, product identity, currency, quantity, inventory, and
-  fulfillment references in one snapshot.
+  fulfillment references before the cart snapshot is written.
 - [ ] Add moderation subject application through `ModerationSubjectCommandPort`.
 - [ ] Retain clean/upgraded migrations, outbox relay/restart, contention, and transport
   evidence.
@@ -116,14 +121,32 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Keep ordinary non-marketplace orders as a no-op at the allocation stage.
 - [x] Register seller, listing, and allocation `MigrationSource` implementations in the
   composed migrator source list.
+- [x] Add cart-owned `cart_line_item_marketplace_snapshots` with seller/listing/product/
+  variant/terms identity, currency code/exponent, minor-unit economics, references, and
+  owner-local line-item FK.
+- [x] Add typed cart snapshot read/write FBA ports.
+- [x] Add atomic cart command that writes the line item, localized title, and typed
+  marketplace snapshot in one transaction.
+- [x] Require exact Decimal-to-minor-unit conversion with no implicit rounding.
+- [x] Persist typed marketplace lines in the immutable hashed checkout order plan.
+- [x] Fail checkout closed when a seller/legacy marketplace marker has no typed snapshot.
+- [x] Remove marketplace/seller identity JSON from order-line metadata before order
+  creation.
+- [x] Build allocation requests from typed plan snapshots and created order-line indexes,
+  not from `order_line.metadata.marketplace`.
+- [x] Invoke allocation after `CheckoutPaymentReadyState` and before capture.
+- [x] Compose the in-process allocation command port in storefront staged checkout.
 
 ### Remaining critical path
 
-- [ ] Add marketplace-owned typed checkout line snapshots.
-- [ ] Replace `order_line.metadata.marketplace` extraction with the typed snapshot owner.
-- [ ] Wire `CheckoutMarketplaceAllocationStage::allocate_if_present` into the real
-  pipeline after `CheckoutPaymentReadyState` validation and before capture.
-- [ ] Compose `MarketplaceAllocationCommandPort` in the runtime checkout pipeline.
+- [ ] Add native/GraphQL storefront adapters and UI/storefront commands for the atomic
+  marketplace cart-line command.
+- [ ] Add a durable receipt for atomic marketplace cart-line command replay and payload
+  conflict detection.
+- [ ] Synchronize typed snapshot economics when marketplace line quantity, price,
+  discounts, or tax change; immutable checkout plan remains the final freeze point.
+- [ ] Replace compatibility `seller_id` metadata used by delivery-group grouping with a
+  typed join against cart marketplace snapshots.
 - [ ] Persist the allocation result/checkpoint in the durable checkout operation.
 - [ ] Add allocation cancellation for payment failure, checkout compensation, order
   cancellation, and line cancellation.
@@ -277,24 +300,29 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   changes.
 - [x] Register the complete Marketplace Family and moderation in the module catalog,
   distribution registry, and server opt-in feature graph.
+- [x] Register the allocation provider in the storefront staged checkout runtime.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
-- [ ] Register request-scoped runtime providers for allocation, commission, ledger,
-  payout, and moderation; compile-time module registration is not sufficient.
-- [ ] Register checkout and paid-event consumers in host composition.
+- [ ] Register request-scoped runtime providers for commission, ledger, payout, and
+  moderation; compile-time module registration is not sufficient.
+- [ ] Register pre-capture commission and post-capture paid-event consumers in host
+  composition.
 - [ ] Update backfill registries with the validated final composed migration order.
 
 ## Consolidated maintainer validation queue
 
-No new tests were run for the 2026-07-21 source composition batch.
+No new tests were run for the 2026-07-21 source composition and typed-checkout batches.
 
 - [ ] Reconcile `Cargo.lock`.
-- [ ] Run formatting for changed marketplace and moderation crates.
-- [ ] Run `cargo check` for marketplace owners, commerce, distribution, moderation, the
-  server feature graph, and the composed migrator.
+- [ ] Run formatting for changed cart, commerce, marketplace, moderation, distribution,
+  server, and migration crates.
+- [ ] Run `cargo check` for cart, marketplace owners, commerce, distribution, moderation,
+  the server feature graph, and the composed migrator.
 - [ ] Run owner unit and SQLite service tests.
 - [ ] Export and inspect the composed migration plan.
 - [ ] Apply clean and upgraded SQLite migrations.
 - [ ] Apply clean and upgraded PostgreSQL migrations.
+- [ ] Run typed snapshot currency/exponent, exact minor-unit conversion, atomic add,
+  conflict, and checkout fail-closed scenarios.
 - [ ] Run idempotency conflict and lost-response replay scenarios.
 - [ ] Run allocation, commission, ledger, payout, seller, listing, and moderation
   contention scenarios.
@@ -307,15 +335,17 @@ No new tests were run for the 2026-07-21 source composition batch.
 
 1. [x] Register owner workspace aliases, module feature graph, and composed migration
    sources.
-2. [ ] Add typed marketplace checkout snapshots and remove metadata-based identity.
-3. [ ] Wire allocation and pre-capture commission stages into the real checkout pipeline.
-4. [ ] Add durable post-capture financial operation and paid-event inbox.
-5. [ ] Add refund/chargeback ledger reversals and seller balance projections.
-6. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
-7. [ ] Add seller/listing moderation adapters and decision-application recovery.
-8. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
-9. [ ] Build vendor and finance control-room surfaces.
-10. [ ] Execute the consolidated validation queue and only then promote readiness.
+2. [x] Add typed marketplace cart/checkout snapshots and remove metadata-based identity
+   from checkout and allocation.
+3. [x] Wire marketplace allocation into the real pipeline before payment capture.
+4. [ ] Add pre-capture commission assessment and durable allocation/commission checkpoint.
+5. [ ] Add durable post-capture financial operation and paid-event inbox.
+6. [ ] Add refund/chargeback ledger reversals and seller balance projections.
+7. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
+8. [ ] Add seller/listing moderation adapters and decision-application recovery.
+9. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
+10. [ ] Build vendor and finance control-room surfaces.
+11. [ ] Execute the consolidated validation queue and only then promote readiness.
 
 ## Primary source paths
 
@@ -326,5 +356,11 @@ No new tests were run for the 2026-07-21 source composition batch.
 - `crates/rustok-marketplace-commission/`
 - `crates/rustok-marketplace-ledger/`
 - `crates/rustok-marketplace-payout/`
+- `crates/rustok-cart/src/entities/cart_line_item_marketplace_snapshot.rs`
+- `crates/rustok-cart/src/services/marketplace_snapshot.rs`
+- `crates/rustok-cart/src/marketplace_snapshot.rs`
+- `crates/rustok-commerce/src/services/checkout_order_plan.rs`
+- `crates/rustok-commerce/src/services/checkout_plan_builder.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_allocation.rs`
+- `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
