@@ -1,20 +1,20 @@
-import { expect, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const adapterPath = resolve(
   process.cwd(),
-  '../../crates/fly-browser/assets/fly-browser.js'
+  "../../crates/fly-browser/assets/fly-browser.js",
 );
 const hardeningPath = resolve(
   process.cwd(),
-  '../../crates/fly-browser/assets/browser_hardening.js'
+  "../../crates/fly-browser/assets/browser_hardening.js",
 );
 
 type FlyAdapter = {
   emitIntent: (
     intent: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
   ) => Promise<unknown>;
   stop: () => void;
 };
@@ -24,17 +24,17 @@ type IsolationScope = typeof globalThis & {
   FlyBrowser?: {
     mount?: (
       root: Element,
-      options?: Record<string, unknown>
+      options?: Record<string, unknown>,
     ) => FlyAdapter | null;
   };
 };
 
-test('parallel adapters keep abort signals request-scoped without replacing fetch', async ({
-  page
+test("parallel adapters keep abort signals request-scoped without replacing fetch", async ({
+  page,
 }) => {
   const [adapterSource, hardeningSource] = await Promise.all([
-    readFile(adapterPath, 'utf8'),
-    readFile(hardeningPath, 'utf8')
+    readFile(adapterPath, "utf8"),
+    readFile(hardeningPath, "utf8"),
   ]);
 
   await page.setContent(`
@@ -77,7 +77,7 @@ test('parallel adapters keep abort signals request-scoped without replacing fetc
       const requestSignals: AbortSignal[] = [];
       let fetchAssignments = 0;
       let fetchImplementation: typeof fetch = async (input, init = {}) => {
-        const endpoint = typeof input === 'string' ? input : String(input);
+        const endpoint = typeof input === "string" ? input : String(input);
         const signal = init.signal;
         if (!(signal instanceof AbortSignal)) {
           throw new Error(`Missing request signal for ${endpoint}`);
@@ -86,30 +86,30 @@ test('parallel adapters keep abort signals request-scoped without replacing fetc
         return new Promise<Response>((_resolve, reject) => {
           const rejectAborted = () => {
             abortedEndpoints.push(endpoint);
-            reject(new DOMException('Aborted', 'AbortError'));
+            reject(new DOMException("Aborted", "AbortError"));
           };
           if (signal.aborted) {
             rejectAborted();
             return;
           }
-          signal.addEventListener('abort', rejectAborted, { once: true });
+          signal.addEventListener("abort", rejectAborted, { once: true });
         });
       };
 
-      Object.defineProperty(globalThis, 'fetch', {
+      Object.defineProperty(globalThis, "fetch", {
         configurable: true,
         get: () => fetchImplementation,
         set: (value) => {
           fetchAssignments += 1;
           fetchImplementation = value as typeof fetch;
-        }
+        },
       });
 
       scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
       const url = URL.createObjectURL(
         new Blob([adapterSource, hardeningSource], {
-          type: 'text/javascript'
-        })
+          type: "text/javascript",
+        }),
       );
       try {
         await import(url);
@@ -117,38 +117,38 @@ test('parallel adapters keep abort signals request-scoped without replacing fetc
         URL.revokeObjectURL(url);
       }
 
-      const firstRoot = document.querySelector('#fly-root-a');
-      const secondRoot = document.querySelector('#fly-root-b');
+      const firstRoot = document.querySelector("#fly-root-a");
+      const secondRoot = document.querySelector("#fly-root-b");
       if (!(firstRoot instanceof HTMLElement)) {
-        throw new Error('First Fly root unavailable');
+        throw new Error("First Fly root unavailable");
       }
       if (!(secondRoot instanceof HTMLElement)) {
-        throw new Error('Second Fly root unavailable');
+        throw new Error("Second Fly root unavailable");
       }
 
       const firstAdapter = scope.FlyBrowser?.mount?.(firstRoot, {
-        intentEndpoint: '/intent-a',
+        intentEndpoint: "/intent-a",
         maxPendingIntentRequests: 1,
-        intentRequestTimeoutMs: 30
+        intentRequestTimeoutMs: 30,
       });
       const secondAdapter = scope.FlyBrowser?.mount?.(secondRoot, {
-        intentEndpoint: '/intent-b',
+        intentEndpoint: "/intent-b",
         maxPendingIntentRequests: 1,
-        intentRequestTimeoutMs: 1_000
+        intentRequestTimeoutMs: 1_000,
       });
       if (!firstAdapter || !secondAdapter) {
-        throw new Error('Fly adapters unavailable');
+        throw new Error("Fly adapters unavailable");
       }
 
-      const firstRequest = firstAdapter.emitIntent('save', { adapter: 'a' });
-      const secondRequest = secondAdapter.emitIntent('save', { adapter: 'b' });
+      const firstRequest = firstAdapter.emitIntent("save", { adapter: "a" });
+      const secondRequest = secondAdapter.emitIntent("save", { adapter: "b" });
       await firstRequest;
       await new Promise((resolve) => globalThis.setTimeout(resolve, 50));
 
       const beforeStop = {
         abortedEndpoints: [...abortedEndpoints],
         firstProblem: firstRoot.dataset.flyBrowserProblem ?? null,
-        secondProblem: secondRoot.dataset.flyBrowserProblem ?? null
+        secondProblem: secondRoot.dataset.flyBrowserProblem ?? null,
       };
 
       firstAdapter.stop();
@@ -161,21 +161,22 @@ test('parallel adapters keep abort signals request-scoped without replacing fetc
         fetchAssignments,
         requestCount: requestSignals.length,
         signalsDistinct:
-          requestSignals.length === 2 && requestSignals[0] !== requestSignals[1]
+          requestSignals.length === 2 &&
+          requestSignals[0] !== requestSignals[1],
       };
     },
-    { adapterSource, hardeningSource }
+    { adapterSource, hardeningSource },
   );
 
   expect(state).toEqual({
     beforeStop: {
-      abortedEndpoints: ['/intent-a'],
-      firstProblem: 'INTENT_REQUEST_TIMEOUT',
-      secondProblem: null
+      abortedEndpoints: ["/intent-a"],
+      firstProblem: "INTENT_REQUEST_TIMEOUT",
+      secondProblem: null,
     },
-    abortedEndpoints: ['/intent-a', '/intent-b'],
+    abortedEndpoints: ["/intent-a", "/intent-b"],
     fetchAssignments: 0,
     requestCount: 2,
-    signalsDistinct: true
+    signalsDistinct: true,
   });
 });
