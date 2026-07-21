@@ -202,7 +202,7 @@ at the end of this file remain authoritative.
 | `FORUM-09` | `done` | Forum-owned versioned event catalog and journal, merged through PR #1732. |
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
-| `FORUM-12` | `planned` | Mentions, quote relations and recipient projection. |
+| `FORUM-12` | `in_progress` | FORUM-12A defines bounded extraction, tenant-scoped profile resolution, revision-bound quotes and immutable mention diffs; persistence, events, transports and delivery integration remain. |
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
@@ -297,7 +297,7 @@ verified; they are no longer active execution items.
 
 ### Wave C — participation product
 
-1. `FORUM-12`;
+1. finish `FORUM-12` owner persistence and event integration after FORUM-12A;
 2. `FORUM-16`;
 3. `FORUM-17`;
 4. `FORUM-18`;
@@ -457,9 +457,9 @@ contract exposes persistence services.
 
 ## `FORUM-12` — mentions, quotes and recipient projection
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P1  
-**Dependencies:** FORUM-08/09, NOTIFY-03 for delivery integration
+**Dependencies:** FORUM-08/09, profiles read contract; NOTIFY-03 for delivery integration
 
 ### Scope
 
@@ -473,6 +473,60 @@ Editing uses a revision diff: new mention produces one semantic event, removed
 or unchanged mentions do not produce duplicate delivery. Quotes retain the
 quoted target and quoted revision so edits do not rewrite history.
 
+### Delivered in `FORUM-12A`
+
+- `extract_forum_mention_candidates` supports only canonical Markdown and
+  `rt_json_v1`, caps each revision at 32 unique targets and deduplicates handles
+  with the Profiles-owned handle grammar;
+- Markdown extraction ignores fenced code, inline code, escaped text and email
+  address `@` tokens;
+- `rt_json_v1` extraction runs after the canonical `rustok-core` sanitizer and
+  ignores `code_block` nodes and text carrying a `code` mark;
+- `@moderators` is a typed special audience and fails unless the caller supplies
+  explicit moderation policy;
+- `resolve_forum_mentions` uses tenant-scoped `ProfilesReader` lookup and accepts
+  only active public or authenticated profiles;
+- missing, hidden, blocked, private, followers-only, foreign-tenant and
+  mismatched targets fail with the same safe
+  `FORUM_MENTION_TARGET_UNAVAILABLE` class, avoiding a profile-existence oracle;
+- `ForumRevisionIdentity` and `ForumQuoteReference` preserve source and quoted
+  revision identity rather than relying on display text;
+- `diff_forum_mentions` deterministically separates added, removed and unchanged
+  targets; only added targets become `ForumMentionEventCandidate` values;
+- replaying the same source revision with changed targets fails closed, while an
+  identical replay produces no added candidates;
+- a source verifier rejects notification/event delivery, profile internals and
+  premature Forum persistence in this contract slice.
+
+### Compatibility and degraded mode
+
+FORUM-12A adds no table, migration, transport endpoint, owner write hook,
+semantic-event publication or notification call. Existing topic/reply writes are
+unchanged. Profile lookup failures remain typed; unavailable or unauthorized
+mention targets deliberately share one safe result. Notifications remain an
+optional downstream consumer and never participate synchronously in Forum
+commands.
+
+### Remaining scope
+
+FORUM-12 remains `in_progress` until all of the following are delivered:
+
+- add tenant-composite mention and quote relations keyed by source target,
+  locale/source revision, resolved user or typed audience, and quoted target /
+  quoted revision;
+- integrate extraction, profile resolution, previous/current projection diff and
+  relation writes into topic/reply create and edit transactions;
+- add unique replay keys so the same source revision cannot duplicate relations
+  or semantic events;
+- add versioned Forum owner events to the domain-event journal and transactional
+  outbox; do not call Notifications from the Forum transaction;
+- expose bounded owner reads and transport adapters only after the persistence
+  contract is stable;
+- recheck blocked/private/deleted target and source visibility for notification
+  consumption and target opening under NOTIFY-03/07;
+- add PostgreSQL/SQLite persistence, edit-diff, concurrent replay, deletion and
+  tenant-isolation coverage plus executable notifications-off/on evidence.
+
 ### Definition of done
 
 - mention resolution is tenant/profile scoped and idempotent by source revision;
@@ -481,6 +535,18 @@ quoted target and quoted revision so edits do not rewrite history.
   notification;
 - tests cover edit diffs, duplicate handles, code blocks, escaping, caps and
   replay.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum --test mention_contract
+node scripts/verify/verify-forum-mention-contract.mjs
+node scripts/verify/verify-forum-mention-contract.test.mjs
+cargo xtask module validate forum
+```
+
+The commands above are the maintainer verification set for FORUM-12A; this
+source-level slice does not claim executable verification until they are run.
 
 ## `FORUM-13` — category icon and image integration
 
@@ -1299,6 +1365,7 @@ cargo test -p rustok-forum --test wave_invariants_postgres
 cargo test -p rustok-forum --test soft_delete_revision_postgres
 cargo test -p rustok-forum --test soft_delete_revision_sqlite
 cargo test -p rustok-forum --test owner_lifecycle_sqlite
+cargo test -p rustok-forum --test mention_contract
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1308,6 +1375,8 @@ npm run verify:forum:storefront-boundary
 npm run verify:page-builder:consumer:forum
 npm run verify:forum:wave-evidence-freshness
 npm run verify:channel:proof-points
+node scripts/verify/verify-forum-mention-contract.mjs
+node scripts/verify/verify-forum-mention-contract.test.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -1335,20 +1404,21 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
-2. `NOTIFY-01`: inbox/preferences schema;
-3. `NOTIFY-03`: durable consumer and bounded fan-out;
-4. `NOTIFY-07`: privacy/open authorization;
-5. `FORUM-13`: category media references after Media lifecycle state exists;
-6. `FORUM-14`: attachment relations and upload sessions;
-7. `FORUM-15`: batched member/avatar projection;
-8. `LINK-FORUM-02`: profiles/media runtime proof;
-9. `FORUM-12`: mention/quote persistence and events;
-10. `FORUM-16`: read/unread state;
-11. `FORUM-19`: reports/moderation/restrictions;
-12. `FORUM-20`: ACL and visibility policy;
-13. `FORUM-23`: index projections;
-14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
+1. `FORUM-12B`: tenant-composite mention/quote persistence and atomic revision integration;
+2. `FORUM-12C`: versioned mention events, replay-safe journal/outbox publication and owner reads;
+3. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
+4. `NOTIFY-01`: inbox/preferences schema;
+5. `NOTIFY-03`: durable consumer and bounded fan-out;
+6. `NOTIFY-07`: privacy/open authorization;
+7. `FORUM-13`: category media references after Media lifecycle state exists;
+8. `FORUM-14`: attachment relations and upload sessions;
+9. `FORUM-15`: batched member/avatar projection;
+10. `LINK-FORUM-02`: profiles/media runtime proof;
+11. `FORUM-16`: read/unread state;
+12. `FORUM-19`: reports/moderation/restrictions;
+13. `FORUM-20`: ACL and visibility policy;
+14. `FORUM-23`: index projections;
+15. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.
 
 # Decisions that must not be reopened without an ADR
@@ -1383,7 +1453,8 @@ possible.
 
 # Immediate next action
 
-Finish `NOTIFY-00` by composing the optional module into the executable runtime
-and registering the first real source provider with notifications-off/on,
-fallback, authorization and retry evidence. Keep persistence under `NOTIFY-01`
-and do not add synchronous notification dependencies to producer commands.
+Implement `FORUM-12B`: add tenant-composite mention and quote relations keyed by
+source target, locale/source revision and resolved target identity; integrate
+extraction, profile resolution and projection diff into the existing topic/reply
+revision transactions. Keep notification delivery out of the Forum write path;
+versioned owner events and outbox publication follow in `FORUM-12C`.
