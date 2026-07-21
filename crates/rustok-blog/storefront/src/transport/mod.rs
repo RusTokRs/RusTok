@@ -65,13 +65,14 @@ pub(crate) fn configured_tenant_slug() -> Option<String> {
 
 pub async fn fetch_blog(
     request: BlogStorefrontFetchRequest,
+    comments_page: u64,
 ) -> Result<StorefrontBlogData, BlogTransportError> {
     let native_request = request.clone();
     execute_selected_transport(
         "blog",
         selected_transport_path(),
-        move || native_server_adapter::fetch_blog(native_request),
-        move || graphql_adapter::fetch_blog(request),
+        move || native_server_adapter::fetch_blog(native_request, comments_page),
+        move || graphql_adapter::fetch_blog(request, comments_page),
     )
     .await
 }
