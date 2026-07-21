@@ -28,6 +28,16 @@ missing-post cleanup, module disable/enable cleanup, and cross-tenant rebuild
 isolation. Table discovery follows the same active PostgreSQL `search_path` as
 the projector SQL rather than hard-coding `public`.
 
+Blog category writes now use one owner transaction for the category row,
+localized translation, and outbox publication. Category update/delete publish a
+Blog-scope `ReindexRequested` because Search denormalizes `category_name` and
+`category_slug` into each related Blog document. The mounted HTTP CRUD path uses
+the event-aware service constructor from `HostRuntimeContext`, applies explicit
+`categories:*` RBAC, tenant-scopes translation queries, and bounds list requests
+to 1..100 items. The compatibility `CategoryService::new(db)` remains available
+for read-only and legacy in-process callers, while production writes use
+`new_with_event_bus`.
+
 Canonical Blog-result navigation is Search-owned.
 `canonical_search_result_url` requires `source_module=blog` and
 `entity_type=blog_post`, reads the owner-projected slug, validates it with a
@@ -59,6 +69,10 @@ selected post changes.
   are propagated into the Axum response and covered by executable test code.
 - Search Blog projection harness status: `executable_no_run`; PostgreSQL execution
   remains user-owned.
+- Category search-reindex status: `source_verified_no_compile`; transactional
+  owner writes, mounted HTTP CRUD, RBAC, bounded pagination, evidence, and source
+  guardrails are implemented. Runtime outbox rollback and Search refresh evidence
+  remain user-owned.
 - Search canonical URL status: `source_verified_no_compile`; core, GraphQL, and
   storefront-native ownership are implemented. Admin-native cutover and final
   compatibility-fallback removal remain.
@@ -75,6 +89,14 @@ selected post changes.
 - Mutation gates are aligned: update uses `blog_posts:update`; publish,
   unpublish, and archive use `blog_posts:publish`; comment moderation uses
   `blog_posts:manage`.
+- Blog category HTTP CRUD declares and enforces generic `categories:create/read/
+  update/delete/list` permissions because the existing category domain service
+  already owns that resource contract.
+- Category update/delete emit `ReindexRequested { target_type: "blog",
+  target_id: None }` through the same transaction as the owner mutation. Search
+  consumes that event by rebuilding only the tenant Blog scope.
+- Category translation lookups and mutations are constrained by both tenant and
+  category; the HTTP list adapter normalizes page and clamps `per_page` to 1..100.
 - The comments consumer contract is `CommentsThreadPort` /
   `comments.thread.v1`. Public list reads use
   `list_public_comments_for_target`; writes carry operation-scoped idempotency
@@ -107,12 +129,14 @@ selected post changes.
   `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`,
   `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`,
+  `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`,
   `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
   `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`,
   `crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs`,
   `crates/rustok-search/tests/blog_ingestion_contract_test.rs`,
   `crates/rustok-search/tests/blog_projection_postgres_test.rs`,
   `scripts/verify/verify-blog-graphql-rate-limit.mjs`,
+  `scripts/verify/verify-blog-category-search-reindex.mjs`,
   `scripts/verify/verify-blog-fba.mjs`,
   `scripts/verify/verify-blog-admin-boundary.mjs`,
   `scripts/verify/verify-blog-storefront-boundary.mjs`,
@@ -170,23 +194,31 @@ selected post changes.
 18. Added `Retry-After` to Blog GraphQL exceeded responses, preserved GraphQL
     response headers through the Axum controller, and added policy/controller
     test code plus focused source guardrails.
+19. Added transactional Blog category create/update/delete, event-aware HTTP CRUD,
+    explicit category permissions, tenant-scoped translations, bounded list DTOs,
+    OpenAPI coverage, Blog-scope Search reindex publication, machine-readable
+    evidence, and negative source-verifier fixtures.
 
 ## Next results
 
-1. **Execute mounted rate-limit evidence.** Run the policy, host-memory-adapter,
+1. **Execute mounted category reindex evidence.** Run category HTTP CRUD with real
+   RBAC/outbox composition, verify mutation rollback when outbox publication
+   fails, then consume the event and retain changed `category_name` /
+   `category_slug` Search documents for related posts.
+2. **Execute mounted rate-limit evidence.** Run the policy, host-memory-adapter,
    controller-handoff, and focused verifier targets, then exercise Redis-backed
    host composition and retain a real HTTP `Retry-After` response with matching
    GraphQL `retryAfter`.
-2. **Finish admin native URL cutover.** Migrate the final Search admin mapper to
+3. **Finish admin native URL cutover.** Migrate the final Search admin mapper to
    the shared policy; afterward all backend Search result surfaces share one URL
    owner.
-3. **Close canonical URL runtime evidence.** Execute Search URL-policy tests,
+4. **Close canonical URL runtime evidence.** Execute Search URL-policy tests,
    GraphQL Blog results, native backend URL behavior, compatibility idempotence,
    and click-href analytics.
-4. **Close search runtime evidence.** Execute the routing/PostgreSQL/verifier
+5. **Close search runtime evidence.** Execute the routing/PostgreSQL/verifier
    targets and retain targeted missing-post, module-toggle, and tenant-isolation
    evidence.
-5. **Close comments owner/projection runtime evidence.** Exercise approved-only
+6. **Close comments owner/projection runtime evidence.** Exercise approved-only
    public reads, public/admin pagination, moderation queue/status changes,
    independent create commands on one post, duplicate delivery, concurrent
    count updates, missing-post retry, delivery-ledger rollback, and outbox
@@ -194,6 +226,10 @@ selected post changes.
 
 ## Verification
 
+- `node scripts/verify/verify-blog-category-search-reindex.mjs`
+- `node scripts/verify/verify-blog-category-search-reindex.test.mjs`
+- Category HTTP CRUD, RBAC, outbox rollback, tenant isolation, and Search refresh
+  integration tests.
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
