@@ -16,8 +16,8 @@ use crate::model::{
 
 #[cfg(feature = "ssr")]
 fn ensure_manage_permission(permissions: &[rustok_api::Permission]) -> Result<(), ServerFnError> {
-    use rustok_api::has_any_effective_permission;
     use rustok_api::Permission;
+    use rustok_api::has_any_effective_permission;
 
     if !has_any_effective_permission(
         permissions,
@@ -262,7 +262,9 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
-        use rustok_api::{AuthContext, OptionalChannel, TenantContext};
+        use rustok_api::{
+            AuthContext, OptionalChannel, RequestContext, TenantContext, normalize_locale_tag,
+        };
         use rustok_channel::ChannelService;
         use rustok_core::ModuleRegistry;
         use sea_orm::{ConnectionTrait, DbBackend, QueryResult, Statement};
@@ -274,6 +276,9 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
             .await
             .map_err(ServerFnError::new)?;
         let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
         let current_channel = leptos_axum::extract::<OptionalChannel>()
@@ -314,31 +319,83 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
             .collect::<Vec<_>>();
         available_modules.sort_by(|left, right| left.slug.cmp(&right.slug));
 
-        let stmt = Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            r#"
-            SELECT id, name, slug, app_type, is_active
-            FROM oauth_apps
-            WHERE tenant_id = $1
-              AND is_active = TRUE
-              AND revoked_at IS NULL
-            ORDER BY slug ASC
-            "#,
-            vec![tenant.id.into()],
-        );
+        let effective_locale = normalize_locale_tag(&request_context.locale)
+            .filter(|locale| locale != "und")
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "channel OAuth bootstrap requires a normalized effective locale other than `und`",
+                )
+            })?;
+        let backend = db.get_database_backend();
+        let stmt = match backend {
+            DbBackend::Postgres => Statement::from_sql_and_values(
+                backend,
+                r#"
+                SELECT oa.id, oat.name, oa.slug, oa.app_type, oa.is_active
+                FROM oauth_apps oa
+                LEFT JOIN oauth_app_translations oat
+                  ON oat.tenant_id = oa.tenant_id
+                 AND oat.app_id = oa.id
+                 AND oat.locale = $2
+                WHERE oa.tenant_id = $1
+                  AND oa.is_active = TRUE
+                  AND oa.revoked_at IS NULL
+                ORDER BY oa.slug ASC
+                "#,
+                vec![tenant.id.into(), effective_locale.clone().into()],
+            ),
+            DbBackend::MySql => Statement::from_sql_and_values(
+                backend,
+                r#"
+                SELECT oa.id, oat.name, oa.slug, oa.app_type, oa.is_active
+                FROM oauth_apps oa
+                LEFT JOIN oauth_app_translations oat
+                  ON oat.tenant_id = oa.tenant_id
+                 AND oat.app_id = oa.id
+                 AND oat.locale = ?
+                WHERE oa.tenant_id = ?
+                  AND oa.is_active = TRUE
+                  AND oa.revoked_at IS NULL
+                ORDER BY oa.slug ASC
+                "#,
+                vec![effective_locale.clone().into(), tenant.id.into()],
+            ),
+            DbBackend::Sqlite => Statement::from_sql_and_values(
+                backend,
+                r#"
+                SELECT oa.id, oat.name, oa.slug, oa.app_type, oa.is_active
+                FROM oauth_apps oa
+                LEFT JOIN oauth_app_translations oat
+                  ON oat.tenant_id = oa.tenant_id
+                 AND oat.app_id = oa.id
+                 AND oat.locale = ?2
+                WHERE oa.tenant_id = ?1
+                  AND oa.is_active = 1
+                  AND oa.revoked_at IS NULL
+                ORDER BY oa.slug ASC
+                "#,
+                vec![tenant.id.into(), effective_locale.clone().into()],
+            ),
+        };
         let oauth_rows = db.query_all(stmt).await.map_err(ServerFnError::new)?;
         let oauth_apps = oauth_rows
             .into_iter()
             .map(
                 |row: QueryResult| -> Result<AvailableOauthAppItem, ServerFnError> {
+                    let app_id = row
+                        .try_get::<uuid::Uuid>("", "id")
+                        .map_err(ServerFnError::new)?;
+                    let name = row
+                        .try_get::<Option<String>>("", "name")
+                        .map_err(ServerFnError::new)?
+                        .ok_or_else(|| {
+                            ServerFnError::new(format!(
+                                "OAuth app translation missing: app {app_id}, locale `{effective_locale}`"
+                            ))
+                        })?;
                     Ok(AvailableOauthAppItem {
-                        id: row
-                            .try_get::<uuid::Uuid>("", "id")
-                            .map_err(ServerFnError::new)?
-                            .to_string(),
-                        name: row
-                            .try_get::<String>("", "name")
-                            .map_err(ServerFnError::new)?,
+                        id: app_id.to_string(),
+                        name,
                         slug: row
                             .try_get::<String>("", "slug")
                             .map_err(ServerFnError::new)?,
@@ -1161,7 +1218,7 @@ fn build_native_rule_definition_payload(
             other => {
                 return Err(ServerFnError::new(format!(
                     "Unsupported surface `{other}`; only `http` is currently supported",
-                )))
+                )));
             }
         };
         predicates.push(ResolutionPredicate::SurfaceIs(surface));

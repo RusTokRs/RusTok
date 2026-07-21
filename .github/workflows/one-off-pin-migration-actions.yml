@@ -5,22 +5,16 @@ on:
     branches: [main]
     paths:
       - .github/workflows/one-off-pin-migration-actions.yml
-  pull_request_target:
-    types: [synchronize, ready_for_review]
 
 permissions:
   contents: write
-  pull-requests: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  CARGO_TERM_COLOR: always
-  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
 
 jobs:
   pin-actions:
     if: >-
-      github.event_name == 'push' &&
       github.event.head_commit.message == 'security(ci): execute migration action pin patch'
     runs-on: ubuntu-24.04
     timeout-minutes: 6
@@ -71,121 +65,3 @@ jobs:
             fi
           done
           exit 1
-
-  oauth-transport-cutover:
-    if: >-
-      github.event_name == 'pull_request_target' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'automation/oauth-transport-cutover'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-          token: ${{ github.token }}
-
-      - name: Apply cutover
-        run: python3 scripts/maintenance/apply_oauth_transport_cutover.py
-
-      - name: Format
-        run: cargo fmt --all
-
-      - name: Verify multilingual DB contract
-        run: node scripts/verify/verify-db-multilingual-contract.mjs
-
-      - name: Check Auth admin SSR
-        run: cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
-
-      - name: Check Channel admin SSR
-        run: cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
-
-      - name: Check host admin SSR
-        run: cargo check -p rustok-admin --no-default-features --features ssr --locked
-
-      - name: Validate patch
-        run: git diff --check
-
-      - name: Commit verified cutover to PR branch
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm scripts/maintenance/apply_oauth_transport_cutover.py
-          rm .github/workflows/oauth-transport-cutover.yml
-          rm .github/oauth-cutover-trigger
-          cat > .github/workflows/one-off-pin-migration-actions.yml <<'YAML'
-          name: One-off Pin Migration Actions
-
-          on:
-            push:
-              branches: [main]
-              paths:
-                - .github/workflows/one-off-pin-migration-actions.yml
-
-          permissions:
-            contents: write
-
-          env:
-            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-          jobs:
-            pin-actions:
-              if: >-
-                github.event.head_commit.message == 'security(ci): execute migration action pin patch'
-              runs-on: ubuntu-24.04
-              timeout-minutes: 6
-              steps:
-                - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-                  with:
-                    ref: main
-                    fetch-depth: 0
-
-                - name: Apply and verify immutable migration actions
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    git pull --rebase origin main
-                    python3 - <<'PY'
-                    from pathlib import Path
-                    patch = Path('scripts/maintenance/pin-migration-actions.py')
-                    source = patch.read_text()
-                    double_slash = chr(92) * 2
-                    old = f'matchAll(/{double_slash}s*uses:{double_slash}s*'
-                    new = f'matchAll(/{double_slash}s*(?:-{double_slash}s*)?uses:{double_slash}s*'
-                    if source.count(old) != 1:
-                        raise SystemExit('temporary pin parser marker drifted')
-                    patch.write_text(source.replace(old, new))
-                    PY
-                    python3 scripts/maintenance/pin-migration-actions.py
-                    node --check scripts/verify/verify-migration-compatibility-contract.mjs
-                    node scripts/verify/verify-migration-compatibility-contract.mjs
-                    git diff --check
-
-                - name: Commit immutable migration actions
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    git config user.name 'github-actions[bot]'
-                    git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-                    git add -A
-                    git commit -m 'security(ci): pin migration compatibility actions'
-                    for attempt in 1 2 3; do
-                      git fetch origin main
-                      if ! git merge-base --is-ancestor origin/main HEAD; then
-                        git rebase origin/main
-                        node --check scripts/verify/verify-migration-compatibility-contract.mjs
-                        node scripts/verify/verify-migration-compatibility-contract.mjs
-                      fi
-                      if git push origin HEAD:main; then
-                        exit 0
-                      fi
-                    done
-                    exit 1
-          YAML
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'fix(i18n): cut OAuth transports over to exact locale copy'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}

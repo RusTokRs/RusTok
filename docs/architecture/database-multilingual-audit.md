@@ -75,6 +75,9 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   Legacy copy is retained as `und`. Manual writes require effective locale and
   commit base state plus translation atomically; manifest-generated English copy
   uses explicit `en`; runtime reads never return `und` as a translation fallback.
+  Auth admin reads now use the owner port, the legacy admin delegates to that
+  transport, and Channel bootstrap performs an exact locale translation join on
+  PostgreSQL, MySQL, and SQLite. The verifier forbids removed base-copy projections.
 - **Registry publish/release copy** — runtime default remains `en`, while unknown
   historical copy is stored as `und`. Backfill and rollback placeholders are
   backend-aware, and rollback prefers the provenance row before runtime policy.

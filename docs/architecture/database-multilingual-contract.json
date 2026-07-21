@@ -491,6 +491,44 @@
             "Legacy OAuth App",
             "locale = 'und'"
           ]
+        },
+        {
+          "path": "crates/rustok-auth/admin/src/transport/native_server_adapter.rs",
+          "required_markers": [
+            "let (context, runtime) = oauth_mutation_context().await?;",
+            ".list_oauth_apps(&context, None, limit)",
+            "locale: Some(request_context.locale)"
+          ],
+          "forbidden_markers": [
+            "oa.name",
+            "oa.description"
+          ]
+        },
+        {
+          "path": "apps/admin/src/features/oauth_apps/transport/native_server_adapter.rs",
+          "required_markers": [
+            "rustok_auth_admin::transport::native_server_adapter::list_oauth_apps_native",
+            "map_oauth_app"
+          ],
+          "forbidden_markers": [
+            "FROM oauth_apps",
+            "oa.name",
+            "oa.description"
+          ]
+        },
+        {
+          "path": "crates/rustok-channel/admin/src/transport/native_server_adapter.rs",
+          "required_markers": [
+            "oauth_app_translations oat",
+            "normalize_locale_tag(&request_context.locale)",
+            "oat.locale =",
+            "OAuth app translation missing"
+          ],
+          "forbidden_markers": [
+            "SELECT id, name, slug, app_type, is_active",
+            "oa.name",
+            "oa.description"
+          ]
         }
       ]
     },
