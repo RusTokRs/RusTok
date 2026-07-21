@@ -20,8 +20,8 @@ mod palette_layers;
 mod properties_assets;
 #[cfg(target_arch = "wasm32")]
 mod properties_section;
-#[cfg(target_arch = "wasm32")]
 mod property_helpers;
+mod publish_scenario_selector;
 mod resize_handles;
 mod responsive_styles;
 mod runtime;
@@ -74,6 +74,7 @@ pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use properties_section::PropertiesSection;
+pub(crate) use publish_scenario_selector::PublishScenarioSelectorPanel;
 pub(crate) use resize_handles::ResizeHandles;
 pub(crate) use responsive_styles::ResponsiveStylePanel;
 pub(crate) use runtime::AdminEditorRuntime;
