@@ -227,7 +227,10 @@ mod tests {
         }))
         .expect("canonical project");
 
-        assert_eq!(project["pages"][0]["component"]["components"][0]["id"], "current");
+        assert_eq!(
+            project["pages"][0]["component"]["components"][0]["id"],
+            "current"
+        );
         assert_eq!(project["pages"][0]["pluginData"]["future"], true);
         assert_eq!(project["providerMetadata"]["version"], 3);
         assert!(project["pages"][0].get("frames").is_none());
@@ -250,7 +253,10 @@ mod tests {
         .expect("canonical project");
 
         assert_eq!(project["pages"][0]["component"]["id"], "root");
-        assert_eq!(project["pages"][0]["frames"][0]["component"]["id"], "old-root");
+        assert_eq!(
+            project["pages"][0]["frames"][0]["component"]["id"],
+            "old-root"
+        );
     }
 
     #[test]

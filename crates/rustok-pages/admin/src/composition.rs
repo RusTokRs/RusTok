@@ -12,9 +12,7 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
-use leptos_ui_routing::{
-    use_route_query_value, use_route_query_writer,
-};
+use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_page_builder::runtime_context::{
     PageBuilderRuntimeExampleRequest, generate_page_builder_runtime_example,
 };
@@ -40,7 +38,10 @@ pub fn PagesAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let refresh_generation = RwSignal::new(0_u64);
-    let default_locale = route_context.locale.clone().unwrap_or_else(|| "en".to_string());
+    let default_locale = route_context
+        .locale
+        .clone()
+        .unwrap_or_else(|| "en".to_string());
 
     let list_token = token;
     let list_tenant = tenant;
@@ -244,9 +245,8 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
                     slug.set(String::new());
                     slug_touched.set(false);
                     channel_slugs.set(String::new());
-                    refresh_generation.update(|generation| {
-                        *generation = generation.wrapping_add(1)
-                    });
+                    refresh_generation
+                        .update(|generation| *generation = generation.wrapping_add(1));
                     writer.replace_value(AdminQueryKey::PageId.as_str(), page.id);
                 }
                 Err(create_error) => error.set(Some(create_error.to_string())),
@@ -443,7 +443,9 @@ fn PageWorkspace(
         let page_id = publish_page_id.clone();
         let token = token.get_untracked();
         let tenant = tenant.get_untracked();
-        action_busy.set(Some(if publish { "publish" } else { "unpublish" }.to_string()));
+        action_busy.set(Some(
+            if publish { "publish" } else { "unpublish" }.to_string(),
+        ));
         action_error.set(None);
         spawn_local(async move {
             let result = if publish {
@@ -452,9 +454,9 @@ fn PageWorkspace(
                 transport::unpublish_page(token, tenant, page_id).await
             };
             match result {
-                Ok(_) => refresh_generation.update(|generation| {
-                    *generation = generation.wrapping_add(1)
-                }),
+                Ok(_) => {
+                    refresh_generation.update(|generation| *generation = generation.wrapping_add(1))
+                }
                 Err(error) => action_error.set(Some(error.to_string())),
             }
             action_busy.set(None);
@@ -474,9 +476,8 @@ fn PageWorkspace(
             match transport::delete_page(token, tenant, page_id).await {
                 Ok(true) => {
                     writer.clear_key(AdminQueryKey::PageId.as_str());
-                    refresh_generation.update(|generation| {
-                        *generation = generation.wrapping_add(1)
-                    });
+                    refresh_generation
+                        .update(|generation| *generation = generation.wrapping_add(1));
                 }
                 Ok(false) => action_error.set(Some("Page was not deleted".to_string())),
                 Err(error) => action_error.set(Some(error.to_string())),
