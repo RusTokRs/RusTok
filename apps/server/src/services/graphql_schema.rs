@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+#[cfg(feature = "mod-blog")]
+use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
 use crate::graphql::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
@@ -56,6 +58,8 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         runtime_extensions: module_runtime_extensions_from_ctx(ctx),
         rbac_role_writer: rbac_graphql_role_writer_from_context(ctx),
         search_rate_limiter: search_graphql_rate_limiter_from_context(ctx),
+        #[cfg(feature = "mod-blog")]
+        blog_rate_limiter: blog_graphql_rate_limiter_from_context(ctx),
         #[cfg(feature = "mod-alloy")]
         alloy_runtime: alloy_runtime_from_ctx(ctx),
         #[cfg(feature = "mod-alloy")]
