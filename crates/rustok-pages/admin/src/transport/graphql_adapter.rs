@@ -6,6 +6,9 @@ use fly::ProjectHash;
 use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
+use rustok_page_builder_admin::{
+    load_publish_scenario_selection, resolve_publish_scenario,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -428,7 +431,10 @@ pub async fn publish_page(
             "Publish requires a promoted Page Builder runtime scenario baseline".to_string(),
         )
     })?;
-    let scenario = select_single_reviewed_scenario(&baseline)?;
+    let selected_scenario_id = load_publish_scenario_selection(&id, &baseline.baseline_hash)
+        .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
+    let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
+        .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
     let reviewed = PageBuilderReviewedPublishRuntime::new(
         scenario.id.clone(),
         scenario.context.clone(),
@@ -497,21 +503,6 @@ async fn fetch_page_body_revisions(
         ));
     }
     Ok(revisions)
-}
-
-fn select_single_reviewed_scenario(
-    baseline: &RuntimeScenarioReleaseBaseline,
-) -> Result<&fly::RuntimeContextScenario, ApiError> {
-    match baseline.scenarios.as_slice() {
-        [scenario] => Ok(scenario),
-        [] => Err(GraphqlHttpError::Graphql(
-            "The promoted Page Builder baseline has no runtime scenarios".to_string(),
-        )),
-        scenarios => Err(GraphqlHttpError::Graphql(format!(
-            "The promoted Page Builder baseline contains {} scenarios; select one explicitly before publish",
-            scenarios.len()
-        ))),
-    }
 }
 
 fn publish_idempotency_key(
