@@ -3,7 +3,9 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
-use crate::model::{BlogPostDetail, BlogPostListItem, StorefrontBlogData};
+use crate::model::{
+    BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostListItem, StorefrontBlogData,
+};
 use crate::{core, transport};
 
 #[component]
@@ -128,6 +130,7 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
         ),
     );
     let tags = post.tags;
+    let public_comments = post.public_comments;
     let body_format = post.body_format;
     let selected_post_status = core::selected_post_status_view(
         status,
@@ -201,9 +204,88 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
             } else {
                 ().into_any()
             }}
+            <PublicCommentsList comments=public_comments />
         </article>
     }
     .into_any()
+}
+
+#[component]
+fn PublicCommentsList(comments: BlogCommentList) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let title = t(locale.as_deref(), "blog.comments.title", "Comments");
+    let total_label = core::count_label(
+        comments.total,
+        &t(locale.as_deref(), "blog.comments.total", "total"),
+    );
+
+    if !core::has_items(comments.items.as_slice()) {
+        return view! {
+            <section class="mt-8 border-t border-border pt-6">
+                <div class="flex items-center justify-between gap-3">
+                    <h4 class="text-lg font-semibold text-foreground">{title}</h4>
+                    <span class="text-xs text-muted-foreground">{total_label}</span>
+                </div>
+                <p class="mt-3 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    {t(
+                        locale.as_deref(),
+                        "blog.comments.empty",
+                        "No approved comments have been published yet.",
+                    )}
+                </p>
+            </section>
+        }
+        .into_any();
+    }
+
+    view! {
+        <section class="mt-8 border-t border-border pt-6">
+            <div class="flex items-center justify-between gap-3">
+                <h4 class="text-lg font-semibold text-foreground">{title}</h4>
+                <span class="text-xs text-muted-foreground">{total_label}</span>
+            </div>
+            <div class="mt-4 space-y-3">
+                {comments
+                    .items
+                    .into_iter()
+                    .map(|comment| view! { <PublicCommentCard comment /> })
+                    .collect_view()}
+            </div>
+        </section>
+    }
+    .into_any()
+}
+
+#[component]
+fn PublicCommentCard(comment: BlogCommentListItem) -> impl IntoView {
+    let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let locale_meta = core::label_value_pair(
+        &t(locale.as_deref(), "blog.comments.localeLabel", "locale"),
+        comment.effective_locale.as_str(),
+    );
+    let created_meta = core::label_value_pair(
+        &t(locale.as_deref(), "blog.comments.createdLabel", "created"),
+        comment.created_at.as_str(),
+    );
+    let is_reply = comment.parent_comment_id.is_some();
+
+    view! {
+        <article class="rounded-xl border border-border bg-card/50 p-4">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>{locale_meta}</span>
+                <span>{core::meta_separator()}</span>
+                <span>{created_meta}</span>
+                {is_reply.then(|| view! {
+                    <span class="rounded-full border border-border px-2 py-0.5">
+                        {t(locale.as_deref(), "blog.comments.reply", "reply")}
+                    </span>
+                })}
+            </div>
+            <p class="mt-2 whitespace-pre-line text-sm leading-6 text-foreground">
+                {comment.content_preview}
+            </p>
+        </article>
+    }
 }
 
 #[component]
