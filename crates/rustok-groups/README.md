@@ -3,12 +3,13 @@
 ## Purpose
 
 `rustok-groups` owns social-group identity, multilingual presentation, privacy,
-membership, local roles, invitations, feature bindings, and group access policy for
-RusToK. Exact-locale translation management, bounded invitation tokens, targeted
-invitation source events, role delegation, ownership transfer, command receipts,
-immutable audit, and native/GraphQL administration transports are implemented.
-Questions, rules, bans, consumer-side notification fan-out, and full runtime evidence
-remain subsequent plan-led slices.
+membership, local roles, invitations, membership applications, feature bindings,
+and group access policy for RusToK. Exact-locale translation management, bounded
+invitation tokens, targeted invitation source events, localized application policies,
+application review, role delegation, ownership transfer, command receipts, immutable
+audit, and native/GraphQL transports are implemented at source level. Bans, bulk
+review, policy revision history, consumer-side notification fan-out, and full runtime
+evidence remain subsequent plan-led slices.
 
 A group is a social container and policy owner. It is not the persistence owner
 for forum topics, blog posts, Pages documents, marketplace listings, products,
@@ -37,9 +38,21 @@ media assets, comments, notification inbox/delivery, or search documents.
   audit, receipt, and semantic-event storage contains no plaintext token.
 - Activate an accepted invitation, redemption, membership, member count, group
   version, audit entry, and command receipt in one owner transaction.
-- Persist successful governance and invitation state with idempotency receipts and
-  immutable audit evidence. Localization commands require idempotency keys, but
-  durable localization receipts and replay evidence remain pending.
+- Persist successful governance, invitation, and membership-application commands
+  with idempotency receipts and immutable audit evidence. Localization commands
+  require idempotency keys, but durable localization receipts and replay evidence
+  remain pending.
+- Own one current membership-application policy per group and exact-locale policy
+  translations containing bounded questions and rules. Locale fallback remains a
+  host/runtime responsibility.
+- Store one tenant/group/user application with the exact policy revision, locale,
+  questions, rules, answers, and acknowledged rule keys seen at submission time.
+- Revalidate required answers and acknowledgements in the owner service. Secret
+  groups return not-found semantics and only `request` join-policy groups accept
+  applications.
+- Review applications through owner/admin/moderator authorization. Approval activates
+  membership and increments member count; rejection moves membership to `left`.
+  Application, membership, group version, audit, and receipt commit together.
 - Append `groups.invitation.targeted_created` to the owner-owned, append-only
   `group_domain_events` table in the same database transaction as targeted invite
   creation. The event contains invitation/group/recipient identifiers only.
@@ -53,7 +66,8 @@ media assets, comments, notification inbox/delivery, or search documents.
 - Own versioned group feature bindings such as `forum.discussions`, `blog.posts`,
   `pages.wiki`, and `marketplace.store` without importing those modules' tables.
 - Publish typed FBA ports for summary, membership, access, localization,
-  invitations, targeted invitation acceptance, commands, and governance.
+  invitations, membership applications, targeted invitation acceptance, commands,
+  and governance.
 - Keep Notifications optional. Invitation creation commits even when Notifications
   is not compiled or tenant-enabled; inbox, preferences, fan-out, retry, and delivery
   remain owned by `rustok-notifications`.
@@ -69,21 +83,28 @@ media assets, comments, notification inbox/delivery, or search documents.
 - `GroupLocalizationService`
 - `GroupInvitationService`
 - `GroupTargetedInvitationService`
+- `GroupApplicationService`
 - `GroupGovernanceService`
 - `GroupSummaryReadPort`
 - `GroupMembershipReadPort`
 - `GroupAccessReadPort`
 - `GroupLocalizationReadPort`
 - `GroupInvitationReadPort`
+- `GroupApplicationReadPort`
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
 - `GroupTargetedInvitationCommandPort`
+- `GroupApplicationCommandPort`
 - `GroupGovernanceCommandPort`
-- `graphql_invitations::GroupsQueryRoot` with the `graphql` feature
-- `graphql_invitations::GroupsMutationRoot` with the `graphql` feature, including
-  `acceptTargetedGroupInvitation`
+- `graphql_applications::GroupsQueryRoot` with the `graphql` feature
+- `graphql_applications::GroupsMutationRoot` with application policy, submission,
+  review, invitation, localization, governance, and core mutations
 - `rustok_groups_admin::GroupsAdmin`
+- `rustok_groups_admin::load_group_admin_application_policy`
+- `rustok_groups_admin::upsert_group_admin_application_policy`
+- `rustok_groups_admin::load_group_admin_membership_applications`
+- `rustok_groups_admin::review_group_admin_membership_application`
 - `rustok_groups_admin::load_group_admin_translations`
 - `rustok_groups_admin::upsert_group_admin_translation`
 - `rustok_groups_admin::delete_group_admin_translation`
@@ -93,6 +114,8 @@ media assets, comments, notification inbox/delivery, or search documents.
 - `rustok_groups_admin::change_group_admin_role`
 - `rustok_groups_admin::transfer_group_admin_ownership`
 - `rustok_groups_storefront::GroupsView`
+- `rustok_groups_storefront::load_groups_storefront_application_policy`
+- `rustok_groups_storefront::submit_groups_storefront_membership_application`
 - `rustok_groups_storefront::accept_groups_storefront_targeted_invitation`
 
 ## Interactions
