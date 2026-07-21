@@ -40,7 +40,7 @@
 //! ```
 
 use async_trait::async_trait;
-use rustok_api::Permission;
+use rustok_api::{Action, Permission, Resource};
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleRuntimeExtensions, RusToKModule,
@@ -64,11 +64,11 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use dto::{
-    CategoryListItem, CategoryResponse, CommentListItem, CommentResponse, CreateCategoryInput,
-    CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
-    ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, PostListResponse,
-    PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
-    UpdatePostInput, UpdateTagInput,
+    CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
+    CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter,
+    ListCommentsFilter, ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery,
+    PostListResponse, PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput,
+    UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
 pub use entities::*;
 pub use error::{BlogError, BlogResult};
@@ -111,6 +111,11 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_POSTS_LIST,
             Permission::BLOG_POSTS_PUBLISH,
             Permission::BLOG_POSTS_MANAGE,
+            Permission::new(Resource::Categories, Action::Create),
+            Permission::new(Resource::Categories, Action::Read),
+            Permission::new(Resource::Categories, Action::Update),
+            Permission::new(Resource::Categories, Action::Delete),
+            Permission::new(Resource::Categories, Action::List),
         ]
     }
 
@@ -141,7 +146,6 @@ impl MigrationSource for BlogModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_api::{Action, Resource};
 
     #[test]
     fn module_metadata() {
@@ -167,6 +171,9 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Categories && p.action == Action::Update }));
     }
 
     #[test]
