@@ -74,6 +74,15 @@
       "reason": "Legacy prose was already preserved as immutable provenance-aware seller events by the preceding backfill migration; the final cutover only drops obsolete base columns"
     },
     {
+      "id": "oauth-app-copy-translations",
+      "migration": "m20260721_000009_move_oauth_app_copy_to_translations",
+      "mode": "fixture",
+      "owner": "rustok-auth",
+      "reason": "Legacy OAuth application display copy must be retained with truthful und provenance before name and description are removed from the base table",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('20000000-0000-0000-0000-000000000001', 'OAuth fixture tenant', 'oauth-fixture-tenant'); INSERT INTO oauth_apps (id, tenant_id, name, slug, description, app_type, client_id, redirect_uris, scopes, grant_types) VALUES ('20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Legacy OAuth App', 'legacy-oauth-app', 'Legacy OAuth description', 'third_party', '20000000-0000-0000-0000-000000000003', '[]'::jsonb, '[]'::jsonb, '[\"authorization_code\"]'::jsonb)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'oauth_apps' AND column_name IN ('name', 'description')) AND EXISTS (SELECT 1 FROM oauth_app_translations WHERE tenant_id = '20000000-0000-0000-0000-000000000001'::uuid AND app_id = '20000000-0000-0000-0000-000000000002'::uuid AND locale = 'und' AND name = 'Legacy OAuth App' AND description = 'Legacy OAuth description')) AS passed"
+    },
+    {
       "id": "customer-locale-width-32",
       "migration": "m20260721_000105_expand_customer_locale_contract",
       "mode": "none",
