@@ -128,18 +128,22 @@ impl MarketplaceProviderReversalEventAdapter {
                 ),
             ));
         }
+        let metadata = event.event_metadata.clone().ok_or_else(|| {
+            MarketplaceProviderReversalEventAdapterError::Validation(format!(
+                "provider event {} has no normalized metadata",
+                event.id
+            ))
+        })?;
+        if !has_marketplace_reversal(&metadata) {
+            return Ok(None);
+        }
         let normalized = PaymentProviderWebhookResult {
             provider_id: event.provider_id.clone(),
             delivery_id: event.delivery_id.clone(),
             external_reference: event.external_reference.clone(),
             event_type: event_type.to_string(),
             replay_key: event.idempotency_key.clone(),
-            metadata: event.event_metadata.clone().ok_or_else(|| {
-                MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                    "provider event {} has no normalized metadata",
-                    event.id
-                ))
-            })?,
+            metadata,
         };
         self.ingest_normalized(
             PaymentProviderEventContext {
@@ -165,6 +169,9 @@ impl MarketplaceProviderReversalEventAdapter {
                 provider_event::Column::EventType
                     .is_in([REFUND_COMPLETED_EVENT, CHARGEBACK_COMPLETED_EVENT]),
             )
+            .filter(sea_orm::sea_query::Expr::cust(
+                "CAST(event_metadata AS TEXT) LIKE '%marketplace_reversal%'",
+            ))
             .filter(sea_orm::sea_query::Expr::cust(
                 "NOT EXISTS (SELECT 1 FROM marketplace_reversal_event_inbox mre WHERE mre.tenant_id = payment_provider_events.tenant_id AND mre.provider_event_id = payment_provider_events.id)",
             ))
@@ -334,7 +341,9 @@ impl PaymentProviderProcessedEventObserver for MarketplaceProviderReversalEventA
         context: PaymentProviderEventContext,
         event: PaymentProviderWebhookResult,
     ) -> Result<(), PaymentProviderEventApplyError> {
-        if !is_supported_event(event.event_type.as_str()) {
+        if !is_supported_event(event.event_type.as_str())
+            || !has_marketplace_reversal(&event.metadata)
+        {
             return Ok(());
         }
         self.ingest_normalized(context, event)
@@ -358,6 +367,18 @@ struct NormalizedMarketplaceReversalFacts {
     currency_code: String,
     currency_exponent: i16,
     lines: Vec<MarketplaceLedgerReversalLineInput>,
+}
+
+fn has_marketplace_reversal(metadata: &Value) -> bool {
+    metadata
+        .as_object()
+        .is_some_and(|object| {
+            object.contains_key("marketplace_reversal")
+                || object
+                    .get("metadata")
+                    .and_then(Value::as_object)
+                    .is_some_and(|domain| domain.contains_key("marketplace_reversal"))
+        })
 }
 
 fn parse_reversal_facts(
