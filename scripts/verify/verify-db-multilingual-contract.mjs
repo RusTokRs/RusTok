@@ -206,7 +206,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     for (const [gapIndex, gap] of contract.known_gaps.entries()) {
       const label = `${contractPath}: known_gaps[${gapIndex}]`;
       for (const field of ["id", "owner", "kind", "status", "path", "next_action"]) {
-        requireNonEmptyString(gap[field], `${label}.${field`, failures);
+        requireNonEmptyString(gap[field], `${label}.${field}`, failures);
       }
       if (gapIds.has(gap.id)) failures.push(`${label}.id duplicates ${gap.id}`);
       gapIds.add(gap.id);
