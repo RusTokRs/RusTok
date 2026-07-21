@@ -91,6 +91,7 @@ pub struct Model {
     pub stage: MarketplacePayoutOperationStage,
     pub payout_id: Option<Uuid>,
     pub attempt_count: i32,
+    pub revision: i64,
     pub lease_owner: Option<String>,
     pub lease_expires_at: Option<DateTimeWithTimeZone>,
     pub last_error_code: Option<String>,
