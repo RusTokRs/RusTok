@@ -10,8 +10,18 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     );
     let rest = include_str!("../src/controllers/marketplace_reversal_financial.rs");
     let graphql = include_str!("../src/graphql/marketplace_financial.rs");
-    let worker = include_str!(
+    let marketplace_worker = include_str!(
         "../../../apps/server/src/services/marketplace_financial_worker.rs"
+    );
+    let payment_controller = include_str!("../../rustok-payment/src/controllers.rs");
+    let payment_recovery = include_str!(
+        "../../rustok-payment/src/provider_event_recovery_controller.rs"
+    );
+    let payment_worker = include_str!(
+        "../../../apps/server/src/services/payment_provider_event_worker.rs"
+    );
+    let dispatcher = include_str!(
+        "../../../apps/server/src/services/module_event_dispatcher.rs"
     );
 
     assert!(adapter.contains("refund.completed"));
@@ -61,9 +71,15 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
         );
     }
 
-    assert!(worker.contains("MARKETPLACE_FINANCIAL_SWEEP_INTERVAL"));
-    assert!(worker.contains("MARKETPLACE_FINANCIAL_SWEEP_BATCH: u64 = 100"));
-    assert!(worker.contains("MissedTickBehavior::Delay"));
-    assert!(worker.contains("adapt_pending"));
-    assert!(worker.contains("service.sweep(MARKETPLACE_FINANCIAL_SWEEP_BATCH)"));
+    assert!(marketplace_worker.contains("MARKETPLACE_FINANCIAL_SWEEP_INTERVAL"));
+    assert!(marketplace_worker.contains("MARKETPLACE_FINANCIAL_SWEEP_BATCH: u64 = 100"));
+    assert!(marketplace_worker.contains("MissedTickBehavior::Delay"));
+    assert!(marketplace_worker.contains("adapt_pending"));
+    assert!(marketplace_worker.contains("service.sweep(MARKETPLACE_FINANCIAL_SWEEP_BATCH)"));
+
+    assert!(payment_controller.contains("PaymentObservedDomainEventApplier::new"));
+    assert!(payment_recovery.contains("PaymentObservedDomainEventApplier::new"));
+    assert!(payment_worker.contains("PaymentObservedDomainEventApplier::new"));
+    assert!(dispatcher.contains("PaymentProviderEventObservers"));
+    assert!(dispatcher.contains("payment_provider_event_observers"));
 }
