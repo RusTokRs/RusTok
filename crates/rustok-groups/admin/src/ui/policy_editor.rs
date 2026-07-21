@@ -287,7 +287,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
             <form class="mt-6 space-y-6" on:submit=on_save>
                 <div class="grid gap-3 md:grid-cols-[1fr_12rem_auto_auto]">
                     <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=group_id_label prop:value=move || group_id.get() on:input=move |event| group_id.set(event_target_value(&event)) />
-                    <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=locale_label prop:value=move || locale.get() on:input=move |event| locale.set(event_target_value(&event)) />
+                    <input class="rounded-xl border border-border bg-muted px-3 py-2 text-sm" placeholder=locale_label prop:value=move || locale.get() readonly />
                     <label class="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm">
                         <input type="checkbox" prop:checked=move || enabled.get() on:change=move |event| enabled.set(event_target_checked(&event)) />
                         <span>{enabled_label}</span>
