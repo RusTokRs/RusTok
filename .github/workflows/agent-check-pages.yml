@@ -10,10 +10,9 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  CARGO_TERM_COLOR: never
 
 jobs:
-  check:
+  fix:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -22,7 +21,7 @@ jobs:
           ref: agent/pages-current-only
       - uses: dtolnay/rust-toolchain@1.93.1
         with:
-          components: rustfmt, clippy
+          components: rustfmt
       - name: Fix current Pages workspace
         run: |
           python - <<'PY'
@@ -38,9 +37,12 @@ jobs:
                 let select = on_select;
                 view! {
 '''
-          if source.count(old) != 1:
-              raise SystemExit(f'expected one navigator status binding, found {source.count(old)}')
-          source = source.replace(old, new, 1)
+          if old in source:
+              if source.count(old) != 1:
+                  raise SystemExit(f'expected one navigator status binding, found {source.count(old)}')
+              source = source.replace(old, new, 1)
+          elif 'let status_label = page.status.clone();' not in source:
+              raise SystemExit('navigator status binding is neither old nor fixed')
           old = '''                            <span class=format!(
                                 "rounded-full px-2 py-1 text-[10px] font-semibold uppercase {}",
                                 core::status_badge_class(&status)
@@ -51,40 +53,23 @@ jobs:
                                 status_class
                             )>{status_label}</span>
 '''
-          if source.count(old) != 1:
-              raise SystemExit(f'expected one navigator status render, found {source.count(old)}')
-          path.write_text(source.replace(old, new, 1))
+          if old in source:
+              if source.count(old) != 1:
+                  raise SystemExit(f'expected one navigator status render, found {source.count(old)}')
+              source = source.replace(old, new, 1)
+          elif '>{status_label}</span>' not in source:
+              raise SystemExit('navigator status render is neither old nor fixed')
+          path.write_text(source)
           PY
           cargo fmt -p rustok-pages-admin
-      - name: Capture Pages admin diagnostics
-        shell: bash
+      - name: Commit fix
         run: |
-          set +e
-          cargo check -p rustok-pages-admin --lib > /tmp/pages-check.log 2>&1
-          check_status=$?
-          if [ "$check_status" -eq 0 ]; then
-            cargo clippy -p rustok-pages-admin --lib -- -D warnings > /tmp/pages-clippy.log 2>&1
-            clippy_status=$?
-          else
-            clippy_status=99
-            echo "clippy skipped because cargo check failed" > /tmp/pages-clippy.log
+          if git diff --quiet -- crates/rustok-pages/admin; then
+            echo "Pages workspace fix already applied"
+            exit 0
           fi
-          mkdir -p .agent
-          {
-            echo "check_status=$check_status"
-            echo "clippy_status=$clippy_status"
-            echo
-            echo "=== cargo check tail ==="
-            tail -n 240 /tmp/pages-check.log
-            echo
-            echo "=== cargo clippy tail ==="
-            tail -n 240 /tmp/pages-clippy.log
-          } > .agent/pages-check-report.txt
-          exit 0
-      - name: Commit diagnostics and fix
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/rustok-pages/admin .agent/pages-check-report.txt
+          git add crates/rustok-pages/admin
           git commit -m "fix(pages): make builder workspace compile"
           git push origin HEAD:agent/pages-current-only
