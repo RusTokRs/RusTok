@@ -111,12 +111,7 @@ impl MenuBindingService {
         };
 
         let mut menu = MenuService::new(self.db.clone(), self.event_bus.clone())
-            .get(
-                tenant_id,
-                security,
-                binding.menu_id,
-                effective_locale,
-            )
+            .get(tenant_id, security, binding.menu_id, effective_locale)
             .await?;
         menu.location = binding.location;
         Ok(Some(menu))
