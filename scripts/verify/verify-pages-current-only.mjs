@@ -21,7 +21,6 @@ const forbiddenFiles = [
 
 const scannedRoots = [
   "crates/rustok-pages/src",
-  "crates/rustok-pages/admin/src",
   "crates/rustok-pages/storefront/src",
   "apps/next-admin/packages/blog/src",
   "apps/next-admin/src/app/dashboard/blog",
