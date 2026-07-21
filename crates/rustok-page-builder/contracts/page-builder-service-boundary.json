@@ -46,6 +46,7 @@
     "ReferencePageBuilderRenderingAdapter",
     "ReferencePageBuilderService",
     "AdapterBackedPageBuilderService",
+    "FlyValidatedPageBuilderService",
     "render_preview_html",
     "extract_tree_nodes"
   ]
