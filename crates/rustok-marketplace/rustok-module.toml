@@ -9,18 +9,38 @@ ui_classification = "backend_only"
 
 [marketplace]
 category = "commerce"
-tags = ["marketplace", "seller", "listing", "settlement"]
+tags = [
+    "marketplace",
+    "seller",
+    "listing",
+    "allocation",
+    "commission",
+    "ledger",
+    "payout",
+    "financial-orchestration",
+]
 
 [dependencies]
 marketplace_seller = { version_req = ">=0.1.0" }
 marketplace_listing = { version_req = ">=0.1.0" }
+marketplace_allocation = { version_req = ">=0.1.0" }
+marketplace_commission = { version_req = ">=0.1.0" }
+marketplace_ledger = { version_req = ">=0.1.0" }
+marketplace_payout = { version_req = ">=0.1.0" }
 
 [crate]
 entry_type = "MarketplaceModule"
 
 [fba.consumer]
 registry = "contracts/marketplace-fba-registry.json"
-contract_version = "marketplace.family.v1"
-providers = ["marketplace_seller", "marketplace_listing"]
+contract_version = "marketplace.family.v2"
+providers = [
+    "marketplace_seller",
+    "marketplace_listing",
+    "marketplace_allocation",
+    "marketplace_commission",
+    "marketplace_ledger",
+    "marketplace_payout",
+]
 context = "rustok_api::ports::PortContext"
 error = "rustok_api::ports::PortError"
