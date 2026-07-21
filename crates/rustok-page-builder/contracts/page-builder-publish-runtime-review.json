@@ -1,0 +1,72 @@
+{
+  "status": "domain_service_ready",
+  "format": "page_builder_publish_runtime_review_v1",
+  "provider": {
+    "dto": "PageBuilderReviewedPublishRuntime",
+    "error": "PageBuilderPublishRuntimeReviewError",
+    "source": "crates/rustok-page-builder/src/publish_runtime.rs",
+    "fields": [
+      "format",
+      "scenario_id",
+      "context",
+      "review_hash"
+    ],
+    "scenario": {
+      "required": true,
+      "normalized": true,
+      "max_bytes": 128
+    },
+    "context": {
+      "shape": "json_object",
+      "max_bytes": 262144,
+      "persisted": false
+    },
+    "review_hash": {
+      "algorithm": "sha256",
+      "payload": [
+        "format",
+        "scenario_id",
+        "context"
+      ],
+      "purpose": "bind reviewed runtime selection to publish materialization"
+    }
+  },
+  "pages_consumer": {
+    "source": "crates/rustok-pages/src/services/page/reviewed_publish.rs",
+    "entrypoints": [
+      "publish_reviewed",
+      "publish_reviewed_if_current"
+    ],
+    "required_order": [
+      "find_page",
+      "enforce_owned_scope",
+      "runtime.validate",
+      "load_bodies",
+      "ensure_candidates_allowed",
+      "transition_page_with_reviewed_runtime"
+    ],
+    "transaction_order": [
+      "begin",
+      "find_page_for_update",
+      "load_bodies_for_reviewed_publish",
+      "compile_builder_sources_with_reviewed_runtime",
+      "stage_compiled_in_tx",
+      "bind_existing_body_in_tx",
+      "apply_transition",
+      "publish_in_tx",
+      "commit"
+    ],
+    "materialization_match": [
+      "runtime_scenario_id",
+      "runtime_context_hash"
+    ],
+    "error_codes": [
+      "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID",
+      "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH"
+    ],
+    "raw_context_persisted": false,
+    "legacy_publish_path": "pending_atomic_migration",
+    "atomic_pipeline": "pending"
+  },
+  "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs"
+}
