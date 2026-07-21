@@ -2,10 +2,11 @@ use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel,
-    SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
-    SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    PublishScenarioSelectorPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
+    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
+    ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel,
+    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
+    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -86,6 +87,17 @@ pub fn AdminCanvas(
     if let Some(capabilities) = editor_capabilities.or(evaluated_capabilities) {
         runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
     }
+
+    let scenario_baseline = RwSignal::new(runtime_scenario_baseline);
+    let host_baseline_callback = StoredValue::new(on_runtime_scenario_baseline);
+    let baseline_signal = scenario_baseline;
+    let on_baseline_change = Callback::new(move |change: PageBuilderScenarioBaselineChange| {
+        baseline_signal.set(change.baseline.clone());
+        if let Some(callback) = host_baseline_callback.get_value() {
+            callback.run(change);
+        }
+    });
+
     let browser_page_id = runtime
         .controller
         .with(|controller| controller.page_id().to_string());
@@ -107,6 +119,7 @@ pub fn AdminCanvas(
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
     let scenario_matrix_runtime = runtime.clone();
+    let publish_scenario_runtime = runtime.clone();
     let scenario_regression_runtime = runtime.clone();
     let dynamic_runtime = runtime.clone();
     let context_runtime = runtime.clone();
@@ -169,10 +182,14 @@ pub fn AdminCanvas(
                     <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
                     <RuntimeScenarioMatrixPanel runtime=scenario_matrix_runtime />
+                    <PublishScenarioSelectorPanel
+                        runtime=publish_scenario_runtime
+                        baseline=scenario_baseline
+                    />
                     <RuntimeScenarioRegressionPanel
                         runtime=scenario_regression_runtime
-                        initial_baseline=runtime_scenario_baseline
-                        on_baseline_change=on_runtime_scenario_baseline
+                        initial_baseline=scenario_baseline.get_untracked()
+                        on_baseline_change=Some(on_baseline_change)
                     />
                     <DynamicRuntimePanel runtime=dynamic_runtime />
                     <ContextSchemaPanel runtime=context_runtime />
