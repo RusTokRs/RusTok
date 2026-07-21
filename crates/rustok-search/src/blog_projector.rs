@@ -89,10 +89,10 @@ impl BlogSearchProjector {
             DbBackend::Postgres,
             r#"
             SELECT
-                to_regclass('public.blog_posts') IS NOT NULL
-                AND to_regclass('public.blog_post_translations') IS NOT NULL
-                AND to_regclass('public.blog_post_channel_visibility') IS NOT NULL
-                AND to_regclass('public.blog_category_translations') IS NOT NULL
+                to_regclass('blog_posts') IS NOT NULL
+                AND to_regclass('blog_post_translations') IS NOT NULL
+                AND to_regclass('blog_post_channel_visibility') IS NOT NULL
+                AND to_regclass('blog_category_translations') IS NOT NULL
                 AS available
             "#
             .to_string(),
