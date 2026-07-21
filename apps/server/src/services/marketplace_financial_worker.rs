@@ -38,7 +38,7 @@ pub fn spawn_marketplace_financial_worker(
         .expect("TransactionalEventBus must be initialized before marketplace financial worker");
     let db = runtime_ctx.db_clone();
     let paid_events = financial_runtime.paid_event_inbox(db.clone(), event_bus);
-    let reversal_adapter = financial_runtime.provider_reversal_event_adapter(db.clone());
+    let reversal_backfill = financial_runtime.provider_reversal_backfill(db.clone());
     let reversal_events = financial_runtime.reversal_event_inbox(db);
 
     tracing::info!(
@@ -51,7 +51,7 @@ pub fn spawn_marketplace_financial_worker(
         _handle: tokio::spawn(worker_loop(
             instance_id,
             paid_events,
-            reversal_adapter,
+            reversal_backfill,
             reversal_events,
             stop_rx,
         )),
@@ -61,7 +61,7 @@ pub fn spawn_marketplace_financial_worker(
 async fn worker_loop(
     instance_id: u64,
     paid_events: rustok_commerce::MarketplacePaidEventInboxService,
-    reversal_adapter: rustok_commerce::MarketplaceProviderReversalEventAdapter,
+    reversal_backfill: rustok_commerce::MarketplaceProviderReversalBackfillService,
     reversal_events: rustok_commerce::MarketplaceReversalEventInboxService,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
@@ -90,7 +90,7 @@ async fn worker_loop(
                 }
             }
             _ = ticker.tick() => {
-                adapt_reversal_events(instance_id, &reversal_adapter).await;
+                adapt_reversal_events(instance_id, &reversal_backfill).await;
                 sweep_reversal_events(instance_id, &reversal_events).await;
                 sweep_paid_events(instance_id, &paid_events).await;
             }
@@ -100,9 +100,9 @@ async fn worker_loop(
 
 async fn adapt_reversal_events(
     instance_id: u64,
-    adapter: &rustok_commerce::MarketplaceProviderReversalEventAdapter,
+    backfill: &rustok_commerce::MarketplaceProviderReversalBackfillService,
 ) {
-    match adapter.adapt_pending(MARKETPLACE_FINANCIAL_SWEEP_BATCH).await {
+    match backfill.adapt_pending(MARKETPLACE_FINANCIAL_SWEEP_BATCH).await {
         Ok(report) if report.selected > 0 => {
             tracing::info!(
                 worker = "marketplace_financial_recovery",
