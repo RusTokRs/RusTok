@@ -3,8 +3,8 @@
 The canonical cross-module task order and status remain in
 `crates/rustok-forum/docs/implementation-plan.md`. This file does not duplicate
 that backlog; it records the owner-local gates that future notification slices
-must preserve. `NOTIFY-00` remains `in_progress` until maintainer-run verification
-is recorded in the canonical plan.
+must preserve. `NOTIFY-00` and `NOTIFY-01` remain `in_progress` until
+maintainer-run verification and canonical-plan promotion are recorded.
 
 ## Scope
 
@@ -17,13 +17,17 @@ is implemented incrementally.
 The neutral API, bounded source/provider registries, deferred host factory
 materialization, optional owner composition, and explicit admin/storefront
 foundation states exist. Forum publishes the first real source provider for
-`forum.topic.created`; an executable SQLite profile covers notifications-off/on,
-bounded audience paging, target authorization, cross-tenant/non-open fallback,
-and retryable provider failure classification.
+`forum.topic.created`.
 
-No notification owner persistence exists yet. The first schema, migration,
-durable consumer inbox, fan-out jobs, preferences, notification rows, and
-delivery attempts remain under `NOTIFY-01` and later canonical tasks.
+The first owner persistence migration now exists for PostgreSQL and SQLite. It
+creates notification, delivery-attempt, fan-out, preference, digest, and
+encrypted push-subscription tables with typed Rust/DB values, tenant-composite
+recipient integrity, bounded payloads, stable dedupe/idempotency keys, and
+lease/completion guards.
+
+Global server migrator registration, transactional owner commands, durable
+source-event consumption, retention/reconciliation state, and all inbox/delivery
+APIs remain open.
 
 ## Milestones
 
@@ -58,19 +62,46 @@ delivery attempts remain under `NOTIFY-01` and later canonical tasks.
 - static runtime fixtures reject default-enabled composition, Forum imports of
   the owner crate, and removal of the channel fail-closed guard.
 
-### Persistence gate
+### Delivered in `NOTIFY-01A`
 
-Before inbox or delivery APIs are published, the owner schema must include
-tenant/user composite integrity, typed statuses, stable idempotency keys, bounded
-payloads, consumer inbox state, fan-out leases, delivery attempts, retention,
-and reconciliation metadata. No empty migration or placeholder owner table is
-added merely to satisfy composition.
+- module-owned PostgreSQL/SQLite migration
+  `m20260721_000010_create_notification_persistence`;
+- typed owner entities for notifications, channel delivery attempts, fan-out
+  jobs/items, preferences, digest jobs/items, and push subscriptions;
+- composite `users(tenant_id,id)` identity and tenant-composite recipient/user
+  foreign keys;
+- tenant guards for optional actor and fan-out notification references;
+- minimum notification dedupe by tenant, recipient, source slug, source event ID,
+  and notification type;
+- tenant-scoped idempotency keys for notification, delivery, fan-out item, and
+  digest item writes;
+- database state/channel/priority/mode checks, read-implies-seen, lease and
+  completion timestamp invariants;
+- 8 KiB notification template data and 16 KiB fan-out descriptor limits plus
+  bounded cursors and provider error fields;
+- push endpoint material stored only as encrypted values with endpoint hash and
+  key version;
+- SQLite and opt-in PostgreSQL invariant profiles;
+- static fixtures reject missing composite recipient integrity, raw contact or
+  source-private fields, and plaintext push endpoint columns.
+
+### Remaining `NOTIFY-01` scope
+
+- global server migrator registration after maintainer verification of the
+  module-local PostgreSQL/SQLite schema;
+- transactional persistence services with conflict-safe idempotent create/update
+  behavior;
+- explicit retention and reconciliation metadata/commands;
+- durable source consumer inbox remains coordinated with `NOTIFY-03` rather than
+  being inferred from fan-out rows;
+- inbox, preference, digest, and delivery transport APIs remain closed until the
+  owner command semantics are implemented.
 
 ### UI gate
 
-Admin and storefront packages remain module-owned. Until persistence exists,
-they expose only bootstrap/unavailable states and must not invent unread counts
-or store shadow inbox state in the host.
+Admin and storefront packages remain module-owned. Until inbox APIs exist, they
+expose only bootstrap/unavailable states and must not invent unread counts or
+store shadow inbox state in the host.
 
 ## Verification
 
@@ -78,17 +109,16 @@ or store shadow inbox state in the host.
 cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications-api --all-targets --all-features
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications --all-targets
-RUSTFLAGS="-Dwarnings" cargo check -p rustok-forum --all-targets --all-features
-RUSTFLAGS="-Dwarnings" cargo check -p rustok-server --all-targets
-cargo test -p rustok-notifications-api
-cargo test -p rustok-notifications
-cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
+cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
+NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
+  cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
 node scripts/verify/verify-notifications-foundation.mjs
 node scripts/verify/verify-notifications-foundation.test.mjs
 node scripts/verify/verify-notifications-runtime.mjs
 node scripts/verify/verify-notifications-runtime.test.mjs
+node scripts/verify/verify-notifications-persistence.mjs
+node scripts/verify/verify-notifications-persistence.test.mjs
 cargo xtask module validate notifications
-cargo xtask module validate forum
 ```
 
 ## Update Rules
