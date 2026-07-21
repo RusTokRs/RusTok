@@ -25,7 +25,7 @@ leptos_locales_path = "admin/locales"
 
 [fba.provider]
 contract = "grapesjs"
-builder_contract_version = "1.0"
+builder_contract_version = "1.1"
 consumer_min_version = "1.0"
 capabilities = ["preview", "tree", "properties", "publish"]
 permission_map = [
