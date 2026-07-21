@@ -75,6 +75,11 @@ contracts, not Pages persistence or tenant policy.
 - [x] Pages persists runtime materialization identity/snapshots with a composite
   uniqueness key that includes `materialization_hash`; partial evidence is
   rejected and raw runtime context is forbidden.
+- [x] The provider exposes an explicit reviewed publish-runtime contract. Pages
+  has a domain publish path that verifies its scenario/context hash against the
+  resulting materialization identity before staging.
+- [ ] Public publish transports must be cut over from the legacy default runtime
+  to the reviewed domain path.
 - [ ] Publish must become one idempotent atomic workflow from validation through
   artifact binding and outbox/cache invalidation.
 - [ ] Authoritative sanitization is not complete for every publish path.
@@ -84,9 +89,9 @@ contracts, not Pages persistence or tenant policy.
 
 - **FFA:** `in_progress` — current-only runtime/storefront boundaries are ready;
   typed metadata properties and inline edit mode remain open.
-- **FBA:** `in_progress` — deterministic artifact and runtime materialization
-  persistence exist; atomic publication, rollback, sanitization and observed
-  rollout evidence remain open.
+- **FBA:** `in_progress` — deterministic artifact persistence and the reviewed
+  publish-runtime domain contract exist; transport cutover, idempotent atomic
+  publication, rollback, sanitization and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -110,6 +115,7 @@ contracts, not Pages persistence or tenant policy.
 ```text
 Page metadata revision
   + Fly document/body revision
+  + reviewed runtime scenario/context hash
   -> validation and provider readiness
   -> authoritative sanitization
   -> canonical runtime materialization
@@ -128,10 +134,12 @@ Invariants:
 5. Artifact identity includes source, renderer release, registry and policy hashes.
 6. Materialization evidence includes context hash, scenario identity and runtime
    snapshot hash; raw context is never stored.
-7. Missing providers fail visibly and never cause silent deletion.
-8. Dynamic widgets persist versioned configuration, not privileged snapshots.
-9. Anonymous storefront bundles contain no editor code.
-10. No block or shadow-editor fallback exists.
+7. Reviewed publish runtime is valid only when its SHA-256 binds format, explicit
+   scenario and transient context, and the materialized identity matches both.
+8. Missing providers fail visibly and never cause silent deletion.
+9. Dynamic widgets persist versioned configuration, not privileged snapshots.
+10. Anonymous storefront bundles contain no editor code.
+11. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -150,6 +158,13 @@ Invariants:
   `compile_materialized_static_landing(PageBuilderPreviewRuntime::default())`.
 - Added full materialization verification on staging, binding and storefront reads;
   all-`NULL` legacy evidence remains readable, partial evidence fails closed.
+- Added `PageBuilderReviewedPublishRuntime`, binding format, scenario and transient
+  context through a SHA-256 review hash.
+- Added `PageService::publish_reviewed*`, which rechecks authorization and body
+  revisions, compiles with the selected runtime, verifies materialization evidence,
+  and stages/binds artifacts with page state and outbox events in one transaction.
+- Added a machine-readable reviewed-runtime contract and source guardrail; raw
+  runtime context remains forbidden in Pages persistence.
 
 ## Next implementation order
 
@@ -170,13 +185,15 @@ Invariants:
 - [x] Immutable artifact persistence and body bindings.
 - [x] Runtime materialization identity/snapshot persistence and storefront
   verification.
-- [ ] Add an explicit reviewed publish-runtime/scenario selection instead of the
-  canonical default runtime.
+- [x] Add an explicit reviewed publish-runtime/scenario contract and Pages domain
+  publication path instead of compiling that path with the canonical default.
+- [ ] Cut GraphQL, HTTP and admin publish transports over to the reviewed runtime
+  DTO and remove default-runtime publication for builder documents.
 - [ ] Make publish idempotent: validate -> sanitize -> materialize -> compile ->
   persist -> bind -> switch published state -> outbox/cache invalidation.
 - [ ] Add rollback to a previous immutable artifact.
-- [ ] Correlate editor save, page revision, materialization, artifact and storefront
-  read.
+- [ ] Correlate editor save, page revision, runtime review, materialization,
+  artifact and storefront read.
 - [ ] Add integrity audit and repair/rebuild commands.
 
 ### P1 — complete Page Builder authoring
@@ -215,6 +232,7 @@ Invariants:
 - `cargo check -p rustok-pages-storefront --lib`
 - `cargo clippy -p rustok-pages-storefront --lib -- -D warnings`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`
 - `node scripts/verify/verify-pages-current-only.mjs`
 - `node scripts/verify/verify-pages-ui-boundary.mjs`
 - `npm run verify:page-builder:consumer:pages`
