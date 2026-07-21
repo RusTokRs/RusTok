@@ -8,43 +8,39 @@ on:
       - ".github/workflows/fly-page-builder.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish-current-only-pages-clippy-fix:
+  diagnose-current-only-pages-clippy-no-deps:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/pages-current-only-compile-fix
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.93.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: pages-current-only-clippy-fix
-      - name: Apply and verify Pages-only Clippy fix
+      - name: Run Pages-only Clippy and capture log
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           python scripts/temporary/remove_unused_pages_binding.py
           cargo fmt -p rustok-pages
-          cargo test -p rustok-pages --lib --tests --no-run
-          cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings
-      - name: Remove diagnostic files and publish product commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git show origin/main:.github/workflows/fly-page-builder.yml > .github/workflows/fly-page-builder.yml
-          rm scripts/temporary/remove_unused_pages_binding.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            .github/workflows/fly-page-builder.yml \
-            scripts/temporary/remove_unused_pages_binding.py \
-            crates/rustok-pages/src/services/page_builder_artifact.rs
-          git commit -m "fix(pages): remove unused artifact binding helper"
-          git push origin HEAD:agent/pages-current-only-compile-fix
+          cargo test -p rustok-pages --lib --tests --no-run 2>&1 | tee /tmp/pages-current-only-compile.log
+          test_status=${PIPESTATUS[0]}
+          cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings 2>&1 | tee /tmp/pages-current-only-clippy-no-deps.log
+          clippy_status=${PIPESTATUS[0]}
+          printf '%s\n' "$test_status" > /tmp/pages-current-only-compile.status
+          printf '%s\n' "$clippy_status" > /tmp/pages-current-only-clippy-no-deps.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pages-current-only-clippy-no-deps
+          path: |
+            /tmp/pages-current-only-compile.log
+            /tmp/pages-current-only-compile.status
+            /tmp/pages-current-only-clippy-no-deps.log
+            /tmp/pages-current-only-clippy-no-deps.status
+          if-no-files-found: error
