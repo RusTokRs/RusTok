@@ -62,6 +62,7 @@ marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/ru
 moderation = { crate = "rustok-moderation", source = "path", path = "crates/rustok-moderation" }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
+notifications = { crate = "rustok-notifications", source = "path", path = "crates/rustok-notifications", depends_on = ["outbox"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
