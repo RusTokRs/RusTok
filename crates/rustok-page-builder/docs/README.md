@@ -4,108 +4,87 @@
 
 ## Core rule
 
-The module has one current API and one current domain model. Their version is the crate/module
-semver (`CARGO_PKG_VERSION`). Documents, commands, artifacts, component manifests, capabilities,
+The module has one current API, one current service path and one current domain owner. The crate
+semver (`CARGO_PKG_VERSION`) is the module version. Fly owns the project document model; Page
+Builder does not maintain a parallel schema or provider implementation.
 
-The API evolves additively during a module major. Existing compatibility fields and entrypoints stay
-operational until the next module major, where they may be removed after consumers have migrated.
-This additive-then-major-cleanup cycle is the permanent evolution model.
-
-## Purpose
-
-- provide a reusable visual Page Builder boundary before and during integration with `pages` and
-  other consumer modules;
-- keep authoring semantics independent of React, Leptos, Dioxus, mobile and transport choices;
-- centralize capabilities `preview`, `tree`, `properties` and `publish`;
-- provide rollout, health, permissions, validation, rendering and observability seams.
+GrapesJS is an import/export format and behavioural reference. It is decoded at the Fly adapter
+boundary and never becomes a second Page Builder domain model.
 
 ## Ownership
 
-- `fly` owns the current project model, editor commands, validation, registries and deterministic
-  rendering;
-- `rustok-page-builder` owns capability, service, authorization, transport, rollout and the
-  framework-neutral browser host contract;
-- consumer modules own persistence and lifecycle;
-- UI adapters only render the shared browser module source and translate framework events to the
-  same Fly intents and commands.
+- `fly` owns project decoding, validation, registries, commands, deterministic rendering and
+  runtime-scenario release semantics;
+- `rustok-page-builder` owns capability DTOs, service ports, authorization, rollout guards,
+  transport envelopes, runtime telemetry and the framework-neutral browser host contract;
+- consumer modules own persistence and publication lifecycle;
+- UI adapters only render/bind framework-specific surfaces to the same Page Builder contracts.
 
-GrapesJS is an external compatibility format and behavioural reference. It is not a version of the
-RusTok Page Builder domain model.
+## Current service path
+
+`FlyAdapterBackedPageBuilderService` is the only service implementation owned by this crate.
+
+```text
+PageBuilderCapabilityRequest
+            |
+            v
+  FlyProjectInspection
+            |
+   decode + validate
+            |
+   +--------+--------+
+   |                 |
+   v                 v
+preview renderer   project store
+   |                 |
+   +--------+--------+
+            |
+ PageBuilderRuntimeCallEvidence
+            |
+            v
+PageBuilderCapabilityResponse
+```
+
+The service uses these framework-neutral ports:
+
+- `PageBuilderProjectStore` — tenant-scoped load/save;
+- `PageBuilderRenderingAdapter` — preview rendering after Fly validation;
+- `PageBuilderRuntimeTelemetry` — started/succeeded/failed operation evidence;
+- `PageBuilderScenarioBaselineStore` — optional release baseline lookup.
+
+`CapabilityGuardedService` enforces rollout and port-call policy. `AuthorizedPageBuilderHandlers`
+enforces permissions before transport dispatch. GraphQL and Leptos server-function endpoints use
+the same handlers and canonical envelopes.
+
+The machine-readable boundary is
+`contracts/page-builder-service-boundary.json`. The corresponding verifier rejects obsolete
+reference services, migration decorators and manual JSON rendering paths.
+
+## Framework-neutral browser host
+
+`src/browser_host.rs` owns:
+
+- the `fly_browser` adapter marker;
+- safe inline JSON escaping;
+- config + Fly Browser asset + host bootstrap composition;
+- SSR form, selection and draft-route bindings;
+- lifecycle cleanup and idempotent late manual mount binding.
+
+`crates/rustok-page-builder/admin/src/ui/browser_adapter.rs` is a thin Leptos renderer over this
+source. A future Dioxus renderer can use the same source without copying browser policy.
 
 ## Current entrypoints
 
-- `src/browser_host.rs` — framework-neutral browser module composition, safe inline config escaping
-  and lifecycle-bound SSR controls reusable by Leptos and future Dioxus hosts;
-- `src/dto.rs` — versionless `PageBuilderModuleMetadata`, capability DTOs and typed error catalog;
-- `src/adapters.rs` — `FlyProjectInspection::decode_current` and framework-neutral endpoint seams;
-- `src/adapters/fly_service.rs` — current Fly-backed service implementation;
-- `src/landing.rs` — landing inspection and static-build boundary without a schema selector;
-- `src/landing_service.rs` — preview/publish validation decorator;
-- `src/runtime_telemetry.rs` — versionless runtime operation evidence;
-- `src/service.rs` — capability service trait plus original reference/provider compatibility APIs;
-- `src/transport.rs` — canonical GraphQL, Leptos server-function and future adapter envelopes;
-- `src/health.rs` — provider health and SLO evidence;
-- `src/rollout.rs` — capability rollout and fallback policy.
-
-## Current runtime flow
-
-```text
-fly-browser asset + rustok-page-builder::browser_host
-                         |
-                         v
-            Leptos / future Dioxus renderer
-                         |
-                         v
-browser / transport adapter -> PageBuilderCapabilityRequest
-                         |
-                         v
-               FlyProjectInspection
-                         |
-               +---------+---------+
-               |                   |
-               v                   v
-          validation          registry check
-               |                   |
-               +---------+---------+
-                         |
-                         v
-                Fly domain document
-                         |
-               +---------+---------+
-               |                   |
-               v                   v
-            preview          static publish gate
-```
-
-No current step branches on a document version. Browser host policy is composed once in the core
-crate; framework adapters do not duplicate auto-mount, form binding or lifecycle cleanup logic.
-
-## Compatibility surface
-
-call version-selector decode methods. These surfaces are compatibility adapters only:
-
-- current services ignore it;
-- Pages publish does not gate on it;
-- Fly's domain model never receives it;
-
-constants remain available for existing consumers during the current module major. New code must use
-`PageBuilderModuleMetadata`, `decode_current`, `inspect_current` and the Fly-backed service.
-
-## Runtime telemetry
-
-`PageBuilderRuntimeCallEvidence` records:
-
-- module slug;
-- operation (`load_project`, `save_project`, `render_preview`);
-- status (`started`, `succeeded`, `failed`);
-- tenant, page, revision and correlation identifiers;
-- typed error kind and stable error code.
-
-It intentionally contains no contract, schema or payload version. The deployed module version comes
-from build/runtime module metadata.
-
-The old `PageBuilderAdapterCallEvidence` remains part of the compatibility service surface until a
-module-major cleanup.
+- `src/dto.rs` — capability DTOs and typed error catalog;
+- `src/adapters.rs` — `FlyProjectInspection` and framework-neutral endpoint payloads;
+- `src/adapters/fly_service.rs` — `FlyAdapterBackedPageBuilderService`;
+- `src/browser_host.rs` — framework-neutral browser module source;
+- `src/service.rs` — service/port traits, guards and authorized handlers;
+- `src/transport.rs` — canonical GraphQL and server-function envelopes;
+- `src/runtime_telemetry.rs` — runtime operation evidence;
+- `src/runtime_scenario_release.rs` — optional scenario release gate;
+- `src/landing.rs` and `src/landing_service.rs` — static landing validation and publish boundary;
+- `src/health.rs` and `src/rollout.rs` — health/SLO and capability rollout policy.
 
 ## Permissions
 
@@ -116,7 +95,7 @@ module-major cleanup.
 | `properties` | `pages:update` | read deadline |
 | `publish` | `pages:publish` | write deadline and idempotency key |
 
-`pages:manage` is the effective override for all capabilities.
+`pages:manage` is the effective override.
 
 ## Fallback profiles
 
@@ -129,17 +108,15 @@ module-major cleanup.
 
 ## Verification
 
-- `cargo test -p fly landing_contract`;
-- `cargo test -p rustok-page-builder --lib`;
-- `cargo xtask module validate page_builder`;
-- `node scripts/verify/verify-fly-ssr-first.mjs`;
-- Page Builder verification scripts under `crates/rustok-page-builder/scripts/verify`.
-
-Verification and registry scripts must treat module semver as the version boundary and must not
-create new domain/payload version sources.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
+- `cargo test -p fly`;
+- `cargo test -p rustok-page-builder --all-targets --all-features`;
+- `cargo xtask module validate page_builder`.
 
 ## Related documents
 
+- `crates/rustok-page-builder/docs/fly-runtime.md`;
 - `DECISIONS/2026-07-13-fly-page-builder-architecture.md`;
 - `docs/modules/page-builder-implementation-plan.md`;
 - `crates/rustok-pages/docs/implementation-plan.md`.
