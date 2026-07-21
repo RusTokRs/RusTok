@@ -11,15 +11,15 @@ const read = (...segments) => fs.readFileSync(path.join(repoRoot, ...segments), 
 const registry = JSON.parse(
   read("crates", "rustok-page-builder", "contracts", "page-builder-fba-registry.json"),
 );
-const wavePacket = JSON.parse(
-  read(
-    "crates",
-    "rustok-page-builder",
-    "contracts",
-    "evidence",
-    "pages-wave0-dry-run-evidence.json",
+const wavePackets = [
+  "pages-wave0-dry-run-evidence.json",
+  "pages-wave1-readiness-draft.json",
+].map((filename) => ({
+  filename,
+  packet: JSON.parse(
+    read("crates", "rustok-page-builder", "contracts", "evidence", filename),
   ),
-);
+}));
 const dto = read("crates", "rustok-page-builder", "src", "dto.rs");
 const previewPort = read("crates", "rustok-page-builder", "src", "preview_port.rs");
 const flyService = read(
@@ -69,11 +69,13 @@ if (!Number.isInteger(contract.scenario_id_max_bytes) || contract.scenario_id_ma
   fail("scenario_id_max_bytes must be a positive integer");
 }
 
-if (wavePacket.metadata?.provider?.builder_contract_version !== providerVersion) {
-  fail("Pages wave evidence builder_contract_version does not match registry provider");
-}
-if (wavePacket.metadata?.provider?.consumer_min_version !== consumerMinVersion) {
-  fail("Pages wave evidence consumer_min_version does not match registry provider");
+for (const { filename, packet } of wavePackets) {
+  if (packet.metadata?.provider?.builder_contract_version !== providerVersion) {
+    fail(`${filename} builder_contract_version does not match registry provider`);
+  }
+  if (packet.metadata?.provider?.consumer_min_version !== consumerMinVersion) {
+    fail(`${filename} consumer_min_version does not match registry provider`);
+  }
 }
 
 requireMarker(dto, `pub struct ${contract.input}`, "preview runtime DTO");
