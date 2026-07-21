@@ -34,6 +34,8 @@ jobs:
         run: node scripts/verify/verify-advisory-exceptions.mjs
       - name: Verify dependency feature hygiene
         run: node scripts/verify/verify-dependency-feature-hygiene.mjs
+      - name: Verify dependency advisory reachability structure
+        run: node scripts/verify/verify-dependency-advisory-reachability-contract.mjs
       - name: Verify Alloy SeaORM compatibility contract
         run: node scripts/verify/verify-alloy-seaorm-compat.mjs
       - name: Verify cache clock fail-closed contract
