@@ -29,6 +29,20 @@ function fixture({ hardcodedPublic = false, missingPostgresHarness = false } = {
       FROM blog_posts p
       INSERT INTO search_documents
       DELETE FROM search_documents
+      pub(crate) async fn delete_tenant
+      "delete_blog_scope"
+    `,
+  );
+  write(
+    root,
+    "crates/rustok-search/src/ingestion.rs",
+    `
+      DomainEvent::TenantModuleToggled
+      module_slug == "blog"
+      handle_blog_module_toggle
+      blog_projector.delete_tenant
+      "delete_blog_scope"
+      "rebuild_blog_scope"
     `,
   );
   write(
@@ -41,6 +55,7 @@ function fixture({ hardcodedPublic = false, missingPostgresHarness = false } = {
       DomainEvent::BlogPostUpdated
       DomainEvent::BlogPostArchived
       DomainEvent::BlogPostDeleted
+      DomainEvent::TenantModuleToggled
       target_type: "blog".to_string()
     `,
   );
@@ -56,6 +71,8 @@ function fixture({ hardcodedPublic = false, missingPostgresHarness = false } = {
         SET search_path TO "{schema_name}", public
         full_blog_reindex_replaces_only_current_tenant_blog_documents
         blog_events_upsert_publish_archive_and_delete_search_document
+        blog_module_disable_cleans_scope_and_enable_rebuilds_it
+        targeted_reindex_removes_stale_document_when_source_post_is_missing
       `,
     );
   }
@@ -72,12 +89,16 @@ function fixture({ hardcodedPublic = false, missingPostgresHarness = false } = {
         "crates/rustok-search/tests/blog_ingestion_contract_test.rs",
         "crates/rustok-search/tests/blog_projection_postgres_test.rs",
       ],
+      cases: [
+        { name: "module_toggle_cleanup_rebuild" },
+        { name: "targeted_missing_post_cleanup" },
+      ],
     }),
   );
   write(
     root,
     "crates/rustok-search/docs/implementation-plan.md",
-    "search-blog-projection-postgres-harness.json RUSTOK_SEARCH_TEST_DATABASE_URL search_path",
+    "search-blog-projection-postgres-harness.json RUSTOK_SEARCH_TEST_DATABASE_URL search_path module-disabled cleanup targeted missing-post",
   );
   return root;
 }
