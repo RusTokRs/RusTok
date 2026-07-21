@@ -15,7 +15,13 @@ function write(root, relativePath, content) {
   writeFileSync(target, content);
 }
 
-function fixture({ missingOutbox = false, unboundedPagination = false } = {}) {
+function fixture({
+  missingOutbox = false,
+  missingSlugGuard = false,
+  unboundedServicePagination = false,
+  unboundedHttpPagination = false,
+  missingTypedErrors = false,
+} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-category-reindex-"));
   const servicePath = "crates/rustok-blog/src/services/category.rs";
   const controllerPath = "crates/rustok-blog/src/controllers/categories.rs";
@@ -39,6 +45,11 @@ function fixture({ missingOutbox = false, unboundedPagination = false } = {}) {
       target_id: None
       txn.commit().await
       blog_category_translation::Column::TenantId.eq(tenant_id)
+      Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?
+      normalize_category_slug(input.slug.as_deref(), &input.name)?
+      ${missingSlugGuard ? "" : "Slug must contain at least one ASCII letter or digit"}
+      ${unboundedServicePagination ? "let per_page = filter.per_page.max(1)" : "let per_page = filter.per_page.clamp(1, 100)"}
+      .paginate(&self.db, per_page)
     `,
   );
   write(
@@ -48,9 +59,10 @@ function fixture({ missingOutbox = false, unboundedPagination = false } = {}) {
       CategoryService::new_with_event_bus
       runtime.event_bus()
       filter.page = filter.page.max(1)
-      ${unboundedPagination ? "filter.per_page = filter.per_page.max(1)" : "filter.per_page = filter.per_page.clamp(1, 100)"}
+      ${unboundedHttpPagination ? "filter.per_page = filter.per_page.max(1)" : "filter.per_page = filter.per_page.clamp(1, 100)"}
       ensure_category_permission
       Resource::Categories
+      ${missingTypedErrors ? "" : "fn map_category_error BlogError::CategoryNotFound HttpError::not_found HttpError::internal"}
     `,
   );
   write(
@@ -109,12 +121,21 @@ function fixture({ missingOutbox = false, unboundedPagination = false } = {}) {
         search_projector: projectorPath,
         search_ingestion: ingestionPath,
       },
+      cases: [
+        "category_update_atomic_reindex",
+        "category_delete_atomic_reindex",
+        "tenant_scoped_parent",
+        "non_empty_slug",
+        "bounded_category_list",
+        "typed_http_errors",
+        "search_payload_dependency",
+      ].map((name) => ({ name })),
     }),
   );
   write(
     root,
     "crates/rustok-blog/docs/implementation-plan.md",
-    "blog-category-search-reindex-contract.json verify-blog-category-search-reindex.mjs category_name category_slug",
+    "blog-category-search-reindex-contract.json verify-blog-category-search-reindex.mjs category_name category_slug non-empty ASCII slug service and HTTP pagination",
   );
 
   return root;
@@ -150,12 +171,45 @@ test("Blog category reindex verifier rejects missing transactional event", () =>
   }
 });
 
+test("Blog category reindex verifier rejects an empty-slug regression", () => {
+  const root = fixture({ missingSlugGuard: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing Slug must contain at least one ASCII letter or digit/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Blog category reindex verifier rejects unbounded owner pagination", () => {
+  const root = fixture({ unboundedServicePagination: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing let per_page = filter.per_page.clamp\(1, 100\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Blog category reindex verifier rejects unbounded HTTP pagination", () => {
-  const root = fixture({ unboundedPagination: true });
+  const root = fixture({ unboundedHttpPagination: true });
   try {
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing filter.per_page = filter.per_page.clamp\(1, 100\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Blog category reindex verifier rejects flattened HTTP errors", () => {
+  const root = fixture({ missingTypedErrors: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing fn map_category_error/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
