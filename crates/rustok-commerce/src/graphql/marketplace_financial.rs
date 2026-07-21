@@ -128,6 +128,44 @@ impl MarketplaceFinancialQuery {
             .map(|items| items.into_iter().map(Into::into).collect())
             .map_err(map_reversal_operator_error)
     }
+
+    async fn admin_marketplace_reversal_adaptation_failure(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+    ) -> Result<MarketplaceReversalAdaptationFailureGql> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
+        )?;
+        let (tenant_id, service) = reversal_operator_service(ctx)?;
+        service
+            .get_adaptation_failure(tenant_id, id)
+            .await
+            .map(Into::into)
+            .map_err(map_reversal_operator_error)
+    }
+
+    async fn admin_marketplace_reversal_adaptation_failures_operator_review(
+        &self,
+        ctx: &Context<'_>,
+        limit: Option<i32>,
+    ) -> Result<Vec<MarketplaceReversalAdaptationFailureGql>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_READ],
+            "Permission denied: payments:read required",
+        )?;
+        let (tenant_id, service) = reversal_operator_service(ctx)?;
+        service
+            .list_adaptation_failures_operator_review(tenant_id, bounded_limit(limit))
+            .await
+            .map(|items| items.into_iter().map(Into::into).collect())
+            .map_err(map_reversal_operator_error)
+    }
 }
 
 #[derive(Default)]
@@ -229,6 +267,25 @@ impl MarketplaceFinancialMutation {
             .map(Into::into)
             .map_err(map_reversal_operator_error)
     }
+
+    async fn retry_marketplace_reversal_adaptation_failure(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+    ) -> Result<MarketplaceReversalAdaptationFailureGql> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_commerce_permission(
+            ctx,
+            &[Permission::PAYMENTS_MANAGE],
+            "Permission denied: payments:manage required",
+        )?;
+        let (tenant_id, service) = reversal_operator_service(ctx)?;
+        service
+            .retry_adaptation_failure(tenant_id, id)
+            .await
+            .map(Into::into)
+            .map_err(map_reversal_operator_error)
+    }
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -294,6 +351,24 @@ pub struct MarketplaceReversalEventGql {
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
     pub processed_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
+pub struct MarketplaceReversalAdaptationFailureGql {
+    pub id: Uuid,
+    pub provider_event_id: Uuid,
+    pub event_source: String,
+    pub event_id: String,
+    pub event_type: String,
+    pub status: String,
+    pub retryable: bool,
+    pub attempt_count: i32,
+    pub last_error_code: String,
+    pub last_error_message: String,
+    pub next_retry_at: Option<DateTime<FixedOffset>>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub resolved_at: Option<DateTime<FixedOffset>>,
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -418,14 +493,14 @@ fn map_reversal_operator_error(
         crate::services::MarketplaceReversalOperatorError::Conflict(message)
             if message.contains("was not found") =>
         {
-            async_graphql::Error::new("Marketplace reversal event was not found")
+            async_graphql::Error::new("Marketplace reversal event or adaptation failure was not found")
                 .extend_with(|_, extensions| {
                     extensions.set("code", "MARKETPLACE_REVERSAL_NOT_FOUND")
                 })
         }
         crate::services::MarketplaceReversalOperatorError::Conflict(_) => {
             async_graphql::Error::new(
-                "Marketplace reversal event requires reconciliation or is not safely retryable",
+                "Marketplace reversal recovery requires reconciliation or is not safely retryable",
             )
             .extend_with(|_, extensions| {
                 extensions.set("code", "MARKETPLACE_REVERSAL_OPERATOR_CONFLICT")
@@ -447,6 +522,51 @@ fn map_reversal_operator_error(
                 (
                     "Marketplace reversal recovery requires operator review",
                     "MARKETPLACE_REVERSAL_RECONCILIATION_REQUIRED",
+                )
+            };
+            async_graphql::Error::new(message)
+                .extend_with(|_, extensions| extensions.set("code", code))
+        }
+        crate::services::MarketplaceReversalOperatorError::AdaptationFailure(error) => match error {
+            crate::MarketplaceReversalAdaptationFailureError::Validation(_) => {
+                async_graphql::Error::new("Marketplace reversal adaptation request is invalid")
+                    .extend_with(|_, extensions| {
+                        extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_INVALID")
+                    })
+            }
+            crate::MarketplaceReversalAdaptationFailureError::Conflict(message)
+                if message.contains("was not found") =>
+            {
+                async_graphql::Error::new("Marketplace reversal adaptation failure was not found")
+                    .extend_with(|_, extensions| {
+                        extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_NOT_FOUND")
+                    })
+            }
+            crate::MarketplaceReversalAdaptationFailureError::Conflict(_) => {
+                async_graphql::Error::new(
+                    "Marketplace reversal adaptation failure is not safely retryable",
+                )
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_CONFLICT")
+                })
+            }
+            crate::MarketplaceReversalAdaptationFailureError::Database(_) => {
+                async_graphql::Error::new("Marketplace reversal adaptation storage is unavailable")
+                    .extend_with(|_, extensions| {
+                        extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_STORAGE_UNAVAILABLE")
+                    })
+            }
+        },
+        crate::services::MarketplaceReversalOperatorError::Adapter(error) => {
+            let (message, code) = if error.retryable() {
+                (
+                    "Marketplace reversal adaptation is temporarily unavailable",
+                    "MARKETPLACE_REVERSAL_ADAPTATION_UNAVAILABLE",
+                )
+            } else {
+                (
+                    "Marketplace reversal adaptation still requires operator review",
+                    "MARKETPLACE_REVERSAL_ADAPTATION_REQUIRES_REVIEW",
                 )
             };
             async_graphql::Error::new(message)
@@ -529,6 +649,29 @@ impl From<crate::services::MarketplaceReversalEventOperatorView>
             created_at: value.created_at,
             updated_at: value.updated_at,
             processed_at: value.processed_at,
+        }
+    }
+}
+
+impl From<crate::services::MarketplaceReversalAdaptationFailureOperatorView>
+    for MarketplaceReversalAdaptationFailureGql
+{
+    fn from(value: crate::services::MarketplaceReversalAdaptationFailureOperatorView) -> Self {
+        Self {
+            id: value.id,
+            provider_event_id: value.provider_event_id,
+            event_source: value.event_source,
+            event_id: value.event_id,
+            event_type: value.event_type,
+            status: value.status,
+            retryable: value.retryable,
+            attempt_count: value.attempt_count,
+            last_error_code: value.last_error_code,
+            last_error_message: value.last_error_message,
+            next_retry_at: value.next_retry_at,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            resolved_at: value.resolved_at,
         }
     }
 }
