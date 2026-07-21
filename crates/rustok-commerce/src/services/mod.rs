@@ -36,6 +36,7 @@ mod marketplace_paid_event_inbox;
 mod marketplace_paid_order_financial;
 mod marketplace_provider_paid_event_adapter;
 mod marketplace_provider_reversal_event_adapter;
+mod marketplace_reversal_adaptation_failure;
 mod marketplace_reversal_event_inbox;
 mod marketplace_reversal_operator;
 mod order_change_orchestration;
@@ -83,8 +84,8 @@ pub use checkout_inventory_reservation_journal::{
     PlanCheckoutInventoryReservation,
 };
 pub use checkout_marketplace_allocation::{
-    order_contains_marketplace_lines, CheckoutMarketplaceAllocationError,
-    CheckoutMarketplaceAllocationResult, CheckoutMarketplaceAllocationStage,
+    CheckoutMarketplaceAllocationError, CheckoutMarketplaceAllocationResult,
+    CheckoutMarketplaceAllocationStage, order_contains_marketplace_lines,
 };
 pub use checkout_marketplace_commission::{
     CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionResult,
@@ -164,6 +165,10 @@ pub use marketplace_provider_reversal_event_adapter::{
     MarketplaceProviderReversalAdaptFailure, MarketplaceProviderReversalAdaptReport,
     MarketplaceProviderReversalEventAdapter, MarketplaceProviderReversalEventAdapterError,
     MarketplaceProviderReversalEventAdapterResult,
+};
+pub use marketplace_reversal_adaptation_failure::{
+    MarketplaceReversalAdaptationFailureError, MarketplaceReversalAdaptationFailureJournal,
+    MarketplaceReversalAdaptationFailureResult, MarketplaceReversalAdaptationFailureStatus,
 };
 pub use marketplace_reversal_event_inbox::{
     IngestMarketplaceReversalEvent, MarketplaceReversalEventInboxError,
