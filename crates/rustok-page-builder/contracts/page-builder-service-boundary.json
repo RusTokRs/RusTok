@@ -121,9 +121,15 @@
         "host_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
         "runtime_markers": [
           "PreviewPageBuilderInput::new",
+          "let active_page_index = controller.active_page_index()",
+          "document.project.pages = document",
+          "preview_request.set(Some((project_hash, active_page_index)))",
           "PageBuilderCapabilityResponse::Preview(response)",
+          "expected != (current.1, current.2)",
+          "project changed while the server preview was rendering",
           "server_preview_html.set(Some(response.html))",
-          "preview_in_progress.set(true)"
+          "preview_in_progress.set(true)",
+          "UiIntent::ActivatePage { .. }"
         ],
         "surface_markers": [
           "request_server_preview()",
