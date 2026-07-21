@@ -232,6 +232,7 @@ test("expected aborts stay separate from network failures", async ({
   expect(
     state.timeout.problems.some((problem) => problem.code === "NETWORK_ERROR"),
   ).toBe(false);
+  expect(state.timeout.errors).toEqual([]);
 
   expect(state.stop.aborts).toHaveLength(1);
   expect(state.stop.aborts[0]).toMatchObject({
@@ -242,6 +243,7 @@ test("expected aborts stay separate from network failures", async ({
     pageId: "stop-page",
   });
   expect(state.stop.problems).toEqual([]);
+  expect(state.stop.errors).toEqual([]);
 
   expect(state.network.aborts).toEqual([]);
   expect(state.network.problems).toHaveLength(1);
@@ -260,4 +262,5 @@ test("expected aborts stay separate from network failures", async ({
     pageId: "external-page",
   });
   expect(state.external.problems).toEqual([]);
+  expect(state.external.errors).toEqual([]);
 });
