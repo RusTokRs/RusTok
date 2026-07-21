@@ -10,18 +10,26 @@ use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_telemetry::metrics;
 use tracing::Instrument;
 
+use crate::blog_projector::BlogSearchProjector;
 use crate::projector::SearchProjector;
 
 #[derive(Clone)]
 pub struct SearchIngestionHandler {
     projector: SearchProjector,
+    blog_projector: BlogSearchProjector,
 }
 
 impl SearchIngestionHandler {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            projector: SearchProjector::new(db),
+            projector: SearchProjector::new(db.clone()),
+            blog_projector: BlogSearchProjector::new(db),
         }
+    }
+
+    async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
+        self.projector.rebuild_tenant(tenant_id).await?;
+        self.blog_projector.rebuild_tenant(tenant_id).await
     }
 
     async fn handle_reindex_request(
@@ -31,13 +39,17 @@ impl SearchIngestionHandler {
         target_id: Option<Uuid>,
     ) -> HandlerResult {
         match (target_type, target_id) {
-            ("search", _) => self.projector.rebuild_tenant(tenant_id).await,
+            ("search", _) => self.rebuild_tenant(tenant_id).await,
             ("content", Some(node_id)) => self.projector.upsert_node(tenant_id, node_id).await,
             ("content", None) => self.projector.rebuild_content_scope(tenant_id).await,
             ("product", Some(product_id)) => {
                 self.projector.upsert_product(tenant_id, product_id).await
             }
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
+            ("blog", Some(post_id)) => {
+                self.blog_projector.upsert_post(tenant_id, post_id).await
+            }
+            ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
             _ => Ok(()),
         }
     }
@@ -68,6 +80,12 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::VariantDeleted { .. }
             | DomainEvent::InventoryUpdated { .. }
             | DomainEvent::PriceUpdated { .. }
+            | DomainEvent::BlogPostCreated { .. }
+            | DomainEvent::BlogPostPublished { .. }
+            | DomainEvent::BlogPostUnpublished { .. }
+            | DomainEvent::BlogPostUpdated { .. }
+            | DomainEvent::BlogPostArchived { .. }
+            | DomainEvent::BlogPostDeleted { .. }
             | DomainEvent::LocaleEnabled { .. }
             | DomainEvent::LocaleDisabled { .. }
             | DomainEvent::TenantCreated { .. }
@@ -75,7 +93,10 @@ impl EventHandler for SearchIngestionHandler {
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
             DomainEvent::ReindexRequested { target_type, .. } => {
-                target_type == "search" || target_type == "content" || target_type == "product"
+                target_type == "search"
+                    || target_type == "content"
+                    || target_type == "product"
+                    || target_type == "blog"
             }
             _ => false,
         }
@@ -148,11 +169,25 @@ impl EventHandler for SearchIngestionHandler {
                         .upsert_product(envelope.tenant_id, *product_id)
                         .await
                 }
+                DomainEvent::BlogPostCreated { post_id, .. }
+                | DomainEvent::BlogPostPublished { post_id, .. }
+                | DomainEvent::BlogPostUnpublished { post_id }
+                | DomainEvent::BlogPostUpdated { post_id, .. }
+                | DomainEvent::BlogPostArchived { post_id, .. } => {
+                    self.blog_projector
+                        .upsert_post(envelope.tenant_id, *post_id)
+                        .await
+                }
+                DomainEvent::BlogPostDeleted { post_id } => {
+                    self.blog_projector
+                        .delete_post(envelope.tenant_id, *post_id)
+                        .await
+                }
                 DomainEvent::LocaleEnabled { .. }
                 | DomainEvent::LocaleDisabled { .. }
                 | DomainEvent::TenantCreated { .. }
                 | DomainEvent::TenantUpdated { .. } => {
-                    self.projector.rebuild_tenant(envelope.tenant_id).await
+                    self.rebuild_tenant(envelope.tenant_id).await
                 }
                 DomainEvent::ReindexRequested {
                     target_type,
@@ -177,6 +212,7 @@ impl EventHandler for SearchIngestionHandler {
             DomainEvent::ReindexRequested { target_type, .. } => match target_type.as_str() {
                 "content" => "rebuild_content_scope",
                 "product" => "rebuild_product_scope",
+                "blog" => "rebuild_blog_scope",
                 _ => "rebuild_tenant",
             },
             DomainEvent::ProductCreated { .. }
@@ -188,6 +224,12 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::VariantDeleted { .. }
             | DomainEvent::InventoryUpdated { .. }
             | DomainEvent::PriceUpdated { .. } => "upsert_product",
+            DomainEvent::BlogPostDeleted { .. } => "delete_blog_post",
+            DomainEvent::BlogPostCreated { .. }
+            | DomainEvent::BlogPostPublished { .. }
+            | DomainEvent::BlogPostUnpublished { .. }
+            | DomainEvent::BlogPostUpdated { .. }
+            | DomainEvent::BlogPostArchived { .. } => "upsert_blog_post",
             _ => "upsert_node",
         };
 
@@ -271,6 +313,7 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
         DomainEvent::ReindexRequested { target_type, .. } => match target_type.as_str() {
             "content" => "rebuild_content_scope",
             "product" => "rebuild_product_scope",
+            "blog" => "rebuild_blog_scope",
             _ => "rebuild_tenant",
         },
         DomainEvent::NodeTranslationUpdated { .. } | DomainEvent::BodyUpdated { .. } => {
@@ -293,6 +336,12 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
         | DomainEvent::VariantDeleted { .. }
         | DomainEvent::InventoryUpdated { .. }
         | DomainEvent::PriceUpdated { .. } => "upsert_product",
+        DomainEvent::BlogPostDeleted { .. } => "delete_blog_post",
+        DomainEvent::BlogPostCreated { .. }
+        | DomainEvent::BlogPostPublished { .. }
+        | DomainEvent::BlogPostUnpublished { .. }
+        | DomainEvent::BlogPostUpdated { .. }
+        | DomainEvent::BlogPostArchived { .. } => "upsert_blog_post",
         DomainEvent::LocaleEnabled { .. }
         | DomainEvent::LocaleDisabled { .. }
         | DomainEvent::TenantCreated { .. }
