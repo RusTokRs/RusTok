@@ -40,6 +40,11 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   `group_translations.locale VARCHAR(32)` from creation.
 - **Product catalog** — the product-owned schema verifier remains the delegated
   guard for translation ownership and locale widening.
+- **Content, blog, taxonomy, comments, and profiles locale widths** — registered
+  forward-only owner migrations widen their localized/preference columns to
+  `VARCHAR(32)` without narrowing rollback. These owner slices currently express
+  the production width change through PostgreSQL DDL; SQLite does not enforce
+  declared `VARCHAR` lengths.
 - **Commerce collections/categories** — a forward-only PostgreSQL/MySQL/SQLite
   migration widens collection and product-category translation locales to
   `VARCHAR(32)` and is registered after both owner tables.
@@ -47,7 +52,8 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   locale storage is `VARCHAR(32)`, and the base line-item title columns are
   removed.
 - **Customer locale policy** — clean and upgraded schemas use `VARCHAR(32)`;
-  PostgreSQL and SQLite validation enforce the same 32-byte contract.
+  PostgreSQL and SQLite validation enforce the same 32-byte contract, and the
+  upgraded migration also declares MySQL widening.
 - **Legacy ecommerce cutovers** — region, stock-location, shipping-option,
   price-list, and shipping-profile migrations preserve unknown source language
   as `und` rather than fabricating English provenance.
@@ -60,19 +66,12 @@ These are not accepted exceptions. They remain explicit migration targets:
   store display copy inline. `rustok-auth` owns the atomic translation-table and
   transport cutover.
 - `profiles-display-name`: `profiles.display_name` duplicates localized
-  `profile_translations.display_name`; preferred/translation locale columns are
-  also narrower than the platform contract. The owner must define whether any
-  display name is locale-neutral identity, backfill translations, remove the
-  duplicated localized copy, and widen locale columns.
-- `content-locale-width`: node/category/meta translations and bodies use legacy
-  narrow locale columns. `rustok-content` needs one append-only widening slice
-  covering all owner tables.
-- `blog-locale-width`: Blog translations use a narrow locale column. The owner
-  must also document whether `blog_posts.slug` is a locale-neutral canonical
-  route key; otherwise slug ownership must move to translations.
-- `taxonomy-locale-width`: term translations and aliases use narrow locale
-  columns.
-- `comments-locale-width`: comment bodies use a narrow locale column.
+  `profile_translations.display_name`. Locale widths are widened, but the owner
+  must define whether the base value is locale-neutral identity, then backfill
+  and remove whichever copy is not authoritative.
+- `blog-slug-semantics`: `blog_posts.slug` remains in the base row. The owner must
+  explicitly document it as one locale-neutral canonical route key or move
+  localized slug ownership into `blog_post_translations`.
 - `marketplace-seller-prose-copy`: immutable locale-aware seller events are the
   intended prose source, but `marketplace_sellers.onboarding_note` and
   `marketplace_sellers.suspension_reason` remain mutable compatibility copies.
