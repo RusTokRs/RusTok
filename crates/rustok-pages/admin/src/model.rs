@@ -120,6 +120,22 @@ pub enum PagePublicationResult {
     Unpublished(PageMutationResult),
 }
 
+impl PagePublicationResult {
+    pub fn page_id(&self) -> &str {
+        match self {
+            Self::Published(receipt) => &receipt.page_id,
+            Self::Unpublished(page) => &page.id,
+        }
+    }
+
+    pub fn version(&self) -> i32 {
+        match self {
+            Self::Published(receipt) => receipt.version,
+            Self::Unpublished(page) => page.version,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct PageBuilderScenarioReleaseStatus {
     #[serde(rename = "pageId")]
