@@ -11,8 +11,12 @@ pub const FLY_BROWSER_PROTOCOL: &str = "fly_iframe";
 pub const FLY_BROWSER_ADAPTER: &str = "fly_browser";
 pub const DEFAULT_MAX_BROWSER_MESSAGE_BYTES: usize = 1024 * 1024;
 pub const DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS: usize = 4096;
+pub const DEFAULT_MAX_PENDING_INTENT_REQUESTS: usize = 8;
+pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MS: u64 = 30_000;
 pub const DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE: &str =
     "Editor canvas resource limit reached.";
+pub const DEFAULT_PENDING_INTENT_LIMIT_MESSAGE: &str = "Editor action limit reached.";
+pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE: &str = "Editor action timed out";
 pub const FLY_BROWSER_ADAPTER_JS: &str = concat!(
     include_str!("../assets/fly-browser.js"),
     "\n",
@@ -313,10 +317,30 @@ pub struct BrowserAdapterConfig {
     )]
     pub max_geometry_components: usize,
     #[serde(
+        default = "default_max_pending_intent_requests",
+        alias = "max_pending_intent_requests"
+    )]
+    pub max_pending_intent_requests: usize,
+    #[serde(
+        default = "default_intent_request_timeout_ms",
+        alias = "intent_request_timeout_ms"
+    )]
+    pub intent_request_timeout_ms: u64,
+    #[serde(
         default = "default_browser_resource_limit_message",
         alias = "resource_limit_message"
     )]
     pub resource_limit_message: String,
+    #[serde(
+        default = "default_pending_intent_limit_message",
+        alias = "pending_intent_limit_message"
+    )]
+    pub pending_intent_limit_message: String,
+    #[serde(
+        default = "default_intent_request_timeout_message",
+        alias = "intent_request_timeout_message"
+    )]
+    pub intent_request_timeout_message: String,
 }
 
 impl Default for BrowserAdapterConfig {
@@ -332,7 +356,11 @@ impl Default for BrowserAdapterConfig {
             post_intents: true,
             max_message_bytes: DEFAULT_MAX_BROWSER_MESSAGE_BYTES,
             max_geometry_components: DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS,
+            max_pending_intent_requests: DEFAULT_MAX_PENDING_INTENT_REQUESTS,
+            intent_request_timeout_ms: DEFAULT_INTENT_REQUEST_TIMEOUT_MS,
             resource_limit_message: default_browser_resource_limit_message(),
+            pending_intent_limit_message: default_pending_intent_limit_message(),
+            intent_request_timeout_message: default_intent_request_timeout_message(),
         }
     }
 }
@@ -350,9 +378,23 @@ impl BrowserAdapterConfig {
         if self.max_geometry_components == 0 {
             self.max_geometry_components = DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS;
         }
+        if self.max_pending_intent_requests == 0 {
+            self.max_pending_intent_requests = DEFAULT_MAX_PENDING_INTENT_REQUESTS;
+        }
+        if self.intent_request_timeout_ms == 0 {
+            self.intent_request_timeout_ms = DEFAULT_INTENT_REQUEST_TIMEOUT_MS;
+        }
         self.resource_limit_message = non_empty(
             self.resource_limit_message,
             default_browser_resource_limit_message(),
+        );
+        self.pending_intent_limit_message = non_empty(
+            self.pending_intent_limit_message,
+            default_pending_intent_limit_message(),
+        );
+        self.intent_request_timeout_message = non_empty(
+            self.intent_request_timeout_message,
+            default_intent_request_timeout_message(),
         );
         self
     }
@@ -484,8 +526,24 @@ fn default_max_browser_geometry_components() -> usize {
     DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
 }
 
+fn default_max_pending_intent_requests() -> usize {
+    DEFAULT_MAX_PENDING_INTENT_REQUESTS
+}
+
+fn default_intent_request_timeout_ms() -> u64 {
+    DEFAULT_INTENT_REQUEST_TIMEOUT_MS
+}
+
 fn default_browser_resource_limit_message() -> String {
     DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE.to_string()
+}
+
+fn default_pending_intent_limit_message() -> String {
+    DEFAULT_PENDING_INTENT_LIMIT_MESSAGE.to_string()
+}
+
+fn default_intent_request_timeout_message() -> String {
+    DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE.to_string()
 }
 
 #[cfg(test)]
@@ -509,6 +567,14 @@ mod tests {
             config.max_geometry_components,
             DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
         );
+        assert_eq!(
+            config.max_pending_intent_requests,
+            DEFAULT_MAX_PENDING_INTENT_REQUESTS
+        );
+        assert_eq!(
+            config.intent_request_timeout_ms,
+            DEFAULT_INTENT_REQUEST_TIMEOUT_MS
+        );
     }
 
     #[test]
@@ -521,7 +587,11 @@ mod tests {
             csrf_token: Some("   ".to_string()),
             max_message_bytes: 0,
             max_geometry_components: 0,
+            max_pending_intent_requests: 0,
+            intent_request_timeout_ms: 0,
             resource_limit_message: "   ".to_string(),
+            pending_intent_limit_message: "   ".to_string(),
+            intent_request_timeout_message: "   ".to_string(),
             ..BrowserAdapterConfig::default()
         }
         .normalized();
@@ -544,6 +614,22 @@ mod tests {
             config.resource_limit_message,
             DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE
         );
+        assert_eq!(
+            config.max_pending_intent_requests,
+            DEFAULT_MAX_PENDING_INTENT_REQUESTS
+        );
+        assert_eq!(
+            config.intent_request_timeout_ms,
+            DEFAULT_INTENT_REQUEST_TIMEOUT_MS
+        );
+        assert_eq!(
+            config.pending_intent_limit_message,
+            DEFAULT_PENDING_INTENT_LIMIT_MESSAGE
+        );
+        assert_eq!(
+            config.intent_request_timeout_message,
+            DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE
+        );
     }
 
     #[test]
@@ -553,6 +639,10 @@ mod tests {
             csrf_token: Some("csrf-token".to_string()),
             max_message_bytes: 2048,
             max_geometry_components: 32,
+            max_pending_intent_requests: 3,
+            intent_request_timeout_ms: 1_500,
+            pending_intent_limit_message: "Pending limit".to_string(),
+            intent_request_timeout_message: "Request timeout".to_string(),
             ..BrowserAdapterConfig::default()
         }
         .to_json()
@@ -562,8 +652,16 @@ mod tests {
         assert_eq!(value["csrfToken"], "csrf-token");
         assert_eq!(value["maxMessageBytes"], 2048);
         assert_eq!(value["maxGeometryComponents"], 32);
+        assert_eq!(value["maxPendingIntentRequests"], 3);
+        assert_eq!(value["intentRequestTimeoutMs"], 1_500);
+        assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
+        assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
         assert!(value.get("intent_endpoint").is_none());
         assert!(value.get("max_message_bytes").is_none());
+        assert!(value.get("max_pending_intent_requests").is_none());
+        assert!(value.get("intent_request_timeout_ms").is_none());
+        assert!(value.get("pending_intent_limit_message").is_none());
+        assert!(value.get("intent_request_timeout_message").is_none());
 
         let legacy: BrowserAdapterConfig = serde_json::from_value(json!({
             "root_selector": "#legacy-root",
@@ -576,13 +674,21 @@ mod tests {
             "post_intents": false,
             "max_message_bytes": 4096,
             "max_geometry_components": 64,
-            "resource_limit_message": "Legacy limit"
+            "max_pending_intent_requests": 4,
+            "intent_request_timeout_ms": 2500,
+            "resource_limit_message": "Legacy limit",
+            "pending_intent_limit_message": "Legacy pending limit",
+            "intent_request_timeout_message": "Legacy timeout"
         }))
         .expect("legacy config");
         assert_eq!(legacy.root_selector, "#legacy-root");
         assert_eq!(legacy.max_message_bytes, 4096);
         assert_eq!(legacy.max_geometry_components, 64);
+        assert_eq!(legacy.max_pending_intent_requests, 4);
+        assert_eq!(legacy.intent_request_timeout_ms, 2_500);
         assert_eq!(legacy.resource_limit_message, "Legacy limit");
+        assert_eq!(legacy.pending_intent_limit_message, "Legacy pending limit");
+        assert_eq!(legacy.intent_request_timeout_message, "Legacy timeout");
     }
 
     #[test]
@@ -591,6 +697,8 @@ mod tests {
         assert!(FLY_BROWSER_ADAPTER_JS.contains("fly:browser-resource-limit"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("message_bytes"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("geometry_components"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("PENDING_INTENT_LIMIT"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("INTENT_REQUEST_TIMEOUT"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("aria-live"));
         assert!(!FLY_BROWSER_ADAPTER_JS.contains("wasm_bindgen"));
     }
