@@ -433,5 +433,5 @@ fn hash_rows(mut rows: Vec<String>) -> String {
         hasher.update((row.len() as u64).to_be_bytes());
         hasher.update(row.as_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }

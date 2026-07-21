@@ -182,7 +182,7 @@ pub(super) fn CategoryDndGrid(
                         ></div>
                         <article
                             class="relative overflow-hidden rounded-[1.5rem] border border-border bg-background p-5 shadow-sm transition hover:border-primary/30 hover:shadow-md"
-                            attr:draggable="true"
+                            draggable="true"
                             on:dragstart=move |_event: DragEvent| {
                                 set_move_error.set(None);
                                 set_dragged_id.set(Some(drag_item_id.clone()));

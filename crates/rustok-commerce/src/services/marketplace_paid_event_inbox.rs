@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration as StdDuration};
+use std::sync::Arc;
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
@@ -825,5 +825,5 @@ fn paid_event_hash(
         hasher.update((part.len() as u64).to_be_bytes());
         hasher.update(part.as_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }

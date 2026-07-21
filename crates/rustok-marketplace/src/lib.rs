@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
-use rustok_core::RusToKModule;
+use rustok_core::{MigrationSource, RusToKModule};
+use sea_orm_migration::MigrationTrait;
 
 pub mod allocation_directory;
 pub mod commission_directory;
@@ -71,6 +72,12 @@ impl RusToKModule for MarketplaceModule {
     }
 
     fn permissions(&self) -> Vec<Permission> {
+        Vec::new()
+    }
+}
+
+impl MigrationSource for MarketplaceModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         Vec::new()
     }
 }

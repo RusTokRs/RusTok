@@ -13,7 +13,7 @@ use rustok_marketplace_allocation::{
     ReadMarketplaceAllocationByLineRequest,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use crate::dto::{

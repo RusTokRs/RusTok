@@ -17,8 +17,10 @@ rustok-marketplace-listing = { path = "../rustok-marketplace-listing" }
 rustok-marketplace-payout = { path = "../rustok-marketplace-payout" }
 rustok-marketplace-seller.workspace = true
 serde.workspace = true
+sea-orm-migration.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tokio.workspace = true

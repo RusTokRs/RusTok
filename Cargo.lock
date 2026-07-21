@@ -575,6 +575,7 @@ dependencies = [
  "num-traits",
  "pin-project-lite",
  "regex",
+ "rust_decimal",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -12595,6 +12596,7 @@ dependencies = [
  "axum",
  "chrono",
  "flex",
+ "hex",
  "proptest",
  "rust_decimal",
  "rust_decimal_macros",
@@ -12607,6 +12609,9 @@ dependencies = [
  "rustok-events",
  "rustok-fulfillment",
  "rustok-inventory",
+ "rustok-marketplace-allocation",
+ "rustok-marketplace-commission",
+ "rustok-marketplace-ledger",
  "rustok-order",
  "rustok-outbox",
  "rustok-payment",
@@ -12863,9 +12868,14 @@ dependencies = [
  "rustok-index",
  "rustok-inventory",
  "rustok-marketplace",
+ "rustok-marketplace-allocation",
+ "rustok-marketplace-commission",
+ "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
+ "rustok-marketplace-payout",
  "rustok-marketplace-seller",
  "rustok-media",
+ "rustok-moderation",
  "rustok-modules",
  "rustok-order",
  "rustok-outbox",
@@ -13248,12 +13258,85 @@ name = "rustok-marketplace"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "rustok-api",
  "rustok-core",
+ "rustok-marketplace-allocation",
+ "rustok-marketplace-commission",
+ "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
+ "rustok-marketplace-payout",
  "rustok-marketplace-seller",
  "sea-orm-migration",
  "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-marketplace-allocation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-core",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-marketplace-commission"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-core",
+ "rustok-marketplace-allocation",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-marketplace-ledger"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-core",
+ "rustok-marketplace-commission",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "utoipa",
  "uuid",
 ]
 
@@ -13302,6 +13385,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-marketplace-payout"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-core",
+ "rustok-marketplace-ledger",
+ "rustok-test-utils",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-marketplace-seller"
 version = "0.1.0"
 dependencies = [
@@ -13311,6 +13416,8 @@ dependencies = [
  "hex",
  "rustok-api",
  "rustok-core",
+ "rustok-events",
+ "rustok-outbox",
  "rustok-test-utils",
  "sea-orm",
  "sea-orm-migration",
@@ -13470,6 +13577,13 @@ dependencies = [
  "rustok-fulfillment",
  "rustok-index",
  "rustok-inventory",
+ "rustok-marketplace-allocation",
+ "rustok-marketplace-commission",
+ "rustok-marketplace-ledger",
+ "rustok-marketplace-listing",
+ "rustok-marketplace-payout",
+ "rustok-marketplace-seller",
+ "rustok-moderation",
  "rustok-modules",
  "rustok-order",
  "rustok-pages",
@@ -13486,6 +13600,25 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-moderation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-core",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
 ]
@@ -14446,11 +14579,16 @@ dependencies = [
  "rustok-installer-persistence",
  "rustok-inventory",
  "rustok-marketplace",
+ "rustok-marketplace-allocation",
+ "rustok-marketplace-commission",
+ "rustok-marketplace-ledger",
  "rustok-marketplace-listing",
+ "rustok-marketplace-payout",
  "rustok-marketplace-seller",
  "rustok-mcp",
  "rustok-media",
  "rustok-migrations",
+ "rustok-moderation",
  "rustok-modules",
  "rustok-order",
  "rustok-outbox",

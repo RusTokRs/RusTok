@@ -20,7 +20,7 @@ use rustok_marketplace_commission::{
 use sea_orm::{
     ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use crate::dto::{

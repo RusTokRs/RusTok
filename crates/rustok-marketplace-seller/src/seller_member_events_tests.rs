@@ -11,7 +11,7 @@ use crate::dto::{
     MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
     UpdateMarketplaceSellerMemberInput,
 };
-use crate::entities::{seller, seller_command_receipt, seller_member};
+use crate::entities::{seller, seller_command_receipt};
 use crate::error::MarketplaceSellerError;
 use crate::MarketplaceSellerService;
 

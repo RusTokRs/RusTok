@@ -1004,6 +1004,13 @@ mod tests {
             description: None,
             icon: None,
             color: None,
+            parent_id: None,
+            depth: 0,
+            position: 0,
+            moderated: false,
+            allows_topics: true,
+            archived_at: None,
+            is_archived: false,
             topic_count: 1,
             reply_count: 2,
         }
@@ -1308,29 +1315,11 @@ mod tests {
         );
         assert_eq!(
             result_item_count(Some(Ok(vec![
+                category_item("category-1", "General"),
                 CategoryListItem {
-                    id: "category-1".to_string(),
-                    locale: "en".to_string(),
-                    effective_locale: "en".to_string(),
-                    name: "General".to_string(),
-                    slug: "general".to_string(),
-                    description: None,
-                    icon: None,
-                    color: None,
-                    topic_count: 1,
-                    reply_count: 2,
-                },
-                CategoryListItem {
-                    id: "category-2".to_string(),
-                    locale: "en".to_string(),
-                    effective_locale: "en".to_string(),
-                    name: "Support".to_string(),
-                    slug: "support".to_string(),
-                    description: None,
-                    icon: None,
-                    color: None,
                     topic_count: 3,
                     reply_count: 4,
+                    ..category_item("category-2", "Support")
                 },
             ]))),
             2
@@ -1411,16 +1400,13 @@ mod tests {
     #[test]
     fn builds_category_card_view_model_with_labels_and_fallbacks() {
         let item = CategoryListItem {
-            id: "category-1".to_string(),
             locale: "ru".to_string(),
             effective_locale: "ru".to_string(),
-            name: "Community".to_string(),
-            slug: "community".to_string(),
-            description: None,
             icon: Some(" chat ".to_string()),
             color: Some(" ".to_string()),
             topic_count: 7,
             reply_count: 12,
+            ..category_item("category-1", "Community")
         };
         let labels = ForumAdminCategoryRenderLabels {
             no_description: "No description".to_string(),
@@ -1492,28 +1478,14 @@ mod tests {
     fn builds_sidebar_category_view_model_and_total_count() {
         let items = vec![
             CategoryListItem {
-                id: "category-1".to_string(),
-                locale: "en".to_string(),
-                effective_locale: "en".to_string(),
-                name: "General".to_string(),
-                slug: "general".to_string(),
-                description: None,
-                icon: None,
-                color: None,
                 topic_count: 5,
                 reply_count: 9,
+                ..category_item("category-1", "General")
             },
             CategoryListItem {
-                id: "category-2".to_string(),
-                locale: "en".to_string(),
-                effective_locale: "en".to_string(),
-                name: "Support".to_string(),
-                slug: "support".to_string(),
-                description: None,
-                icon: None,
-                color: None,
                 topic_count: 2,
                 reply_count: 4,
+                ..category_item("category-2", "Support")
             },
         ];
         let vm = category_sidebar_view_model(&items[1], "category-2");
