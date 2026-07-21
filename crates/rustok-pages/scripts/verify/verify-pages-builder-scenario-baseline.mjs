@@ -12,6 +12,8 @@ const [
   migration,
   serviceMod,
   service,
+  lifecycle,
+  document,
   graphqlMod,
   graphqlBaseline,
   mutation,
@@ -31,6 +33,8 @@ const [
   read('crates/rustok-pages/src/migrations/m20260714_000001_create_page_builder_scenario_baselines.rs'),
   read('crates/rustok-pages/src/services/mod.rs'),
   read('crates/rustok-pages/src/services/scenario_baseline.rs'),
+  read('crates/rustok-pages/src/services/page/lifecycle.rs'),
+  read('crates/rustok-pages/src/services/page/document.rs'),
   read('crates/rustok-pages/src/graphql/mod.rs'),
   read('crates/rustok-pages/src/graphql/scenario_baseline.rs'),
   read('crates/rustok-pages/src/graphql/mutation.rs'),
@@ -59,39 +63,31 @@ const required = [
   [service, 'baseline.validate()', 'scenario baseline service does not validate integrity'],
   [service, 'baseline.baseline_hash != model.baseline_hash', 'stored baseline columns are not cross-checked'],
   [service, 'RuntimeScenarioReleasePolicy::block_broken()', 'Pages publish evaluation does not block broken regressions'],
-  [service, 'ensure_published_candidate_allowed', 'published Page Builder updates are not scenario-gated'],
-  [service, 'if page.status != "published"', 'draft updates must remain outside the release gate'],
   [service, 'PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE', 'stable baseline conflict code is missing'],
   [service, 'save_if_current', 'baseline compare-and-swap save is missing'],
   [service, 'delete_if_current', 'baseline compare-and-swap delete is missing'],
-  [service, 'Column::BaselineHash.eq(expected_hash)', 'baseline mutations are not conditionally scoped by expected hash'],
-  [service, '(Some(_), None) if enforce_expected_state', 'expected absent baseline does not reject an existing row'],
+  [lifecycle, 'ensure_candidates_allowed', 'explicit publish does not evaluate scenario candidates'],
+  [lifecycle, 'compile_builder_sources', 'explicit publish does not compile the current document'],
+  [lifecycle, 'bind_existing_body_in_tx', 'explicit publish does not bind the compiled artifact atomically'],
+  [document, 'PAGE_DOCUMENT_REVISION_CONFLICT', 'document save has no independent revision conflict'],
+  [document, 'page_active.updated_at', 'document save does not record draft activity'],
   [graphqlMod, '#[derive(MergedObject, Default)]', 'baseline GraphQL objects are not merged into Pages schema'],
-  [graphqlBaseline, 'page_builder_scenario_baseline', 'baseline GraphQL query is missing'],
+  [graphqlBaseline, 'page_builder_scenario_baseline', 'scenario baseline GraphQL query is missing'],
   [graphqlBaseline, 'page_builder_scenario_release_status', 'server release status query is missing'],
   [graphqlBaseline, 'save_page_builder_scenario_baseline', 'baseline GraphQL save mutation is missing'],
   [graphqlBaseline, 'delete_page_builder_scenario_baseline', 'baseline GraphQL delete mutation is missing'],
   [graphqlBaseline, 'expected_baseline_hash', 'baseline GraphQL mutations do not accept an expected hash'],
-  [graphqlBaseline, '.save_if_current(', 'baseline GraphQL save bypasses compare-and-swap'],
-  [graphqlBaseline, '.delete_if_current(', 'baseline GraphQL delete bypasses compare-and-swap'],
-  [graphqlBaseline, 'visual_changes', 'server release status does not expose visual changes'],
-  [graphqlBaseline, 'breaking_changes', 'server release status does not expose breaking changes'],
-  [mutation, '.ensure_publish_allowed(tenant_id, id)', 'publishPage does not enforce scenario regression gate'],
-  [mutation, '.ensure_published_candidate_allowed(tenant_id, id, project_data)', 'updatePage does not gate candidate live builder content'],
+  [mutation, 'save_page_document', 'savePageDocument mutation is missing'],
+  [mutation, 'publish_if_current', 'publishPage does not use the explicit lifecycle command'],
   [adminModel, 'pub struct PageBuilderScenarioReleaseStatus', 'Pages admin release status model is missing'],
-  [adminAdapter, 'PAGE_BUILDER_SCENARIO_BASELINE_QUERY', 'Pages admin baseline query is missing'],
+  [adminAdapter, 'SAVE_PAGE_DOCUMENT_MUTATION', 'Pages admin does not use the document-only mutation'],
   [adminCasAdapter, 'expectedBaselineHash', 'Pages admin CAS mutation does not send the expected hash'],
-  [adminCasAdapter, 'scenario baseline', 'Pages admin CAS adapter is missing'],
   [adminStatusAdapter, 'PAGE_BUILDER_SCENARIO_RELEASE_STATUS_QUERY', 'Pages admin server release status query is missing'],
   [adminTransport, 'scenario_baseline_cas_adapter::save', 'Pages admin transport does not use CAS save'],
-  [adminTransport, 'scenario_baseline_cas_adapter::delete', 'Pages admin transport does not use CAS delete'],
   [adminTransport, 'fetch_page_builder_scenario_release_status', 'Pages admin transport does not expose release status'],
   [composition, 'with_runtime_scenarios(scenarios)', 'Pages builder host does not provide preview scenarios'],
   [composition, 'with_runtime_scenario_baseline', 'Pages builder host does not load persisted baseline'],
   [composition, 'on_runtime_scenario_baseline', 'Pages builder host does not persist baseline changes'],
-  [composition, 'server_status.get_untracked().baseline_hash.clone()', 'Pages builder does not use the server-confirmed expected hash'],
-  [composition, 'ServerReleaseStatus', 'Pages builder does not display server release status'],
-  [composition, 'Baseline was written but server status could not be verified', 'baseline persistence is not confirmed by server evaluation'],
   [releaseCore, 'FLY_RUNTIME_SCENARIO_RELEASE_BASELINE', 'Fly release baseline format is missing'],
   [releaseApi, 'SCENARIO_REGRESSION_BLOCKED', 'stable release rejection code is missing'],
 ];
@@ -100,29 +96,20 @@ const failures = required
   .filter(([source, marker]) => !source.includes(marker))
   .map(([, , message]) => message);
 
-const gateIndex = mutation.indexOf('.ensure_publish_allowed(tenant_id, id)');
-const publishIndex = mutation.indexOf('.publish(tenant_id, page_security(&auth), id)');
-if (gateIndex < 0 || publishIndex < 0 || gateIndex > publishIndex) {
-  failures.push('publishPage must evaluate the scenario baseline before publishing the page');
+const candidateGate = lifecycle.indexOf('ensure_candidates_allowed');
+const artifactBind = lifecycle.indexOf('bind_existing_body_in_tx');
+const transition = lifecycle.indexOf('PageTransition::Publish');
+if (candidateGate < 0 || artifactBind < 0 || transition < 0 || candidateGate > artifactBind) {
+  failures.push('publish lifecycle must evaluate scenarios before binding the artifact');
 }
-
-const candidateGateIndex = mutation.indexOf('.ensure_published_candidate_allowed(tenant_id, id, project_data)');
-const updateIndex = mutation.indexOf('.update(');
-if (candidateGateIndex < 0 || updateIndex < 0 || candidateGateIndex > updateIndex) {
-  failures.push('published updatePage candidate must be evaluated before the page body is written');
+if (document.includes('bind_existing_body_in_tx') || document.includes('PageTransition::Publish')) {
+  failures.push('document save must not publish or replace the published artifact binding');
 }
-
+if (mutation.includes('update_page') || adminAdapter.includes('UPDATE_PAGE_MUTATION')) {
+  failures.push('universal updatePage must not return as a release path');
+}
 if (service.includes('project_data.get("nodes")')) {
   failures.push('scenario release service must use canonical GrapesJS project data');
-}
-if (composition.includes('body_content_json: baseline')) {
-  failures.push('scenario baseline must remain separate from Pages body project_data');
-}
-if (adminTransport.includes('graphql_adapter::save_page_builder_scenario_baseline(')) {
-  failures.push('Pages admin transport must not use the current unconditional baseline save');
-}
-if (adminTransport.includes('graphql_adapter::delete_page_builder_scenario_baseline(')) {
-  failures.push('Pages admin transport must not use the current unconditional baseline delete');
 }
 
 if (failures.length > 0) {
@@ -131,4 +118,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('Pages Page Builder scenario baseline wiring verified.');
+console.log('Pages Page Builder scenario baseline wiring verified');

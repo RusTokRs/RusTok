@@ -32,15 +32,25 @@ pub struct PageBodyInput {
     pub content_json: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
-pub struct UpdatePageInput {
-    #[serde(default)]
-    pub expected_version: Option<i32>,
+/// Metadata-only write contract.
+///
+/// This command cannot carry a page body, Fly project or lifecycle transition.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PatchPageMetadataInput {
+    pub expected_version: i32,
     pub translations: Option<Vec<PageTranslationInput>>,
     pub template: Option<String>,
-    pub body: Option<PageBodyInput>,
     pub channel_slugs: Option<Vec<String>>,
-    pub status: Option<ContentStatus>,
+}
+
+/// Current visual-document write contract.
+///
+/// The expected revision is the current body `updated_at` value, or
+/// `page:<page_id>:initial` while the locale has no body yet.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SavePageDocumentInput {
+    pub expected_revision: String,
+    pub body: PageBodyInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, utoipa::IntoParams)]

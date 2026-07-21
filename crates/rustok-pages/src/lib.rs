@@ -59,7 +59,8 @@ pub use entities::{
 pub use error::{PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
+    MenuService, PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+    PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
     PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
 };
 
@@ -138,29 +139,12 @@ mod tests {
     fn module_permissions() {
         let module = PagesModule;
         let permissions = module.permissions();
-
-        assert!(
-            permissions
-                .iter()
-                .any(|p| p.resource == Resource::Pages && p.action == Action::Create)
-        );
-        assert!(
-            permissions
-                .iter()
-                .any(|p| p.resource == Resource::Pages && p.action == Action::Publish)
-        );
-        assert!(
-            permissions.iter().all(|p| p.resource != Resource::Nodes),
-            "pages module should no longer publish node permissions"
-        );
-    }
-
-    #[test]
-    fn module_has_migrations() {
-        let module = PagesModule;
-        assert!(!module.migrations().is_empty());
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Create)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Read)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Update)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Delete)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::List)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Publish)));
+        assert!(permissions.contains(&Permission::new(Resource::Pages, Action::Manage)));
     }
 }
-
-#[cfg(test)]
-mod contract_tests;

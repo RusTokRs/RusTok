@@ -55,8 +55,11 @@ pub struct PageBody {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageDetail {
     pub id: String,
+    pub version: i32,
     pub status: String,
     pub template: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
     #[serde(rename = "channelSlugs", default)]
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
@@ -66,10 +69,23 @@ pub struct PageDetail {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageMutationResult {
     pub id: String,
+    pub version: i32,
     pub status: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
     pub translation: Option<PageTranslation>,
+}
+
+impl From<&PageDetail> for PageMutationResult {
+    fn from(page: &PageDetail) -> Self {
+        Self {
+            id: page.id.clone(),
+            version: page.version,
+            status: page.status.clone(),
+            updated_at: page.updated_at.clone(),
+            translation: page.translation.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

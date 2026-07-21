@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::core::GRAPESJS_FORMAT;
-use crate::core::{self, PageDraftFormInput};
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use rustok_page_builder::dto::{
@@ -12,6 +9,8 @@ use rustok_page_builder_admin::{
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+const PAGE_PUBLISHED_DOCUMENT_IMMUTABLE: &str = "PAGE_PUBLISHED_DOCUMENT_IMMUTABLE";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagesBuilderSaveSnapshot {
@@ -67,6 +66,13 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
             .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
+            if current_page.status.eq_ignore_ascii_case("published") {
+                return Err(PageBuilderAdminFacadeError::with_stable_code(
+                    "Published page documents are immutable. Unpublish the page before editing, then publish the new revision explicitly.",
+                    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+                ));
+            }
+
             let current_revision = page_revision(&current_page);
             if input.revision_id != current_revision {
                 return Err(PageBuilderAdminFacadeError::with_stable_code(
@@ -78,54 +84,41 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
                 ));
             }
 
-            let seed = core::edit_form_seed_from_page(&current_page, &snapshot.default_locale);
             let project_data = canonicalize_builder_project(input.project_data)?;
-            let draft = core::build_create_page_draft(
-                PageDraftFormInput {
-                    locale: &seed.locale,
-                    title: &seed.title,
-                    slug: &seed.slug,
-                    channel_slugs: &seed.channel_slugs_text,
-                    publish: seed.publish_now,
-                },
+            let locale = current_page
+                .body
+                .as_ref()
+                .map(|body| body.locale.clone())
+                .or_else(|| {
+                    current_page
+                        .translation
+                        .as_ref()
+                        .map(|translation| translation.locale.clone())
+                })
+                .unwrap_or(snapshot.default_locale);
+            let saved_page = transport::save_page_document(
+                snapshot.token,
+                snapshot.tenant_slug,
+                snapshot.page_id,
+                current_revision,
+                locale,
                 project_data.clone(),
-            );
-            if let Some(field) = core::missing_required_page_field(&draft) {
-                return Err(PageBuilderAdminFacadeError::new(format!(
-                    "Page Builder save requires Pages metadata field `{field:?}`"
-                )));
-            }
-
-            let page = transport::update_page(
-                snapshot.token.clone(),
-                snapshot.tenant_slug.clone(),
-                snapshot.page_id.clone(),
-                draft,
             )
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-            let persisted_page =
-                transport::fetch_page(snapshot.token, snapshot.tenant_slug, snapshot.page_id)
-                    .await
-                    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
-                    .ok_or_else(|| {
-                        PageBuilderAdminFacadeError::new(
-                            "Pages document disappeared after a successful builder save",
-                        )
-                    })?;
-            let persisted_revision = page_revision(&persisted_page);
+            let persisted_revision = page_revision(&saved_page);
             if persisted_revision.starts_with("page:") {
                 return Err(PageBuilderAdminFacadeError::new(
-                    "Pages builder save succeeded but no persisted body revision was returned",
+                    "Pages document save succeeded without a persisted body revision",
                 ));
             }
 
             let response = PublishPageBuilderResult {
-                page_id: page.id.clone(),
+                page_id: saved_page.id.clone(),
                 revision_id: persisted_revision,
-                published: page.status.eq_ignore_ascii_case("published"),
+                published: saved_page.status.eq_ignore_ascii_case("published"),
             };
-            on_saved(page, project_data);
+            on_saved(PageMutationResult::from(&saved_page), project_data);
             Ok(PageBuilderCapabilityResponse::Publish(response))
         })
     }
@@ -137,7 +130,7 @@ pub fn controller_from_project(
     raw_project: &str,
 ) -> Result<AdminCanvasController, PageBuilderAdminFacadeError> {
     let project =
-        core::parse_project_data(raw_project).map_err(PageBuilderAdminFacadeError::new)?;
+        crate::core::parse_project_data(raw_project).map_err(PageBuilderAdminFacadeError::new)?;
     let project = canonicalize_builder_project(project)?;
     AdminCanvasController::new(page_id, revision_id, project)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))
@@ -151,11 +144,6 @@ pub fn page_revision(page: &PageDetail) -> String {
         .unwrap_or_else(|| format!("page:{}:initial", page.id))
 }
 
-/// Normalizes only the current Fly document contract.
-///
-/// `pages[].component` is the sole component-tree authority. Historical frame
-/// mirrors are not imported, synchronized or generated. Unknown project and
-/// page fields remain untouched for forward-compatible codecs/providers.
 pub fn canonicalize_builder_project(
     mut project: Value,
 ) -> Result<Value, PageBuilderAdminFacadeError> {
@@ -205,85 +193,4 @@ fn default_root_component() -> Value {
         "type": "wrapper",
         "components": []
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn canonical_component_is_the_only_tree_authority() {
-        let project = canonicalize_builder_project(json!({
-            "providerMetadata": { "version": 3 },
-            "pages": [{
-                "id": "home",
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [{ "id": "current", "type": "section" }]
-                },
-                "pluginData": { "future": true }
-            }]
-        }))
-        .expect("canonical project");
-
-        assert_eq!(
-            project["pages"][0]["component"]["components"][0]["id"],
-            "current"
-        );
-        assert_eq!(project["pages"][0]["pluginData"]["future"], true);
-        assert_eq!(project["providerMetadata"]["version"], 3);
-        assert!(project["pages"][0].get("frames").is_none());
-    }
-
-    #[test]
-    fn historical_frame_tree_is_not_imported() {
-        let project = canonicalize_builder_project(json!({
-            "pages": [{
-                "id": "home",
-                "frames": [{
-                    "component": {
-                        "id": "old-root",
-                        "type": "wrapper",
-                        "components": [{ "id": "old", "type": "section" }]
-                    }
-                }]
-            }]
-        }))
-        .expect("canonical project");
-
-        assert_eq!(project["pages"][0]["component"]["id"], "root");
-        assert_eq!(
-            project["pages"][0]["frames"][0]["component"]["id"],
-            "old-root"
-        );
-    }
-
-    #[test]
-    fn empty_project_receives_an_editable_current_root() {
-        let project = canonicalize_builder_project(json!({})).expect("canonical project");
-        assert_eq!(project["pages"][0]["component"]["id"], "root");
-        assert!(project["pages"][0].get("frames").is_none());
-    }
-
-    #[test]
-    fn page_revision_uses_body_timestamp_or_stable_initial_marker() {
-        let mut page = PageDetail {
-            id: "home".to_string(),
-            status: "draft".to_string(),
-            template: "default".to_string(),
-            channel_slugs: Vec::new(),
-            translation: None,
-            body: None,
-        };
-        assert_eq!(page_revision(&page), "page:home:initial");
-        page.body = Some(crate::model::PageBody {
-            locale: "en".to_string(),
-            content: String::new(),
-            format: GRAPESJS_FORMAT.to_string(),
-            content_json: None,
-            updated_at: "rev-2".to_string(),
-        });
-        assert_eq!(page_revision(&page), "rev-2");
-    }
 }

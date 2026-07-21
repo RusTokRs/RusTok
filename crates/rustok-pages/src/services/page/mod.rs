@@ -1,15 +1,18 @@
 mod create;
+mod document;
 mod helpers;
+mod lifecycle;
+mod metadata;
 mod persistence;
 mod read;
-mod update;
 
-use sea_orm::DatabaseConnection;
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
 
 use crate::entities::{page_body, page_translation};
 
+pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
 pub(crate) use helpers::is_page_visible_for_channel;
 
 pub(super) const PAGE_KIND: &str = "page";
@@ -45,15 +48,6 @@ pub(super) enum PageTransition {
 }
 
 impl PageTransition {
-    pub(super) fn from_status(status: Option<&ContentStatus>) -> Option<Self> {
-        match status {
-            Some(ContentStatus::Published) => Some(Self::Publish),
-            Some(ContentStatus::Draft) => Some(Self::Unpublish),
-            Some(ContentStatus::Archived) => Some(Self::Archive),
-            None => None,
-        }
-    }
-
     pub(super) fn status(self) -> ContentStatus {
         match self {
             Self::Publish => ContentStatus::Published,
