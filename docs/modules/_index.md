@@ -90,6 +90,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
 | `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
+| `rustok-notifications` | [docs](../../crates/rustok-notifications/docs/README.md) | [plan](../../crates/rustok-notifications/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
 | `rustok-page-builder` | [docs](../../crates/rustok-page-builder/docs/README.md) | [plan](../../crates/rustok-page-builder/docs/implementation-plan.md) |
 | `rustok-seo` | [docs](../../crates/rustok-seo/docs/README.md) | [plan](../../crates/rustok-seo/docs/implementation-plan.md) |
@@ -101,12 +102,12 @@ Module local documentation lives inside the crates themselves at
 
 ### Optional/Admin Surfaces
 
-- `rustok-product`: [README](../../crates/rustok-product/admin/README.md)
-- `rustok-customer`: [README](../../crates/rustok-customer/admin/README.md)
 - `rustok-groups`: [README](../../crates/rustok-groups/admin/README.md)
+- `rustok-product`: [README](../../crates/rustok-product/admin/README.md)
 - `rustok-pages`: [README](../../crates/rustok-pages/admin/README.md)
 - `rustok-blog`: [README](../../crates/rustok-blog/admin/README.md)
 - `rustok-forum`: [README](../../crates/rustok-forum/admin/README.md)
+- `rustok-notifications`: [README](../../crates/rustok-notifications/admin/README.md)
 - `rustok-commerce`: [README](../../crates/rustok-commerce/admin/README.md)
 - Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
@@ -115,6 +116,7 @@ Module local documentation lives inside the crates themselves at
 - `rustok-groups`: [README](../../crates/rustok-groups/storefront/README.md)
 - `rustok-blog`: [README](../../crates/rustok-blog/storefront/README.md)
 - `rustok-forum`: [README](../../crates/rustok-forum/storefront/README.md)
+- `rustok-notifications`: [README](../../crates/rustok-notifications/storefront/README.md)
 - `rustok-pages`: [README](../../crates/rustok-pages/storefront/README.md)
 - Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
