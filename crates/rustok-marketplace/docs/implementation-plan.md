@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `checkout_post_capture_ledger_wired_paid_event_inbox_pending`.
+- Runtime integration status: `checkout_paid_event_inbox_listener_wired_scheduler_admin_pending`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -36,6 +36,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   replay adoption.
 - [x] Commerce-owned durable post-capture financial operation with ledger receipt replay
   and fulfillment gating.
+- [x] Deduplicated paid-event inbox, paid-order listener, verified provider-event adapter,
+  bounded recovery sweep, and operator recovery service source.
 
 ## Architecture contract
 
@@ -228,14 +230,31 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Block marketplace fulfillment until the financial operation is completed with
   `ledger_posted` evidence.
 - [x] Compose the commission-backed ledger owner in storefront staged checkout runtime.
+- [x] Preserve typed checkpoint storage failures so outages remain retryable after capture.
+- [x] Persist invalid ledger responses and non-retryable owner failures as explicit
+  `operator_review` before releasing the financial lease.
+- [x] Use checkout-operation service identity for the ledger audit actor so direct checkout,
+  paid-order events, and verified provider-event replay share the same owner request hash.
+- [x] Add immutable `marketplace_paid_event_inbox` normalized facts, tenant/source/event
+  deduplication, CAS leases, retryable/operator-review states, and processed-row locking.
+- [x] Revalidate checkout operation, immutable plan, order, payment identity, captured time,
+  currency, amount, and plan hash before admitting event-driven ledger processing.
+- [x] Register a durable `OrderStatusChanged -> paid` handler in `CommerceModule`; ordinary
+  and non-marketplace orders remain no-ops.
+- [x] Add an adapter for signature-verified, payment-owner-processed `payment.captured`
+  provider events without persisting raw webhook payloads.
+- [x] Add bounded recovery sweep source for received, retryable-error, and expired-processing
+  inbox rows.
+- [x] Add bounded operator list/show/reset/retry service source with safe pre-ledger retry
+  restrictions.
 
 ### Remaining critical path
 
-- [ ] Add a deduplicated paid-event inbox as an alternative admission path to the same
-  financial operation.
-- [ ] Add a scheduled recovery/sweep worker and bounded operator list/show/retry surfaces.
-- [ ] Harden the post-capture checkpoint read and invalid-ledger response paths so storage
-  outages remain retryable and invariant failures persist explicit operator-review state.
+- [ ] Mount a scheduled invocation for the paid-event recovery sweep.
+- [ ] Add authenticated native/GraphQL/admin transports for financial-operation and
+  paid-event operator list/show/retry commands.
+- [ ] Mount provider-event adapter polling/subscription if webhook-specific recovery is
+  required in addition to the registered paid-order domain listener.
 - [ ] Add append-only reversal transactions for refunds, chargebacks, adjustments,
   payout settlement, payout reversal, reserve hold, and reserve release.
 - [ ] Add seller balance projections for pending, available, reserved, paid, and
@@ -337,16 +356,20 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   dependencies on checkout plan, allocation, and commission schemas.
 - [x] Register the commerce-owned financial operation migration with dependencies on
   captured payment binding, pre-capture checkpoint, and marketplace ledger schemas.
+- [x] Register the paid-event inbox migration after financial operation and immutable
+  payment provider-event normalized facts.
+- [x] Register the paid-order marketplace financial event listener in commerce host
+  composition.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for payout and moderation; compile-time
   module registration is not sufficient.
-- [ ] Register post-capture paid-event consumers in host composition.
+- [ ] Mount scheduled paid-event recovery and operator transports.
 - [ ] Update backfill registries with the validated final composed migration order.
 
 ## Consolidated maintainer validation queue
 
 No new tests were run for the 2026-07-21 source composition, typed-checkout, checkpoint,
-or post-capture financial-operation batches.
+post-capture financial-operation, or paid-event recovery batches.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, moderation, distribution,
@@ -363,6 +386,8 @@ or post-capture financial-operation batches.
   after owner commits, and resume-without-owner-call scenarios.
 - [ ] Run financial-operation admission, concurrent claim, lease expiry, ledger lost-response,
   ledger receipt replay, operator-review, and fulfillment-gate scenarios.
+- [ ] Run paid-event duplicate replay, same-key/different-facts conflict, paid-order listener
+  replay, verified-provider adapter, expired inbox lease, sweep, and operator retry scenarios.
 - [ ] Run idempotency conflict and lost-response replay scenarios.
 - [ ] Run allocation, commission, ledger, payout, seller, listing, and moderation
   contention scenarios.
@@ -382,13 +407,15 @@ or post-capture financial-operation batches.
 4. [x] Add durable allocation/commission checkpoint and replay adoption.
 5. [x] Add durable direct-checkout post-capture financial operation, ledger posting, and
    fulfillment gate.
-6. [ ] Add paid-event inbox plus recovery/operator surfaces for financial operations.
-7. [ ] Add refund/chargeback ledger reversals and seller balance projections.
-8. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
-9. [ ] Add seller/listing moderation adapters and decision-application recovery.
-10. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
-11. [ ] Build vendor and finance control-room surfaces.
-12. [ ] Execute the consolidated validation queue and only then promote readiness.
+6. [x] Add paid-event inbox, paid-order listener, verified provider adapter, bounded sweep,
+   and operator recovery service source.
+7. [ ] Mount scheduled sweep and authenticated operator transports.
+8. [ ] Add refund/chargeback ledger reversals and seller balance projections.
+9. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
+10. [ ] Add seller/listing moderation adapters and decision-application recovery.
+11. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
+12. [ ] Build vendor and finance control-room surfaces.
+13. [ ] Execute the consolidated validation queue and only then promote readiness.
 
 ## Primary source paths
 
@@ -404,13 +431,19 @@ or post-capture financial-operation batches.
 - `crates/rustok-cart/src/marketplace_snapshot.rs`
 - `crates/rustok-commerce/src/entities/checkout_marketplace_economics_checkpoint.rs`
 - `crates/rustok-commerce/src/entities/marketplace_financial_operation.rs`
+- `crates/rustok-commerce/src/entities/marketplace_paid_event_inbox.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000001_create_checkout_marketplace_economics_checkpoints.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000002_create_marketplace_financial_operations.rs`
+- `crates/rustok-commerce/src/migrations/m20260721_000003_create_marketplace_paid_event_inbox.rs`
 - `crates/rustok-commerce/src/services/checkout_order_plan.rs`
 - `crates/rustok-commerce/src/services/checkout_plan_builder.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_allocation.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_commission.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_economics.rs`
-- `crates/rustok-commerce/src/services/checkout_marketplace_financial.rs`
+- `crates/rustok-commerce/src/services/checkout_marketplace_financial_hardened.rs`
+- `crates/rustok-commerce/src/services/marketplace_paid_event_inbox.rs`
+- `crates/rustok-commerce/src/services/marketplace_paid_order_financial.rs`
+- `crates/rustok-commerce/src/services/marketplace_provider_paid_event_adapter.rs`
+- `crates/rustok-commerce/src/services/marketplace_financial_operator.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
