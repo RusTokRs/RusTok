@@ -10,11 +10,15 @@ boundary rather than by importing index runtime types. The FFA split is
 `phase_b_ready`; no further UI extraction is planned without a new functional
 surface.
 
-The Blog projector stores a canonical slug in each `blog_post` payload. The Rust
-storefront transport facade normalizes navigation after selecting native or
-GraphQL transport: existing backend URLs remain authoritative, while a Blog
-result without a URL receives `/modules/blog?slug=...` only for a bounded safe
-slug. Invalid or missing slugs stay non-navigable.
+Canonical result navigation now belongs to the normalized Search contract.
+`canonical_search_result_url` derives product, content, and Blog URLs before
+GraphQL serialization. Blog navigation requires the canonical
+`source_module=blog` / `entity_type=blog_post` pair and a bounded safe slug from
+the owner-projected payload; malformed or spoofed results fail closed. Content
+kind values are also bounded before they enter a query string. The Rust
+storefront post-transport Blog enrichment remains temporarily as an idempotent
+compatibility fallback for older native payloads and never overwrites a backend
+URL.
 
 Blog ingestion has two executable, unrun harness layers. A routing target locks
 all Blog lifecycle, module-toggle, and targeted/full reindex events. An env-gated
@@ -37,17 +41,25 @@ guardrail and negative fixtures lock this schema and lifecycle contract.
   `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json`,
   `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json`,
   `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json`,
-  and `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
+  `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
+  and `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
 - Blog projection harness status: `executable_no_run`; execution remains owned by
   the user and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL
   `DATABASE_URL`.
+- Canonical URL status: `source_verified_no_compile`; the core policy and GraphQL
+  delegation are implemented, while native/admin transport-local switches remain
+  compatibility debt until their large adapters are migrated atomically.
 - Guardrails: `scripts/verify/verify-search-fba.mjs`,
   `scripts/verify/verify-search-ui-boundary.mjs`,
-  `scripts/verify/verify-search-blog-navigation.mjs`, and
-  `scripts/verify/verify-search-blog-projection.mjs`.
-- Blog result navigation parity is transport-neutral in the Rust storefront:
-  the same post-processing runs after native or GraphQL selection, preserves
-  owner/backend URLs, and fails closed on malformed indexed payloads.
+  `scripts/verify/verify-search-blog-navigation.mjs`,
+  `scripts/verify/verify-search-blog-projection.mjs`, and
+  `scripts/verify/verify-search-canonical-url-contract.mjs`.
+- GraphQL Search results delegate URL derivation to
+  `canonical_search_result_url`; GraphQL no longer owns a transport-local route
+  switch.
+- The storefront compatibility fallback runs after native/GraphQL selection,
+  preserves backend URLs, validates the same Blog slug shape, and fills only
+  missing legacy URLs.
 - Blog projection table discovery and all subsequent reads use one schema
   resolution policy through the connection `search_path`; schema-isolated tests
   and deployments no longer silently check `public` while querying another
@@ -63,14 +75,16 @@ guardrail and negative fixtures lock this schema and lifecycle contract.
 
 Search is the second whole-module extraction pilot. The remote deployment
 contains the complete `rustok-search` owner, including `SearchEngine`, ranking,
-dictionaries, query rules, analytics, fallback policy, and the PostgreSQL
-baseline. Storefront and admin consumers call only `SearchQueryPort` and
-`SearchSuggestionPort` over the selected transport.
+dictionaries, query rules, analytics, fallback policy, canonical URL policy,
+and the PostgreSQL baseline. Storefront and admin consumers call only
+`SearchQueryPort` and `SearchSuggestionPort` over the selected transport.
 
 Meilisearch, Typesense, and Algolia remain connector implementations inside
 this search service. They receive canonical `SearchQuery`/document inputs and
 return normalized `SearchResult`/suggestion DTOs. Consumers never select a
 connector, access engine credentials, or depend on engine-specific schemas.
+Connector results must pass through the Search-owned URL policy before transport
+serialization; connectors do not construct application routes.
 
 `rustok-index` remains a separate ingestion/read-model owner. Its canonical
 read models may enrich Search only through `IndexReadModelPort`; current
@@ -107,27 +121,36 @@ only normalized Search ports are exposed remotely.
    scope, enable rebuilds it, and both use dedicated operation labels/metrics.
 8. Added PostgreSQL targeted missing-post cleanup and module disable/enable
    lifecycle cases, then locked them in evidence and verifier fixtures.
+9. Added the Search-owned `canonical_search_result_url` policy with Blog
+   source/entity ownership, bounded slug validation, content-kind injection
+   protection, and product/content compatibility tests.
+10. Exported the canonical URL policy and migrated GraphQL result projection to
+    it, removing the GraphQL-local URL switch while retaining an idempotent
+    storefront compatibility fallback.
+11. Added machine-readable canonical URL evidence plus canonical and negative
+    source-verifier fixtures.
 
 ## Next results
 
-1. **Execute live Blog projection evidence.** Run the routing, PostgreSQL, and
+1. **Execute canonical URL evidence.** Run the core URL-policy tests, GraphQL
+   storefront search against projected Blog documents, native compatibility
+   behavior, and click-href analytics evidence.
+2. **Finish native URL cutover.** Migrate storefront/admin native result mappers
+   to `canonical_search_result_url`, then remove the post-transport Blog fallback
+   after every consumer proves backend URL adoption.
+3. **Execute live Blog projection evidence.** Run the routing, PostgreSQL, and
    source-verifier targets and retain migration/`pg_trgm`, event-delivery,
    targeted missing-post cleanup, and module-disabled cleanup evidence.
-2. **Execute live provider contract evidence.** Run queries and suggestions
+4. **Execute live provider contract evidence.** Run queries and suggestions
    against a real PostgreSQL provider under deadline, fallback, error, locale,
    tenant, channel, and catalog-filter conditions. Done when invocation traces
    are backed by runtime results and justify any status promotion.
-3. **Harden search operations.** Deliver ingestion/rebuild retry and DLQ
+5. **Harden search operations.** Deliver ingestion/rebuild retry and DLQ
    behavior together with production-grade diagnostics and analytics views,
    including recovery visibility for lagging or inconsistent documents. Done
    when operator actions have bounded retry/failure semantics and observable
    outcomes instead of source-only evidence.
-4. **Promote canonical URL derivation to the shared Search contract.** Move the
-   Blog route fallback from Rust storefront post-processing into the shared
-   result projection when the large GraphQL type file can be changed through an
-   atomic patch. Keep the storefront fallback during compatibility rollout and
-   remove it only after all consumers read the canonical backend URL.
-5. **Stage external engines as adapters.** Add Meilisearch, Typesense, or
+6. **Stage external engines as adapters.** Add Meilisearch, Typesense, or
    Algolia only behind dedicated connector crates with schema-sync, health,
    fallback, and data-consistency contracts. Done when a selected connector
    cannot bypass `SearchQueryPort`/`SearchSuggestionPort` or replace the
@@ -135,6 +158,9 @@ only normalized Search ports are exposed remotely.
 
 ## Verification
 
+- `cargo test -p rustok-search engine::tests::canonical_url`
+- `node scripts/verify/verify-search-canonical-url-contract.mjs`
+- `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
 - `node scripts/verify/verify-search-blog-projection.mjs`
