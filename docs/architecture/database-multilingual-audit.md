@@ -36,8 +36,15 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
 - **Forum** — category/topic/reply base rows remain language-agnostic; localized
   records are parallel and the core tenant-integrity migration widens their
   locale columns to `VARCHAR(32)` without narrowing rollback.
-- **Groups** — the fresh owner schema uses a language-agnostic `groups` table and
-  `group_translations.locale VARCHAR(32)` from creation.
+- **Groups** — `groups` owns only language-neutral identity/policy state and
+  `group_translations` owns title, summary, and body under the unique
+  `(tenant_id, group_id, locale)` key. PostgreSQL CHECK constraints and SQLite
+  insert/update triggers enforce canonical normalized locale tags, localized
+  presentation shape, and rejection of localized presentation keys in base
+  `groups.metadata`. The service accepts the host-resolved effective locale,
+  requires the exact translation row, scopes catalog/search to that locale,
+  counts title/summary limits as Unicode scalar values, and contains no English
+  or arbitrary first-row fallback.
 - **Product catalog** — the product-owned schema verifier remains the delegated
   guard for translation ownership and locale widening.
 - **Content, blog, taxonomy, comments, and profiles locale widths** — registered
