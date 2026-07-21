@@ -27,7 +27,8 @@ migration decorators and manual JSON preview rendering.
 
 - FFA status: `core_transport_ui` for the browser-host slice. `src/browser_host.rs` owns the
   framework-neutral `PageBuilderBrowserModuleDescriptor`; the Leptos component only renders its
-  script type, adapter marker and source. A future Dioxus renderer consumes the same descriptor.
+  script type, adapter marker, optional CSP nonce and source. A future Dioxus renderer consumes the
+  same descriptor and nonce contract.
 - FBA status: `boundary_ready`. Fly is the domain owner; Page Builder owns capability/port/transport
   boundaries; consumer modules own persistence and publication lifecycle.
 - Structural shape: `core_transport_ui` for browser host and `core_transport` for capability service.
@@ -46,8 +47,8 @@ migration decorators and manual JSON preview rendering.
    `FlyAdapterBackedPageBuilderService`, `CapabilityGuardedService` and
    `AuthorizedPageBuilderHandlers` without another service implementation.
 2. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
-   the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module` and must not
-   copy lifecycle, form, selection or draft-route policy.
+   the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
+   its optional CSP nonce, and must not copy lifecycle, form, selection or draft-route policy.
 3. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
    correlate builder write, Pages publish and storefront read across the required rollout profiles.
 

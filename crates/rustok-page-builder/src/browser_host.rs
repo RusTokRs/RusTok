@@ -1,10 +1,16 @@
 pub const PAGE_BUILDER_BROWSER_ADAPTER: &str = "fly_browser";
 pub const PAGE_BUILDER_BROWSER_SCRIPT_TYPE: &str = "module";
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PageBuilderBrowserModuleOptions {
+    pub nonce: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageBuilderBrowserModuleDescriptor {
     pub script_type: &'static str,
     pub adapter: &'static str,
+    pub nonce: Option<String>,
     pub source: String,
 }
 
@@ -130,6 +136,7 @@ for (const adapter of __flyAdapters) __flyBindSsrAdapter(adapter);
 pub fn page_builder_browser_module(
     config_json: &str,
     adapter_js: &str,
+    options: PageBuilderBrowserModuleOptions,
 ) -> PageBuilderBrowserModuleDescriptor {
     let config = escape_browser_config_for_inline_script(config_json);
     let source = [
@@ -142,8 +149,16 @@ pub fn page_builder_browser_module(
     PageBuilderBrowserModuleDescriptor {
         script_type: PAGE_BUILDER_BROWSER_SCRIPT_TYPE,
         adapter: PAGE_BUILDER_BROWSER_ADAPTER,
+        nonce: normalize_script_nonce(options.nonce),
         source,
     }
+}
+
+fn normalize_script_nonce(nonce: Option<String>) -> Option<String> {
+    nonce.and_then(|value| {
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
 }
 
 pub fn escape_browser_config_for_inline_script(json: &str) -> String {
@@ -163,6 +178,9 @@ mod tests {
         let module = page_builder_browser_module(
             r#"{"autoMount":false}"#,
             "export class FlyBrowserAdapter {}",
+            PageBuilderBrowserModuleOptions {
+                nonce: Some("  csp-nonce  ".to_string()),
+            },
         );
         let config = module
             .source
@@ -180,6 +198,19 @@ mod tests {
         assert!(adapter < host);
         assert_eq!(module.script_type, "module");
         assert_eq!(module.adapter, "fly_browser");
+        assert_eq!(module.nonce.as_deref(), Some("csp-nonce"));
+    }
+
+    #[test]
+    fn blank_script_nonce_is_omitted() {
+        let module = page_builder_browser_module(
+            "{}",
+            "export class FlyBrowserAdapter {}",
+            PageBuilderBrowserModuleOptions {
+                nonce: Some("   ".to_string()),
+            },
+        );
+        assert_eq!(module.nonce, None);
     }
 
     #[test]

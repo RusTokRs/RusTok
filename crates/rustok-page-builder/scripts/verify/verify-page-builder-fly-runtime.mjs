@@ -78,8 +78,18 @@ const required = [
   ],
   [
     browserHost,
+    "pub struct PageBuilderBrowserModuleOptions",
+    "shared browser module options are missing",
+  ],
+  [
+    browserHost,
     "pub struct PageBuilderBrowserModuleDescriptor",
     "shared browser module descriptor is missing",
+  ],
+  [
+    browserHost,
+    "pub nonce: Option<String>",
+    "shared browser CSP nonce is missing",
   ],
   [
     browserHost,

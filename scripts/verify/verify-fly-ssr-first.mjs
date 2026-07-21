@@ -148,7 +148,9 @@ requireMarker(
 requireMarkers('pageBuilderBrowserHost', [
   'PAGE_BUILDER_BROWSER_ADAPTER',
   'PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS',
+  'PageBuilderBrowserModuleOptions',
   'PageBuilderBrowserModuleDescriptor',
+  'pub nonce: Option<String>',
   'page_builder_browser_module',
   'PAGE_BUILDER_BROWSER_SCRIPT_TYPE',
   'escape_browser_config_for_inline_script',
@@ -184,9 +186,12 @@ requireMarkers('adminCargo', [
 ], 'Page Builder admin feature boundary');
 requireMarkers('adminAdapter', [
   'FLY_BROWSER_ADAPTER_JS',
+  'PageBuilderBrowserModuleOptions',
   'page_builder_browser_module',
+  'script_nonce: Option<String>',
   'type=script_type',
   'data-fly-browser-adapter=adapter',
+  'nonce=nonce',
   'inner_html=source',
 ], 'thin Leptos browser adapter component');
 for (const forbidden of [
