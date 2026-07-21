@@ -26,12 +26,24 @@
       "expected": "category translation reads, updates, and deletes are constrained by tenant_id and category_id"
     },
     {
+      "name": "tenant_scoped_parent",
+      "expected": "a parent category must exist in the same tenant before the child category transaction inserts"
+    },
+    {
+      "name": "non_empty_slug",
+      "expected": "create and translation upsert reject normalized slugs that contain no ASCII letter or digit instead of persisting an empty route key"
+    },
+    {
       "name": "mounted_http_write_path",
       "expected": "Blog category HTTP mutations construct CategoryService with TransactionalEventBus from HostRuntimeContext"
     },
     {
       "name": "bounded_category_list",
-      "expected": "HTTP category pagination normalizes page to at least one and per_page to the range 1..100"
+      "expected": "both owner service and HTTP adapter normalize page to at least one and clamp per_page to the range 1..100"
+    },
+    {
+      "name": "typed_http_errors",
+      "expected": "category not found, validation, forbidden, and unexpected failures map to 404, 400, 403, and safe 500 responses respectively"
     },
     {
       "name": "search_payload_dependency",
@@ -43,6 +55,8 @@
     "verify one outbox record is committed for category update and delete",
     "verify an outbox write failure rolls back the category mutation",
     "run Search ingestion and confirm category_name/category_slug change in related Blog documents",
-    "verify cross-tenant category IDs and translations cannot be read or mutated"
+    "verify cross-tenant category IDs, parent IDs, and translations cannot be read or mutated",
+    "verify non-ASCII names require an explicit non-empty ASCII slug",
+    "verify category list limits remain bounded through direct service and HTTP calls"
   ]
 }
