@@ -1,6 +1,6 @@
 # `rustok-product` Remediation Register
 
-**Reviewed:** 2026-07-11
+**Reviewed:** 2026-07-21
 
 **Scope:** `crates/rustok-product` and its product GraphQL and migration boundaries.
 **Status terms:** `resolved` is implemented and source-verified; `open` remains a valid
@@ -46,7 +46,7 @@ source markers or no-compile evidence.
 | Replace `SELECT → INSERT` uniqueness checks with constraint-conflict handling | resolved | Product handle and SKU inserts rely on the new unique indexes; in-process duplicate input detection remains only to report duplicate values in one request. |
 | Bulk-insert translations, options, option values, variants, and prices where safe | partial | Product-option rows, option translations, option values, option-value translations, variant translations, and prices now use batched inserts after their dependent ids are allocated. Product translations and variants remain per-row because their conflict mapping and inventory/outbox side effects require per-record handling. |
 | Extract a common entity-and-outbox transaction helper | resolved | Product entity write paths with domain events now use `services/write_transaction.rs::ProductWriteTransaction`. It owns the SeaORM transaction, exposes only transactional event publication, and commits only after the entity and outbox writes succeed. The source guardrail rejects direct `self.db.begin()` in the catalog and schema write services. |
-| Replace SEO provider-registration `expect` with a controlled module-init error | open | `ProductModule::register_runtime_extensions` still uses `expect`. |
+| Replace SEO provider-registration `expect` with a controlled module-init error | resolved | `RusToKModule::register_runtime_extensions` and `ModuleRegistry::build_runtime_extensions` are fallible. Product, Pages, Blog, Forum, AI, notification factory materialization, and server bootstrap now propagate contextual initialization errors; Product maps SEO provider conflicts without `expect` or `panic`. |
 
 ## API and access control
 

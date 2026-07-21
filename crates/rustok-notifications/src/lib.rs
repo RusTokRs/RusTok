@@ -35,8 +35,12 @@ impl RusToKModule for NotificationsModule {
         &["outbox"]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         let _ = ensure_notification_source_registry(extensions);
+        Ok(())
     }
 }
 
@@ -66,7 +70,9 @@ mod tests {
         assert_eq!(module.migration_dependencies().len(), 1);
 
         let mut extensions = ModuleRuntimeExtensions::default();
-        module.register_runtime_extensions(&mut extensions);
+        module
+            .register_runtime_extensions(&mut extensions)
+            .expect("notification runtime extensions should initialize");
         assert!(notification_source_registry_from_extensions(&extensions).is_some());
 
         let service = NotificationsService::from_runtime_extensions(&extensions);
