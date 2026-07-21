@@ -45,9 +45,21 @@ pub async fn create_category(
     tenant_slug: Option<String>,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
-    match graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft.clone()).await
-    {
-        Ok(category) => Ok(category),
+    let locale = draft.locale.clone();
+    let requested_position = placement_position(draft.position)?;
+
+    match graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft.clone()).await {
+        Ok(category) => {
+            move_category(
+                token.clone(),
+                tenant_slug.clone(),
+                category.id.clone(),
+                category.parent_id.clone(),
+                requested_position,
+            )
+            .await?;
+            fetch_category(token, tenant_slug, category.id, locale).await
+        }
         Err(_) => rest_adapter::create_category(token, tenant_slug, draft).await,
     }
 }
@@ -58,6 +70,9 @@ pub async fn update_category(
     id: String,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
+    let locale = draft.locale.clone();
+    let requested_position = placement_position(draft.position)?;
+
     match graphql_adapter::update_category(
         token.clone(),
         tenant_slug.clone(),
@@ -66,8 +81,68 @@ pub async fn update_category(
     )
     .await
     {
+        Ok(category) if category.position != draft.position => {
+            move_category(
+                token.clone(),
+                tenant_slug.clone(),
+                id.clone(),
+                category.parent_id,
+                requested_position,
+            )
+            .await?;
+            fetch_category(token, tenant_slug, id, locale).await
+        }
         Ok(category) => Ok(category),
         Err(_) => rest_adapter::update_category(token, tenant_slug, id, draft).await,
+    }
+}
+
+pub async fn move_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    parent_id: Option<String>,
+    position: u32,
+) -> Result<(), ApiError> {
+    match graphql_adapter::move_category(
+        token.clone(),
+        tenant_slug.clone(),
+        id.clone(),
+        parent_id.clone(),
+        position,
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(_) => rest_adapter::move_category(token, tenant_slug, id, parent_id, position).await,
+    }
+}
+
+#[allow(dead_code)]
+pub async fn reorder_category_siblings(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    parent_id: Option<String>,
+    ordered_category_ids: Vec<String>,
+) -> Result<(), ApiError> {
+    match graphql_adapter::reorder_category_siblings(
+        token.clone(),
+        tenant_slug.clone(),
+        parent_id.clone(),
+        ordered_category_ids.clone(),
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            rest_adapter::reorder_category_siblings(
+                token,
+                tenant_slug,
+                parent_id,
+                ordered_category_ids,
+            )
+            .await
+        }
     }
 }
 
@@ -178,4 +253,8 @@ pub async fn fetch_replies(
         Ok(replies) => Ok(replies),
         Err(_) => rest_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await,
     }
+}
+
+fn placement_position(position: i32) -> Result<u32, ApiError> {
+    u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }

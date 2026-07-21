@@ -35,8 +35,19 @@ struct UpdateCategoryInput<'a> {
     description: Option<&'a str>,
     icon: Option<&'a str>,
     color: Option<&'a str>,
-    position: Option<i32>,
     moderated: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct MoveCategoryInput<'a> {
+    parent_id: Option<&'a str>,
+    position: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct ReorderCategorySiblingsInput<'a> {
+    parent_id: Option<&'a str>,
+    ordered_category_ids: &'a [String],
 }
 
 #[derive(Debug, Serialize)]
@@ -217,12 +228,14 @@ pub async fn create_category(
     tenant_slug: Option<String>,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
-    request_json(
+    let locale = draft.locale.clone();
+    let requested_position = placement_position(draft.position)?;
+    let category: CategoryDetail = request_json(
         Method::POST,
         "/categories",
-        token,
-        tenant_slug,
-        Some(draft.locale.clone()),
+        token.clone(),
+        tenant_slug.clone(),
+        Some(locale.clone()),
         Some(CreateCategoryInput {
             locale: draft.locale.as_str(),
             name: draft.name.as_str(),
@@ -231,11 +244,21 @@ pub async fn create_category(
             icon: optional_text(draft.icon.as_str()),
             color: optional_text(draft.color.as_str()),
             parent_id: None,
-            position: Some(draft.position),
+            position: None,
             moderated: draft.moderated,
         }),
     )
-    .await
+    .await?;
+
+    move_category(
+        token.clone(),
+        tenant_slug.clone(),
+        category.id.clone(),
+        category.parent_id.clone(),
+        requested_position,
+    )
+    .await?;
+    fetch_category(token, tenant_slug, category.id, locale).await
 }
 
 pub async fn update_category(
@@ -244,12 +267,14 @@ pub async fn update_category(
     id: String,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
-    request_json(
+    let locale = draft.locale.clone();
+    let requested_position = placement_position(draft.position)?;
+    let category: CategoryDetail = request_json(
         Method::PUT,
         format!("/categories/{id}").as_str(),
-        token,
-        tenant_slug,
-        Some(draft.locale.clone()),
+        token.clone(),
+        tenant_slug.clone(),
+        Some(locale.clone()),
         Some(UpdateCategoryInput {
             locale: draft.locale.as_str(),
             name: Some(draft.name.as_str()),
@@ -257,11 +282,67 @@ pub async fn update_category(
             description: optional_text(draft.description.as_str()),
             icon: optional_text(draft.icon.as_str()),
             color: optional_text(draft.color.as_str()),
-            position: Some(draft.position),
             moderated: Some(draft.moderated),
         }),
     )
-    .await
+    .await?;
+
+    if category.position != draft.position {
+        move_category(
+            token.clone(),
+            tenant_slug.clone(),
+            id.clone(),
+            category.parent_id,
+            requested_position,
+        )
+        .await?;
+        return fetch_category(token, tenant_slug, id, locale).await;
+    }
+
+    Ok(category)
+}
+
+pub async fn move_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    parent_id: Option<String>,
+    position: u32,
+) -> Result<(), ApiError> {
+    let _: serde_json::Value = request_json(
+        Method::PUT,
+        format!("/categories/{id}/move").as_str(),
+        token,
+        tenant_slug,
+        None,
+        Some(MoveCategoryInput {
+            parent_id: parent_id.as_deref(),
+            position,
+        }),
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn reorder_category_siblings(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    parent_id: Option<String>,
+    ordered_category_ids: Vec<String>,
+) -> Result<(), ApiError> {
+    let _: serde_json::Value = request_json(
+        Method::PUT,
+        "/categories/reorder",
+        token,
+        tenant_slug,
+        None,
+        Some(ReorderCategorySiblingsInput {
+            parent_id: parent_id.as_deref(),
+            ordered_category_ids: ordered_category_ids.as_slice(),
+        }),
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn delete_category(
@@ -401,6 +482,10 @@ pub async fn fetch_replies(
         None::<()>,
     )
     .await
+}
+
+fn placement_position(position: i32) -> Result<u32, ApiError> {
+    u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
 
 fn optional_text(value: &str) -> Option<&str> {

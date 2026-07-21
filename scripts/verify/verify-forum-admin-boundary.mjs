@@ -43,13 +43,14 @@ const corePath = "crates/rustok-forum/admin/src/core.rs";
 const uiPath = "crates/rustok-forum/admin/src/ui/leptos.rs";
 const transportPath = "crates/rustok-forum/admin/src/transport.rs";
 const legacyApiPath = "crates/rustok-forum/admin/src/api.rs";
+const graphqlAdapterPath = "crates/rustok-forum/admin/src/transport/graphql_adapter.rs";
 const restAdapterPath = "crates/rustok-forum/admin/src/transport/rest_adapter.rs";
 const implementationPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
 const packagePath = "package.json";
 const verifierTestPath = "scripts/verify/verify-forum-admin-boundary.test.mjs";
 
-for (const filePath of [libPath, corePath, uiPath, transportPath, restAdapterPath, implementationPlanPath, registryPath, packagePath, verifierTestPath]) {
+for (const filePath of [libPath, corePath, uiPath, transportPath, graphqlAdapterPath, restAdapterPath, implementationPlanPath, registryPath, packagePath, verifierTestPath]) {
   assertExists(filePath, `${filePath}: expected forum admin FFA boundary file`);
 }
 if (existsSync(repoPath(legacyApiPath))) {
@@ -60,6 +61,7 @@ const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
 const transport = readRepo(transportPath);
+const graphqlAdapter = readRepo(graphqlAdapterPath);
 const restAdapter = readRepo(restAdapterPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
@@ -119,18 +121,18 @@ for (const marker of [
   "forum_admin_topic_form_labels",
   "ForumAdminReplyPreviewLabels",
   "forum_admin_reply_preview_labels",
-  ]) {
+]) {
   assertContains(core, marker, `${corePath}: expected core-owned FFA helper ${marker}`);
-  }
+}
 
-  assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
-  assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
-  assertContains(ui, "forum_admin_category_matrix_labels", `${uiPath}: UI must consume core-owned category matrix labels`);
-  assertContains(ui, "forum_admin_category_form_labels", `${uiPath}: UI must consume core-owned category form labels`);
-  assertContains(ui, "forum_admin_topic_stream_labels", `${uiPath}: UI must consume core-owned topic stream labels`);
-  assertContains(ui, "forum_admin_topic_form_labels", `${uiPath}: UI must consume core-owned topic form labels`);
-  assertContains(ui, "forum_admin_reply_preview_labels", `${uiPath}: UI must consume core-owned reply preview labels`);
-  assertContains(ui, "forum_admin_busy_key", `${uiPath}: UI must consume core-owned busy-key construction`);
+assertContains(ui, "use crate::core::{", `${uiPath}: Leptos adapter must import core-owned helpers`);
+assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must call the module-owned transport facade`);
+assertContains(ui, "forum_admin_category_matrix_labels", `${uiPath}: UI must consume core-owned category matrix labels`);
+assertContains(ui, "forum_admin_category_form_labels", `${uiPath}: UI must consume core-owned category form labels`);
+assertContains(ui, "forum_admin_topic_stream_labels", `${uiPath}: UI must consume core-owned topic stream labels`);
+assertContains(ui, "forum_admin_topic_form_labels", `${uiPath}: UI must consume core-owned topic form labels`);
+assertContains(ui, "forum_admin_reply_preview_labels", `${uiPath}: UI must consume core-owned reply preview labels`);
+assertContains(ui, "forum_admin_busy_key", `${uiPath}: UI must consume core-owned busy-key construction`);
 assertContains(ui, "forum_admin_form_error_message", `${uiPath}: UI must consume core-owned form error policy`);
 assertContains(ui, "forum_admin_transport_error_message", `${uiPath}: UI must consume core-owned transport error formatting`);
 assertContains(ui, "category_select_options", `${uiPath}: UI must consume core-owned category select options`);
@@ -161,21 +163,33 @@ for (const rawMetricColor of ["bg-sky-500", "bg-amber-500", "bg-emerald-500"]) {
 }
 for (const rawActionButtonClass of [
   "rounded-full border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted",
-  "rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15"
+  "rounded-full border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition hover:bg-destructive/15",
 ]) {
   assertNotContains(ui, rawActionButtonClass, `${uiPath}: action button styles must stay in core policy (${rawActionButtonClass})`);
 }
 assertNotContains(ui, /format!\("\{\}: \{err\}"/, `${uiPath}: transport error message composition must stay in core helper`);
 
-for (const marker of ["fetch_categories", "fetch_category", "create_category", "update_category", "delete_category", "fetch_topics", "fetch_topic", "create_topic", "update_topic", "delete_topic", "fetch_replies"]) {
+for (const marker of ["fetch_categories", "fetch_category", "create_category", "update_category", "move_category", "reorder_category_siblings", "delete_category", "fetch_topics", "fetch_topic", "create_topic", "update_topic", "delete_topic", "fetch_replies"]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
 assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must wire GraphQL adapter`);
 assertContains(transport, "mod rest_adapter;", `${transportPath}: transport facade must wire REST fallback adapter`);
 assertContains(transport, "graphql_adapter::fetch_categories", `${transportPath}: transport facade must prefer GraphQL adapter`);
 assertContains(transport, "rest_adapter::fetch_categories", `${transportPath}: transport facade must keep REST fallback adapter`);
+assertContains(transport, "graphql_adapter::move_category", `${transportPath}: placement must prefer the GraphQL owner command`);
+assertContains(transport, "rest_adapter::move_category", `${transportPath}: placement must keep the REST owner-command fallback`);
+assertContains(transport, "graphql_adapter::reorder_category_siblings", `${transportPath}: sibling reorder must prefer GraphQL`);
+assertContains(transport, "rest_adapter::reorder_category_siblings", `${transportPath}: sibling reorder must keep REST fallback`);
 assertNotContains(transport, "use crate::api", `${transportPath}: transport facade must not delegate to legacy api module`);
+
+assertContains(graphqlAdapter, "moveForumCategory", `${graphqlAdapterPath}: GraphQL adapter must call moveForumCategory`);
+assertContains(graphqlAdapter, "reorderForumCategorySiblings", `${graphqlAdapterPath}: GraphQL adapter must call reorderForumCategorySiblings`);
 assertContains(restAdapter, "reqwest", `${restAdapterPath}: forum admin REST adapter must keep the REST transport contract`);
+assertContains(restAdapter, "/categories/{id}/move", `${restAdapterPath}: REST adapter must call the category move endpoint`);
+assertContains(restAdapter, "/categories/reorder", `${restAdapterPath}: REST adapter must call the sibling reorder endpoint`);
+for (const adapter of [graphqlAdapter, restAdapter]) {
+  assertNotContains(adapter, "position: Some(draft.position)", "forum admin adapters must not bypass placement owner commands through generic update");
+}
 
 assertContains(implementationPlan, "verify-forum-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the forum fast boundary guardrail`);
 assertContains(registry, "verify-forum-admin-boundary.mjs", `${registryPath}: central readiness board must mention the forum fast boundary guardrail`);
