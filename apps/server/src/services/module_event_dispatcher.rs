@@ -29,6 +29,8 @@ pub fn spawn_module_event_dispatcher(
 
     #[cfg(feature = "mod-commerce")]
     spawn_paid_order_label_worker_if_enabled(ctx);
+    #[cfg(feature = "mod-commerce")]
+    spawn_marketplace_financial_worker_if_enabled(ctx);
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
 
@@ -65,6 +67,29 @@ fn spawn_paid_order_label_worker_if_enabled(ctx: &ServerRuntimeContext) {
         .subscribe();
     ctx.shared_insert(
         crate::services::paid_order_label_worker::spawn_paid_order_create_label_worker(
+            ctx.clone(),
+            stop_rx,
+        ),
+    );
+}
+
+#[cfg(feature = "mod-commerce")]
+fn spawn_marketplace_financial_worker_if_enabled(ctx: &ServerRuntimeContext) {
+    if !ctx.settings().runtime.runs_background_workers()
+        || ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >()
+    {
+        return;
+    }
+
+    ensure_stop_handle(ctx);
+    let stop_rx = ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .expect("StopHandle must exist before marketplace financial worker startup")
+        .subscribe();
+    ctx.shared_insert(
+        crate::services::marketplace_financial_worker::spawn_marketplace_financial_worker(
             ctx.clone(),
             stop_rx,
         ),
@@ -161,6 +186,22 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                 registry
             });
         extensions.insert(fulfillment_registry);
+    }
+
+    #[cfg(feature = "mod-commerce")]
+    {
+        let financial_runtime = runtime_ctx
+            .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+            .unwrap_or_else(|| {
+                let runtime =
+                    rustok_commerce::MarketplaceFinancialRuntime::in_process(db.clone());
+                runtime_ctx.shared_insert(runtime.clone());
+                runtime
+            });
+        extensions.insert(financial_runtime);
+        if let Some(event_bus) = runtime_ctx.shared_get::<rustok_outbox::TransactionalEventBus>() {
+            extensions.insert(event_bus);
+        }
     }
 
     let auth_admin_provider = Arc::new(
@@ -296,5 +337,7 @@ mod tests {
                     .is_some()
             );
         }
+        #[cfg(feature = "mod-commerce")]
+        assert!(extensions.contains::<rustok_commerce::MarketplaceFinancialRuntime>());
     }
 }
