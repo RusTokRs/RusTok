@@ -1,0 +1,65 @@
+[module]
+slug = "groups"
+name = "Groups"
+version = "0.1.0"
+description = "Social groups, memberships, local roles, privacy, and feature bindings"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "dual_surface"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "community"
+tags = ["social", "groups", "community", "memberships", "phpfox"]
+
+[crate]
+entry_type = "GroupsModule"
+
+[provides.graphql]
+query = "graphql::GroupsQuery"
+mutation = "graphql::GroupsMutation"
+
+[provides.admin_ui]
+leptos_crate = "rustok-groups-admin"
+route_segment = "groups"
+nav_label = "Groups"
+nav_group = "Content"
+nav_order = 70
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"
+
+[[provides.admin_ui.child_pages]]
+subpath = "memberships"
+title = "Group Memberships"
+nav_label = "Memberships"
+
+[[provides.admin_ui.child_pages]]
+subpath = "features"
+title = "Group Features"
+nav_label = "Features"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-groups-storefront"
+slot = "home_after_hero"
+route_segment = "groups"
+page_title = "Groups"
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"
+
+[fba.provider]
+status = "in_progress"
+role = "provider"
+contract_version = "groups.access.v1"
+registry = "contracts/groups-fba-registry.json"
+context = "rustok_api::ports::PortContext"
+error = "rustok_api::ports::PortError"
+
+[fba.provider.rollout]
+fallback_profiles = ["embedded_native", "remote_adapter_placeholder"]
+degraded_modes = ["fail_closed_private_content", "feature_hidden", "feature_readonly"]
