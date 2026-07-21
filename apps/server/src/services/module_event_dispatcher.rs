@@ -263,11 +263,22 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     );
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_guard::GuardedMcpManagementProvider::new(
-            db,
+            db.clone(),
             mcp_management_provider,
         ),
     );
     extensions.insert(McpManagementRuntime::new(mcp_management_provider));
+
+    #[cfg(feature = "mod-notifications")]
+    {
+        let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
+        rustok_notifications::api::materialize_notification_source_registry(
+            &mut extensions,
+            &host,
+        )
+        .expect("notification source provider factories must materialize uniquely");
+    }
+
     Arc::new(extensions)
 }
 
@@ -352,6 +363,13 @@ mod tests {
         assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
+        #[cfg(feature = "mod-notifications")]
+        assert!(
+            rustok_notifications::api::notification_source_registry_from_extensions(
+                extensions.as_ref()
+            )
+            .is_some()
+        );
         #[cfg(feature = "mod-fulfillment")]
         {
             assert!(
