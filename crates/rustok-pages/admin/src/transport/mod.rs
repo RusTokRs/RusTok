@@ -4,7 +4,7 @@ mod scenario_release_adapter;
 
 use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMutationResult,
-    PublishPageReceipt,
+    PagePublicationResult,
 };
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use serde_json::Value;
@@ -130,16 +130,20 @@ pub async fn publish_page(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-) -> Result<PublishPageReceipt, TransportError> {
-    graphql_adapter::publish_page(token, tenant_slug, id).await
+) -> Result<PagePublicationResult, TransportError> {
+    graphql_adapter::publish_page(token, tenant_slug, id)
+        .await
+        .map(PagePublicationResult::Published)
 }
 
 pub async fn unpublish_page(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-) -> Result<PageMutationResult, TransportError> {
-    graphql_adapter::unpublish_page(token, tenant_slug, id).await
+) -> Result<PagePublicationResult, TransportError> {
+    graphql_adapter::unpublish_page(token, tenant_slug, id)
+        .await
+        .map(PagePublicationResult::Unpublished)
 }
 
 pub async fn delete_page(
