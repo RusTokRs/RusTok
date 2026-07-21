@@ -83,6 +83,16 @@ for (const port of Object.values(contract.ports ?? {})) {
   for (const method of port.methods ?? []) {
     requireMarker(service + telemetry, method, `port ${port.trait}`);
   }
+  if (port.save_result) {
+    requireMarker(service, `pub struct ${port.save_result}`, "persistence save result");
+    requireMarker(
+      service,
+      `PageBuilderServiceResult<${port.save_result}>`,
+      "persistence save signature",
+    );
+    requireMarker(flyService, "revision_id: saved.revision_id", "persisted revision mapping");
+    requireMarker(flyService, "published: saved.published", "persisted publish state mapping");
+  }
 }
 
 for (const guard of contract.guards ?? []) {
@@ -162,6 +172,11 @@ requireMarker(
   pagesConsumer.persisted_result_marker,
   "Pages persisted capability result",
 );
+for (const forbidden of pagesConsumer.forbidden_symbols ?? []) {
+  if (pagesBuilder.includes(forbidden)) {
+    fail(`Pages production consumer contains obsolete save side-channel: ${forbidden}`);
+  }
+}
 
 const pagesServerMarker = `#[cfg(feature = "ssr")]\nasync fn ${pagesConsumer.server_entrypoint}`;
 requireMarker(pagesBuilder, pagesServerMarker, "Pages SSR composition path");
