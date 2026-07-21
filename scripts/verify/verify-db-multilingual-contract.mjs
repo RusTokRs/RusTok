@@ -37,11 +37,24 @@ function requireMarkers(source, markers, label, failures) {
   }
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsForbiddenMarker(source, marker) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(marker)) {
+    return source.includes(marker);
+  }
+
+  const escaped = escapeRegExp(marker);
+  return new RegExp(`(^|[^A-Za-z0-9_])${escaped}($|[^A-Za-z0-9_])`, "m").test(source);
+}
+
 function forbidMarkers(source, markers, label, failures) {
   for (const marker of markers ?? []) {
     if (typeof marker !== "string" || marker.trim() === "") {
       failures.push(`${label}: forbidden marker must be a non-empty string`);
-    } else if (source.includes(marker)) {
+    } else if (containsForbiddenMarker(source, marker)) {
       failures.push(`${label}: contains forbidden marker ${JSON.stringify(marker)}`);
     }
   }
@@ -233,24 +246,27 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     }
 
     const expectedBackfillContracts = new Map([
-      ["m20260721_000003_expand_pages_locale_storage_columns", "rustok-pages"],
-      ["m20260721_000004_expand_content_locale_storage_columns", "rustok-content"],
-      ["m20260721_000005_expand_blog_locale_storage_columns", "rustok-blog"],
-      ["m20260721_000006_expand_taxonomy_locale_storage_columns", "rustok-taxonomy"],
-      ["m20260721_000007_expand_comment_locale_storage_columns", "rustok-comments"],
-      ["m20260721_000009_expand_profile_locale_storage_columns", "rustok-profiles"],
-      ["m20260721_000007_align_language_agnostic_locale_contract", "rustok-commerce"],
-      ["m20260721_000008_expand_search_query_locale_storage", "rustok-search"],
-      ["m20260721_000105_expand_customer_locale_contract", "rustok-customer"],
+      ["m20260721_000003_expand_pages_locale_storage_columns", { owner: "rustok-pages", mode: "none" }],
+      ["m20260721_000004_expand_content_locale_storage_columns", { owner: "rustok-content", mode: "none" }],
+      ["m20260721_000005_expand_blog_locale_storage_columns", { owner: "rustok-blog", mode: "none" }],
+      ["m20260721_000006_expand_taxonomy_locale_storage_columns", { owner: "rustok-taxonomy", mode: "none" }],
+      ["m20260721_000007_expand_comment_locale_storage_columns", { owner: "rustok-comments", mode: "none" }],
+      ["m20260721_000009_expand_profile_locale_storage_columns", { owner: "rustok-profiles", mode: "none" }],
+      ["m20260721_000010_move_profile_display_name_to_translations", { owner: "rustok-profiles", mode: "fixture" }],
+      ["m20260721_000007_align_language_agnostic_locale_contract", { owner: "rustok-commerce", mode: "none" }],
+      ["m20260721_000008_expand_search_query_locale_storage", { owner: "rustok-search", mode: "none" }],
+      ["m20260721_000005_drop_seller_legacy_prose_columns", { owner: "rustok-marketplace-seller", mode: "none" }],
+      ["m20260721_000009_move_oauth_app_copy_to_translations", { owner: "rustok-auth", mode: "fixture" }],
+      ["m20260721_000105_expand_customer_locale_contract", { owner: "rustok-customer", mode: "none" }],
     ]);
 
-    for (const [migration, owner] of expectedBackfillContracts) {
+    for (const [migration, expected] of expectedBackfillContracts) {
       const entry = register?.contracts?.find((candidate) => candidate.migration === migration);
       if (!entry) {
-        failures.push(`${backfillPath}: locale widening migration ${migration} is undeclared`);
-      } else if (entry.mode !== "none" || entry.owner !== owner) {
+        failures.push(`${backfillPath}: migration ${migration} is undeclared`);
+      } else if (entry.mode !== expected.mode || entry.owner !== expected.owner) {
         failures.push(
-          `${backfillPath}: ${migration} must be DDL-only and owned by ${owner}`,
+          `${backfillPath}: ${migration} must use mode ${expected.mode} and owner ${expected.owner}`,
         );
       }
     }
