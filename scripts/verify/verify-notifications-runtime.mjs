@@ -60,7 +60,7 @@ const forumCargoPath = "crates/rustok-forum/Cargo.toml";
 const forumLibPath = "crates/rustok-forum/src/lib.rs";
 const forumSourcePath = "crates/rustok-forum/src/notification_source.rs";
 const runtimeTestPath = "crates/rustok-forum/tests/notification_source_sqlite.rs";
-const canonicalPlanPath = "crates/rustok-forum/docs/implementation-plan.md";
+const localPlanPath = "crates/rustok-notifications/docs/implementation-plan.md";
 
 const modules = read(modulesPath);
 const distributionCargo = read(distributionCargoPath);
@@ -76,7 +76,7 @@ const forumCargo = read(forumCargoPath);
 const forumLib = read(forumLibPath);
 const forumSource = read(forumSourcePath);
 const runtimeTest = read(runtimeTestPath);
-const canonicalPlan = read(canonicalPlanPath);
+const localPlan = read(localPlanPath);
 
 requireText(modules, 'notifications = { crate = "rustok-notifications"', `${modulesPath}: optional notifications module is not composed`);
 const defaultEnabled = modules.match(/default_enabled\s*=\s*\[([^\]]*)\]/s)?.[1] ?? "";
@@ -157,7 +157,8 @@ for (const filePath of collectRustFiles("crates/rustok-forum/src/services")) {
   }
 }
 
-requireText(canonicalPlan, "Delivered in `NOTIFY-00B`", `${canonicalPlanPath}: NOTIFY-00B delivery is not recorded`);
+requireText(localPlan, "Delivered in `NOTIFY-00B`", `${localPlanPath}: NOTIFY-00B delivery is not recorded`);
+requireText(localPlan, "remains `in_progress` until maintainer-run verification", `${localPlanPath}: canonical promotion must remain verification-gated`);
 
 if (failures.length > 0) {
   console.error("notifications runtime verification failed:");
