@@ -20,7 +20,7 @@ env:
 jobs:
   oauth-cutover-artifact:
     if: github.head_ref == 'automation/oauth-transport-cutover'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
