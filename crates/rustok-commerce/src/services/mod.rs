@@ -140,8 +140,9 @@ pub use journaled_checkout::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
 };
 pub use marketplace_financial_operator::{
-    MarketplaceFinancialOperatorError, MarketplaceFinancialOperatorResult,
-    MarketplaceFinancialOperatorService,
+    MarketplaceFinancialOperationOperatorView, MarketplaceFinancialOperatorError,
+    MarketplaceFinancialOperatorResult, MarketplaceFinancialOperatorService,
+    MarketplacePaidEventOperatorView,
 };
 pub use marketplace_paid_event_inbox::{
     IngestMarketplacePaidEvent, MarketplacePaidEventInboxError,
