@@ -13,7 +13,6 @@ use super::{
     CheckoutOrderPlanJournal, IngestMarketplacePaidEvent, MarketplacePaidEventInboxService,
 };
 
-#[derive(Clone)]
 pub(crate) struct MarketplacePaidOrderFinancialHandler {
     db: DatabaseConnection,
     payment_service: PaymentService,
