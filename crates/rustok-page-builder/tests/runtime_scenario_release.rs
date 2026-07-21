@@ -12,8 +12,8 @@ use rustok_page_builder::runtime_scenario_release::{
     PageBuilderScenarioBaselineStore, PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
 };
 use rustok_page_builder::service::{
-    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
-    PageBuilderServiceResult,
+    PageBuilderCapabilityService, PageBuilderProjectSaveResult, PageBuilderProjectStore,
+    PageBuilderRenderingAdapter, PageBuilderServiceResult,
 };
 use serde_json::{json, Value};
 use std::sync::{
@@ -39,12 +39,16 @@ impl PageBuilderProjectStore for CountingProjectStore {
     async fn save_project(
         &self,
         _context: &PortContext,
-        _page_id: &str,
+        page_id: &str,
         _revision_id: &str,
         _project_data: Value,
-    ) -> PageBuilderServiceResult<()> {
+    ) -> PageBuilderServiceResult<PageBuilderProjectSaveResult> {
         self.writes.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(PageBuilderProjectSaveResult {
+            page_id: page_id.to_string(),
+            revision_id: "rev-persisted".to_string(),
+            published: false,
+        })
     }
 }
 
@@ -162,7 +166,9 @@ async fn stable_baseline_allows_project_write() {
     let result = publish(&service, project("home"))
         .await
         .expect("stable publish");
-    assert!(result.published);
+    assert_eq!(result.page_id, "home");
+    assert_eq!(result.revision_id, "rev-persisted");
+    assert!(!result.published);
     assert_eq!(writes.load(Ordering::SeqCst), 1);
 }
 
