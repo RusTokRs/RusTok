@@ -63,6 +63,28 @@ async fn blog_reindex_supports_targeted_and_full_scope_requests() {
 }
 
 #[tokio::test]
+async fn blog_module_enable_and_disable_are_owned_lifecycle_events() {
+    let handler = handler().await;
+    let tenant_id = Uuid::new_v4();
+
+    assert!(handler.handles(&DomainEvent::TenantModuleToggled {
+        tenant_id,
+        module_slug: "blog".to_string(),
+        enabled: false,
+    }));
+    assert!(handler.handles(&DomainEvent::TenantModuleToggled {
+        tenant_id,
+        module_slug: "blog".to_string(),
+        enabled: true,
+    }));
+    assert!(!handler.handles(&DomainEvent::TenantModuleToggled {
+        tenant_id,
+        module_slug: "forum".to_string(),
+        enabled: false,
+    }));
+}
+
+#[tokio::test]
 async fn unrelated_reindex_target_is_not_claimed_by_search_ingestion() {
     let handler = handler().await;
 
