@@ -290,6 +290,122 @@ async fn full_blog_reindex_replaces_only_current_tenant_blog_documents() -> Test
     test_db.cleanup().await
 }
 
+#[tokio::test]
+async fn blog_module_disable_cleans_scope_and_enable_rebuilds_it() -> TestResult<()> {
+    let Some(test_db) = PostgresSearchTestDb::setup("blog_module_toggle").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let author_id = Uuid::new_v4();
+    let post_id = Uuid::new_v4();
+    let other_tenant_document_id = Uuid::new_v4();
+    insert_blog_post(
+        &test_db.db,
+        tenant_id,
+        post_id,
+        author_id,
+        "published",
+        "module-toggle",
+        "Module toggle",
+    )
+    .await?;
+    insert_search_document(
+        &test_db.db,
+        other_tenant_id,
+        other_tenant_document_id,
+        "blog",
+        "blog_post",
+        "other-tenant",
+    )
+    .await?;
+
+    let handler = SearchIngestionHandler::new(test_db.db.clone());
+    handler
+        .handle(&envelope(
+            tenant_id,
+            Some(author_id),
+            DomainEvent::ReindexRequested {
+                target_type: "blog".to_string(),
+                target_id: None,
+            },
+        )?)
+        .await?;
+    assert_eq!(count_blog_documents(&test_db.db, tenant_id).await?, 1);
+
+    handler
+        .handle(&envelope(
+            tenant_id,
+            Some(author_id),
+            DomainEvent::TenantModuleToggled {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                enabled: false,
+            },
+        )?)
+        .await?;
+    assert_eq!(count_blog_documents(&test_db.db, tenant_id).await?, 0);
+    assert!(load_blog_document(&test_db.db, other_tenant_id, other_tenant_document_id)
+        .await?
+        .is_some());
+
+    handler
+        .handle(&envelope(
+            tenant_id,
+            Some(author_id),
+            DomainEvent::TenantModuleToggled {
+                tenant_id,
+                module_slug: "blog".to_string(),
+                enabled: true,
+            },
+        )?)
+        .await?;
+    assert_eq!(count_blog_documents(&test_db.db, tenant_id).await?, 1);
+    assert!(load_blog_document(&test_db.db, tenant_id, post_id)
+        .await?
+        .is_some());
+
+    test_db.cleanup().await
+}
+
+#[tokio::test]
+async fn targeted_reindex_removes_stale_document_when_source_post_is_missing() -> TestResult<()> {
+    let Some(test_db) = PostgresSearchTestDb::setup("blog_missing_target").await? else {
+        return Ok(());
+    };
+
+    let tenant_id = Uuid::new_v4();
+    let missing_post_id = Uuid::new_v4();
+    insert_search_document(
+        &test_db.db,
+        tenant_id,
+        missing_post_id,
+        "blog",
+        "blog_post",
+        "missing-source",
+    )
+    .await?;
+
+    let handler = SearchIngestionHandler::new(test_db.db.clone());
+    handler
+        .handle(&envelope(
+            tenant_id,
+            None,
+            DomainEvent::ReindexRequested {
+                target_type: "blog".to_string(),
+                target_id: Some(missing_post_id),
+            },
+        )?)
+        .await?;
+
+    assert!(load_blog_document(&test_db.db, tenant_id, missing_post_id)
+        .await?
+        .is_none());
+
+    test_db.cleanup().await
+}
+
 fn envelope(
     tenant_id: Uuid,
     actor_id: Option<Uuid>,
