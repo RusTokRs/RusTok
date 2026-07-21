@@ -30,11 +30,30 @@
         "idempotency_key_required": false
       },
       {
+        "name": "GroupLocalizationReadPort",
+        "operations": ["list_group_translations"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_or_admin_or_platform_manage"
+      },
+      {
         "name": "GroupCommandPort",
         "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true
+      },
+      {
+        "name": "GroupLocalizationCommandPort",
+        "operations": ["upsert_group_translation", "delete_group_translation"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "authorization": "active_owner_or_admin_or_platform_manage",
+        "exact_locale_only": true,
+        "last_translation_delete": "deny",
+        "transactional_group_version": true
       },
       {
         "name": "GroupGovernanceCommandPort",
@@ -60,6 +79,13 @@
       "view": "private_content"
     }
   },
+  "localization": {
+    "effective_locale_owner": "host_runtime",
+    "module_local_fallback": false,
+    "management_selection": "exact_normalized_locale",
+    "delete_last_translation": "deny",
+    "version_bump": "same_transaction"
+  },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
     "examples": [
@@ -80,6 +106,13 @@
       "surfaces": ["rust_port", "graphql", "leptos_server_function"]
     },
     {
+      "name": "embedded_localization_native",
+      "provider": "GroupLocalizationService",
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
       "status": "implemented",
@@ -97,6 +130,8 @@
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
+    "localization_transport_parity": null,
+    "localization_concurrency": null,
     "governance_transport_parity": null,
     "governance_concurrency": null
   }
