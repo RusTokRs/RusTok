@@ -111,6 +111,12 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_POSTS_LIST,
             Permission::BLOG_POSTS_PUBLISH,
             Permission::BLOG_POSTS_MANAGE,
+            Permission::BLOG_CATEGORIES_CREATE,
+            Permission::BLOG_CATEGORIES_READ,
+            Permission::BLOG_CATEGORIES_UPDATE,
+            Permission::BLOG_CATEGORIES_DELETE,
+            Permission::BLOG_CATEGORIES_LIST,
+            Permission::BLOG_CATEGORIES_MANAGE,
         ]
     }
 
@@ -167,6 +173,12 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogCategories && p.action == Action::Create }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogCategories && p.action == Action::Manage }));
         assert!(!permissions
             .iter()
             .any(|p| p.resource == Resource::Categories));
