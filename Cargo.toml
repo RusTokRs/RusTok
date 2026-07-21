@@ -263,3 +263,48 @@ rustok-distribution = { path = "crates/rustok-distribution", default-features = 
 rustok-migrations = { path = "crates/rustok-migrations" }
 rustok-installer = { path = "crates/rustok-installer" }
 rustok-installer-persistence = { path = "crates/rustok-installer-persistence" }
+rustok-installer-cli = { path = "crates/rustok-installer-cli" }
+rustok-build = { path = "crates/rustok-build" }
+rustok-module-build-transport = { path = "crates/rustok-module-build-transport" }
+rustok-module-build-worker = { path = "crates/rustok-module-build-worker" }
+rustok-worker-transport = { path = "crates/rustok-worker-transport" }
+rustok-graphql = { path = "crates/rustok-graphql" }
+rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
+rustok-ui-core = { path = "crates/rustok-ui-core" }
+rustok-ui-i18n = { path = "crates/rustok-ui-i18n" }
+rustok-ui-i18n-leptos = { path = "crates/rustok-ui-i18n-leptos" }
+rustok-ui-transport = { path = "crates/rustok-ui-transport" }
+leptos-ui-routing = { path = "crates/leptos-ui-routing" }
+rustok-cache = { path = "crates/rustok-cache" }
+rustok-channel = { path = "crates/rustok-channel" }
+rustok-email = { path = "crates/rustok-email" }
+rustok-outbox = { path = "crates/rustok-outbox" }
+rustok-iggy = { path = "crates/rustok-iggy" }
+rustok-iggy-connector = { path = "crates/rustok-iggy-connector" }
+rustok-forum = { path = "crates/rustok-forum" }
+rustok-tenant = { path = "crates/rustok-tenant" }
+rustok-rbac = { path = "crates/rustok-rbac" }
+rustok-mcp = { path = "crates/rustok-mcp" }
+rustok-ai = { path = "crates/rustok-ai" }
+rustok-ai-content = { path = "crates/rustok-ai-content" }
+rustok-ai-order = { path = "crates/rustok-ai-order" }
+rustok-ai-product = { path = "crates/rustok-ai-product" }
+rustok-ai-media = { path = "crates/rustok-ai-media" }
+rustok-ai-alloy = { path = "crates/rustok-ai-alloy" }
+athanor-app = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+athanor-core = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+athanor-domain = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+athanor-runtime-defaults = { git = "https://github.com/RusTokRs/Athanor.git", rev = "67d0bdae5439f510a52105a7af964a508895ff1b" }
+rustok-telemetry = { path = "crates/rustok-telemetry" }
+rustok-test-utils = { path = "crates/rustok-test-utils" }
+rustok-storage = { path = "crates/rustok-storage" }
+rustok-secrets = { path = "crates/rustok-secrets" }
+rustok-media = { path = "crates/rustok-media" }
+rustok-media-cli = { path = "crates/rustok-media/cli" }
+rustok-profiles-cli = { path = "crates/rustok-profiles/cli" }
+rustok-auth-cli = { path = "crates/rustok-auth/cli" }
+rustok-rbac-cli = { path = "crates/rustok-rbac/cli" }
+flex = { path = "crates/flex" }
+alloy = { path = "crates/alloy" }
+rustok-workflow = { path = "crates/rustok-workflow" }
+schemars = "1.2"
