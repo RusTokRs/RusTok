@@ -1,0 +1,9 @@
+{
+  "groups.admin.title": "Группы",
+  "groups.admin.body": "Управляйте приватностью групп, участниками, локальными ролями и модульными разделами.",
+  "groups.admin.badge": "центр управления сообществами",
+  "groups.admin.loading": "Загрузка групп...",
+  "groups.admin.loadError": "Не удалось загрузить группы",
+  "groups.admin.empty": "Для этого тенанта группы не найдены.",
+  "groups.admin.total": "Всего"
+}
