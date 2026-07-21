@@ -1,4 +1,5 @@
 use crate::adapters::FlyAdapterBackedPageBuilderService;
+use crate::preview_port::PageBuilderPreviewRenderingPort;
 use crate::rollout::{BuilderCapabilityFlags, BuilderRolloutError};
 use crate::runtime_scenario_release::{
     NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
@@ -8,7 +9,7 @@ use crate::runtime_telemetry::{
 };
 use crate::service::{
     AuthorizedPageBuilderHandlers, CapabilityGuardedService, PageBuilderCapabilityAuthorizer,
-    PageBuilderCapabilityPortPolicies, PageBuilderProjectStore, PageBuilderRenderingAdapter,
+    PageBuilderCapabilityPortPolicies, PageBuilderProjectStore,
 };
 
 pub type FlyPageBuilderGuardedService<
@@ -27,8 +28,8 @@ pub type FlyPageBuilderHandlers<
 
 /// Compose the default current-only Page Builder server pipeline.
 ///
-/// Consumers provide tenant-scoped persistence and preview rendering ports. The module owns the
-/// service, rollout/port guards and authorization order.
+/// Consumers provide tenant-scoped persistence and contextual preview rendering ports. The module
+/// owns the service, rollout/port guards and authorization order.
 pub fn compose_fly_page_builder_handlers<S, R>(
     store: S,
     renderer: R,
@@ -36,7 +37,7 @@ pub fn compose_fly_page_builder_handlers<S, R>(
 ) -> Result<FlyPageBuilderHandlers<S, R>, BuilderRolloutError>
 where
     S: PageBuilderProjectStore,
-    R: PageBuilderRenderingAdapter,
+    R: PageBuilderPreviewRenderingPort,
 {
     let service = FlyAdapterBackedPageBuilderService::new(store, renderer);
     compose_configured_fly_page_builder_handlers(
@@ -59,7 +60,7 @@ pub fn compose_configured_fly_page_builder_handlers<S, R, T, B>(
 ) -> Result<FlyPageBuilderHandlers<S, R, T, B>, BuilderRolloutError>
 where
     S: PageBuilderProjectStore,
-    R: PageBuilderRenderingAdapter,
+    R: PageBuilderPreviewRenderingPort,
     T: PageBuilderRuntimeTelemetry,
     B: PageBuilderScenarioBaselineStore,
 {
