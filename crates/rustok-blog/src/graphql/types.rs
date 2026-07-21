@@ -4,7 +4,7 @@ use async_graphql::{
 use rustok_api::{
     graphql::GraphQLError, has_any_effective_permission, AuthContext, Permission, TenantContext,
 };
-use rustok_core::{security_context_from_access_token, SecurityContext};
+use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
@@ -178,24 +178,20 @@ impl GqlPost {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
+        ensure_comment_tenant_binding(request_tenant, &auth, self.tenant_id)?;
         let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
-        let fallback_locale = post_comment_fallback_locale(request_tenant, self);
 
         let (items, total) = CommentService::new(db.clone(), event_bus.clone())
             .list_for_post_with_locale_fallback(
                 self.tenant_id,
-                security_context_from_access_token(
-                    auth.user_id,
-                    &auth.grant_type,
-                    &auth.permissions,
-                ),
+                SecurityContext::system(),
                 self.id,
                 ListCommentsFilter {
                     locale: Some(requested_locale),
                     page: page.unwrap_or(1).max(1),
                     per_page: per_page.unwrap_or(50).clamp(1, 100),
                 },
-                Some(fallback_locale),
+                Some(request_tenant.default_locale.as_str()),
             )
             .await
             .map_err(|error| async_graphql::Error::new(error.to_string()))?;
@@ -234,6 +230,19 @@ fn require_comment_moderator(ctx: &Context<'_>) -> Result<AuthContext> {
         ));
     }
     Ok(auth)
+}
+
+fn ensure_comment_tenant_binding(
+    tenant: &TenantContext,
+    auth: &AuthContext,
+    post_tenant_id: Uuid,
+) -> Result<()> {
+    if tenant.id != post_tenant_id || auth.tenant_id != post_tenant_id {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Blog comment moderation must use the current authenticated tenant",
+        ));
+    }
+    Ok(())
 }
 
 #[derive(SimpleObject)]
