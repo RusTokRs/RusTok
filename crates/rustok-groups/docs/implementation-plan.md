@@ -50,6 +50,9 @@ The current owner foundation provides:
   `GroupAccessReadPort` boundaries;
 - service operations for create, localized read/list, join/request, leave, and
   feature binding;
+- separate `view_summary` shell access and `view` private-content access;
+- discoverable closed-group shells with body and feature-binding redaction for
+  viewers without active membership or platform manage authority;
 - `GroupGovernanceCommandPort` with role delegation and atomic ownership transfer;
 - transactional `group_command_receipts` and immutable `group_audit_entries` for
   governance commands;
@@ -72,10 +75,11 @@ transport is a later slice.
 - Storefront evidence: framework-neutral core, selected native/GraphQL transport,
   host locale, and thin Leptos binding are present.
 - Backend evidence: typed read/write ports, request context, stable errors, owner
-  services, governance audit/receipt persistence, and machine-readable registry
-  are present.
+  services, closed-shell/private-content action separation, governance
+  audit/receipt persistence, and machine-readable registry are present.
 - Remaining FBA evidence: runtime provider/consumer order, fallback execution,
-  governance concurrency/replay races, retry/recovery, and remote-adapter smoke.
+  closed/secret leakage evidence, governance concurrency/replay races,
+  retry/recovery, and remote-adapter smoke.
 - Last verified at (UTC): not executed in these changes.
 - Owner: `rustok-groups`.
 
@@ -87,7 +91,8 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 1. Groups owns group policy and relations, not foreign module content.
 2. No optional domain module reads or writes another module's tables.
 3. Group access is re-checked by every authoritative content owner.
-4. Secret groups fail closed in search, SEO, notifications, feed, and direct reads.
+4. Secret groups fail closed in search, SEO, notifications, feed, and direct reads;
+   unauthorized direct reads return not-found semantics.
 5. Base rows contain no localized title/body copies.
 6. Locale writes are explicit and do not mutate fallback locales.
 7. Local group roles never create platform-global authority.
@@ -104,6 +109,8 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     never correctness authorities.
 15. Governance writes require deadlines and idempotency keys; successful state,
     command receipt, and immutable audit entry commit in one transaction.
+16. Closed-group discoverability exposes only the localized shell; it never grants
+    body, feature-binding, member-list, or provider-owned content access.
 
 ## Program ledger
 
@@ -112,7 +119,7 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | `GROUPS-00` | `done` | Ownership, naming, FFA/FBA, multilingual, privacy, and integration contracts are documented. |
 | `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central navigation are connected. |
 | `GROUPS-02` | `in_progress` | Base schema/service plus governance audit and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, and PostgreSQL evidence remain. |
-| `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed-group discovery/content separation and the complete granular action matrix remain. |
+| `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed shells are discoverable while body/features remain membership-gated, and the complete granular action matrix plus leakage evidence remain. |
 | `GROUPS-04` | `in_progress` | Typed role delegation and atomic ownership transfer are implemented with audit/receipts; GraphQL/native transports, concurrent-owner proof, and operator recovery remain. |
 | `GROUPS-05` | `planned` | Invitations, invitation links, expiry, token hashing, revocation, and bounded delivery. |
 | `GROUPS-06` | `planned` | Membership questions, answers, rule acknowledgements, application review, and bulk-safety limits. |
@@ -120,9 +127,9 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | `GROUPS-08` | `in_progress` | Versioned namespaced feature bindings exist; provider registry, health, settings schemas, and UI contributions remain. |
 | `GROUPS-09` | `planned` | Media-owned avatar/cover/gallery references and quarantine/deletion reconciliation. |
 | `GROUPS-10` | `planned` | SEO targets, canonical localized routes, aliases, redirects, and secret-group exclusions. |
-| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature surface exists; governance transport and REST remain pending explicit integration demand. |
+| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature surface exists and read/list inherit closed-shell redaction; governance transport and REST remain pending explicit integration demand. |
 | `GROUPS-12` | `in_progress` | Admin FFA shell exists; full category, membership, moderation, settings, governance, and audit workspaces remain. |
-| `GROUPS-13` | `in_progress` | Storefront FFA catalog shell exists; detail routing, role-aware management, and accessibility remain. |
+| `GROUPS-13` | `in_progress` | Storefront FFA catalog exposes public and closed shells without private body/features; detail routing, role-aware management, and accessibility remain. |
 | `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist; executable provider/consumer and degraded-mode evidence remain. |
 | `GROUPS-15` | `planned` | Forum group-context provider, ACL inheritance, local category binding, and leakage tests. |
 | `GROUPS-16` | `planned` | Blog group-context binding and author/publish policy. |
@@ -196,7 +203,8 @@ PostgreSQL verification must eventually cover:
 - owner transfer and last-owner protection;
 - idempotent command replay, key-payload conflicts, and simultaneous first writes;
 - audit/receipt rollback when a governance command fails;
-- secret-group query/search/SEO leakage;
+- public/closed catalog visibility, closed shell redaction, and member content access;
+- secret-group query/search/SEO/direct-read leakage;
 - feature-provider unavailable/read-only/hidden profiles;
 - event/outbox/inbox retry, replay, and recovery.
 
