@@ -277,6 +277,7 @@ pub struct OrderChangeResponse {
     pub change_type: String,
     pub status: String,
     pub description: Option<String>,
+    pub source_locale: Option<String>,
     pub preview: Value,
     pub metadata: Value,
     pub created_at: DateTime<Utc>,
