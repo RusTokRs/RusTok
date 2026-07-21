@@ -45,6 +45,9 @@ pub enum ForumError {
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
+    #[error("Forum mention target is unavailable")]
+    MentionTargetUnavailable { handle: String },
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -73,6 +76,12 @@ impl ForumError {
         Self::Forbidden(message.into())
     }
 
+    pub fn mention_target_unavailable(handle: impl Into<String>) -> Self {
+        Self::MentionTargetUnavailable {
+            handle: handle.into(),
+        }
+    }
+
     pub const fn capability_unavailable(
         capability: &'static str,
         code: &'static str,
@@ -98,6 +107,7 @@ impl ForumError {
         match self {
             Self::CapabilityUnavailable { code, .. } => *code,
             Self::CapabilityFailure { .. } => "FORUM_CAPABILITY_FAILURE",
+            Self::MentionTargetUnavailable { .. } => "FORUM_MENTION_TARGET_UNAVAILABLE",
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
             Self::ReplyNotFound(_) => "FORUM_REPLY_NOT_FOUND",
