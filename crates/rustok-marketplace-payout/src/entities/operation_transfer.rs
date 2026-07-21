@@ -72,6 +72,7 @@ pub struct Model {
     pub ledger_transfer_id: Option<Uuid>,
     pub ledger_transaction_id: Option<Uuid>,
     pub attempt_count: i32,
+    pub revision: i64,
     pub last_error_code: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
