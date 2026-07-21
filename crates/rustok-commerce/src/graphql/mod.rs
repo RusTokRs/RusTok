@@ -21,7 +21,15 @@ pub use mutations::CommerceMutation;
 pub use types::*;
 
 #[derive(MergedObject, Default)]
-pub struct CommerceQuery(
+pub struct CommerceQueryRoot(
+    query::CommerceQuery,
+    marketplace_financial::MarketplaceFinancialQuery,
+);
+
+pub type CommerceQuery = CommerceQueryRoot;
+
+#[allow(non_upper_case_globals)]
+pub const CommerceQuery: CommerceQueryRoot = CommerceQueryRoot(
     query::CommerceQuery,
     marketplace_financial::MarketplaceFinancialQuery,
 );
