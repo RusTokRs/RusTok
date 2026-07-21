@@ -1,9 +1,9 @@
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(feature = "ssr")]
+use crate::model::{BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostList};
+#[cfg(feature = "ssr")]
 use crate::model::BlogPostListItem;
 use crate::model::StorefrontBlogData;
-#[cfg(feature = "ssr")]
-use crate::model::{BlogPostDetail, BlogPostList};
 use leptos::prelude::*;
 
 use super::{configured_tenant_slug, ApiError};
@@ -39,7 +39,9 @@ async fn storefront_blog_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::HostRuntimeContext;
-        use rustok_blog::{BlogPostStatus, PostListQuery, PostService};
+        use rustok_blog::{
+            BlogPostStatus, CommentService, ListCommentsFilter, PostListQuery, PostService,
+        };
         use rustok_channel::ChannelService;
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
@@ -110,7 +112,7 @@ async fn storefront_blog_native(
             .as_ref()
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
 
-        let service = PostService::new(runtime_ctx.db_clone(), event_bus);
+        let service = PostService::new(runtime_ctx.db_clone(), event_bus.clone());
 
         let selected_post = service
             .get_post_by_slug_with_locale_fallback(
@@ -124,8 +126,31 @@ async fn storefront_blog_native(
             .map_err(ServerFnError::new)?
             .filter(|post| {
                 is_visible_for_public_channel(&post.channel_slugs, public_channel_slug.as_deref())
-            })
-            .map(map_post_detail);
+            });
+
+        let selected_post = if let Some(post) = selected_post {
+            let (comments, total) = CommentService::new(runtime_ctx.db_clone(), event_bus.clone())
+                .list_for_post_with_locale_fallback(
+                    tenant_id,
+                    SecurityContext::public_read(),
+                    post.id,
+                    ListCommentsFilter {
+                        locale: Some(requested_locale.clone()),
+                        page: 1,
+                        per_page: 20,
+                    },
+                    Some(fallback_locale.as_str()),
+                )
+                .await
+                .map_err(ServerFnError::new)?;
+            let public_comments = BlogCommentList {
+                items: comments.into_iter().map(map_comment_list_item).collect(),
+                total,
+            };
+            Some(map_post_detail(post, public_comments))
+        } else {
+            None
+        };
 
         let posts = service
             .list_public_visible_with_locale_fallback(
@@ -192,7 +217,10 @@ fn is_visible_for_public_channel(
 }
 
 #[cfg(feature = "ssr")]
-fn map_post_detail(post: rustok_blog::PostResponse) -> BlogPostDetail {
+fn map_post_detail(
+    post: rustok_blog::PostResponse,
+    public_comments: BlogCommentList,
+) -> BlogPostDetail {
     BlogPostDetail {
         id: post.id.to_string(),
         effective_locale: post.effective_locale,
@@ -210,6 +238,19 @@ fn map_post_detail(post: rustok_blog::PostResponse) -> BlogPostDetail {
         published_at: post.published_at.map(|value| value.to_string()),
         tags: post.tags,
         featured_image_url: post.featured_image_url,
+        public_comments,
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_comment_list_item(comment: rustok_blog::CommentListItem) -> BlogCommentListItem {
+    BlogCommentListItem {
+        id: comment.id.to_string(),
+        effective_locale: comment.effective_locale,
+        author_id: comment.author_id.map(|value| value.to_string()),
+        content_preview: comment.content_preview,
+        parent_comment_id: comment.parent_comment_id.map(|value| value.to_string()),
+        created_at: comment.created_at,
     }
 }
 
