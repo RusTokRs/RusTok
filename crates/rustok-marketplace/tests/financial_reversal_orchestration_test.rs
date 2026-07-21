@@ -34,6 +34,7 @@ async fn reversal_orchestration_uses_stable_child_identity_and_skips_commission_
         tenant_id,
         order_id,
         source_id,
+        MarketplaceLedgerReversalKind::Refund,
         now,
         1_000,
     )));
@@ -97,7 +98,14 @@ async fn mismatched_reversal_result_is_rejected_as_invariant_failure() {
     let source_id = Uuid::new_v4();
     let now = Utc::now().fixed_offset();
     let commission = Arc::new(RejectingCommissionPort::default());
-    let mut response = reversal_response(tenant_id, order_id, source_id, now, 1_000);
+    let mut response = reversal_response(
+        tenant_id,
+        order_id,
+        source_id,
+        MarketplaceLedgerReversalKind::Chargeback,
+        now,
+        1_000,
+    );
     response.total_amount = 999;
     let service = MarketplaceFinancialOrchestrationService::new(
         commission,
@@ -139,13 +147,16 @@ fn reversal_response(
     tenant_id: Uuid,
     order_id: Uuid,
     source_id: Uuid,
+    kind: MarketplaceLedgerReversalKind,
     posted_at: chrono::DateTime<chrono::FixedOffset>,
     total: i64,
 ) -> MarketplaceLedgerReversalResponse {
+    let transaction_id = Uuid::new_v4();
     MarketplaceLedgerReversalResponse {
         id: Uuid::new_v4(),
         tenant_id,
-        kind: MarketplaceLedgerReversalKind::Refund,
+        transaction_id,
+        kind,
         source_id,
         order_id,
         currency_code: "USD".to_string(),
@@ -155,14 +166,14 @@ fn reversal_response(
         metadata: serde_json::json!({}),
         created_at: posted_at,
         transaction: MarketplaceLedgerTransactionResponse {
-            id: Uuid::new_v4(),
+            id: transaction_id,
             tenant_id,
-            source_kind: "refund_reversal".to_string(),
+            source_kind: kind.source_kind().to_string(),
             source_id,
             order_id,
             currency_code: "USD".to_string(),
-            debit_total_amount: total,
-            credit_total_amount: total,
+            debit_total_amount: 1_000,
+            credit_total_amount: 1_000,
             status: MarketplaceLedgerTransactionStatus::Posted,
             posted_at,
             metadata: serde_json::json!({}),
