@@ -6,74 +6,61 @@
 membership, local roles, invitations, membership applications, feature bindings,
 and group access policy for RusToK. Exact-locale translation management, bounded
 invitation tokens, targeted invitation source events, localized application policies,
-application review, role delegation, ownership transfer, command receipts, immutable
-audit, and native/GraphQL transports are implemented at source level. Bans, bulk
-review, policy revision history, consumer-side notification fan-out, and full runtime
-evidence remain subsequent plan-led slices.
+append-only policy revision history, application review, role delegation, ownership
+transfer, command receipts, immutable audit, and native/GraphQL transports are
+implemented at source level.
 
-A group is a social container and policy owner. It is not the persistence owner
-for forum topics, blog posts, Pages documents, marketplace listings, products,
-media assets, comments, notification inbox/delivery, or search documents.
+Bans, bulk review, atomic expected-revision enforcement, multi-locale policy
+selection, consumer-side notification fan-out, and full runtime evidence remain
+plan-led work.
+
+A group is a social container and policy owner. It is not the persistence owner for
+forum topics, blog posts, Pages documents, marketplace listings, products, media
+assets, comments, notification inbox/delivery, or search documents.
 
 ## Responsibilities
 
 - Own tenant-scoped group identity, handle, lifecycle, visibility, and join policy.
-- Store language-neutral state in `groups` and localized title, summary, and body
-  fields in `group_translations` with normalized `VARCHAR(32)` locales.
-- Consume the host-resolved effective locale for public reads without an English or
-  first-row fallback.
-- Publish owner-managed exact-locale list/upsert/delete operations. Translation
-  mutation and group-version increment are atomic, write paths serialize on the
-  group row where row locking is supported, and the last translation cannot be
-  deleted.
+- Store language-neutral state in `groups` and localized title, summary, and body in
+  `group_translations` with normalized `VARCHAR(32)` locales.
+- Consume the host-resolved effective locale without an English or arbitrary first-row
+  fallback.
+- Publish exact-locale translation management, preserving last-row rejection and
+  atomic group-version updates.
 - Separate discoverable shell access (`view_summary`) from private content access
-  (`view`): closed shells are visible with body/feature redaction, while secret
-  shells remain undisclosed to non-members.
-- Own memberships, local roles, membership status, role delegation, and atomic
+  (`view`), with closed redaction and secret-group non-disclosure.
+- Own memberships, local roles, membership state, role delegation, and atomic
   ownership transfer.
-- Own invitation records, token digests, expiry, revocation, bounded use counts, and
-  unique redemptions. Targeted invitations are single-use; shareable links are
-  limited to 100 uses and 30 days.
-- Return invitation plaintext only from the first create response. Invitation,
-  audit, receipt, and semantic-event storage contains no plaintext token.
-- Activate an accepted invitation, redemption, membership, member count, group
-  version, audit entry, and command receipt in one owner transaction.
-- Persist successful governance, invitation, and membership-application commands
-  with idempotency receipts and immutable audit evidence. Localization commands
-  require idempotency keys, but durable localization receipts and replay evidence
-  remain pending.
-- Own one current membership-application policy per group and exact-locale policy
-  translations containing bounded questions and rules. Locale fallback remains a
-  host/runtime responsibility.
-- Store one tenant/group/user application with the exact policy revision, locale,
-  questions, rules, answers, and acknowledged rule keys seen at submission time.
-- Revalidate required answers and acknowledgements in the owner service. Secret
-  groups return not-found semantics and only `request` join-policy groups accept
-  applications.
+- Own bounded invitation records, SHA-256 token digests, expiry, revocation, use
+  counts, redemptions, and targeted invitation source events.
+- Own one current membership-application policy per group and exact-locale ordered
+  questions/rules.
+- Store one tenant/group/user application with the policy identity, revision, locale,
+  immutable policy snapshot, answers, acknowledgements, status, and review metadata.
+- Revalidate required answers and rule acknowledgements in the owner service. Only
+  active `request` groups accept applications, and secret groups use not-found
+  semantics.
 - Review applications through owner/admin/moderator authorization. Approval activates
   membership and increments member count; rejection moves membership to `left`.
-  Application, membership, group version, audit, and receipt commit together.
-- Append `groups.invitation.targeted_created` to the owner-owned, append-only
-  `group_domain_events` table in the same database transaction as targeted invite
-  creation. The event contains invitation/group/recipient identifiers only.
-- Register a neutral `NotificationSourceProvider` factory for targeted invitations.
-  It resolves at most one exact recipient and authorizes an internal
-  `/modules/groups?invitation=<uuid>` route only while the invitation and group remain
-  active.
-- Accept targeted invitations by authenticated invitation ID through
-  `GroupTargetedInvitationCommandPort`; wrong-recipient and unavailable state use
-  not-found semantics. Shareable invitations continue to require the opaque token.
-- Own versioned group feature bindings such as `forum.discussions`, `blog.posts`,
-  `pages.wiki`, and `marketplace.store` without importing those modules' tables.
-- Publish typed FBA ports for summary, membership, access, localization,
-  invitations, membership applications, targeted invitation acceptance, commands,
-  and governance.
-- Keep Notifications optional. Invitation creation commits even when Notifications
-  is not compiled or tenant-enabled; inbox, preferences, fan-out, retry, and delivery
-  remain owned by `rustok-notifications`.
-- Publish module-owned Leptos admin and storefront FFA packages with
-  framework-neutral `core`, transport facade, native `#[server]`, GraphQL, and thin
-  Leptos bindings.
+- Capture every successful policy translation INSERT/UPDATE in
+  `group_membership_policy_revisions` in the same database transaction. Revision rows
+  reject UPDATE and DELETE.
+- Publish manager-only policy history through typed Rust, GraphQL, native server
+  function, and admin FFA surfaces.
+- Publish a visual policy editor for add/remove/reorder operations in the
+  host-resolved locale. Its revision reread is a disclosed non-atomic stale preflight,
+  not an atomic compare-and-swap guarantee.
+- Persist successful governance, invitation, and membership-application commands with
+  idempotency receipts and immutable audit evidence. Localization replay receipts
+  remain pending.
+- Append `groups.invitation.targeted_created` without token data and register a neutral
+  `NotificationSourceProvider` factory resolving at most one exact recipient.
+- Own namespaced feature bindings such as `forum.discussions`, `blog.posts`,
+  `pages.wiki`, and `marketplace.store` without importing provider tables.
+- Keep Notifications optional. Groups owner commands do not synchronously depend on
+  inbox, preference, fan-out, retry, email, or push persistence.
+- Publish module-owned Leptos admin/storefront FFA packages with framework-neutral
+  core, transport facade, native `#[server]`, GraphQL, and thin UI bindings.
 - Publish the typed RBAC surface for `groups:*`.
 
 ## Entry points
@@ -84,6 +71,7 @@ media assets, comments, notification inbox/delivery, or search documents.
 - `GroupInvitationService`
 - `GroupTargetedInvitationService`
 - `GroupApplicationService`
+- `GroupApplicationPolicyHistoryService`
 - `GroupGovernanceService`
 - `GroupSummaryReadPort`
 - `GroupMembershipReadPort`
@@ -91,18 +79,20 @@ media assets, comments, notification inbox/delivery, or search documents.
 - `GroupLocalizationReadPort`
 - `GroupInvitationReadPort`
 - `GroupApplicationReadPort`
+- `GroupApplicationPolicyHistoryReadPort`
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
 - `GroupTargetedInvitationCommandPort`
 - `GroupApplicationCommandPort`
 - `GroupGovernanceCommandPort`
-- `graphql_applications::GroupsQueryRoot` with the `graphql` feature
-- `graphql_applications::GroupsMutationRoot` with application policy, submission,
-  review, invitation, localization, governance, and core mutations
+- `graphql_policy_history::GroupsQueryRoot` with the `graphql` feature
+- `graphql_policy_history::GroupsMutationRoot` with core, localization, governance,
+  invitations, applications, and policy-history composition
 - `rustok_groups_admin::GroupsAdmin`
 - `rustok_groups_admin::load_group_admin_application_policy`
 - `rustok_groups_admin::upsert_group_admin_application_policy`
+- `rustok_groups_admin::load_group_admin_application_policy_revisions`
 - `rustok_groups_admin::load_group_admin_membership_applications`
 - `rustok_groups_admin::review_group_admin_membership_application`
 - `rustok_groups_admin::load_group_admin_translations`
@@ -121,23 +111,29 @@ media assets, comments, notification inbox/delivery, or search documents.
 ## Interactions
 
 - Auth/users remains the authority for credentials, sessions, and user identity.
-- `rustok-profiles` supplies public member summaries; Groups never copies profile
-  display state as canonical data.
+- `rustok-profiles` supplies public member summaries; Groups never copies canonical
+  profile display state.
 - `rustok-media` owns uploads and asset lifecycle; Groups stores typed media UUID
   references only.
-- Forum, Blog, Pages, Marketplace, Media Social, Events, and future modules keep
-  their own persistence and consume Groups access decisions through typed ports.
+- Forum, Blog, Pages, Marketplace, Media Social, Events, and future modules retain
+  their own persistence and consume Groups access through typed ports.
 - `rustok-notifications-api` supplies the neutral source-provider contract. Groups
   registers a deferred factory without depending on Notifications persistence.
-- `rustok-notifications` may materialize the Groups source and consume committed
-  targeted-invitation events. Groups does not synchronously send email, push, or
-  notification messages.
-- `rustok-moderation` may issue validated decisions through a future moderation
-  command adapter; it must never update Groups tables directly.
-- `rustok-index` and `rustok-search` will consume committed semantic events in later
-  slices and must preserve secret/closed visibility.
-- Host applications provide tenant, auth, locale, channel, route, and transport
-  context only. They do not own Groups business policy or UI workflows.
+- `rustok-notifications` may consume committed targeted-invitation events. Groups does
+  not synchronously send email, push, or notification messages.
+- `rustok-moderation` may use a future validated command adapter; it must never update
+  Groups tables directly.
+- `rustok-index` and `rustok-search` may consume committed semantic events in later
+  slices while preserving closed/secret visibility.
+- Host applications provide tenant, auth, effective locale, channel, route, and
+  transport context. They do not own Groups business policy or UI workflows.
+
+## Readiness
+
+Source presence does not prove migration, runtime, parity, replay, concurrency,
+security, accessibility, retry, or recovery behavior. FFA, FBA, GROUPS-06, and
+GROUPS-19 remain `in_progress`; the policy-revision runtime evidence key remains
+`null`.
 
 ## Documentation
 
