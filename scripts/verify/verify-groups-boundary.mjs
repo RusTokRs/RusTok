@@ -14,8 +14,10 @@ const required = [
   "crates/rustok-groups/src/service.rs",
   "crates/rustok-groups/src/governance.rs",
   "crates/rustok-groups/src/governance_entities.rs",
+  "crates/rustok-groups/src/graphql_governance.rs",
   "crates/rustok-groups/src/migrations/m20260721_000002_create_group_governance.rs",
   "crates/rustok-groups/admin/src/core.rs",
+  "crates/rustok-groups/admin/src/model.rs",
   "crates/rustok-groups/admin/src/transport.rs",
   "crates/rustok-groups/admin/src/transport/native_server_adapter.rs",
   "crates/rustok-groups/admin/src/transport/graphql_adapter.rs",
@@ -114,6 +116,71 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/src/governance.rs"))) {
   }
 }
 
+if (fs.existsSync(path.join(root, "crates/rustok-groups/src/graphql_governance.rs"))) {
+  const graphqlGovernance = read("crates/rustok-groups/src/graphql_governance.rs");
+  for (const marker of [
+    "MergedObject",
+    "GroupsMutationRoot",
+    "change_group_role",
+    "transfer_group_ownership",
+    "with_idempotency_key",
+    "GroupGovernanceCommandPort",
+  ]) {
+    if (!graphqlGovernance.includes(marker)) {
+      failures.push(`Groups governance GraphQL root is missing marker: ${marker}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/rustok-module.toml"))) {
+  const manifest = read("crates/rustok-groups/rustok-module.toml");
+  if (!manifest.includes('mutation = "graphql_governance::GroupsMutationRoot"')) {
+    failures.push("Groups manifest must publish the merged governance mutation root");
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/transport.rs"))) {
+  const facade = read("crates/rustok-groups/admin/src/transport.rs");
+  for (const marker of [
+    "change_group_admin_role",
+    "transfer_group_admin_ownership",
+    "execute_selected_transport",
+    "GROUPS_ADMIN_TRANSPORT_FALLBACK_POLICY",
+  ]) {
+    if (!facade.includes(marker)) {
+      failures.push(`Groups admin governance facade is missing marker: ${marker}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/transport/native_server_adapter.rs"))) {
+  const nativeAdapter = read("crates/rustok-groups/admin/src/transport/native_server_adapter.rs");
+  for (const marker of [
+    "groups/admin/governance/change-role",
+    "groups/admin/governance/transfer-ownership",
+    "GroupGovernanceCommandPort",
+    "with_idempotency_key",
+  ]) {
+    if (!nativeAdapter.includes(marker)) {
+      failures.push(`Groups native governance adapter is missing marker: ${marker}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/transport/graphql_adapter.rs"))) {
+  const graphqlAdapter = read("crates/rustok-groups/admin/src/transport/graphql_adapter.rs");
+  for (const marker of [
+    "GroupsAdminChangeRole",
+    "GroupsAdminTransferOwnership",
+    "changeGroupRole",
+    "transferGroupOwnership",
+  ]) {
+    if (!graphqlAdapter.includes(marker)) {
+      failures.push(`Groups GraphQL governance adapter is missing marker: ${marker}`);
+    }
+  }
+}
+
 if (fs.existsSync(path.join(root, "crates/rustok-groups/contracts/groups-fba-registry.json"))) {
   const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
   if (registry?.privacy?.default_on_provider_unavailable !== "deny_private_content") {
@@ -137,6 +204,17 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/contracts/groups-fba-reg
   if (!governancePort?.transactional_receipt || !governancePort?.transactional_audit) {
     failures.push("Groups governance port must declare transactional receipt and audit");
   }
+  const governanceProfile = registry?.transport_profiles?.find(
+    (profile) => profile?.name === "embedded_governance_native",
+  );
+  for (const surface of ["rust_port", "graphql", "leptos_server_function"]) {
+    if (!governanceProfile?.surfaces?.includes(surface)) {
+      failures.push(`Groups governance transport profile is missing surface: ${surface}`);
+    }
+  }
+  if (governanceProfile?.implicit_fallback !== false) {
+    failures.push("Groups governance transport profile must reject implicit fallback");
+  }
 }
 
 for (const relative of [
@@ -156,4 +234,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups FFA/FBA, privacy, governance, multilingual, and ownership boundary checks passed.");
+console.log("Groups FFA/FBA, privacy, governance transport, multilingual, and ownership boundary checks passed.");
