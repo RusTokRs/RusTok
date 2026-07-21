@@ -93,6 +93,7 @@
 - `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only child rows keyed by the complete source identity and relation revision.
 - Quote rows retain the quoted target and globally unique quoted relation revision; PostgreSQL and SQLite reject tenant, kind or target mismatches.
 - Existing topic translations and reply bodies receive one `legacy` relation revision during migration, without parsing historical content or reading Profiles-owned tables.
+- PostgreSQL and SQLite source INSERT seed triggers give topic translations and reply bodies created after B1 rollout exactly one empty `legacy` identity until B2 composes active projections; the triggers do not infer mentions or read Profiles.
 - The crate-private `MentionRelationService` separates profile-dependent `prepare` from transaction-only `persist_in_tx`; it is an owner implementation seam, not public persistence API.
 - `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over canonical body, format, resolved targets and quote identities.
 - `persist_in_tx` locks the source stream, re-reads the persisted body in the same transaction, rejects prepared/body mismatch and writes the revision plus all child rows atomically.
@@ -175,6 +176,7 @@ Mention event candidates remain pure owner projections; FORUM-12B1 publishes no 
 - Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
 - Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
 - Updates a persisted mention/quote row instead of appending a new relation revision.
+- Removes the source INSERT seed triggers before active owner writes are composed.
 - Persists a prepared relation projection without revalidating the source body inside the owner transaction.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
@@ -198,6 +200,7 @@ Mention event candidates remain pure owner projections; FORUM-12B1 publishes no 
 - Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
 - Mention revision diffs are immutable on replay and only added resolved targets become future event candidates.
 - Relation revisions and mention/quote children are append-only, tenant-bound and atomically matched to the persisted source body.
+- Source INSERT seeding preserves one relation identity for every persisted topic/reply locale during the B1-to-B2 rollout window.
 - Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
