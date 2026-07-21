@@ -23,26 +23,23 @@ boundary and never becomes a second Page Builder domain model.
 ## Current service path
 
 `FlyAdapterBackedPageBuilderService` is the only service implementation owned by this crate.
+`compose_fly_page_builder_handlers` is the default server composition root; the configured variant
+accepts a preconfigured Fly service, explicit port policies and an explicit authorizer.
 
 ```text
 PageBuilderCapabilityRequest
             |
             v
-  FlyProjectInspection
-            |
-   decode + validate
-            |
-   +--------+--------+
-   |                 |
-   v                 v
-preview renderer   project store
-   |                 |
-   +--------+--------+
-            |
- PageBuilderRuntimeCallEvidence
+FlyAdapterBackedPageBuilderService
             |
             v
-PageBuilderCapabilityResponse
+CapabilityGuardedService
+            |
+            v
+AuthorizedPageBuilderHandlers
+            |
+            v
+GraphQL / Leptos server-function envelope
 ```
 
 The service uses these framework-neutral ports:
@@ -52,13 +49,16 @@ The service uses these framework-neutral ports:
 - `PageBuilderRuntimeTelemetry` — started/succeeded/failed operation evidence;
 - `PageBuilderScenarioBaselineStore` — optional release baseline lookup.
 
-`CapabilityGuardedService` enforces rollout and port-call policy. `AuthorizedPageBuilderHandlers`
-enforces permissions before transport dispatch. GraphQL and Leptos server-function endpoints use
-the same handlers and canonical envelopes.
+The composition root validates rollout flags before exposing handlers. It then wraps the Fly-backed
+service with `CapabilityGuardedService` for rollout and port-call policy, followed by
+`AuthorizedPageBuilderHandlers` for permission checks. Consumer modules supply concrete ports but do
+not choose a different service/guard order.
+
+GraphQL and Leptos server-function endpoints use the composed handlers and canonical envelopes.
 
 The machine-readable boundary is
 `contracts/page-builder-service-boundary.json`. The corresponding verifier rejects obsolete
-reference services, migration decorators and manual JSON rendering paths.
+reference services, migration decorators, manual JSON rendering paths and composition-order drift.
 
 ## Framework-neutral browser host
 
@@ -78,6 +78,7 @@ source. A future Dioxus renderer can use the same source without copying browser
 - `src/dto.rs` — capability DTOs and typed error catalog;
 - `src/adapters.rs` — `FlyProjectInspection` and framework-neutral endpoint payloads;
 - `src/adapters/fly_service.rs` — `FlyAdapterBackedPageBuilderService`;
+- `src/composition.rs` — current-only server composition root;
 - `src/browser_host.rs` — framework-neutral browser module source;
 - `src/service.rs` — service/port traits, guards and authorized handlers;
 - `src/transport.rs` — canonical GraphQL and server-function envelopes;
