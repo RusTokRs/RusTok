@@ -23,6 +23,18 @@ function run() {
   });
 }
 
+const validModel = `
+  const MAX_NOTIFICATION_TEMPLATE_FIELDS: usize = 32;
+  const MAX_NOTIFICATION_TEMPLATE_DATA_BYTES: usize = 4096;
+  const MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE: usize = 256;
+  enum Error { DuplicateAudienceRecipient, InvalidSourceRevision }
+  impl<'de> Deserialize<'de> for NotificationSourceEventRef {}
+  impl NotificationSourceEventRef { pub fn source_revision(&self) {} }
+  impl<'de> Deserialize<'de> for NotificationAudiencePage {}
+  impl NotificationAudiencePage { pub fn recipients(&self) {} }
+  enum NotificationOpenAuthorization { Unavailable }
+`;
+
 const files = {
   "crates/rustok-notifications-api/src/lib.rs": `
     pub struct NotificationSourceSlug;
@@ -36,16 +48,9 @@ const files = {
     const AUDIENCE_CURSOR_MAX_BYTES: usize = 512;
     const TARGET_ROUTE_MAX_BYTES: usize = 512;
     enum NotificationKeyError { InvalidRoute }
+    fn safe(segment: &str) -> bool { segment != "." && segment != ".." }
   `,
-  "crates/rustok-notifications-api/src/model.rs": `
-    const MAX_NOTIFICATION_TEMPLATE_FIELDS: usize = 32;
-    const MAX_NOTIFICATION_TEMPLATE_DATA_BYTES: usize = 4096;
-    const MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE: usize = 256;
-    enum Error { DuplicateAudienceRecipient, InvalidSourceRevision }
-    impl<'de> Deserialize<'de> for NotificationSourceEventRef {}
-    impl<'de> Deserialize<'de> for NotificationAudiencePage {}
-    enum NotificationOpenAuthorization { Unavailable }
-  `,
+  "crates/rustok-notifications-api/src/model.rs": validModel,
   "crates/rustok-notifications-api/src/provider.rs": `
     trait NotificationSourceProvider {
       fn describe_event();
@@ -106,6 +111,28 @@ try {
   const shadowUnread = run();
   if (shadowUnread.status === 0 || !shadowUnread.stderr.includes("shadow unread state")) {
     throw new Error(`shadow-unread fixture did not fail correctly:\n${shadowUnread.stdout}\n${shadowUnread.stderr}`);
+  }
+  write(
+    "crates/rustok-notifications/storefront/src/transport.rs",
+    "fn load() { NotificationStorefrontState::foundation(); }",
+  );
+
+  write(
+    "crates/rustok-notifications-api/src/model.rs",
+    `${validModel}\nstruct Event { pub source_revision: u64 }`,
+  );
+  const publicRevision = run();
+  if (publicRevision.status === 0 || !publicRevision.stderr.includes("source revision must remain")) {
+    throw new Error(`public-revision fixture did not fail correctly:\n${publicRevision.stdout}\n${publicRevision.stderr}`);
+  }
+
+  write(
+    "crates/rustok-notifications-api/src/model.rs",
+    `${validModel}\nstruct Page { pub recipients: Vec<u64> }`,
+  );
+  const publicRecipients = run();
+  if (publicRecipients.status === 0 || !publicRecipients.stderr.includes("audience recipients must remain")) {
+    throw new Error(`public-recipients fixture did not fail correctly:\n${publicRecipients.stdout}\n${publicRecipients.stderr}`);
   }
 
   console.log("notifications foundation verifier fixtures passed");
