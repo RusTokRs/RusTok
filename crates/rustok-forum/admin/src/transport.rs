@@ -1,3 +1,5 @@
+mod category_tree_graphql_adapter;
+mod category_tree_rest_adapter;
 mod graphql_adapter;
 mod rest_adapter;
 
@@ -7,6 +9,25 @@ use crate::model::{
 };
 
 pub type ApiError = String;
+
+pub async fn fetch_category_tree(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    locale: String,
+) -> Result<Vec<CategoryListItem>, ApiError> {
+    match category_tree_graphql_adapter::fetch_category_tree(
+        token.clone(),
+        tenant_slug.clone(),
+        locale.clone(),
+    )
+    .await
+    {
+        Ok(tree) => Ok(tree.into_flat_items()),
+        Err(_) => category_tree_rest_adapter::fetch_category_tree(token, tenant_slug, locale)
+            .await
+            .map(|tree| tree.into_flat_items()),
+    }
+}
 
 pub async fn fetch_categories(
     token: Option<String>,
@@ -118,7 +139,6 @@ pub async fn move_category(
     }
 }
 
-#[allow(dead_code)]
 pub async fn reorder_category_siblings(
     token: Option<String>,
     tenant_slug: Option<String>,
