@@ -40,6 +40,9 @@ function requireBeforeWithin(source, startMarker, endMarker, before, after, labe
   }
 }
 
+const permissionPath = "crates/rustok-api/src/permissions.rs";
+const platformRbacPath = "crates/rustok-core/src/rbac.rs";
+const oauthPath = "crates/rustok-api/src/context/auth.rs";
 const servicePath = "crates/rustok-blog/src/services/category.rs";
 const rbacPath = "crates/rustok-blog/src/services/rbac.rs";
 const modulePath = "crates/rustok-blog/src/lib.rs";
@@ -52,6 +55,9 @@ const evidencePath =
   "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json";
 const planPath = "crates/rustok-blog/docs/implementation-plan.md";
 
+const permissionSource = read(permissionPath);
+const platformRbac = read(platformRbacPath);
+const oauth = read(oauthPath);
 const service = read(servicePath);
 const rbac = read(rbacPath);
 const moduleSource = read(modulePath);
@@ -69,6 +75,42 @@ try {
 }
 
 for (const marker of [
+  "BlogCategories",
+  'Self::BlogCategories => "blog_categories"',
+  '"blog_categories" => Ok(Self::BlogCategories)',
+  "BLOG_CATEGORIES_CREATE => (BlogCategories, Create)",
+  "BLOG_CATEGORIES_READ => (BlogCategories, Read)",
+  "BLOG_CATEGORIES_UPDATE => (BlogCategories, Update)",
+  "BLOG_CATEGORIES_DELETE => (BlogCategories, Delete)",
+  "BLOG_CATEGORIES_LIST => (BlogCategories, List)",
+  "BLOG_CATEGORIES_MANAGE => (BlogCategories, Manage)",
+]) {
+  requireMarker(permissionSource, marker, permissionPath);
+}
+
+for (const marker of [
+  "Resource::BlogCategories",
+  "Permission::BLOG_CATEGORIES_CREATE",
+  "Permission::BLOG_CATEGORIES_READ",
+  "Permission::BLOG_CATEGORIES_UPDATE",
+  "Permission::BLOG_CATEGORIES_DELETE",
+  "Permission::BLOG_CATEGORIES_LIST",
+  "Permission::BLOG_CATEGORIES_MANAGE",
+  "catalog_category_permission_does_not_authorize_blog_categories",
+  "security.get_scope(Resource::BlogCategories, Action::Update)",
+]) {
+  requireMarker(platformRbac, marker, platformRbacPath);
+}
+
+for (const marker of [
+  "Resource::BlogCategories",
+  "blog_categories_are_content_not_catalog",
+  "storefront_scope_admits_blog_category_reads",
+]) {
+  requireMarker(oauth, marker, oauthPath);
+}
+
+for (const marker of [
   "pub fn new_with_event_bus",
   "event_bus: Option<TransactionalEventBus>",
   "self.db.begin().await",
@@ -83,18 +125,28 @@ for (const marker of [
   "Slug must contain at least one ASCII letter or digit",
   "let per_page = filter.per_page.clamp(1, 100)",
   ".paginate(&self.db, per_page)",
-  "CATEGORY_PERMISSION_RESOURCES",
-  "[Resource::BlogPosts, Resource::Categories]",
-  "enforce_any_scope",
+  "Resource::BlogCategories, Action::Create",
+  "Resource::BlogCategories, Action::Read",
+  "Resource::BlogCategories, Action::Update",
+  "Resource::BlogCategories, Action::Delete",
+  "Resource::BlogCategories, Action::List",
 ]) {
   requireMarker(service, marker, servicePath);
 }
-rejectMarker(service, "enforce_owned_scope", servicePath);
+for (const marker of [
+  "CATEGORY_PERMISSION_RESOURCES",
+  "enforce_any_scope",
+  "Resource::BlogPosts",
+  "Resource::Categories",
+  "enforce_owned_scope",
+]) {
+  rejectMarker(service, marker, servicePath);
+}
 requireBeforeWithin(
   service,
   "pub async fn update(",
   "pub async fn delete(",
-  "enforce_any_scope(",
+  "enforce_scope(",
   "let txn = self.db.begin().await",
   `${servicePath}: update authorization order`,
 );
@@ -102,27 +154,25 @@ requireBeforeWithin(
   service,
   "pub async fn delete(",
   "pub async fn list(",
-  "enforce_any_scope(",
+  "enforce_scope(",
   "let txn = self.db.begin().await",
   `${servicePath}: delete authorization order`,
 );
 
-for (const marker of [
-  "pub(crate) fn enforce_any_scope",
-  ".iter()",
-  "security.get_scope(*resource, action)",
-  "any_scope_accepts_primary_or_legacy_resource",
-]) {
-  requireMarker(rbac, marker, rbacPath);
+requireMarker(rbac, "pub(crate) fn enforce_scope", rbacPath);
+for (const marker of ["enforce_any_scope", "primary_or_legacy", "legacy_resource"]) {
+  rejectMarker(rbac, marker, rbacPath);
 }
 
 for (const marker of [
-  "Permission::BLOG_POSTS_CREATE",
-  "Permission::BLOG_POSTS_READ",
-  "Permission::BLOG_POSTS_UPDATE",
-  "Permission::BLOG_POSTS_DELETE",
-  "Permission::BLOG_POSTS_LIST",
   "Permission::BLOG_POSTS_MANAGE",
+  "Permission::BLOG_CATEGORIES_CREATE",
+  "Permission::BLOG_CATEGORIES_READ",
+  "Permission::BLOG_CATEGORIES_UPDATE",
+  "Permission::BLOG_CATEGORIES_DELETE",
+  "Permission::BLOG_CATEGORIES_LIST",
+  "Permission::BLOG_CATEGORIES_MANAGE",
+  "p.resource == Resource::BlogCategories",
   "p.resource == Resource::Categories",
 ]) {
   requireMarker(moduleSource, marker, modulePath);
@@ -135,15 +185,23 @@ for (const marker of [
   "filter.page = filter.page.max(1)",
   "filter.per_page = filter.per_page.clamp(1, 100)",
   "ensure_category_permission",
-  "Permission::new(Resource::BlogPosts, action)",
-  "Permission::new(Resource::Categories, action)",
-  "has_any_effective_permission(&auth.permissions, &[primary, legacy])",
+  "Permission::new(Resource::BlogCategories, action)",
+  "has_effective_permission(&auth.permissions, &permission)",
   "fn map_category_error",
   "BlogError::CategoryNotFound",
   "HttpError::not_found",
   "HttpError::internal",
 ]) {
   requireMarker(controller, marker, controllerPath);
+}
+for (const marker of [
+  "Resource::BlogPosts",
+  "Resource::Categories",
+  "has_any_effective_permission",
+  "primary",
+  "legacy",
+]) {
+  rejectMarker(controller, marker, controllerPath);
 }
 
 for (const marker of [
@@ -193,9 +251,15 @@ if (evidence) {
     failures.push(`${evidencePath}: compile policy drift`);
   }
   const contract = evidence.production_contract ?? {};
+  if (contract.permission_resource !== "blog_categories") {
+    failures.push(`${evidencePath}: permission_resource must be blog_categories`);
+  }
   for (const [key, expected] of Object.entries({
     owner_service: servicePath,
     owner_rbac: rbacPath,
+    platform_permissions: permissionPath,
+    platform_rbac: platformRbacPath,
+    oauth_scope_policy: oauthPath,
     module_permissions: modulePath,
     http_adapter: controllerPath,
     router: routerPath,
@@ -211,7 +275,7 @@ if (evidence) {
     "category_delete_atomic_reindex",
     "tenant_scoped_parent",
     "non_empty_slug",
-    "bounded_permission_namespace",
+    "dedicated_permission_namespace",
     "category_has_no_owner_scope",
     "authorization_precedes_lookup",
     "bounded_category_list",
@@ -229,10 +293,12 @@ for (const marker of [
   "category_slug",
   "non-empty ASCII slug",
   "service and HTTP pagination",
-  "blog_posts:*",
-  "Legacy `categories:*`",
+  "blog_categories:*",
 ]) {
   requireMarker(plan, marker, planPath);
+}
+for (const marker of ["Legacy `categories:*`", "compatibility fallback", "temporary legacy"]) {
+  rejectMarker(plan, marker, planPath);
 }
 
 if (failures.length > 0) {
