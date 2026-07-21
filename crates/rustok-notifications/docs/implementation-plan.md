@@ -3,7 +3,8 @@
 The canonical cross-module task order and status remain in
 `crates/rustok-forum/docs/implementation-plan.md`. This file does not duplicate
 that backlog; it records the owner-local gates that future notification slices
-must preserve.
+must preserve. `NOTIFY-00` remains `in_progress` until maintainer-run verification
+is recorded in the canonical plan.
 
 ## Scope
 
@@ -36,7 +37,7 @@ delivery attempts remain under `NOTIFY-01` and later canonical tasks.
 - target opening is reauthorized for the tenant and recipient;
 - provider absence and module absence are explicit degraded states.
 
-### Runtime composition gate
+### Delivered in `NOTIFY-00B`
 
 - `rustok-notifications` is declared in `modules.toml`, distribution features,
   the server, and owner-owned admin/storefront host packages;
@@ -47,9 +48,15 @@ delivery attempts remain under `NOTIFY-01` and later canonical tasks.
   `HostRuntimeContext`;
 - factory/provider slug conflicts and build failures fail startup explicitly;
 - Forum commands succeed without the notifications owner;
-- the Forum topic-created provider reads owner event state, pages watchers,
-  excludes the actor, fails closed for channel restrictions, and reauthorizes
-  the current target.
+- the Forum topic-created provider binds source identity to the owner event
+  journal, emits bounded template data, pages category watchers, excludes the
+  actor, fails closed for channel restrictions, and reauthorizes the current
+  tenant/open target;
+- the SQLite profile proves notifications-off command success, notifications-on
+  provider materialization, bounded cursor paging, cross-tenant/non-open target
+  fallback, and retryable database failure classification;
+- static runtime fixtures reject default-enabled composition, Forum imports of
+  the owner crate, and removal of the channel fail-closed guard.
 
 ### Persistence gate
 
