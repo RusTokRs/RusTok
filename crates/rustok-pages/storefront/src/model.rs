@@ -27,8 +27,6 @@ pub struct PageDetail {
     pub effective_locale: Option<String>,
     pub translation: Option<PageTranslation>,
     pub body: Option<PageBody>,
-    #[serde(default)]
-    pub blocks: Vec<PageBlock>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -47,12 +45,4 @@ pub struct PageBody {
     pub locale: String,
     pub content: String,
     pub format: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PageBlock {
-    pub id: String,
-    #[serde(rename = "blockType")]
-    pub block_type: String,
-    pub position: i32,
 }

@@ -34,7 +34,6 @@ async fn test_page_lifecycle() -> TestResult<()> {
             format: Some("markdown".to_string()),
             content_json: None,
         }),
-        blocks: None,
         channel_slugs: None,
     };
 
@@ -98,7 +97,6 @@ async fn test_create_page_rt_json_v1_sanitizes_payload() -> TestResult<()> {
                 }
             })),
         }),
-        blocks: None,
         channel_slugs: None,
     };
 
@@ -145,7 +143,6 @@ async fn test_update_page_rt_json_v1_sanitizes_payload() -> TestResult<()> {
                     format: Some("markdown".to_string()),
                     content_json: None,
                 }),
-                blocks: None,
                 channel_slugs: None,
             },
         )

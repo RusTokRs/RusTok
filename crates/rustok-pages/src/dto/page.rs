@@ -5,14 +5,11 @@ use uuid::Uuid;
 
 use rustok_content::entities::node::ContentStatus;
 
-use super::{BlockResponse, CreateBlockInput};
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreatePageInput {
     pub translations: Vec<PageTranslationInput>,
     pub template: Option<String>,
     pub body: Option<PageBodyInput>,
-    pub blocks: Option<Vec<CreateBlockInput>>,
     pub channel_slugs: Option<Vec<String>>,
     #[serde(default)]
     pub publish: bool,
@@ -81,7 +78,6 @@ pub struct PageResponse {
     pub translations: Vec<PageTranslationResponse>,
     pub body: Option<PageBodyResponse>,
     pub channel_slugs: Vec<String>,
-    pub blocks: Vec<BlockResponse>,
     pub metadata: Value,
 }
 

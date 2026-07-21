@@ -4,7 +4,7 @@ use super::ApiError;
 use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
-use crate::model::{PageBlock, PageBody, PageDetail, PageList, PageListItem, PageTranslation};
+use crate::model::{PageBody, PageDetail, PageList, PageListItem, PageTranslation};
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
@@ -159,32 +159,6 @@ async fn storefront_pages_native(
                         meta_description: translation.meta_description,
                     }),
                     body,
-                    blocks: page
-                        .blocks
-                        .into_iter()
-                        .map(|block| PageBlock {
-                            id: block.id.to_string(),
-                            block_type: match block.block_type {
-                                rustok_pages::dto::BlockType::Hero => "hero",
-                                rustok_pages::dto::BlockType::Text => "text",
-                                rustok_pages::dto::BlockType::Image => "image",
-                                rustok_pages::dto::BlockType::Gallery => "gallery",
-                                rustok_pages::dto::BlockType::Cta => "cta",
-                                rustok_pages::dto::BlockType::Features => "features",
-                                rustok_pages::dto::BlockType::Testimonials => "testimonials",
-                                rustok_pages::dto::BlockType::Pricing => "pricing",
-                                rustok_pages::dto::BlockType::Faq => "faq",
-                                rustok_pages::dto::BlockType::Contact => "contact",
-                                rustok_pages::dto::BlockType::ProductGrid => "product_grid",
-                                rustok_pages::dto::BlockType::Newsletter => "newsletter",
-                                rustok_pages::dto::BlockType::Video => "video",
-                                rustok_pages::dto::BlockType::Html => "html",
-                                rustok_pages::dto::BlockType::Spacer => "spacer",
-                            }
-                            .to_string(),
-                            position: block.position,
-                        })
-                        .collect(),
                 })
             }
             None => None,

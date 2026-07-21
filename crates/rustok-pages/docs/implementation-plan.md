@@ -1,260 +1,207 @@
 # Implementation Plan for `rustok-pages`
 
-## Policy: no legacy
+## Policy: current code only
 
-Pages is under active development and carries **no legacy compatibility policy**.
-Old parallel editors, data mirrors, block APIs and migration shims are deleted
-instead of being kept as fallback paths.
+Pages is under active development. It does not keep compatibility editors,
+component mirrors, block tables or migration shims.
 
-Forbidden architecture:
+Forbidden:
 
 - a JSON/CRUD editor beside Fly;
-- `admin/src/ui` as a second admin application;
-- `pages[].component` mirrored into `frames[0].component`;
-- importing historical frame trees into the current document;
-- `PageBlock` in the current admin/storefront contract;
-- writes that preserve obsolete payloads only for compatibility;
-- host-owned Pages logic or direct UI access to raw GraphQL adapters.
+- the deleted Next/GrapesJS page-builder route;
+- `frames[0].component` as a component-tree mirror;
+- `PageBlock`, `BlockService`, `page_blocks` or block mutations;
+- storefront block fallback rendering;
+- UI access to raw transport adapters;
+- host-owned Pages persistence or document policy.
 
-The only authoring source of truth is the current Fly document at
-`pages[].component` plus Pages-owned metadata and lifecycle state.
+The visual document authority is `pages[].component` stored in the Pages body.
 
 ## Mission
 
-`rustok-pages` owns page identity, localized metadata, slugs, channels, menus,
-draft/published lifecycle, immutable published landing artifacts and storefront
-reads. Page Builder/Fly owns visual document authoring and rendering primitives,
-but never owns Pages persistence, routing or tenant policy.
-
-The target is:
-
-- one builder-first admin workspace;
-- one current document contract;
-- deterministic publish artifacts;
-- FFA-owned admin/storefront composition;
-- FBA-owned policy, persistence/rendering ports and rollout controls;
-- no compatibility branches or shadow state.
+`rustok-pages` owns page identity, localized metadata and bodies, slugs, channels,
+menus, draft/published lifecycle, immutable landing artifacts, routes and
+storefront reads. Fly/Page Builder owns visual document primitives and capability
+contracts, not Pages persistence or tenant policy.
 
 ## Current implementation
 
+### Domain and persistence
+
+- [x] Pages has independent entities for pages, translations, bodies, channel
+  visibility, scenario baselines and immutable landing artifacts.
+- [x] `PageBlock`, `BlockService`, block DTOs, relations, GraphQL/REST/OpenAPI
+  surfaces and storefront block models are deleted.
+- [x] The initial development migration never creates `page_blocks`; no drop or
+  compatibility migration is retained.
+- [x] `PageService` is split into `create`, `read`, `update`, `persistence` and
+  `helpers` modules instead of one block-aware monolith.
+- [x] New/current documents use only `pages[].component`.
+- [x] Unknown current provider/plugin fields are preserved by the Fly codec.
+- [x] Page writes use optimistic page versions and body revisions.
+- [x] Builder feature flags and scenario-baseline gates fail with typed errors.
+
 ### Admin FFA
 
-- [x] `PagesAdmin` is the sole public admin entrypoint.
-- [x] The parallel 1,200+ line JSON/CRUD UI and its module files are deleted.
-- [x] The workspace lists pages, creates a current Fly document, selects a page,
-  mounts Fly, publishes/unpublishes and deletes Pages documents.
-- [x] New pages start with `pages[].component`; no frame mirror is generated.
-- [x] `PagesBuilderFacade` accepts only the canonical publish request, reloads
-  current metadata, verifies the body revision, persists through Pages transport,
-  rereads the body and acknowledges the persisted revision.
-- [x] Fly saves refresh the current Pages list/workspace resource.
-- [x] Admin GraphQL no longer requests or writes `blocks`.
-- [x] `PageBlock`, compatibility preview/tree helpers and deleted UI dependencies
-  are removed from the admin package.
-- [x] Pages admin contributions expose current Fly builtin landing blocks through
-  provider/capability policy.
+- [x] Pages owns the Page Builder consumer facade and transport selection.
+- [x] Fly saves reload current page metadata and reject stale body revisions.
+- [x] Pages contributes current Fly landing blocks through provider/capability
+  policy.
+- [ ] The separate builder-first admin workspace is delivered by the companion
+  current-only admin change.
+- [ ] Metadata editing still needs a typed metadata-only patch/property contract.
 
 ### Storefront FFA
 
-- [x] Published `grapesjs` documents render through the Page Builder storefront
-  package.
-- [x] Published static landing artifacts have a dedicated rendering path.
-- [ ] Storefront model/query code still contains historical block fallback fields;
-  these must be deleted with the backend block subsystem.
+- [x] Published `grapesjs` documents render through Page Builder storefront.
+- [x] Static published landing artifacts have a dedicated sandboxed path.
+- [x] Storefront GraphQL/native adapters no longer query or synthesize blocks.
+- [ ] Storefront should read only the selected immutable published artifact.
 - [ ] Authenticated real-DOM inline editing is not implemented.
-- [ ] Anonymous-bundle exclusion evidence is not complete.
+- [ ] Anonymous bundle exclusion evidence is not complete.
 
-### Backend/FBA
+### Page Builder/FBA
 
-- [x] Pages has tenant-scoped capability metadata, typed errors, endpoint adapter
-  seams, optimistic body revisions and rollout evidence contracts.
-- [x] The repository contains a deterministic landing build/publish pipeline with
-  renderer identity, SHA-256 build/artifact integrity and immutable landing
-  artifact records.
-- [x] Published landing artifacts and scenario baselines have dedicated entities
-  and services.
-- [ ] The old `page_blocks` entity/service/GraphQL/migration surface still exists
-  and must be removed.
-- [ ] Metadata-only patch semantics are missing; body writes are still coupled to
-  metadata updates.
-- [ ] Observed tenant Wave 0/Wave 1 evidence is not complete.
+- [x] Capability registry, permissions, typed errors, fallback profiles and
+  endpoint adapter seams exist.
+- [x] Deterministic Fly landing rendering and SHA-256 artifact identity exist.
+- [x] Pages persists immutable landing artifact records and bindings.
+- [ ] Publish must become one idempotent atomic workflow from validation through
+  artifact binding and outbox/cache invalidation.
+- [ ] Authoritative sanitization is not complete for every publish path.
+- [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
 
 ## FFA/FBA status
 
-- **FFA:** `in_progress` — builder-only admin is established; metadata properties,
-  inline storefront editing and generated multi-module contribution registries
-  remain open.
-- **FBA:** `in_progress` — deterministic landing artifact publication exists;
-  obsolete block persistence, complete metadata patching, rollout evidence and
-  operational repair paths remain open.
-- **Structural shape:** `core_transport_ui` with one current admin composition.
+- **FFA:** `in_progress` — current-only runtime/storefront boundaries are ready;
+  typed metadata properties and inline edit mode remain open.
+- **FBA:** `in_progress` — deterministic artifact primitives exist; atomic
+  publication, rollback, sanitization and observed rollout evidence remain open.
+- **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
 
 - **Pages domain/backend:** identity, translations, slugs, channels, templates,
-  menus, revision state, publish transaction, artifact selection, redirects,
-  deletion and audit.
-- **Pages admin FFA:** list/create/select workspace, metadata contribution UI,
-  Pages facade, permissions and resource refresh.
-- **Pages storefront FFA:** published route reads, renderer composition, cache
+  menus, revisions, publish transaction, artifact selection, redirects, deletion
+  and audit.
+- **Pages admin FFA:** list/create/select workspace, metadata property
+  contributions, Pages persistence facade and permissions.
+- **Pages storefront FFA:** published reads, routing, renderer composition, cache
   integration and optional authenticated edit mode.
 - **Page Builder admin:** editor behaviour and canonical capability envelope.
-- **Fly:** current document model, commands, history, registries, validation,
+- **Fly:** current project model, commands, history, registries, validation,
   deterministic rendering and document hash.
 - **Page Builder backend FBA:** capability policy, validation/sanitization ports,
   health, feature flags and rollout mechanics.
 - **Hosts:** route, locale, auth and tenant context only.
 
-## Current document contract
+## Current document/publication model
 
 ```text
-Page metadata
-  + current Fly document (pages[].component)
-  + optimistic body revision
-  -> validation/readiness
+Page metadata revision
+  + Fly document/body revision
+  -> validation and provider readiness
+  -> authoritative sanitization
   -> deterministic renderer
   -> immutable landing artifact
   -> atomic published artifact pointer
-  -> storefront read/cache
+  -> route/cache/storefront read
 ```
 
 Invariants:
 
-1. `pages[].component` is the only component-tree authority.
-2. Unknown current provider/plugin fields are preserved by the Fly codec.
-3. Missing providers fail visibly; they never trigger silent deletion.
-4. Draft saves do not mutate the selected published artifact.
-5. Publish validates and renders a deterministic artifact before switching the
-   published pointer.
-6. Artifact identity includes source, renderer release, registry and render
-   policy hashes.
-7. Dynamic widgets store versioned configuration, not resolved privileged data.
+1. `pages[].component` is the sole component-tree authority.
+2. Metadata and document writes never overwrite one another implicitly.
+3. Draft saves do not mutate the selected published artifact.
+4. Publish validates and builds before making output visible.
+5. Artifact identity includes source, renderer release, registry and policy hashes.
+6. Missing providers fail visibly and never cause silent deletion.
+7. Dynamic widgets persist versioned configuration, not privileged snapshots.
 8. Anonymous storefront bundles contain no editor code.
-9. There is no fallback to obsolete editors, frame mirrors or block tables.
+9. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
-- Deleted `crates/rustok-pages/admin/src/ui` and removed it from the crate root.
-- Replaced the parallel editor with one builder-first Pages workspace.
-- Added current page creation, navigation, publish/unpublish and delete actions.
-- Removed admin `PageBlock` data, block GraphQL fields and obsolete UI dependencies.
-- Reduced admin core to current document/domain helpers.
-- Changed canonicalization to create/read only `pages[].component`; historical
-  frame trees are neither imported nor synchronized.
-- Replaced Pages boundary checks and fixtures with no-legacy guardrails.
+- Removed the entire block entity/DTO/service/GraphQL/REST/OpenAPI contract.
+- Removed block lifecycle from Page create/read/update/delete operations.
+- Split `PageService` into focused current-only modules.
+- Removed block fields from storefront GraphQL/native adapters, models and UI.
+- Deleted the separate Next/GrapesJS editor route, component, API and navigation.
+- Rewrote current round-trip tests around `pages[].component`.
+- Added a no-block/no-shadow-editor source guardrail.
+- Extended Fly/Page Builder CI to test, lint and format Pages domain/storefront.
+- Rewrote the development schema so `page_blocks` is never created.
 
-## Implementation order
-
-### P0 — delete the backend block subsystem
-
-- [ ] Remove `entities/page_block.rs`, `BlockService`, block controllers and
-  GraphQL block mutations/fields.
-- [ ] Remove block relations from Page entities and service projections.
-- [ ] Rewrite the initial Pages migration so fresh installations never create
-  `page_blocks`; remove follow-up ordering constraints for that table.
-- [ ] Remove storefront block models, summaries and fallback rendering.
-- [ ] Remove old Next admin page-builder/block code and obsolete docs/tests.
-- [ ] Add repository-wide guardrails rejecting `PageBlock`, `BlockService` and
-  `page_blocks` outside deleted migration history (there should be none after the
-  migration rewrite).
-
-**Gate:** `rg "PageBlock|BlockService|page_blocks"` returns no production source.
+## Next implementation order
 
 ### P0 — separate metadata and document writes
 
-- [ ] Add a typed metadata patch command for title, slug, locale, channels,
-  template and SEO fields that never accepts body/project data.
-- [ ] Add a typed document save command carrying only page id, body revision and
-  Fly project.
-- [ ] Make metadata and document revisions explicit and independently conflict
-  checked.
+- [ ] Add a typed metadata patch for title, slug, locale, channels, template and
+  SEO fields that cannot carry body/project data.
+- [ ] Add a typed document save command carrying page id, body revision and Fly
+  project only.
+- [ ] Track metadata and document revisions independently.
+- [ ] Add conflict tests proving metadata saves cannot replace a dirty/current
+  Fly document and Fly saves cannot revert metadata.
 - [ ] Move metadata editing into Pages-owned Page Builder property contributions.
-- [ ] Add slug/locale uniqueness errors and route preview before commit.
 
-**Gate:** editing metadata cannot overwrite a dirty/current Fly document, and a
-Fly save cannot revert metadata.
+### P0 — atomic artifact publication
 
-### P0 — authoritative publish transaction
+- [x] Deterministic renderer and artifact identity.
+- [x] Immutable artifact persistence and body bindings.
+- [ ] Make publish idempotent: validate -> sanitize -> compile -> persist -> bind
+  -> switch published state -> outbox/cache invalidation.
+- [ ] Add rollback to a previous immutable artifact.
+- [ ] Correlate editor save, page revision, artifact and storefront read.
+- [ ] Add integrity audit and repair/rebuild commands.
 
-- [x] Deterministic Fly landing artifact build and integrity identity.
-- [x] Pages landing artifact persistence entities/services.
-- [ ] Make publish an idempotent transaction: validate -> sanitize -> build ->
-  persist artifact -> atomically select published artifact -> outbox/cache events.
-- [ ] Add rollback to a prior immutable artifact.
-- [ ] Correlate editor save, document revision, publish operation, artifact and
-  storefront read.
-- [ ] Add repair/rebuild commands for missing/corrupt artifacts and route indexes.
-
-### P1 — complete Pages/Page Builder FFA
+### P1 — complete Page Builder authoring
 
 - [ ] Add typed Pages metadata property editors.
-- [ ] Add Media asset contributions and current asset picker contracts.
-- [ ] Add rich-text only through the dedicated opaque payload/editor seam.
+- [ ] Add Media asset contributions without transferring Media ownership.
+- [ ] Integrate rich text only through the dedicated opaque payload/editor seam.
 - [ ] Generate admin/storefront contribution registries from module metadata.
 - [ ] Filter contributions by tenant, permission, capability, provider health and
   surface.
-- [ ] Add complete keyboard, accessibility, degraded-state and permission tests.
+- [ ] Complete accessibility, keyboard and degraded-state coverage.
 
 ### P1 — storefront and routing
 
-- [ ] Render only the selected immutable published artifact.
-- [ ] Add locale fallback, canonical URLs, redirect records and route collision
-  policy.
+- [ ] Serve only the selected immutable published artifact.
+- [ ] Add locale fallback, canonical URLs, redirects and route-collision policy.
 - [ ] Integrate menus, SEO and channel visibility with deterministic cache keys.
-- [ ] Add authenticated real-DOM inline editing behind explicit permissions and
-  flags.
-- [ ] Prove anonymous SSR/CSR/hydrate bundles exclude Fly authoring code.
-- [ ] Prove admin preview, published artifact and inline-edit visual parity.
+- [ ] Implement authenticated real-DOM inline editing behind permissions/flags.
+- [ ] Prove anonymous SSR/CSR/hydrate bundles exclude authoring code.
+- [ ] Prove admin preview, published output and inline edit parity.
 
 ### P2 — operations and rollout
 
-- [ ] Audit draft save, metadata patch, publish, unpublish, rollback and delete.
-- [ ] Metrics: save/publish latency, conflict rate, validation/sanitizer rejection,
-  renderer failure, artifact integrity failure, missing provider and cache hit.
+- [ ] Audit metadata save, document save, publish, unpublish, rollback and delete.
+- [ ] Metrics for save/publish latency, conflicts, sanitizer rejection, renderer
+  failure, artifact integrity, missing providers and cache hit rate.
 - [ ] Run observed internal-tenant Wave 0.
-- [ ] Run Wave 1 after P0 gates pass; no synthetic packet may count as rollout.
+- [ ] Run Wave 1 only after publication/rollback gates pass.
 - [ ] Prove rollback for provider, sanitizer, renderer and contribution failures.
 
 ## Verification
 
-Fast checks:
-
+- `cargo test -p rustok-pages --lib`
+- `cargo clippy -p rustok-pages --lib -- -D warnings`
+- `cargo test -p rustok-pages-admin --lib`
+- `cargo check -p rustok-pages-storefront --lib`
+- `cargo clippy -p rustok-pages-storefront --lib -- -D warnings`
+- `node scripts/verify/verify-pages-current-only.mjs`
 - `node scripts/verify/verify-pages-ui-boundary.mjs`
-- `node --test scripts/verify/verify-pages-ui-boundary.test.mjs`
-- `node scripts/verify/verify-fly-admin-browser-runtime.mjs`
 - `npm run verify:page-builder:consumer:pages`
 - `npm run verify:page-builder:fba:baseline`
-- `npm run verify:i18n:ui`
-- `npm run verify:i18n:contract`
-
-Rust/WASM checks:
-
-- `cargo test -p rustok-pages-admin`
-- `cargo test -p rustok-pages-storefront`
-- `cargo test -p rustok-pages`
-- `cargo test -p rustok-page-builder`
-- `cargo test -p rustok-page-builder-admin`
-- `cargo test -p rustok-page-builder-storefront`
-- `cargo test -p fly`
-- `cargo test -p fly-ui`
-- `cargo test -p fly-leptos`
 - `cargo xtask module validate pages`
-- `cargo xtask module validate page_builder`
-
-No-legacy checks:
-
-- admin `ui/`, `api.rs` and compatibility shims do not exist;
-- no JSON project textarea exists outside tests/fixtures;
-- no frame copy/synchronization helper exists;
-- no current admin/storefront GraphQL field named `blocks` exists;
-- after P0 cleanup, no `PageBlock`, `BlockService` or `page_blocks` production
-  symbol exists.
+- migration compatibility and full workspace CI
 
 ## Update rules
 
-- This plan is updated in every Pages implementation slice.
+- Update this plan in every Pages implementation slice.
 - Checkboxes require merged source; gates require reproducible executed evidence.
-- Contract changes require matching guardrails and tests.
+- Contract changes require matching guardrails/tests.
 - New dependencies require dependency records.
-- Do not reintroduce legacy compatibility, shadow editors or duplicate document
-  authorities.
+- Never reintroduce block storage, shadow editors, frame mirrors or duplicate
+  document authorities.
