@@ -63,6 +63,8 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
+                    .check(Expr::cust("length(token_hash) = 64"))
+                    .check(Expr::cust("token_hash = lower(token_hash)"))
                     .check(Expr::cust("max_uses BETWEEN 1 AND 100"))
                     .check(Expr::cust("use_count >= 0 AND use_count <= max_uses"))
                     .check(Expr::cust("target_user_id IS NULL OR max_uses = 1"))
