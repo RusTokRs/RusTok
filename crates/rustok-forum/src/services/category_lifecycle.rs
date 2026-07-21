@@ -15,7 +15,7 @@ use crate::dto::{
     CategorySubtreeLifecycleResponse, MAX_FORUM_CATEGORY_TREE_DEPTH,
     MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use crate::entities::forum_category;
+use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 
@@ -71,9 +71,18 @@ impl CategoryLifecycleService {
             .ok_or(ForumError::CategoryNotFound(root_id))?;
         validate_parent_map(&models)?;
 
+        let lifecycle_rows = forum_category_lifecycle::Entity::find()
+            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+        let lifecycle_by_category = lifecycle_rows
+            .into_iter()
+            .map(|lifecycle| (lifecycle.category_id, lifecycle))
+            .collect::<HashMap<_, _>>();
+
         let affected_category_ids = collect_subtree_ids(&categories, root_id)?;
         if !archived {
-            ensure_restore_ancestors_are_active(&models, &root)?;
+            ensure_restore_ancestors_are_active(&models, &lifecycle_by_category, &root)?;
         }
 
         let now = Utc::now();
@@ -84,19 +93,27 @@ impl CategoryLifecycleService {
 
         let mut changed = HashSet::new();
         for category_id in update_ids {
-            let category = models
-                .get(&category_id)
-                .cloned()
-                .ok_or(ForumError::CategoryNotFound(category_id))?;
-            let should_change = category.archived_at.is_some() != archived;
-            if !should_change {
+            let is_archived = lifecycle_by_category.contains_key(&category_id);
+            if is_archived == archived {
                 continue;
             }
 
-            let mut active: forum_category::ActiveModel = category.into();
-            active.archived_at = Set(archived.then(|| now.into()));
-            active.updated_at = Set(now.into());
-            active.update(&txn).await?;
+            if archived {
+                forum_category_lifecycle::ActiveModel {
+                    category_id: Set(category_id),
+                    tenant_id: Set(tenant_id),
+                    archived_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(&txn)
+                .await?;
+            } else {
+                forum_category_lifecycle::Entity::delete_many()
+                    .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+                    .filter(forum_category_lifecycle::Column::CategoryId.eq(category_id))
+                    .exec(&txn)
+                    .await?;
+            }
             changed.insert(category_id);
         }
 
@@ -108,11 +125,10 @@ impl CategoryLifecycleService {
             .filter(|category_id| changed.contains(category_id))
             .collect::<Vec<_>>();
         let archived_at = if archived {
-            if changed.contains(&root_id) {
-                Some(now.to_rfc3339())
-            } else {
-                root.archived_at.map(|value| value.to_rfc3339())
-            }
+            lifecycle_by_category
+                .get(&root_id)
+                .map(|lifecycle| lifecycle.archived_at.to_rfc3339())
+                .or_else(|| Some(now.to_rfc3339()))
         } else {
             None
         };
@@ -207,6 +223,7 @@ fn collect_subtree_ids(
 
 fn ensure_restore_ancestors_are_active(
     models: &HashMap<Uuid, forum_category::Model>,
+    lifecycle_by_category: &HashMap<Uuid, forum_category_lifecycle::Model>,
     root: &forum_category::Model,
 ) -> ForumResult<()> {
     let mut parent_id = root.parent_id;
@@ -216,7 +233,7 @@ fn ensure_restore_ancestors_are_active(
                 "Forum category tree references missing or foreign parent {current_id}"
             ))
         })?;
-        if parent.archived_at.is_some() {
+        if lifecycle_by_category.contains_key(&current_id) {
             return Err(ForumError::Validation(
                 "Category subtree cannot be restored beneath an archived ancestor".to_string(),
             ));
