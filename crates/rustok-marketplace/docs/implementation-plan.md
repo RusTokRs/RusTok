@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `checkout_pre_capture_economics_checkpointed_post_capture_pending`.
+- Runtime integration status: `checkout_post_capture_ledger_wired_paid_event_inbox_pending`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -34,6 +34,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   commission assessment hooks.
 - [x] Durable checkout marketplace economics checkpoint with lease-bound admission and
   replay adoption.
+- [x] Commerce-owned durable post-capture financial operation with ledger receipt replay
+  and fulfillment gating.
 
 ## Architecture contract
 
@@ -216,19 +218,28 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Register ledger `MigrationSource` in the composed migrator source list.
 - [x] Keep commission economics before capture without posting ledger entries from the
   pre-capture checkout path.
+- [x] Add commerce-owned `marketplace_financial_operations` with immutable captured-payment,
+  order, plan, currency, idempotency, and request identity.
+- [x] Add pending/executing/retryable-error/operator-review/completed states, CAS leases,
+  attempt counts, safe error fields, and immutable ledger evidence.
+- [x] Post ledger only after a fully captured payment collection using stable
+  `checkout:{operation_id}:marketplace-ledger:v1` identity and captured timestamp.
+- [x] Reconcile ledger debit/credit totals to the pre-capture economics checkpoint.
+- [x] Block marketplace fulfillment until the financial operation is completed with
+  `ledger_posted` evidence.
+- [x] Compose the commission-backed ledger owner in storefront staged checkout runtime.
 
 ### Remaining critical path
 
-- [ ] Post ledger only after payment capture/order paid.
-- [ ] Add durable `marketplace_financial_operations` stage journal, leases, retries,
-  safe errors, recovery worker, and operator review state.
-- [ ] Trigger ledger posting from a deduplicated paid-event inbox.
+- [ ] Add a deduplicated paid-event inbox as an alternative admission path to the same
+  financial operation.
+- [ ] Add a scheduled recovery/sweep worker and bounded operator list/show/retry surfaces.
+- [ ] Harden the post-capture checkpoint read and invalid-ledger response paths so storage
+  outages remain retryable and invariant failures persist explicit operator-review state.
 - [ ] Add append-only reversal transactions for refunds, chargebacks, adjustments,
   payout settlement, payout reversal, reserve hold, and reserve release.
 - [ ] Add seller balance projections for pending, available, reserved, paid, and
   negative amounts, rebuildable from ledger entries.
-- [ ] Hold fulfillment when financial posting is incomplete and release it after
-  successful posting according to policy.
 - [ ] Retain clean/upgraded migrations, duplicate-paid-event, balancing, recovery, and
   concurrent posting evidence.
 
@@ -320,19 +331,22 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   changes.
 - [x] Register the complete Marketplace Family and moderation in the module catalog,
   distribution registry, and server opt-in feature graph.
-- [x] Register allocation and commission providers in the storefront staged checkout
-  runtime.
+- [x] Register allocation, commission, and ledger providers in the storefront staged
+  checkout runtime.
 - [x] Register the commerce-owned marketplace economics checkpoint migration with
   dependencies on checkout plan, allocation, and commission schemas.
+- [x] Register the commerce-owned financial operation migration with dependencies on
+  captured payment binding, pre-capture checkpoint, and marketplace ledger schemas.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
-- [ ] Register request-scoped runtime providers for ledger, payout, and moderation;
-  compile-time module registration is not sufficient.
+- [ ] Register request-scoped runtime providers for payout and moderation; compile-time
+  module registration is not sufficient.
 - [ ] Register post-capture paid-event consumers in host composition.
 - [ ] Update backfill registries with the validated final composed migration order.
 
 ## Consolidated maintainer validation queue
 
-No new tests were run for the 2026-07-21 source composition and typed-checkout batches.
+No new tests were run for the 2026-07-21 source composition, typed-checkout, checkpoint,
+or post-capture financial-operation batches.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, moderation, distribution,
@@ -347,6 +361,8 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
   conflict, and checkout fail-closed scenarios.
 - [ ] Run checkpoint write, exact replay, conflicting evidence, expired lease, process-exit
   after owner commits, and resume-without-owner-call scenarios.
+- [ ] Run financial-operation admission, concurrent claim, lease expiry, ledger lost-response,
+  ledger receipt replay, operator-review, and fulfillment-gate scenarios.
 - [ ] Run idempotency conflict and lost-response replay scenarios.
 - [ ] Run allocation, commission, ledger, payout, seller, listing, and moderation
   contention scenarios.
@@ -364,13 +380,15 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
 3. [x] Wire marketplace allocation and commission assessment into the real pipeline before
    payment capture.
 4. [x] Add durable allocation/commission checkpoint and replay adoption.
-5. [ ] Add durable post-capture financial operation and paid-event inbox.
-6. [ ] Add refund/chargeback ledger reversals and seller balance projections.
-7. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
-8. [ ] Add seller/listing moderation adapters and decision-application recovery.
-9. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
-10. [ ] Build vendor and finance control-room surfaces.
-11. [ ] Execute the consolidated validation queue and only then promote readiness.
+5. [x] Add durable direct-checkout post-capture financial operation, ledger posting, and
+   fulfillment gate.
+6. [ ] Add paid-event inbox plus recovery/operator surfaces for financial operations.
+7. [ ] Add refund/chargeback ledger reversals and seller balance projections.
+8. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
+9. [ ] Add seller/listing moderation adapters and decision-application recovery.
+10. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
+11. [ ] Build vendor and finance control-room surfaces.
+12. [ ] Execute the consolidated validation queue and only then promote readiness.
 
 ## Primary source paths
 
@@ -385,11 +403,14 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
 - `crates/rustok-cart/src/services/marketplace_snapshot.rs`
 - `crates/rustok-cart/src/marketplace_snapshot.rs`
 - `crates/rustok-commerce/src/entities/checkout_marketplace_economics_checkpoint.rs`
+- `crates/rustok-commerce/src/entities/marketplace_financial_operation.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000001_create_checkout_marketplace_economics_checkpoints.rs`
+- `crates/rustok-commerce/src/migrations/m20260721_000002_create_marketplace_financial_operations.rs`
 - `crates/rustok-commerce/src/services/checkout_order_plan.rs`
 - `crates/rustok-commerce/src/services/checkout_plan_builder.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_allocation.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_commission.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_economics.rs`
+- `crates/rustok-commerce/src/services/checkout_marketplace_financial.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
