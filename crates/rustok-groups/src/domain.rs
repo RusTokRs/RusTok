@@ -77,6 +77,7 @@ string_enum!(GroupFeatureStatus {
 
 string_enum!(GroupAction {
     Discover => "discover",
+    ViewSummary => "view_summary",
     View => "view",
     ViewMembers => "view_members",
     Join => "join",
