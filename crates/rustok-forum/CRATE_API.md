@@ -1,7 +1,7 @@
 # rustok-forum / CRATE_API
 
 ## Public Modules
-`constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`.
+`category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`.
 
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
@@ -13,6 +13,7 @@
 - `CategoryService::restore_subtree(tenant_id, category_id, security) -> CategorySubtreeLifecycleResponse`
 - `CategoryService::topic_policy(tenant_id, category_id, security) -> CategoryTopicPolicyResponse`
 - `CategoryService::set_topic_policy(tenant_id, category_id, security, UpdateCategoryTopicPolicyInput) -> CategoryTopicPolicyResponse`
+- `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -59,6 +60,14 @@
 - GraphQL entry points: `forumCategoryTopicPolicy` and `setForumCategoryTopicPolicy`.
 - PostgreSQL and SQLite reject direct `forum_topics` inserts or category moves into a category whose policy disables topic creation.
 - Existing topics remain unchanged when a category policy is disabled; the policy controls new topic placement only.
+### Category presentation contract
+- Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
+- Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
+- `CategoryCoverMediaCandidate` is the transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
+- `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
+- Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
+- Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
+- Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -112,6 +121,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
+- `rustok-media` for transport-neutral image descriptors and candidate validation
 - `rustok-outbox`
 
 ## Common AI Mistakes
@@ -123,6 +133,8 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Writes `parent_id` or sibling positions directly instead of using category owner commands.
 - Writes lifecycle rows parent-first or restores a child beneath an archived ancestor.
 - Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
+- Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
+- Stores a category image URL/path or reads Media tables instead of using the Media owner port.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
@@ -140,6 +152,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
+- Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects

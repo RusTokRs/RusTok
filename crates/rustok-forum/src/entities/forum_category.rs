@@ -3,6 +3,8 @@ use sea_orm::ActiveValue;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::category_presentation::normalize_category_icon_key;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "forum_categories")]
 pub struct Model {
@@ -46,6 +48,15 @@ impl ActiveModelBehavior for ActiveModel {
     where
         C: ConnectionTrait,
     {
+        if let ActiveValue::Set(Some(icon)) = &mut self.icon {
+            let normalized = normalize_category_icon_key(icon).ok_or_else(|| {
+                DbErr::Custom(
+                    "Forum category icon must be a bounded kebab-case design token".to_string(),
+                )
+            })?;
+            *icon = normalized;
+        }
+
         if let ActiveValue::Set(Some(color)) = &mut self.color {
             let normalized = normalize_category_color(color).ok_or_else(|| {
                 DbErr::Custom(

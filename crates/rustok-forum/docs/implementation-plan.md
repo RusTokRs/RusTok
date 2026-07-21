@@ -203,7 +203,7 @@ at the end of this file remain authoritative.
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
 | `FORUM-12` | `planned` | Mentions, quote relations and recipient projection. |
-| `FORUM-13` | `planned` | Category icon tokens and media-owned cover images. |
+| `FORUM-13` | `in_progress` | FORUM-13A adds bounded icon/color and transport-neutral cover candidate policy; Media quarantine/deletion state, persistence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
 | `FORUM-16` | `planned` | Durable read tracking and unread projections. |
@@ -481,7 +481,7 @@ quoted target and quoted revision so edits do not rewrite history.
 
 ## `FORUM-13` — category icon and image integration
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P1  
 **Dependencies:** media read/upload capability
 
@@ -506,10 +506,40 @@ hidden, and existing image descriptors degrade to absent without breaking
 category reads. A command that attempts to set a media reference fails with a
 typed capability-unavailable error.
 
+### Delivered in `FORUM-13A`
+
+- category icon writes normalize to bounded lowercase kebab-case semantic keys
+  at the database write boundary; CSS classes, markup, URLs and paths fail closed;
+- category colors remain restricted to safe bounded hexadecimal values;
+- `CategoryCoverMediaCandidate` is a transport-neutral validation input containing
+  only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`;
+- cover candidate policy rejects foreign tenants, unsupported MIME, size or
+  dimension violations, descriptor mismatch and non-direct-public delivery;
+- a verifier rejects Media persistence/storage access and arbitrary category
+  image URL/path fields.
+
+### Remaining scope
+
+- Media must publish quarantine and deletion lifecycle state through its owner
+  read contract before Forum persists `cover_media_id`;
+- add the owner command, persistence, response descriptor hydration and
+  admin/storefront image selection after that state is available;
+- add typed capability-unavailable transport mapping and degraded-mode runtime
+  evidence for Media-disabled deployments.
+
 ### Definition of done
 
 No forum table stores arbitrary asset URLs and a foreign/quarantined asset
 cannot be attached.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum category_presentation
+node scripts/verify/verify-forum-category-presentation.mjs
+node scripts/verify/verify-forum-category-presentation.test.mjs
+cargo xtask module validate forum
+```
 
 ## `FORUM-14` — topic and reply attachments
 
@@ -1290,8 +1320,8 @@ possible.
 
 # Immediate next action
 
-The next implementation task is the remaining `FORUM-04` lifecycle slice:
-subtree archive/restore owner workflows and interactive admin drag-and-drop
-consumption of the existing placement transport facade.
-In parallel, architecture work may start `NOTIFY-00`, provided it does not
-change forum commands into synchronous notification calls.
+The next Forum implementation slice is the remaining `FORUM-13` media-reference
+workflow after Media publishes quarantine/deletion lifecycle state. Until that
+owner contract is available, proceed with `NOTIFY-00` or maintainer verification
+for implemented `FORUM-04` and `FORUM-13A` slices without adding synchronous
+notification dependencies to forum commands.

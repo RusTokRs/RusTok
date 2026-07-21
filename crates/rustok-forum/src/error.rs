@@ -74,6 +74,16 @@ impl From<sea_orm::DbErr> for ForumError {
         {
             return Self::Validation("Forum category archive hierarchy violation".to_string());
         }
+        if message.contains("Forum category icon") {
+            return Self::Validation(
+                "Forum category icon must be a bounded kebab-case design token".to_string(),
+            );
+        }
+        if message.contains("Forum category color") {
+            return Self::Validation(
+                "Forum category color must be a safe bounded hexadecimal color".to_string(),
+            );
+        }
         Self::Database(error)
     }
 }
