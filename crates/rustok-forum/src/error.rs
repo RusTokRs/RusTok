@@ -48,6 +48,9 @@ pub enum ForumError {
     #[error("Forum mention target is unavailable")]
     MentionTargetUnavailable,
 
+    #[error("Forum quote target is unavailable")]
+    QuoteTargetUnavailable,
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -80,6 +83,10 @@ impl ForumError {
         Self::MentionTargetUnavailable
     }
 
+    pub const fn quote_target_unavailable() -> Self {
+        Self::QuoteTargetUnavailable
+    }
+
     pub const fn capability_unavailable(
         capability: &'static str,
         code: &'static str,
@@ -106,6 +113,7 @@ impl ForumError {
             Self::CapabilityUnavailable { code, .. } => *code,
             Self::CapabilityFailure { .. } => "FORUM_CAPABILITY_FAILURE",
             Self::MentionTargetUnavailable => "FORUM_MENTION_TARGET_UNAVAILABLE",
+            Self::QuoteTargetUnavailable => "FORUM_QUOTE_TARGET_UNAVAILABLE",
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
             Self::ReplyNotFound(_) => "FORUM_REPLY_NOT_FOUND",
