@@ -15,6 +15,8 @@ const CATEGORIES_QUERY: &str = "query ForumAdminCategories($locale: String, $pag
 const CATEGORY_QUERY: &str = "query ForumAdminCategory($id: UUID!, $locale: String) { forumCategory(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const CREATE_CATEGORY_MUTATION: &str = "mutation ForumAdminCreateCategory($input: CreateForumCategoryInput!) { createForumCategory(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const UPDATE_CATEGORY_MUTATION: &str = "mutation ForumAdminUpdateCategory($id: UUID!, $input: UpdateForumCategoryInput!) { updateForumCategory(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
+const MOVE_CATEGORY_MUTATION: &str = "mutation ForumAdminMoveCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) { moveForumCategory(categoryId: $categoryId, input: $input) { moved { id } } }";
+const REORDER_CATEGORY_SIBLINGS_MUTATION: &str = "mutation ForumAdminReorderCategorySiblings($input: ReorderForumCategorySiblingsInput!) { reorderForumCategorySiblings(input: $input) { siblings { id } } }";
 const DELETE_CATEGORY_MUTATION: &str =
     "mutation ForumAdminDeleteCategory($id: UUID!) { deleteForumCategory(id: $id) }";
 const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
@@ -158,6 +160,18 @@ struct CategoryUpdateVariables<T> {
 }
 
 #[derive(Debug, Serialize)]
+struct CategoryMoveVariables {
+    #[serde(rename = "categoryId")]
+    category_id: String,
+    input: MoveCategoryInput,
+}
+
+#[derive(Debug, Serialize)]
+struct CategoryReorderVariables {
+    input: ReorderCategorySiblingsInput,
+}
+
+#[derive(Debug, Serialize)]
 struct TopicMutationVariables<T> {
     input: T,
 }
@@ -195,8 +209,22 @@ struct UpdateCategoryInput {
     description: Option<String>,
     icon: Option<String>,
     color: Option<String>,
-    position: Option<i32>,
     moderated: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct MoveCategoryInput {
+    #[serde(rename = "parentId")]
+    parent_id: Option<String>,
+    position: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct ReorderCategorySiblingsInput {
+    #[serde(rename = "parentId")]
+    parent_id: Option<String>,
+    #[serde(rename = "orderedCategoryIds")]
+    ordered_category_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -320,16 +348,27 @@ pub async fn create_category(
     tenant_slug: Option<String>,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
+    let locale = draft.locale.clone();
+    let requested_position = placement_position(draft.position)?;
     let response: CreateCategoryResponse = request(
         CREATE_CATEGORY_MUTATION,
         CategoryMutationVariables {
             input: create_category_input(draft),
         },
-        token,
-        tenant_slug,
+        token.clone(),
+        tenant_slug.clone(),
     )
     .await?;
-    Ok(response.create_forum_category)
+    let category = response.create_forum_category;
+    move_category(
+        token.clone(),
+        tenant_slug.clone(),
+        category.id.clone(),
+        category.parent_id.clone(),
+        requested_position,
+    )
+    .await?;
+    fetch_category(token, tenant_slug, category.id, locale).await
 }
 
 pub async fn update_category(
@@ -338,17 +377,77 @@ pub async fn update_category(
     id: String,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
+    let locale = draft.locale.clone();
+    let requested_position = placement_position(draft.position)?;
     let response: UpdateCategoryResponse = request(
         UPDATE_CATEGORY_MUTATION,
         CategoryUpdateVariables {
-            id,
-            input: update_category_input(draft),
+            id: id.clone(),
+            input: update_category_input(draft.clone()),
+        },
+        token.clone(),
+        tenant_slug.clone(),
+    )
+    .await?;
+    let category = response.update_forum_category;
+    if category.position != draft.position {
+        move_category(
+            token.clone(),
+            tenant_slug.clone(),
+            id.clone(),
+            category.parent_id,
+            requested_position,
+        )
+        .await?;
+        return fetch_category(token, tenant_slug, id, locale).await;
+    }
+    Ok(category)
+}
+
+pub async fn move_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    category_id: String,
+    parent_id: Option<String>,
+    position: u32,
+) -> Result<(), ApiError> {
+    let position = i32::try_from(position)
+        .map_err(|_| "Category position exceeds GraphQL integer range".to_string())?;
+    let _: serde_json::Value = request(
+        MOVE_CATEGORY_MUTATION,
+        CategoryMoveVariables {
+            category_id,
+            input: MoveCategoryInput {
+                parent_id,
+                position,
+            },
         },
         token,
         tenant_slug,
     )
     .await?;
-    Ok(response.update_forum_category)
+    Ok(())
+}
+
+pub async fn reorder_category_siblings(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    parent_id: Option<String>,
+    ordered_category_ids: Vec<String>,
+) -> Result<(), ApiError> {
+    let _: serde_json::Value = request(
+        REORDER_CATEGORY_SIBLINGS_MUTATION,
+        CategoryReorderVariables {
+            input: ReorderCategorySiblingsInput {
+                parent_id,
+                ordered_category_ids,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn delete_category(
@@ -501,7 +600,7 @@ fn create_category_input(draft: CategoryDraft) -> CreateCategoryInput {
         icon: optional_text(draft.icon),
         color: optional_text(draft.color),
         parent_id: None,
-        position: Some(draft.position),
+        position: None,
         moderated: draft.moderated,
     }
 }
@@ -514,7 +613,6 @@ fn update_category_input(draft: CategoryDraft) -> UpdateCategoryInput {
         description: optional_text(draft.description),
         icon: optional_text(draft.icon),
         color: optional_text(draft.color),
-        position: Some(draft.position),
         moderated: Some(draft.moderated),
     }
 }
@@ -545,6 +643,10 @@ fn update_topic_input(draft: TopicDraft) -> UpdateTopicInput {
         tags: Some(draft.tags),
         channel_slugs: None,
     }
+}
+
+fn placement_position(position: i32) -> Result<u32, ApiError> {
+    u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
 
 fn optional_text(value: String) -> Option<String> {
