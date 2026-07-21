@@ -35,6 +35,15 @@
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true
+      },
+      {
+        "name": "GroupGovernanceCommandPort",
+        "operations": ["change_group_role", "transfer_group_ownership"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "transactional_receipt": true,
+        "transactional_audit": true
       }
     ]
   },
@@ -62,6 +71,11 @@
       "status": "implemented"
     },
     {
+      "name": "embedded_governance_native",
+      "provider": "GroupGovernanceService",
+      "status": "implemented_without_public_transport"
+    },
+    {
       "name": "remote_adapter_placeholder",
       "provider": null,
       "status": "planned"
@@ -71,6 +85,7 @@
     "static_boundary": "scripts/verify/verify-groups-boundary.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
-    "runtime_retry_recovery": null
+    "runtime_retry_recovery": null,
+    "governance_concurrency": null
   }
 }
