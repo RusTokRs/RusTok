@@ -117,6 +117,12 @@ impl MarketplaceProviderReversalBackfillService {
     }
 }
 
+pub(super) fn safe_reversal_adapter_message(
+    error: &MarketplaceProviderReversalEventAdapterError,
+) -> &'static str {
+    error.safe_message()
+}
+
 fn marketplace_extension_filter(backend: DatabaseBackend) -> SimpleExpr {
     match backend {
         DatabaseBackend::Postgres => {
