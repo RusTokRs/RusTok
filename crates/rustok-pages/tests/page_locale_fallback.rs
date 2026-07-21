@@ -51,7 +51,6 @@ async fn create_translated_page(service: &PageService, tenant_id: Uuid) -> Uuid 
                 ],
                 template: Some("default".to_string()),
                 body: None,
-                blocks: None,
                 channel_slugs: None,
                 publish: true,
             },

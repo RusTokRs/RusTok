@@ -1,4 +1,4 @@
-use crate::model::{PageBlock, PageDetail, PageListItem};
+use crate::model::{PageDetail, PageListItem};
 
 pub fn selected_page_title(page: &PageDetail, default_title: String) -> String {
     page.translation
@@ -26,69 +26,10 @@ pub fn summarize_page_content<F>(
 where
     F: Fn(&str, &str) -> String,
 {
-    if let Some(body) = page.body.as_ref() {
-        return summarize_content(body.content.as_str(), body.format.as_str());
-    }
-
-    if !page.blocks.is_empty() {
-        return summarize_legacy_blocks(&page.blocks);
-    }
-
-    empty_fallback
-}
-
-fn summarize_legacy_blocks(blocks: &[PageBlock]) -> String {
-    let mut rows = Vec::with_capacity(blocks.len());
-    for block in blocks {
-        rows.push(format!("#{} {}", block.position + 1, block.block_type));
-    }
-
-    format!(
-        "Legacy blocks are still attached to this page: {}.",
-        rows.join(", ")
-    )
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StorefrontBuilderFallbackReadContract {
-    pub profile: &'static str,
-    pub read_paths_stable: bool,
-    pub list_paths_stable: bool,
-    pub render_requires_builder_capability: bool,
-}
-
-#[allow(dead_code)]
-pub fn storefront_builder_fallback_read_contract(
-    profile: &str,
-) -> Option<StorefrontBuilderFallbackReadContract> {
-    match profile {
-        "all_on" => Some(StorefrontBuilderFallbackReadContract {
-            profile: "all_on",
-            read_paths_stable: true,
-            list_paths_stable: true,
-            render_requires_builder_capability: false,
-        }),
-        "publish_off" => Some(StorefrontBuilderFallbackReadContract {
-            profile: "publish_off",
-            read_paths_stable: true,
-            list_paths_stable: true,
-            render_requires_builder_capability: false,
-        }),
-        "preview_off" => Some(StorefrontBuilderFallbackReadContract {
-            profile: "preview_off",
-            read_paths_stable: true,
-            list_paths_stable: true,
-            render_requires_builder_capability: false,
-        }),
-        "builder_off" => Some(StorefrontBuilderFallbackReadContract {
-            profile: "builder_off",
-            read_paths_stable: true,
-            list_paths_stable: true,
-            render_requires_builder_capability: false,
-        }),
-        _ => None,
-    }
+    page.body
+        .as_ref()
+        .map(|body| summarize_content(body.content.as_str(), body.format.as_str()))
+        .unwrap_or(empty_fallback)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,21 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn storefront_builder_fallback_profiles_keep_read_and_list_stable() {
-        for profile in ["all_on", "publish_off", "preview_off", "builder_off"] {
-            let contract = storefront_builder_fallback_read_contract(profile)
-                .expect("profile must have a storefront read contract");
-            assert_eq!(contract.profile, profile);
-            assert!(contract.read_paths_stable);
-            assert!(contract.list_paths_stable);
-            assert!(!contract.render_requires_builder_capability);
-        }
-
-        assert!(storefront_builder_fallback_read_contract("unknown").is_none());
-    }
-
-    #[test]
-    fn storefront_grapesjs_summary_does_not_require_builder_capability() {
+    fn storefront_grapesjs_summary_uses_only_current_body() {
         let page = PageDetail {
             effective_locale: Some("en".to_string()),
             translation: Some(PageTranslation {
@@ -269,7 +196,6 @@ mod tests {
                 content: "{\"pages\":[]}".to_string(),
                 format: "grapesjs".to_string(),
             }),
-            blocks: Vec::new(),
         };
 
         let summary = summarize_page_content(

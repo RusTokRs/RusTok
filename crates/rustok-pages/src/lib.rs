@@ -10,8 +10,8 @@
 
 //! Pages module for RusToK platform.
 //!
-//! The module owns storage for pages, page blocks, menus, menu items, and Page Builder release
-//! baselines.
+//! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
+//! artifacts, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -30,11 +30,10 @@
 //!     template: Some("default".to_string()),
 //!     body: Some(PageBodyInput {
 //!         locale: "en".to_string(),
-//!         content: "Welcome to our company!".to_string(),
-//!         format: Some("markdown".to_string()),
-//!         content_json: None,
+//!         content: String::new(),
+//!         format: Some("grapesjs".to_string()),
+//!         content_json: Some(project_data),
 //!     }),
-//!     blocks: None,
 //!     channel_slugs: None,
 //!     publish: false,
 //! };
@@ -54,14 +53,14 @@ pub mod services;
 
 pub use dto::*;
 pub use entities::{
-    Block, Menu, Page, PageBuilderScenarioBaseline, PagePublishedLandingArtifact,
+    Menu, Page, PageBuilderScenarioBaseline, PagePublishedLandingArtifact,
     PageStaticLandingArtifact,
 };
 pub use error::{PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    BlockService, MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService,
-    PageService, PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
+    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
+    PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
 };
 
 use async_trait::async_trait;
@@ -84,7 +83,7 @@ impl RusToKModule for PagesModule {
     }
 
     fn description(&self) -> &'static str {
-        "Static pages, blocks and menus"
+        "Pages, visual documents, published artifacts and menus"
     }
 
     fn version(&self) -> &'static str {
@@ -128,7 +127,10 @@ mod tests {
         let module = PagesModule;
         assert_eq!(module.slug(), "pages");
         assert_eq!(module.name(), "Pages");
-        assert_eq!(module.description(), "Static pages, blocks and menus");
+        assert_eq!(
+            module.description(),
+            "Pages, visual documents, published artifacts and menus"
+        );
         assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
     }
 
@@ -137,12 +139,16 @@ mod tests {
         let module = PagesModule;
         let permissions = module.permissions();
 
-        assert!(permissions
-            .iter()
-            .any(|p| p.resource == Resource::Pages && p.action == Action::Create));
-        assert!(permissions
-            .iter()
-            .any(|p| p.resource == Resource::Pages && p.action == Action::Publish));
+        assert!(
+            permissions
+                .iter()
+                .any(|p| p.resource == Resource::Pages && p.action == Action::Create)
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|p| p.resource == Resource::Pages && p.action == Action::Publish)
+        );
         assert!(
             permissions.iter().all(|p| p.resource != Resource::Nodes),
             "pages module should no longer publish node permissions"

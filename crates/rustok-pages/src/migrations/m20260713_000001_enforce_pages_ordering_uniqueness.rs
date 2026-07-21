@@ -16,33 +16,10 @@ impl MigrationTrait for Migration {
                     .unique()
                     .to_owned(),
             )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_page_blocks_page_position_unique")
-                    .table(PageBlocks::Table)
-                    .col(PageBlocks::PageId)
-                    .col(PageBlocks::Position)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        Ok(())
+            .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_index(
-                Index::drop()
-                    .name("idx_page_blocks_page_position_unique")
-                    .table(PageBlocks::Table)
-                    .to_owned(),
-            )
-            .await?;
-
         manager
             .drop_index(
                 Index::drop()
@@ -50,9 +27,7 @@ impl MigrationTrait for Migration {
                     .table(Menus::Table)
                     .to_owned(),
             )
-            .await?;
-
-        Ok(())
+            .await
     }
 }
 
@@ -61,11 +36,4 @@ enum Menus {
     Table,
     TenantId,
     Location,
-}
-
-#[derive(DeriveIden)]
-enum PageBlocks {
-    Table,
-    PageId,
-    Position,
 }

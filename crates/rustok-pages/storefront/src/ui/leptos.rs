@@ -138,7 +138,7 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
         t(
             locale.as_deref(),
             "pages.body.empty",
-            "No page body or legacy blocks yet.",
+            "No published page body is available yet.",
         ),
     );
     let builder_body = page.body.clone().filter(is_page_builder_body);
@@ -276,7 +276,7 @@ fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> Strin
 mod tests {
     use super::{summarize_content, PageDetail};
     use crate::core;
-    use crate::model::{PageBlock, PageBody};
+    use crate::model::PageBody;
 
     #[test]
     fn label_value_pair_formats_label_and_value() {
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn page_body_takes_precedence_over_legacy_blocks() {
+    fn page_body_is_the_only_content_summary_source() {
         let summary = core::summarize_page_content(
             &PageDetail {
                 effective_locale: Some("en".to_string()),
@@ -304,11 +304,6 @@ mod tests {
                     content: "Hello".to_string(),
                     format: "markdown".to_string(),
                 }),
-                blocks: vec![PageBlock {
-                    id: "1".to_string(),
-                    block_type: "text".to_string(),
-                    position: 0,
-                }],
             },
             |content, format| summarize_content(Some("en"), content, format),
             "empty".to_string(),
@@ -332,25 +327,17 @@ mod tests {
     }
 
     #[test]
-    fn legacy_blocks_are_summarized_when_body_is_missing() {
+    fn missing_body_uses_current_empty_state() {
         let summary = core::summarize_page_content(
             &PageDetail {
                 effective_locale: Some("en".to_string()),
                 translation: None,
                 body: None,
-                blocks: vec![PageBlock {
-                    id: "1".to_string(),
-                    block_type: "text".to_string(),
-                    position: 0,
-                }],
             },
             |content, format| summarize_content(Some("en"), content, format),
             "empty".to_string(),
         );
 
-        assert_eq!(
-            summary,
-            "Legacy blocks are still attached to this page: #1 text."
-        );
+        assert_eq!(summary, "empty");
     }
 }

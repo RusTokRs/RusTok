@@ -1,43 +1,47 @@
 # rustok-pages / CRATE_API
 
-## Public Modules
-`dto`, `entities`, `error`, `services`.
+## Public modules
 
-## Primary Public Types and Signatures
-- `pub struct PagesModule`
-- `pub struct PageService`, `MenuService`, `BlockService`
-- `pub struct Page`, `Menu`, `Block`
-- `pub enum PagesError`, `pub type PagesResult<T>`
+`controllers`, `dto`, `entities`, `error`, `graphql`, `migrations`, `openapi`,
+`services`.
+
+## Primary public types
+
+- `PagesModule`
+- `PageService`
+- `PageBuilderArtifactService`
+- `PageBuilderScenarioBaselineService`
+- `MenuService`
+- `Page`, `Menu`, published artifact entities
+- `PagesError`, `PagesResult<T>`
+
+## Current document contract
+
+- Page visual content is stored in `PageBodyInput` with format `grapesjs`.
+- `pages[].component` is the component-tree authority.
+- Page metadata, channel visibility and the Fly document are Pages-owned data.
+- Published storefront output is selected through immutable landing artifacts.
+- There is no public block entity, block service, block DTO or block mutation.
 
 ## Events
-- Publishes page/menu/block domain events through `TransactionalEventBus`.
-- Consumes: does not subscribe to external events directly.
 
-## Dependencies on Other RusToK Crates
-- `rustok-core`
-- `rustok-content`
-- `rustok-outbox`
+Page/menu lifecycle events are published through `TransactionalEventBus` in the
+same transaction as the domain mutation.
 
-## Common AI Mistakes
-- Confuses `Page` and `Block` in service signatures.
-- Forgets to synchronize publish/unpublish in `PageService`.
-- Uses DTOs instead of ORM entities in SeaORM queries.
+## Domain invariants
 
-## Minimum Contract Set
+- Tenant/resource isolation and effective permission checks are mandatory.
+- Slugs are unique per tenant and locale.
+- Writes use optimistic page versions.
+- Builder feature gates fail with typed errors.
+- Metadata-only changes must not replace an existing page body.
+- Publishing a Fly document validates readiness, compiles a deterministic
+  artifact and binds it before the published state becomes visible.
+- Missing providers or invalid projects fail visibly; no fallback model is
+  synthesized.
 
-### Input DTOs/Commands
-- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
-- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
+## Adapter obligations
 
-### Domain Invariants
-- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
-- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
-- `PageBodyInput` and legacy `blocks` are independent surfaces: absence of `body` does not synthesize it from blocks, and writing `body` does not delete or automatically convert existing blocks.
-
-### Events / Outbox Side Effects
-- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
-- Event payload and event-type format must remain backward-compatible for cross-module consumers.
-
-### Errors / Failure Codes
-- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
-- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+Changes to public DTO fields require synchronized GraphQL, HTTP, admin and
+storefront updates. Error classes for validation, authorization, conflict,
+feature-disabled, integrity and not-found outcomes must retain their semantics.
