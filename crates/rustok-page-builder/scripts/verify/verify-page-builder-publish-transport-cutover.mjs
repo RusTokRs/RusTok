@@ -12,6 +12,7 @@ const read = (relativePath) =>
 const graphqlMutation = read("crates/rustok-pages/src/graphql/mutation.rs");
 const graphqlTypes = read("crates/rustok-pages/src/graphql/types.rs");
 const createService = read("crates/rustok-pages/src/services/page/create.rs");
+const lifecycleService = read("crates/rustok-pages/src/services/page/lifecycle.rs");
 const http = read("crates/rustok-pages/src/http.rs");
 const openapi = read("crates/rustok-pages/src/openapi.rs");
 const manifest = read("crates/rustok-pages/rustok-module.toml");
@@ -111,6 +112,26 @@ for (const forbidden of [
 }
 
 for (const marker of [
+  "pub async fn publish_non_builder(",
+  "pub async fn publish_non_builder_if_current(",
+  "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED",
+  "collect_builder_sources(&bodies, None, true)",
+  "collect_builder_sources(&current_bodies, None, true)",
+  "builder_reviewed_publish_required()",
+]) {
+  requireMarker(lifecycleService, marker, "Pages non-builder publish lifecycle");
+}
+for (const forbidden of [
+  "pub async fn publish(",
+  "pub async fn publish_if_current(",
+  "compile_builder_sources",
+  "PageBuilderArtifactService",
+  "PageBuilderScenarioBaselineService",
+]) {
+  forbidMarker(lifecycleService, forbidden, "Pages non-builder publish lifecycle");
+}
+
+for (const marker of [
   "PAGE_BUILDER_PUBLISH_SCENARIO_SELECTION_FORMAT",
   "publish_scenario_selection_key(page_id: &str, baseline_hash: &str)",
   "SelectionRequired { count: usize }",
@@ -182,6 +203,7 @@ for (const marker of [
   "Result<PagePublicationResult, TransportError>",
   ".map(PagePublicationResult::Published)",
   ".map(PagePublicationResult::Unpublished)",
+  "validate_publication_result",
 ]) {
   requireMarker(adminTransportModule, marker, "Pages admin transport facade");
 }
