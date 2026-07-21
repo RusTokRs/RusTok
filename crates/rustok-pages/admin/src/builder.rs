@@ -147,8 +147,10 @@ async fn execute_preview(
     .with_deadline(PAGE_BUILDER_PORT_DEADLINE);
 
     let renderer = PagesPageBuilderRenderer {
+        token: token.clone(),
         tenant_slug: tenant_slug.clone(),
         actor_id: actor_id.clone(),
+        page_id: snapshot.page_id.clone(),
     };
     let store = PagesPageBuilderProjectStore {
         token,
@@ -240,8 +242,10 @@ async fn execute_publish(
     ));
 
     let renderer = PagesPageBuilderRenderer {
+        token: token.clone(),
         tenant_slug: tenant_slug.clone(),
         actor_id: actor_id.clone(),
+        page_id: snapshot.page_id.clone(),
     };
     let store = PagesPageBuilderProjectStore {
         token,
@@ -506,8 +510,10 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
 #[cfg(feature = "ssr")]
 #[derive(Debug, Clone)]
 struct PagesPageBuilderRenderer {
+    token: String,
     tenant_slug: String,
     actor_id: String,
+    page_id: String,
 }
 
 #[cfg(feature = "ssr")]
@@ -519,6 +525,14 @@ impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer {
         project_data: &Value,
     ) -> PageBuilderServiceResult<String> {
         ensure_port_context(context, &self.tenant_slug, &self.actor_id, "renderer")?;
+        transport::fetch_page(
+            Some(self.token.clone()),
+            Some(self.tenant_slug.clone()),
+            self.page_id.clone(),
+        )
+        .await
+        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
+        .ok_or_else(|| PageBuilderServiceError::Runtime("Pages document no longer exists".into()))?;
         PageBuilderRenderer
             .render_document_html(
                 project_data.clone(),
