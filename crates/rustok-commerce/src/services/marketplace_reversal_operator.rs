@@ -221,7 +221,12 @@ impl MarketplaceReversalOperatorService {
         tenant_id: Uuid,
         failure_id: Uuid,
     ) -> MarketplaceReversalOperatorResult<MarketplaceReversalAdaptationFailureOperatorView> {
-        let failure = self.failures.reset_for_retry(tenant_id, failure_id).await?;
+        let failure = self.failures.get(tenant_id, failure_id).await?;
+        if failure.status == MarketplaceReversalAdaptationFailureStatus::Resolved.as_str() {
+            return Err(MarketplaceReversalOperatorError::Conflict(format!(
+                "adaptation failure {failure_id} is already resolved"
+            )));
+        }
         let event = provider_event::Entity::find_by_id(failure.provider_event_id)
             .filter(provider_event::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -232,6 +237,7 @@ impl MarketplaceReversalOperatorService {
                     failure.provider_event_id
                 ))
             })?;
+        self.failures.reset_for_retry(tenant_id, failure_id).await?;
         match self.adapter.ingest_provider_event(&event).await {
             Ok(_) => {
                 self.failures
