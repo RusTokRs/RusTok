@@ -152,8 +152,13 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   legacy-snapshot provenance and bounded newest-first timeline reads.
 - [x] Commit onboarding review, suspension, and reactivation state, immutable event,
   completed receipt, and normalized response snapshot in one owner transaction.
-- [x] Prove completed-receipt replay does not append another lifecycle event and event
-  persistence failure rolls back state plus the pending receipt.
+- [x] Commit seller creation, profile update, onboarding submit, member add, and member
+  update state, locale-bound immutable event, completed receipt, and normalized response
+  snapshot in one owner transaction.
+- [x] Publish every completed live seller/member contract through the transactional
+  outbox before receipt completion and transaction commit.
+- [x] Prove completed-receipt replay does not append another lifecycle/member event and
+  event persistence failure rolls back state plus the pending receipt.
 
 ### Seller FFA completed
 
@@ -161,18 +166,16 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Implement native and GraphQL source workflows over the same ports/envelope.
 - [x] Use canonical request effective locale and return `resolved_locale`.
 - [x] Preserve idempotency key for retries and forbid implicit transport fallback.
+- [x] Add bounded lifecycle/member event history models, native server transport,
+  GraphQL adapter, and timeline UI over the owner read port.
 
 ### Seller remaining
 
-- [ ] Extend atomic immutable event production to create, profile update, onboarding
-  submit, and member commands.
 - [ ] Backfill/remove seller compatibility snapshots without fabricating attribution.
-- [ ] Publish seller events through the transactional outbox.
-- [ ] Add lifecycle/moderation history to native and GraphQL seller FFA workflows.
 - [ ] Add normalized verification facts and KYC provider SPI without raw payloads.
 - [ ] Compile seller/core/GraphQL/admin packages, apply clean/upgraded PostgreSQL
-  migrations, and execute locale, replay, tenant, contention, rollback, mounted FFA,
-  and remote-profile evidence.
+  migrations, and execute locale, replay, tenant, contention, rollback, outbox,
+  mounted FFA, and remote-profile evidence.
 
 ### Listing FBA completed
 
@@ -350,8 +353,8 @@ Source inspection is not execution evidence.
     state + event + receipt completion.
 12. [x] Add typed marketplace allocation, commission, post-capture ledger, reversal recovery,
     adaptation-failure recovery, seller balance projections, and bucket-transfer primitives.
-13. [ ] Extend seller event production to create/profile/onboarding-submit/member commands.
-14. [ ] Add seller event history to native and GraphQL FFA transports.
+13. [x] Extend seller event production to create/profile/onboarding-submit/member commands.
+14. [x] Add seller event history to native and GraphQL FFA transports.
 15. [ ] Mount authenticated request-scoped listing native composition.
 16. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
 17. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
