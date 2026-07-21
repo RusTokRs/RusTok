@@ -15,11 +15,14 @@ fn all_public_resources_display_parse_roundtrip() {
         Resource::Orders,
         Resource::Customers,
         Resource::Profiles,
+        Resource::Groups,
         Resource::Regions,
         Resource::Payments,
         Resource::Fulfillments,
         Resource::Inventory,
         Resource::Discounts,
+        Resource::MarketplaceSellers,
+        Resource::MarketplaceListings,
         Resource::Posts,
         Resource::Pages,
         Resource::Nodes,
@@ -32,6 +35,7 @@ fn all_public_resources_display_parse_roundtrip() {
         Resource::Logs,
         Resource::Webhooks,
         Resource::BlogPosts,
+        Resource::BlogCategories,
         Resource::ForumCategories,
         Resource::ForumTopics,
         Resource::ForumReplies,
@@ -105,7 +109,14 @@ fn permission_constants_match_canonical_strings() {
         (Permission::PRODUCTS_READ, "products:read"),
         (Permission::SEO_GENERATE, "seo:execute"),
         (Permission::BLOG_POSTS_PUBLISH, "blog_posts:publish"),
-        (Permission::FORUM_TOPICS_MODERATE, "forum_topics:moderate"),
+        (
+            Permission::BLOG_CATEGORIES_MANAGE,
+            "blog_categories:manage",
+        ),
+        (
+            Permission::FORUM_TOPICS_MODERATE,
+            "forum_topics:moderate",
+        ),
         (Permission::AI_ROUTER_OVERRIDE, "ai:router:override"),
         (
             Permission::AI_TASKS_MULTIMODAL_RUN,
@@ -122,4 +133,16 @@ fn permission_constants_match_canonical_strings() {
         assert_eq!(permission.to_string(), expected);
         assert_eq!(Permission::from_str(expected).unwrap(), permission);
     }
+}
+
+#[test]
+fn catalog_and_blog_category_permissions_are_distinct() {
+    assert_ne!(
+        Permission::new(Resource::Categories, Action::Update),
+        Permission::BLOG_CATEGORIES_UPDATE
+    );
+    assert_eq!(
+        Permission::from_str("blog_categories:update").unwrap(),
+        Permission::BLOG_CATEGORIES_UPDATE
+    );
 }
