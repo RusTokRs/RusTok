@@ -137,6 +137,7 @@ impl Default for GroupCapabilityDescriptor {
                 "GroupCommandPort",
                 "GroupLocalizationCommandPort",
                 "GroupInvitationCommandPort",
+                "GroupTargetedInvitationCommandPort",
                 "GroupGovernanceCommandPort",
             ],
             private_content_fallback: "deny",
