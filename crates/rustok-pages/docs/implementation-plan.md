@@ -40,6 +40,8 @@ contracts, not Pages persistence or tenant policy.
 - [x] Unknown current provider/plugin fields are preserved by the Fly codec.
 - [x] Page writes use optimistic page versions and body revisions.
 - [x] Builder feature flags and scenario-baseline gates fail with typed errors.
+- [x] Static landing records persist Page Builder materialization hash, identity
+  and runtime snapshot evidence without storing raw runtime context.
 
 ### Admin FFA
 
@@ -56,6 +58,10 @@ contracts, not Pages persistence or tenant policy.
 - [x] Published `grapesjs` documents render through Page Builder storefront.
 - [x] Static published landing artifacts have a dedicated sandboxed path.
 - [x] Storefront GraphQL/native adapters no longer query or synthesize blocks.
+- [x] Bound static artifacts are integrity-checked in the same transaction before
+  storefront HTML is returned. New records verify the complete Page Builder
+  materialization envelope; legacy records are accepted only with all evidence
+  columns `NULL` and a valid Fly artifact.
 - [ ] Storefront should read only the selected immutable published artifact.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Anonymous bundle exclusion evidence is not complete.
@@ -66,6 +72,9 @@ contracts, not Pages persistence or tenant policy.
   endpoint adapter seams exist.
 - [x] Deterministic Fly landing rendering and SHA-256 artifact identity exist.
 - [x] Pages persists immutable landing artifact records and bindings.
+- [x] Pages persists runtime materialization identity/snapshots with a composite
+  uniqueness key that includes `materialization_hash`; partial evidence is
+  rejected and raw runtime context is forbidden.
 - [ ] Publish must become one idempotent atomic workflow from validation through
   artifact binding and outbox/cache invalidation.
 - [ ] Authoritative sanitization is not complete for every publish path.
@@ -75,8 +84,9 @@ contracts, not Pages persistence or tenant policy.
 
 - **FFA:** `in_progress` — current-only runtime/storefront boundaries are ready;
   typed metadata properties and inline edit mode remain open.
-- **FBA:** `in_progress` — deterministic artifact primitives exist; atomic
-  publication, rollback, sanitization and observed rollout evidence remain open.
+- **FBA:** `in_progress` — deterministic artifact and runtime materialization
+  persistence exist; atomic publication, rollback, sanitization and observed
+  rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -102,10 +112,11 @@ Page metadata revision
   + Fly document/body revision
   -> validation and provider readiness
   -> authoritative sanitization
+  -> canonical runtime materialization
   -> deterministic renderer
-  -> immutable landing artifact
+  -> immutable landing artifact + materialization evidence
   -> atomic published artifact pointer
-  -> route/cache/storefront read
+  -> verified route/cache/storefront read
 ```
 
 Invariants:
@@ -115,10 +126,12 @@ Invariants:
 3. Draft saves do not mutate the selected published artifact.
 4. Publish validates and builds before making output visible.
 5. Artifact identity includes source, renderer release, registry and policy hashes.
-6. Missing providers fail visibly and never cause silent deletion.
-7. Dynamic widgets persist versioned configuration, not privileged snapshots.
-8. Anonymous storefront bundles contain no editor code.
-9. No block or shadow-editor fallback exists.
+6. Materialization evidence includes context hash, scenario identity and runtime
+   snapshot hash; raw context is never stored.
+7. Missing providers fail visibly and never cause silent deletion.
+8. Dynamic widgets persist versioned configuration, not privileged snapshots.
+9. Anonymous storefront bundles contain no editor code.
+10. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -131,6 +144,12 @@ Invariants:
 - Added a no-block/no-shadow-editor source guardrail.
 - Extended Fly/Page Builder CI to test, lint and format Pages domain/storefront.
 - Rewrote the development schema so `page_blocks` is never created.
+- Added backward-compatible materialization evidence columns to immutable landing
+  artifacts and replaced build-only uniqueness with a materialization-aware key.
+- Routed create/publish compilation through
+  `compile_materialized_static_landing(PageBuilderPreviewRuntime::default())`.
+- Added full materialization verification on staging, binding and storefront reads;
+  all-`NULL` legacy evidence remains readable, partial evidence fails closed.
 
 ## Next implementation order
 
@@ -149,10 +168,15 @@ Invariants:
 
 - [x] Deterministic renderer and artifact identity.
 - [x] Immutable artifact persistence and body bindings.
-- [ ] Make publish idempotent: validate -> sanitize -> compile -> persist -> bind
-  -> switch published state -> outbox/cache invalidation.
+- [x] Runtime materialization identity/snapshot persistence and storefront
+  verification.
+- [ ] Add an explicit reviewed publish-runtime/scenario selection instead of the
+  canonical default runtime.
+- [ ] Make publish idempotent: validate -> sanitize -> materialize -> compile ->
+  persist -> bind -> switch published state -> outbox/cache invalidation.
 - [ ] Add rollback to a previous immutable artifact.
-- [ ] Correlate editor save, page revision, artifact and storefront read.
+- [ ] Correlate editor save, page revision, materialization, artifact and storefront
+  read.
 - [ ] Add integrity audit and repair/rebuild commands.
 
 ### P1 — complete Page Builder authoring
@@ -190,6 +214,7 @@ Invariants:
 - `cargo test -p rustok-pages-admin --lib`
 - `cargo check -p rustok-pages-storefront --lib`
 - `cargo clippy -p rustok-pages-storefront --lib -- -D warnings`
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`
 - `node scripts/verify/verify-pages-current-only.mjs`
 - `node scripts/verify/verify-pages-ui-boundary.mjs`
 - `npm run verify:page-builder:consumer:pages`
