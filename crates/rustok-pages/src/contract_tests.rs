@@ -1,16 +1,16 @@
 #[test]
-fn crate_api_defines_minimal_contract_sections() {
+fn crate_api_defines_current_contract_sections() {
     let api = include_str!("../CRATE_API.md");
     for marker in [
-        "## Минимальный набор контрактов",
-        "### Входные DTO/команды",
-        "### Доменные инварианты",
-        "### События / outbox-побочные эффекты",
-        "### Ошибки / коды отказов",
+        "## Current document contract",
+        "## Events",
+        "## Domain invariants",
+        "## Adapter obligations",
+        "There is no public block entity",
     ] {
         assert!(
             api.contains(marker),
-            "CRATE_API.md must contain section: {marker}"
+            "CRATE_API.md must contain current contract marker: {marker}"
         );
     }
 }
