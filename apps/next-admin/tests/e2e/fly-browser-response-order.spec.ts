@@ -11,6 +11,12 @@ type PendingFetch = {
   resolve: (response: Response) => void;
 };
 
+type BrowserAbort = {
+  code?: string;
+  kind?: string;
+  requestGeneration?: number;
+  current?: boolean;
+};
 type BrowserProblem = { code?: string };
 type BrowserResponse = {
   status?: number;
@@ -20,6 +26,7 @@ type BrowserResponse = {
 
 type OrderScope = typeof globalThis & {
   __FLY_BROWSER_CONFIG__?: Record<string, unknown>;
+  __flyAborts?: BrowserAbort[];
   __flyPendingFetches?: PendingFetch[];
   __flyProblems?: BrowserProblem[];
   __flyResponses?: BrowserResponse[];
@@ -81,6 +88,7 @@ async function mountOrderContract(page: Page) {
       autoMount: true,
       intentEndpoint: "/fly-intent",
     };
+    scope.__flyAborts = [];
     scope.__flyPendingFetches = [];
     scope.__flyProblems = [];
     scope.__flyResponses = [];
@@ -90,6 +98,9 @@ async function mountOrderContract(page: Page) {
       JSON.stringify({ token: "draft-1", generation: 1 }),
     );
 
+    root.addEventListener("fly:browser-intent-aborted", (event) => {
+      scope.__flyAborts?.push((event as CustomEvent<BrowserAbort>).detail);
+    });
     root.addEventListener("fly:browser-problem", (event) => {
       scope.__flyProblems?.push((event as CustomEvent<BrowserProblem>).detail);
     });
@@ -99,10 +110,23 @@ async function mountOrderContract(page: Page) {
       );
     });
 
-    globalThis.fetch = async () =>
-      new Promise<Response>((resolveResponse) => {
+    globalThis.fetch = async (_input, init = {}) => {
+      const signal = init.signal;
+      if (!(signal instanceof AbortSignal)) {
+        throw new Error("Intent request signal unavailable");
+      }
+      return new Promise<Response>((resolveResponse, rejectResponse) => {
+        const rejectAborted = () => {
+          rejectResponse(new DOMException("Aborted", "AbortError"));
+        };
+        if (signal.aborted) {
+          rejectAborted();
+          return;
+        }
+        signal.addEventListener("abort", rejectAborted, { once: true });
         scope.__flyPendingFetches?.push({ resolve: resolveResponse });
       });
+    };
 
     const url = URL.createObjectURL(
       new Blob([source], { type: "text/javascript" }),
@@ -180,6 +204,7 @@ async function readState(page: Page) {
       revision: root?.getAttribute("data-fly-revision"),
       projectHash: root?.getAttribute("data-fly-project-hash"),
       draft: JSON.parse(sessionStorage.getItem("fly:ssr-draft:home") ?? "null"),
+      aborts: scope.__flyAborts ?? [],
       problems: scope.__flyProblems ?? [],
       responses: scope.__flyResponses ?? [],
     };
@@ -201,6 +226,7 @@ test("late denial cannot replace newer success", async ({ page }) => {
     revision: "rev-2",
     projectHash: "hash-2",
     draft: { token: "draft-2", generation: 2 },
+    aborts: [],
     problems: [],
   });
   expect(state.responses).toEqual([
@@ -232,19 +258,21 @@ test("late success cannot clear newer denial", async ({ page }) => {
     revision: "rev-1",
     projectHash: "hash-1",
     draft: { token: "draft-1", generation: 1 },
+    aborts: [],
   });
   expect(state.problems).toEqual([
     expect.objectContaining({ code: "FLY_CAPABILITY_DENIED" }),
   ]);
 });
 
-test("unmount invalidates an in-flight success", async ({ page }) => {
+test("unmount aborts in-flight work instead of accepting a late response", async ({
+  page,
+}) => {
   await mountOrderContract(page);
   await beginSaves(page, 1);
   await page.evaluate(() => {
     (globalThis as OrderScope).FlyBrowser?.unmountAll?.();
   });
-  await resolveFetch(page, 0, success);
   await awaitSave(page, 0);
 
   const state = await readState(page);
@@ -255,10 +283,12 @@ test("unmount invalidates an in-flight success", async ({ page }) => {
     projectHash: "hash-1",
     draft: { token: "draft-1", generation: 1 },
     problems: [],
+    responses: [],
   });
-  expect(state.responses).toEqual([
+  expect(state.aborts).toEqual([
     expect.objectContaining({
-      status: 200,
+      code: "INTENT_REQUEST_ABORTED",
+      kind: "adapter_stop",
       requestGeneration: 1,
       current: false,
     }),
