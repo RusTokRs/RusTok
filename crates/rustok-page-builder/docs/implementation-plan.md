@@ -15,17 +15,25 @@ The service:
 5. records `PageBuilderRuntimeCallEvidence`;
 6. returns the canonical typed capability response.
 
-The module-owned `compose_fly_page_builder_handlers` entrypoint now fixes the server composition
-order. It validates rollout flags, wraps the Fly service with `CapabilityGuardedService`, and then
-creates `AuthorizedPageBuilderHandlers`. The configured variant accepts telemetry/baseline-enabled
-Fly services, explicit port policies and an explicit authorizer without changing that order.
+The module-owned `compose_fly_page_builder_handlers` entrypoint fixes the server composition order.
+It validates rollout flags, wraps the Fly service with `CapabilityGuardedService`, and then creates
+`AuthorizedPageBuilderHandlers`. The configured variant accepts telemetry/baseline-enabled Fly
+services, explicit port policies and an explicit authorizer without changing that order.
 
 GraphQL and Leptos server-function endpoints delegate through the composed handlers and canonical
 transport envelopes.
 
+`rustok-pages` is the first production consumer of the server composition root. Its SSR publish path
+verifies the backend actor, builds a tenant-scoped `PortContext` with deadline and idempotency, and
+dispatches through `AuthorizedPageBuilderHandlers` before the Pages store can read or write tenant
+persistence. `PagesPageBuilderProjectStore` revalidates tenant and actor identity at the port
+boundary and returns the actual persisted `PublishPageBuilderResult`. CSR and hydrate remain a
+transport-only FFA path.
+
 The current machine-readable service contract is
-`contracts/page-builder-service-boundary.json`. It explicitly records the composition root and
-forbids reference services, migration decorators and manual JSON preview rendering.
+`contracts/page-builder-service-boundary.json`. It records the composition root, the Pages
+production-consumer order and tenant-context guards, and forbids reference services, migration
+decorators and manual JSON preview rendering.
 
 ## FFA/FBA status
 
@@ -33,14 +41,16 @@ forbids reference services, migration decorators and manual JSON preview renderi
   framework-neutral `PageBuilderBrowserModuleDescriptor`; the Leptos component only renders its
   script type, adapter marker, optional CSP nonce and source. A future Dioxus renderer consumes the
   same descriptor and nonce contract.
-- FBA status: `boundary_ready`. Fly is the domain owner; Page Builder owns capability/port/transport
-  boundaries and the server composition order; consumer modules own persistence and publication
-  lifecycle.
+- FBA status: `boundary_ready` with the first production write consumer integrated. Fly is the
+  domain owner; Page Builder owns capability/port/transport boundaries and server composition order;
+  consumer modules own persistence and publication lifecycle.
 - Structural shape: `core_transport_ui` for browser host and `core_transport` for capability service.
 - Evidence:
   - `contracts/page-builder-service-boundary.json`;
   - `contracts/page-builder-fba-registry.json`;
   - `src/composition.rs`;
+  - `crates/rustok-pages/admin/src/builder.rs`;
+  - `crates/rustok-pages/admin/Cargo.toml`;
   - `scripts/verify/verify-page-builder-adapter-seams.mjs`;
   - `scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
   - `scripts/verify/verify-page-builder-transport-bridge.mjs`;
@@ -48,14 +58,18 @@ forbids reference services, migration decorators and manual JSON preview renderi
 
 ## Open results
 
-1. Connect a production consumer's concrete tenant-scoped store and preview renderer to
-   `compose_fly_page_builder_handlers` (or its configured variant). Done when preview, save and
-   publish execute through the module-owned composition root without a consumer-local service or
-   guard assembly.
-2. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
+1. Connect the next production consumer's concrete tenant-scoped store and preview renderer to
+   `compose_fly_page_builder_handlers` (or its configured variant). It must follow the Pages
+   reference order: verify backend identity, construct canonical auth/context, dispatch handlers,
+   then access tenant ports. Consumer-local service/guard pipelines and pre-authorization persistence
+   reads are forbidden.
+2. Extend the Pages production consumer from the publish/write path to server preview delivery
+   through the same composition root. The admin runtime must consume the canonical preview response
+   without introducing a Pages-local renderer pipeline.
+3. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
    the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
    its optional CSP nonce, and must not copy lifecycle, form, selection or draft-route policy.
-3. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
+4. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
    correlate builder write, Pages publish and storefront read across the required rollout profiles.
 
 ## Verification
