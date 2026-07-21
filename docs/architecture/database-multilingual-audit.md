@@ -39,12 +39,14 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
 - **Groups** — `groups` owns only language-neutral identity/policy state and
   `group_translations` owns title, summary, and body under the unique
   `(tenant_id, group_id, locale)` key. PostgreSQL CHECK constraints and SQLite
-  insert/update triggers enforce canonical normalized locale tags, localized
-  presentation shape, and rejection of localized presentation keys in base
-  `groups.metadata`. The service accepts the host-resolved effective locale,
-  requires the exact translation row, scopes catalog/search to that locale,
-  counts title/summary limits as Unicode scalar values, and contains no English
-  or arbitrary first-row fallback.
+  insert/update triggers enforce canonical normalized locale tags and localized
+  presentation shape. They also keep `groups.metadata`,
+  `group_memberships.metadata`, and `group_feature_bindings.configuration`
+  language-agnostic by rejecting reserved top-level presentation fields while
+  permitting nested technical provider-schema configuration. The service accepts
+  the host-resolved effective locale, requires the exact translation row, scopes
+  catalog/search to that locale, counts title/summary limits as Unicode scalar
+  values, and contains no English or arbitrary first-row fallback.
 - **Product catalog** — the product-owned schema verifier remains the delegated
   guard for translation ownership and locale widening.
 - **Search locale attribution** — clean query-log storage uses `VARCHAR(32)` and
@@ -107,7 +109,9 @@ cutover.
 
 JSONB remains valid for configuration, internal audit payloads, and flexible
 non-copy data. It is not a canonical replacement for parallel localized
-business records.
+business records. A reserved top-level presentation field is rejected in Groups
+base JSON, but a nested provider-schema key with the same technical name is not
+automatically localized copy.
 
 An `und` row is retained data with unknown language provenance. It is not a
 request fallback and must not be silently returned for another requested locale.
