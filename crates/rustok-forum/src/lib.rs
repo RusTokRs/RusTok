@@ -4,6 +4,7 @@ use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
+mod category_presentation;
 pub mod constants;
 pub mod controllers;
 pub mod dto;
