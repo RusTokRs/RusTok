@@ -38,8 +38,17 @@ pub enum PagesError {
     #[error("Page Builder publish runtime review invalid: {0}")]
     PublishRuntimeReviewInvalid(String),
 
+    #[error("Page Builder publish sanitization failed: {0}")]
+    PublishSanitize(String),
+
     #[error("Page Builder publish runtime materialization mismatch: {0}")]
     PublishRuntimeMaterializationMismatch(String),
+
+    #[error("Page publish idempotency conflict: {0}")]
+    PublishIdempotencyConflict(String),
+
+    #[error("Page publish operation integrity error: {0}")]
+    PublishOperationIntegrity(String),
 
     #[error("Forbidden: {0}")]
     Forbidden(String),
@@ -67,8 +76,12 @@ pub const BUILDER_FEATURE_DISABLED_ERROR_CODE: &str = "FEATURE_DISABLED";
 pub const CANNOT_DELETE_PUBLISHED_ERROR_CODE: &str = "CANNOT_DELETE_PUBLISHED";
 pub const PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID: &str =
     "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID";
+pub const PAGE_BUILDER_PUBLISH_SANITIZE_FAILED: &str =
+    "PAGE_BUILDER_PUBLISH_SANITIZE_FAILED";
 pub const PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH: &str =
     "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH";
+pub const PAGE_PUBLISH_IDEMPOTENCY_CONFLICT: &str = "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT";
+pub const PAGE_PUBLISH_OPERATION_INTEGRITY: &str = "PAGE_PUBLISH_OPERATION_INTEGRITY";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderRuntimeErrorCatalogEntry {
@@ -165,12 +178,29 @@ impl From<PagesError> for RichError {
                     )
                     .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
             }
+            PagesError::PublishSanitize(message) => RichError::new(ErrorKind::Validation, message)
+                .with_user_message(
+                    "The Page Builder document did not pass the public publish security policy.",
+                )
+                .with_error_code(PAGE_BUILDER_PUBLISH_SANITIZE_FAILED),
             PagesError::PublishRuntimeMaterializationMismatch(message) => {
                 RichError::new(ErrorKind::Conflict, message)
                     .with_user_message(
                         "The reviewed Page Builder runtime no longer matches the publish artifact. Review and publish again.",
                     )
                     .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH)
+            }
+            PagesError::PublishIdempotencyConflict(message) => {
+                RichError::new(ErrorKind::Conflict, message)
+                    .with_user_message(
+                        "This publish idempotency key is already bound to a different request.",
+                    )
+                    .with_error_code(PAGE_PUBLISH_IDEMPOTENCY_CONFLICT)
+            }
+            PagesError::PublishOperationIntegrity(message) => {
+                RichError::new(ErrorKind::Internal, message)
+                    .with_user_message("The stored page publish receipt failed integrity validation.")
+                    .with_error_code(PAGE_PUBLISH_OPERATION_INTEGRITY)
             }
             PagesError::Forbidden(message) => RichError::new(ErrorKind::Forbidden, message)
                 .with_user_message("You do not have permission to perform this action"),
@@ -221,8 +251,20 @@ impl PagesError {
         Self::PublishRuntimeReviewInvalid(message.into())
     }
 
+    pub fn publish_sanitize(message: impl Into<String>) -> Self {
+        Self::PublishSanitize(message.into())
+    }
+
     pub fn publish_runtime_materialization_mismatch(message: impl Into<String>) -> Self {
         Self::PublishRuntimeMaterializationMismatch(message.into())
+    }
+
+    pub fn publish_idempotency_conflict(message: impl Into<String>) -> Self {
+        Self::PublishIdempotencyConflict(message.into())
+    }
+
+    pub fn publish_operation_integrity(message: impl Into<String>) -> Self {
+        Self::PublishOperationIntegrity(message.into())
     }
 
     pub fn forbidden(message: impl Into<String>) -> Self {
@@ -283,12 +325,36 @@ mod tests {
             Some(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
         );
 
+        let sanitize: RichError = PagesError::publish_sanitize("blocked").into();
+        assert_eq!(sanitize.kind, ErrorKind::Validation);
+        assert_eq!(
+            sanitize.error_code.as_deref(),
+            Some(PAGE_BUILDER_PUBLISH_SANITIZE_FAILED)
+        );
+
         let mismatch: RichError =
             PagesError::publish_runtime_materialization_mismatch("mismatch").into();
         assert_eq!(mismatch.kind, ErrorKind::Conflict);
         assert_eq!(
             mismatch.error_code.as_deref(),
             Some(PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH)
+        );
+    }
+
+    #[test]
+    fn publish_receipt_errors_have_stable_codes() {
+        let conflict: RichError = PagesError::publish_idempotency_conflict("reused").into();
+        assert_eq!(conflict.kind, ErrorKind::Conflict);
+        assert_eq!(
+            conflict.error_code.as_deref(),
+            Some(PAGE_PUBLISH_IDEMPOTENCY_CONFLICT)
+        );
+
+        let integrity: RichError = PagesError::publish_operation_integrity("invalid").into();
+        assert_eq!(integrity.kind, ErrorKind::Internal);
+        assert_eq!(
+            integrity.error_code.as_deref(),
+            Some(PAGE_PUBLISH_OPERATION_INTEGRITY)
         );
     }
 
