@@ -184,8 +184,12 @@ impl RusToKModule for CommerceModule {
         ));
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         extensions.get_or_insert_with(FulfillmentProviderRegistry::with_manual_provider);
+        Ok(())
     }
 
     fn permissions(&self) -> Vec<Permission> {

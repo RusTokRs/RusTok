@@ -184,7 +184,16 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
     ) {
     }
 
-    fn register_runtime_extensions(&self, _extensions: &mut ModuleRuntimeExtensions) {}
+    /// Registers module-owned typed runtime capabilities.
+    ///
+    /// Duplicate providers and invalid deployment configuration must be returned
+    /// as errors so the host can fail startup cleanly instead of panicking.
+    fn register_runtime_extensions(
+        &self,
+        _extensions: &mut ModuleRuntimeExtensions,
+    ) -> crate::Result<()> {
+        Ok(())
+    }
 
     /// Legacy lifecycle hook kept for backward compatibility.
     ///

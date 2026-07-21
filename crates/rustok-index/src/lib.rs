@@ -71,8 +71,12 @@ impl RusToKModule for IndexModule {
         ));
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         extensions.get_or_insert_with(IndexerRuntimeConfig::load);
+        Ok(())
     }
 }
 
