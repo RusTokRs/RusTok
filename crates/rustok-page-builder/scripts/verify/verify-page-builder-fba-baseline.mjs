@@ -11,6 +11,7 @@ const checks = [
   "verify-page-builder-contract-parity.mjs",
   "verify-page-builder-contract-registry.mjs",
   "verify-page-builder-preview-runtime-contract.mjs",
+  "verify-page-builder-publish-runtime-review.mjs",
   "verify-page-builder-consumer-readiness.mjs",
   "verify-page-builder-fallback-profiles.mjs",
   "verify-page-builder-error-catalog-binding.mjs",
