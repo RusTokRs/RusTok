@@ -11,8 +11,6 @@ pub struct Model {
     pub legal_name: Option<String>,
     pub status: String,
     pub onboarding_status: String,
-    pub onboarding_note: Option<String>,
-    pub suspension_reason: Option<String>,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
