@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
-    graphql::require_module_enabled, graphql::resolve_graphql_locale, AuthContext, RequestContext,
-    TenantContext,
+    AuthContext, RequestContext, TenantContext, graphql::require_module_enabled,
+    graphql::resolve_graphql_locale,
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
@@ -11,8 +11,11 @@ use sea_orm::DatabaseConnection;
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::services::page::is_page_visible_for_channel;
 use crate::PageService;
+use crate::services::page::is_page_visible_for_channel;
+use crate::services::{
+    MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE, MenuService,
+};
 
 use super::types::*;
 
@@ -67,6 +70,35 @@ impl PagesQuery {
         }
 
         Ok(Some(page.into()))
+    }
+
+    async fn menu(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        locale: Option<String>,
+    ) -> Result<Option<GqlMenu>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_pages_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let security = request_security_context(ctx);
+        let tenant = ctx.data::<TenantContext>()?;
+        let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        match MenuService::new(db.clone(), event_bus.clone())
+            .get(tenant.id, security, id, &effective_locale)
+            .await
+        {
+            Ok(menu) => Ok(Some(menu.into())),
+            Err(crate::PagesError::MenuNotFound(_)) => Ok(None),
+            Err(crate::PagesError::Rich(rich))
+                if rich.error_code.as_deref() == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(map_menu_query_error(error)),
+        }
     }
 
     async fn page_by_slug(
@@ -180,6 +212,26 @@ impl PagesQuery {
 
         Ok(GqlPageList { items, total })
     }
+}
+
+fn map_menu_query_error(error: crate::PagesError) -> async_graphql::Error {
+    let code = match &error {
+        crate::PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(MENU_TRANSLATION_INTEGRITY_ERROR_CODE) =>
+        {
+            MENU_TRANSLATION_INTEGRITY_ERROR_CODE
+        }
+        crate::PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
+        crate::PagesError::Database(_) | crate::PagesError::Tenant(_) => "INTERNAL_SERVER_ERROR",
+        crate::PagesError::Rich(rich) => rich
+            .error_code
+            .as_deref()
+            .unwrap_or("PAGES_OPERATION_FAILED"),
+        _ => "PAGES_OPERATION_FAILED",
+    };
+    async_graphql::Error::new(error.to_string()).extend_with(|_, extensions| {
+        extensions.set("code", code);
+    })
 }
 
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
@@ -308,8 +360,8 @@ async fn ensure_public_pages_channel_enabled(
 mod tests {
     use super::{ensure_public_pages_channel_enabled, is_page_visible_for_request};
     use crate::services::page::is_page_visible_for_channel;
-    use rustok_api::{context::ChannelResolutionSource, RequestContext};
-    use rustok_channel::{migrations, BindChannelModuleInput, ChannelService, CreateChannelInput};
+    use rustok_api::{RequestContext, context::ChannelResolutionSource};
+    use rustok_channel::{BindChannelModuleInput, ChannelService, CreateChannelInput, migrations};
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;
