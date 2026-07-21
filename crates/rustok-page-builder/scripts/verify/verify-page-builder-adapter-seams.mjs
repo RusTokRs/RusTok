@@ -71,6 +71,13 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 }
 
+function requireOccurrenceCount(source, marker, expected, label) {
+  const actual = source.split(marker).length - 1;
+  if (actual !== expected) {
+    fail(`${label} expected ${expected} occurrence(s) of ${marker}, found ${actual}`);
+  }
+}
+
 function requireOrderedMarkers(source, markers, label) {
   let previousIndex = -1;
   for (const marker of markers ?? []) {
@@ -93,6 +100,17 @@ function isolateEntrypoint(source, serverMarker, clientMarker, label) {
     server: source.slice(serverStart, clientStart),
     client: source.slice(clientStart),
   };
+}
+
+function isolateRange(source, startMarker, endMarker, label) {
+  requireMarker(source, startMarker, `${label} start`);
+  requireMarker(source, endMarker, `${label} end`);
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (start < 0 || end <= start) {
+    fail(`${label} cannot be isolated`);
+  }
+  return source.slice(start, end);
 }
 
 function rejectBeforeDispatch(source, dispatchMarker, forbiddenMarkers, label) {
@@ -209,59 +227,66 @@ for (const marker of pagesConsumer.tenant_context_guards ?? []) {
 }
 requireMarker(
   pagesBuilder,
+  pagesConsumer.preview_renderer_context_guard,
+  "Pages preview renderer tenant guard",
+);
+requireMarker(
+  pagesBuilder,
   pagesConsumer.persisted_result_marker,
   "Pages persisted capability result",
 );
 for (const forbidden of pagesConsumer.forbidden_symbols ?? []) {
   if (pagesBuilder.includes(forbidden)) {
-    fail(`Pages production consumer contains obsolete save side-channel: ${forbidden}`);
+    fail(`Pages production consumer contains obsolete capability path: ${forbidden}`);
   }
 }
 
-const publishPaths = isolateEntrypoint(
+for (const marker of pagesConsumer.capability_server_function_markers ?? []) {
+  requireMarker(pagesBuilder, marker, "Pages capability server function");
+}
+for (const marker of pagesConsumer.capability_wrapper_markers ?? []) {
+  requireMarker(pagesBuilder, marker, "Pages capability wrapper");
+}
+
+const capabilityPaths = isolateEntrypoint(
   pagesBuilder,
-  `#[cfg(feature = "ssr")]\nasync fn ${pagesConsumer.server_entrypoint}`,
-  pagesConsumer.client_entrypoint_marker,
-  "Pages publish",
+  `#[cfg(feature = "ssr")]\nasync fn ${pagesConsumer.capability_dispatch_helper}`,
+  pagesConsumer.capability_client_entrypoint_marker,
+  "Pages capability dispatch",
 );
 requireOrderedMarkers(
-  publishPaths.server,
-  pagesConsumer.required_server_order,
+  capabilityPaths.server,
+  pagesConsumer.capability_required_server_order,
   "Pages SSR authorization/composition order",
 );
 rejectBeforeDispatch(
-  publishPaths.server,
-  pagesConsumer.dispatch_marker,
-  pagesConsumer.forbidden_before_dispatch,
-  "Pages SSR publish path",
+  capabilityPaths.server,
+  pagesConsumer.capability_dispatch_marker,
+  pagesConsumer.capability_forbidden_before_dispatch,
+  "Pages SSR capability path",
 );
 
-const previewPaths = isolateEntrypoint(
+const capabilityClient = isolateRange(
   pagesBuilder,
-  `#[cfg(feature = "ssr")]\nasync fn ${pagesConsumer.preview_server_entrypoint}`,
-  pagesConsumer.preview_client_entrypoint_marker,
-  "Pages preview",
-);
-requireOrderedMarkers(
-  previewPaths.server,
-  pagesConsumer.preview_required_server_order,
-  "Pages SSR preview authorization/composition order",
-);
-rejectBeforeDispatch(
-  previewPaths.server,
-  pagesConsumer.preview_dispatch_marker,
-  pagesConsumer.preview_forbidden_before_dispatch,
-  "Pages SSR preview path",
+  pagesConsumer.capability_client_entrypoint_marker,
+  pagesConsumer.capability_client_end_marker,
+  "Pages client capability transport",
 );
 requireMarker(
-  previewPaths.client,
-  pagesConsumer.preview_transport_marker,
-  "Pages preview client transport",
+  capabilityClient,
+  pagesConsumer.capability_client_transport_marker,
+  "Pages client capability transport",
 );
-requireMarker(
+for (const forbidden of pagesConsumer.capability_client_forbidden_symbols ?? []) {
+  if (capabilityClient.includes(forbidden)) {
+    fail(`Pages client capability transport contains a parallel write path: ${forbidden}`);
+  }
+}
+requireOccurrenceCount(
   pagesBuilder,
-  pagesConsumer.preview_renderer_context_guard,
-  "Pages preview renderer tenant guard",
+  pagesConsumer.composition_call_marker,
+  pagesConsumer.composition_call_count,
+  "Pages composition root call",
 );
 requireMarker(
   pagesAdminManifest,
