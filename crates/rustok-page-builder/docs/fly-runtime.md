@@ -1,69 +1,77 @@
 # Fly runtime integration
 
-`rustok-page-builder` now has two Fly integration levels under `adapters`.
+`rustok-page-builder` has one current runtime path. Fly owns project decoding, structural
+validation, tree traversal, component lookup, project hashing and runtime-scenario release policy.
 
 ## Project inspection
 
-`FlyProjectInspection` is the transport-neutral bridge for one canonical `grapesjs` value. It:
+`FlyProjectInspection` is the transport-neutral view of an imported project value. It:
 
 - decodes through `fly::GrapesJsCodec` without dropping unknown fields;
 - validates through Fly registries and configurable node/depth limits;
-- exposes validation diagnostics without converting missing providers into destructive migrations;
-- builds the layers tree from the real GrapesJS hierarchy at `pages[].component.components`;
+- keeps the decoded `ProjectDocument` and its `ValidationReport` together;
+- builds the layers tree from `pages[].component.components`;
 - returns component properties without the child subtree;
 - exposes the deterministic Fly project hash.
 
-Use `require_valid()` before preview or publish. Warnings such as an unavailable optional provider remain inspectable and do not delete the node. Structural errors such as duplicate component IDs or resource-limit violations reject the operation.
+Preview and publish call `require_valid()` before invoking persistence or rendering ports.
+Structural errors such as duplicate component IDs or resource-limit violations reject the
+operation.
 
-## Provider services
+## Current service
 
-`FlyValidatedPageBuilderService<S>` decorates an existing `PageBuilderCapabilityService`. It is the low-risk migration path: preview and publish are structurally validated by Fly while the wrapped service keeps its existing tree, properties, storage, rendering and telemetry behavior.
+`FlyAdapterBackedPageBuilderService<S, R, T, B>` is the only Page Builder capability service
+implementation owned by this crate. It uses:
 
-`FlyAdapterBackedPageBuilderService<S, R, T>` is the preferred provider for new composition roots. It uses the existing:
+- `PageBuilderProjectStore` for tenant-scoped project persistence;
+- `PageBuilderRenderingAdapter` for preview rendering after Fly validation;
+- `PageBuilderRuntimeTelemetry` for started, succeeded and failed operation evidence;
+- `PageBuilderScenarioBaselineStore` and `RuntimeScenarioReleasePolicy` for optional release gates;
+- canonical DTOs and transport envelopes from `rustok-page-builder`.
 
-- `PageBuilderProjectStore` persistence port;
-- `PageBuilderRenderingAdapter` preview/rendering port;
-- `PageBuilderAdapterTelemetry` evidence port;
-- canonical DTOs, authorization handlers, rollout guards and transport envelopes.
+The service performs these operations:
 
+```text
+request
+  -> FlyProjectInspection::decode_with
+  -> inspection.require_valid
+  -> optional runtime-scenario release gate
+  -> rendering or persistence port
+  -> PageBuilderRuntimeCallEvidence
+  -> typed capability result
+```
 
-A typical composition keeps the existing guard order:
+A composition root applies guards outside the service:
 
 ```rust
 use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;
-use rustok_page_builder::service::CapabilityGuardedService;
+use rustok_page_builder::service::{
+    AuthorizedPageBuilderHandlers, CapabilityGuardedService,
+};
 
-let provider = FlyAdapterBackedPageBuilderService::new(project_store, rendering_adapter);
-let provider = CapabilityGuardedService::new(provider, rollout_flags);
+let service = FlyAdapterBackedPageBuilderService::new(project_store, rendering_adapter);
+let service = CapabilityGuardedService::new(service, rollout_flags);
+let handlers = AuthorizedPageBuilderHandlers::new(service);
 ```
 
-Authorization and transport adapters remain outside this provider and continue to call the canonical `AuthorizedPageBuilderHandlers` and dispatch functions.
+GraphQL and Leptos server-function endpoints dispatch through the same authorized handlers and
+canonical request/response envelopes. Future Dioxus hosts use the same service and transport
+contracts rather than defining a second provider.
 
-## Browser adapter progress
+## Browser host boundary
 
-`fly-leptos` now includes framework-owned browser primitives for:
-
-- host/iframe/scroll/zoom coordinate conversion;
-- vertical and horizontal before/inside/after drop-zone interpretation;
-- hit-test candidate ranking without using DOM order as project truth;
-- insertion-index correction for `After` drops;
-- viewport-edge auto-scroll deltas;
-- mouse, touch and pen pointer samples;
-- versioned iframe messages with instance isolation and replay rejection;
-- deterministic listener/observer cleanup registration.
-
-These primitives do not complete the browser phase by themselves. Actual `web-sys` listener installation, ResizeObserver/MutationObserver ownership, pointer capture, iframe lifecycle orchestration, storefront DOM overlays and browser interaction suites remain separate follow-up work.
+`crate::browser_host` owns the framework-neutral inline module source used by authoring hosts.
+Leptos renders that source as a `<script type="module">`; a future Dioxus adapter can render the
+same source without copying lifecycle, form, selection or draft-route policy.
 
 ## Verification
 
-Run:
-
 ```text
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-fly-runtime.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs
 cargo test -p fly
-cargo test -p fly-ui
-cargo test -p fly-leptos
 cargo test -p rustok-page-builder
 ```
 
-The Node guard is intentionally compile-free and verifies repository wiring. It does not replace Rust compilation or browser tests.
+The Node guards verify repository wiring and forbidden obsolete symbols. They do not replace Rust
+compilation or browser tests.
