@@ -15,6 +15,7 @@
         "pub struct PageBuilderPreviewRuntime",
         "pub context: serde_json::Value",
         "pub scenario_id: Option<String>",
+        "pub fn validate(&self)",
         "pub runtime: PageBuilderPreviewRuntime",
         "pub fn with_runtime",
         "pub runtime_scenario_id: Option<String>"
@@ -47,18 +48,10 @@
         "render_preview"
       ],
       "input": "PreviewPageBuilderInput",
-      "invocation_order": "after Fly decode, structural validation and runtime-contract validation",
-      "runtime_validation_markers": [
-        "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024",
-        "runtime context must be a JSON object",
-        "serde_json::to_vec(&runtime.context)",
-        "context_bytes.len() > MAX_PREVIEW_RUNTIME_CONTEXT_BYTES",
-        "MAX_PREVIEW_SCENARIO_ID_BYTES: usize = 128",
-        "scenario_id.trim() != scenario_id"
-      ],
+      "invocation_order": "after Fly decode, structural validation and canonical DTO runtime validation",
       "runtime_order": [
         "self.inspect(&input.project_data)?",
-        "validate_preview_runtime(&input.runtime)?",
+        ".runtime\n            .validate()",
         "render_preview(context, &input)",
         "runtime_scenario_id: input.runtime.scenario_id"
       ]
