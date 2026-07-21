@@ -2,6 +2,8 @@ use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
+const LEGACY_UNDETERMINED_LOCALE: &str = "und";
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -82,7 +84,7 @@ impl MigrationTrait for Migration {
                     vec![
                         Uuid::new_v4().into(),
                         location_id.into(),
-                        "en".into(),
+                        LEGACY_UNDETERMINED_LOCALE.into(),
                         name.into(),
                     ],
                 ))
