@@ -2,6 +2,8 @@ use sea_orm_migration::prelude::*;
 
 use sea_orm_migration::sea_orm::DatabaseBackend;
 
+const LEGACY_UNDETERMINED_LOCALE: &str = "und";
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -63,23 +65,23 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // The original schema row did not record the language of name/description.
+        // Runtime tenant defaults are selection policy, not historical provenance.
         manager
             .get_connection()
-            .execute_unprepared(
+            .execute_unprepared(&format!(
                 r#"
 INSERT INTO flex_schema_translations (schema_id, locale, name, description, created_at, updated_at)
 SELECT
     flex_schema.id,
-    COALESCE(NULLIF(tenant.default_locale, ''), 'en'),
+    '{LEGACY_UNDETERMINED_LOCALE}',
     flex_schema.name,
     flex_schema.description,
     flex_schema.created_at,
     flex_schema.updated_at
 FROM flex_schemas AS flex_schema
-INNER JOIN tenants AS tenant ON tenant.id = flex_schema.tenant_id
-ON CONFLICT (schema_id, locale) DO NOTHING;
-"#,
-            )
+"#
+            ))
             .await?;
 
         if manager.get_database_backend() == DatabaseBackend::Sqlite {
@@ -152,34 +154,32 @@ ON CONFLICT (schema_id, locale) DO NOTHING;
                 .await?;
         }
 
+        // Restore one compatibility copy deterministically. The preserved `und` row
+        // is preferred; a real locale is used only when no provenance row exists.
         manager
             .get_connection()
-            .execute_unprepared(
+            .execute_unprepared(&format!(
                 r#"
-UPDATE flex_schemas AS flex_schema
+UPDATE flex_schemas
 SET
-    name = chosen.name,
-    description = chosen.description
-FROM (
-    SELECT DISTINCT ON (translation.schema_id)
-        translation.schema_id,
-        translation.name,
-        translation.description
-    FROM flex_schema_translations AS translation
-    INNER JOIN flex_schemas AS source_flex_schema ON source_flex_schema.id = translation.schema_id
-    INNER JOIN tenants AS tenant ON tenant.id = source_flex_schema.tenant_id
-    ORDER BY
-        translation.schema_id,
-        CASE
-            WHEN translation.locale = tenant.default_locale THEN 0
-            WHEN translation.locale = 'en' THEN 1
-            ELSE 2
-        END,
-        translation.locale
-) AS chosen
-WHERE flex_schema.id = chosen.schema_id;
-"#,
-            )
+    name = COALESCE((
+        SELECT translation.name
+        FROM flex_schema_translations AS translation
+        WHERE translation.schema_id = flex_schemas.id
+        ORDER BY CASE WHEN translation.locale = '{LEGACY_UNDETERMINED_LOCALE}' THEN 0 ELSE 1 END,
+                 translation.locale
+        LIMIT 1
+    ), ''),
+    description = (
+        SELECT translation.description
+        FROM flex_schema_translations AS translation
+        WHERE translation.schema_id = flex_schemas.id
+        ORDER BY CASE WHEN translation.locale = '{LEGACY_UNDETERMINED_LOCALE}' THEN 0 ELSE 1 END,
+                 translation.locale
+        LIMIT 1
+    )
+"#
+            ))
             .await?;
 
         manager
