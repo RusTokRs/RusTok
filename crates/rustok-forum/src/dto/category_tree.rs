@@ -42,6 +42,8 @@ pub struct CategoryTreeNode {
     pub moderated: bool,
     /// Whether new topics may be created directly in this category.
     pub allows_topics: bool,
+    pub archived_at: Option<String>,
+    pub is_archived: bool,
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,

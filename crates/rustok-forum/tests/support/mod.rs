@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod category_commands;
+pub mod category_lifecycle;
 pub mod category_policy;
 pub mod category_tree;
 pub mod event_contract;

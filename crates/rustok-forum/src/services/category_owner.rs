@@ -6,18 +6,22 @@ use uuid::Uuid;
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    bounded_forum_read_limit, CategoryListItem, CategoryResponse, CategoryTopicPolicyResponse,
-    CategoryTreeQuery, CategoryTreeResponse, MoveCategoryInput, MoveCategoryResponse,
-    ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse, UpdateCategoryInput,
-    UpdateCategoryTopicPolicyInput, MAX_FORUM_READ_LIMIT,
+    bounded_forum_read_limit, CategoryListItem, CategoryResponse,
+    CategorySubtreeLifecycleResponse, CategoryTopicPolicyResponse, CategoryTreeQuery,
+    CategoryTreeResponse, MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
+    ReorderCategorySiblingsResponse, UpdateCategoryInput, UpdateCategoryTopicPolicyInput,
+    MAX_FORUM_READ_LIMIT,
 };
 use crate::error::{ForumError, ForumResult};
 
-use super::{category, category_command, category_policy, category_tree};
+use super::{
+    category, category_command, category_lifecycle, category_policy, category_tree,
+};
 
 pub struct CategoryService {
     inner: category::CategoryService,
     commands: category_command::CategoryCommandService,
+    lifecycle: category_lifecycle::CategoryLifecycleService,
     policy: category_policy::CategoryTopicPolicyService,
     tree: category_tree::CategoryTreeService,
 }
@@ -27,6 +31,7 @@ impl CategoryService {
         Self {
             inner: category::CategoryService::new(db.clone()),
             commands: category_command::CategoryCommandService::new(db.clone()),
+            lifecycle: category_lifecycle::CategoryLifecycleService::new(db.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
             tree: category_tree::CategoryTreeService::new(db),
         }
@@ -39,6 +44,28 @@ impl CategoryService {
         query: CategoryTreeQuery,
     ) -> ForumResult<CategoryTreeResponse> {
         self.tree.read(tenant_id, security, query).await
+    }
+
+    pub async fn archive_subtree(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<CategorySubtreeLifecycleResponse> {
+        self.lifecycle
+            .archive_subtree(tenant_id, category_id, security)
+            .await
+    }
+
+    pub async fn restore_subtree(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<CategorySubtreeLifecycleResponse> {
+        self.lifecycle
+            .restore_subtree(tenant_id, category_id, security)
+            .await
     }
 
     pub async fn topic_policy(

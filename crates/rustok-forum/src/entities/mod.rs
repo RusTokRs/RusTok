@@ -1,6 +1,7 @@
 //! SeaORM entities for forum-owned persistence.
 
 pub mod forum_category;
+pub mod forum_category_lifecycle;
 pub mod forum_category_policy;
 pub mod forum_category_subscription;
 pub mod forum_category_translation;
@@ -21,6 +22,7 @@ pub mod forum_topic_vote;
 pub mod forum_user_stat;
 
 pub use forum_category::Entity as ForumCategory;
+pub use forum_category_lifecycle::Entity as ForumCategoryLifecycle;
 pub use forum_category_policy::Entity as ForumCategoryPolicy;
 pub use forum_domain_event::Entity as ForumDomainEvent;
 pub use forum_reply::Entity as ForumReply;

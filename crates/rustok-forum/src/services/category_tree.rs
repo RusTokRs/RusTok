@@ -13,7 +13,9 @@ use crate::dto::{
     CategoryBreadcrumb, CategoryTreeNode, CategoryTreeQuery, CategoryTreeResponse,
     MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use crate::entities::{forum_category, forum_category_translation};
+use crate::entities::{
+    forum_category, forum_category_lifecycle, forum_category_translation,
+};
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::rbac::enforce_scope;
@@ -91,6 +93,14 @@ impl CategoryTreeService {
         let topic_policy_flags = CategoryTopicPolicyService::new(self.db.clone())
             .flags_for_categories(tenant_id, &category_ids)
             .await?;
+        let lifecycle_by_category = forum_category_lifecycle::Entity::find()
+            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+            .filter(forum_category_lifecycle::Column::CategoryId.is_in(category_ids.clone()))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|lifecycle| (lifecycle.category_id, lifecycle))
+            .collect::<HashMap<_, _>>();
 
         let total_nodes = categories.len() as u32;
         let mut nodes = HashMap::<Uuid, CategoryTreeNode>::with_capacity(categories.len());
@@ -112,6 +122,7 @@ impl CategoryTreeService {
                     category.id
                 ))
             })?;
+            let lifecycle = lifecycle_by_category.get(&category.id);
             let node = CategoryTreeNode {
                 id: category.id,
                 parent_id: category.parent_id,
@@ -131,7 +142,10 @@ impl CategoryTreeService {
                 allows_topics: topic_policy_flags
                     .get(&category.id)
                     .copied()
-                    .unwrap_or(true),
+                    .unwrap_or(true)
+                    && lifecycle.is_none(),
+                archived_at: lifecycle.map(|value| value.archived_at.to_rfc3339()),
+                is_archived: lifecycle.is_some(),
                 topic_count: category.topic_count,
                 reply_count: category.reply_count,
                 is_subscribed: subscriptions.get(&category.id).copied().unwrap_or(false),
@@ -149,11 +163,17 @@ impl CategoryTreeService {
 
         for node in nodes.values() {
             if let Some(parent_id) = node.parent_id {
-                if !nodes.contains_key(&parent_id) {
-                    return Err(ForumError::Validation(format!(
+                let parent = nodes.get(&parent_id).ok_or_else(|| {
+                    ForumError::Validation(format!(
                         "Forum category tree contains missing or foreign parent {parent_id} for category {}",
                         node.id
-                    )));
+                    ))
+                })?;
+                if parent.is_archived && !node.is_archived {
+                    return Err(ForumError::Validation(
+                        "Forum category tree contains an active child beneath an archived parent"
+                            .to_string(),
+                    ));
                 }
             }
         }

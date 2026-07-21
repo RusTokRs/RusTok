@@ -9,6 +9,8 @@
 - `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
 - `CategoryService::move_category(tenant_id, category_id, security, MoveCategoryInput) -> MoveCategoryResponse`
 - `CategoryService::reorder_siblings(tenant_id, security, ReorderCategorySiblingsInput) -> ReorderCategorySiblingsResponse`
+- `CategoryService::archive_subtree(tenant_id, category_id, security) -> CategorySubtreeLifecycleResponse`
+- `CategoryService::restore_subtree(tenant_id, category_id, security) -> CategorySubtreeLifecycleResponse`
 - `CategoryService::topic_policy(tenant_id, category_id, security) -> CategoryTopicPolicyResponse`
 - `CategoryService::set_topic_policy(tenant_id, category_id, security, UpdateCategoryTopicPolicyInput) -> CategoryTopicPolicyResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
@@ -31,7 +33,7 @@
 ### Category tree
 - Added: `CategoryTreeQuery`, `CategoryBreadcrumb`, `CategoryTreeNode`, `CategoryTreeResponse`.
 - The canonical tree returns the complete tenant hierarchy in deterministic `(position, id)` sibling order through one owner call bounded to 512 nodes and zero-based depth 16.
-- Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs, `allows_topics` and nested children.
+- Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs, `allows_topics`, `archived_at`, `is_archived` and nested children.
 - REST entry point: `GET /api/forum/categories/tree`.
 - GraphQL entry point: `forumCategoryTree(tenantId, locale, fallbackLocale)` on the merged `ForumQuery`.
 - Categories without any localized translation fail closed instead of returning empty `name`/`slug` fields.
@@ -43,6 +45,13 @@
 - REST entry points: `PUT /api/forum/categories/{id}/move` and `PUT /api/forum/categories/reorder`.
 - PostgreSQL and SQLite reject category writes whose resulting zero-based depth would exceed 16, including internal direct writes that bypass owner services.
 - Generic `CategoryService::update` rejects `position`; placement changes must use `move_category` or `reorder_siblings`.
+### Category subtree lifecycle
+- Added: `CategorySubtreeLifecycleResponse`.
+- Absence of a lifecycle row means active, preserving existing categories without backfill.
+- `archive_subtree` writes descendants before ancestors; `restore_subtree` removes ancestor lifecycle rows before descendants under the same tenant category-tree lock.
+- REST entry points: `POST /api/forum/categories/{id}/archive-subtree` and `POST /api/forum/categories/{id}/restore-subtree`.
+- GraphQL entry points: `archiveForumCategorySubtree` and `restoreForumCategorySubtree`.
+- Existing topics are preserved. Archived categories reject new topic placement and active children; a subtree cannot be partially restored beneath an archived ancestor.
 ### Category topic policy
 - Added: `UpdateCategoryTopicPolicyInput` and `CategoryTopicPolicyResponse`.
 - Absence of a stored row means `allows_topics = true`, preserving behavior for existing categories.
@@ -105,7 +114,8 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Confuses `locale` (requested) and `effective_locale` (actually used).
 - Uses the flat category list to reconstruct hierarchy instead of `CategoryService::tree`.
 - Writes `parent_id` or sibling positions directly instead of using category owner commands.
-- Creates a topic without honoring the category-owned `allows_topics` policy.
+- Writes lifecycle rows parent-first or restores a child beneath an archived ancestor.
+- Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -117,9 +127,10 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 ### Domain Invariants
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
 - Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
-- Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies.
+- Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected, foreign-parent or invalid archive hierarchies.
 - Category move/reorder commands use a per-tenant transaction order and never persist a partial sibling normalization.
 - Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
+- Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 
 ### Events / Outbox Side Effects
