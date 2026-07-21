@@ -7,7 +7,7 @@ description.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-graphql.workspace = true
+async-graphql = { workspace = true, features = ["decimal"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
 rustok-outbox.workspace = true
