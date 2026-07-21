@@ -56,6 +56,13 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   canonical route identifier. Localized post display copy stays in
   `blog_post_translations`; localized category names, slugs, and descriptions
   stay in `blog_category_translations`.
+- **Profiles localized copy** — `profiles` now owns only language-neutral identity,
+  media, visibility, status, and locale preference. `display_name` and `bio` are
+  authoritative only in `profile_translations`. The migration retains unmatched
+  legacy base copy under storage-only locale `und`, blocks a conflicting existing
+  `und` row, and drops `profiles.display_name`. Runtime reads do not treat `und`
+  as request fallback and fail closed when no requested/preferred/tenant-default
+  translation is available.
 - **Commerce collections/categories** — a forward-only PostgreSQL/MySQL/SQLite
   migration widens collection and product-category translation locales to
   `VARCHAR(32)` and is registered after both owner tables.
@@ -76,10 +83,6 @@ These are not accepted exceptions. They remain explicit migration targets:
 - `auth-oauth-app-copy`: `oauth_apps.name` and `oauth_apps.description` still
   store display copy inline. `rustok-auth` owns the atomic translation-table and
   transport cutover.
-- `profiles-display-name`: `profiles.display_name` duplicates localized
-  `profile_translations.display_name`. Locale widths are widened, but the owner
-  must backfill any unmatched legacy copy with truthful provenance and remove the
-  base-row duplicate.
 - `marketplace-seller-prose-copy`: immutable locale-aware seller events are the
   intended prose source, but `marketplace_sellers.onboarding_note` and
   `marketplace_sellers.suspension_reason` remain mutable compatibility copies.
