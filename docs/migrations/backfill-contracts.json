@@ -67,6 +67,13 @@
       "reason": "Widen search query log locale attribution to the platform locale width; existing observed locale values require no semantic backfill"
     },
     {
+      "id": "marketplace-seller-prose-events",
+      "migration": "m20260721_000005_drop_seller_legacy_prose_columns",
+      "mode": "none",
+      "owner": "rustok-marketplace-seller",
+      "reason": "Legacy prose was already preserved as immutable provenance-aware seller events by the preceding backfill migration; the final cutover only drops obsolete base columns"
+    },
+    {
       "id": "customer-locale-width-32",
       "migration": "m20260721_000105_expand_customer_locale_contract",
       "mode": "none",
