@@ -27,7 +27,8 @@ ProfileService::normalize_handle();
 ProfilesReader;
 ProfileVisibility::Public | ProfileVisibility::Authenticated;
 ForumRevisionIdentity;
-ForumQuoteReference::new();
+impl ForumQuoteReference {}
+pub fn new(target: ForumContentTarget, revision_id: i64) {}
 resolved: ForumResolvedMentions;
 diff_forum_mentions();
 Forum mention replay changed an existing revision projection;
