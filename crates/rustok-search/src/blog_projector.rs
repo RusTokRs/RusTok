@@ -64,6 +64,21 @@ impl BlogSearchProjector {
         result
     }
 
+    pub(crate) async fn delete_tenant(&self, tenant_id: Uuid) -> Result<()> {
+        self.ensure_postgres()?;
+        let started_at = Instant::now();
+        let result = self
+            .delete_tenant_documents_in(&self.db, tenant_id)
+            .await;
+        record_projector_operation(
+            "delete_blog_scope",
+            tenant_id,
+            &result,
+            started_at.elapsed(),
+        );
+        result
+    }
+
     fn ensure_postgres(&self) -> Result<()> {
         if self.db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
