@@ -120,6 +120,8 @@ pub struct GqlForumCategoryTreeNode {
     pub color: Option<String>,
     pub moderated: bool,
     pub allows_topics: bool,
+    pub archived_at: Option<String>,
+    pub is_archived: bool,
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,
@@ -163,6 +165,8 @@ impl From<CategoryTreeNode> for GqlForumCategoryTreeNode {
             color: value.color,
             moderated: value.moderated,
             allows_topics: value.allows_topics,
+            archived_at: value.archived_at,
+            is_archived: value.is_archived,
             topic_count: value.topic_count,
             reply_count: value.reply_count,
             is_subscribed: value.is_subscribed,
@@ -200,6 +204,8 @@ mod tests {
         assert!(sdl.contains("type GqlForumCategoryTree"));
         assert!(sdl.contains("type GqlForumCategoryTreeNode"));
         assert!(sdl.contains("allowsTopics: Boolean!"));
+        assert!(sdl.contains("archivedAt: String"));
+        assert!(sdl.contains("isArchived: Boolean!"));
         assert!(sdl.contains("children: [GqlForumCategoryTreeNode!]!"));
         assert!(sdl.contains("breadcrumbs: [GqlForumCategoryBreadcrumb!]!"));
     }
