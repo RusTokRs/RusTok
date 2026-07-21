@@ -15,8 +15,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_audience_mention, forum_quote, forum_relation_revision, forum_reply, forum_topic,
-    forum_user_mention,
+    forum_audience_mention, forum_quote, forum_relation_revision, forum_reply, forum_reply_body,
+    forum_topic, forum_topic_translation, forum_user_mention,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
@@ -149,6 +149,7 @@ impl MentionRelationService {
         prepared: PreparedMentionRelations,
     ) -> ForumResult<MentionRelationSyncResult> {
         lock_source_in_tx(txn, prepared.tenant_id, prepared.target).await?;
+        ensure_prepared_matches_source_in_tx(txn, &prepared).await?;
         let latest = latest_revision_in_tx(
             txn,
             prepared.tenant_id,
@@ -309,6 +310,55 @@ impl ProjectionSnapshot {
                 .collect(),
         }
     }
+}
+
+async fn ensure_prepared_matches_source_in_tx(
+    txn: &DatabaseTransaction,
+    prepared: &PreparedMentionRelations,
+) -> ForumResult<()> {
+    let (body, body_format) = match prepared.target.kind() {
+        ForumContentTargetKind::Topic => {
+            let row = forum_topic_translation::Entity::find()
+                .filter(forum_topic_translation::Column::TenantId.eq(prepared.tenant_id))
+                .filter(forum_topic_translation::Column::TopicId.eq(prepared.target.id()))
+                .filter(forum_topic_translation::Column::Locale.eq(&prepared.locale))
+                .one(txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum relation source translation is unavailable".to_string(),
+                    )
+                })?;
+            (row.body, row.body_format)
+        }
+        ForumContentTargetKind::Reply => {
+            let row = forum_reply_body::Entity::find()
+                .filter(forum_reply_body::Column::TenantId.eq(prepared.tenant_id))
+                .filter(forum_reply_body::Column::ReplyId.eq(prepared.target.id()))
+                .filter(forum_reply_body::Column::Locale.eq(&prepared.locale))
+                .one(txn)
+                .await?
+                .ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum relation source body is unavailable".to_string(),
+                    )
+                })?;
+            (row.body, row.body_format)
+        }
+    };
+    let fingerprint = projection_fingerprint(
+        &body_format,
+        &body,
+        prepared.resolved.users(),
+        prepared.resolved.audiences(),
+        &prepared.quotes,
+    );
+    if fingerprint != prepared.projection_fingerprint {
+        return Err(ForumError::Validation(
+            "Prepared Forum relation projection does not match persisted source body".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 async fn latest_revision_in_tx(
