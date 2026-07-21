@@ -107,7 +107,8 @@
         "fn ensure_context(&self, context: &PortContext)",
         "context.tenant_id.as_str()",
         "context.actor.id.as_str()",
-        "self.ensure_context(context)?"
+        "self.ensure_context(context)?",
+        "transport::fetch_page(\n            Some(self.token.clone()),\n            Some(self.tenant_slug.clone()),\n            self.page_id.clone(),"
       ],
       "persisted_result_marker": "PageBuilderProjectSaveResult",
       "forbidden_symbols": [
@@ -123,7 +124,7 @@
           "PreviewPageBuilderInput::new",
           "let active_page_index = controller.active_page_index()",
           "document.project.pages = document",
-          "preview_request.set(Some((project_hash, active_page_index)))",
+          "set(Some((project_hash, active_page_index)))",
           "PageBuilderCapabilityResponse::Preview(response)",
           "expected != (current.1, current.2)",
           "project changed while the server preview was rendering",
