@@ -48,14 +48,34 @@ ${helpers.map((name) => name.startsWith("Forum") || name.endsWith("Snapshot") ? 
 `;
 }
 
-function uiSource({ rawApi = false, rawService = false, rawBusy = false, omitCoreImport = false } = {}) {
+function modelSource({ modelUsesLeptos = false } = {}) {
+  return `
+${modelUsesLeptos ? "use leptos::prelude::*;" : ""}
+pub struct CategoryTreeResponse;
+pub enum CategoryDropPlacement { Before, Inside, RootEnd }
+pub struct CategoryMoveRequest;
+pub fn category_drop_move_request() {}
+pub fn into_flat_items() {}
+`;
+}
+
+function uiSource({
+  rawApi = false,
+  rawService = false,
+  rawBusy = false,
+  omitCoreImport = false,
+  flatCategoryRead = false,
+} = {}) {
   return `
 ${omitCoreImport ? "" : "use crate::core::{forum_admin_category_matrix_labels, forum_admin_category_form_labels, forum_admin_topic_stream_labels, forum_admin_topic_form_labels, forum_admin_reply_preview_labels, forum_admin_busy_key, forum_admin_form_error_message, forum_admin_transport_error_message, category_select_options, forum_admin_topic_tag_count_label, forum_admin_editing_thread_label, forum_admin_position_value, forum_admin_sidebar_category_class, forum_admin_status_badge_class, forum_admin_tag_chips, forum_admin_title_envelope_view_model, forum_admin_placeholder_policy, forum_admin_seo_copy_labels, forum_admin_delete_outcome, CategoryFormSnapshot, TopicFormSnapshot, forum_admin_moderator_notes_copy_labels, forum_admin_sidebar_copy_labels, forum_admin_metric_accent_class, forum_admin_action_button_class};"}
 use crate::transport;
+use crate::ui::category_dnd::CategoryDndGrid;
 
 pub mod leptos {
   pub fn ForumAdmin() {
-    let _ = super::transport::fetch_categories;
+    let _ = super::transport::fetch_category_tree;
+    let _ = CategoryDndGrid;
+    ${flatCategoryRead ? "let _ = super::transport::fetch_categories(token_value, tenant_value, locale);" : ""}
     ${rawApi ? "let _ = api::fetch_categories;" : ""}
     ${rawService ? "let _ = ForumService;" : ""}
     ${rawBusy ? "let _ = \"category:save\";" : ""}
@@ -64,10 +84,36 @@ pub mod leptos {
 `;
 }
 
+function categoryDndSource({ dndUpdateBypass = false } = {}) {
+  return `
+use crate::model::{category_drop_move_request, CategoryDropPlacement};
+use crate::transport;
+
+pub fn CategoryDndGrid() {
+  let _ = CategoryDropPlacement::Before;
+  let _ = CategoryDropPlacement::Inside;
+  let _ = CategoryDropPlacement::RootEnd;
+  let _ = "on:dragstart";
+  let _ = "on:drop";
+  let _ = category_drop_move_request;
+  let _ = transport::move_category;
+  ${dndUpdateBypass ? "let _ = transport::update_category(category_id);" : ""}
+}
+`;
+}
+
 function transportSource() {
   return `
+mod category_tree_graphql_adapter;
+mod category_tree_rest_adapter;
 mod graphql_adapter;
 mod rest_adapter;
+pub async fn fetch_category_tree() {
+  match category_tree_graphql_adapter::fetch_category_tree().await {
+    Ok(tree) => Ok(tree),
+    Err(_) => category_tree_rest_adapter::fetch_category_tree().await,
+  }
+}
 pub async fn fetch_categories() {
   match graphql_adapter::fetch_categories().await {
     Ok(categories) => Ok(categories),
@@ -119,6 +165,20 @@ ${rawPlacementBypass ? "fn bypass() { let _ = position: Some(draft.position); }"
 `;
 }
 
+function categoryTreeGraphqlAdapterSource() {
+  return `
+const MAX_CATEGORY_TREE_DEPTH: u8 = 16;
+const QUERY: &str = "forumCategoryTree archived_at: archivedAt";
+pub async fn fetch_category_tree() {}
+`;
+}
+
+function categoryTreeRestAdapterSource() {
+  return `
+pub async fn fetch_category_tree() { let _ = "/categories/tree"; }
+`;
+}
+
 function packageJsonSource({ omitPackageScript = false, omitAggregateForumTest = false } = {}) {
   const scripts = {
     ...(omitPackageScript ? {} : { "test:verify:forum:admin-boundary": "node scripts/verify/verify-forum-admin-boundary.test.mjs" }),
@@ -133,15 +193,23 @@ function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-forum-boundary-"));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/core.rs", coreSource(options));
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/model.rs", modelSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/ui/category_dnd.rs", categoryDndSource(options));
   writeFixtureFile(root, "crates/rustok-forum/admin/src/transport.rs", transportSource());
   writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource());
   writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/rest_adapter.rs", restAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/category_tree_graphql_adapter.rs", categoryTreeGraphqlAdapterSource());
+  writeFixtureFile(root, "crates/rustok-forum/admin/src/transport/category_tree_rest_adapter.rs", categoryTreeRestAdapterSource());
   if (options.legacyApi) writeFixtureFile(root, "crates/rustok-forum/admin/src/api.rs", "use reqwest;\n");
-  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs");
+  writeFixtureFile(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-admin-boundary.mjs interactive admin drag-and-drop");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-admin-boundary.mjs forum-wave1-rollout-evidence.json");
   writeFixtureFile(root, "package.json", packageJsonSource(options));
-  writeFixtureFile(root, "scripts/verify/verify-forum-admin-boundary.test.mjs", "passes canonical fixture\nrejects Leptos-specific core\nrejects raw api calls from UI\nrejects legacy admin api module\nrejects raw busy-key strings from UI\nrejects missing package fixture script\n");
+  writeFixtureFile(
+    root,
+    "scripts/verify/verify-forum-admin-boundary.test.mjs",
+    "passes canonical fixture\nrejects Leptos-specific core\nrejects raw api calls from UI\nrejects legacy admin api module\nrejects raw busy-key strings from UI\nrejects flat category hierarchy reads\nrejects DnD generic update bypass\nrejects missing package fixture script\n",
+  );
   return root;
 }
 
@@ -201,6 +269,20 @@ test("forum admin boundary verifier rejects generic category position bypass", (
   withTempFixture({ rawPlacementBypass: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must not bypass placement owner commands/);
+  });
+});
+
+test("forum admin boundary verifier rejects flat category hierarchy reads", () => {
+  withTempFixture({ flatCategoryRead: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must not be reconstructed from the flat compatibility list/);
+  });
+});
+
+test("forum admin boundary verifier rejects DnD generic update bypass", () => {
+  withTempFixture({ dndUpdateBypass: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DnD must not bypass the transport owner move command/);
   });
 });
 

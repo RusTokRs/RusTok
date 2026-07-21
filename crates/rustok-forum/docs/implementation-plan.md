@@ -194,7 +194,7 @@ at the end of this file remain authoritative.
 | `FORUM-01` | `done` | Tenant-composite forum relation integrity and platform locale width. |
 | `FORUM-02` | `done` | Typed topic/reply lifecycle, tombstone and revision fields. |
 | `FORUM-03` | `done` | Atomic category owner writes and translation persistence. |
-| `FORUM-04` | `in_progress` | FORUM-04A-E deliver bounded hierarchy, atomic placement, write guards, admin transport and topic policy; FORUM-04F adds atomic subtree archive/restore. Interactive drag-and-drop remains. |
+| `FORUM-04` | `in_progress` | FORUM-04A-G implement the bounded tree, atomic placement, write guards, topic policy, subtree lifecycle and canonical-tree admin drag-and-drop. Maintainer-run verification remains. |
 | `FORUM-05` | `done` | Publication-aware serialized counters with database safety guards. |
 | `FORUM-06` | `done` | Locked-topic and pending/publication semantics are explicit owner workflows. |
 | `FORUM-07` | `done` | Monotonic per-topic reply positions and uniqueness constraints. |
@@ -398,10 +398,18 @@ consume are stable.
 - PostgreSQL and SQLite reject active children beneath archived parents, partial restore and new topic placement in archived categories;
 - existing topics are preserved and shared PostgreSQL/SQLite scenarios cover archive, restore, tenant isolation and direct-write guards.
 
+### Delivered in `FORUM-04G`
+
+- forum-admin loads the bounded canonical category tree through GraphQL-first transport with REST fallback instead of reconstructing hierarchy from the flat compatibility list;
+- the tree is flattened in deterministic preorder with `parent_id`, `depth`, `position`, topic policy and archive state retained for rendering and drop planning;
+- interactive drag-and-drop supports moving before a sibling, nesting inside a category and moving to the end of the root set;
+- pure drop planning rejects no-op, self/subtree cycles and active moves beneath archived categories before transport execution;
+- every accepted drop calls the existing owner `move_category` command and refreshes the canonical tree; generic category update is never used;
+- the forum-admin boundary verifier and fixtures reject flat hierarchy reads and DnD placement bypasses.
+
 ### Remaining scope
 
-- wire interactive admin drag-and-drop UI to the existing owner-command
-  transport facade, never direct row writes.
+- run the maintainer verification commands below and promote `FORUM-04` to `done` when they pass.
 
 ### Definition of done
 
