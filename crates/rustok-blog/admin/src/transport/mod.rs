@@ -1,6 +1,9 @@
 mod graphql_adapter;
+mod moderation_adapter;
 
-use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
+use crate::model::{
+    BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
+};
 pub use graphql_adapter::ApiError;
 
 pub async fn fetch_posts(
@@ -74,4 +77,27 @@ pub async fn delete_post(
     id: String,
 ) -> Result<bool, ApiError> {
     graphql_adapter::delete_post(token, tenant_slug, id).await
+}
+
+pub async fn fetch_moderation_comments(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    post_id: String,
+    locale: Option<String>,
+) -> Result<BlogModerationCommentList, ApiError> {
+    moderation_adapter::fetch_comments(token, tenant_slug, post_id, locale).await
+}
+
+pub async fn moderate_comment(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    comment_id: String,
+    status: BlogModerationStatus,
+    locale: Option<String>,
+) -> Result<bool, ApiError> {
+    moderation_adapter::moderate_comment(token, tenant_slug, comment_id, status, locale).await
+}
+
+pub fn is_moderation_contract_unavailable(error: &ApiError) -> bool {
+    moderation_adapter::is_contract_unavailable(error)
 }
