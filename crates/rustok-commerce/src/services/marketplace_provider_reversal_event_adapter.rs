@@ -3,16 +3,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset};
-use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use rustok_marketplace_ledger::{
     MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
 };
 use rustok_payment::entities::provider_event;
 use rustok_payment::{
-    PaymentProviderEventApplyError, PaymentProviderEventContext,
+    PROVIDER_EVENT_PROCESSED, PaymentProviderEventApplyError, PaymentProviderEventContext,
     PaymentProviderProcessedEventObserver, PaymentProviderWebhookResult, PaymentService,
-    PROVIDER_EVENT_PROCESSED,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
@@ -214,8 +213,51 @@ impl MarketplaceProviderReversalEventAdapter {
         })?;
         let facts = parse_reversal_facts(metadata)?;
         let amount = parse_decimal(metadata, "amount")?;
-        let normalized_currency = parse_currency(metadata, "currency_code")?;
-        let collection_id = parse_uuid(metadata, "collection_id")?;
+        let normalized_currency = parse_currency_map(metadata, "currency_code")?;
+
+        let (kind, source_id, collection_id) = match event.event_type.as_str() {
+            REFUND_COMPLETED_EVENT => {
+                let refund_id = parse_uuid_map(metadata, "refund_id")?;
+                let refund = self
+                    .payment_service
+                    .get_refund(context.tenant_id, refund_id)
+                    .await?;
+                if refund.status != "refunded"
+                    || refund.amount != amount
+                    || !refund
+                        .currency_code
+                        .eq_ignore_ascii_case(normalized_currency.as_str())
+                    || facts.source_id != refund.id
+                {
+                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
+                        "provider event {} does not match authoritative refunded owner state",
+                        context.event_id
+                    )));
+                }
+                (
+                    MarketplaceLedgerReversalKind::Refund,
+                    refund.id,
+                    refund.payment_collection_id,
+                )
+            }
+            CHARGEBACK_COMPLETED_EVENT => {
+                let collection_id = parse_uuid_map(metadata, "collection_id")?;
+                let chargeback_id = parse_uuid_map(metadata, "chargeback_id")?;
+                if facts.source_id != chargeback_id {
+                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                        "chargeback source identity does not match marketplace reversal facts"
+                            .to_string(),
+                    ));
+                }
+                (
+                    MarketplaceLedgerReversalKind::Chargeback,
+                    chargeback_id,
+                    collection_id,
+                )
+            }
+            _ => unreachable!("supported event checked above"),
+        };
+
         let collection = self
             .payment_service
             .get_collection(context.tenant_id, collection_id)
@@ -226,7 +268,10 @@ impl MarketplaceProviderReversalEventAdapter {
                 collection.id
             ))
         })?;
-        if collection.provider_id.as_deref().is_some_and(|provider| provider != context.provider_id)
+        if collection
+            .provider_id
+            .as_deref()
+            .is_some_and(|provider| provider != context.provider_id.as_str())
         {
             return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
                 "provider event {} belongs to another payment provider",
@@ -246,6 +291,14 @@ impl MarketplaceProviderReversalEventAdapter {
                 context.event_id
             )));
         }
+        if kind == MarketplaceLedgerReversalKind::Chargeback
+            && (collection.status != "captured" || amount > collection.captured_amount)
+        {
+            return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
+                "provider event {} does not match authoritative captured payment state",
+                context.event_id
+            )));
+        }
         let expected_minor = decimal_to_minor_exact(amount, facts.currency_exponent)?;
         let line_total = reversal_line_total(&facts.lines)?;
         if expected_minor != line_total {
@@ -253,47 +306,6 @@ impl MarketplaceProviderReversalEventAdapter {
                 "normalized provider amount {expected_minor} does not match marketplace reversal lines {line_total}"
             )));
         }
-
-        let (kind, source_id) = match event.event_type.as_str() {
-            REFUND_COMPLETED_EVENT => {
-                let refund_id = parse_uuid(metadata, "refund_id")?;
-                let refund = self
-                    .payment_service
-                    .get_refund(context.tenant_id, refund_id)
-                    .await?;
-                if refund.status != "refunded"
-                    || refund.payment_collection_id != collection.id
-                    || refund.amount != amount
-                    || !refund
-                        .currency_code
-                        .eq_ignore_ascii_case(normalized_currency.as_str())
-                    || facts.source_id != refund.id
-                {
-                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                        "provider event {} does not match authoritative refunded owner state",
-                        context.event_id
-                    )));
-                }
-                (MarketplaceLedgerReversalKind::Refund, refund.id)
-            }
-            CHARGEBACK_COMPLETED_EVENT => {
-                if collection.status != "captured" || amount > collection.captured_amount {
-                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                        "provider event {} does not match authoritative captured payment state",
-                        context.event_id
-                    )));
-                }
-                let chargeback_id = parse_uuid(metadata, "chargeback_id")?;
-                if facts.source_id != chargeback_id {
-                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(
-                        "chargeback source identity does not match marketplace reversal facts"
-                            .to_string(),
-                    ));
-                }
-                (MarketplaceLedgerReversalKind::Chargeback, chargeback_id)
-            }
-            _ => unreachable!("supported event checked above"),
-        };
 
         self.inbox
             .ingest_and_process(IngestMarketplaceReversalEvent {
@@ -466,13 +478,6 @@ fn decimal_to_minor_exact(
     })
 }
 
-fn parse_uuid(
-    metadata: &Map<String, Value>,
-    field: &str,
-) -> MarketplaceProviderReversalEventAdapterResult<Uuid> {
-    parse_uuid_map(metadata, field)
-}
-
 fn parse_uuid_map(
     metadata: &Map<String, Value>,
     field: &str,
@@ -493,13 +498,6 @@ fn parse_decimal(
             "normalized provider event field `{field}` must be a decimal string"
         ))
     })
-}
-
-fn parse_currency(
-    metadata: &Map<String, Value>,
-    field: &str,
-) -> MarketplaceProviderReversalEventAdapterResult<String> {
-    parse_currency_map(metadata, field)
 }
 
 fn parse_currency_map(
