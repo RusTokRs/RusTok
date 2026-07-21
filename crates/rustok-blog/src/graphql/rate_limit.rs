@@ -8,7 +8,7 @@ use async_graphql::extensions::{
 use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection, SelectionSet};
 use async_graphql::{ErrorExtensions, FieldError, Pos, Request, Response, ServerResult};
 use async_trait::async_trait;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, header};
 use rustok_api::{has_any_effective_permission, AuthContext, Permission, TenantContext};
 use rustok_telemetry::metrics;
 
@@ -206,6 +206,14 @@ fn error_response(error: FieldError) -> Response {
     Response::from_errors(vec![error.into_server_error(Pos::default())])
 }
 
+fn rate_limited_error_response(error: FieldError, retry_after: u64) -> Response {
+    let mut headers = HeaderMap::new();
+    if let Ok(value) = retry_after.to_string().parse() {
+        headers.insert(header::RETRY_AFTER, value);
+    }
+    error_response(error).http_headers(headers)
+}
+
 #[derive(Clone, Default)]
 pub struct BlogGraphqlRateLimitPolicy {
     limiter: Option<BlogGraphqlRateLimiterHandle>,
@@ -285,7 +293,7 @@ impl Extension for BlogGraphqlRateLimitPolicyExtension {
                         retry_after = exceeded.retry_after,
                         "Rejected rate-limited Blog GraphQL operation"
                     );
-                    return error_response(
+                    return rate_limited_error_response(
                         FieldError::new(format!(
                             "Blog rate limit exceeded. Retry after {} seconds",
                             exceeded.retry_after
@@ -296,6 +304,7 @@ impl Extension for BlogGraphqlRateLimitPolicyExtension {
                             ext.set("limit", exceeded.limit as i64);
                             ext.set("retryAfter", exceeded.retry_after as i64);
                         }),
+                        exceeded.retry_after,
                     );
                 }
                 Err(BlogGraphqlRateLimitError::BackendUnavailable(reason)) => {
@@ -434,6 +443,19 @@ mod tests {
                 BlogGraphqlSurface::Posts,
             ),
             format!("tenant:{tenant_id}:blog:graphql:read:posts:anonymous")
+        );
+    }
+
+    #[test]
+    fn rate_limited_response_sets_retry_after_header() {
+        let response = rate_limited_error_response(FieldError::new("limited"), 17);
+
+        assert_eq!(
+            response
+                .http_headers
+                .get(header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok()),
+            Some("17")
         );
     }
 
