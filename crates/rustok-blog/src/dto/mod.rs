@@ -4,8 +4,8 @@ mod post;
 mod tag;
 
 pub use category::{
-    CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
-    UpdateCategoryInput,
+    CategoryListItem, CategoryListResponse, CategoryResponse, CreateCategoryInput,
+    ListCategoriesFilter, UpdateCategoryInput,
 };
 pub use comment::{
     CommentListItem, CommentResponse, CreateCommentInput, ListCommentsFilter, ModerateCommentInput,
