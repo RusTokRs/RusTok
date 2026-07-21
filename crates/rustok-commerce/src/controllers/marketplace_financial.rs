@@ -309,16 +309,16 @@ pub async fn run_recovery_sweep(
 fn ensure_read_permission(auth: &AuthContext) -> HttpResult<()> {
     ensure_permissions(
         auth,
-        &[Permission::PAYMENTS_READ, Permission::ORDERS_READ],
-        "Permission denied: payments:read or orders:read required",
+        &[Permission::PAYMENTS_READ],
+        "Permission denied: payments:read required",
     )
 }
 
 fn ensure_manage_permission(auth: &AuthContext) -> HttpResult<()> {
     ensure_permissions(
         auth,
-        &[Permission::PAYMENTS_MANAGE, Permission::ORDERS_MANAGE],
-        "Permission denied: payments:manage or orders:manage required",
+        &[Permission::PAYMENTS_MANAGE],
+        "Permission denied: payments:manage required",
     )
 }
 
