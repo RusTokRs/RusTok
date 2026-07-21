@@ -33,6 +33,15 @@ function operationBody(source, operation) {
   return null;
 }
 
+function providerImplementationSource(source, registry, module) {
+  const marker = registry.in_process_provider_impl?.marker;
+  if (!marker) return source;
+
+  const index = source.indexOf(marker);
+  if (index < 0) fail(`${module} provider implementation marker missing: ${marker}`);
+  return source.slice(index);
+}
+
 function registryFallback(registry) {
   if (registry.contract_tests.fallback_smoke.profiles && registry.contract_tests.fallback_smoke.degraded_modes) {
     return {
@@ -56,6 +65,7 @@ export function verifyOwnerFbaRuntimeOrder({ root = defaultRoot, modules = owner
     const registry = json(registryPath);
     const smoke = json(smokePath);
     const source = read(`crates/rustok-${module}/src/ports.rs`);
+    const implementationSource = providerImplementationSource(source, registry, module);
     const fallback = registryFallback(registry);
 
     if (!['in_progress', 'boundary_ready'].includes(registry.status)) fail(`${module} must remain boundary_ready before live execution`);
@@ -73,7 +83,7 @@ export function verifyOwnerFbaRuntimeOrder({ root = defaultRoot, modules = owner
     const operations = registry.ports[0].operations;
     if (!sameSet(smoke.cases.map((entry) => entry.operation), operations)) fail(`${module} operation set drift`);
     for (const testCase of smoke.cases) {
-      const body = operationBody(source, testCase.operation);
+      const body = operationBody(implementationSource, testCase.operation);
       if (!body) fail(`${module}.${testCase.operation} implementation body missing`);
       let previous = -1;
       for (const marker of testCase.source_order) {
