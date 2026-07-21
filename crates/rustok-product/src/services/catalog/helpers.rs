@@ -1,5 +1,5 @@
 use rust_decimal::prelude::ToPrimitive;
-use rustok_api::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
 use rustok_commerce_foundation::dto::{
     ProductOptionTranslationInput, ProductOptionTranslationResponse,
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
@@ -9,8 +9,8 @@ use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend,
-    EntityTrait, QueryFilter, QueryOrder, Value as SqlValue,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, Value as SqlValue, sea_query::Expr,
 };
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -770,99 +770,6 @@ pub fn product_channel_visibility_condition(
             ))
         }
     }
-}
-
-pub async fn load_available_inventory_by_variant_for_public_channel(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    variant_ids: &[Uuid],
-    public_channel_slug: Option<&str>,
-) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
-    if variant_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let inventory_items = entities::inventory_item::Entity::find()
-        .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
-        .all(db)
-        .await?;
-    if inventory_items.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let item_to_variant: HashMap<Uuid, Uuid> = inventory_items
-        .iter()
-        .map(|item| (item.id, item.variant_id))
-        .collect();
-    let levels = entities::inventory_level::Entity::find()
-        .filter(
-            entities::inventory_level::Column::InventoryItemId
-                .is_in(item_to_variant.keys().copied()),
-        )
-        .all(db)
-        .await?;
-    if levels.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let locations = entities::stock_location::Entity::find()
-        .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-        .filter(entities::stock_location::Column::DeletedAt.is_null())
-        .filter(
-            entities::stock_location::Column::Id
-                .is_in(levels.iter().map(|level| level.location_id)),
-        )
-        .all(db)
-        .await?;
-    let visible_location_ids = locations
-        .into_iter()
-        .filter(|location| {
-            is_metadata_visible_for_public_channel(&location.metadata, public_channel_slug)
-        })
-        .map(|location| location.id)
-        .collect::<HashSet<_>>();
-
-    let mut available_by_variant = HashMap::new();
-    for level in levels {
-        if !visible_location_ids.contains(&level.location_id) {
-            continue;
-        }
-
-        if let Some(variant_id) = item_to_variant.get(&level.inventory_item_id) {
-            *available_by_variant.entry(*variant_id).or_insert(0) +=
-                level.stocked_quantity - level.reserved_quantity;
-        }
-    }
-
-    Ok(available_by_variant)
-}
-
-pub async fn apply_public_channel_inventory_to_product(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    product: &mut ProductResponse,
-    public_channel_slug: Option<&str>,
-) -> Result<(), sea_orm::DbErr> {
-    let variant_ids = product
-        .variants
-        .iter()
-        .map(|variant| variant.id)
-        .collect::<Vec<_>>();
-    let available_by_variant = load_available_inventory_by_variant_for_public_channel(
-        db,
-        tenant_id,
-        &variant_ids,
-        public_channel_slug,
-    )
-    .await?;
-
-    for variant in &mut product.variants {
-        let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);
-        variant.inventory_quantity = available_inventory;
-        variant.in_stock = available_inventory > 0 || variant.inventory_policy == "continue";
-    }
-
-    Ok(())
 }
 
 pub async fn find_published_product_id_by_handle(
