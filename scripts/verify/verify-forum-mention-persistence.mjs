@@ -23,6 +23,12 @@ function requireText(source, marker, message) {
   if (!source.includes(marker)) failures.push(message);
 }
 
+function requireOrder(source, first, second, message) {
+  const firstIndex = source.indexOf(first);
+  const secondIndex = source.indexOf(second);
+  if (firstIndex < 0 || secondIndex < 0 || firstIndex >= secondIndex) failures.push(message);
+}
+
 function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
@@ -86,6 +92,12 @@ for (const marker of [
 ]) {
   requireText(service, marker, `${servicePath}: missing owner marker ${marker}`);
 }
+requireOrder(
+  service,
+  "validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;",
+  "let revision = forum_relation_revision::ActiveModel",
+  `${servicePath}: quote targets must be validated before the first relation write`,
+);
 
 reject(
   service,
@@ -107,6 +119,7 @@ for (const marker of [
   "relation_revision_replay_diff_quotes_and_guards_are_atomic",
   "identical replay should persist idempotently",
   "cross-tenant quote revision must fail closed",
+  "quote validation must run before the first relation write",
   "persisted mention rows must be immutable",
 ]) {
   requireText(tests, marker, `${testPath}: missing persistence coverage ${marker}`);
