@@ -25,11 +25,9 @@ use rustok_page_builder::render::PageBuilderRenderer;
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::service::{
-    PageBuilderProjectStore, PageBuilderRenderingAdapter, PageBuilderRequestAuth,
-    PageBuilderServiceError, PageBuilderServiceResult,
+    PageBuilderProjectSaveResult, PageBuilderProjectStore, PageBuilderRenderingAdapter,
+    PageBuilderRequestAuth, PageBuilderServiceError, PageBuilderServiceResult,
 };
-#[cfg(feature = "ssr")]
-use std::sync::Mutex;
 #[cfg(feature = "ssr")]
 use std::time::Duration;
 
@@ -124,7 +122,6 @@ async fn execute_publish(
         input.page_id, input.revision_id
     ));
 
-    let persisted_result = Arc::new(Mutex::new(None::<PublishPageBuilderResult>));
     let store = PagesPageBuilderProjectStore {
         token,
         tenant_slug,
@@ -132,7 +129,6 @@ async fn execute_publish(
         page_id: snapshot.page_id,
         default_locale: snapshot.default_locale,
         on_saved,
-        persisted_result: Arc::clone(&persisted_result),
     };
     let handlers = compose_fly_page_builder_handlers(
         store,
@@ -140,7 +136,7 @@ async fn execute_publish(
         BuilderCapabilityFlags::default(),
     )
     .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-    let service_result = match handlers
+    match handlers
         .handle(
             &context,
             &auth,
@@ -149,31 +145,11 @@ async fn execute_publish(
         .await
         .map_err(facade_service_error)?
     {
-        PageBuilderCapabilityResponse::Publish(result) => result,
-        _ => {
-            return Err(PageBuilderAdminFacadeError::new(
-                "Page Builder composition returned an unexpected capability response",
-            ));
-        }
-    };
-
-    let persisted_result = persisted_result
-        .lock()
-        .map_err(|_| PageBuilderAdminFacadeError::new("Pages save state lock was poisoned"))?
-        .take()
-        .ok_or_else(|| {
-            PageBuilderAdminFacadeError::new(
-                "Page Builder service completed without a persisted Pages document",
-            )
-        })?;
-    if service_result.page_id != persisted_result.page_id {
-        return Err(PageBuilderAdminFacadeError::new(format!(
-            "Page Builder service returned page `{}`, but Pages persisted `{}`",
-            service_result.page_id, persisted_result.page_id
-        )));
+        response @ PageBuilderCapabilityResponse::Publish(_) => Ok(response),
+        _ => Err(PageBuilderAdminFacadeError::new(
+            "Page Builder composition returned an unexpected capability response",
+        )),
     }
-
-    Ok(PageBuilderCapabilityResponse::Publish(persisted_result))
 }
 
 #[cfg(not(feature = "ssr"))]
@@ -305,7 +281,6 @@ struct PagesPageBuilderProjectStore {
     page_id: String,
     default_locale: String,
     on_saved: SavedHandler,
-    persisted_result: Arc<Mutex<Option<PublishPageBuilderResult>>>,
 }
 
 #[cfg(feature = "ssr")]
@@ -371,7 +346,7 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         page_id: &str,
         revision_id: &str,
         project_data: Value,
-    ) -> PageBuilderServiceResult<()> {
+    ) -> PageBuilderServiceResult<PageBuilderProjectSaveResult> {
         self.ensure_context(context)?;
         self.ensure_page_id(page_id)?;
         let current_page = transport::fetch_page(
@@ -409,16 +384,13 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
         let revision_id = persisted_revision(&saved_page)
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
-        let result = PublishPageBuilderResult {
+        let result = PageBuilderProjectSaveResult {
             page_id: saved_page.id.clone(),
             revision_id,
             published: saved_page.status.eq_ignore_ascii_case("published"),
         };
-        *self.persisted_result.lock().map_err(|_| {
-            PageBuilderServiceError::Runtime("Pages save state lock was poisoned".into())
-        })? = Some(result);
         (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
-        Ok(())
+        Ok(result)
     }
 }
 
