@@ -12,7 +12,11 @@ use rustok_product::{
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
-use std::{collections::{BTreeSet, HashMap}, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap},
+    sync::Arc,
+    time::Duration,
+};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -394,9 +398,17 @@ fn build_marketplace_plan_lines(
             }
             continue;
         };
+        let expected_subtotal = i64::from(line.quantity)
+            .checked_mul(snapshot.unit_amount)
+            .ok_or_else(|| {
+                CheckoutError::Validation(format!(
+                    "Typed marketplace snapshot subtotal overflow for cart line {}",
+                    line.id
+                ))
+            })?;
         if line.product_id != Some(snapshot.master_product_id)
             || line.variant_id != Some(snapshot.master_variant_id)
-            || i64::from(line.quantity) * snapshot.unit_amount != snapshot.subtotal_amount
+            || expected_subtotal != snapshot.subtotal_amount
         {
             return Err(CheckoutError::Validation(format!(
                 "Cart line {} no longer matches its typed marketplace snapshot",
@@ -419,13 +431,15 @@ fn build_marketplace_plan_lines(
 }
 
 fn strip_marketplace_identity(metadata: Value) -> Value {
-    let Value::Object(mut metadata) = metadata else {
-        return metadata;
-    };
-    metadata.remove("marketplace");
-    metadata.remove("seller");
-    metadata.remove("seller_id");
-    Value::Object(metadata)
+    match metadata {
+        Value::Object(mut metadata) => {
+            metadata.remove("marketplace");
+            metadata.remove("seller");
+            metadata.remove("seller_id");
+            Value::Object(metadata)
+        }
+        metadata => metadata,
+    }
 }
 
 fn build_fulfillment_plans(
