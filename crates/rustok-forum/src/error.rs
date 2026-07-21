@@ -96,7 +96,7 @@ impl ForumError {
 
     pub const fn stable_code(&self) -> &'static str {
         match self {
-            Self::CapabilityUnavailable { code, .. } => code,
+            Self::CapabilityUnavailable { code, .. } => *code,
             Self::CapabilityFailure { .. } => "FORUM_CAPABILITY_FAILURE",
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
