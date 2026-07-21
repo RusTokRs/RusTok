@@ -39,9 +39,11 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_menu_bindings_menu")
-                            .from(MenuBindings::Table, MenuBindings::MenuId)
-                            .to(Menus::Table, Menus::Id)
+                            .name("fk_menu_bindings_tenant_menu")
+                            .from(MenuBindings::Table, MenuBindings::TenantId)
+                            .from_col(MenuBindings::MenuId)
+                            .to(Menus::Table, Menus::TenantId)
+                            .to_col(Menus::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -99,4 +101,5 @@ enum MenuBindings {
 enum Menus {
     Table,
     Id,
+    TenantId,
 }
