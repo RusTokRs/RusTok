@@ -1,18 +1,22 @@
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
+    Action, AuthContext, Permission, Resource, TenantContext,
     graphql::{GraphQLError, require_module_enabled},
-    AuthContext, TenantContext, has_any_effective_permission,
+    has_any_effective_permission,
 };
-use rustok_api::{Action, Permission, Resource};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CreatePageInput, PageBodyInput, PageService, PageTranslationInput, UpdatePageInput};
+use crate::{
+    CreatePageInput, PageBodyInput, PageService, PageTranslationInput, PagesError,
+    PatchPageMetadataInput, SavePageDocumentInput,
+};
 
 use super::types::*;
 
 const MODULE_SLUG: &str = "pages";
+const PAGE_METADATA_VERSION_CONFLICT: &str = "PAGE_METADATA_VERSION_CONFLICT";
 
 #[derive(Default)]
 pub struct PagesMutation;
@@ -44,36 +48,25 @@ impl PagesMutation {
                     translations: input
                         .translations
                         .into_iter()
-                        .map(|translation| PageTranslationInput {
-                            locale: translation.locale,
-                            title: translation.title,
-                            slug: translation.slug,
-                            meta_title: translation.meta_title,
-                            meta_description: translation.meta_description,
-                        })
+                        .map(page_translation_input)
                         .collect(),
                     template: input.template,
-                    body: input.body.map(|body| PageBodyInput {
-                        locale: body.locale,
-                        content: body.content,
-                        format: body.format,
-                        content_json: body.content_json,
-                    }),
+                    body: input.body.map(page_body_input),
                     channel_slugs: input.channel_slugs,
                     publish: input.publish.unwrap_or(false),
                 },
             )
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+            .map_err(map_pages_error)?;
 
         Ok(page.into())
     }
 
-    async fn update_page(
+    async fn patch_page_metadata(
         &self,
         ctx: &Context<'_>,
         id: Uuid,
-        input: UpdateGqlPageInput,
+        input: PatchGqlPageMetadataInput,
         tenant_id: Option<Uuid>,
     ) -> Result<GqlPage> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
@@ -83,41 +76,52 @@ impl PagesMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PageService::new(db.clone(), event_bus.clone());
-        let page = service
-            .update(
+        PageService::new(db.clone(), event_bus.clone())
+            .patch_metadata(
                 tenant_id,
                 page_security(&auth),
                 id,
-                UpdatePageInput {
+                PatchPageMetadataInput {
                     expected_version: input.expected_version,
-                    translations: input.translations.map(|translations| {
-                        translations
-                            .into_iter()
-                            .map(|translation| PageTranslationInput {
-                                locale: translation.locale,
-                                title: translation.title,
-                                slug: translation.slug,
-                                meta_title: translation.meta_title,
-                                meta_description: translation.meta_description,
-                            })
-                            .collect()
-                    }),
+                    translations: input
+                        .translations
+                        .map(|items| items.into_iter().map(page_translation_input).collect()),
                     template: input.template,
                     channel_slugs: input.channel_slugs,
-                    body: input.body.map(|body| PageBodyInput {
-                        locale: body.locale,
-                        content: body.content,
-                        format: body.format,
-                        content_json: body.content_json,
-                    }),
-                    status: None,
                 },
             )
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
 
-        Ok(page.into())
+    async fn save_page_document(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: SaveGqlPageDocumentInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlPage> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .save_document(
+                tenant_id,
+                page_security(&auth),
+                id,
+                SavePageDocumentInput {
+                    expected_revision: input.expected_revision,
+                    body: page_body_input(input.body),
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
     }
 
     async fn publish_page(
@@ -135,13 +139,11 @@ impl PagesMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PageService::new(db.clone(), event_bus.clone());
-        let page = service
+        PageService::new(db.clone(), event_bus.clone())
             .publish_if_current(tenant_id, page_security(&auth), id, expected_version)
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
-        Ok(page.into())
+            .map(Into::into)
+            .map_err(map_pages_error)
     }
 
     async fn unpublish_page(
@@ -159,13 +161,11 @@ impl PagesMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PageService::new(db.clone(), event_bus.clone());
-        let page = service
+        PageService::new(db.clone(), event_bus.clone())
             .unpublish_if_current(tenant_id, page_security(&auth), id, expected_version)
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
-        Ok(page.into())
+            .map(Into::into)
+            .map_err(map_pages_error)
     }
 
     async fn delete_page(
@@ -181,14 +181,49 @@ impl PagesMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PageService::new(db.clone(), event_bus.clone());
-        service
+        PageService::new(db.clone(), event_bus.clone())
             .delete(tenant_id, page_security(&auth), id)
             .await
-            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
-
+            .map_err(map_pages_error)?;
         Ok(true)
     }
+}
+
+fn page_translation_input(input: GqlPageTranslationInput) -> PageTranslationInput {
+    PageTranslationInput {
+        locale: input.locale,
+        title: input.title,
+        slug: input.slug,
+        meta_title: input.meta_title,
+        meta_description: input.meta_description,
+    }
+}
+
+fn page_body_input(input: GqlPageBodyInput) -> PageBodyInput {
+    PageBodyInput {
+        locale: input.locale,
+        content: input.content,
+        format: input.format,
+        content_json: input.content_json,
+    }
+}
+
+fn map_pages_error(error: PagesError) -> async_graphql::Error {
+    let code = match &error {
+        PagesError::VersionConflict { .. } => PAGE_METADATA_VERSION_CONFLICT,
+        PagesError::PageNotFound(_) => "PAGE_NOT_FOUND",
+        PagesError::DuplicateSlug { .. } => "DUPLICATE_SLUG",
+        PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
+        PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",
+        PagesError::Rich(rich) => rich
+            .error_code
+            .as_deref()
+            .unwrap_or("PAGES_OPERATION_FAILED"),
+        _ => "PAGES_OPERATION_FAILED",
+    };
+    async_graphql::Error::new(error.to_string()).extend_with(|_, extensions| {
+        extensions.set("code", code);
+    })
 }
 
 fn page_security(auth: &AuthContext) -> rustok_core::SecurityContext {

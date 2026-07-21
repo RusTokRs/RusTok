@@ -6,7 +6,7 @@ mod rbac;
 pub mod scenario_baseline;
 
 pub use menu::MenuService;
-pub use page::PageService;
+pub use page::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageService};
 pub use page_builder_artifact::{PageBuilderArtifactService, PublishedLandingArtifact};
 pub use scenario_baseline::{
     PageBuilderScenarioBaselineService, SaveIfCurrentScenarioBaselineRequest,

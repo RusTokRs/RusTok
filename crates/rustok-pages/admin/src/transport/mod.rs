@@ -6,6 +6,7 @@ use crate::model::{
     CreatePageDraft, PageBuilderScenarioReleaseStatus, PageDetail, PageList, PageMutationResult,
 };
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use serde_json::Value;
 
 pub type TransportError = graphql_adapter::ApiError;
 
@@ -76,13 +77,48 @@ pub async fn create_page(
     graphql_adapter::create_page(token, tenant_slug, draft).await
 }
 
-pub async fn update_page(
+pub async fn patch_page_metadata(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    draft: CreatePageDraft,
-) -> Result<PageMutationResult, TransportError> {
-    graphql_adapter::update_page(token, tenant_slug, id, draft).await
+    expected_version: i32,
+    locale: String,
+    title: String,
+    slug: String,
+    template: Option<String>,
+    channel_slugs: Vec<String>,
+) -> Result<PageDetail, TransportError> {
+    graphql_adapter::patch_page_metadata(
+        token,
+        tenant_slug,
+        id,
+        expected_version,
+        locale,
+        title,
+        slug,
+        template,
+        channel_slugs,
+    )
+    .await
+}
+
+pub async fn save_page_document(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    locale: String,
+    project_data: Value,
+) -> Result<PageDetail, TransportError> {
+    graphql_adapter::save_page_document(
+        token,
+        tenant_slug,
+        id,
+        expected_revision,
+        locale,
+        project_data,
+    )
+    .await
 }
 
 pub async fn publish_page(

@@ -1,15 +1,15 @@
 use anyhow::Context;
 use axum::{
+    Json,
     body::Body,
     extract::{Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::Response,
-    Json,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rustok_api::HostRuntimeContext;
-use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_channel::ChannelService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_web::{HttpError, HttpResult};
@@ -20,8 +20,9 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    CreatePageInput, PageBuilderArtifactService, PageResponse, PageService, PagesError,
-    UpdatePageInput,
+    CreatePageInput, PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+    PageBuilderArtifactService, PageResponse, PageService, PagesError, PatchPageMetadataInput,
+    SavePageDocumentInput,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
@@ -52,9 +53,7 @@ impl PagesHttpRuntime {
     fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
     }
-}
 
-impl PagesHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
@@ -217,14 +216,10 @@ pub async fn create_page(
 ) -> HttpResult<(StatusCode, Json<PageResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
     if input.publish {
-        ensure_pages_permission(
-            &auth,
-            Permission::new(Resource::Pages, Action::Publish),
-        )?;
+        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
     }
 
-    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
-    let page = service
+    let page = PageService::new(runtime.db_clone(), runtime.event_bus())
         .create(tenant.id, page_security(&auth), input)
         .await
         .map_err(map_pages_error)?;
@@ -232,39 +227,59 @@ pub async fn create_page(
 }
 
 #[utoipa::path(
-    put,
-    path = "/api/admin/pages/{id}",
+    patch,
+    path = "/api/admin/pages/{id}/metadata",
     tag = "pages",
     params(("id" = Uuid, Path, description = "Page ID")),
-    request_body = UpdatePageInput,
+    request_body = PatchPageMetadataInput,
     responses(
-        (status = 200, description = "Page updated", body = PageResponse),
-        (status = 400, description = "Invalid input"),
+        (status = 200, description = "Page metadata updated", body = PageResponse),
+        (status = 409, description = "Metadata version conflict"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
 )]
-pub async fn update_page(
+pub async fn patch_page_metadata(
     State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-    Json(input): Json<UpdatePageInput>,
+    Json(input): Json<PatchPageMetadataInput>,
 ) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
-    if input.status.is_some() {
-        ensure_pages_permission(
-            &auth,
-            Permission::new(Resource::Pages, Action::Publish),
-        )?;
-    }
-
-    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
-    let page = service
-        .update(tenant.id, page_security(&auth), id, input)
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .patch_metadata(tenant.id, page_security(&auth), id, input)
         .await
-        .map_err(map_pages_error)?;
-    Ok(Json(page))
+        .map(Json)
+        .map_err(map_pages_error)
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/pages/{id}/document",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = SavePageDocumentInput,
+    responses(
+        (status = 200, description = "Page document saved", body = PageResponse),
+        (status = 409, description = "Document revision conflict or published document is immutable"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn save_page_document(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<SavePageDocumentInput>,
+) -> HttpResult<Json<PageResponse>> {
+    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .save_document(tenant.id, page_security(&auth), id, input)
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
 }
 
 #[utoipa::path(
@@ -285,9 +300,7 @@ pub async fn delete_page(
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
-
-    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
-    service
+    PageService::new(runtime.db_clone(), runtime.event_bus())
         .delete(tenant.id, page_security(&auth), id)
         .await
         .map_err(map_pages_error)?;
@@ -303,9 +316,14 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             axum::routing::get(get_page_artifact),
         )
         .route("/api/admin/pages", axum::routing::post(create_page))
+        .route("/api/admin/pages/{id}", axum::routing::delete(delete_page))
         .route(
-            "/api/admin/pages/{id}",
-            axum::routing::put(update_page).delete(delete_page),
+            "/api/admin/pages/{id}/metadata",
+            axum::routing::patch(patch_page_metadata),
+        )
+        .route(
+            "/api/admin/pages/{id}/document",
+            axum::routing::put(save_page_document),
         )
         .with_state(state))
 }
@@ -355,8 +373,28 @@ fn artifact_content_security_policy(css: &str) -> String {
 fn map_pages_error(error: PagesError) -> HttpError {
     let message = error.to_string();
     match error {
-        PagesError::VersionConflict { .. } => {
-            HttpError::new(StatusCode::CONFLICT, "page_version_conflict", message)
+        PagesError::VersionConflict { .. } => HttpError::new(
+            StatusCode::CONFLICT,
+            "page_metadata_version_conflict",
+            message,
+        ),
+        PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(PAGE_DOCUMENT_REVISION_CONFLICT) =>
+        {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "page_document_revision_conflict",
+                message,
+            )
+        }
+        PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(PAGE_PUBLISHED_DOCUMENT_IMMUTABLE) =>
+        {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "page_published_document_immutable",
+                message,
+            )
         }
         PagesError::PageNotFound(_) => HttpError::not_found("page_not_found", message),
         PagesError::Forbidden(_) => HttpError::forbidden("pages_permission_denied", message),
@@ -374,13 +412,12 @@ fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpRe
             "Permission denied: pages:* required",
         ));
     }
-
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{artifact_content_security_policy, etag_matches, ARTIFACT_VARY};
+    use super::{ARTIFACT_VARY, artifact_content_security_policy, etag_matches};
 
     #[test]
     fn artifact_csp_hashes_exact_css() {

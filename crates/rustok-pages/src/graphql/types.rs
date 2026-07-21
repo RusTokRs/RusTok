@@ -66,12 +66,17 @@ pub struct CreateGqlPageInput {
 }
 
 #[derive(InputObject)]
-pub struct UpdateGqlPageInput {
-    pub expected_version: Option<i32>,
+pub struct PatchGqlPageMetadataInput {
+    pub expected_version: i32,
     pub translations: Option<Vec<GqlPageTranslationInput>>,
     pub template: Option<String>,
-    pub body: Option<GqlPageBodyInput>,
     pub channel_slugs: Option<Vec<String>>,
+}
+
+#[derive(InputObject)]
+pub struct SaveGqlPageDocumentInput {
+    pub expected_revision: String,
+    pub body: GqlPageBodyInput,
 }
 
 #[derive(InputObject)]

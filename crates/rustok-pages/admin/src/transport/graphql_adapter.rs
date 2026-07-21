@@ -10,12 +10,13 @@ use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
-const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id status updatedAt translation { locale title slug } } }";
-const UPDATE_PAGE_MUTATION: &str = "mutation UpdatePage($id: UUID!, $input: UpdateGqlPageInput!) { updatePage(id: $id, input: $input) { id status updatedAt translation { locale title slug } } }";
-const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
-const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id status updatedAt translation { locale title slug } } }";
+const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
+const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
+const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
 
 #[derive(Debug, Deserialize)]
@@ -46,9 +47,15 @@ struct PageBuilderScenarioBaselineResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct UpdatePageResponse {
-    #[serde(rename = "updatePage")]
-    update_page: PageMutationResult,
+struct PatchPageMetadataResponse {
+    #[serde(rename = "patchPageMetadata")]
+    patch_page_metadata: PageDetail,
+}
+
+#[derive(Debug, Deserialize)]
+struct SavePageDocumentResponse {
+    #[serde(rename = "savePageDocument")]
+    save_page_document: PageDetail,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,32 +94,40 @@ struct CreatePageVariables {
 }
 
 #[derive(Debug, Serialize)]
-struct UpdatePageVariables {
+struct PageWriteVariables<T> {
     id: String,
-    input: UpdatePageInput,
+    input: T,
 }
 
 #[derive(Debug, Serialize)]
 struct CreatePageInput {
-    translations: Vec<CreatePageTranslationInput>,
+    translations: Vec<PageTranslationWriteInput>,
     template: Option<String>,
-    body: Option<CreatePageBodyInput>,
+    body: Option<PageBodyWriteInput>,
     #[serde(rename = "channelSlugs", skip_serializing_if = "Option::is_none")]
     channel_slugs: Option<Vec<String>>,
     publish: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
-struct UpdatePageInput {
-    translations: Option<Vec<CreatePageTranslationInput>>,
+struct PatchPageMetadataInput {
+    #[serde(rename = "expectedVersion")]
+    expected_version: i32,
+    translations: Option<Vec<PageTranslationWriteInput>>,
     template: Option<String>,
-    body: Option<CreatePageBodyInput>,
     #[serde(rename = "channelSlugs", skip_serializing_if = "Option::is_none")]
     channel_slugs: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
-struct CreatePageTranslationInput {
+struct SavePageDocumentInput {
+    #[serde(rename = "expectedRevision")]
+    expected_revision: String,
+    body: PageBodyWriteInput,
+}
+
+#[derive(Debug, Serialize)]
+struct PageTranslationWriteInput {
     locale: String,
     title: String,
     slug: Option<String>,
@@ -123,7 +138,7 @@ struct CreatePageTranslationInput {
 }
 
 #[derive(Debug, Serialize)]
-struct CreatePageBodyInput {
+struct PageBodyWriteInput {
     locale: String,
     content: String,
     format: Option<String>,
@@ -243,7 +258,7 @@ pub async fn create_page(
         CREATE_PAGE_MUTATION,
         CreatePageVariables {
             input: CreatePageInput {
-                translations: vec![CreatePageTranslationInput {
+                translations: vec![PageTranslationWriteInput {
                     locale: draft.locale.clone(),
                     title: draft.title,
                     slug: Some(draft.slug),
@@ -251,7 +266,7 @@ pub async fn create_page(
                     meta_description: None,
                 }],
                 template: draft.template,
-                body: Some(CreatePageBodyInput {
+                body: Some(PageBodyWriteInput {
                     locale: draft.locale,
                     content: draft.body_content,
                     format: Some(draft.body_format),
@@ -268,39 +283,68 @@ pub async fn create_page(
     Ok(response.create_page)
 }
 
-pub async fn update_page(
+pub async fn patch_page_metadata(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-    draft: CreatePageDraft,
-) -> Result<PageMutationResult, ApiError> {
-    let response: UpdatePageResponse = request(
-        UPDATE_PAGE_MUTATION,
-        UpdatePageVariables {
+    expected_version: i32,
+    locale: String,
+    title: String,
+    slug: String,
+    template: Option<String>,
+    channel_slugs: Vec<String>,
+) -> Result<PageDetail, ApiError> {
+    let response: PatchPageMetadataResponse = request(
+        PATCH_PAGE_METADATA_MUTATION,
+        PageWriteVariables {
             id,
-            input: UpdatePageInput {
-                translations: Some(vec![CreatePageTranslationInput {
-                    locale: draft.locale.clone(),
-                    title: draft.title,
-                    slug: Some(draft.slug),
+            input: PatchPageMetadataInput {
+                expected_version,
+                translations: Some(vec![PageTranslationWriteInput {
+                    locale,
+                    title,
+                    slug: Some(slug),
                     meta_title: None,
                     meta_description: None,
                 }]),
-                template: draft.template,
-                body: Some(CreatePageBodyInput {
-                    locale: draft.locale,
-                    content: draft.body_content,
-                    format: Some(draft.body_format),
-                    content_json: Some(draft.body_content_json),
-                }),
-                channel_slugs: Some(draft.channel_slugs),
+                template,
+                channel_slugs: Some(channel_slugs),
             },
         },
         token,
         tenant_slug,
     )
     .await?;
-    Ok(response.update_page)
+    Ok(response.patch_page_metadata)
+}
+
+pub async fn save_page_document(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    expected_revision: String,
+    locale: String,
+    project_data: Value,
+) -> Result<PageDetail, ApiError> {
+    let response: SavePageDocumentResponse = request(
+        SAVE_PAGE_DOCUMENT_MUTATION,
+        PageWriteVariables {
+            id,
+            input: SavePageDocumentInput {
+                expected_revision,
+                body: PageBodyWriteInput {
+                    locale,
+                    content: String::new(),
+                    format: Some("grapesjs".to_string()),
+                    content_json: Some(project_data),
+                },
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.save_page_document)
 }
 
 pub async fn publish_page(

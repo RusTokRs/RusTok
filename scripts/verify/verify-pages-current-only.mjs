@@ -14,6 +14,7 @@ const forbiddenFiles = [
   "crates/rustok-pages/src/entities/page_block.rs",
   "crates/rustok-pages/src/dto/block.rs",
   "crates/rustok-pages/src/services/block.rs",
+  "crates/rustok-pages/src/services/page/update.rs",
   "apps/next-admin/packages/blog/src/api/pages.ts",
   "apps/next-admin/packages/blog/src/components/page-builder.tsx",
   "apps/next-admin/src/app/dashboard/blog/page-builder/page.tsx",
@@ -21,6 +22,7 @@ const forbiddenFiles = [
 
 const scannedRoots = [
   "crates/rustok-pages/src",
+  "crates/rustok-pages/admin/src",
   "crates/rustok-pages/storefront/src",
   "apps/next-admin/packages/blog/src",
   "apps/next-admin/src/app/dashboard/blog",
@@ -31,6 +33,10 @@ const forbiddenPatterns = [
   [/(^|[^A-Za-z0-9_])BlockService([^A-Za-z0-9_]|$)/, "BlockService runtime service"],
   [/(^|[^A-Za-z0-9_])page_blocks([^A-Za-z0-9_]|$)/, "page_blocks database table"],
   [/addPageBlock|updatePageBlock|deletePageBlock|reorderPageBlocks/, "block mutation API"],
+  [/(^|[^A-Za-z0-9_])UpdatePageInput([^A-Za-z0-9_]|$)/, "universal page update DTO"],
+  [/(^|[^A-Za-z0-9_])UpdateGqlPageInput([^A-Za-z0-9_]|$)/, "universal GraphQL page update DTO"],
+  [/\bupdatePage\s*\(/, "universal GraphQL page mutation"],
+  [/\.update\(\s*tenant_id[\s\S]{0,160}page_id/, "universal PageService update"],
   [/frames\s*:\s*\[\s*\{\s*component/, "frame component-tree mirror"],
 ];
 
@@ -48,9 +54,7 @@ for (const root of scannedRoots) {
     const source = readFileSync(filePath, "utf8");
     const relativePath = path.relative(repoRoot, filePath);
     for (const [pattern, label] of forbiddenPatterns) {
-      if (pattern.test(source)) {
-        failures.push(`${relativePath}: forbidden ${label}`);
-      }
+      if (pattern.test(source)) failures.push(`${relativePath}: forbidden ${label}`);
     }
   }
 }
@@ -67,10 +71,7 @@ function* walk(directory) {
   for (const entry of readdirSync(directory)) {
     const filePath = path.join(directory, entry);
     const stats = statSync(filePath);
-    if (stats.isDirectory()) {
-      yield* walk(filePath);
-    } else if (stats.isFile()) {
-      yield filePath;
-    }
+    if (stats.isDirectory()) yield* walk(filePath);
+    else if (stats.isFile()) yield filePath;
   }
 }
