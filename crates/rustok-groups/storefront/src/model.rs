@@ -1,0 +1,28 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontFilters {
+    pub page: u64,
+    pub per_page: u64,
+    pub search: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontListItem {
+    pub id: String,
+    pub handle: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub visibility: String,
+    pub join_policy: String,
+    pub member_count: u64,
+    pub effective_locale: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontDirectory {
+    pub items: Vec<GroupsStorefrontListItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
