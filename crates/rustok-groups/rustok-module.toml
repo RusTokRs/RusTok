@@ -17,7 +17,7 @@ entry_type = "GroupsModule"
 
 [provides.graphql]
 query = "graphql::GroupsQuery"
-mutation = "graphql::GroupsMutation"
+mutation = "graphql_governance::GroupsMutationRoot"
 
 [provides.admin_ui]
 leptos_crate = "rustok-groups-admin"
