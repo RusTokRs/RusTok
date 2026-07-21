@@ -63,6 +63,7 @@ marketplace_commission = { crate = "rustok-marketplace-commission", source = "pa
 marketplace_ledger = { crate = "rustok-marketplace-ledger", source = "path", path = "crates/rustok-marketplace-ledger", depends_on = ["marketplace_commission"] }
 marketplace_payout = { crate = "rustok-marketplace-payout", source = "path", path = "crates/rustok-marketplace-payout", depends_on = ["marketplace_ledger"] }
 marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation", "marketplace_commission", "marketplace_ledger", "marketplace_payout"] }
+moderation = { crate = "rustok-moderation", source = "path", path = "crates/rustok-moderation" }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
