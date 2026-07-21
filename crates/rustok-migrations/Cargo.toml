@@ -47,7 +47,6 @@ rustok-comments.workspace = true
 rustok-pages.workspace = true
 rustok-seo.workspace = true
 rustok-forum.workspace = true
-rustok-notifications.workspace = true
 rustok-index.workspace = true
 rustok-search.workspace = true
 rustok-taxonomy.workspace = true
