@@ -18,7 +18,7 @@ implementation backlog, FFA/FBA status, integration gates, and release evidence.
 Do not create parallel group roadmaps, phpFox parity documents, remediation plans,
 or duplicated task ledgers. Issues and pull requests are execution records only.
 
-Every pull request that changes Groups behavior must update this plan in the same
+Every change that modifies Groups behavior must update this plan in the same
 change: task status, remaining scope, definition of done, verification evidence,
 and degraded-mode notes.
 
@@ -40,7 +40,7 @@ RusToK ownership boundaries:
 
 ## Current State
 
-The initial owner slice provides:
+The current owner foundation provides:
 
 - module manifest and build-composition metadata;
 - multilingual `groups + group_translations` storage contract;
@@ -50,12 +50,17 @@ The initial owner slice provides:
   `GroupAccessReadPort` boundaries;
 - service operations for create, localized read/list, join/request, leave, and
   feature binding;
-- GraphQL query/mutation roots;
+- `GroupGovernanceCommandPort` with role delegation and atomic ownership transfer;
+- transactional `group_command_receipts` and immutable `group_audit_entries` for
+  governance commands;
+- GraphQL query/mutation roots for the initial group/member/feature foundation;
 - admin/storefront FFA package structure with host locale and dual transports;
 - FBA registry and source guardrail;
 - module-local documentation and platform registry integration.
 
-This is a functional foundation, not full phpFox feature parity.
+This is a functional foundation, not full phpFox feature parity. Governance
+commands are currently public through the typed Rust port only; GraphQL/native UI
+transport is a later slice.
 
 ## FFA/FBA status
 
@@ -66,11 +71,12 @@ This is a functional foundation, not full phpFox feature parity.
   host locale, and thin Leptos binding are present.
 - Storefront evidence: framework-neutral core, selected native/GraphQL transport,
   host locale, and thin Leptos binding are present.
-- Backend evidence: typed ports, request context, stable errors, owner service,
-  and machine-readable registry are present.
+- Backend evidence: typed read/write ports, request context, stable errors, owner
+  services, governance audit/receipt persistence, and machine-readable registry
+  are present.
 - Remaining FBA evidence: runtime provider/consumer order, fallback execution,
-  retry/recovery, and remote-adapter smoke.
-- Last verified at (UTC): not executed in this change.
+  governance concurrency/replay races, retry/recovery, and remote-adapter smoke.
+- Last verified at (UTC): not executed in these changes.
 - Owner: `rustok-groups`.
 
 No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, or
@@ -96,25 +102,27 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     business rules.
 14. Cache, realtime, feed, notifications, and search are accelerators/consumers,
     never correctness authorities.
+15. Governance writes require deadlines and idempotency keys; successful state,
+    command receipt, and immutable audit entry commit in one transaction.
 
 ## Program ledger
 
 | Task | Status | Current result or nearest deliverable |
 | --- | --- | --- |
 | `GROUPS-00` | `done` | Ownership, naming, FFA/FBA, multilingual, privacy, and integration contracts are documented. |
-| `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central docs are connected. |
-| `GROUPS-02` | `in_progress` | Base group, translation, membership, and feature-binding schema/service exist; audit, receipts, and full lifecycle remain. |
-| `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; granular action matrix remains. |
-| `GROUPS-04` | `in_progress` | Owner/admin/moderator/member storage and access decisions exist; role delegation and ownership transfer remain. |
+| `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central navigation are connected. |
+| `GROUPS-02` | `in_progress` | Base schema/service plus governance audit and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, and PostgreSQL evidence remain. |
+| `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed-group discovery/content separation and the complete granular action matrix remain. |
+| `GROUPS-04` | `in_progress` | Typed role delegation and atomic ownership transfer are implemented with audit/receipts; GraphQL/native transports, concurrent-owner proof, and operator recovery remain. |
 | `GROUPS-05` | `planned` | Invitations, invitation links, expiry, token hashing, revocation, and bounded delivery. |
 | `GROUPS-06` | `planned` | Membership questions, answers, rule acknowledgements, application review, and bulk-safety limits. |
 | `GROUPS-07` | `planned` | Bans, temporary restrictions, removal, appeal handoff, and immutable local moderation audit. |
 | `GROUPS-08` | `in_progress` | Versioned namespaced feature bindings exist; provider registry, health, settings schemas, and UI contributions remain. |
 | `GROUPS-09` | `planned` | Media-owned avatar/cover/gallery references and quarantine/deletion reconciliation. |
 | `GROUPS-10` | `planned` | SEO targets, canonical localized routes, aliases, redirects, and secret-group exclusions. |
-| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature surface exists; REST is deferred until an explicit integration contract requires it. |
-| `GROUPS-12` | `in_progress` | Admin FFA shell exists; full category, membership, moderation, settings, and audit workspaces remain. |
-| `GROUPS-13` | `in_progress` | Storefront FFA catalog/detail/member-action shell exists; full navigation, role-aware management, and accessibility remain. |
+| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature surface exists; governance transport and REST remain pending explicit integration demand. |
+| `GROUPS-12` | `in_progress` | Admin FFA shell exists; full category, membership, moderation, settings, governance, and audit workspaces remain. |
+| `GROUPS-13` | `in_progress` | Storefront FFA catalog shell exists; detail routing, role-aware management, and accessibility remain. |
 | `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist; executable provider/consumer and degraded-mode evidence remain. |
 | `GROUPS-15` | `planned` | Forum group-context provider, ACL inheritance, local category binding, and leakage tests. |
 | `GROUPS-16` | `planned` | Blog group-context binding and author/publish policy. |
@@ -132,8 +140,9 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 
 ### Milestone A — owner foundation
 
-Complete `GROUPS-00` through `GROUPS-04`, including transactional ownership
-transfer, command receipts, semantic events, and PostgreSQL integrity tests.
+Complete `GROUPS-00` through `GROUPS-04`, including governance transport,
+transactional ownership transfer, command receipts, semantic events, and
+PostgreSQL integrity/concurrency tests.
 
 ### Milestone B — membership product
 
@@ -159,8 +168,8 @@ observability, performance, security, recovery, and waiver-free runtime evidence
 
 ## Verification
 
-Not executed in the initial commit at the repository owner's request. The expected
-verification sequence is:
+Not executed in the direct-to-`main` implementation changes at the repository
+owner's request. The expected verification sequence is:
 
 ```bash
 cargo fmt --all -- --check
@@ -185,7 +194,8 @@ PostgreSQL verification must eventually cover:
 - concurrent handle creation;
 - concurrent join/leave and member counts;
 - owner transfer and last-owner protection;
-- idempotent command replay;
+- idempotent command replay, key-payload conflicts, and simultaneous first writes;
+- audit/receipt rollback when a governance command fails;
 - secret-group query/search/SEO leakage;
 - feature-provider unavailable/read-only/hidden profiles;
 - event/outbox/inbox retry, replay, and recovery.
@@ -203,4 +213,5 @@ PostgreSQL verification must eventually cover:
    authorities, or hidden fallback-to-legacy behavior.
 7. Do not add group content tables that belong to Wall, Forum, Blog, Pages,
    Marketplace, Media, Events, or Chat.
-8. One task per pull request is preferred after the initial foundation slice.
+8. Direct commits to `main` must remain fast-forward and must never overwrite
+   parallel module work.
