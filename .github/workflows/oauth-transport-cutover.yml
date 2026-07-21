@@ -59,6 +59,7 @@ jobs:
           set -euo pipefail
           rm scripts/maintenance/apply_oauth_transport_cutover.py
           rm .github/workflows/oauth-transport-cutover.yml
+          rm .github/oauth-cutover-trigger
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
