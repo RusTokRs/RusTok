@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `checkout_pre_capture_economics_wired_post_capture_pending`.
+- Runtime integration status: `checkout_pre_capture_economics_checkpointed_post_capture_pending`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -32,6 +32,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Cart-owned typed marketplace line identity/economics storage and FBA ports.
 - [x] Immutable typed marketplace checkout plan with real pre-capture allocation and
   commission assessment hooks.
+- [x] Durable checkout marketplace economics checkpoint with lease-bound admission and
+  replay adoption.
 
 ## Architecture contract
 
@@ -139,6 +141,14 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Compose the in-process allocation command port in storefront staged checkout.
 - [x] Invoke commission assessment after allocation and before payment capture.
 - [x] Compose the commission command port against the same allocation read owner.
+- [x] Persist one immutable `checkout_marketplace_economics_checkpoints` row per checkout
+  operation with order/plan/currency identity, counts, aggregates, and canonical set hashes.
+- [x] Require the current executing checkout lease at `payment_ready` before checkpoint
+  admission.
+- [x] Adopt a matching checkpoint on retry or completed-response replay without repeating
+  allocation or commission owner calls.
+- [x] Classify retryable allocation, commission, and checkpoint storage outages as
+  `retryable_error` instead of forcing compensation.
 
 ### Remaining critical path
 
@@ -150,13 +160,11 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   discounts, or tax change; immutable checkout plan remains the final freeze point.
 - [ ] Replace compatibility `seller_id` metadata used by delivery-group grouping with a
   typed join against cart marketplace snapshots.
-- [ ] Persist the allocation and commission result/checkpoint in the durable checkout
-  operation.
 - [ ] Add allocation cancellation for payment failure, checkout compensation, order
   cancellation, and line cancellation.
 - [ ] Publish allocation created/cancelled events transactionally.
-- [ ] Retain clean/upgraded migration and concurrent one-allocation-per-line PostgreSQL
-  evidence.
+- [ ] Retain clean/upgraded migration, checkpoint replay, lost-response, and concurrent
+  one-allocation-per-line PostgreSQL evidence.
 
 ## Commission
 
@@ -178,6 +186,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   hash.
 - [x] Validate assessment coverage, allocation uniqueness, order-line identity, currency,
   and non-negative economics before capture.
+- [x] Bind the exact assessment allocation set and aggregate economics into the durable
+  checkout checkpoint.
 
 ### Remaining
 
@@ -312,6 +322,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   distribution registry, and server opt-in feature graph.
 - [x] Register allocation and commission providers in the storefront staged checkout
   runtime.
+- [x] Register the commerce-owned marketplace economics checkpoint migration with
+  dependencies on checkout plan, allocation, and commission schemas.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for ledger, payout, and moderation;
   compile-time module registration is not sufficient.
@@ -333,6 +345,8 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
 - [ ] Apply clean and upgraded PostgreSQL migrations.
 - [ ] Run typed snapshot currency/exponent, exact minor-unit conversion, atomic add,
   conflict, and checkout fail-closed scenarios.
+- [ ] Run checkpoint write, exact replay, conflicting evidence, expired lease, process-exit
+  after owner commits, and resume-without-owner-call scenarios.
 - [ ] Run idempotency conflict and lost-response replay scenarios.
 - [ ] Run allocation, commission, ledger, payout, seller, listing, and moderation
   contention scenarios.
@@ -349,7 +363,7 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
    from checkout and allocation.
 3. [x] Wire marketplace allocation and commission assessment into the real pipeline before
    payment capture.
-4. [ ] Add durable allocation/commission checkpoint.
+4. [x] Add durable allocation/commission checkpoint and replay adoption.
 5. [ ] Add durable post-capture financial operation and paid-event inbox.
 6. [ ] Add refund/chargeback ledger reversals and seller balance projections.
 7. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
@@ -370,9 +384,12 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
 - `crates/rustok-cart/src/entities/cart_line_item_marketplace_snapshot.rs`
 - `crates/rustok-cart/src/services/marketplace_snapshot.rs`
 - `crates/rustok-cart/src/marketplace_snapshot.rs`
+- `crates/rustok-commerce/src/entities/checkout_marketplace_economics_checkpoint.rs`
+- `crates/rustok-commerce/src/migrations/m20260721_000001_create_checkout_marketplace_economics_checkpoints.rs`
 - `crates/rustok-commerce/src/services/checkout_order_plan.rs`
 - `crates/rustok-commerce/src/services/checkout_plan_builder.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_allocation.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_commission.rs`
+- `crates/rustok-commerce/src/services/checkout_marketplace_economics.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
