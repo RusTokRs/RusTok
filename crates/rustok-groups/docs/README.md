@@ -14,9 +14,10 @@ FFA, FBA, multilingual storage, tenant isolation, and headless transport rules.
 - localized title, summary, and body;
 - memberships, local role and local membership state;
 - invitation records, token digests, bounded redemption state, and revocation;
+- append-only group semantic source events;
 - feature bindings and provider-specific versioned configuration;
-- group rules, membership questions, bans, owner events, and additional local
-  moderation state as their program slices are completed.
+- group rules, membership questions, bans, and additional local moderation state as
+  their program slices are completed.
 
 ### State owned elsewhere
 
@@ -27,8 +28,8 @@ FFA, FBA, multilingual storage, tenant isolation, and headless transport rules.
 - blog posts and comments;
 - Pages documents and Page Builder artifacts;
 - products, marketplace listings, carts, orders, payments, and fulfillment;
-- notifications inbox, delivery preferences, search projections, feed entries, and
-  analytics.
+- notification inbox, fan-out, preferences, channel delivery, search projections,
+  feed entries, and analytics.
 
 No Groups table has a foreign key to another optional domain module. Cross-domain
 references are logical typed identifiers and are resolved through public ports.
@@ -146,12 +147,16 @@ operations inside one group. Owner services re-check both boundaries.
 ## Invitation contract
 
 `GroupInvitationReadPort` owns manager-visible invitation listings.
-`GroupInvitationCommandPort` owns create, revoke, and accept operations.
+`GroupInvitationCommandPort` owns token-based create, revoke, and accept operations.
+`GroupTargetedInvitationCommandPort` owns authenticated targeted accept-by-ID.
 
 - active owner, administrator, moderator, or platform `groups:manage` authority may
   create, list, and revoke invitations;
-- acceptance requires an authenticated user and either a matching targeted invite
-  or possession of a valid shareable token;
+- token acceptance requires an authenticated user and either a matching targeted
+  invite or possession of a valid shareable token;
+- targeted accept-by-ID requires the authenticated user to be the exact target;
+- wrong-recipient, revoked, expired, exhausted, non-targeted, missing, or inactive
+  targeted IDs return not-found/unavailable semantics;
 - targeted invitations have exactly one use;
 - shareable links are bounded to at most 100 uses;
 - expiry is bounded from 300 seconds to 30 days;
@@ -159,26 +164,59 @@ operations inside one group. Owner services re-check both boundaries.
   successful create response, and stores only a 64-character SHA-256 digest;
 - create replay returns the receipt-backed invitation with `token = null`, so
   plaintext is never persisted in command receipts;
-- revocation is owner state and immediately makes the token unavailable;
-- acceptance locks the invitation row where supported, checks expiry/revocation/use
-  limits and target identity, inserts one unique redemption per user, activates the
-  membership, increments the member count and group version, appends audit, and
-  stores the command receipt in one transaction;
-- Groups does not synchronously send email, push, or notification messages. A future
-  Notifications integration may consume committed owner events without becoming a
-  command dependency.
+- revocation is owner state and immediately makes token and targeted-ID acceptance
+  unavailable;
+- both acceptance paths lock invitation and group rows where supported, check owner
+  policy, insert one unique redemption per user, activate membership, increment
+  member count and group version, append audit, and store a receipt in one
+  transaction;
+- shareable links are never published as notification source events because a
+  consumer cannot reconstruct their one-time plaintext token safely.
 
-Invitation listings never expose token digests. Invalid, expired, exhausted,
-revoked, or wrong-target tokens return the same unavailable result so token state is
-not disclosed. Runtime concurrency, replay, transport parity, and delivery evidence
-remain explicit release gates.
+### Targeted invitation semantic delivery
+
+Targeted creation appends `groups.invitation.targeted_created` to the owner-owned
+`group_domain_events` table through an `AFTER INSERT` database trigger. The invite
+row and event therefore commit or roll back together without requiring a running
+Notifications module.
+
+The event is append-only and contains only:
+
+- `invitation_id`;
+- `group_id`;
+- `target_user_id`;
+- inviter actor identity in the event envelope.
+
+It contains no plaintext token, digest, email address, profile copy, localized
+presentation copy, or external delivery address.
+
+Groups registers `GroupsNotificationSourceProviderFactory` through the neutral
+`rustok-notifications-api` runtime-extension contract. Once materialized by a host
+that includes Notifications, the source provider:
+
+- recognizes only `groups.invitation.targeted_created` revision 1;
+- describes a bounded semantic notification with invitation/group IDs only;
+- resolves at most one recipient, exactly `target_user_id`;
+- returns no recipient for revoked, expired, exhausted, redeemed, missing, or
+  inactive-group invitations;
+- authorizes opening only for that exact recipient;
+- returns the validated internal route
+  `/modules/groups?invitation=<invitation_uuid>`;
+- never exposes token or digest fields.
+
+Notification inbox persistence, fan-out, preference checks, digesting, email/push
+channels, retry scheduling, delivery receipts, and cleanup remain Notifications
+owner responsibilities. Groups creation and acceptance have no synchronous
+Notifications dependency. Runtime source materialization, ingestion, fan-out,
+disabled-module behavior, retry, and recovery evidence remain open gates.
 
 ## FBA contract
 
 `GroupSummaryReadPort`, `GroupMembershipReadPort`, `GroupAccessReadPort`,
 `GroupLocalizationReadPort`, `GroupInvitationReadPort`, `GroupCommandPort`,
-`GroupLocalizationCommandPort`, `GroupInvitationCommandPort`, and
-`GroupGovernanceCommandPort` use `PortContext`, `PortCallPolicy`, and `PortError`.
+`GroupLocalizationCommandPort`, `GroupInvitationCommandPort`,
+`GroupTargetedInvitationCommandPort`, and `GroupGovernanceCommandPort` use
+`PortContext`, `PortCallPolicy`, and `PortError`.
 
 Required context semantics:
 
@@ -192,14 +230,16 @@ Required context semantics:
 - localization row and group version commit in one owner transaction;
 - invitation state, redemption/membership state, receipt, audit, and group version
   commit in one owner transaction;
+- targeted invitation event creation commits in the invitation-owner transaction;
+- notification audience resolution is bounded to one exact recipient;
 - governance state, idempotency receipt, and immutable audit entry commit in one
   owner transaction.
 
 Invitation commands are exposed through typed Rust ports, the final merged
 `graphql_invitations::GroupsQueryRoot` / `GroupsMutationRoot`, and module-owned
 Leptos server functions. All surfaces construct the same `PortContext` fields and
-call `GroupInvitationService`; they do not copy token, role, expiry, or redemption
-policy.
+call the relevant owner service; they do not copy token, role, expiry, target, or
+redemption policy.
 
 Governance commands are exposed through the typed Rust port, the merged
 `graphql_governance::GroupsMutationRoot`, and module-owned Leptos server functions.
@@ -209,6 +249,7 @@ error, replay, and concurrency parity remain evidence gates rather than inferred
 from source presence.
 
 Consumers must not import Groups entities or query Groups tables directly.
+Notifications sees the source only through `NotificationSourceProvider`.
 
 ## FFA contract
 
@@ -225,6 +266,7 @@ transport/native_invitations_adapter.rs
 transport/graphql_adapter.rs
 transport/graphql_invitations_adapter.rs
 ui/leptos.rs
+ui/invitation_acceptance.rs
 ui/localization.rs
 ui/invitations.rs
 ui/root.rs
@@ -243,9 +285,20 @@ a fresh idempotency key for every deliberate mutation. The composed Leptos root
 renders directory, governance, exact-locale translation, and invitation management
 workspaces and calls only the selected transport facade. The create form displays a
 plaintext invitation token only when the owner response supplies it. It does not
-decide local-role, ownership, fallback, token, or redemption policy. Group/member
-pickers, explicit confirmation, audit history, accessibility evidence, user-facing
-acceptance UI, and executed transport parity remain later work.
+decide local-role, ownership, fallback, token, or redemption policy.
+
+The storefront acceptance UI supports two explicit flows:
+
+- `invite=<opaque>` prepares token acceptance and removes the token query parameter
+  on submit;
+- `invitation=<uuid>` prepares exact-recipient targeted acceptance from an
+  authorized notification route and removes the identifier query parameter on
+  submit.
+
+Native and GraphQL adapters call the same owner ports and never fall back to each
+other. The UI never renders plaintext tokens as result content. Group/member
+pickers, explicit governance confirmation, audit history, accessibility execution,
+and transport parity remain later work.
 
 ## Integration
 
@@ -276,10 +329,17 @@ cargo check -p rustok-groups-storefront --features ssr
 node scripts/verify/verify-groups-boundary.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
+node scripts/verify/verify-groups-invitation-acceptance-ui.mjs
+node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
+
+These commands were not executed in this source slice. Migration execution,
+provider materialization, targeted invitation notification runtime, transport
+parity, concurrency, security, retry, recovery, and disabled-Notifications evidence
+remain unclaimed.
 
 ## Related Documents
 
