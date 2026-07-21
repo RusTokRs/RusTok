@@ -11,13 +11,19 @@ use uuid::Uuid;
 use crate::{
     CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuItemInput,
     MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput, PageBodyInput,
-    PageService, PageTranslationInput, PagesError, PatchPageMetadataInput, SavePageDocumentInput,
+    PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
+    PublishPageInput, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
+    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
+    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
 };
 
 use super::types::*;
 
 const MODULE_SLUG: &str = "pages";
 const PAGE_METADATA_VERSION_CONFLICT: &str = "PAGE_METADATA_VERSION_CONFLICT";
+const PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND: &str =
+    "PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND";
 
 #[derive(Default)]
 pub struct PagesMutation;
@@ -35,7 +41,7 @@ impl PagesMutation {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_pages_permission(ctx, Permission::PAGES_CREATE)?;
         if input.publish.unwrap_or(false) {
-            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+            return Err(create_publish_bypass_error());
         }
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
@@ -54,7 +60,7 @@ impl PagesMutation {
                     template: input.template,
                     body: input.body.map(page_body_input),
                     channel_slugs: input.channel_slugs,
-                    publish: input.publish.unwrap_or(false),
+                    publish: false,
                 },
             )
             .await
@@ -164,9 +170,9 @@ impl PagesMutation {
         &self,
         ctx: &Context<'_>,
         id: Uuid,
-        expected_version: Option<i32>,
+        input: PublishGqlPageInput,
         tenant_id: Option<Uuid>,
-    ) -> Result<GqlPage> {
+    ) -> Result<GqlPublishPageResult> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
@@ -176,7 +182,12 @@ impl PagesMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         PageService::new(db.clone(), event_bus.clone())
-            .publish_if_current(tenant_id, page_security(&auth), id, expected_version)
+            .publish_reviewed(
+                tenant_id,
+                page_security(&auth),
+                id,
+                publish_page_input(input),
+            )
             .await
             .map(Into::into)
             .map_err(map_pages_error)
@@ -244,6 +255,27 @@ fn page_body_input(input: GqlPageBodyInput) -> PageBodyInput {
     }
 }
 
+fn publish_page_input(input: PublishGqlPageInput) -> PublishPageInput {
+    PublishPageInput {
+        expected_version: input.expected_version,
+        expected_body_revisions: input
+            .expected_body_revisions
+            .into_iter()
+            .map(|revision| PageBodyRevisionInput {
+                locale: revision.locale,
+                revision: revision.revision,
+            })
+            .collect(),
+        idempotency_key: input.idempotency_key,
+        runtime: ReviewedPagePublishRuntimeInput {
+            format: input.runtime.format,
+            scenario_id: input.runtime.scenario_id,
+            context: input.runtime.context,
+            review_hash: input.runtime.review_hash,
+        },
+    }
+}
+
 fn menu_translation_input(input: GqlMenuTranslationInput) -> MenuTranslationInput {
     MenuTranslationInput {
         locale: input.locale,
@@ -284,6 +316,15 @@ fn menu_location_input(input: GqlMenuLocation) -> MenuLocation {
     }
 }
 
+fn create_publish_bypass_error() -> async_graphql::Error {
+    async_graphql::Error::new(
+        "Page creation cannot publish a Page Builder document; use publishPage with a reviewed runtime",
+    )
+    .extend_with(|_, extensions| {
+        extensions.set("code", PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND);
+    })
+}
+
 fn map_pages_error(error: PagesError) -> async_graphql::Error {
     let code = match &error {
         PagesError::VersionConflict { .. } => PAGE_METADATA_VERSION_CONFLICT,
@@ -293,6 +334,15 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
         PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
         PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",
         PagesError::CannotDeletePublished => CANNOT_DELETE_PUBLISHED_ERROR_CODE,
+        PagesError::PublishRuntimeReviewInvalid(_) => {
+            PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID
+        }
+        PagesError::PublishSanitize(_) => PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
+        PagesError::PublishRuntimeMaterializationMismatch(_) => {
+            PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH
+        }
+        PagesError::PublishIdempotencyConflict(_) => PAGE_PUBLISH_IDEMPOTENCY_CONFLICT,
+        PagesError::PublishOperationIntegrity(_) => PAGE_PUBLISH_OPERATION_INTEGRITY,
         PagesError::Rich(rich) => rich
             .error_code
             .as_deref()
