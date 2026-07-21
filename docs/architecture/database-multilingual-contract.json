@@ -103,7 +103,58 @@
             ".string_len(32)",
             "GroupTranslations::Title",
             "GroupTranslations::Summary",
-            "GroupTranslations::Body"
+            "GroupTranslations::Body",
+            "ux_group_translations_tenant_group_locale",
+            "fk_group_translations_tenant_group"
+          ]
+        },
+        {
+          "path": "crates/rustok-groups/src/migrations/m20260721_000003_enforce_group_language_agnostic_storage.rs",
+          "required_markers": [
+            "ck_group_translations_locale_normalized",
+            "ck_group_translations_presentation_shape",
+            "ck_groups_metadata_language_agnostic",
+            "group_translations_language_agnostic_insert",
+            "group_translations_language_agnostic_update",
+            "groups_language_agnostic_metadata_insert",
+            "groups_language_agnostic_metadata_update",
+            "sqlite_locale_violation",
+            "Irreversible by design"
+          ]
+        },
+        {
+          "path": "crates/rustok-groups/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000003_enforce_group_language_agnostic_storage;",
+            "Box::new(m20260721_000003_enforce_group_language_agnostic_storage::Migration)"
+          ]
+        },
+        {
+          "path": "crates/rustok-groups/src/service.rs",
+          "required_markers": [
+            "normalize_effective_locale",
+            "normalize_language_agnostic_metadata",
+            "translation::Column::Locale.eq(effective_locale.clone())",
+            "title.chars().count() > 240",
+            "value.chars().count() > 500",
+            "object.contains_key(*key)",
+            "GroupsError::NotFound"
+          ],
+          "forbidden_markers": [
+            "PLATFORM_FALLBACK_LOCALE",
+            "build_locale_candidates",
+            "rows.first()"
+          ]
+        },
+        {
+          "path": "crates/rustok-groups/docs/README.md",
+          "required_markers": [
+            "base + translations + optional bodies",
+            "host supplies the already-resolved effective locale",
+            "never injects an English or arbitrary first-row fallback",
+            "catalog and search queries are scoped to that effective locale",
+            "Unicode scalar values rather than UTF-8 bytes",
+            "must not contain localized presentation copies"
           ]
         }
       ]
