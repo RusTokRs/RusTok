@@ -45,6 +45,10 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   `VARCHAR(32)` without narrowing rollback. These owner slices currently express
   the production width change through PostgreSQL DDL; SQLite does not enforce
   declared `VARCHAR` lengths.
+- **Blog canonical routing** — `blog_posts.slug` is an explicitly locale-neutral
+  canonical route identifier. Localized post display copy stays in
+  `blog_post_translations`; localized category names, slugs, and descriptions
+  stay in `blog_category_translations`.
 - **Commerce collections/categories** — a forward-only PostgreSQL/MySQL/SQLite
   migration widens collection and product-category translation locales to
   `VARCHAR(32)` and is registered after both owner tables.
@@ -67,11 +71,8 @@ These are not accepted exceptions. They remain explicit migration targets:
   transport cutover.
 - `profiles-display-name`: `profiles.display_name` duplicates localized
   `profile_translations.display_name`. Locale widths are widened, but the owner
-  must define whether the base value is locale-neutral identity, then backfill
-  and remove whichever copy is not authoritative.
-- `blog-slug-semantics`: `blog_posts.slug` remains in the base row. The owner must
-  explicitly document it as one locale-neutral canonical route key or move
-  localized slug ownership into `blog_post_translations`.
+  must backfill any unmatched legacy copy with truthful provenance and remove the
+  base-row duplicate.
 - `marketplace-seller-prose-copy`: immutable locale-aware seller events are the
   intended prose source, but `marketplace_sellers.onboarding_note` and
   `marketplace_sellers.suspension_reason` remain mutable compatibility copies.
