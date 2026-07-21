@@ -86,6 +86,7 @@ pub struct CategoryTreeNode {
     pub is_archived: bool,
     pub topic_count: i32,
     pub reply_count: i32,
+    #[serde(default)]
     pub children: Vec<CategoryTreeNode>,
 }
 

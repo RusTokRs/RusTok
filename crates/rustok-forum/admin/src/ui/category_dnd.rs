@@ -159,6 +159,7 @@ pub(super) fn CategoryDndGrid(
                     busy_key.as_deref(),
                     &category_labels,
                 );
+                let item_is_busy = vm.is_busy;
                 let item_id = item.id.clone();
                 let before_target = item.id.clone();
                 let inside_target = item.id.clone();
@@ -221,7 +222,7 @@ pub(super) fn CategoryDndGrid(
                                         type="button"
                                         class=forum_admin_action_button_class(ForumAdminActionButtonKind::Action)
                                         on:click={ let item_id = item_id.clone(); move |_| on_edit.run(item_id.clone()) }
-                                        disabled=move || vm.is_busy || move_busy.get()
+                                        disabled=move || item_is_busy || move_busy.get()
                                     >
                                         {vm.action_label.clone()}
                                     </button>
@@ -229,7 +230,7 @@ pub(super) fn CategoryDndGrid(
                                         type="button"
                                         class=forum_admin_action_button_class(ForumAdminActionButtonKind::Delete)
                                         on:click={ let item_id = item_id.clone(); move |_| on_delete.run(item_id.clone()) }
-                                        disabled=move || vm.is_busy || move_busy.get()
+                                        disabled=move || item_is_busy || move_busy.get()
                                     >
                                         {delete_label.clone()}
                                     </button>
