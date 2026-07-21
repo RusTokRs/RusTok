@@ -38,6 +38,9 @@ pub trait CommentsThreadPort: Send + Sync {
 
     /// Public read projection owned by Comments. Implementations must return only
     /// comments that are safe for unauthenticated storefront consumption.
+    ///
+    /// The default is intentionally unavailable instead of delegating to the
+    /// authenticated list operation, which could expose pending or moderated data.
     async fn list_public_comments_for_target(
         &self,
         context: PortContext,
@@ -45,7 +48,13 @@ pub trait CommentsThreadPort: Send + Sync {
         target_id: Uuid,
         filter: ListCommentsFilter,
         fallback_locale: Option<String>,
-    ) -> Result<(Vec<CommentListItem>, u64), PortError>;
+    ) -> Result<(Vec<CommentListItem>, u64), PortError> {
+        let _ = (context, target_type, target_id, filter, fallback_locale);
+        Err(PortError::unavailable(
+            "comments.public_read_unavailable",
+            "comments provider does not implement the approved public projection",
+        ))
+    }
 
     async fn update_comment(
         &self,
