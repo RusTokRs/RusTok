@@ -53,9 +53,8 @@ impl MarketplaceFinancialRuntime {
     }
 
     pub fn in_process(db: DatabaseConnection) -> Self {
-        let allocation = Arc::new(
-            rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()),
-        );
+        let allocation =
+            Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()));
         let commission = Arc::new(
             rustok_marketplace_commission::MarketplaceCommissionService::new(
                 db.clone(),
@@ -80,9 +79,9 @@ impl MarketplaceFinancialRuntime {
     }
 
     pub fn allocation_reader(&self) -> Arc<dyn MarketplaceAllocationReadPort> {
-        self.allocation_reader.clone().expect(
-            "MarketplaceAllocationReadPort must be host-composed for reversal fact guards",
-        )
+        self.allocation_reader
+            .clone()
+            .expect("MarketplaceAllocationReadPort must be host-composed for reversal fact guards")
     }
 
     pub fn financial_port(&self) -> Arc<dyn MarketplaceFinancialCommandPort> {
@@ -125,11 +124,8 @@ impl MarketplaceFinancialRuntime {
         db: DatabaseConnection,
     ) -> PaymentProviderEventObservers {
         let delegate = self.provider_reversal_event_adapter(db.clone());
-        let guarded = MarketplaceReversalFactGuardObserver::new(
-            db,
-            self.allocation_reader(),
-            delegate,
-        );
+        let guarded =
+            MarketplaceReversalFactGuardObserver::new(db, self.allocation_reader(), delegate);
         PaymentProviderEventObservers::default().with_observer(Arc::new(guarded))
     }
 

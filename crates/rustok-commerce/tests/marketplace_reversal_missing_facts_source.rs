@@ -9,7 +9,10 @@ fn marketplace_reversal_missing_facts_fail_closed_for_marketplace_orders() {
     assert!(runtime.contains("with_allocation_reader"));
     assert!(runtime.contains("MarketplaceReversalFactGuardObserver::new"));
     assert!(runtime.contains("with_observer(Arc::new(guarded))"));
-    assert!(!runtime.contains("with_observer(Arc::new(\n            self.provider_reversal_event_adapter"));
+    assert!(
+        !runtime
+            .contains("with_observer(Arc::new(\n            self.provider_reversal_event_adapter")
+    );
 
     assert!(guard.contains("list_allocations_by_order"));
     assert!(guard.contains("resolve_authoritative_order_id"));

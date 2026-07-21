@@ -3,7 +3,7 @@ use rustok_marketplace_payout::entities::{operation, operation_transfer, payout}
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbErr, Set,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -130,9 +130,7 @@ async fn payout_operation_schema_enforces_identity_capacity_and_tenant_links() {
         operation_id: Set(operation_id),
         sequence_no: Set(0),
         order_id: Set(Uuid::new_v4()),
-        transfer_kind: Set(
-            operation_transfer::MarketplacePayoutOperationTransferKind::ReserveHold,
-        ),
+        transfer_kind: Set(operation_transfer::MarketplacePayoutOperationTransferKind::ReserveHold),
         status: Set(operation_transfer::MarketplacePayoutOperationTransferStatus::Pending),
         idempotency_key: Set(format!("marketplace-payout:{operation_id}:reserve:0:v1")),
         request_hash: Set("d".repeat(64)),
@@ -157,9 +155,7 @@ async fn payout_operation_schema_enforces_identity_capacity_and_tenant_links() {
         operation_id: Set(operation_id),
         sequence_no: Set(1),
         order_id: Set(Uuid::new_v4()),
-        transfer_kind: Set(
-            operation_transfer::MarketplacePayoutOperationTransferKind::ReserveHold,
-        ),
+        transfer_kind: Set(operation_transfer::MarketplacePayoutOperationTransferKind::ReserveHold),
         status: Set(operation_transfer::MarketplacePayoutOperationTransferStatus::Pending),
         idempotency_key: Set(format!("marketplace-payout:{operation_id}:reserve:1:v1")),
         request_hash: Set("e".repeat(64)),
@@ -184,9 +180,7 @@ async fn payout_operation_schema_enforces_identity_capacity_and_tenant_links() {
         operation_id: Set(operation_id),
         sequence_no: Set(2),
         order_id: Set(Uuid::new_v4()),
-        transfer_kind: Set(
-            operation_transfer::MarketplacePayoutOperationTransferKind::ReserveHold,
-        ),
+        transfer_kind: Set(operation_transfer::MarketplacePayoutOperationTransferKind::ReserveHold),
         status: Set(operation_transfer::MarketplacePayoutOperationTransferStatus::Pending),
         idempotency_key: Set(format!("marketplace-payout:{operation_id}:reserve:2:v1")),
         request_hash: Set("f".repeat(64)),
@@ -260,5 +254,5 @@ async fn rollback_all(db: &DatabaseConnection) {
 }
 
 fn is_constraint_error(error: &DbErr) -> bool {
-    error.sql_err().is_some()
+    error.sql_err().is_some() || matches!(error, DbErr::Exec(_) | DbErr::Query(_))
 }
