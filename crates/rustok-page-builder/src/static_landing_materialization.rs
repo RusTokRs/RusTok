@@ -7,6 +7,7 @@ use fly::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 pub const PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT: &str =
     "page_builder_static_runtime_materialization_v1";
@@ -33,9 +34,9 @@ pub struct PageBuilderMaterializedStaticLandingArtifact {
 
 impl PageBuilderMaterializedStaticLandingArtifact {
     pub fn verify_integrity(&self) -> Result<(), PageBuilderStaticLandingMaterializationError> {
-        self.artifact
-            .verify_integrity()
-            .map_err(|error| PageBuilderStaticLandingMaterializationError::Integrity(error.to_string()))?;
+        self.artifact.verify_integrity().map_err(|error| {
+            PageBuilderStaticLandingMaterializationError::Integrity(error.to_string())
+        })?;
         if self.identity.format != PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT {
             return Err(PageBuilderStaticLandingMaterializationError::Integrity(
                 "unsupported static runtime materialization format".to_string(),
@@ -43,17 +44,21 @@ impl PageBuilderMaterializedStaticLandingArtifact {
         }
         if !is_sha256(&self.identity.runtime_context_hash)
             || !is_sha256(&self.identity.runtime_snapshot_hash)
+            || !is_sha256(&self.identity.static_build_hash)
+            || !is_sha256(&self.identity.static_artifact_hash)
             || !is_sha256(&self.identity.materialization_hash)
         {
             return Err(PageBuilderStaticLandingMaterializationError::Integrity(
-                "static runtime materialization identity contains an invalid hash".to_string(),
+                "static runtime materialization identity contains an invalid SHA-256 hash"
+                    .to_string(),
             ));
         }
         if self.identity.static_build_hash != self.artifact.identity.build_hash
             || self.identity.static_artifact_hash != self.artifact.artifact_hash
         {
             return Err(PageBuilderStaticLandingMaterializationError::Integrity(
-                "static runtime materialization identity does not match its Fly artifact".to_string(),
+                "static runtime materialization identity does not match its Fly artifact"
+                    .to_string(),
             ));
         }
         if self.runtime_snapshots.len() != self.artifact.pages.len() {
@@ -62,7 +67,8 @@ impl PageBuilderMaterializedStaticLandingArtifact {
             ));
         }
 
-        let expected_scenario_id = effective_scenario_id(self.identity.runtime_scenario_id.as_deref());
+        let expected_scenario_id =
+            effective_scenario_id(self.identity.runtime_scenario_id.as_deref());
         for (page_index, (snapshot, page)) in self
             .runtime_snapshots
             .iter()
@@ -80,9 +86,11 @@ impl PageBuilderMaterializedStaticLandingArtifact {
                 )));
             }
             let case = &snapshot.cases[0];
+            let static_document_hash =
+                ProjectHash::from_bytes(page.document_html.as_bytes()).hex();
             if case.scenario_id != expected_scenario_id
                 || case.page_id != page.page_id
-                || case.document_hash.as_deref() != Some(page.content_hash.as_str())
+                || case.document_hash.as_deref() != Some(static_document_hash.as_str())
             {
                 return Err(PageBuilderStaticLandingMaterializationError::Integrity(format!(
                     "runtime snapshot for static page {page_index} does not match the materialized artifact"
@@ -129,11 +137,13 @@ pub enum PageBuilderStaticLandingMaterializationError {
 pub fn compile_materialized_static_landing(
     project_data: &Value,
     runtime: PageBuilderPreviewRuntime,
-) -> Result<PageBuilderMaterializedStaticLandingArtifact, PageBuilderStaticLandingMaterializationError>
-{
-    runtime
-        .validate()
-        .map_err(|error| PageBuilderStaticLandingMaterializationError::RuntimeContract(error.to_string()))?;
+) -> Result<
+    PageBuilderMaterializedStaticLandingArtifact,
+    PageBuilderStaticLandingMaterializationError,
+> {
+    runtime.validate().map_err(|error| {
+        PageBuilderStaticLandingMaterializationError::RuntimeContract(error.to_string())
+    })?;
 
     let compiler = StaticLandingCompiler::default();
     let document = compiler.prepare_document(project_data)?;
@@ -174,9 +184,11 @@ pub fn compile_materialized_static_landing(
     blocking_codes.sort();
     blocking_codes.dedup();
     if !blocking_codes.is_empty() {
-        return Err(PageBuilderStaticLandingMaterializationError::RuntimeDiagnostics {
-            codes: blocking_codes,
-        });
+        return Err(
+            PageBuilderStaticLandingMaterializationError::RuntimeDiagnostics {
+                codes: blocking_codes,
+            },
+        );
     }
 
     let artifact = compiler.compile_prepared_document(&materialized.document)?;
@@ -236,7 +248,14 @@ fn stable_hash(
 ) -> Result<String, PageBuilderStaticLandingMaterializationError> {
     let bytes = serde_json::to_vec(value)
         .map_err(|error| PageBuilderStaticLandingMaterializationError::Encode(error.to_string()))?;
-    Ok(ProjectHash::from_bytes(&bytes).hex())
+    Ok(sha256_hex(&bytes))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn is_sha256(value: &str) -> bool {
@@ -302,9 +321,14 @@ mod tests {
 
         assert_eq!(result.artifact.pages[0].document_html, preview_html);
         assert_eq!(
-            result.runtime_snapshots[0].cases[0].document_hash.as_deref(),
-            Some(result.artifact.pages[0].content_hash.as_str())
+            result.runtime_snapshots[0].cases[0]
+                .document_hash
+                .as_deref(),
+            Some(ProjectHash::from_bytes(preview_html.as_bytes()).hex().as_str())
         );
+        assert_eq!(result.identity.runtime_context_hash.len(), 64);
+        assert_eq!(result.identity.runtime_snapshot_hash.len(), 64);
+        assert_eq!(result.identity.materialization_hash.len(), 64);
         result.verify_integrity().expect("materialization integrity");
     }
 
@@ -327,9 +351,18 @@ mod tests {
         )
         .expect("second artifact");
 
-        assert_ne!(first.identity.runtime_context_hash, second.identity.runtime_context_hash);
-        assert_ne!(first.identity.runtime_snapshot_hash, second.identity.runtime_snapshot_hash);
-        assert_ne!(first.identity.materialization_hash, second.identity.materialization_hash);
+        assert_ne!(
+            first.identity.runtime_context_hash,
+            second.identity.runtime_context_hash
+        );
+        assert_ne!(
+            first.identity.runtime_snapshot_hash,
+            second.identity.runtime_snapshot_hash
+        );
+        assert_ne!(
+            first.identity.materialization_hash,
+            second.identity.materialization_hash
+        );
         assert_ne!(first.artifact.artifact_hash, second.artifact.artifact_hash);
     }
 
