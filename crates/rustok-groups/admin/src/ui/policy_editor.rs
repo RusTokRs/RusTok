@@ -72,8 +72,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
 
     let load_transport = transport.clone();
     let load_copy = copy.clone();
-    let on_load = move |event: SubmitEvent| {
-        event.prevent_default();
+    let on_load = Callback::new(move |_: ()| {
         let query = match prepare_group_application_policy_query(&group_id.get_untracked()) {
             Ok(query) => query,
             Err(_) => {
@@ -96,25 +95,34 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
         spawn_local(async move {
             match load_group_admin_application_policy(context, query).await {
                 Ok(policy) => {
+                    let revision = policy.revision;
                     locale.set(policy.locale);
                     enabled.set(policy.enabled);
                     questions.set(policy.questions);
                     rules.set(policy.rules);
-                    loaded_revision.set(Some(policy.revision));
-                    success.set(Some(format!("{} · {} {}", copy.loaded, copy.revision, policy.revision)));
+                    loaded_revision.set(Some(revision));
+                    success.set(Some(format!(
+                        "{} · {} {}",
+                        copy.loaded, copy.revision, revision
+                    )));
                 }
                 Err(load_error) => {
                     loaded_revision.set(None);
-                    error.set(Some(groups_admin_error(&copy.error, &load_error.to_string())));
+                    error.set(Some(groups_admin_error(
+                        &copy.error,
+                        &load_error.to_string(),
+                    )));
                 }
             }
-            match load_group_admin_application_policy_revisions(history_context, revision_query).await {
+            match load_group_admin_application_policy_revisions(history_context, revision_query)
+                .await
+            {
                 Ok(connection) => history.set(connection.items),
                 Err(_) => history.set(Vec::new()),
             }
             busy.set(false);
         });
-    };
+    });
 
     let save_transport = transport.clone();
     let save_copy = copy.clone();
@@ -180,14 +188,15 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
 
             match upsert_group_admin_application_policy(save_context, command).await {
                 Ok(result) => {
+                    let revision = result.policy.revision;
                     locale.set(result.policy.locale);
                     enabled.set(result.policy.enabled);
                     questions.set(result.policy.questions);
                     rules.set(result.policy.rules);
-                    loaded_revision.set(Some(result.policy.revision));
+                    loaded_revision.set(Some(revision));
                     success.set(Some(format!(
                         "{} · {} {}",
-                        copy.saved, copy.revision, result.policy.revision
+                        copy.saved, copy.revision, revision
                     )));
                     if let Ok(connection) = load_group_admin_application_policy_revisions(
                         history_context,
@@ -261,6 +270,14 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
         busy: busy_label,
         ..
     } = copy;
+    let question_required = required.clone();
+    let question_move_up = move_up.clone();
+    let question_move_down = move_down.clone();
+    let question_remove = remove.clone();
+    let rule_required = required;
+    let rule_move_up = move_up;
+    let rule_move_down = move_down;
+    let rule_remove = remove;
 
     view! {
         <section class="groups-admin-policy-editor rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -275,11 +292,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                         <input type="checkbox" prop:checked=move || enabled.get() on:change=move |event| enabled.set(event_target_checked(&event)) />
                         <span>{enabled_label}</span>
                     </label>
-                    <button class="rounded-xl border border-border px-4 py-2 text-sm font-medium" type="button" on:click=move |event| {
-                        event.prevent_default();
-                        let synthetic = SubmitEvent::new("submit").expect("submit event");
-                        on_load(synthetic);
-                    }>{load_label}</button>
+                    <button class="rounded-xl border border-border px-4 py-2 text-sm font-medium" type="button" on:click=move |_| on_load.run(())>{load_label}</button>
                 </div>
 
                 <div class="space-y-3">
@@ -299,11 +312,11 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                                 </div>
                                 <textarea class="min-h-20 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=question_help.clone() prop:value=help_value on:input=move |event| questions.update(|items| if let Some(item) = items.get_mut(index) { let value = event_target_value(&event); item.help_text = (!value.trim().is_empty()).then_some(value); })></textarea>
                                 <div class="flex flex-wrap items-center gap-3">
-                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" prop:checked=question.required on:change=move |event| questions.update(|items| if let Some(item) = items.get_mut(index) { item.required = event_target_checked(&event); }) /><span>{required.clone()}</span></label>
+                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" prop:checked=question.required on:change=move |event| questions.update(|items| if let Some(item) = items.get_mut(index) { item.required = event_target_checked(&event); }) /><span>{question_required.clone()}</span></label>
                                     <input class="w-40 rounded-xl border border-border bg-background px-3 py-2 text-sm" aria-label=answer_limit.clone() prop:value=question.max_answer_chars.to_string() on:input=move |event| if let Ok(value) = event_target_value(&event).parse::<u32>() { questions.update(|items| if let Some(item) = items.get_mut(index) { item.max_answer_chars = value; }); } />
-                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(questions, index, -1)>{move_up.clone()}</button>
-                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(questions, index, 1)>{move_down.clone()}</button>
-                                    <button type="button" class="rounded-lg border border-destructive px-2 py-1 text-xs text-destructive" on:click=move |_| questions.update(|items| { if index < items.len() { items.remove(index); } })>{remove.clone()}</button>
+                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(questions, index, -1)>{question_move_up.clone()}</button>
+                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(questions, index, 1)>{question_move_down.clone()}</button>
+                                    <button type="button" class="rounded-lg border border-destructive px-2 py-1 text-xs text-destructive" on:click=move |_| questions.update(|items| { if index < items.len() { items.remove(index); } })>{question_remove.clone()}</button>
                                 </div>
                             </div>
                         }
@@ -327,10 +340,10 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                                 </div>
                                 <textarea class="min-h-28 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=rule_body.clone() prop:value=body_value on:input=move |event| rules.update(|items| if let Some(item) = items.get_mut(index) { item.body = event_target_value(&event); })></textarea>
                                 <div class="flex flex-wrap items-center gap-3">
-                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" prop:checked=rule.required on:change=move |event| rules.update(|items| if let Some(item) = items.get_mut(index) { item.required = event_target_checked(&event); }) /><span>{required.clone()}</span></label>
-                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(rules, index, -1)>{move_up.clone()}</button>
-                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(rules, index, 1)>{move_down.clone()}</button>
-                                    <button type="button" class="rounded-lg border border-destructive px-2 py-1 text-xs text-destructive" on:click=move |_| rules.update(|items| { if index < items.len() { items.remove(index); } })>{remove.clone()}</button>
+                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" prop:checked=rule.required on:change=move |event| rules.update(|items| if let Some(item) = items.get_mut(index) { item.required = event_target_checked(&event); }) /><span>{rule_required.clone()}</span></label>
+                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(rules, index, -1)>{rule_move_up.clone()}</button>
+                                    <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(rules, index, 1)>{rule_move_down.clone()}</button>
+                                    <button type="button" class="rounded-lg border border-destructive px-2 py-1 text-xs text-destructive" on:click=move |_| rules.update(|items| { if index < items.len() { items.remove(index); } })>{rule_remove.clone()}</button>
                                 </div>
                             </div>
                         }
