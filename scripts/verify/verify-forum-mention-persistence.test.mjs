@@ -42,6 +42,9 @@ ${options.missingImmutable ? "" : "append_only"}
       ? migration.replace("forum_user_mentions_immutable_guard", "")
       : migration,
   );
+  const quoteValidation =
+    "validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;";
+  const firstWrite = "let revision = forum_relation_revision::ActiveModel";
   writeFixture(
     root,
     "crates/rustok-forum/src/services/mention_relation.rs",
@@ -61,6 +64,8 @@ projection_fingerprint
 added_user_ids
 replayed: true
 ForumError::quote_target_unavailable()
+${options.lateQuoteValidation ? firstWrite : quoteValidation}
+${options.lateQuoteValidation ? quoteValidation : firstWrite}
 ${options.notificationCall ? "rustok_notifications::deliver();" : ""}
 ${options.profileInternals ? "rustok_profiles::entities::profile::Entity;" : ""}
 ${options.publicService ? "pub struct MentionRelationService;" : ""}
@@ -73,6 +78,7 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
       "relation_revision_replay_diff_quotes_and_guards_are_atomic",
       "identical replay should persist idempotently",
       "cross-tenant quote revision must fail closed",
+      "quote validation must run before the first relation write",
       "persisted mention rows must be immutable",
     ].join("\n"),
   );
@@ -158,5 +164,12 @@ test("mention persistence verifier requires immutable child guards", () => {
   withFixture({ missingImmutable: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing schema marker/);
+  });
+});
+
+test("mention persistence verifier rejects quote validation after writes", () => {
+  withFixture({ lateQuoteValidation: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /validated before the first relation write/);
   });
 });
