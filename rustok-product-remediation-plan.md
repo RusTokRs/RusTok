@@ -15,7 +15,7 @@ source markers or no-compile evidence.
 
 | Item | Status | Review result and evidence |
 | --- | --- | --- |
-| Move product DTOs, entities, and errors out of `rustok-commerce-foundation` | open | The obsolete, unexported product/price entity copies were removed from `rustok-commerce`; `rustok-product/src/lib.rs` still re-exports foundation DTOs and `Cargo.toml` depends on the foundation crate. No compatibility re-export will be introduced; this needs an atomic owner-boundary move. |
+| Move product DTOs, entities, and errors out of `rustok-commerce-foundation` | partial | `rustok-product` now owns concrete DTO and product ORM source files under `src/dto/` and `src/entities/`; its public module no longer re-exports foundation DTO/entity collections. A source guard fixes that owner-local boundary. The remaining dependency is intentionally narrow: pricing-owned `price` ORM access and the shared `CommerceError` identity still bridge through foundation until transaction-aware Pricing/Inventory owner ports replace those direct dependencies. Foundation copies cannot be deleted safely before that inversion, so this item is not marked resolved. |
 | Split `CatalogService` into commands, queries, inventory, tags, and projection components | partial | Tag reads/writes are isolated in `src/services/catalog/tags.rs`. Product no longer owns inventory persistence helpers: it calls inventory-owned `BootstrapService` for initial records, cleanup, and available-quantity reads inside its transaction under a documented native-only bootstrap exception. Commands, queries, and product projection still share `src/services/catalog.rs`. |
 | Split `ProductCatalogSchemaService` into attributes, schemas, categories, values, and virtual categories | partial | Category creation, groups, bindings, schema modes, and listing are isolated in `src/services/catalog_schema_service/categories.rs`; schema creation/listing/groups/bindings are isolated in `src/services/catalog_schema_service/schemas.rs`; attribute reads/writes are isolated in `src/services/catalog_schema_service/attributes.rs`; values, virtual-category validation, and effective-form projection remain in the main service file. |
 | Keep a single owner of product migrations and remove commerce copies | resolved | `rustok-commerce/src/migrations/` no longer creates product tables; `ProductModule` exports the product migration set. |
@@ -102,10 +102,11 @@ source markers or no-compile evidence.
 ## Verification performed
 
 - Source audit of product migrations, service writes, GraphQL mutations and storefront listing.
-- `git diff --check` passed for this change set.
-- `cargo check -p rustok-inventory -p rustok-product --offline` and `cargo check -p rustok-commerce --offline` passed.
-- `cargo test -p rustok-product --lib --offline` passed (13 tests).
-- `npm run verify:product:catalog-schema` and `npm run test:verify:product:catalog-schema` passed. The fixture suite contains negative cases for the new migration guardrails.
+- `git diff --check` passed for the earlier remediation change set.
+- `cargo check -p rustok-inventory -p rustok-product --offline` and `cargo check -p rustok-commerce --offline` passed for the earlier remediation change set.
+- `cargo test -p rustok-product --lib --offline` passed (13 tests) for the earlier remediation change set.
+- `npm run verify:product:catalog-schema` and `npm run test:verify:product:catalog-schema` passed for the earlier remediation change set.
+- The 2026-07-21 owner-local DTO/entity source move was reviewed through GitHub diff and source markers only; tests and CI were not run in that slice.
 
 ## Required next execution order
 
@@ -114,4 +115,4 @@ source markers or no-compile evidence.
 2. Run the new migrations against an isolated PostgreSQL fixture and add the migration/invariant tests.
 3. Complete the GraphQL owner-boundary move; the tenant/user variables have been removed from the public mutation contract.
 4. Run indexed SQL plans on representative PostgreSQL data and capture `EXPLAIN (ANALYZE, BUFFERS)` evidence.
-5. Complete the product contract ownership move and split the two large services.
+5. Replace the narrow pricing/error bridge with transaction-aware Pricing/Inventory owner ports before deleting the remaining foundation copies. Active implementation work now hands off to Forum.
