@@ -8,7 +8,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
-use rustok_core::SecurityContext;
+use rustok_core::{
+    SecurityContext,
+    error::{ErrorKind, RichError},
+};
 use rustok_events::DomainEvent;
 use rustok_tenant::TenantService;
 
@@ -19,32 +22,34 @@ use crate::error::{
     FEATURE_BUILDER_PUBLISH_ENABLED, PagesError, PagesResult,
 };
 use crate::services::rbac::enforce_owned_scope;
-use crate::services::{PageBuilderArtifactService, PageBuilderScenarioBaselineService};
 
 use super::document::document_revision_conflict;
 use super::helpers::{
-    apply_transition, collect_builder_project_values, compile_builder_sources,
-    enforce_expected_version, is_builder_enabled, is_builder_preview_enabled,
-    is_builder_properties_enabled, is_builder_publish_enabled, transition_event,
+    apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
+    is_builder_preview_enabled, is_builder_properties_enabled, is_builder_publish_enabled,
+    transition_event,
 };
 use super::{PAGE_KIND, PageService, PageTransition};
+
+pub const PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED: &str =
+    "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED";
 
 type BodyRevisionSnapshot = Vec<(String, String)>;
 
 impl PageService {
     #[instrument(skip(self))]
-    pub async fn publish(
+    pub async fn publish_non_builder(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
         page_id: Uuid,
     ) -> PagesResult<PageResponse> {
-        self.publish_if_current(tenant_id, security, page_id, None)
+        self.publish_non_builder_if_current(tenant_id, security, page_id, None)
             .await
     }
 
     #[instrument(skip(self))]
-    pub async fn publish_if_current(
+    pub async fn publish_non_builder_if_current(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
@@ -61,15 +66,10 @@ impl PageService {
         enforce_expected_version(expected_version, observed.version)?;
 
         let bodies = self.load_bodies(tenant_id, page_id).await?;
-        let body_revisions = body_revision_snapshot(&bodies);
-        let project_values = collect_builder_project_values(&bodies, None, true)?;
-        if !project_values.is_empty() {
-            self.ensure_builder_enabled(tenant_id).await?;
-            self.ensure_builder_publish_enabled(tenant_id).await?;
-            PageBuilderScenarioBaselineService::new(self.db.clone())
-                .ensure_candidates_allowed(tenant_id, page_id, project_values)
-                .await?;
+        if !collect_builder_sources(&bodies, None, true).is_empty() {
+            return Err(builder_reviewed_publish_required());
         }
+        let body_revisions = body_revision_snapshot(&bodies);
 
         self.transition_page(
             tenant_id,
@@ -259,6 +259,9 @@ impl PageService {
 
         if transition == PageTransition::Publish {
             let current_bodies = load_bodies_for_publish(&txn, tenant_id, page_id).await?;
+            if !collect_builder_sources(&current_bodies, None, true).is_empty() {
+                return Err(builder_reviewed_publish_required());
+            }
             let current_revisions = body_revision_snapshot(&current_bodies);
             let expected_revisions = expected_body_revisions.unwrap_or_default();
             if current_revisions != expected_revisions {
@@ -266,22 +269,6 @@ impl PageService {
                     format_body_revisions(&expected_revisions),
                     format_body_revisions(&current_revisions),
                 ));
-            }
-
-            let compiled = compile_builder_sources(&current_bodies, None, true)?;
-            for compiled in &compiled {
-                let artifact_id = PageBuilderArtifactService::stage_compiled_in_tx(
-                    &txn, tenant_id, page_id, compiled,
-                )
-                .await?;
-                PageBuilderArtifactService::bind_existing_body_in_tx(
-                    &txn,
-                    tenant_id,
-                    page_id,
-                    &compiled.locale,
-                    artifact_id,
-                )
-                .await?;
             }
         }
 
@@ -345,6 +332,19 @@ impl PageService {
             .map(|module| module.map(|module| module.settings))
             .map_err(Into::into)
     }
+}
+
+fn builder_reviewed_publish_required() -> PagesError {
+    PagesError::Rich(Box::new(
+        RichError::new(
+            ErrorKind::BusinessLogic,
+            "Page Builder documents cannot use the non-builder publish lifecycle",
+        )
+        .with_user_message(
+            "Review a promoted Page Builder runtime scenario and use the atomic publish command.",
+        )
+        .with_error_code(PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED),
+    ))
 }
 
 async fn load_bodies_for_publish(
