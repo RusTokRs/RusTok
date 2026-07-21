@@ -8,6 +8,8 @@ pub mod migrations;
 #[cfg(feature = "server")]
 pub mod ports;
 #[cfg(feature = "server")]
+mod public_read;
+#[cfg(feature = "server")]
 pub mod services;
 
 #[cfg(feature = "server")]
