@@ -38,11 +38,35 @@ The schema follows `base + translations + optional bodies`:
 - `groups` contains only language-neutral identity and policy state;
 - `group_translations` contains `title`, `summary`, and `body` by normalized
   `locale VARCHAR(32)`;
-- `(tenant_id, group_id, locale)` is unique;
+- `(tenant_id, group_id, locale)` is unique and the translation relation is
+  tenant-composite;
 - reads return `requested_locale`, `effective_locale`, and `available_locales`;
 - writes never silently update another locale or copy fallback text into the
   requested locale;
 - group handles are stable and tenant-scoped, not translation-local.
+
+The host supplies the already-resolved effective locale through `PortContext`.
+Groups normalizes that tag, requires the exact translation row, and never injects
+an English or arbitrary first-row fallback. Tenant preference and fallback policy
+remain host/runtime responsibilities; a missing effective-locale row is an
+explicit unavailable/not-found presentation, not permission to select another
+stored language.
+
+Catalog and search queries are scoped to that effective locale before group
+pagination. A title match in one language therefore cannot return a shell rendered
+from another language. `requested_locale` preserves the caller evidence while
+`effective_locale` reports the normalized row that was actually selected.
+
+Localized presentation limits count Unicode scalar values rather than UTF-8 bytes,
+so Cyrillic, CJK, and Latin text receive the same 240-character title and
+500-character summary limits. PostgreSQL CHECK constraints and SQLite validation
+triggers enforce normalized locale shape and presentation length at the DB boundary.
+
+The base `groups.metadata` value must be a JSON object and must not contain
+localized presentation copies such as `title`, `summary`, `body`, `name`,
+`description`, `translations`, `localized`, `locales`, `i18n`, or `seo`. Those
+values belong to owner translation rows or their dedicated owner modules. The
+service rejects these keys and the database repeats the guard for direct SQL.
 
 Heavy rich-text evolution may split `body` into a future `group_bodies` table.
 That change must preserve one canonical body authority and must not introduce a
@@ -72,7 +96,7 @@ The access contract separates:
 A denied direct shell read uses not-found semantics so secret-group existence is
 not disclosed. A permitted closed shell read without `view` access returns the
 localized title/summary and neutral group metadata, but redacts translation body
-and feature bindings. Fallback locale selection never bypasses this policy.
+and feature bindings. Host-selected locale resolution never bypasses this policy.
 
 Initial join policies:
 
@@ -166,6 +190,7 @@ cargo check -p rustok-groups --features graphql
 cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
