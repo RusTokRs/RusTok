@@ -4,7 +4,9 @@ use uuid::Uuid;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput};
+use crate::dto::{
+    CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
+};
 use crate::entities::forum_reply;
 use crate::error::ForumResult;
 use crate::state_machine::ReplyStatus;
