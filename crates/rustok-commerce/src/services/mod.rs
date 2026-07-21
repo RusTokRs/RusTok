@@ -8,6 +8,7 @@ mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
 mod checkout_marketplace_allocation;
 mod checkout_marketplace_commission;
+mod checkout_marketplace_economics;
 mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
@@ -76,6 +77,13 @@ pub use checkout_marketplace_allocation::{
 pub use checkout_marketplace_commission::{
     CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionResult,
     CheckoutMarketplaceCommissionStage,
+};
+pub use checkout_marketplace_economics::{
+    CheckoutMarketplaceEconomicsCheckpointError,
+    CheckoutMarketplaceEconomicsCheckpointJournal,
+    CheckoutMarketplaceEconomicsCheckpointResult, CheckoutMarketplaceEconomicsEvidence,
+    RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
+    validate_marketplace_economics_checkpoint,
 };
 pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
