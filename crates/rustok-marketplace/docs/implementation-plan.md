@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `checkout_allocation_wired_financial_pending`.
+- Runtime integration status: `checkout_pre_capture_economics_wired_post_capture_pending`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -30,7 +30,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Workspace aliases, module catalog, distribution/server feature graph, and composed
   migration source wiring for the Marketplace Family and moderation.
 - [x] Cart-owned typed marketplace line identity/economics storage and FBA ports.
-- [x] Immutable typed marketplace checkout plan and real pre-capture allocation hook.
+- [x] Immutable typed marketplace checkout plan with real pre-capture allocation and
+  commission assessment hooks.
 
 ## Architecture contract
 
@@ -136,6 +137,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   not from `order_line.metadata.marketplace`.
 - [x] Invoke allocation after `CheckoutPaymentReadyState` and before capture.
 - [x] Compose the in-process allocation command port in storefront staged checkout.
+- [x] Invoke commission assessment after allocation and before payment capture.
+- [x] Compose the commission command port against the same allocation read owner.
 
 ### Remaining critical path
 
@@ -147,7 +150,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   discounts, or tax change; immutable checkout plan remains the final freeze point.
 - [ ] Replace compatibility `seller_id` metadata used by delivery-group grouping with a
   typed join against cart marketplace snapshots.
-- [ ] Persist the allocation result/checkpoint in the durable checkout operation.
+- [ ] Persist the allocation and commission result/checkpoint in the durable checkout
+  operation.
 - [ ] Add allocation cancellation for payment failure, checkout compensation, order
   cancellation, and line cancellation.
 - [ ] Publish allocation created/cancelled events transactionally.
@@ -168,10 +172,15 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Reject cancelled allocations before receipt admission.
 - [x] Publish typed commission read and command ports.
 - [x] Register commission `MigrationSource` in the composed migrator source list.
+- [x] Add `CheckoutMarketplaceCommissionStage` with deterministic child key
+  `checkout:{operation_id}:marketplace-commission:v1`.
+- [x] Use stable order creation time as `assessed_at` so retries preserve the owner request
+  hash.
+- [x] Validate assessment coverage, allocation uniqueness, order-line identity, currency,
+  and non-negative economics before capture.
 
 ### Remaining
 
-- [ ] Run commission assessment after allocation and before payment capture.
 - [ ] Extend rule scope for category, product type, seller tier, market, and channel.
 - [ ] Add explicit commission-base policy for item, shipping, tax, discount, minimum,
   and maximum components.
@@ -195,11 +204,12 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
 - [x] Add root orchestration that derives stable commission and ledger child keys.
 - [x] Validate commission aggregates against ledger totals.
 - [x] Register ledger `MigrationSource` in the composed migrator source list.
+- [x] Keep commission economics before capture without posting ledger entries from the
+  pre-capture checkout path.
 
 ### Remaining critical path
 
-- [ ] Split marketplace finance timing: commission economics before capture; ledger
-  posting only after payment capture/order paid.
+- [ ] Post ledger only after payment capture/order paid.
 - [ ] Add durable `marketplace_financial_operations` stage journal, leases, retries,
   safe errors, recovery worker, and operator review state.
 - [ ] Trigger ledger posting from a deduplicated paid-event inbox.
@@ -300,12 +310,12 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   changes.
 - [x] Register the complete Marketplace Family and moderation in the module catalog,
   distribution registry, and server opt-in feature graph.
-- [x] Register the allocation provider in the storefront staged checkout runtime.
+- [x] Register allocation and commission providers in the storefront staged checkout
+  runtime.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
-- [ ] Register request-scoped runtime providers for commission, ledger, payout, and
-  moderation; compile-time module registration is not sufficient.
-- [ ] Register pre-capture commission and post-capture paid-event consumers in host
-  composition.
+- [ ] Register request-scoped runtime providers for ledger, payout, and moderation;
+  compile-time module registration is not sufficient.
+- [ ] Register post-capture paid-event consumers in host composition.
 - [ ] Update backfill registries with the validated final composed migration order.
 
 ## Consolidated maintainer validation queue
@@ -337,8 +347,9 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
    sources.
 2. [x] Add typed marketplace cart/checkout snapshots and remove metadata-based identity
    from checkout and allocation.
-3. [x] Wire marketplace allocation into the real pipeline before payment capture.
-4. [ ] Add pre-capture commission assessment and durable allocation/commission checkpoint.
+3. [x] Wire marketplace allocation and commission assessment into the real pipeline before
+   payment capture.
+4. [ ] Add durable allocation/commission checkpoint.
 5. [ ] Add durable post-capture financial operation and paid-event inbox.
 6. [ ] Add refund/chargeback ledger reversals and seller balance projections.
 7. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
@@ -362,5 +373,6 @@ No new tests were run for the 2026-07-21 source composition and typed-checkout b
 - `crates/rustok-commerce/src/services/checkout_order_plan.rs`
 - `crates/rustok-commerce/src/services/checkout_plan_builder.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_allocation.rs`
+- `crates/rustok-commerce/src/services/checkout_marketplace_commission.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
