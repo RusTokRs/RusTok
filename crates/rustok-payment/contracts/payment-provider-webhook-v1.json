@@ -97,7 +97,48 @@
         "amount": "positive-decimal-string",
         "currency_code": "three-letter-code"
       }
+    },
+    "chargeback.completed": {
+      "external_reference_required": true,
+      "metadata_required": {
+        "chargeback_id": "uuid-string",
+        "collection_id": "uuid-string",
+        "amount": "positive-decimal-string",
+        "currency_code": "three-letter-code"
+      }
     }
+  },
+  "marketplace_reversal_extension": {
+    "applicable_events": ["refund.completed", "chargeback.completed"],
+    "required_when_payment_collection_contains_marketplace_lines": true,
+    "metadata_path": "marketplace_reversal or metadata.marketplace_reversal",
+    "fields": {
+      "source_id": "uuid-string matching refund_id or chargeback_id",
+      "order_id": "uuid-string",
+      "occurred_at": "rfc3339",
+      "currency_code": "three-letter-code",
+      "currency_exponent": "integer-0-through-9",
+      "lines": {
+        "min_items": 1,
+        "max_items": 500,
+        "item": {
+          "assessment_id": "uuid",
+          "allocation_id": "uuid",
+          "order_line_item_id": "uuid",
+          "seller_id": "uuid",
+          "commission_amount": "non-negative-minor-units",
+          "seller_amount": "non-negative-minor-units",
+          "seller_balance_bucket": "pending|available|reserved|paid"
+        }
+      }
+    },
+    "invariants": [
+      "commission_amount + seller_amount is positive for every line",
+      "sum of all line economics equals the normalized provider amount after exact major-to-minor conversion",
+      "refund collection identity is derived from the authoritative refund owner",
+      "chargeback collection identity is supplied as a normalized provider fact",
+      "marketplace consumers never parse raw provider payloads"
+    ]
   },
   "delivery_semantics": {
     "provider_delivery": "at-least-once",
