@@ -15,8 +15,6 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::MenuService;
 use crate::services::rbac::enforce_scope;
 
-pub const ACTIVE_MENU_NOT_FOUND_ERROR_CODE: &str = "ACTIVE_MENU_NOT_FOUND";
-
 pub struct MenuBindingService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
@@ -77,7 +75,7 @@ impl MenuBindingService {
         };
         txn.commit().await?;
 
-        Ok(binding_response(model)?)
+        binding_response(model)
     }
 
     pub async fn get_binding(
