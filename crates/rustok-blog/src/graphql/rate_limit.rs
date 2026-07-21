@@ -47,6 +47,7 @@ enum BlogGraphqlSurface {
     PublishPost,
     UnpublishPost,
     ArchivePost,
+    ModerateComment,
 }
 
 impl BlogGraphqlSurface {
@@ -61,6 +62,7 @@ impl BlogGraphqlSurface {
             (OperationType::Mutation, "publishPost") => Some(Self::PublishPost),
             (OperationType::Mutation, "unpublishPost") => Some(Self::UnpublishPost),
             (OperationType::Mutation, "archivePost") => Some(Self::ArchivePost),
+            (OperationType::Mutation, "moderateComment") => Some(Self::ModerateComment),
             _ => None,
         }
     }
@@ -76,6 +78,7 @@ impl BlogGraphqlSurface {
             Self::PublishPost => "publish_post",
             Self::UnpublishPost => "unpublish_post",
             Self::ArchivePost => "archive_post",
+            Self::ModerateComment => "moderate_comment",
         }
     }
 
@@ -98,6 +101,7 @@ impl BlogGraphqlSurface {
             Self::PublishPost | Self::UnpublishPost | Self::ArchivePost => {
                 Permission::BLOG_POSTS_PUBLISH
             }
+            Self::ModerateComment => Permission::BLOG_POSTS_MANAGE,
             Self::Post | Self::PostBySlug | Self::Posts => return true,
         };
         has_any_effective_permission(&auth.permissions, &[permission])
@@ -309,11 +313,12 @@ impl Extension for BlogGraphqlRateLimitPolicyExtension {
                         "Blog GraphQL rate limit backend unavailable"
                     );
                     return error_response(
-                        FieldError::new("Blog rate limit backend unavailable")
-                            .extend_with(|_, ext| {
+                        FieldError::new("Blog rate limit backend unavailable").extend_with(
+                            |_, ext| {
                                 ext.set("code", "BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE");
                                 ext.set("surface", surface.name());
-                            }),
+                            },
+                        ),
                     );
                 }
             }
@@ -358,7 +363,13 @@ mod tests {
         let document = parse_query(
             r#"
                 query PublicBlog { ...BlogReads }
-                mutation ManageBlog { publishPost(id: "00000000-0000-0000-0000-000000000001") }
+                mutation ManageBlog {
+                    publishPost(id: "00000000-0000-0000-0000-000000000001")
+                    moderateComment(
+                        id: "00000000-0000-0000-0000-000000000002"
+                        status: APPROVED
+                    )
+                }
                 fragment BlogReads on Query { postBySlug(slug: "hello") { id } posts { total } }
             "#,
         )
@@ -370,6 +381,7 @@ mod tests {
                 BlogGraphqlSurface::PostBySlug,
                 BlogGraphqlSurface::Posts,
                 BlogGraphqlSurface::PublishPost,
+                BlogGraphqlSurface::ModerateComment,
             ]
         );
     }
@@ -435,10 +447,15 @@ mod tests {
         let update = auth(tenant_id, vec![Permission::BLOG_POSTS_UPDATE]);
         assert!(BlogGraphqlSurface::UpdatePost.actor_is_authorized(&update));
         assert!(!BlogGraphqlSurface::ArchivePost.actor_is_authorized(&update));
+        assert!(!BlogGraphqlSurface::ModerateComment.actor_is_authorized(&update));
 
         let publish = auth(tenant_id, vec![Permission::BLOG_POSTS_PUBLISH]);
         assert!(!BlogGraphqlSurface::UpdatePost.actor_is_authorized(&publish));
         assert!(BlogGraphqlSurface::UnpublishPost.actor_is_authorized(&publish));
         assert!(BlogGraphqlSurface::ArchivePost.actor_is_authorized(&publish));
+        assert!(!BlogGraphqlSurface::ModerateComment.actor_is_authorized(&publish));
+
+        let manage = auth(tenant_id, vec![Permission::BLOG_POSTS_MANAGE]);
+        assert!(BlogGraphqlSurface::ModerateComment.actor_is_authorized(&manage));
     }
 }
