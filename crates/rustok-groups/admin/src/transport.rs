@@ -1,5 +1,7 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/native_localization_adapter.rs"]
+mod native_localization_adapter;
 #[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
@@ -103,7 +105,7 @@ pub async fn load_group_admin_translations(
     execute_selected_transport(
         "groups.admin.localization.list",
         context.path(),
-        move || native_server_adapter::load_group_translations(native_query),
+        move || native_localization_adapter::load_group_translations(native_query),
         move || graphql_adapter::load_group_translations(token, tenant, query),
     )
     .await
@@ -119,7 +121,7 @@ pub async fn upsert_group_admin_translation(
     execute_selected_transport(
         "groups.admin.localization.upsert",
         context.path(),
-        move || native_server_adapter::upsert_group_translation(native_command),
+        move || native_localization_adapter::upsert_group_translation(native_command),
         move || graphql_adapter::upsert_group_translation(token, tenant, command),
     )
     .await
@@ -135,7 +137,7 @@ pub async fn delete_group_admin_translation(
     execute_selected_transport(
         "groups.admin.localization.delete",
         context.path(),
-        move || native_server_adapter::delete_group_translation(native_command),
+        move || native_localization_adapter::delete_group_translation(native_command),
         move || graphql_adapter::delete_group_translation(token, tenant, command),
     )
     .await
