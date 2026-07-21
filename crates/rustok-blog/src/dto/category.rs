@@ -61,12 +61,22 @@ pub struct CategoryListItem {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CategoryListResponse {
+    pub items: Vec<CategoryListItem>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, IntoParams)]
 pub struct ListCategoriesFilter {
     pub locale: Option<String>,
     #[serde(default = "default_page")]
+    #[param(minimum = 1)]
     pub page: u64,
     #[serde(default = "default_per_page")]
+    #[param(minimum = 1, maximum = 100)]
     pub per_page: u64,
 }
 
