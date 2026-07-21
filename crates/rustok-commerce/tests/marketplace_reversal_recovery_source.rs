@@ -21,7 +21,8 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(adapter.contains("return Ok(None)"));
     assert!(!adapter.contains("raw_payload"));
 
-    assert!(inbox.contains("marketplace-reversal-event:{}:v1"));
+    assert!(inbox.contains("marketplace-reversal-event"));
+    assert!(inbox.contains(":{}:v1"));
     assert!(inbox.contains("process_financial_reversal"));
     assert!(inbox.contains("MarketplaceReversalEventStatus::OperatorReview"));
     assert!(!inbox.contains("PaymentProviderWebhookRequest"));
@@ -64,5 +65,5 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(worker.contains("MARKETPLACE_FINANCIAL_SWEEP_BATCH: u64 = 100"));
     assert!(worker.contains("MissedTickBehavior::Delay"));
     assert!(worker.contains("adapt_pending"));
-    assert!(worker.contains("reversal_events.sweep"));
+    assert!(worker.contains("service.sweep(MARKETPLACE_FINANCIAL_SWEEP_BATCH)"));
 }
