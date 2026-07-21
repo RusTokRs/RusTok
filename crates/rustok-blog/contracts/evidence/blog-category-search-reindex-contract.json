@@ -44,6 +44,10 @@
       "expected": "category update/delete use resource scope rather than comparing the authenticated user UUID to the category UUID"
     },
     {
+      "name": "authorization_precedes_lookup",
+      "expected": "owner update/delete reject missing authority before opening a transaction or querying a category, preventing existence disclosure through direct service calls"
+    },
+    {
       "name": "mounted_http_write_path",
       "expected": "Blog category HTTP mutations construct CategoryService with TransactionalEventBus from HostRuntimeContext"
     },
@@ -64,6 +68,7 @@
     "execute category create/update/delete HTTP requests with blog_posts RBAC",
     "execute the same requests with legacy categories RBAC during the compatibility window",
     "verify BlogModule registration does not seed catalog categories permissions",
+    "verify unauthorized direct update/delete calls perform no category lookup",
     "verify one outbox record is committed for category update and delete",
     "verify an outbox write failure rolls back the category mutation",
     "run Search ingestion and confirm category_name/category_slug change in related Blog documents",
