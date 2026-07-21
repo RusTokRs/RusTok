@@ -4,15 +4,16 @@ use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    AcceptGroupInvitationCommand, GroupsStorefrontAcceptInvitationResult,
-    GroupsStorefrontDirectory, GroupsStorefrontFilters, GroupsStorefrontListItem,
-    GroupsStorefrontMembership,
+    AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
+    GroupsStorefrontAcceptInvitationResult, GroupsStorefrontDirectory, GroupsStorefrontFilters,
+    GroupsStorefrontListItem, GroupsStorefrontMembership,
 };
 
 pub type GraphqlGroupsStorefrontError = String;
 
 const DIRECTORY_QUERY: &str = "query GroupsStorefrontDirectory($page: Int, $perPage: Int, $search: String) { groups(page: $page, perPage: $perPage, search: $search, includeNonPublic: false) { total page per_page: perPage items { id handle title summary visibility join_policy: joinPolicy member_count: memberCount effective_locale: effectiveLocale } } }";
 const ACCEPT_INVITATION_MUTATION: &str = "mutation GroupsStorefrontAcceptInvitation($idempotencyKey: String!, $token: String!) { accept_group_invitation: acceptGroupInvitation(idempotencyKey: $idempotencyKey, token: $token) { invitation_id: invitationId group_id: groupId membership { id group_id: groupId user_id: userId role status } group_version: groupVersion replayed } }";
+const ACCEPT_TARGETED_INVITATION_MUTATION: &str = "mutation GroupsStorefrontAcceptTargetedInvitation($idempotencyKey: String!, $invitationId: UUID!) { accept_targeted_group_invitation: acceptTargetedGroupInvitation(idempotencyKey: $idempotencyKey, invitationId: $invitationId) { invitation_id: invitationId group_id: groupId membership { id group_id: groupId user_id: userId role status } group_version: groupVersion replayed } }";
 
 #[derive(Debug, Serialize)]
 struct DirectoryVariables {
@@ -29,6 +30,14 @@ struct AcceptInvitationVariables {
     token: String,
 }
 
+#[derive(Debug, Serialize)]
+struct AcceptTargetedInvitationVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "invitationId")]
+    invitation_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct DirectoryResponse {
     groups: DirectoryWire,
@@ -37,6 +46,11 @@ struct DirectoryResponse {
 #[derive(Debug, Deserialize)]
 struct AcceptInvitationResponse {
     accept_group_invitation: AcceptInvitationWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct AcceptTargetedInvitationResponse {
+    accept_targeted_group_invitation: AcceptInvitationWire,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,14 +156,42 @@ pub async fn accept_invitation(
     )
     .await
     .map_err(|error| error.to_string())?;
+    Ok(response.accept_group_invitation.into())
+}
 
-    Ok(GroupsStorefrontAcceptInvitationResult {
-        invitation_id: response.accept_group_invitation.invitation_id,
-        group_id: response.accept_group_invitation.group_id,
-        membership: response.accept_group_invitation.membership.into(),
-        group_version: response.accept_group_invitation.group_version,
-        replayed: response.accept_group_invitation.replayed,
-    })
+pub async fn accept_targeted_invitation(
+    access_token: Option<String>,
+    tenant_slug: Option<String>,
+    command: AcceptTargetedGroupInvitationCommand,
+) -> Result<GroupsStorefrontAcceptInvitationResult, GraphqlGroupsStorefrontError> {
+    let response: AcceptTargetedInvitationResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            ACCEPT_TARGETED_INVITATION_MUTATION,
+            Some(AcceptTargetedInvitationVariables {
+                idempotency_key: command.idempotency_key,
+                invitation_id: command.invitation_id,
+            }),
+        ),
+        access_token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(response.accept_targeted_group_invitation.into())
+}
+
+impl From<AcceptInvitationWire> for GroupsStorefrontAcceptInvitationResult {
+    fn from(value: AcceptInvitationWire) -> Self {
+        Self {
+            invitation_id: value.invitation_id,
+            group_id: value.group_id,
+            membership: value.membership.into(),
+            group_version: value.group_version,
+            replayed: value.replayed,
+        }
+    }
 }
 
 impl From<MembershipWire> for GroupsStorefrontMembership {
