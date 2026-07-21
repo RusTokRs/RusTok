@@ -95,8 +95,10 @@ persistence. Rich text remains an external dedicated capability.
 - [x] `sanitize_static_landing_project` provides the authoritative static publish
   pre-materialization seam: current Fly decode/validation, deterministic stable
   ids, secure public-resource policy and SHA-256 sanitization evidence.
-- [ ] Full HTML/CSS/URL/attribute sanitization is not integrated into every legacy
-  or non-reviewed publish path.
+- [x] Public Page Builder publication has no legacy/default-runtime lifecycle path;
+  every builder document crosses the reviewed sanitizer/materialization pipeline.
+- [ ] Complete HTML/CSS/URL/attribute policy and parser evidence is not integrated
+  for the full reviewed publish surface.
 - [ ] Observed tenant Wave 0/Wave 1 evidence is incomplete.
 
 ### Pages reference consumer
@@ -124,8 +126,14 @@ persistence. Rich text remains an external dedicated capability.
   `(tenant_id, page_id, idempotency_key)` and request/sanitization/artifact hashes.
 - [x] The atomic reviewed service rejects an empty Page Builder source set and uses
   one locale-ordered source set for scenario evaluation, sanitization and build.
-- [ ] GraphQL, HTTP and admin publish transports still require cutover to
-  `PublishPageInput`; legacy default-runtime publication remains reachable.
+- [x] GraphQL, HTTP and admin transports use `PublishPageInput` and return the
+  durable receipt; create-and-publish is rejected.
+- [x] Admin publication provides an explicit promoted-scenario selector scoped by
+  `page_id + baseline_hash`; session storage contains only the scenario id and
+  stale/foreign selections fail closed.
+- [x] The mixed lifecycle/default-runtime branch is removed. Explicit
+  `publish_non_builder[_if_current]` rejects GrapesJS/Fly bodies with
+  `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` before and inside the transaction.
 - [ ] Cache-consumer invalidation from the durable `NodePublished` outbox signal is
   not yet proven.
 - [ ] Authenticated storefront inline editing is not implemented.
@@ -240,6 +248,8 @@ Rules:
 - publish carries metadata version, exact localized body revisions, reviewed
   runtime and an idempotency key;
 - acknowledgement returns the durable publish receipt;
+- promoted runtime scenario selection is explicit, ephemeral and resolved against
+  the exact current baseline before publish;
 - widget data does not flow through a generic builder facade;
 - dynamic widgets store versioned configuration only;
 - consumer list/create/lifecycle UI remains consumer-owned;
@@ -259,8 +269,8 @@ Rules:
 - Project/history/observer/overlay limits are configurable.
 - Anonymous storefront bundles exclude authoring assets.
 - Artifact identity and integrity are verified before publication/read.
-- Raw runtime context is not persisted in artifact or receipt evidence; only
-  scenario identity, snapshots and cryptographic hashes are retained.
+- Raw runtime context is not persisted in selection, artifact or receipt evidence;
+  only scenario identity, snapshots and cryptographic hashes are retained.
 - Exact idempotency replay returns the stored receipt without rebuild or duplicate
   outbox events; key reuse with different input fails closed.
 - Save, review, sanitization, publish receipt, artifact and storefront read share
@@ -310,8 +320,9 @@ of the verification programme.
   SHA-256 identity before runtime materialization.
 - [x] Route the reviewed static publish path through current Fly traversal,
   structural validation, deterministic ids and secure public-resource checks.
+- [x] Remove non-reviewed/default-runtime builder publication paths.
 - [ ] Finalize complete HTML/CSS/URL/attribute policy and parser dependencies.
-- [ ] Enforce all size/depth/assets/styles limits across every publish path.
+- [ ] Enforce all size/depth/assets/styles limits across the reviewed publish path.
 - [ ] Add real-project runtime tests and accepted typed policy evidence.
 
 ### Phase 5 — consumer write separation
@@ -335,8 +346,11 @@ of the verification programme.
 - [x] Idempotent atomic Pages service: page/body locks, transactional feature and
   existing-baseline reads, sanitization, materialization, persist/bind, published
   state, `NodeUpdated`/`NodePublished` outbox and durable receipt.
-- [ ] Cut GraphQL, HTTP and admin transports over to the atomic reviewed service and
-  remove builder publication through the default runtime/create-and-publish path.
+- [x] Cut GraphQL, HTTP and admin transports over to the atomic reviewed service,
+  reject create-and-publish and remove builder publication through the default
+  runtime lifecycle.
+- [x] Isolate non-builder publication behind explicitly named commands that reject
+  every GrapesJS/Fly body before and inside the transaction.
 - [ ] Prove route/page/artifact cache invalidation from the durable outbox signal.
 - [ ] Rollback to previous immutable artifacts.
 - [ ] Repair/rebuild and integrity-audit commands.
@@ -346,8 +360,9 @@ of the verification programme.
 - [x] Manifest-backed FFA package and full-authoring shell.
 - [x] Pages builder-first reference workspace.
 - [x] Contribution assembly and capability policy foundations.
+- [x] Complete reviewed-runtime scenario selection and deterministic idempotency
+  transport UX at source level.
 - [ ] Complete typed properties, assets, provider-health and degraded controls.
-- [ ] Complete reviewed-runtime selection and idempotency UX for transport cutover.
 - [ ] Complete accessibility and bundle budgets.
 
 ### Phase 8 — storefront
@@ -376,18 +391,14 @@ of the verification programme.
 
 ## Immediate implementation order
 
-1. Cut Pages GraphQL, HTTP and admin publish transports over to
-   `PublishPageInput`/`PublishPageResult`, including exact localized body revisions,
-   reviewed scenario/context and idempotency key generation.
-2. Remove Page Builder publication through legacy default-runtime lifecycle and
-   create-and-publish paths without breaking non-builder page lifecycle policy.
-3. Prove `NodePublished` outbox consumption invalidates every affected route,
+1. Prove `NodePublished` outbox consumption invalidates every affected route,
    artifact and page cache key; correlate the receipt through storefront reads.
-4. Add idempotent rollback to a previous immutable artifact set.
-5. Complete Pages metadata property contributions and Page Builder asset/degraded
+2. Add idempotent rollback to a previous immutable artifact set.
+3. Complete Pages metadata property contributions and Page Builder asset/degraded
    controls.
-6. Implement authenticated real-DOM storefront editing and bundle exclusion.
-7. Run accepted Rust/WASM/browser and observed tenant evidence.
+4. Finish the reviewed HTML/CSS/URL/attribute policy and resource limits.
+5. Implement authenticated real-DOM storefront editing and bundle exclusion.
+6. Run accepted Rust/WASM/browser and observed tenant evidence.
 
 ## Verification programme
 
@@ -406,8 +417,10 @@ cargo xtask module validate pages
 node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs
 npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:consumer:pages
 npm run verify:i18n:ui
