@@ -299,6 +299,40 @@ mod tests {
         })
     }
 
+    fn project_with_runtime_bound_image() -> Value {
+        json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": "Home",
+                    "description": "Runtime-bound landing",
+                    "slug": "home"
+                },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "title",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "content": "Welcome"
+                    }, {
+                        "id": "hero",
+                        "type": "image",
+                        "attributes": { "src": "https://cdn.example.com/default.webp" }
+                    }]
+                }
+            }],
+            "flyRuntimeBindings": [{
+                "id": "hero-src",
+                "component_id": "hero",
+                "path": "asset.url",
+                "target": "attribute",
+                "name": "src"
+            }]
+        })
+    }
+
     #[test]
     fn preview_and_static_artifact_share_fly_materialization_output() {
         let runtime = PageBuilderPreviewRuntime::new(
@@ -318,13 +352,14 @@ mod tests {
             .expect("preview render");
         let result = compile_materialized_static_landing(&project(), runtime)
             .expect("materialized static artifact");
+        let preview_document_hash = ProjectHash::from_bytes(preview_html.as_bytes()).hex();
 
         assert_eq!(result.artifact.pages[0].document_html, preview_html);
         assert_eq!(
             result.runtime_snapshots[0].cases[0]
                 .document_hash
                 .as_deref(),
-            Some(ProjectHash::from_bytes(preview_html.as_bytes()).hex().as_str())
+            Some(preview_document_hash.as_str())
         );
         assert_eq!(result.identity.runtime_context_hash.len(), 64);
         assert_eq!(result.identity.runtime_snapshot_hash.len(), 64);
@@ -364,6 +399,28 @@ mod tests {
             second.identity.materialization_hash
         );
         assert_ne!(first.artifact.artifact_hash, second.artifact.artifact_hash);
+    }
+
+    #[test]
+    fn runtime_bound_http_resource_is_rejected_before_static_artifact_creation() {
+        let error = compile_materialized_static_landing(
+            &project_with_runtime_bound_image(),
+            PageBuilderPreviewRuntime::new(
+                json!({ "asset": { "url": "http://cdn.example.com/runtime.webp" } }),
+                Some("insecure-resource".to_string()),
+            ),
+        )
+        .expect_err("materialized HTTP resource must be rejected");
+        let PageBuilderStaticLandingMaterializationError::Landing(
+            LandingProjectError::Validation { diagnostics },
+        ) = error
+        else {
+            panic!("expected typed landing validation error");
+        };
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "landing_insecure_resource_url"
+                && diagnostic.path.ends_with("attributes.src")
+        }));
     }
 
     #[test]
