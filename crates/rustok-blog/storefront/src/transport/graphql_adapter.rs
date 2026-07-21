@@ -1,3 +1,4 @@
+use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::{BlogPostDetail, BlogPostList, StorefrontBlogData};
 use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{configured_tenant_slug, ApiError};
 
-const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: 1, perPage: 20) { total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
+const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontBlogResponse {
@@ -20,6 +21,10 @@ struct StorefrontBlogVariables {
     post_slug: String,
     filter: PostsFilter,
     locale: Option<String>,
+    #[serde(rename = "commentsPage")]
+    comments_page: u64,
+    #[serde(rename = "commentsPerPage")]
+    comments_per_page: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -69,6 +74,7 @@ where
 
 pub async fn fetch_blog(
     fetch_request: BlogStorefrontFetchRequest,
+    comments_page: u64,
 ) -> Result<StorefrontBlogData, ApiError> {
     let response: StorefrontBlogResponse = request(
         STOREFRONT_BLOG_QUERY,
@@ -81,6 +87,8 @@ pub async fn fetch_blog(
                 per_page: 6,
             },
             locale: fetch_request.locale,
+            comments_page: comments_page.max(1),
+            comments_per_page: COMMENTS_PAGE_SIZE,
         },
     )
     .await?;
