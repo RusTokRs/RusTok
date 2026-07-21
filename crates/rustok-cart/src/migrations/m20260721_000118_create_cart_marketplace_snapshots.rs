@@ -43,6 +43,16 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::CurrencyCode)
+                            .string_len(3)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::CurrencyExponent)
+                            .small_integer()
+                            .not_null(),
+                    )
+                    .col(
                         ColumnDef::new(CartLineItemMarketplaceSnapshots::UnitAmount)
                             .big_integer()
                             .not_null(),
@@ -159,6 +169,8 @@ enum CartLineItemMarketplaceSnapshots {
     MasterProductId,
     MasterVariantId,
     ListingTermsVersion,
+    CurrencyCode,
+    CurrencyExponent,
     UnitAmount,
     SubtotalAmount,
     DiscountAmount,
