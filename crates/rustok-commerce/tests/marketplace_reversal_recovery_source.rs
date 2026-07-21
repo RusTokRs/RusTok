@@ -8,6 +8,9 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     let migration = include_str!(
         "../src/migrations/m20260721_000004_create_marketplace_reversal_event_inbox.rs"
     );
+    let mysql_integrity = include_str!(
+        "../src/migrations/m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity.rs"
+    );
     let rest = include_str!("../src/controllers/marketplace_reversal_financial.rs");
     let graphql = include_str!("../src/graphql/marketplace_financial.rs");
     let marketplace_worker = include_str!(
@@ -29,6 +32,12 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(adapter.contains("marketplace_reversal"));
     assert!(adapter.contains("decimal_to_minor_exact"));
     assert!(adapter.contains("return Ok(None)"));
+    assert!(adapter.contains("DatabaseBackend::Postgres"));
+    assert!(adapter.contains("event_metadata::text"));
+    assert!(adapter.contains("DatabaseBackend::Sqlite"));
+    assert!(adapter.contains("CAST(event_metadata AS TEXT)"));
+    assert!(adapter.contains("DatabaseBackend::MySql"));
+    assert!(adapter.contains("CAST(event_metadata AS CHAR)"));
     assert!(!adapter.contains("raw_payload"));
 
     assert!(inbox.contains("marketplace-reversal-event"));
@@ -42,6 +51,12 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(migration.contains("ux_marketplace_reversal_source_identity"));
     assert!(migration.contains("normalized facts are immutable"));
     assert!(!migration.contains("foreign_key("));
+
+    assert!(mysql_integrity.contains("DatabaseBackend::MySql"));
+    assert!(mysql_integrity.contains("CREATE TRIGGER marketplace_reversal_event_inbox_guard_insert"));
+    assert!(mysql_integrity.contains("CREATE TRIGGER marketplace_reversal_event_inbox_guard_update"));
+    assert!(mysql_integrity.contains("marketplace reversal normalized facts are immutable"));
+    assert!(mysql_integrity.contains("processed marketplace reversal inbox row is immutable"));
 
     assert!(operator.contains("ReversalId.is_null()"));
     assert!(operator.contains("LedgerTransactionId.is_null()"));
