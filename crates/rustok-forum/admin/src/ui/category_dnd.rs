@@ -82,57 +82,59 @@ pub(super) fn CategoryDndGrid(
     );
 
     let items_for_drop = items.clone();
-    let execute_drop = Callback::new(move |(target_id, placement): (Option<String>, CategoryDropPlacement)| {
-        if move_busy.get_untracked() {
-            return;
-        }
-        let Some(category_id) = dragged_id.get_untracked() else {
-            return;
-        };
-        set_dragged_id.set(None);
-        set_move_error.set(None);
-
-        let request = match category_drop_move_request(
-            &items_for_drop,
-            category_id.as_str(),
-            target_id.as_deref(),
-            placement,
-        ) {
-            Ok(Some(request)) => request,
-            Ok(None) => return,
-            Err(error) => {
-                set_move_error.set(Some(error));
+    let execute_drop = Callback::new(
+        move |(target_id, placement): (Option<String>, CategoryDropPlacement)| {
+            if move_busy.get_untracked() {
                 return;
             }
-        };
-        let token_value = token.get_untracked();
-        let tenant_value = tenant.get_untracked();
-        let move_error_prefix = move_error_prefix.clone();
-        set_move_busy.set(true);
-        spawn_local(async move {
-            let CategoryMoveRequest {
-                category_id,
-                parent_id,
-                position,
-            } = request;
-            match transport::move_category(
-                token_value,
-                tenant_value,
-                category_id,
-                parent_id,
-                position,
-            )
-            .await
-            {
-                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
-                Err(error) => set_move_error.set(Some(format!(
-                    "{}: {}",
-                    move_error_prefix, error
-                ))),
-            }
-            set_move_busy.set(false);
-        });
-    });
+            let Some(category_id) = dragged_id.get_untracked() else {
+                return;
+            };
+            set_dragged_id.set(None);
+            set_move_error.set(None);
+
+            let request = match category_drop_move_request(
+                &items_for_drop,
+                category_id.as_str(),
+                target_id.as_deref(),
+                placement,
+            ) {
+                Ok(Some(request)) => request,
+                Ok(None) => return,
+                Err(error) => {
+                    set_move_error.set(Some(error));
+                    return;
+                }
+            };
+            let token_value = token.get_untracked();
+            let tenant_value = tenant.get_untracked();
+            let move_error_prefix = move_error_prefix.clone();
+            set_move_busy.set(true);
+            spawn_local(async move {
+                let CategoryMoveRequest {
+                    category_id,
+                    parent_id,
+                    position,
+                } = request;
+                match transport::move_category(
+                    token_value,
+                    tenant_value,
+                    category_id,
+                    parent_id,
+                    position,
+                )
+                .await
+                {
+                    Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                    Err(error) => set_move_error.set(Some(format!(
+                        "{}: {}",
+                        move_error_prefix, error
+                    ))),
+                }
+                set_move_busy.set(false);
+            });
+        },
+    );
 
     let root_drop = execute_drop;
     view! {
@@ -159,7 +161,6 @@ pub(super) fn CategoryDndGrid(
                     busy_key.as_deref(),
                     &category_labels,
                 );
-                let item_is_busy = vm.is_busy;
                 let item_is_busy = vm.is_busy;
                 let item_id = item.id.clone();
                 let before_target = item.id.clone();
