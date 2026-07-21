@@ -79,6 +79,37 @@
     "stable_root_idempotency_key": "marketplace-reversal-event:{inbox_id}:v1",
     "completed_evidence": ["reversal_id", "ledger_transaction_id"]
   },
+  "adaptation_failure_journal": {
+    "table": "marketplace_reversal_adaptation_failures",
+    "purpose": "durably retain failures discovered by historical processed-event backfill without persisting provider metadata or raw payloads",
+    "deduplication_key": ["tenant_id", "provider_event_id"],
+    "immutable_identity": [
+      "id",
+      "tenant_id",
+      "provider_event_id",
+      "event_source",
+      "event_id",
+      "event_type",
+      "created_at"
+    ],
+    "statuses": ["retryable_error", "operator_review", "resolved"],
+    "retry_backoff_seconds": {
+      "initial": 10,
+      "maximum": 600,
+      "strategy": "bounded exponential"
+    },
+    "selection_policy": [
+      "operator_review rows are not automatically selected",
+      "retryable_error rows are selected only when next_retry_at is due",
+      "resolved rows are never selected",
+      "successful adaptation marks an existing failure resolved"
+    ],
+    "database_integrity": {
+      "postgres": "checks plus immutable identity and resolved-row trigger",
+      "sqlite": "insert and update triggers",
+      "mysql": "insert and update triggers"
+    }
+  },
   "recovery": {
     "payment_worker": {
       "interval_seconds": 10,
@@ -91,7 +122,7 @@
       "missed_tick_behavior": "delay",
       "batch_size": 100,
       "order": [
-        "adapt_historical_processed_provider_events",
+        "adapt_historical_processed_provider_events_with_failure_journal",
         "recover_marketplace_reversal_inbox",
         "recover_marketplace_paid_event_inbox"
       ]
@@ -110,6 +141,12 @@
       "reversal_id is null",
       "ledger_transaction_id is null"
     ],
+    "adaptation_retry": [
+      "reset failure to retryable_error with next_retry_at equal to now",
+      "reload immutable normalized payment provider event",
+      "run the same marketplace adapter",
+      "mark the failure resolved on success or persist the new failure classification"
+    ],
     "safe_projection_excludes": [
       "lines_json",
       "event_hash",
@@ -123,25 +160,36 @@
       "GET /admin/marketplace-financial/reversal-events/operator-review",
       "GET /admin/marketplace-financial/reversal-events/{id}",
       "POST /admin/marketplace-financial/reversal-events/{id}/retry",
-      "POST /admin/marketplace-financial/reversal-events/recovery-sweep"
+      "POST /admin/marketplace-financial/reversal-events/recovery-sweep",
+      "GET /admin/marketplace-financial/reversal-adaptation-failures/operator-review",
+      "GET /admin/marketplace-financial/reversal-adaptation-failures/{id}",
+      "POST /admin/marketplace-financial/reversal-adaptation-failures/{id}/retry"
     ],
     "graphql": [
       "adminMarketplaceReversalEvent",
       "adminMarketplaceReversalEventsOperatorReview",
       "retryMarketplaceReversalEvent",
-      "runMarketplaceReversalRecoverySweep"
+      "runMarketplaceReversalRecoverySweep",
+      "adminMarketplaceReversalAdaptationFailure",
+      "adminMarketplaceReversalAdaptationFailuresOperatorReview",
+      "retryMarketplaceReversalAdaptationFailure"
     ],
     "openapi_registered": true
   },
   "migration": {
     "schema": "m20260721_000004_create_marketplace_reversal_event_inbox",
     "mysql_integrity": "m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity",
+    "adaptation_failures": "m20260721_000006_create_marketplace_reversal_adaptation_failures",
     "dependencies": [
       "m20260721_000003_create_marketplace_paid_event_inbox",
       "m20260721_000002_add_reversals_and_seller_balances",
       "m20260714_000117_lock_provider_event_normalized_facts"
     ],
     "mysql_integrity_depends_on": "m20260721_000004_create_marketplace_reversal_event_inbox",
+    "adaptation_failures_depends_on": [
+      "m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity",
+      "m20260714_000117_lock_provider_event_normalized_facts"
+    ],
     "cross_module_foreign_keys": false
   },
   "validation": {
