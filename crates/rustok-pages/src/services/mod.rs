@@ -9,7 +9,7 @@ pub mod scenario_baseline;
 pub use menu::{
     MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE, MenuService,
 };
-pub use menu_binding::{ACTIVE_MENU_NOT_FOUND_ERROR_CODE, MenuBindingService};
+pub use menu_binding::MenuBindingService;
 pub use page::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_DOCUMENT_REVISION_CONFLICT,
