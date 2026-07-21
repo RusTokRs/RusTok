@@ -290,7 +290,7 @@ pub fn materialize_notification_source_registry(
             }
         })?;
         let built = provider.slug();
-        if built != *declared {
+        if &built != declared {
             return Err(NotificationSourceRegistryError::FactorySourceMismatch {
                 declared: declared.clone(),
                 built,
