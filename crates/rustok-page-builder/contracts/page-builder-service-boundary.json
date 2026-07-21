@@ -48,6 +48,14 @@
       ],
       "input": "PreviewPageBuilderInput",
       "invocation_order": "after Fly decode, structural validation and runtime-contract validation",
+      "runtime_validation_markers": [
+        "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024",
+        "runtime context must be a JSON object",
+        "serde_json::to_vec(&runtime.context)",
+        "context_bytes.len() > MAX_PREVIEW_RUNTIME_CONTEXT_BYTES",
+        "MAX_PREVIEW_SCENARIO_ID_BYTES: usize = 128",
+        "scenario_id.trim() != scenario_id"
+      ],
       "runtime_order": [
         "self.inspect(&input.project_data)?",
         "validate_preview_runtime(&input.runtime)?",
