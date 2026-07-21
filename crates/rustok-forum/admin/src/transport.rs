@@ -71,6 +71,54 @@ pub async fn update_category(
     }
 }
 
+pub async fn move_category(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    parent_id: Option<String>,
+    position: u32,
+) -> Result<(), ApiError> {
+    match graphql_adapter::move_category(
+        token.clone(),
+        tenant_slug.clone(),
+        id.clone(),
+        parent_id.clone(),
+        position,
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(_) => rest_adapter::move_category(token, tenant_slug, id, parent_id, position).await,
+    }
+}
+
+pub async fn reorder_category_siblings(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    parent_id: Option<String>,
+    ordered_category_ids: Vec<String>,
+) -> Result<(), ApiError> {
+    match graphql_adapter::reorder_category_siblings(
+        token.clone(),
+        tenant_slug.clone(),
+        parent_id.clone(),
+        ordered_category_ids.clone(),
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            rest_adapter::reorder_category_siblings(
+                token,
+                tenant_slug,
+                parent_id,
+                ordered_category_ids,
+            )
+            .await
+        }
+    }
+}
+
 pub async fn delete_category(
     token: Option<String>,
     tenant_slug: Option<String>,
