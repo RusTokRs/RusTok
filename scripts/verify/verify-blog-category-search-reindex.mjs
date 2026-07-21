@@ -116,10 +116,11 @@ rejectMarker(
 );
 
 for (const marker of [
-  "pub fn new_with_event_bus",
-  "event_bus: Option<TransactionalEventBus>",
+  "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self",
+  "event_bus: TransactionalEventBus",
   "self.db.begin().await",
   "publish_blog_reindex_in_tx",
+  "self.event_bus",
   "DomainEvent::ReindexRequested",
   'target_type: "blog".to_string()',
   "target_id: None",
@@ -139,6 +140,8 @@ for (const marker of [
   requireMarker(service, marker, servicePath);
 }
 for (const marker of [
+  "new_with_event_bus",
+  "Option<TransactionalEventBus>",
   "CATEGORY_PERMISSION_RESOURCES",
   "enforce_any_scope",
   "Resource::BlogPosts",
@@ -185,8 +188,7 @@ for (const marker of [
 rejectMarker(moduleSource, "Permission::new(Resource::Categories", modulePath);
 
 for (const marker of [
-  "CategoryService::new_with_event_bus",
-  "runtime.event_bus()",
+  "CategoryService::new(runtime.db_clone(), runtime.event_bus())",
   "filter.page = filter.page.max(1)",
   "filter.per_page = filter.per_page.clamp(1, 100)",
   "ensure_category_permission",
@@ -200,6 +202,7 @@ for (const marker of [
   requireMarker(controller, marker, controllerPath);
 }
 for (const marker of [
+  "new_with_event_bus",
   "Resource::BlogPosts",
   "Resource::Categories",
   "has_any_effective_permission",
@@ -259,6 +262,9 @@ if (evidence) {
   if (contract.permission_resource !== "blog_categories") {
     failures.push(`${evidencePath}: permission_resource must be blog_categories`);
   }
+  if (contract.category_service_constructor !== "CategoryService::new(DatabaseConnection, TransactionalEventBus)") {
+    failures.push(`${evidencePath}: category_service_constructor drift`);
+  }
   for (const [key, expected] of Object.entries({
     owner_service: servicePath,
     owner_rbac: rbacPath,
@@ -281,6 +287,7 @@ if (evidence) {
     "tenant_scoped_parent",
     "non_empty_slug",
     "dedicated_permission_namespace",
+    "mandatory_transactional_event_bus",
     "category_has_no_owner_scope",
     "authorization_precedes_lookup",
     "bounded_category_list",
@@ -299,10 +306,17 @@ for (const marker of [
   "non-empty ASCII slug",
   "service and HTTP pagination",
   "blog_categories:*",
+  "CategoryService::new(db, event_bus)",
 ]) {
   requireMarker(plan, marker, planPath);
 }
-for (const marker of ["Legacy `categories:*`", "compatibility fallback", "temporary legacy"]) {
+for (const marker of [
+  "Legacy `categories:*`",
+  "compatibility fallback",
+  "temporary legacy",
+  "new_with_event_bus",
+  "compatibility constructor",
+]) {
   rejectMarker(plan, marker, planPath);
 }
 
