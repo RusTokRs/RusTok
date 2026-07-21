@@ -38,7 +38,9 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
     let admin = SecurityContext::new(UserRole::Admin, Some(author_id));
 
     let off_registry = ModuleRegistry::new().register(ForumModule);
-    let off_extensions = off_registry.build_runtime_extensions();
+    let off_extensions = off_registry
+        .build_runtime_extensions()
+        .expect("Forum runtime extensions should initialize");
     assert_eq!(
         notification_source_factory_registry_from_extensions(&off_extensions)
             .expect("Forum should publish its source factory")
@@ -119,7 +121,9 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
     let on_registry = ModuleRegistry::new()
         .register(NotificationsModule)
         .register(ForumModule);
-    let mut on_extensions = on_registry.build_runtime_extensions();
+    let mut on_extensions = on_registry
+        .build_runtime_extensions()
+        .expect("Notifications and Forum runtime extensions should initialize");
     let host = on_extensions
         .apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
     let providers = materialize_notification_source_registry(&mut on_extensions, &host)
