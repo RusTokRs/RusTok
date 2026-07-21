@@ -9,7 +9,7 @@ status: active
 
 ## Status legend
 
-- `[x]` — implemented in the repository.
+- `[x]` — implemented in repository source.
 - `[ ]` — not implemented or not reproducibly verified.
 - Source completion and phase-gate completion are separate: gates require
   executable Rust, WASM, browser and runtime evidence.
@@ -28,6 +28,7 @@ The programme forbids:
 - automatic import of obsolete frame trees;
 - consumer block tables retained as fallback authoring models;
 - host-owned persistence, transport or widget schemas;
+- raw runtime-context persistence in publication evidence;
 - editor code in anonymous storefront bundles.
 
 The current component-tree authority is `pages[].component`.
@@ -48,7 +49,9 @@ The current component-tree authority is `pages[].component`.
 - consumer admin/storefront packages — document lifecycle, metadata, transport,
   persistence adapters and domain contributions;
 - `rustok-page-builder` backend — capability policy, validation/sanitization,
-  preview/publish ports, health and rollout controls.
+  preview/review/materialization contracts, health and rollout controls;
+- consumer backend — page/document revisions, immutable artifacts, publish
+  transactions, receipts, outbox and cache ownership.
 
 Fly packages do not choose GraphQL, server functions, tenant policy or consumer
 persistence. Rich text remains an external dedicated capability.
@@ -87,26 +90,44 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Canonical preview runtime DTO validation is shared with deterministic static
   materialization. The provider emits a runtime-bound artifact envelope with
   context/scenario/snapshot hashes and Fly preview/static document parity evidence.
-- [ ] Authoritative sanitization is not fully integrated into every publish path.
+- [x] `PageBuilderReviewedPublishRuntime` requires an explicit normalized scenario
+  and binds format, transient context and scenario through SHA-256.
+- [x] `sanitize_static_landing_project` provides the authoritative static publish
+  pre-materialization seam: current Fly decode/validation, deterministic stable
+  ids, secure public-resource policy and SHA-256 sanitization evidence.
+- [ ] Full HTML/CSS/URL/attribute sanitization is not integrated into every legacy
+  or non-reviewed publish path.
 - [ ] Observed tenant Wave 0/Wave 1 evidence is incomplete.
 
 ### Pages reference consumer
 
 - [x] Pages admin mounts Page Builder through a module-owned facade.
-- [x] Pages owns optimistic body revisions and transport selection.
-- [x] The obsolete parallel JSON/CRUD UI is deleted.
+- [x] Pages owns optimistic metadata versions, localized body revisions and
+  transport selection.
+- [x] Metadata-only patch and document-only save commands are separate.
+- [x] The obsolete parallel JSON/CRUD UI and PageBlock persistence/fallback paths
+  are deleted.
 - [x] Pages provides one builder-first workspace with list/create/select,
   publish/unpublish and delete operations.
 - [x] New/current documents use only `pages[].component`.
-- [x] Admin `PageBlock` and block GraphQL fields are removed.
 - [x] Pages storefront renders current Page Builder documents and static landing
   artifacts.
 - [x] Pages persists and verifies Page Builder runtime materialization identity and
   snapshots. New immutable records carry complete evidence, legacy all-`NULL`
   records retain Fly integrity verification, and partial evidence fails closed.
-- [ ] Backend/storefront block persistence and fallback code still require full
-  deletion.
-- [ ] Typed metadata-only patch and document-only save commands are not separated.
+- [x] `PublishPageInput` binds the operation to metadata version, every localized
+  body revision, one idempotency key and one reviewed runtime hash.
+- [x] `PageService::publish_reviewed` owns one transaction from page/body locks and
+  feature/scenario gates through sanitization, materialization, immutable staging,
+  binding, published state, transactional outbox and durable receipt.
+- [x] `page_publish_operations` provides durable replay/collision semantics through
+  `(tenant_id, page_id, idempotency_key)` and request/sanitization/artifact hashes.
+- [x] The atomic reviewed service rejects an empty Page Builder source set and uses
+  one locale-ordered source set for scenario evaluation, sanitization and build.
+- [ ] GraphQL, HTTP and admin publish transports still require cutover to
+  `PublishPageInput`; legacy default-runtime publication remains reachable.
+- [ ] Cache-consumer invalidation from the durable `NodePublished` outbox signal is
+  not yet proven.
 - [ ] Authenticated storefront inline editing is not implemented.
 
 ## Target architecture
@@ -135,17 +156,21 @@ persistence. Rich text remains an external dedicated capability.
                          BACKEND / FBA
 
   consumer domain (Pages)
-    -> metadata/document revisions
-    -> validation/sanitization port
+    -> metadata version + exact localized body revisions
+    -> reviewed runtime scenario/context hash
+    -> page/body locks and transactional policy gates
+    -> authoritative static sanitization
     -> canonical runtime materialization
     -> deterministic artifact build + snapshot/hash evidence
-    -> immutable artifact persistence
-    -> atomic published pointer
+    -> immutable artifact persistence and bindings
+    -> published state + transactional outbox
+    -> durable idempotent publish receipt
+    -> cache/storefront correlation
 
   rustok-page-builder
     -> capability policy / health / rollout
     -> provider adapter seams
-    -> preview/static materialization identity
+    -> preview/review/sanitization/materialization identity
 ```
 
 Hosts are composition roots only. They supply route, locale, auth and tenant
@@ -159,7 +184,7 @@ fly-leptos -> fly-ui + fly
 rustok-page-builder-admin -> fly-leptos -> fly-ui -> fly
 rustok-page-builder-storefront -> fly-leptos/fly-ui/fly as required
 consumer admin/storefront -> public Page Builder contracts
-consumer backend -> Fly rendering/validation through explicit ports
+consumer backend -> Fly/Page Builder validation and rendering contracts
 ```
 
 Forbidden dependencies:
@@ -212,8 +237,9 @@ Rules:
 - UI never selects raw transport adapters;
 - Fly never selects RusTok transport or persistence;
 - consumer metadata and document revisions are explicit;
-- writes carry optimistic revisions;
-- acknowledgement uses the exact dispatched document hash;
+- publish carries metadata version, exact localized body revisions, reviewed
+  runtime and an idempotency key;
+- acknowledgement returns the durable publish receipt;
 - widget data does not flow through a generic builder facade;
 - dynamic widgets store versioned configuration only;
 - consumer list/create/lifecycle UI remains consumer-owned;
@@ -233,9 +259,12 @@ Rules:
 - Project/history/observer/overlay limits are configurable.
 - Anonymous storefront bundles exclude authoring assets.
 - Artifact identity and integrity are verified before publication/read.
-- Raw runtime context is not persisted in publication evidence; only canonical
-  scenario identity and cryptographic hashes are retained.
-- Save, publish, artifact and storefront read share correlation identifiers.
+- Raw runtime context is not persisted in artifact or receipt evidence; only
+  scenario identity, snapshots and cryptographic hashes are retained.
+- Exact idempotency replay returns the stored receipt without rebuild or duplicate
+  outbox events; key reuse with different input fails closed.
+- Save, review, sanitization, publish receipt, artifact and storefront read share
+  correlation identifiers.
 
 ## Implementation phases
 
@@ -246,11 +275,12 @@ Rules:
 - [x] Establish `pages[].component` as current authority.
 - [x] Delete Pages parallel JSON/CRUD admin UI.
 - [x] Remove frame copy/synchronization helpers from Pages.
+- [x] Delete backend/storefront `PageBlock` production paths.
 - [x] Add guardrails rejecting deleted UI, frame sync and admin blocks.
-- [ ] Delete the remaining backend/storefront `PageBlock` subsystem.
 
 **Gate:** repository production source contains no obsolete page block or shadow
-editor authority.
+editor authority. Source is implemented; accepted executed evidence remains part
+of the verification programme.
 
 ### Phase 1 — engine and codec
 
@@ -276,16 +306,19 @@ editor authority.
 
 ### Phase 4 — authoritative validation and sanitization
 
-- [ ] Finalize HTML/CSS/URL/attribute policy and parser dependencies.
-- [ ] Route backend document traversal through Fly.
-- [ ] Enforce size/depth/assets/styles limits.
-- [ ] Add real-project runtime tests and typed policy errors.
+- [x] Add an explicit provider-owned static publish sanitization envelope and
+  SHA-256 identity before runtime materialization.
+- [x] Route the reviewed static publish path through current Fly traversal,
+  structural validation, deterministic ids and secure public-resource checks.
+- [ ] Finalize complete HTML/CSS/URL/attribute policy and parser dependencies.
+- [ ] Enforce all size/depth/assets/styles limits across every publish path.
+- [ ] Add real-project runtime tests and accepted typed policy evidence.
 
 ### Phase 5 — consumer write separation
 
-- [ ] Add metadata-only patch commands.
-- [ ] Add document-only save commands with body revision/hash.
-- [ ] Independently conflict-check metadata and document revisions.
+- [x] Add metadata-only patch commands.
+- [x] Add document-only save commands with body revision.
+- [x] Independently conflict-check metadata and document revisions.
 - [ ] Move consumer metadata editing into typed property contributions.
 
 ### Phase 6 — deterministic publication
@@ -297,7 +330,14 @@ editor authority.
 - [x] Pages persists runtime materialization identity/snapshots with
   materialization-aware uniqueness and verifies complete evidence on binding and
   storefront reads; legacy all-`NULL` evidence remains backward-compatible.
-- [ ] Atomic idempotent publish transaction and outbox/cache invalidation.
+- [x] Explicit reviewed runtime/scenario contract without raw-context persistence.
+- [x] Authoritative static sanitizer before reviewed materialization.
+- [x] Idempotent atomic Pages service: page/body locks, transactional feature and
+  existing-baseline reads, sanitization, materialization, persist/bind, published
+  state, `NodeUpdated`/`NodePublished` outbox and durable receipt.
+- [ ] Cut GraphQL, HTTP and admin transports over to the atomic reviewed service and
+  remove builder publication through the default runtime/create-and-publish path.
+- [ ] Prove route/page/artifact cache invalidation from the durable outbox signal.
 - [ ] Rollback to previous immutable artifacts.
 - [ ] Repair/rebuild and integrity-audit commands.
 
@@ -307,6 +347,7 @@ editor authority.
 - [x] Pages builder-first reference workspace.
 - [x] Contribution assembly and capability policy foundations.
 - [ ] Complete typed properties, assets, provider-health and degraded controls.
+- [ ] Complete reviewed-runtime selection and idempotency UX for transport cutover.
 - [ ] Complete accessibility and bundle budgets.
 
 ### Phase 8 — storefront
@@ -328,20 +369,23 @@ editor authority.
 ### Phase 10 — rollout
 
 - [ ] Internal tenant Wave 0 with observed evidence.
-- [ ] Pages Wave 1 after current-only, publication and rollback gates.
+- [ ] Pages Wave 1 after transport publication, cache and rollback gates.
 - [ ] Media/Pages reusable sections.
 - [ ] Blog, Forum, Product, Pricing, Taxonomy and SEO contributions.
 - [ ] Additional modules only after renderer/property/cache ownership is proven.
 
 ## Immediate implementation order
 
-1. Delete backend/storefront `PageBlock`/`page_blocks`/`BlockService` production
-   code and rewrite fresh-install migrations.
-2. Separate Pages metadata patch from Fly document save.
-3. Add an explicit reviewed publish-runtime/scenario selection using the canonical
-   Page Builder DTO without persisting raw runtime context.
-4. Complete atomic artifact publication, rollback, correlation and repair.
-5. Complete Page Builder property/asset/degraded-state controls.
+1. Cut Pages GraphQL, HTTP and admin publish transports over to
+   `PublishPageInput`/`PublishPageResult`, including exact localized body revisions,
+   reviewed scenario/context and idempotency key generation.
+2. Remove Page Builder publication through legacy default-runtime lifecycle and
+   create-and-publish paths without breaking non-builder page lifecycle policy.
+3. Prove `NodePublished` outbox consumption invalidates every affected route,
+   artifact and page cache key; correlate the receipt through storefront reads.
+4. Add idempotent rollback to a previous immutable artifact set.
+5. Complete Pages metadata property contributions and Page Builder asset/degraded
+   controls.
 6. Implement authenticated real-DOM storefront editing and bundle exclusion.
 7. Run accepted Rust/WASM/browser and observed tenant evidence.
 
@@ -363,6 +407,7 @@ node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
 npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:consumer:pages
 npm run verify:i18n:ui
@@ -372,8 +417,9 @@ cargo audit
 ```
 
 Required evidence covers current GrapesJS/Fly round trips, iframe rejection and
-cleanup, DnD/keyboard/accessibility, revision/hash conflicts, deterministic
-artifact integrity, preview/static materialization parity, publish/rollback
+cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
+authoritative sanitization, deterministic artifact and receipt integrity,
+preview/static materialization parity, idempotent replay, publish/rollback/cache
 correlation, anonymous bundle exclusion and provider degradation.
 
 ## Update rules
@@ -383,5 +429,5 @@ correlation, anonymous bundle exclusion and provider degradation.
 - Checkboxes reflect merged source; gates require executed evidence.
 - Contract changes require matching guardrails/tests.
 - New dependencies require dependency records.
-- Do not reintroduce shadow editors, component mirrors, consumer block fallbacks
-  or host-owned persistence.
+- Do not reintroduce shadow editors, component mirrors, consumer block fallbacks,
+  raw runtime-context persistence or host-owned publication policy.
