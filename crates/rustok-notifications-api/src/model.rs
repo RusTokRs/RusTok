@@ -112,11 +112,11 @@ impl<'de> Deserialize<'de> for NotificationTemplateData {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct NotificationSourceEventRef {
-    pub tenant_id: Uuid,
-    pub event_id: Uuid,
-    pub source: NotificationSourceSlug,
-    pub event_type: NotificationTypeKey,
-    pub source_revision: u64,
+    tenant_id: Uuid,
+    event_id: Uuid,
+    source: NotificationSourceSlug,
+    event_type: NotificationTypeKey,
+    source_revision: u64,
 }
 
 impl NotificationSourceEventRef {
@@ -137,6 +137,26 @@ impl NotificationSourceEventRef {
             event_type,
             source_revision,
         })
+    }
+
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn event_id(&self) -> Uuid {
+        self.event_id
+    }
+
+    pub fn source(&self) -> &NotificationSourceSlug {
+        &self.source
+    }
+
+    pub fn event_type(&self) -> &NotificationTypeKey {
+        &self.event_type
+    }
+
+    pub fn source_revision(&self) -> u64 {
+        self.source_revision
     }
 }
 
@@ -201,8 +221,8 @@ pub struct NotificationAudienceCandidate {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct NotificationAudiencePage {
-    pub recipients: Vec<NotificationAudienceCandidate>,
-    pub next_cursor: Option<NotificationAudienceCursor>,
+    recipients: Vec<NotificationAudienceCandidate>,
+    next_cursor: Option<NotificationAudienceCursor>,
 }
 
 impl NotificationAudiencePage {
@@ -231,6 +251,23 @@ impl NotificationAudiencePage {
             recipients: Vec::new(),
             next_cursor: None,
         }
+    }
+
+    pub fn recipients(&self) -> &[NotificationAudienceCandidate] {
+        self.recipients.as_slice()
+    }
+
+    pub fn next_cursor(&self) -> Option<&NotificationAudienceCursor> {
+        self.next_cursor.as_ref()
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        Vec<NotificationAudienceCandidate>,
+        Option<NotificationAudienceCursor>,
+    ) {
+        (self.recipients, self.next_cursor)
     }
 
     pub fn is_complete(&self) -> bool {
