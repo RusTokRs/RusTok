@@ -165,6 +165,13 @@ impl MigrationTrait for Migration {
             .await?;
         for index in [
             Index::create()
+                .name("uq_mkt_balance_transfer_tenant_id")
+                .table(SellerBalanceTransfers::Table)
+                .col(SellerBalanceTransfers::TenantId)
+                .col(SellerBalanceTransfers::Id)
+                .unique()
+                .to_owned(),
+            Index::create()
                 .name("uq_mkt_balance_transfer_transaction")
                 .table(SellerBalanceTransfers::Table)
                 .col(SellerBalanceTransfers::TenantId)
