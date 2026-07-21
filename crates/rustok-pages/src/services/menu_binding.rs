@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_api::{Action, Resource};
-use rustok_channel::ChannelService;
+use rustok_channel::{ChannelError, ChannelService};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
@@ -118,14 +118,23 @@ impl MenuBindingService {
     }
 
     async fn ensure_channel_scope(&self, tenant_id: Uuid, channel_id: Uuid) -> PagesResult<()> {
-        let channel = ChannelService::new(self.db.clone())
+        let channel = match ChannelService::new(self.db.clone())
             .get_channel(channel_id)
             .await
-            .map_err(|_| {
-                PagesError::validation(format!(
+        {
+            Ok(channel) => channel,
+            Err(ChannelError::NotFound(_)) => {
+                return Err(PagesError::validation(format!(
                     "Channel `{channel_id}` does not exist for active menu binding"
-                ))
-            })?;
+                )));
+            }
+            Err(ChannelError::Database(error)) => return Err(PagesError::Database(error)),
+            Err(error) => {
+                return Err(PagesError::validation(format!(
+                    "Unable to validate channel `{channel_id}` for active menu binding: {error}"
+                )));
+            }
+        };
         if channel.tenant_id != tenant_id {
             return Err(PagesError::validation(format!(
                 "Channel `{channel_id}` does not belong to tenant `{tenant_id}`"
