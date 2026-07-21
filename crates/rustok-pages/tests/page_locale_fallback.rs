@@ -28,7 +28,7 @@ async fn setup() -> (PageService, Uuid) {
 }
 
 async fn create_translated_page(service: &PageService, tenant_id: Uuid) -> Uuid {
-    service
+    let draft = service
         .create(
             tenant_id,
             SecurityContext::system(),
@@ -52,11 +52,20 @@ async fn create_translated_page(service: &PageService, tenant_id: Uuid) -> Uuid 
                 template: Some("default".to_string()),
                 body: None,
                 channel_slugs: None,
-                publish: true,
+                publish: false,
             },
         )
         .await
-        .expect("page should be created")
+        .expect("page draft should be created");
+    service
+        .publish_non_builder_if_current(
+            tenant_id,
+            SecurityContext::system(),
+            draft.id,
+            Some(draft.version),
+        )
+        .await
+        .expect("page should be published")
         .id
 }
 
