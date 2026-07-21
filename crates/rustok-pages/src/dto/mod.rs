@@ -1,4 +1,5 @@
 // DTOs for pages-related requests/responses.
+// Temporary diagnostic trigger; removed before merge.
 pub mod menu;
 pub mod page;
 
