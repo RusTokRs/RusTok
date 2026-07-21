@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use async_graphql::{EmptySubscription, Object, Request, Schema};
 use async_trait::async_trait;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, header};
 use rustok_api::{AuthContext, Permission, TenantContext};
 use rustok_blog::graphql::{
     BlogGraphqlRateLimitError, BlogGraphqlRateLimitExceeded, BlogGraphqlRateLimitPolicy,
@@ -141,6 +141,13 @@ fn response_json(response: async_graphql::Response) -> serde_json::Value {
     serde_json::to_value(response).expect("GraphQL response should serialize")
 }
 
+fn retry_after(response: &async_graphql::Response) -> Option<&str> {
+    response
+        .http_headers
+        .get(header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+}
+
 #[tokio::test]
 async fn allowed_public_read_records_tenant_scoped_trusted_ip_key() {
     let tenant_id = Uuid::new_v4();
@@ -155,6 +162,7 @@ async fn allowed_public_read_records_tenant_scoped_trusted_ip_key() {
     let response = schema.execute(Request::new("{ posts }")).await;
 
     assert!(response.errors.is_empty());
+    assert_eq!(retry_after(&response), None);
     assert_eq!(
         limiter.keys(),
         vec![format!(
@@ -164,7 +172,7 @@ async fn allowed_public_read_records_tenant_scoped_trusted_ip_key() {
 }
 
 #[tokio::test]
-async fn exceeded_read_returns_structured_graphql_extensions() {
+async fn exceeded_read_returns_structured_graphql_extensions_and_retry_after_header() {
     let tenant_id = Uuid::new_v4();
     let limiter = Arc::new(ScriptedLimiter::new(LimiterOutcome::Exceeded {
         limit: 12,
@@ -175,6 +183,7 @@ async fn exceeded_read_returns_structured_graphql_extensions() {
     let response = schema
         .execute(Request::new(r#"{ postBySlug(slug: "hello") }"#))
         .await;
+    assert_eq!(retry_after(&response), Some("9"));
     let json = response_json(response);
 
     assert_eq!(json["errors"][0]["extensions"]["code"], "BLOG_RATE_LIMITED");
@@ -193,7 +202,7 @@ async fn exceeded_read_returns_structured_graphql_extensions() {
 }
 
 #[tokio::test]
-async fn backend_unavailable_returns_fail_closed_graphql_error() {
+async fn backend_unavailable_returns_fail_closed_graphql_error_without_retry_after() {
     let tenant_id = Uuid::new_v4();
     let limiter = Arc::new(ScriptedLimiter::new(
         LimiterOutcome::BackendUnavailable("redis unavailable"),
@@ -201,6 +210,7 @@ async fn backend_unavailable_returns_fail_closed_graphql_error() {
     let schema = schema(tenant(tenant_id), None, None, limiter.clone());
 
     let response = schema.execute(Request::new("{ posts }")).await;
+    assert_eq!(retry_after(&response), None);
     let json = response_json(response);
 
     assert_eq!(
@@ -225,6 +235,7 @@ async fn authorized_write_is_rate_limited_by_user_identity() {
     let response = schema
         .execute(Request::new("mutation { createPost }"))
         .await;
+    assert_eq!(retry_after(&response), Some("30"));
     let json = response_json(response);
 
     assert_eq!(json["errors"][0]["extensions"]["code"], "BLOG_RATE_LIMITED");
@@ -252,6 +263,7 @@ async fn unauthorized_write_skips_module_limiter_and_reaches_resolver() {
         .await;
 
     assert!(response.errors.is_empty());
+    assert_eq!(retry_after(&response), None);
     assert!(limiter.keys().is_empty());
 }
 
@@ -268,6 +280,7 @@ async fn moderation_uses_manage_permission_and_dedicated_surface() {
         .await;
 
     assert!(response.errors.is_empty());
+    assert_eq!(retry_after(&response), None);
     assert_eq!(
         limiter.keys(),
         vec![format!(
@@ -302,6 +315,7 @@ async fn selected_operation_keeps_document_wide_fail_closed_accounting() {
         .await;
 
     assert!(response.errors.is_empty());
+    assert_eq!(retry_after(&response), None);
     assert_eq!(
         limiter.keys(),
         vec![
