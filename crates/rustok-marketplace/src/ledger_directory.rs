@@ -4,7 +4,8 @@ use rustok_api::{PortContext, PortError};
 use rustok_marketplace_ledger::{
     ListMarketplaceSellerLedgerEntriesRequest, MarketplaceLedgerEntryListResponse,
     MarketplaceLedgerReadPort, MarketplaceLedgerTransactionResponse,
-    ReadMarketplaceOrderLedgerRequest,
+    MarketplaceSellerBalanceResponse, ReadMarketplaceOrderLedgerRequest,
+    ReadMarketplaceSellerBalanceRequest,
 };
 use uuid::Uuid;
 
@@ -37,6 +38,23 @@ impl MarketplaceLedgerDirectoryService {
     ) -> Result<MarketplaceLedgerEntryListResponse, PortError> {
         self.ledger_reader
             .list_seller_entries(context, request)
+            .await
+    }
+
+    pub async fn read_seller_balance(
+        &self,
+        context: PortContext,
+        seller_id: Uuid,
+        currency_code: impl Into<String>,
+    ) -> Result<MarketplaceSellerBalanceResponse, PortError> {
+        self.ledger_reader
+            .read_seller_balance(
+                context,
+                ReadMarketplaceSellerBalanceRequest {
+                    seller_id,
+                    currency_code: currency_code.into(),
+                },
+            )
             .await
     }
 }
