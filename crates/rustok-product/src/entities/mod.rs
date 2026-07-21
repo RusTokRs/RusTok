@@ -1,7 +1,26 @@
-pub use rustok_commerce_foundation::entities::{
-    product, product_image, product_image_translation, product_option, product_option_translation,
-    product_option_value, product_option_value_translation, product_translation, product_variant,
-    variant_translation,
-};
-
+pub mod product;
+pub mod product_image;
+pub mod product_image_translation;
+pub mod product_option;
+pub mod product_option_translation;
+pub mod product_option_value;
+pub mod product_option_value_translation;
 pub mod product_tag;
+pub mod product_translation;
+pub mod product_variant;
+pub mod variant_translation;
+
+// Pricing still owns the price table. Product keeps this narrow bridge until
+// initial price writes move behind a transaction-aware pricing owner port.
+pub use commerce_foundation::entities::price;
+
+pub use product::Entity as Product;
+pub use product_image::Entity as ProductImage;
+pub use product_image_translation::Entity as ProductImageTranslation;
+pub use product_option::Entity as ProductOption;
+pub use product_option_translation::Entity as ProductOptionTranslation;
+pub use product_option_value::Entity as ProductOptionValue;
+pub use product_option_value_translation::Entity as ProductOptionValueTranslation;
+pub use product_translation::Entity as ProductTranslation;
+pub use product_variant::Entity as ProductVariant;
+pub use variant_translation::Entity as VariantTranslation;
