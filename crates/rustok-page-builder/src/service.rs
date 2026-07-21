@@ -1,14 +1,11 @@
 use crate::dto::{
     BuilderCapabilityKind, BuilderNodePropertiesInput, BuilderNodePropertiesResult,
-    BuilderTreeInput, BuilderTreeNode, BuilderTreeResult, PageBuilderCapabilityRequest,
+    BuilderTreeInput, BuilderTreeResult, PageBuilderCapabilityRequest,
     PageBuilderCapabilityResponse, PageBuilderErrorKind, PreviewPageBuilderInput,
     PreviewPageBuilderResult, PublishPageBuilderInput, PublishPageBuilderResult,
     PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
 };
 use crate::rollout::{ensure_capability, BuilderCapabilityFlags, BuilderRolloutError};
-use crate::runtime_telemetry::{
-    NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
-};
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
 use rustok_api::{PortCallPolicy, PortContext, PortErrorKind};
@@ -277,9 +274,8 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
     }
 }
 
-/// Minimal persistence seam for hosts that store `grapesjs` project snapshots outside
-/// the reference provider. Implementations must keep tenant isolation in the supplied
-/// [`PortContext`] and must not change the canonical DTO/envelope contract.
+/// Persistence port used by the current Fly-backed Page Builder service.
+/// Implementations own storage and must preserve tenant isolation from [`PortContext`].
 #[async_trait]
 pub trait PageBuilderProjectStore: Send + Sync {
     async fn load_project(
@@ -297,8 +293,7 @@ pub trait PageBuilderProjectStore: Send + Sync {
     ) -> PageBuilderServiceResult<()>;
 }
 
-/// Rendering adapter seam for hosts that need production HTML/CSS rendering while keeping
-/// the baseline `grapesjs` validation and sanitize behaviour in this crate.
+/// Preview rendering port used after Fly decode and validation.
 #[async_trait]
 pub trait PageBuilderRenderingAdapter: Send + Sync {
     async fn render_preview(
@@ -306,303 +301,6 @@ pub trait PageBuilderRenderingAdapter: Send + Sync {
         context: &PortContext,
         project_data: &serde_json::Value,
     ) -> PageBuilderServiceResult<String>;
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ReferencePageBuilderRenderingAdapter;
-
-#[async_trait]
-impl PageBuilderRenderingAdapter for ReferencePageBuilderRenderingAdapter {
-    async fn render_preview(
-        &self,
-        _context: &PortContext,
-        project_data: &serde_json::Value,
-    ) -> PageBuilderServiceResult<String> {
-        render_preview_html(project_data)
-    }
-}
-
-pub struct AdapterBackedPageBuilderService<S, R, T = NoopPageBuilderRuntimeTelemetry> {
-    store: S,
-    renderer: R,
-    telemetry: T,
-}
-
-impl<S, R> AdapterBackedPageBuilderService<S, R, NoopPageBuilderRuntimeTelemetry> {
-    pub fn new(store: S, renderer: R) -> Self {
-        Self {
-            store,
-            renderer,
-            telemetry: NoopPageBuilderRuntimeTelemetry,
-        }
-    }
-}
-
-impl<S, R, T> AdapterBackedPageBuilderService<S, R, T> {
-    pub fn with_telemetry(store: S, renderer: R, telemetry: T) -> Self {
-        Self {
-            store,
-            renderer,
-            telemetry,
-        }
-    }
-}
-
-#[async_trait]
-impl<S, R, T> PageBuilderCapabilityService for AdapterBackedPageBuilderService<S, R, T>
-where
-    S: PageBuilderProjectStore,
-    R: PageBuilderRenderingAdapter,
-    T: PageBuilderRuntimeTelemetry,
-{
-    async fn preview(
-        &self,
-        context: &PortContext,
-        input: PreviewPageBuilderInput,
-    ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        validate_project_payload(&input.page_id, &input.project_data)?;
-        let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
-        self.telemetry.record_runtime_call(&evidence);
-        let html = match self
-            .renderer
-            .render_preview(context, &input.project_data)
-            .await
-        {
-            Ok(html) => {
-                self.telemetry.record_runtime_call(&evidence.succeeded());
-                html
-            }
-            Err(error) => {
-                self.telemetry.record_runtime_call(&evidence.failed(&error));
-                return Err(error);
-            }
-        };
-
-        Ok(PreviewPageBuilderResult {
-            page_id: input.page_id,
-            html,
-        })
-    }
-
-    async fn tree(
-        &self,
-        context: &PortContext,
-        input: BuilderTreeInput,
-    ) -> PageBuilderServiceResult<BuilderTreeResult> {
-        validate_non_empty("page_id", &input.page_id)?;
-        let evidence = PageBuilderRuntimeCallEvidence::load_project(context, &input.page_id);
-        self.telemetry.record_runtime_call(&evidence);
-        let project_data = match self.store.load_project(context, &input.page_id).await {
-            Ok(project_data) => {
-                self.telemetry.record_runtime_call(&evidence.succeeded());
-                project_data
-            }
-            Err(error) => {
-                self.telemetry.record_runtime_call(&evidence.failed(&error));
-                return Err(error);
-            }
-        };
-        let nodes = project_data
-            .as_ref()
-            .map(extract_tree_nodes)
-            .unwrap_or_default();
-
-        Ok(BuilderTreeResult {
-            page_id: input.page_id,
-            nodes,
-        })
-    }
-
-    async fn properties(
-        &self,
-        _context: &PortContext,
-        input: BuilderNodePropertiesInput,
-    ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
-        validate_non_empty("page_id", &input.page_id)?;
-        validate_non_empty("node_id", &input.node_id)?;
-        ensure_object_payload("properties", &input.properties)?;
-
-        Ok(BuilderNodePropertiesResult {
-            page_id: input.page_id,
-            node_id: input.node_id,
-            properties: input.properties,
-        })
-    }
-
-    async fn publish(
-        &self,
-        context: &PortContext,
-        input: PublishPageBuilderInput,
-    ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
-        validate_non_empty("revision_id", &input.revision_id)?;
-        validate_project_payload(&input.page_id, &input.project_data)?;
-        let evidence = PageBuilderRuntimeCallEvidence::save_project(
-            context,
-            &input.page_id,
-            &input.revision_id,
-        );
-        self.telemetry.record_runtime_call(&evidence);
-        match self
-            .store
-            .save_project(
-                context,
-                &input.page_id,
-                &input.revision_id,
-                input.project_data,
-            )
-            .await
-        {
-            Ok(()) => self.telemetry.record_runtime_call(&evidence.succeeded()),
-            Err(error) => {
-                self.telemetry.record_runtime_call(&evidence.failed(&error));
-                return Err(error);
-            }
-        }
-
-        Ok(PublishPageBuilderResult {
-            page_id: input.page_id,
-            revision_id: input.revision_id,
-            published: true,
-        })
-    }
-}
-
-fn extract_tree_nodes(project_data: &serde_json::Value) -> Vec<BuilderTreeNode> {
-    project_data
-        .get("nodes")
-        .and_then(serde_json::Value::as_array)
-        .map(|nodes| {
-            nodes
-                .iter()
-                .filter_map(|node| {
-                    let id = node.get("id")?.as_str()?.to_string();
-                    let label = node
-                        .get("label")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or(&id)
-                        .to_string();
-                    Some(BuilderTreeNode {
-                        id,
-                        label,
-                        children: Vec::new(),
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ReferencePageBuilderService;
-
-#[async_trait]
-impl PageBuilderCapabilityService for ReferencePageBuilderService {
-    async fn preview(
-        &self,
-        _context: &PortContext,
-        input: PreviewPageBuilderInput,
-    ) -> PageBuilderServiceResult<PreviewPageBuilderResult> {
-        validate_project_payload(&input.page_id, &input.project_data)?;
-
-        Ok(PreviewPageBuilderResult {
-            page_id: input.page_id,
-            html: render_preview_html(&input.project_data)?,
-        })
-    }
-
-    async fn tree(
-        &self,
-        _context: &PortContext,
-        input: BuilderTreeInput,
-    ) -> PageBuilderServiceResult<BuilderTreeResult> {
-        validate_non_empty("page_id", &input.page_id)?;
-
-        Ok(BuilderTreeResult {
-            page_id: input.page_id,
-            nodes: Vec::new(),
-        })
-    }
-
-    async fn properties(
-        &self,
-        _context: &PortContext,
-        input: BuilderNodePropertiesInput,
-    ) -> PageBuilderServiceResult<BuilderNodePropertiesResult> {
-        validate_non_empty("page_id", &input.page_id)?;
-        validate_non_empty("node_id", &input.node_id)?;
-        ensure_object_payload("properties", &input.properties)?;
-
-        Ok(BuilderNodePropertiesResult {
-            page_id: input.page_id,
-            node_id: input.node_id,
-            properties: input.properties,
-        })
-    }
-
-    async fn publish(
-        &self,
-        _context: &PortContext,
-        input: PublishPageBuilderInput,
-    ) -> PageBuilderServiceResult<PublishPageBuilderResult> {
-        validate_non_empty("revision_id", &input.revision_id)?;
-        validate_project_payload(&input.page_id, &input.project_data)?;
-
-        Ok(PublishPageBuilderResult {
-            page_id: input.page_id,
-            revision_id: input.revision_id,
-            published: true,
-        })
-    }
-}
-
-fn validate_project_payload(
-    page_id: &str,
-    project_data: &serde_json::Value,
-) -> PageBuilderServiceResult<()> {
-    validate_non_empty("page_id", page_id)?;
-    ensure_object_payload("project_data", project_data)
-}
-
-fn validate_non_empty(field: &str, value: &str) -> PageBuilderServiceResult<()> {
-    if value.trim().is_empty() {
-        Err(PageBuilderServiceError::Validation(format!(
-            "{field} must not be empty"
-        )))
-    } else {
-        Ok(())
-    }
-}
-
-fn ensure_object_payload(field: &str, value: &serde_json::Value) -> PageBuilderServiceResult<()> {
-    if value.is_object() {
-        Ok(())
-    } else {
-        Err(PageBuilderServiceError::Validation(format!(
-            "{field} must be a JSON object"
-        )))
-    }
-}
-
-fn render_preview_html(project_data: &serde_json::Value) -> PageBuilderServiceResult<String> {
-    let body = project_data
-        .get("html")
-        .and_then(serde_json::Value::as_str)
-        .or_else(|| project_data.get("body").and_then(serde_json::Value::as_str))
-        .unwrap_or("");
-
-    if contains_script_tag(body) {
-        return Err(PageBuilderServiceError::Sanitize(
-            "preview html contains a forbidden script tag".to_string(),
-        ));
-    }
-
-    Ok(format!(
-        "<div data-rustok-page-builder=\"grapesjs\">{body}</div>"
-    ))
-}
-
-fn contains_script_tag(value: &str) -> bool {
-    value.to_ascii_lowercase().contains("<script")
 }
 
 pub struct CapabilityGuardedService<S> {
@@ -1194,66 +892,6 @@ mod tests {
             .await
             .expect("pages:manage grants publish");
     }
-    #[tokio::test]
-    async fn reference_service_renders_current_preview_payload() {
-        let service = ReferencePageBuilderService;
-
-        let preview = service
-            .preview(
-                &read_context(),
-                PreviewPageBuilderInput {
-                    page_id: "landing".to_string(),
-                    project_data: serde_json::json!({ "html": "<main>Welcome</main>" }),
-                },
-            )
-            .await
-            .expect("reference preview should render sanitized html wrapper");
-
-        assert_eq!(preview.page_id, "landing");
-        assert_eq!(
-            preview.html,
-            "<div data-rustok-page-builder=\"grapesjs\"><main>Welcome</main></div>"
-        );
-    }
-
-    #[tokio::test]
-    async fn reference_service_exposes_sanitize_error_for_script_payloads() {
-        let service = ReferencePageBuilderService;
-
-        let err = service
-            .preview(
-                &read_context(),
-                PreviewPageBuilderInput {
-                    page_id: "landing".to_string(),
-                    project_data: serde_json::json!({ "html": "<script>alert(1)</script>" }),
-                },
-            )
-            .await
-            .expect_err("script payload should be rejected by sanitize guard");
-
-        assert_eq!(err.kind(), PageBuilderErrorKind::Sanitize);
-    }
-
-    #[tokio::test]
-    async fn reference_service_publishes_only_valid_contract_payloads() {
-        let service = ReferencePageBuilderService;
-
-        let result = service
-            .publish(
-                &write_context(),
-                PublishPageBuilderInput {
-                    page_id: "landing".to_string(),
-                    revision_id: "rev-2".to_string(),
-                    project_data: serde_json::json!({ "html": "<main>Ready</main>" }),
-                },
-            )
-            .await
-            .expect("valid reference publish should return a typed publish result");
-
-        assert_eq!(result.page_id, "landing");
-        assert_eq!(result.revision_id, "rev-2");
-        assert!(result.published);
-    }
 
     #[tokio::test]
     async fn transport_neutral_handler_dispatches_tagged_capability_requests() {
@@ -1281,9 +919,12 @@ mod tests {
     }
 
     #[test]
-    fn adapter_call_evidence_carries_port_context_and_contract_markers() {
-        let evidence =
-            PageBuilderRuntimeCallEvidence::save_project(&write_context(), "home", "rev-1");
+    fn runtime_call_evidence_carries_port_context() {
+        let evidence = crate::runtime_telemetry::PageBuilderRuntimeCallEvidence::save_project(
+            &write_context(),
+            "home",
+            "rev-1",
+        );
 
         assert_eq!(evidence.module_slug, "page_builder");
         assert_eq!(evidence.operation.as_str(), "save_project");
