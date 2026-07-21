@@ -1,0 +1,82 @@
+name: OAuth transport cutover
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/oauth-transport-cutover.yml
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
+  PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
+
+concurrency:
+  group: oauth-transport-cutover
+  cancel-in-progress: false
+
+jobs:
+  apply-and-verify:
+    if: >-
+      github.event.head_commit.message == 'fix(i18n): execute OAuth transport cutover'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply cutover
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase origin main
+          python3 scripts/maintenance/apply_oauth_transport_cutover.py
+
+      - name: Format
+        run: cargo fmt --all
+
+      - name: Verify multilingual DB contract
+        run: node scripts/verify/verify-db-multilingual-contract.mjs
+
+      - name: Check Auth admin SSR
+        run: cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
+
+      - name: Check Channel admin SSR
+        run: cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
+
+      - name: Check host admin SSR
+        run: cargo check -p rustok-admin --no-default-features --features ssr --locked
+
+      - name: Validate patch
+        run: git diff --check
+
+      - name: Commit verified cutover
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm scripts/maintenance/apply_oauth_transport_cutover.py
+          rm .github/workflows/oauth-transport-cutover.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(i18n): cut OAuth transports over to exact locale copy'
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              git rebase origin/main
+              node scripts/verify/verify-db-multilingual-contract.mjs
+              cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
+              cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
+              cargo check -p rustok-admin --no-default-features --features ssr --locked
+              git diff --check
+            fi
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+          exit 1
