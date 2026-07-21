@@ -1,8 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
-    Action, AuthContext, Permission, Resource, TenantContext,
-    graphql::{GraphQLError, require_module_enabled},
-    has_any_effective_permission,
+    graphql::{require_module_enabled, GraphQLError},
+    has_any_effective_permission, Action, AuthContext, Permission, Resource, TenantContext,
 };
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
@@ -10,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     CreatePageInput, PageBodyInput, PageService, PageTranslationInput, PagesError,
-    PatchPageMetadataInput, SavePageDocumentInput,
+    PatchPageMetadataInput, SavePageDocumentInput, CANNOT_DELETE_PUBLISHED_ERROR_CODE,
 };
 
 use super::types::*;
@@ -215,6 +214,7 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
         PagesError::DuplicateSlug { .. } => "DUPLICATE_SLUG",
         PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
         PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",
+        PagesError::CannotDeletePublished => CANNOT_DELETE_PUBLISHED_ERROR_CODE,
         PagesError::Rich(rich) => rich
             .error_code
             .as_deref()

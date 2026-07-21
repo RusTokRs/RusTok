@@ -58,6 +58,7 @@ pub const FEATURE_BUILDER_PREVIEW_ENABLED: &str = "builder.preview.enabled";
 pub const FEATURE_BUILDER_PROPERTIES_ENABLED: &str = "builder.properties.enabled";
 pub const FEATURE_BUILDER_PUBLISH_ENABLED: &str = "builder.publish.enabled";
 pub const BUILDER_FEATURE_DISABLED_ERROR_CODE: &str = "FEATURE_DISABLED";
+pub const CANNOT_DELETE_PUBLISHED_ERROR_CODE: &str = "CANNOT_DELETE_PUBLISHED";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderRuntimeErrorCatalogEntry {
@@ -140,7 +141,7 @@ impl From<PagesError> for RichError {
             PagesError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published page")
                     .with_user_message("Published pages cannot be deleted. Unpublish them first.")
-                    .with_error_code("CANNOT_DELETE_PUBLISHED")
+                    .with_error_code(CANNOT_DELETE_PUBLISHED_ERROR_CODE)
             }
             PagesError::Validation(message) => RichError::new(ErrorKind::Validation, message)
                 .with_user_message("Invalid input data"),
@@ -228,6 +229,16 @@ mod tests {
         assert_eq!(
             error.error_code.as_deref(),
             Some("PAGE_METADATA_VERSION_CONFLICT")
+        );
+    }
+
+    #[test]
+    fn cannot_delete_published_has_stable_code() {
+        let error: RichError = PagesError::cannot_delete_published().into();
+        assert_eq!(error.kind, ErrorKind::BusinessLogic);
+        assert_eq!(
+            error.error_code.as_deref(),
+            Some(CANNOT_DELETE_PUBLISHED_ERROR_CODE)
         );
     }
 
