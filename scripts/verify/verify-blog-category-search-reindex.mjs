@@ -55,6 +55,11 @@ for (const marker of [
   "target_id: None",
   "txn.commit().await",
   "blog_category_translation::Column::TenantId.eq(tenant_id)",
+  "Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?",
+  "normalize_category_slug(input.slug.as_deref(), &input.name)?",
+  "Slug must contain at least one ASCII letter or digit",
+  "let per_page = filter.per_page.clamp(1, 100)",
+  ".paginate(&self.db, per_page)",
 ]) {
   requireMarker(service, marker, servicePath);
 }
@@ -66,6 +71,10 @@ for (const marker of [
   "filter.per_page = filter.per_page.clamp(1, 100)",
   "ensure_category_permission",
   "Resource::Categories",
+  "fn map_category_error",
+  "BlogError::CategoryNotFound",
+  "HttpError::not_found",
+  "HttpError::internal",
 ]) {
   requireMarker(controller, marker, controllerPath);
 }
@@ -127,6 +136,18 @@ if (evidence) {
   })) {
     if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} path drift`);
   }
+  const cases = new Set((evidence.cases ?? []).map((entry) => entry.name));
+  for (const requiredCase of [
+    "category_update_atomic_reindex",
+    "category_delete_atomic_reindex",
+    "tenant_scoped_parent",
+    "non_empty_slug",
+    "bounded_category_list",
+    "typed_http_errors",
+    "search_payload_dependency",
+  ]) {
+    if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
+  }
 }
 
 for (const marker of [
@@ -134,6 +155,8 @@ for (const marker of [
   "verify-blog-category-search-reindex.mjs",
   "category_name",
   "category_slug",
+  "non-empty ASCII slug",
+  "service and HTTP pagination",
 ]) {
   requireMarker(plan, marker, planPath);
 }
