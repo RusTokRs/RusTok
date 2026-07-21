@@ -1,11 +1,234 @@
 //! Business logic wrapper for OAuth apps
 
 use rustok_api::Permission;
-use sea_orm::{Condition, QueryFilter, entity::prelude::*};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection, DbErr,
+    EntityTrait, QueryFilter, Set, TransactionTrait, entity::prelude::*,
+};
 use std::str::FromStr;
 use uuid::Uuid;
 
-pub use super::_entities::oauth_apps::{ActiveModel, Column, Entity, Model, Relation};
+use super::_entities::oauth_app_translations;
+use super::_entities::oauth_apps::ActiveModel as DatabaseActiveModel;
+pub use super::_entities::oauth_apps::{Column, Entity, Model, Relation};
+
+const LEGACY_UNDETERMINED_LOCALE: &str = "und";
+
+#[derive(Clone, Debug, Default)]
+pub struct ActiveModel {
+    pub id: ActiveValue<Uuid>,
+    pub tenant_id: ActiveValue<Uuid>,
+    pub name: ActiveValue<String>,
+    pub slug: ActiveValue<String>,
+    pub description: ActiveValue<Option<String>>,
+    pub app_type: ActiveValue<String>,
+    pub icon_url: ActiveValue<Option<String>>,
+    pub client_id: ActiveValue<Uuid>,
+    pub client_secret_hash: ActiveValue<Option<String>>,
+    pub redirect_uris: ActiveValue<Json>,
+    pub scopes: ActiveValue<Json>,
+    pub grant_types: ActiveValue<Json>,
+    pub granted_permissions: ActiveValue<Json>,
+    pub manifest_ref: ActiveValue<Option<String>>,
+    pub auto_created: ActiveValue<bool>,
+    pub is_active: ActiveValue<bool>,
+    pub revoked_at: ActiveValue<Option<DateTimeWithTimeZone>>,
+    pub last_used_at: ActiveValue<Option<DateTimeWithTimeZone>>,
+    pub metadata: ActiveValue<Json>,
+    pub created_at: ActiveValue<DateTimeWithTimeZone>,
+    pub updated_at: ActiveValue<DateTimeWithTimeZone>,
+}
+
+impl From<Model> for ActiveModel {
+    fn from(model: Model) -> Self {
+        Self {
+            id: Set(model.id),
+            tenant_id: Set(model.tenant_id),
+            name: ActiveValue::NotSet,
+            slug: Set(model.slug),
+            description: ActiveValue::NotSet,
+            app_type: Set(model.app_type),
+            icon_url: Set(model.icon_url),
+            client_id: Set(model.client_id),
+            client_secret_hash: Set(model.client_secret_hash),
+            redirect_uris: Set(model.redirect_uris),
+            scopes: Set(model.scopes),
+            grant_types: Set(model.grant_types),
+            granted_permissions: Set(model.granted_permissions),
+            manifest_ref: Set(model.manifest_ref),
+            auto_created: Set(model.auto_created),
+            is_active: Set(model.is_active),
+            revoked_at: Set(model.revoked_at),
+            last_used_at: Set(model.last_used_at),
+            metadata: Set(model.metadata),
+            created_at: Set(model.created_at),
+            updated_at: Set(model.updated_at),
+        }
+    }
+}
+
+impl ActiveModel {
+    pub async fn insert(self, db: &DatabaseConnection) -> Result<Model, DbErr> {
+        let name = active_value(&self.name)
+            .ok_or_else(|| DbErr::Custom("OAuth app name is required".to_string()))?;
+        let description = active_value(&self.description).unwrap_or(None);
+        let tenant_id = active_value(&self.tenant_id)
+            .ok_or_else(|| DbErr::Custom("OAuth app tenant_id is required".to_string()))?;
+        let app_id = active_value(&self.id)
+            .ok_or_else(|| DbErr::Custom("OAuth app id is required".to_string()))?;
+
+        let txn = db.begin().await?;
+        let mut model = database_active(self).insert(&txn).await?;
+        upsert_translation(
+            &txn,
+            tenant_id,
+            app_id,
+            LEGACY_UNDETERMINED_LOCALE,
+            name.clone(),
+            description.clone(),
+        )
+        .await?;
+        txn.commit().await?;
+        model.name = name;
+        model.description = description;
+        Ok(model)
+    }
+
+    pub async fn update<C>(self, db: &C) -> Result<Model, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        let name = active_value(&self.name);
+        let description_changed = !matches!(self.description, ActiveValue::NotSet);
+        let description = active_value(&self.description).unwrap_or(None);
+        let tenant_id = active_value(&self.tenant_id)
+            .ok_or_else(|| DbErr::Custom("OAuth app tenant_id is required".to_string()))?;
+        let app_id = active_value(&self.id)
+            .ok_or_else(|| DbErr::Custom("OAuth app id is required".to_string()))?;
+
+        let mut model = database_active(self).update(db).await?;
+        if name.is_some() || description_changed {
+            let existing = oauth_app_translations::Entity::find()
+                .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
+                .filter(oauth_app_translations::Column::AppId.eq(app_id))
+                .filter(oauth_app_translations::Column::Locale.eq(LEGACY_UNDETERMINED_LOCALE))
+                .one(db)
+                .await?;
+            let resolved_name = name
+                .clone()
+                .or_else(|| existing.as_ref().map(|row| row.name.clone()))
+                .ok_or_else(|| DbErr::Custom("OAuth app translation name is required".to_string()))?;
+            let resolved_description = if description_changed {
+                description.clone()
+            } else {
+                existing.and_then(|row| row.description)
+            };
+            upsert_translation(
+                db,
+                tenant_id,
+                app_id,
+                LEGACY_UNDETERMINED_LOCALE,
+                resolved_name.clone(),
+                resolved_description.clone(),
+            )
+            .await?;
+            model.name = resolved_name;
+            model.description = resolved_description;
+        }
+        Ok(model)
+    }
+}
+
+fn database_active(model: ActiveModel) -> DatabaseActiveModel {
+    let mut active = DatabaseActiveModel::default();
+    active.id = model.id;
+    active.tenant_id = model.tenant_id;
+    active.slug = model.slug;
+    active.app_type = model.app_type;
+    active.icon_url = model.icon_url;
+    active.client_id = model.client_id;
+    active.client_secret_hash = model.client_secret_hash;
+    active.redirect_uris = model.redirect_uris;
+    active.scopes = model.scopes;
+    active.grant_types = model.grant_types;
+    active.granted_permissions = model.granted_permissions;
+    active.manifest_ref = model.manifest_ref;
+    active.auto_created = model.auto_created;
+    active.is_active = model.is_active;
+    active.revoked_at = model.revoked_at;
+    active.last_used_at = model.last_used_at;
+    active.metadata = model.metadata;
+    active.created_at = model.created_at;
+    active.updated_at = model.updated_at;
+    active
+}
+
+fn active_value<T: Clone>(value: &ActiveValue<T>) -> Option<T> {
+    match value {
+        ActiveValue::Set(value) | ActiveValue::Unchanged(value) => Some(value.clone()),
+        ActiveValue::NotSet => None,
+    }
+}
+
+pub async fn upsert_translation<C>(
+    db: &C,
+    tenant_id: Uuid,
+    app_id: Uuid,
+    locale: &str,
+    name: String,
+    description: Option<String>,
+) -> Result<oauth_app_translations::Model, DbErr>
+where
+    C: ConnectionTrait,
+{
+    let existing = oauth_app_translations::Entity::find()
+        .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
+        .filter(oauth_app_translations::Column::AppId.eq(app_id))
+        .filter(oauth_app_translations::Column::Locale.eq(locale))
+        .one(db)
+        .await?;
+    let now = chrono::Utc::now().into();
+    match existing {
+        Some(row) => {
+            let mut active: oauth_app_translations::ActiveModel = row.into();
+            active.name = Set(name);
+            active.description = Set(description);
+            active.updated_at = Set(now);
+            active.update(db).await
+        }
+        None => {
+            oauth_app_translations::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(tenant_id),
+                app_id: Set(app_id),
+                locale: Set(locale.to_string()),
+                name: Set(name),
+                description: Set(description),
+                created_at: Set(now),
+                updated_at: Set(now),
+            }
+            .insert(db)
+            .await
+        }
+    }
+}
+
+pub async fn resolve_translation<C>(
+    db: &C,
+    tenant_id: Uuid,
+    app_id: Uuid,
+    locale: &str,
+) -> Result<Option<oauth_app_translations::Model>, DbErr>
+where
+    C: ConnectionTrait,
+{
+    oauth_app_translations::Entity::find()
+        .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
+        .filter(oauth_app_translations::Column::AppId.eq(app_id))
+        .filter(oauth_app_translations::Column::Locale.eq(locale))
+        .one(db)
+        .await
+}
 
 impl Entity {
     pub async fn find_active_by_client_id(
@@ -62,17 +285,14 @@ impl Model {
         self.auto_created && self.manifest_ref.is_some()
     }
 
-    /// Parse scopes from JSONB field
     pub fn scopes_list(&self) -> Vec<String> {
         serde_json::from_value(self.scopes.clone()).unwrap_or_default()
     }
 
-    /// Parse grant_types from JSONB field
     pub fn grant_types_list(&self) -> Vec<String> {
         serde_json::from_value(self.grant_types.clone()).unwrap_or_default()
     }
 
-    /// Parse granted_permissions from JSONB field
     pub fn granted_permissions_list(&self) -> Vec<String> {
         serde_json::from_value(self.granted_permissions.clone()).unwrap_or_default()
     }
@@ -84,18 +304,10 @@ impl Model {
             .collect()
     }
 
-    /// Parse redirect_uris from JSONB field
     pub fn redirect_uris_list(&self) -> Vec<String> {
         serde_json::from_value(self.redirect_uris.clone()).unwrap_or_default()
     }
 
-    /// Check whether the app supports a grant type.
-    ///
-    /// Manifest-managed clients created before `refresh_token` became explicit
-    /// historically received refresh tokens from `authorization_code`. Preserve
-    /// that compatibility only for auto-created apps. Manual apps must declare
-    /// `refresh_token` explicitly and therefore remain governed by strict grant
-    /// configuration.
     pub fn supports_grant_type(&self, grant_type: &str) -> bool {
         let grants = self.grant_types_list();
         grants.iter().any(|value| value == grant_type)
@@ -112,7 +324,6 @@ impl Model {
         if self.app_type == "embedded" {
             return false;
         }
-
         self.client_secret_hash.is_some()
     }
 
