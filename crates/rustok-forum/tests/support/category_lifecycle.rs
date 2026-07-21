@@ -97,7 +97,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
              VALUES ('{root_id}', '{tenant_id}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);"
         ))
         .await;
-    assert_error_contains(direct_parent_archive.map(|_| ()), "lifecycle")?;
+    assert_error_contains(direct_parent_archive.map(|_| ()), "forum category")?;
 
     service
         .archive_subtree(tenant_id, root_id, security.clone())

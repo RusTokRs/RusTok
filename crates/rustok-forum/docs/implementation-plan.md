@@ -194,7 +194,7 @@ at the end of this file remain authoritative.
 | `FORUM-01` | `done` | Tenant-composite forum relation integrity and platform locale width. |
 | `FORUM-02` | `done` | Typed topic/reply lifecycle, tombstone and revision fields. |
 | `FORUM-03` | `done` | Atomic category owner writes and translation persistence. |
-| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B/C add atomic placement and write guards; FORUM-04D routes admin placement through owner commands; FORUM-04E adds tenant-scoped topic policy. Subtree archive/restore and interactive drag-and-drop remain. |
+| `FORUM-04` | `in_progress` | FORUM-04A-E deliver bounded hierarchy, atomic placement, write guards, admin transport and topic policy; FORUM-04F adds atomic subtree archive/restore. Interactive drag-and-drop remains. |
 | `FORUM-05` | `done` | Publication-aware serialized counters with database safety guards. |
 | `FORUM-06` | `done` | Locked-topic and pending/publication semantics are explicit owner workflows. |
 | `FORUM-07` | `done` | Monotonic per-topic reply positions and uniqueness constraints. |
@@ -389,9 +389,17 @@ consume are stable.
 - shared PostgreSQL/SQLite scenarios cover default allow, disable, blocked
   writes, tenant isolation and re-enable.
 
+### Delivered in `FORUM-04F`
+
+- `CategoryService::archive_subtree` and `restore_subtree` serialize lifecycle changes with the tenant category-tree lock;
+- compatibility-default lifecycle rows preserve existing categories as active without backfill;
+- archive writes descendants before ancestors and restore removes ancestor lifecycle rows before descendants;
+- REST, GraphQL, OpenAPI and the canonical tree expose subtree lifecycle state and owner commands;
+- PostgreSQL and SQLite reject active children beneath archived parents, partial restore and new topic placement in archived categories;
+- existing topics are preserved and shared PostgreSQL/SQLite scenarios cover archive, restore, tenant isolation and direct-write guards.
+
 ### Remaining scope
 
-- make archive/restore behavior explicit for subtrees;
 - wire interactive admin drag-and-drop UI to the existing owner-command
   transport facade, never direct row writes.
 
@@ -410,6 +418,8 @@ cargo test -p rustok-forum --test category_commands_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_commands_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test category_policy_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_policy_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test category_lifecycle_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_lifecycle_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test runtime_regression_baseline
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
