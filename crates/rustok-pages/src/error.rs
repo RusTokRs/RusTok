@@ -35,6 +35,12 @@ pub enum PagesError {
     #[error("Static landing artifact integrity error: {0}")]
     ArtifactIntegrity(String),
 
+    #[error("Page Builder publish runtime review invalid: {0}")]
+    PublishRuntimeReviewInvalid(String),
+
+    #[error("Page Builder publish runtime materialization mismatch: {0}")]
+    PublishRuntimeMaterializationMismatch(String),
+
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
@@ -59,6 +65,10 @@ pub const FEATURE_BUILDER_PROPERTIES_ENABLED: &str = "builder.properties.enabled
 pub const FEATURE_BUILDER_PUBLISH_ENABLED: &str = "builder.publish.enabled";
 pub const BUILDER_FEATURE_DISABLED_ERROR_CODE: &str = "FEATURE_DISABLED";
 pub const CANNOT_DELETE_PUBLISHED_ERROR_CODE: &str = "CANNOT_DELETE_PUBLISHED";
+pub const PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID: &str =
+    "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID";
+pub const PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH: &str =
+    "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderRuntimeErrorCatalogEntry {
@@ -148,6 +158,20 @@ impl From<PagesError> for RichError {
             PagesError::ArtifactIntegrity(message) => RichError::new(ErrorKind::Internal, message)
                 .with_user_message("The published page artifact is unavailable")
                 .with_error_code("PAGE_ARTIFACT_INTEGRITY"),
+            PagesError::PublishRuntimeReviewInvalid(message) => {
+                RichError::new(ErrorKind::Validation, message)
+                    .with_user_message(
+                        "The selected Page Builder runtime must be reviewed again before publish.",
+                    )
+                    .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
+            }
+            PagesError::PublishRuntimeMaterializationMismatch(message) => {
+                RichError::new(ErrorKind::Conflict, message)
+                    .with_user_message(
+                        "The reviewed Page Builder runtime no longer matches the publish artifact. Review and publish again.",
+                    )
+                    .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH)
+            }
             PagesError::Forbidden(message) => RichError::new(ErrorKind::Forbidden, message)
                 .with_user_message("You do not have permission to perform this action"),
             PagesError::FeatureDisabled { feature } => RichError::new(
@@ -191,6 +215,14 @@ impl PagesError {
 
     pub fn artifact_integrity(message: impl Into<String>) -> Self {
         Self::ArtifactIntegrity(message.into())
+    }
+
+    pub fn publish_runtime_review_invalid(message: impl Into<String>) -> Self {
+        Self::PublishRuntimeReviewInvalid(message.into())
+    }
+
+    pub fn publish_runtime_materialization_mismatch(message: impl Into<String>) -> Self {
+        Self::PublishRuntimeMaterializationMismatch(message.into())
     }
 
     pub fn forbidden(message: impl Into<String>) -> Self {
@@ -239,6 +271,24 @@ mod tests {
         assert_eq!(
             error.error_code.as_deref(),
             Some(CANNOT_DELETE_PUBLISHED_ERROR_CODE)
+        );
+    }
+
+    #[test]
+    fn reviewed_publish_errors_have_stable_codes() {
+        let review: RichError = PagesError::publish_runtime_review_invalid("invalid").into();
+        assert_eq!(review.kind, ErrorKind::Validation);
+        assert_eq!(
+            review.error_code.as_deref(),
+            Some(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
+        );
+
+        let mismatch: RichError =
+            PagesError::publish_runtime_materialization_mismatch("mismatch").into();
+        assert_eq!(mismatch.kind, ErrorKind::Conflict);
+        assert_eq!(
+            mismatch.error_code.as_deref(),
+            Some(PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH)
         );
     }
 
