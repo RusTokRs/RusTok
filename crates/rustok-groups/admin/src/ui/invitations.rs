@@ -37,6 +37,7 @@ struct InvitationCopy {
     revoked: String,
     token_once: String,
     version: String,
+    shareable: String,
     invalid_group_id: String,
     invalid_invitation_id: String,
     invalid_target_user_id: String,
@@ -224,10 +225,12 @@ pub fn GroupsInvitationsAdmin() -> impl IntoView {
         empty: empty_label,
         busy: busy_label,
         token_once: token_once_label,
+        shareable: shareable_label,
         ..
     } = copy;
     let create_heading = create_label.clone();
     let revoke_heading = revoke_label.clone();
+    let list_shareable_label = shareable_label.clone();
 
     view! {
         <section class="groups-admin-invitations rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -279,21 +282,25 @@ pub fn GroupsInvitationsAdmin() -> impl IntoView {
             <div class="mt-6">
                 {move || {
                     let items = invitations.get();
+                    let shareable_label = list_shareable_label.clone();
                     if items.is_empty() {
                         view! { <p class="text-sm text-muted-foreground">{empty_label.clone()}</p> }.into_any()
                     } else {
                         view! {
                             <ul class="grid gap-3 md:grid-cols-2">
-                                {items.into_iter().map(|item| view! {
-                                    <li class="rounded-2xl border border-border p-4">
-                                        <div class="flex items-center justify-between gap-3">
-                                            <strong class="text-sm text-card-foreground">{item.status}</strong>
-                                            <code class="text-xs text-muted-foreground">{item.id}</code>
-                                        </div>
-                                        <p class="mt-2 text-sm text-foreground">{format!("{} / {}", item.use_count, item.max_uses)}</p>
-                                        <small class="mt-2 block text-xs text-muted-foreground">{item.expires_at}</small>
-                                        <small class="mt-1 block text-xs text-muted-foreground">{item.target_user_id.unwrap_or_else(|| "shareable".to_string())}</small>
-                                    </li>
+                                {items.into_iter().map(|item| {
+                                    let target = item.target_user_id.unwrap_or_else(|| shareable_label.clone());
+                                    view! {
+                                        <li class="rounded-2xl border border-border p-4">
+                                            <div class="flex items-center justify-between gap-3">
+                                                <strong class="text-sm text-card-foreground">{item.status}</strong>
+                                                <code class="text-xs text-muted-foreground">{item.id}</code>
+                                            </div>
+                                            <p class="mt-2 text-sm text-foreground">{format!("{} / {}", item.use_count, item.max_uses)}</p>
+                                            <small class="mt-2 block text-xs text-muted-foreground">{item.expires_at}</small>
+                                            <small class="mt-1 block text-xs text-muted-foreground">{target}</small>
+                                        </li>
+                                    }
                                 }).collect_view()}
                             </ul>
                         }.into_any()
@@ -342,6 +349,7 @@ fn invitation_copy(locale: Option<&str>) -> InvitationCopy {
         revoked: t(locale, "groups.admin.invitations.revoked", "Invitation revoked"),
         token_once: t(locale, "groups.admin.invitations.tokenOnce", "Copy this token now. It will not be shown again."),
         version: t(locale, "groups.admin.invitations.version", "group version"),
+        shareable: t(locale, "groups.admin.invitations.shareable", "Shareable link"),
         invalid_group_id: t(locale, "groups.admin.invitations.invalidGroupId", "Enter a valid group UUID."),
         invalid_invitation_id: t(locale, "groups.admin.invitations.invalidInvitationId", "Enter a valid invitation UUID."),
         invalid_target_user_id: t(locale, "groups.admin.invitations.invalidTargetUserId", "Enter a valid target user UUID or leave it empty."),
