@@ -20,8 +20,7 @@
   const PENDING_INTENT_CONTROLLERS_KEY = Symbol.for(
     "fly.browser.pending.intent.controllers",
   );
-  const RESOURCE_STATUS_SELECTOR =
-    '[data-fly-browser-status="resource-limit"]';
+  const RESOURCE_STATUS_SELECTOR = '[data-fly-browser-status="resource-limit"]';
   const PROBLEM_STATUS_SELECTOR = '[data-fly-browser-status="problem"]';
   const ROOT_SELECTOR = "[data-fly-browser-root]";
 
@@ -103,7 +102,8 @@
     const code =
       typeof result.code === "string" && result.code
         ? result.code
-        : fallbackCode || (status > 0 ? `HTTP_${status}` : "BROWSER_REQUEST_FAILED");
+        : fallbackCode ||
+          (status > 0 ? `HTTP_${status}` : "BROWSER_REQUEST_FAILED");
     const error =
       typeof result.error === "string" && result.error
         ? result.error
@@ -186,9 +186,9 @@
   const intentName = (input) => {
     const request = isObject(input) ? input : {};
     const message = isObject(request.message) ? request.message : {};
-    const intent = String(
-      request.intent || request.type || message.type || "",
-    ).trim().toLowerCase();
+    const intent = String(request.intent || request.type || message.type || "")
+      .trim()
+      .toLowerCase();
     return intent || null;
   };
 
@@ -326,10 +326,7 @@
         );
         if (record?.controller?.signal.aborted) {
           const aborted = reportIntentAborted(adapter, record, event.detail);
-          if (
-            aborted.current &&
-            aborted.kind === INTENT_ABORT_KIND.TIMEOUT
-          ) {
+          if (aborted.current && aborted.kind === INTENT_ABORT_KIND.TIMEOUT) {
             reportBrowserProblem(
               adapter,
               {
@@ -512,56 +509,56 @@
   };
 
   const originalApplyBrowserMessage = Adapter.prototype.applyBrowserMessage;
-  Adapter.prototype.applyBrowserMessage = function applyBrowserMessageWithResourceLimit(
-    message,
-  ) {
-    if (message?.type === "geometry_snapshot") {
-      if (isObject(message.resource_limit)) {
-        const result = originalApplyBrowserMessage.call(this, message);
-        reportResourceLimit(
+  Adapter.prototype.applyBrowserMessage =
+    function applyBrowserMessageWithResourceLimit(message) {
+      if (message?.type === "geometry_snapshot") {
+        if (isObject(message.resource_limit)) {
+          const result = originalApplyBrowserMessage.call(this, message);
+          reportResourceLimit(
+            this,
+            message.resource_limit,
+            "geometry_components",
+          );
+          return result;
+        }
+        const components = Array.isArray(message.components)
+          ? message.components
+          : [];
+        const limit = limitFor(
           this,
-          message.resource_limit,
-          "geometry_components",
+          "maxGeometryComponents",
+          "flyMaxGeometryComponents",
+          DEFAULT_MAX_GEOMETRY_COMPONENTS,
         );
-        return result;
+        if (components.length > limit) {
+          this.geometry.clear();
+          this.drawSelection();
+          this.drawDrop();
+          reportResourceLimit(
+            this,
+            {
+              kind: "geometry_components",
+              limit,
+              observed: components.length,
+            },
+            "geometry_components",
+          );
+          return;
+        }
+        if (this.root.dataset.flyResourceLimited === "geometry_components") {
+          delete this.root.dataset.flyResourceLimited;
+        }
       }
-      const components = Array.isArray(message.components)
-        ? message.components
-        : [];
-      const limit = limitFor(
-        this,
-        "maxGeometryComponents",
-        "flyMaxGeometryComponents",
-        DEFAULT_MAX_GEOMETRY_COMPONENTS,
-      );
-      if (components.length > limit) {
-        this.geometry.clear();
-        this.drawSelection();
-        this.drawDrop();
-        reportResourceLimit(
-          this,
-          {
-            kind: "geometry_components",
-            limit,
-            observed: components.length,
-          },
-          "geometry_components",
-        );
-        return;
-      }
-      if (this.root.dataset.flyResourceLimited === "geometry_components") {
-        delete this.root.dataset.flyResourceLimited;
-      }
-    }
-    return originalApplyBrowserMessage.call(this, message);
-  };
+      return originalApplyBrowserMessage.call(this, message);
+    };
 
   const originalStop = Adapter.prototype.stop;
   Adapter.prototype.stop = function stopWithBrowserHardeningCleanup() {
     const controllers = this[PENDING_INTENT_CONTROLLERS_KEY];
     if (controllers instanceof Map) {
       for (const record of controllers.values()) {
-        if (record?.timeoutId !== null) globalThis.clearTimeout(record.timeoutId);
+        if (record?.timeoutId !== null)
+          globalThis.clearTimeout(record.timeoutId);
         if (record?.controller && !record.controller.signal.aborted) {
           record.abortCode = INTENT_REQUEST_ABORTED_CODE;
           record.abortKind = INTENT_ABORT_KIND.ADAPTER_STOP;
