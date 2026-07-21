@@ -11,6 +11,7 @@ pub mod locale;
 #[cfg(feature = "server")]
 pub mod preview_port;
 pub mod publish_runtime;
+pub mod publish_sanitization;
 pub mod render;
 pub mod rollout;
 pub mod runtime_context;
@@ -34,6 +35,10 @@ pub use fly::{
 pub use publish_runtime::{
     PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT,
+};
+pub use publish_sanitization::{
+    sanitize_static_landing_project, PageBuilderSanitizedStaticLandingProject,
+    PageBuilderStaticLandingSanitizationError, PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
 };
 pub use static_landing_materialization::{
     compile_materialized_static_landing, PageBuilderMaterializedStaticLandingArtifact,
