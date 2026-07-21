@@ -107,7 +107,7 @@ impl RusToKModule for PagesModule {
         ]
     }
 
-    fn try_register_runtime_extensions(
+    fn register_runtime_extensions(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
