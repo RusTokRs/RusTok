@@ -37,5 +37,6 @@ web-sys = { version = "0.3", optional = true, features = [
   "EventTarget",
   "KeyboardEvent",
   "PointerEvent",
+  "Storage",
   "Window",
 ] }
