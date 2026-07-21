@@ -42,6 +42,22 @@ ${options.missingImmutable ? "" : "append_only"}
       ? migration.replace("forum_user_mentions_immutable_guard", "")
       : migration,
   );
+  writeFixture(
+    root,
+    "crates/rustok-forum/src/migrations/m20260722_000005_seed_forum_relation_revisions.rs",
+    options.missingSeed
+      ? "DatabaseBackend::Postgres\nDatabaseBackend::Sqlite\n"
+      : `
+DatabaseBackend::Postgres
+DatabaseBackend::Sqlite
+forum_topic_translation_relation_revision_seed
+forum_reply_body_relation_revision_seed
+AFTER INSERT ON forum_topic_translations
+AFTER INSERT ON forum_reply_bodies
+forum_relation_revisions
+'legacy'
+`,
+  );
   const quoteValidation =
     "validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;";
   const firstWrite = "let revision = forum_relation_revision::ActiveModel";
@@ -79,13 +95,19 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
       "identical replay should persist idempotently",
       "cross-tenant quote revision must fail closed",
       "quote validation must run before the first relation write",
+      "new source rows must receive one legacy relation identity before FORUM-12B2",
       "persisted mention rows must be immutable",
     ].join("\n"),
   );
   writeFixture(
     root,
     "crates/rustok-forum/src/migrations/mod.rs",
-    "m20260722_000004_add_forum_mention_quote_relations",
+    [
+      "mod m20260722_000004_add_forum_mention_quote_relations;",
+      "mod m20260722_000005_seed_forum_relation_revisions;",
+      "Box::new(m20260722_000004_add_forum_mention_quote_relations::Migration)",
+      "Box::new(m20260722_000005_seed_forum_relation_revisions::Migration)",
+    ].join("\n"),
   );
   writeFixture(
     root,
@@ -110,7 +132,12 @@ ${options.publicService ? "pub struct MentionRelationService;" : ""}
   writeFixture(
     root,
     "crates/rustok-forum/CRATE_API.md",
-    "forum_relation_revisions\nMentionRelationService\nFORUM_QUOTE_TARGET_UNAVAILABLE\n",
+    [
+      "forum_relation_revisions",
+      "MentionRelationService",
+      "FORUM_QUOTE_TARGET_UNAVAILABLE",
+      "source INSERT seed triggers",
+    ].join("\n"),
   );
   return root;
 }
@@ -171,5 +198,12 @@ test("mention persistence verifier rejects quote validation after writes", () =>
   withFixture({ lateQuoteValidation: true }, (result) => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /validated before the first relation write/);
+  });
+});
+
+test("mention persistence verifier requires rollout seed triggers", () => {
+  withFixture({ missingSeed: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing rollout seed marker/);
   });
 });
