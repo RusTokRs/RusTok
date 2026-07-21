@@ -395,6 +395,7 @@ fn validate_reversal_result(
     if reversal.transaction.source_kind != input.kind.source_kind()
         || reversal.transaction.source_id != input.source_id
         || reversal.transaction.order_id != input.order_id
+        || reversal.transaction_id != reversal.transaction.id
         || reversal.transaction.id.is_nil()
         || reversal.reversed_transaction_id == reversal.transaction.id
     {
