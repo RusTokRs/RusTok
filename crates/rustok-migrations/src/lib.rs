@@ -123,6 +123,34 @@ static MODULE_MIGRATION_SOURCES: &[ModuleMigrationSource] = &[
         source: &rustok_commerce::CommerceModule,
     },
     ModuleMigrationSource {
+        slug: "marketplace_seller",
+        source: &rustok_marketplace_seller::MarketplaceSellerModule,
+    },
+    ModuleMigrationSource {
+        slug: "marketplace_listing",
+        source: &rustok_marketplace_listing::MarketplaceListingModule,
+    },
+    ModuleMigrationSource {
+        slug: "marketplace_allocation",
+        source: &rustok_marketplace_allocation::MarketplaceAllocationModule,
+    },
+    ModuleMigrationSource {
+        slug: "marketplace_commission",
+        source: &rustok_marketplace_commission::MarketplaceCommissionModule,
+    },
+    ModuleMigrationSource {
+        slug: "marketplace_ledger",
+        source: &rustok_marketplace_ledger::MarketplaceLedgerModule,
+    },
+    ModuleMigrationSource {
+        slug: "marketplace_payout",
+        source: &rustok_marketplace_payout::MarketplacePayoutModule,
+    },
+    ModuleMigrationSource {
+        slug: "moderation",
+        source: &rustok_moderation::ModerationModule,
+    },
+    ModuleMigrationSource {
         slug: "content",
         source: &rustok_content::ContentModule,
     },
@@ -258,6 +286,27 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_payment::migrations::migrations());
         all.extend(rustok_fulfillment::migrations::migrations());
         all.extend(rustok_commerce::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_marketplace_seller::MarketplaceSellerModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_marketplace_listing::MarketplaceListingModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_marketplace_allocation::MarketplaceAllocationModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_marketplace_commission::MarketplaceCommissionModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_marketplace_ledger::MarketplaceLedgerModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_marketplace_payout::MarketplacePayoutModule,
+        ));
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_moderation::ModerationModule,
+        ));
         all.extend(rustok_content::migrations::migrations());
         all.extend(rustok_blog::migrations::migrations());
         all.extend(rustok_comments::migrations::migrations());
@@ -427,6 +476,13 @@ mod tests {
                 "payment",
                 "fulfillment",
                 "commerce",
+                "marketplace_seller",
+                "marketplace_listing",
+                "marketplace_allocation",
+                "marketplace_commission",
+                "marketplace_ledger",
+                "marketplace_payout",
+                "moderation",
                 "content",
                 "blog",
                 "comments",
