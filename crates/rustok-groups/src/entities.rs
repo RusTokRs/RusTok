@@ -15,7 +15,6 @@ pub mod group {
         pub visibility: String,
         pub join_policy: String,
         pub status: String,
-        pub category_id: Option<Uuid>,
         pub avatar_media_id: Option<Uuid>,
         pub cover_media_id: Option<Uuid>,
         pub member_count: i64,
