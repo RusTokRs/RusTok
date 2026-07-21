@@ -192,21 +192,41 @@ pub fn GroupsLocalizationAdmin() -> impl IntoView {
         });
     };
 
-    let view_copy = copy.clone();
+    let LocalizationCopy {
+        title: workspace_title,
+        body: workspace_body,
+        group_id: group_id_label,
+        locale: locale_label,
+        translation_title: title_label,
+        summary: summary_label,
+        translation_body: body_label,
+        load: load_label,
+        save: save_label,
+        delete: delete_label,
+        empty: empty_label,
+        busy: busy_label,
+        last_translation_warning,
+        ..
+    } = copy;
+    let save_heading = save_label.clone();
+    let delete_heading = delete_label.clone();
+    let save_locale_label = locale_label.clone();
+    let delete_locale_label = locale_label;
+
     view! {
         <section class="groups-admin-localization rounded-3xl border border-border bg-card p-6 shadow-sm">
-            <h2 class="text-xl font-semibold text-card-foreground">{view_copy.title.clone()}</h2>
-            <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{view_copy.body.clone()}</p>
+            <h2 class="text-xl font-semibold text-card-foreground">{workspace_title}</h2>
+            <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{workspace_body}</p>
 
             <form class="mt-6 flex flex-col gap-3 md:flex-row" on:submit=on_load_submit>
                 <input
                     class="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    placeholder=view_copy.group_id.clone()
+                    placeholder=group_id_label
                     prop:value=move || group_id.get()
                     on:input=move |event| set_group_id.set(event_target_value(&event))
                 />
                 <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" type="submit">
-                    {view_copy.load.clone()}
+                    {load_label}
                 </button>
             </form>
 
@@ -221,24 +241,24 @@ pub fn GroupsLocalizationAdmin() -> impl IntoView {
                 </p>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground">{view_copy.busy.clone()}</p>
+                <p class="mt-4 text-sm text-muted-foreground">{busy_label}</p>
             </Show>
 
             <div class="mt-6 grid gap-6 xl:grid-cols-2">
                 <form class="space-y-3 rounded-2xl border border-border p-5" on:submit=on_save_submit>
-                    <h3 class="font-semibold text-card-foreground">{view_copy.save.clone()}</h3>
-                    <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=view_copy.locale.clone() prop:value=move || translation_locale.get() on:input=move |event| set_translation_locale.set(event_target_value(&event)) />
-                    <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=view_copy.translation_title.clone() prop:value=move || title.get() on:input=move |event| set_title.set(event_target_value(&event)) />
-                    <textarea class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=view_copy.summary.clone() prop:value=move || summary.get() on:input=move |event| set_summary.set(event_target_value(&event)) />
-                    <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=view_copy.translation_body.clone() prop:value=move || body.get() on:input=move |event| set_body.set(event_target_value(&event)) />
-                    <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" type="submit">{view_copy.save.clone()}</button>
+                    <h3 class="font-semibold text-card-foreground">{save_heading}</h3>
+                    <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=save_locale_label prop:value=move || translation_locale.get() on:input=move |event| set_translation_locale.set(event_target_value(&event)) />
+                    <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=title_label prop:value=move || title.get() on:input=move |event| set_title.set(event_target_value(&event)) />
+                    <textarea class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=summary_label prop:value=move || summary.get() on:input=move |event| set_summary.set(event_target_value(&event)) />
+                    <textarea class="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=body_label prop:value=move || body.get() on:input=move |event| set_body.set(event_target_value(&event)) />
+                    <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" type="submit">{save_label}</button>
                 </form>
 
                 <form class="space-y-3 rounded-2xl border border-border p-5" on:submit=on_delete_submit>
-                    <h3 class="font-semibold text-card-foreground">{view_copy.delete.clone()}</h3>
-                    <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=view_copy.locale.clone() prop:value=move || delete_locale.get() on:input=move |event| set_delete_locale.set(event_target_value(&event)) />
-                    <p class="text-sm text-muted-foreground">{view_copy.last_translation_warning.clone()}</p>
-                    <button class="rounded-xl border border-destructive px-4 py-2 text-sm font-medium text-destructive" type="submit">{view_copy.delete.clone()}</button>
+                    <h3 class="font-semibold text-card-foreground">{delete_heading}</h3>
+                    <input class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=delete_locale_label prop:value=move || delete_locale.get() on:input=move |event| set_delete_locale.set(event_target_value(&event)) />
+                    <p class="text-sm text-muted-foreground">{last_translation_warning}</p>
+                    <button class="rounded-xl border border-destructive px-4 py-2 text-sm font-medium text-destructive" type="submit">{delete_label}</button>
                 </form>
             </div>
 
@@ -246,7 +266,7 @@ pub fn GroupsLocalizationAdmin() -> impl IntoView {
                 {move || {
                     let items = translations.get();
                     if items.is_empty() {
-                        view! { <p class="text-sm text-muted-foreground">{view_copy.empty.clone()}</p> }.into_any()
+                        view! { <p class="text-sm text-muted-foreground">{empty_label.clone()}</p> }.into_any()
                     } else {
                         view! {
                             <ul class="grid gap-3 md:grid-cols-2">
