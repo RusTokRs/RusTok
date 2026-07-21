@@ -21,6 +21,7 @@ use super::{
     MarketplaceReversalAdaptationFailureStatus, MarketplaceReversalEventInboxError,
     MarketplaceReversalEventInboxService, MarketplaceReversalEventStatus,
     MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
+    marketplace_provider_reversal_backfill::safe_reversal_adapter_message,
 };
 
 const MAX_OPERATOR_ITEMS: u64 = 100;
@@ -246,8 +247,9 @@ impl MarketplaceReversalOperatorService {
                 self.get_adaptation_failure(tenant_id, failure_id).await
             }
             Err(error) => {
+                let safe_message = safe_reversal_adapter_message(&error);
                 self.failures
-                    .record_failure(&event, error.code(), error.to_string(), error.retryable())
+                    .record_failure(&event, error.code(), safe_message, error.retryable())
                     .await?;
                 Err(error.into())
             }
