@@ -1,5 +1,16 @@
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
+
+use axum::{
+    body::Body,
+    extract::{Request, State},
+    http::{HeaderMap, HeaderValue},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+
+use crate::common::{extract_effective_client_ip, peer_ip_from_extensions};
 
 // The preserved implementation still contains the former public cleanup loop.
 // The wrapper below is the only runtime entrypoint; allow that compatibility
@@ -13,8 +24,39 @@ pub use base::{
     PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitCheckError, RateLimitConfig,
     RateLimitExceeded, RateLimitInfo, RateLimitMiddlewareState, RateLimitStats, RateLimiter,
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
-    extract_client_id_pub, rate_limit_for_paths, rate_limit_middleware,
+    extract_client_id_pub, rate_limit_middleware,
 };
+
+/// Host-internal header populated only after applying the configured proxy trust policy.
+/// Incoming values are always removed before a trusted value is inserted.
+pub const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
+
+/// Path-aware rate limiting plus propagation of the already-resolved client IP.
+///
+/// GraphQL module policies must consume this internal value rather than parsing
+/// client-controlled forwarded headers independently.
+pub async fn rate_limit_for_paths(
+    State(state): State<PathRateLimitMiddlewareState>,
+    headers: HeaderMap,
+    mut request: Request<Body>,
+    next: Next,
+) -> Result<Response, impl IntoResponse> {
+    request.headers_mut().remove(TRUSTED_CLIENT_IP_HEADER);
+
+    if let Some(client_ip) = extract_effective_client_ip(
+        &headers,
+        peer_ip_from_extensions(request.extensions()),
+        &state.request_trust,
+    ) {
+        if let Ok(value) = HeaderValue::from_str(&client_ip.to_string()) {
+            request
+                .headers_mut()
+                .insert(TRUSTED_CLIENT_IP_HEADER, value);
+        }
+    }
+
+    base::rate_limit_for_paths(State(state), headers, request, next).await
+}
 
 fn cleanup_task_has_external_owners(limiter: &Arc<RateLimiter>) -> bool {
     Arc::strong_count(limiter) > 1
