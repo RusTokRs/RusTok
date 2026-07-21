@@ -124,7 +124,7 @@ requireMarker(
 
 requireMarker(
   staticMaterialization,
-  `pub const PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT: &str`,
+  "pub const PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT: &str",
   "static materialization format",
 );
 requireMarker(staticMaterialization, staticContract.format, "static materialization format");
@@ -144,7 +144,7 @@ requireMarker(
   "static runtime snapshots",
 );
 for (const marker of [
-  "runtime.validate()",
+  "runtime\n        .validate()",
   "RuntimeScenarioRenderSnapshot::capture",
   "materialize_project_with_runtime_context",
   "stable_hash(&runtime.context)",
