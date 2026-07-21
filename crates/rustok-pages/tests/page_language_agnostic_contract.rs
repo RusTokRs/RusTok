@@ -57,7 +57,7 @@ fn builder_body(locale: &str) -> PageBodyInput {
 #[tokio::test]
 async fn unicode_slug_and_seo_storage_are_language_agnostic() {
     let (_db, service, tenant_id) = setup().await;
-    let page = service
+    let draft = service
         .create(
             tenant_id,
             SecurityContext::system(),
@@ -66,11 +66,20 @@ async fn unicode_slug_and_seo_storage_are_language_agnostic() {
                 template: Some("default".to_string()),
                 body: None,
                 channel_slugs: None,
-                publish: true,
+                publish: false,
             },
         )
         .await
-        .expect("unicode page should be created");
+        .expect("unicode draft should be created");
+    let page = service
+        .publish_non_builder_if_current(
+            tenant_id,
+            SecurityContext::system(),
+            draft.id,
+            Some(draft.version),
+        )
+        .await
+        .expect("unicode page should be published");
 
     assert_eq!(
         page.translation
