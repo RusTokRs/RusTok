@@ -122,8 +122,121 @@
         },
         {
           "path": "package.json",
+          "required_markers": ["verify:product:catalog-schema"]
+        }
+      ]
+    },
+    {
+      "id": "content_locale_width",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-content/src/migrations/m20260721_000004_expand_content_locale_storage_columns.rs",
           "required_markers": [
-            "verify:product:catalog-schema"
+            "ALTER TABLE node_translations",
+            "ALTER TABLE bodies",
+            "ALTER TABLE category_translations",
+            "ALTER TABLE meta_translations",
+            "ALTER TABLE media_translations",
+            "ALTER TABLE content_canonical_urls",
+            "ALTER TABLE content_url_aliases",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "narrowing locale columns can truncate valid"
+          ]
+        },
+        {
+          "path": "crates/rustok-content/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000004_expand_content_locale_storage_columns;",
+            "Box::new(m20260721_000004_expand_content_locale_storage_columns::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "blog_locale_width",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-blog/src/migrations/m20260721_000005_expand_blog_locale_storage_columns.rs",
+          "required_markers": [
+            "ALTER TABLE blog_post_translations",
+            "ALTER TABLE blog_category_translations",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "narrowing locale columns can truncate valid"
+          ]
+        },
+        {
+          "path": "crates/rustok-blog/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000005_expand_blog_locale_storage_columns;",
+            "Box::new(m20260721_000005_expand_blog_locale_storage_columns::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "taxonomy_locale_width",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-taxonomy/src/migrations/m20260721_000006_expand_taxonomy_locale_storage_columns.rs",
+          "required_markers": [
+            "ALTER TABLE taxonomy_term_translations",
+            "ALTER TABLE taxonomy_term_aliases",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "narrowing locale columns can truncate valid"
+          ]
+        },
+        {
+          "path": "crates/rustok-taxonomy/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000006_expand_taxonomy_locale_storage_columns;",
+            "Box::new(m20260721_000006_expand_taxonomy_locale_storage_columns::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comments_locale_width",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-comments/src/migrations/m20260721_000007_expand_comment_locale_storage_columns.rs",
+          "required_markers": [
+            "ALTER TABLE comment_bodies",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "narrowing locale columns can truncate valid"
+          ]
+        },
+        {
+          "path": "crates/rustok-comments/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000007_expand_comment_locale_storage_columns;",
+            "Box::new(m20260721_000007_expand_comment_locale_storage_columns::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "profiles_locale_width",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-profiles/src/migrations/m20260721_000009_expand_profile_locale_storage_columns.rs",
+          "required_markers": [
+            "ALTER TABLE profiles",
+            "ALTER COLUMN preferred_locale TYPE VARCHAR(32)",
+            "ALTER TABLE profile_translations",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "narrowing locale columns can truncate valid"
+          ]
+        },
+        {
+          "path": "crates/rustok-profiles/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000009_expand_profile_locale_storage_columns;",
+            "Box::new(m20260721_000009_expand_profile_locale_storage_columns::Migration)"
           ]
         }
       ]
@@ -183,9 +296,7 @@
       "files": [
         {
           "path": "crates/rustok-customer/src/migrations/m20260325_000103_create_customers_table.rs",
-          "required_markers": [
-            "ColumnDef::new(Customers::Locale).string_len(32)"
-          ]
+          "required_markers": ["ColumnDef::new(Customers::Locale).string_len(32)"]
         },
         {
           "path": "crates/rustok-customer/src/migrations/m20260713_000104_enforce_customer_identity.rs",
@@ -218,23 +329,28 @@
       "files": [
         {
           "path": "crates/rustok-region/src/migrations/m20260411_000001_add_region_translations.rs",
-          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""],
+          "forbidden_markers": ["\"en\".into()", "PLATFORM_FALLBACK_LOCALE"]
         },
         {
           "path": "crates/rustok-inventory/src/migrations/m20260411_000001_add_stock_location_translations.rs",
-          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""],
+          "forbidden_markers": ["\"en\".into()", "PLATFORM_FALLBACK_LOCALE"]
         },
         {
           "path": "crates/rustok-fulfillment/src/migrations/m20260411_000108_add_shipping_option_translations.rs",
-          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""],
+          "forbidden_markers": ["\"en\".into()", "PLATFORM_FALLBACK_LOCALE"]
         },
         {
           "path": "crates/rustok-pricing/src/migrations/m20260411_000005_add_price_list_translations.rs",
-          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""],
+          "forbidden_markers": ["\"en\".into()", "PLATFORM_FALLBACK_LOCALE"]
         },
         {
           "path": "crates/rustok-commerce/src/migrations/m20260411_000004_add_shipping_profile_translations.rs",
-          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""],
+          "forbidden_markers": ["\"en\".into()", "PLATFORM_FALLBACK_LOCALE"]
         }
       ]
     }
@@ -246,10 +362,7 @@
       "kind": "mixed_storage_cutover",
       "status": "documented_open",
       "path": "crates/rustok-auth/src/migrations/m20260308_000001_create_oauth_apps.rs",
-      "evidence_markers": [
-        "OAuthApps::Name",
-        "OAuthApps::Description"
-      ],
+      "evidence_markers": ["OAuthApps::Name", "OAuthApps::Description"],
       "next_action": "atomically move OAuth application display copy to an owner translation table across storage and transports"
     },
     {
@@ -260,63 +373,18 @@
       "path": "crates/rustok-profiles/src/migrations/m20260326_000001_create_profiles_tables.rs",
       "evidence_markers": [
         "ColumnDef::new(Profiles::DisplayName)",
-        "ColumnDef::new(ProfileTranslations::DisplayName)",
-        "ColumnDef::new(Profiles::PreferredLocale).string_len(16)",
-        "ColumnDef::new(ProfileTranslations::Locale)",
-        ".string_len(16)"
+        "ColumnDef::new(ProfileTranslations::DisplayName)"
       ],
-      "next_action": "define identity-vs-localized display-name ownership, backfill translations, remove duplicated localized copy, and widen locale columns"
+      "next_action": "define identity-vs-localized display-name ownership, backfill translations, and remove the duplicated localized copy"
     },
     {
-      "id": "content-locale-width",
-      "owner": "rustok-content",
-      "kind": "locale_width",
-      "status": "open",
-      "path": "crates/rustok-content/src/migrations/m20250130_000005_create_nodes.rs",
-      "evidence_markers": [
-        "ColumnDef::new(NodeTranslations::Locale)",
-        ".string_len(5)",
-        "ColumnDef::new(Bodies::Locale).string_len(5)"
-      ],
-      "next_action": "append an irreversible widening migration for all content-owned locale columns"
-    },
-    {
-      "id": "blog-locale-width",
+      "id": "blog-slug-semantics",
       "owner": "rustok-blog",
-      "kind": "locale_width_and_slug_semantics",
+      "kind": "locale_neutral_identifier_decision",
       "status": "open",
       "path": "crates/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs",
-      "evidence_markers": [
-        "ColumnDef::new(BlogPostTranslations::Locale)",
-        ".string_len(16)",
-        "ColumnDef::new(BlogPosts::Slug)"
-      ],
-      "next_action": "widen translation locales and explicitly document whether the base slug is a locale-neutral canonical route key or must move to translations"
-    },
-    {
-      "id": "taxonomy-locale-width",
-      "owner": "rustok-taxonomy",
-      "kind": "locale_width",
-      "status": "open",
-      "path": "crates/rustok-taxonomy/src/migrations/m20260329_000001_create_taxonomy_tables.rs",
-      "evidence_markers": [
-        "ColumnDef::new(TaxonomyTermTranslations::Locale)",
-        "ColumnDef::new(TaxonomyTermAliases::Locale)",
-        ".string_len(16)"
-      ],
-      "next_action": "append an irreversible widening migration for term translation and alias locales"
-    },
-    {
-      "id": "comments-locale-width",
-      "owner": "rustok-comments",
-      "kind": "locale_width",
-      "status": "open",
-      "path": "crates/rustok-comments/src/migrations/m20260328_000001_create_comments_tables.rs",
-      "evidence_markers": [
-        "ColumnDef::new(CommentBodies::Locale)",
-        ".string_len(16)"
-      ],
-      "next_action": "append an irreversible widening migration for comment body locales"
+      "evidence_markers": ["ColumnDef::new(BlogPosts::Slug)"],
+      "next_action": "document the base slug as a locale-neutral canonical route key or move localized slug ownership into blog_post_translations"
     },
     {
       "id": "marketplace-seller-prose-copy",
