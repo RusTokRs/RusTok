@@ -16,6 +16,7 @@ const required = [
   "crates/rustok-groups/src/governance_entities.rs",
   "crates/rustok-groups/src/graphql_governance.rs",
   "crates/rustok-groups/src/migrations/m20260721_000002_create_group_governance.rs",
+  "crates/rustok-groups/src/migrations/m20260721_000003_enforce_group_language_agnostic_storage.rs",
   "crates/rustok-groups/admin/src/core.rs",
   "crates/rustok-groups/admin/src/model.rs",
   "crates/rustok-groups/admin/src/transport.rs",
@@ -79,6 +80,15 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/src/service.rs"))) {
       failures.push(`Groups must not import foreign persistence: ${forbidden}`);
     }
   }
+  for (const forbiddenLocaleFallback of [
+    "PLATFORM_FALLBACK_LOCALE",
+    "build_locale_candidates",
+    "rows.first()",
+  ]) {
+    if (service.includes(forbiddenLocaleFallback)) {
+      failures.push(`Groups must not own locale fallback policy: ${forbiddenLocaleFallback}`);
+    }
+  }
   if (!service.includes("PortCallPolicy::read()") || !service.includes("PortCallPolicy::write()")) {
     failures.push("Groups ports must enforce read/write call policies");
   }
@@ -90,6 +100,54 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/src/service.rs"))) {
   ]) {
     if (!service.includes(privacyMarker)) {
       failures.push(`Groups closed/secret privacy split is missing marker: ${privacyMarker}`);
+    }
+  }
+  for (const languageAgnosticMarker of [
+    "normalize_effective_locale",
+    "normalize_language_agnostic_metadata",
+    "translation::Column::Locale.eq(effective_locale.clone())",
+    "title.chars().count() > 240",
+    "value.chars().count() > 500",
+    "object.contains_key(*key)",
+  ]) {
+    if (!service.includes(languageAgnosticMarker)) {
+      failures.push(`Groups language-agnostic service contract is missing marker: ${languageAgnosticMarker}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/src/migrations/m20260721_000003_enforce_group_language_agnostic_storage.rs"))) {
+  const migration = read(
+    "crates/rustok-groups/src/migrations/m20260721_000003_enforce_group_language_agnostic_storage.rs",
+  );
+  for (const marker of [
+    "ck_group_translations_locale_normalized",
+    "ck_group_translations_presentation_shape",
+    "ck_groups_metadata_language_agnostic",
+    "group_translations_language_agnostic_insert",
+    "group_translations_language_agnostic_update",
+    "groups_language_agnostic_metadata_insert",
+    "groups_language_agnostic_metadata_update",
+    "sqlite_locale_violation",
+    "Irreversible by design",
+  ]) {
+    if (!migration.includes(marker)) {
+      failures.push(`Groups language-agnostic migration is missing marker: ${marker}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(root, "crates/rustok-groups/docs/README.md"))) {
+  const contract = read("crates/rustok-groups/docs/README.md");
+  for (const marker of [
+    "host supplies the already-resolved effective locale",
+    "never injects an English or arbitrary first-row fallback",
+    "Catalog and search queries are scoped to that effective locale",
+    "Unicode scalar values rather than UTF-8 bytes",
+    "must not contain localized presentation copies",
+  ]) {
+    if (!contract.includes(marker)) {
+      failures.push(`Groups multilingual documentation is missing marker: ${marker}`);
     }
   }
 }
@@ -293,4 +351,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups FFA/FBA, privacy, governance transport/UI, multilingual, and ownership boundary checks passed.");
+console.log("Groups FFA/FBA, privacy, governance, language-agnostic DB, multilingual, and ownership boundary checks passed.");
