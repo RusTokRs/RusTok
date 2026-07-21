@@ -110,7 +110,7 @@ impl<'de> Deserialize<'de> for NotificationTemplateData {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct NotificationSourceEventRef {
     pub tenant_id: Uuid,
     pub event_id: Uuid,
@@ -137,6 +137,32 @@ impl NotificationSourceEventRef {
             event_type,
             source_revision,
         })
+    }
+}
+
+impl<'de> Deserialize<'de> for NotificationSourceEventRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawNotificationSourceEventRef {
+            tenant_id: Uuid,
+            event_id: Uuid,
+            source: NotificationSourceSlug,
+            event_type: NotificationTypeKey,
+            source_revision: u64,
+        }
+
+        let raw = RawNotificationSourceEventRef::deserialize(deserializer)?;
+        Self::new(
+            raw.tenant_id,
+            raw.event_id,
+            raw.source,
+            raw.event_type,
+            raw.source_revision,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -173,7 +199,7 @@ pub struct NotificationAudienceCandidate {
     pub recipient_id: Uuid,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct NotificationAudiencePage {
     pub recipients: Vec<NotificationAudienceCandidate>,
     pub next_cursor: Option<NotificationAudienceCursor>,
@@ -209,6 +235,22 @@ impl NotificationAudiencePage {
 
     pub fn is_complete(&self) -> bool {
         self.next_cursor.is_none()
+    }
+}
+
+impl<'de> Deserialize<'de> for NotificationAudiencePage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawNotificationAudiencePage {
+            recipients: Vec<NotificationAudienceCandidate>,
+            next_cursor: Option<NotificationAudienceCursor>,
+        }
+
+        let raw = RawNotificationAudiencePage::deserialize(deserializer)?;
+        Self::try_new(raw.recipients, raw.next_cursor).map_err(serde::de::Error::custom)
     }
 }
 
