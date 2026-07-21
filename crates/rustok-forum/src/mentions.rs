@@ -234,12 +234,12 @@ impl ForumMentionRevisionProjection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumMentionDiff {
     source: ForumRevisionIdentity,
-    pub added_users: Vec<ResolvedForumMention>,
-    pub removed_users: Vec<ResolvedForumMention>,
-    pub unchanged_users: Vec<ResolvedForumMention>,
-    pub added_audiences: Vec<ForumMentionAudience>,
-    pub removed_audiences: Vec<ForumMentionAudience>,
-    pub unchanged_audiences: Vec<ForumMentionAudience>,
+    added_users: Vec<ResolvedForumMention>,
+    removed_users: Vec<ResolvedForumMention>,
+    unchanged_users: Vec<ResolvedForumMention>,
+    added_audiences: Vec<ForumMentionAudience>,
+    removed_audiences: Vec<ForumMentionAudience>,
+    unchanged_audiences: Vec<ForumMentionAudience>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -434,6 +434,30 @@ pub fn diff_forum_mentions(
 impl ForumMentionDiff {
     pub fn source(&self) -> &ForumRevisionIdentity {
         &self.source
+    }
+
+    pub fn added_users(&self) -> &[ResolvedForumMention] {
+        &self.added_users
+    }
+
+    pub fn removed_users(&self) -> &[ResolvedForumMention] {
+        &self.removed_users
+    }
+
+    pub fn unchanged_users(&self) -> &[ResolvedForumMention] {
+        &self.unchanged_users
+    }
+
+    pub fn added_audiences(&self) -> &[ForumMentionAudience] {
+        &self.added_audiences
+    }
+
+    pub fn removed_audiences(&self) -> &[ForumMentionAudience] {
+        &self.removed_audiences
+    }
+
+    pub fn unchanged_audiences(&self) -> &[ForumMentionAudience] {
+        &self.unchanged_audiences
     }
 
     pub fn event_candidates(&self) -> Vec<ForumMentionEventCandidate> {
