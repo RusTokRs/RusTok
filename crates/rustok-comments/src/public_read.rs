@@ -10,6 +10,8 @@ use crate::dto::{CommentListItem, CommentStatus, ListCommentsFilter};
 use crate::entities::{comment, comment_body, comment_thread};
 use crate::error::{CommentsError, CommentsResult};
 
+const MAX_PUBLIC_COMMENTS_PER_PAGE: u64 = 100;
+
 /// Public owner-side projection for a comment thread.
 ///
 /// This path intentionally bypasses caller RBAC conversion and applies the
@@ -36,7 +38,7 @@ pub(crate) async fn list_public_comments_for_target(
         return Ok((Vec::new(), 0));
     };
 
-    let per_page = filter.per_page.max(1);
+    let per_page = filter.per_page.clamp(1, MAX_PUBLIC_COMMENTS_PER_PAGE);
     let paginator = comment::Entity::find()
         .filter(comment::Column::TenantId.eq(tenant_id))
         .filter(comment::Column::ThreadId.eq(thread.id))
