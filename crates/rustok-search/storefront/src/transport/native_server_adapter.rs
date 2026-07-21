@@ -566,7 +566,7 @@ fn map_search_result(
 
 #[cfg(feature = "ssr")]
 fn map_result_item(value: rustok_search::SearchResultItem) -> SearchPreviewResultItem {
-    let url = derive_search_result_url(&value);
+    let url = rustok_search::canonical_search_result_url(&value);
     SearchPreviewResultItem {
         id: value.id.to_string(),
         entity_type: value.entity_type,
@@ -577,15 +577,6 @@ fn map_result_item(value: rustok_search::SearchResultItem) -> SearchPreviewResul
         locale: value.locale,
         url,
         payload: serde_json::to_string(&value.payload).unwrap_or_else(|_| "{}".to_string()),
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn derive_search_result_url(value: &rustok_search::SearchResultItem) -> Option<String> {
-    match value.entity_type.as_str() {
-        "product" => Some(format!("/store/products/{}", value.id)),
-        "node" => None,
-        _ => None,
     }
 }
 
