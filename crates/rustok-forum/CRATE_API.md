@@ -39,6 +39,8 @@
 - `move_category` serializes hierarchy mutations per tenant, rejects cycles, foreign parents and depth overflow, and normalizes source and destination sibling positions in one transaction.
 - `reorder_siblings` requires the complete direct-child set exactly once and persists contiguous zero-based positions atomically.
 - REST entry points: `PUT /api/forum/categories/{id}/move` and `PUT /api/forum/categories/reorder`.
+- PostgreSQL and SQLite reject category writes whose resulting zero-based depth would exceed 16, including internal direct writes that bypass owner services.
+- Generic `CategoryService::update` rejects `position`; placement changes must use `move_category` or `reorder_siblings`.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -107,6 +109,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 - Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies.
 - Category move/reorder commands use a per-tenant transaction order and never persist a partial sibling normalization.
+- Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
