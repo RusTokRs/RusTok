@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `refund_chargeback_observer_reversal_inbox_worker_rest_graphql_source_ready_unvalidated`.
+- Runtime integration status: `refund_chargeback_observer_reversal_inbox_adaptation_journal_worker_rest_graphql_source_ready_unvalidated`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -44,6 +44,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   cumulative reversal capacity, rebuildable seller balances, and root reversal orchestration.
 - [x] Host-observed payment refund/chargeback normalization, durable reversal-event inbox,
   scheduled backfill/recovery, and authenticated REST/GraphQL operator transports.
+- [x] Durable historical reversal-adaptation failure journal with bounded backoff,
+  operator review/retry, resolved-row evidence, and PostgreSQL/SQLite/MySQL integrity guards.
 
 ## Architecture contract
 
@@ -301,17 +303,27 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 - [x] Exclude reversal lines, provider metadata, hashes, lease details, raw payloads, and
   signatures from operator projections; allow retry only before reversal/ledger evidence exists.
 - [x] Publish the source-only marketplace reversal recovery contract and regression guard.
+- [x] Add `marketplace_reversal_adaptation_failures` with provider-event deduplication,
+  retryable/operator-review/resolved states, bounded 10–600 second exponential backoff,
+  immutable identity, and resolved-row protection.
+- [x] Prevent historical polling hot loops by selecting retryable failures only after
+  `next_retry_at`, excluding operator-review/resolved rows, and resolving prior failures after
+  successful adaptation.
+- [x] Add tenant-scoped REST and GraphQL adaptation-failure list/show/retry surfaces with
+  safe projections, payment RBAC, and OpenAPI registration.
+- [x] Register the previously source-only MySQL reversal-inbox integrity migration and the
+  adaptation-failure migration in the commerce migration/dependency graph.
 
 ### Remaining critical path
 
-- [ ] Add durable adaptation-failure tracking for malformed marketplace extensions discovered
-  during historical processed-event polling.
+- [ ] Detect marketplace-associated refund/chargeback normalized events that omit the
+  `marketplace_reversal` extension and route them to durable operator review rather than a no-op.
 - [ ] Add append-only adjustment, payout settlement, payout reversal, reserve hold, reserve
   release, and seller balance bucket-transfer transactions.
 - [ ] Retain clean/upgraded migrations, observer failure/replay, normalized-event no-op/conflict,
-  reversal inbox replay, duplicate source, exact conversion, lease expiry, worker lifecycle,
-  authorization, REST/GraphQL/OpenAPI mounting, PostgreSQL contention, and balance rebuild
-  evidence.
+  reversal inbox replay, duplicate source, exact conversion, adaptation backoff/resolution,
+  operator retry, lease expiry, worker lifecycle, authorization, REST/GraphQL/OpenAPI mounting,
+  PostgreSQL contention, and balance rebuild evidence.
 
 ## Payout
 
@@ -426,6 +438,11 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   and OpenAPI source in the existing server/commerce composition.
 - [x] Mount the processed-event observer registry in payment ingress, manual recovery,
   scheduled payment recovery, host runtime values, and pre-worker startup composition.
+- [x] Register `m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity` and
+  `m20260721_000006_create_marketplace_reversal_adaptation_failures` in the commerce migration
+  source and dependency graph.
+- [x] Compose the durable historical backfill service and adaptation-failure operator paths
+  through `MarketplaceFinancialRuntime`, the scheduled worker, REST, GraphQL, and OpenAPI.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for payout and moderation; compile-time
   module registration is not sufficient.
@@ -436,7 +453,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 No new tests were run for the 2026-07-21 source composition, typed-checkout, checkpoint,
 post-capture financial-operation, paid-event recovery, scheduled worker, operator transport,
 append-only reversal, seller balance projection, root reversal orchestration, normalized
-refund/chargeback observation, reversal inbox recovery, or reversal operator transport batches.
+refund/chargeback observation, reversal inbox recovery, reversal operator transport, or durable
+historical adaptation-failure batches.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, payment, moderation,
@@ -447,6 +465,8 @@ refund/chargeback observation, reversal inbox recovery, or reversal operator tra
 - [ ] Export and inspect the composed migration plan.
 - [ ] Apply clean and upgraded SQLite migrations.
 - [ ] Apply clean and upgraded PostgreSQL migrations.
+- [ ] Apply clean and upgraded MySQL migrations for reversal inbox and adaptation-failure
+  integrity triggers.
 - [ ] Run typed snapshot currency/exponent, exact minor-unit conversion, atomic add,
   conflict, and checkout fail-closed scenarios.
 - [ ] Run checkpoint write, exact replay, conflicting evidence, expired lease, process-exit
@@ -461,10 +481,14 @@ refund/chargeback observation, reversal inbox recovery, or reversal operator tra
   authoritative refund/payment mismatch, exact conversion, and line-total conflict scenarios.
 - [ ] Run reversal inbox provider-event, source-event, and reversal-source deduplication,
   same-identity/different-facts conflict, lease expiry, replay, and lost-response scenarios.
+- [ ] Run historical adaptation retryable/permanent classification, 10–600 second backoff,
+  due-row selection, operator-review exclusion, successful resolution, owner-event absence,
+  REST/GraphQL retry, tenant isolation, and safe-projection scenarios.
 - [ ] Run worker startup/shutdown, disabled-background-worker, bounded tick, expired-lease,
   adaptation-before-reversal-before-paid ordering, multi-tenant fairness, and repeated sweeps.
 - [ ] Run REST/OpenAPI and GraphQL schema mounting, tenant isolation, payment RBAC,
-  safe-projection, list/show/retry, and manual sweep scenarios for paid and reversal inboxes.
+  safe-projection, list/show/retry, and manual sweep scenarios for paid/reversal inboxes and
+  adaptation failures.
 - [ ] Run reversal receipt replay, same-key/different-request conflict, duplicate source,
   cumulative over-reversal, immutable original-entry, and corrupted projection rebuild scenarios.
 - [ ] Run concurrent PostgreSQL reversal admission against the same original entries.
@@ -495,7 +519,7 @@ refund/chargeback observation, reversal inbox recovery, or reversal operator tra
 8. [x] Add refund/chargeback ledger reversals and seller balance projections.
 9. [x] Normalize refund/chargeback owner events, mount post-owner observers, and add durable
    reversal recovery.
-10. [ ] Add durable historical adaptation-failure tracking.
+10. [x] Add durable historical adaptation-failure tracking.
 11. [ ] Add balance bucket transfers, payout provider journal, webhook inbox, transfer
     execution, and settlement.
 12. [ ] Add seller/listing moderation adapters and decision-application recovery.
@@ -532,10 +556,13 @@ refund/chargeback observation, reversal inbox recovery, or reversal operator tra
 - `crates/rustok-commerce/src/entities/marketplace_financial_operation.rs`
 - `crates/rustok-commerce/src/entities/marketplace_paid_event_inbox.rs`
 - `crates/rustok-commerce/src/entities/marketplace_reversal_event_inbox.rs`
+- `crates/rustok-commerce/src/entities/marketplace_reversal_adaptation_failure.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000001_create_checkout_marketplace_economics_checkpoints.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000002_create_marketplace_financial_operations.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000003_create_marketplace_paid_event_inbox.rs`
 - `crates/rustok-commerce/src/migrations/m20260721_000004_create_marketplace_reversal_event_inbox.rs`
+- `crates/rustok-commerce/src/migrations/m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity.rs`
+- `crates/rustok-commerce/src/migrations/m20260721_000006_create_marketplace_reversal_adaptation_failures.rs`
 - `crates/rustok-commerce/src/services/checkout_order_plan.rs`
 - `crates/rustok-commerce/src/services/checkout_plan_builder.rs`
 - `crates/rustok-commerce/src/services/checkout_marketplace_allocation.rs`
@@ -546,6 +573,8 @@ refund/chargeback observation, reversal inbox recovery, or reversal operator tra
 - `crates/rustok-commerce/src/services/marketplace_paid_order_financial.rs`
 - `crates/rustok-commerce/src/services/marketplace_provider_paid_event_adapter.rs`
 - `crates/rustok-commerce/src/services/marketplace_provider_reversal_event_adapter.rs`
+- `crates/rustok-commerce/src/services/marketplace_provider_reversal_backfill.rs`
+- `crates/rustok-commerce/src/services/marketplace_reversal_adaptation_failure.rs`
 - `crates/rustok-commerce/src/services/marketplace_reversal_event_inbox.rs`
 - `crates/rustok-commerce/src/services/marketplace_reversal_operator.rs`
 - `crates/rustok-commerce/src/services/marketplace_financial_operator.rs`
