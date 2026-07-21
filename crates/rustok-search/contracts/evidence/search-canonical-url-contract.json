@@ -9,6 +9,8 @@
     "normalized_result": "crates/rustok-search/src/engine.rs",
     "public_export": "crates/rustok-search/src/lib.rs",
     "graphql_projection": "crates/rustok-search/src/graphql/types.rs",
+    "storefront_native_projection": "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+    "admin_native_projection": "crates/rustok-search/admin/src/transport/native_server_adapter.rs",
     "compatibility_fallback": "crates/rustok-search/storefront/src/transport/navigation.rs"
   },
   "cases": [
@@ -33,14 +35,19 @@
       "expected": "GraphQL Search result mapping delegates to the exported core policy instead of maintaining a transport-local URL switch"
     },
     {
+      "name": "storefront_native_owner_projection",
+      "expected": "native storefront Search result mapping delegates to the same exported core policy"
+    },
+    {
       "name": "storefront_compatibility",
-      "expected": "the temporary storefront fallback preserves backend-provided URLs and only fills missing legacy native payloads"
+      "expected": "the temporary storefront fallback preserves backend-provided URLs and only fills missing legacy payloads"
     }
   ],
   "runtime_promotion_requirements": [
     "execute rustok-search engine URL policy tests",
     "execute GraphQL storefrontSearch against projected Blog documents",
-    "execute native storefront search and confirm compatibility fallback remains idempotent",
+    "execute native storefront search and confirm the backend URL is present before compatibility enrichment",
+    "migrate the admin native result mapper to the shared policy",
     "verify click analytics records the canonical href",
     "remove compatibility fallback only after every Search consumer reads backend URLs"
   ]
