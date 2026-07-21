@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `checkout_paid_event_inbox_listener_wired_scheduler_admin_pending`.
+- Runtime integration status: `checkout_financial_recovery_worker_rest_graphql_wired_unvalidated`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -15,7 +15,7 @@ Last reviewed: 2026-07-21
 The maintainer explicitly chose to merge the current source slices before running a
 consolidated test pass. A checked source item means that its implementation is present
 on `main`; it does not imply that locked compilation, composed migration execution,
-PostgreSQL contention, mounted transports, or remote-provider evidence are current.
+PostgreSQL contention, mounted transport execution, or remote-provider evidence are current.
 
 ## Source slices merged to `main`
 
@@ -38,6 +38,8 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   and fulfillment gating.
 - [x] Deduplicated paid-event inbox, paid-order listener, verified provider-event adapter,
   bounded recovery sweep, and operator recovery service source.
+- [x] Host-composed marketplace financial runtime, scheduled recovery worker, authenticated
+  REST and GraphQL operator transports, and OpenAPI source.
 
 ## Architecture contract
 
@@ -247,20 +249,25 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   inbox rows.
 - [x] Add bounded operator list/show/reset/retry service source with safe pre-ledger retry
   restrictions.
+- [x] Add `MarketplaceFinancialRuntime` and resolve ledger capability from host composition
+  across the paid-order listener, scheduled worker, REST, and GraphQL.
+- [x] Mount the bounded paid-event recovery worker in the server background-worker lifecycle
+  with delayed missed ticks and the shared shutdown signal.
+- [x] Add tenant-scoped authenticated REST and GraphQL list/show/retry/sweep surfaces using
+  safe projections and `payments:read` / `payments:manage` authorization.
+- [x] Register REST routes in commerce OpenAPI and preserve the existing `CommerceQuery`
+  type/value construction contract while merging the financial query root.
 
 ### Remaining critical path
 
-- [ ] Mount a scheduled invocation for the paid-event recovery sweep.
-- [ ] Add authenticated native/GraphQL/admin transports for financial-operation and
-  paid-event operator list/show/retry commands.
 - [ ] Mount provider-event adapter polling/subscription if webhook-specific recovery is
   required in addition to the registered paid-order domain listener.
 - [ ] Add append-only reversal transactions for refunds, chargebacks, adjustments,
   payout settlement, payout reversal, reserve hold, and reserve release.
 - [ ] Add seller balance projections for pending, available, reserved, paid, and
   negative amounts, rebuildable from ledger entries.
-- [ ] Retain clean/upgraded migrations, duplicate-paid-event, balancing, recovery, and
-  concurrent posting evidence.
+- [ ] Retain clean/upgraded migrations, duplicate-paid-event, balancing, recovery,
+  authorization, mounted REST/GraphQL, worker lifecycle, and concurrent posting evidence.
 
 ## Payout
 
@@ -360,16 +367,20 @@ PostgreSQL contention, mounted transports, or remote-provider evidence are curre
   payment provider-event normalized facts.
 - [x] Register the paid-order marketplace financial event listener in commerce host
   composition.
+- [x] Register `MarketplaceFinancialRuntime` in server shared/module/HTTP/GraphQL
+  composition and enrich listener extensions after event transport startup.
+- [x] Mount scheduled paid-event recovery and authenticated REST/GraphQL operator
+  transports.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for payout and moderation; compile-time
   module registration is not sufficient.
-- [ ] Mount scheduled paid-event recovery and operator transports.
 - [ ] Update backfill registries with the validated final composed migration order.
 
 ## Consolidated maintainer validation queue
 
 No new tests were run for the 2026-07-21 source composition, typed-checkout, checkpoint,
-post-capture financial-operation, or paid-event recovery batches.
+post-capture financial-operation, paid-event recovery, scheduled worker, or operator
+transport batches.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, moderation, distribution,
@@ -388,6 +399,10 @@ post-capture financial-operation, or paid-event recovery batches.
   ledger receipt replay, operator-review, and fulfillment-gate scenarios.
 - [ ] Run paid-event duplicate replay, same-key/different-facts conflict, paid-order listener
   replay, verified-provider adapter, expired inbox lease, sweep, and operator retry scenarios.
+- [ ] Run worker startup/shutdown, disabled-background-worker, bounded tick, expired-lease,
+  multi-tenant fairness, and repeated sweep scenarios.
+- [ ] Run REST/OpenAPI and GraphQL schema mounting, tenant isolation, payment RBAC,
+  safe-projection, list/show/retry, and manual sweep scenarios.
 - [ ] Run idempotency conflict and lost-response replay scenarios.
 - [ ] Run allocation, commission, ledger, payout, seller, listing, and moderation
   contention scenarios.
@@ -409,7 +424,7 @@ post-capture financial-operation, or paid-event recovery batches.
    fulfillment gate.
 6. [x] Add paid-event inbox, paid-order listener, verified provider adapter, bounded sweep,
    and operator recovery service source.
-7. [ ] Mount scheduled sweep and authenticated operator transports.
+7. [x] Mount scheduled sweep and authenticated REST/GraphQL operator transports.
 8. [ ] Add refund/chargeback ledger reversals and seller balance projections.
 9. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
 10. [ ] Add seller/listing moderation adapters and decision-application recovery.
@@ -445,5 +460,10 @@ post-capture financial-operation, or paid-event recovery batches.
 - `crates/rustok-commerce/src/services/marketplace_paid_order_financial.rs`
 - `crates/rustok-commerce/src/services/marketplace_provider_paid_event_adapter.rs`
 - `crates/rustok-commerce/src/services/marketplace_financial_operator.rs`
+- `crates/rustok-commerce/src/services/marketplace_financial_runtime.rs`
+- `crates/rustok-commerce/src/controllers/marketplace_financial.rs`
+- `crates/rustok-commerce/src/graphql/marketplace_financial.rs`
+- `apps/server/src/services/marketplace_financial_worker.rs`
+- `apps/server/src/services/module_event_dispatcher.rs`
 - `crates/rustok-commerce/src/services/checkout_stage_pipeline.rs`
 - `crates/rustok-moderation/`
