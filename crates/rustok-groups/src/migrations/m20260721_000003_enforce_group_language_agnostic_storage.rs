@@ -52,12 +52,27 @@ BEGIN
         SELECT 1
         FROM groups
         WHERE jsonb_typeof(metadata) <> 'object'
-           OR metadata ?| ARRAY[
-                'title', 'summary', 'body', 'name', 'description',
-                'translations', 'localized', 'locales', 'i18n', 'seo'
-           ]
+           OR metadata::text ~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
     ) THEN
         RAISE EXCEPTION 'groups language-agnostic migration blocked: group metadata contains localized presentation copy';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM group_memberships
+        WHERE jsonb_typeof(metadata) <> 'object'
+           OR metadata::text ~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+    ) THEN
+        RAISE EXCEPTION 'groups language-agnostic migration blocked: membership metadata contains localized presentation copy';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM group_feature_bindings
+        WHERE jsonb_typeof(configuration) <> 'object'
+           OR configuration::text ~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+    ) THEN
+        RAISE EXCEPTION 'groups language-agnostic migration blocked: feature configuration contains localized presentation copy';
     END IF;
 END $$;
 
@@ -95,10 +110,31 @@ BEGIN
             ADD CONSTRAINT ck_groups_metadata_language_agnostic
             CHECK (
                 jsonb_typeof(metadata) = 'object'
-                AND NOT metadata ?| ARRAY[
-                    'title', 'summary', 'body', 'name', 'description',
-                    'translations', 'localized', 'locales', 'i18n', 'seo'
-                ]
+                AND metadata::text !~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+            );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_group_memberships_metadata_language_agnostic'
+    ) THEN
+        ALTER TABLE group_memberships
+            ADD CONSTRAINT ck_group_memberships_metadata_language_agnostic
+            CHECK (
+                jsonb_typeof(metadata) = 'object'
+                AND metadata::text !~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+            );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'ck_group_feature_bindings_configuration_language_agnostic'
+    ) THEN
+        ALTER TABLE group_feature_bindings
+            ADD CONSTRAINT ck_group_feature_bindings_configuration_language_agnostic
+            CHECK (
+                jsonb_typeof(configuration) = 'object'
+                AND configuration::text !~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
             );
     END IF;
 END $$;
@@ -126,27 +162,33 @@ WHERE ({existing_locale_violation})
     )
     .await?;
 
-    ensure_sqlite_zero(
-        manager,
-        r#"
-SELECT COUNT(*) AS invalid_count
-FROM groups
-WHERE json_valid(metadata) = 0
-   OR json_type(metadata) <> 'object'
-   OR json_type(metadata, '$.title') IS NOT NULL
-   OR json_type(metadata, '$.summary') IS NOT NULL
-   OR json_type(metadata, '$.body') IS NOT NULL
-   OR json_type(metadata, '$.name') IS NOT NULL
-   OR json_type(metadata, '$.description') IS NOT NULL
-   OR json_type(metadata, '$.translations') IS NOT NULL
-   OR json_type(metadata, '$.localized') IS NOT NULL
-   OR json_type(metadata, '$.locales') IS NOT NULL
-   OR json_type(metadata, '$.i18n') IS NOT NULL
-   OR json_type(metadata, '$.seo') IS NOT NULL
-"#,
-        "groups language-agnostic migration blocked: group metadata contains localized presentation copy",
-    )
-    .await?;
+    for (table, column, message) in [
+        (
+            "groups",
+            "metadata",
+            "groups language-agnostic migration blocked: group metadata contains localized presentation copy",
+        ),
+        (
+            "group_memberships",
+            "metadata",
+            "groups language-agnostic migration blocked: membership metadata contains localized presentation copy",
+        ),
+        (
+            "group_feature_bindings",
+            "configuration",
+            "groups language-agnostic migration blocked: feature configuration contains localized presentation copy",
+        ),
+    ] {
+        ensure_sqlite_zero(
+            manager,
+            &format!(
+                "SELECT COUNT(*) AS invalid_count FROM {table} WHERE {}",
+                sqlite_language_agnostic_json_violation(column)
+            ),
+            message,
+        )
+        .await?;
+    }
 
     let new_locale_violation = sqlite_locale_violation("NEW.locale");
     let statements = [
@@ -156,8 +198,30 @@ WHERE json_valid(metadata) = 0
         format!(
             r#"CREATE TRIGGER IF NOT EXISTS group_translations_language_agnostic_update BEFORE UPDATE OF locale, title, summary ON group_translations FOR EACH ROW WHEN ({new_locale_violation}) OR trim(NEW.title) = '' OR length(NEW.title) > 240 OR (NEW.summary IS NOT NULL AND length(NEW.summary) > 500) BEGIN SELECT RAISE(ABORT, 'group translation locale/presentation contract violation'); END"#
         ),
-        r#"CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_insert BEFORE INSERT ON groups FOR EACH ROW WHEN json_valid(NEW.metadata) = 0 OR json_type(NEW.metadata) <> 'object' OR json_type(NEW.metadata, '$.title') IS NOT NULL OR json_type(NEW.metadata, '$.summary') IS NOT NULL OR json_type(NEW.metadata, '$.body') IS NOT NULL OR json_type(NEW.metadata, '$.name') IS NOT NULL OR json_type(NEW.metadata, '$.description') IS NOT NULL OR json_type(NEW.metadata, '$.translations') IS NOT NULL OR json_type(NEW.metadata, '$.localized') IS NOT NULL OR json_type(NEW.metadata, '$.locales') IS NOT NULL OR json_type(NEW.metadata, '$.i18n') IS NOT NULL OR json_type(NEW.metadata, '$.seo') IS NOT NULL BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END"#.to_string(),
-        r#"CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_update BEFORE UPDATE OF metadata ON groups FOR EACH ROW WHEN json_valid(NEW.metadata) = 0 OR json_type(NEW.metadata) <> 'object' OR json_type(NEW.metadata, '$.title') IS NOT NULL OR json_type(NEW.metadata, '$.summary') IS NOT NULL OR json_type(NEW.metadata, '$.body') IS NOT NULL OR json_type(NEW.metadata, '$.name') IS NOT NULL OR json_type(NEW.metadata, '$.description') IS NOT NULL OR json_type(NEW.metadata, '$.translations') IS NOT NULL OR json_type(NEW.metadata, '$.localized') IS NOT NULL OR json_type(NEW.metadata, '$.locales') IS NOT NULL OR json_type(NEW.metadata, '$.i18n') IS NOT NULL OR json_type(NEW.metadata, '$.seo') IS NOT NULL BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END"#.to_string(),
+        format!(
+            "CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_insert BEFORE INSERT ON groups FOR EACH ROW WHEN {} BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END",
+            sqlite_language_agnostic_json_violation("NEW.metadata")
+        ),
+        format!(
+            "CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_update BEFORE UPDATE OF metadata ON groups FOR EACH ROW WHEN {} BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END",
+            sqlite_language_agnostic_json_violation("NEW.metadata")
+        ),
+        format!(
+            "CREATE TRIGGER IF NOT EXISTS group_memberships_language_agnostic_metadata_insert BEFORE INSERT ON group_memberships FOR EACH ROW WHEN {} BEGIN SELECT RAISE(ABORT, 'group membership metadata must remain language-agnostic'); END",
+            sqlite_language_agnostic_json_violation("NEW.metadata")
+        ),
+        format!(
+            "CREATE TRIGGER IF NOT EXISTS group_memberships_language_agnostic_metadata_update BEFORE UPDATE OF metadata ON group_memberships FOR EACH ROW WHEN {} BEGIN SELECT RAISE(ABORT, 'group membership metadata must remain language-agnostic'); END",
+            sqlite_language_agnostic_json_violation("NEW.metadata")
+        ),
+        format!(
+            "CREATE TRIGGER IF NOT EXISTS group_feature_bindings_language_agnostic_configuration_insert BEFORE INSERT ON group_feature_bindings FOR EACH ROW WHEN {} BEGIN SELECT RAISE(ABORT, 'group feature configuration must remain language-agnostic'); END",
+            sqlite_language_agnostic_json_violation("NEW.configuration")
+        ),
+        format!(
+            "CREATE TRIGGER IF NOT EXISTS group_feature_bindings_language_agnostic_configuration_update BEFORE UPDATE OF configuration ON group_feature_bindings FOR EACH ROW WHEN {} BEGIN SELECT RAISE(ABORT, 'group feature configuration must remain language-agnostic'); END",
+            sqlite_language_agnostic_json_violation("NEW.configuration")
+        ),
     ];
     for statement in statements {
         manager
@@ -219,6 +283,26 @@ OR EXISTS (
           )
       )
 )
+"#
+    )
+}
+
+fn sqlite_language_agnostic_json_violation(json_expression: &str) -> String {
+    format!(
+        r#"
+CASE
+    WHEN json_valid({json_expression}) = 0 THEN 1
+    WHEN json_type({json_expression}) <> 'object' THEN 1
+    ELSE EXISTS (
+        SELECT 1
+        FROM json_tree({json_expression})
+        WHERE key IS NOT NULL
+          AND lower(key) IN (
+              'title', 'summary', 'body', 'name', 'description',
+              'translations', 'localized', 'locales', 'i18n', 'seo'
+          )
+    )
+END
 "#
     )
 }
