@@ -78,7 +78,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 2);
+        assert_eq!(module.migrations().len(), 3);
         assert_eq!(module.permissions().len(), 7);
     }
 
