@@ -63,9 +63,17 @@ impl RusToKModule for ProductModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::ProductSeoTargetProvider)
-            .expect("product SEO target registration should remain unique");
+    fn try_register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::ProductSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "product SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 }
 
