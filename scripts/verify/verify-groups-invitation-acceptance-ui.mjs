@@ -49,7 +49,7 @@ const required = [
 for (const relative of required) requireFile(relative);
 
 requireMarkers("crates/rustok-groups/storefront/Cargo.toml", [
-  "rustok-ui-routing.workspace = true",
+  "leptos-ui-routing.workspace = true",
   'dep:rustok-groups',
 ]);
 
@@ -124,7 +124,7 @@ requireMarkers(
   [
     "prepare_accept_group_invitation",
     "accept_groups_storefront_invitation",
-    "use_route_query_writer",
+    "leptos_ui_routing::use_route_query_writer",
     "GROUP_INVITATION_TOKEN_QUERY_KEY",
     "query_writer.clear_key",
     'type="password"',
