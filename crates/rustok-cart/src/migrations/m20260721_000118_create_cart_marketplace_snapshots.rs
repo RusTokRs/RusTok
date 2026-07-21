@@ -1,0 +1,172 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(CartLineItemMarketplaceSnapshots::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::CartLineItemId)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::SellerId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::ListingId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::MasterProductId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::MasterVariantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::ListingTermsVersion)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::UnitAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::SubtotalAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::DiscountAmount)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::TaxAmount)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::TotalAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::PricingReference)
+                            .string_len(191)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::InventoryReference)
+                            .string_len(191)
+                            .null(),
+                    )
+                    .col(
+                        ColumnDef::new(
+                            CartLineItemMarketplaceSnapshots::FulfillmentProfileSlug,
+                        )
+                        .string_len(100)
+                        .null(),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_cart_marketplace_snapshot_line")
+                            .from(
+                                CartLineItemMarketplaceSnapshots::Table,
+                                CartLineItemMarketplaceSnapshots::CartLineItemId,
+                            )
+                            .to(CartLineItems::Table, CartLineItems::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_cart_marketplace_snapshot_seller")
+                    .table(CartLineItemMarketplaceSnapshots::Table)
+                    .col(CartLineItemMarketplaceSnapshots::SellerId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_cart_marketplace_snapshot_listing")
+                    .table(CartLineItemMarketplaceSnapshots::Table)
+                    .col(CartLineItemMarketplaceSnapshots::ListingId)
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(CartLineItemMarketplaceSnapshots::Table)
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(Iden)]
+enum CartLineItems {
+    Table,
+    Id,
+}
+
+#[derive(Iden)]
+enum CartLineItemMarketplaceSnapshots {
+    Table,
+    CartLineItemId,
+    SellerId,
+    ListingId,
+    MasterProductId,
+    MasterVariantId,
+    ListingTermsVersion,
+    UnitAmount,
+    SubtotalAmount,
+    DiscountAmount,
+    TaxAmount,
+    TotalAmount,
+    PricingReference,
+    InventoryReference,
+    FulfillmentProfileSlug,
+    CreatedAt,
+    UpdatedAt,
+}
