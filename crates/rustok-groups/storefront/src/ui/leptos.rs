@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_auth::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
@@ -13,9 +14,10 @@ use crate::ui::invitation_acceptance::GroupsInvitationAcceptance;
 #[component]
 pub fn GroupsView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
+    let auth_context = use_context::<AuthContext>();
     let locale = route_context.locale.clone();
     let profile = selected_transport_profile(option_env!("RUSTOK_UI_TRANSPORT_PROFILE"));
-    let transport = transport_context(profile);
+    let transport = transport_context(profile, auth_context.as_ref());
     let directory_transport = transport.clone();
     let filters = default_groups_storefront_filters();
     let directory = LocalResource::new(move || {
@@ -95,11 +97,21 @@ fn render_directory(
     .into_any()
 }
 
-fn transport_context(profile: GroupsStorefrontTransportProfile) -> GroupsStorefrontTransportContext {
+fn transport_context(
+    profile: GroupsStorefrontTransportProfile,
+    auth_context: Option<&AuthContext>,
+) -> GroupsStorefrontTransportContext {
     match profile {
         GroupsStorefrontTransportProfile::Native => GroupsStorefrontTransportContext::native(),
-        GroupsStorefrontTransportProfile::Graphql => GroupsStorefrontTransportContext::graphql(
-            option_env!("RUSTOK_TENANT_SLUG").map(str::to_string),
-        ),
+        GroupsStorefrontTransportProfile::Graphql => {
+            let access_token = auth_context.and_then(AuthContext::get_token);
+            let tenant_slug = auth_context
+                .and_then(AuthContext::get_tenant)
+                .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
+            GroupsStorefrontTransportContext::graphql_with_access_token(
+                access_token,
+                tenant_slug,
+            )
+        }
     }
 }
