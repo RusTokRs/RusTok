@@ -172,15 +172,9 @@ impl GroupsService {
         .await?;
 
         transaction.commit().await?;
-        self.read_group_for_locale_owned(
-            context,
-            ReadGroupRequest {
-                group_id: Some(group_id),
-                handle: None,
-            },
-            &locale,
-        )
-        .await
+        let model = self.group_model(tenant_id, group_id).await?;
+        self.map_details(context, model, true, &locale, &locale)
+            .await
     }
 
     async fn read_group_owned(
@@ -613,7 +607,6 @@ impl GroupsService {
             .then(|| selected.body.clone())
             .flatten();
         let summary = self.map_summary(
-            context,
             model,
             &translations,
             requested_locale,
@@ -651,7 +644,6 @@ impl GroupsService {
 
     fn map_summary(
         &self,
-        _context: &PortContext,
         model: group::Model,
         translations: &HashMap<Uuid, Vec<translation::Model>>,
         requested_locale: &str,
@@ -928,7 +920,7 @@ fn normalize_language_agnostic_metadata(value: Value) -> GroupsResult<Value> {
     })?;
     if let Some(key) = LOCALIZED_COPY_KEYS
         .iter()
-        .find(|key| object.contains_key(**key))
+        .find(|key| object.contains_key(*key))
     {
         return Err(GroupsError::Validation(format!(
             "group metadata must remain language-agnostic; localized presentation key `{key}` belongs in group_translations"
