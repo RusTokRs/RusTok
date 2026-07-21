@@ -56,6 +56,19 @@ pub struct GqlPageList {
     pub total: u64,
 }
 
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlPublishPageResult {
+    pub operation_id: Uuid,
+    pub page_id: Uuid,
+    pub version: i32,
+    pub idempotency_key: String,
+    pub review_hash: String,
+    pub sanitized_set_hash: String,
+    pub artifact_set_hash: String,
+    pub replayed: bool,
+    pub published_at: String,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
 pub enum GqlMenuLocation {
     Header,
@@ -104,6 +117,28 @@ pub struct PatchGqlPageMetadataInput {
 pub struct SaveGqlPageDocumentInput {
     pub expected_revision: String,
     pub body: GqlPageBodyInput,
+}
+
+#[derive(InputObject)]
+pub struct GqlPageBodyRevisionInput {
+    pub locale: String,
+    pub revision: String,
+}
+
+#[derive(InputObject)]
+pub struct ReviewedGqlPagePublishRuntimeInput {
+    pub format: String,
+    pub scenario_id: String,
+    pub context: Value,
+    pub review_hash: String,
+}
+
+#[derive(InputObject)]
+pub struct PublishGqlPageInput {
+    pub expected_version: i32,
+    pub expected_body_revisions: Vec<GqlPageBodyRevisionInput>,
+    pub idempotency_key: String,
+    pub runtime: ReviewedGqlPagePublishRuntimeInput,
 }
 
 #[derive(InputObject)]
@@ -178,6 +213,22 @@ impl From<crate::PageResponse> for GqlPage {
             body: r.body.map(Into::into),
             channel_slugs: r.channel_slugs,
             metadata: r.metadata.to_string(),
+        }
+    }
+}
+
+impl From<crate::PublishPageResult> for GqlPublishPageResult {
+    fn from(result: crate::PublishPageResult) -> Self {
+        Self {
+            operation_id: result.operation_id,
+            page_id: result.page_id,
+            version: result.version,
+            idempotency_key: result.idempotency_key,
+            review_hash: result.review_hash,
+            sanitized_set_hash: result.sanitized_set_hash,
+            artifact_set_hash: result.artifact_set_hash,
+            replayed: result.replayed,
+            published_at: result.published_at,
         }
     }
 }
