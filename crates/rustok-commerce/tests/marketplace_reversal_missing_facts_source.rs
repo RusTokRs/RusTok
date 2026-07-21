@@ -1,7 +1,9 @@
 #[test]
 fn marketplace_reversal_missing_facts_fail_closed_for_marketplace_orders() {
     let runtime = include_str!("../src/services/marketplace_financial_runtime.rs");
-    let guard = include_str!("../src/services/marketplace_reversal_fact_guard.rs");
+    let guard = include_str!(
+        "../src/services/marketplace_financial_runtime/marketplace_reversal_fact_guard.rs"
+    );
 
     assert!(runtime.contains("MarketplaceAllocationReadPort"));
     assert!(runtime.contains("with_allocation_reader"));
