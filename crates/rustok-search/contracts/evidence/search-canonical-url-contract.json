@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "module": "search",
+  "surface": "canonical_result_url",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "owner": "rustok-search",
+  "production_contract": {
+    "normalized_result": "crates/rustok-search/src/engine.rs",
+    "public_export": "crates/rustok-search/src/lib.rs",
+    "graphql_projection": "crates/rustok-search/src/graphql/types.rs",
+    "compatibility_fallback": "crates/rustok-search/storefront/src/transport/navigation.rs"
+  },
+  "cases": [
+    {
+      "name": "blog_canonical_route",
+      "expected": "source_module=blog and entity_type=blog_post derive /modules/blog?slug=... from a bounded safe projected slug"
+    },
+    {
+      "name": "blog_fail_closed",
+      "expected": "wrong source module, missing slug, non-string slug, traversal, spaces, and overlong slugs remain non-navigable"
+    },
+    {
+      "name": "product_and_content_compatibility",
+      "expected": "existing product and content routes remain available through the same owner policy"
+    },
+    {
+      "name": "content_kind_injection",
+      "expected": "unsafe source-module values cannot inject additional query parameters"
+    },
+    {
+      "name": "graphql_owner_projection",
+      "expected": "GraphQL Search result mapping delegates to the exported core policy instead of maintaining a transport-local URL switch"
+    },
+    {
+      "name": "storefront_compatibility",
+      "expected": "the temporary storefront fallback preserves backend-provided URLs and only fills missing legacy native payloads"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute rustok-search engine URL policy tests",
+    "execute GraphQL storefrontSearch against projected Blog documents",
+    "execute native storefront search and confirm compatibility fallback remains idempotent",
+    "verify click analytics records the canonical href",
+    "remove compatibility fallback only after every Search consumer reads backend URLs"
+  ]
+}
