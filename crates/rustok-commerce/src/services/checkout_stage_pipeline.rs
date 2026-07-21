@@ -2,6 +2,7 @@ use rustok_cart::{CartCheckoutPort, PreparedCartCheckoutSnapshot};
 use rustok_fulfillment::{FulfillmentError, FulfillmentResponse, FulfillmentService};
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_marketplace_allocation::MarketplaceAllocationCommandPort;
+use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
 use rustok_order::{OrderError, OrderResponse, OrderService};
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
@@ -16,7 +17,8 @@ use super::{
     CheckoutCompletedState, CheckoutFinalizationError, CheckoutFinalizationExecutor,
     CheckoutFulfillmentCreatedState, CheckoutFulfillmentStageError,
     CheckoutFulfillmentStageExecutor, CheckoutMarketplaceAllocationError,
-    CheckoutMarketplaceAllocationStage, CheckoutOperationError, CheckoutOperationJournal,
+    CheckoutMarketplaceAllocationStage, CheckoutMarketplaceCommissionError,
+    CheckoutMarketplaceCommissionStage, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOrderPlanError, CheckoutOrderPlanJournal,
     CheckoutOrderPlanPayload, CheckoutOrderPlanRecord, CheckoutOrderStageError,
     CheckoutOrderStageExecutor, CheckoutPaymentCapturedState, CheckoutPaymentReadyState,
@@ -33,6 +35,8 @@ pub enum CheckoutStagePipelineError {
     OrderStage(Box<CheckoutOrderStageError>),
     #[error(transparent)]
     MarketplaceAllocation(#[from] CheckoutMarketplaceAllocationError),
+    #[error(transparent)]
+    MarketplaceCommission(#[from] CheckoutMarketplaceCommissionError),
     #[error(transparent)]
     PaymentStage(#[from] CheckoutPaymentStageError),
     #[error(transparent)]
@@ -62,6 +66,7 @@ pub struct CheckoutStagePipeline {
     plan_journal: CheckoutOrderPlanJournal,
     order_stage: CheckoutOrderStageExecutor,
     marketplace_allocation_stage: Option<CheckoutMarketplaceAllocationStage>,
+    marketplace_commission_stage: Option<CheckoutMarketplaceCommissionStage>,
     payment_stage: CheckoutPaymentStageExecutor,
     fulfillment_stage: CheckoutFulfillmentStageExecutor,
     finalization: CheckoutFinalizationExecutor,
@@ -86,6 +91,7 @@ impl CheckoutStagePipeline {
                 inventory_port,
             ),
             marketplace_allocation_stage: None,
+            marketplace_commission_stage: None,
             payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
             fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
             finalization: CheckoutFinalizationExecutor::new(db.clone(), cart_checkout_port),
@@ -101,6 +107,16 @@ impl CheckoutStagePipeline {
     ) -> Self {
         self.marketplace_allocation_stage = Some(CheckoutMarketplaceAllocationStage::new(
             marketplace_allocation_port,
+        ));
+        self
+    }
+
+    pub fn with_marketplace_commission_port(
+        mut self,
+        marketplace_commission_port: Arc<dyn MarketplaceCommissionCommandPort>,
+    ) -> Self {
+        self.marketplace_commission_stage = Some(CheckoutMarketplaceCommissionStage::new(
+            marketplace_commission_port,
         ));
         self
     }
@@ -154,6 +170,13 @@ impl CheckoutStagePipeline {
         };
 
         self.allocate_marketplace_before_capture(
+            tenant_id,
+            actor_id,
+            operation_id,
+            &payment_ready,
+        )
+        .await?;
+        self.assess_marketplace_commission_before_capture(
             tenant_id,
             actor_id,
             operation_id,
@@ -217,6 +240,34 @@ impl CheckoutStagePipeline {
         })?;
         stage
             .allocate_if_present(
+                tenant_id,
+                actor_id,
+                operation_id,
+                &payment_ready.plan.payload,
+                &payment_ready.order,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn assess_marketplace_commission_before_capture(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        operation_id: Uuid,
+        payment_ready: &CheckoutPaymentReadyState,
+    ) -> CheckoutStagePipelineResult<()> {
+        if payment_ready.plan.payload.marketplace_lines.is_empty() {
+            return Ok(());
+        }
+        let stage = self.marketplace_commission_stage.as_ref().ok_or_else(|| {
+            CheckoutStagePipelineError::Conflict(
+                "marketplace checkout lines require a composed commission command port"
+                    .to_string(),
+            )
+        })?;
+        stage
+            .assess_if_present(
                 tenant_id,
                 actor_id,
                 operation_id,
