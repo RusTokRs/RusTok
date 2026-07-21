@@ -9,7 +9,6 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentProviderEventObservers;
 use sea_orm::DatabaseConnection;
 
-#[path = "marketplace_reversal_fact_guard.rs"]
 mod marketplace_reversal_fact_guard;
 
 use self::marketplace_reversal_fact_guard::MarketplaceReversalFactGuardObserver;
