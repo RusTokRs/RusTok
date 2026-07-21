@@ -60,7 +60,7 @@ impl PageService {
         )?;
         enforce_expected_version(expected_version, observed.version)?;
 
-        let bodies = self.load_bodies(page_id).await?;
+        let bodies = self.load_bodies(tenant_id, page_id).await?;
         let body_revisions = body_revision_snapshot(&bodies);
         let project_values = collect_builder_project_values(&bodies, None, true)?;
         if !project_values.is_empty() {
@@ -213,10 +213,12 @@ impl PageService {
         }
 
         page_body::Entity::delete_many()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .exec(&txn)
             .await?;
         page_translation::Entity::delete_many()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
             .filter(page_translation::Column::PageId.eq(page_id))
             .exec(&txn)
             .await?;
@@ -256,7 +258,7 @@ impl PageService {
         )?;
 
         if transition == PageTransition::Publish {
-            let current_bodies = load_bodies_for_publish(&txn, page_id).await?;
+            let current_bodies = load_bodies_for_publish(&txn, tenant_id, page_id).await?;
             let current_revisions = body_revision_snapshot(&current_bodies);
             let expected_revisions = expected_body_revisions.unwrap_or_default();
             if current_revisions != expected_revisions {
@@ -347,10 +349,12 @@ impl PageService {
 
 async fn load_bodies_for_publish(
     txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
     page_id: Uuid,
 ) -> PagesResult<Vec<page_body::Model>> {
     let query = || {
         page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .order_by_asc(page_body::Column::Locale)
     };
