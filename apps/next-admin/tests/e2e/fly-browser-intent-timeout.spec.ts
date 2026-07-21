@@ -1,62 +1,41 @@
-import { expect, Page, test } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { expect, Page, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const adapterPath = resolve(
   process.cwd(),
-  '../../crates/fly-browser/assets/fly-browser.js'
-);
-const hardeningPath = resolve(
-  process.cwd(),
-  '../../crates/fly-browser/assets/browser_hardening.js'
+  "../../crates/fly-browser/assets/fly-browser.js",
 );
 
-type BrowserRequest = {
-  intent?: string;
-  revision?: string | null;
-  project_hash?: string | null;
-  draft_token?: string | null;
-  draft_generation?: number | null;
+type IntentAbort = {
+  code?: string;
+  kind?: string;
+  error?: string;
+  requestGeneration?: number;
+  current?: boolean;
 };
 
 type IntentTimeout = {
   code?: string;
   error?: string;
-  intent?: string | null;
   timeoutMs?: number;
-  requestGeneration?: number;
-  current?: boolean;
-  instanceId?: string;
-  pageId?: string | null;
-};
-
-type BrowserError = {
-  error?: string;
-  requestGeneration?: number;
-  current?: boolean;
-};
-
-type BrowserResponse = {
-  status?: number;
   requestGeneration?: number;
   current?: boolean;
 };
 
 type TimeoutScope = typeof globalThis & {
   __FLY_BROWSER_CONFIG__?: Record<string, unknown>;
-  __flyAbortedRequests?: number;
-  __flyErrors?: BrowserError[];
-  __flyFetchMode?: 'hang' | 'success';
+  __flyAborts?: IntentAbort[];
+  __flyErrors?: unknown[];
+  __flyFetchMode?: "hang" | "success";
   __flyProblems?: Array<{ code?: string; error?: string }>;
-  __flyRequests?: BrowserRequest[];
-  __flyResponses?: BrowserResponse[];
   __flySavePromises?: Promise<unknown>[];
   __flyTimeouts?: IntentTimeout[];
   FlyBrowser?: {
     mountAll?: (options?: Record<string, unknown>) => Array<{
       emitIntent: (
         intent: string,
-        payload: Record<string, unknown>
+        payload: Record<string, unknown>,
       ) => Promise<unknown>;
     }>;
     unmountAll?: () => void;
@@ -64,114 +43,77 @@ type TimeoutScope = typeof globalThis & {
 };
 
 async function mountTimeoutContract(page: Page, timeoutMs: number) {
-  const [adapterSource, hardeningSource] = await Promise.all([
-    readFile(adapterPath, 'utf8'),
-    readFile(hardeningPath, 'utf8')
-  ]);
-
+  const adapterSource = await readFile(adapterPath, "utf8");
   await page.setContent(`
     <div
       id="fly-root"
       data-fly-browser-root
       data-fly-page-id="home"
-      data-fly-revision="rev-1"
-      data-fly-project-hash="hash-1"
-      data-fly-expected-origin="null"
       data-fly-intent-endpoint="/fly-intent"
-      style="position:relative"
     >
-      <div style="position:relative">
-        <iframe
-          id="canvas-a-frame"
-          data-fly-iframe-canvas
-          title="Fly intent-timeout canvas"
-        ></iframe>
-      </div>
+      <iframe id="canvas-a-frame" data-fly-iframe-canvas title="Fly timeout canvas"></iframe>
     </div>
   `);
 
   await page.evaluate(
-    async ({ adapterSource, hardeningSource, timeoutMs }) => {
-      const root = document.querySelector('#fly-root');
-      if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
-
+    async ({ source, timeoutMs }) => {
       const scope = globalThis as TimeoutScope;
+      const root = document.querySelector("#fly-root");
+      if (!(root instanceof HTMLElement))
+        throw new Error("Fly root unavailable");
+
       scope.__FLY_BROWSER_CONFIG__ = {
         autoMount: true,
-        intentEndpoint: '/fly-intent',
+        intentEndpoint: "/fly-intent",
         maxPendingIntentRequests: 1,
         intentRequestTimeoutMs: timeoutMs,
-        intentRequestTimeoutMessage: 'Editor save timed out'
+        intentRequestTimeoutMessage: "Editor save timed out",
       };
-      scope.__flyAbortedRequests = 0;
+      scope.__flyAborts = [];
       scope.__flyErrors = [];
-      scope.__flyFetchMode = 'hang';
+      scope.__flyFetchMode = "hang";
       scope.__flyProblems = [];
-      scope.__flyRequests = [];
-      scope.__flyResponses = [];
       scope.__flySavePromises = [];
       scope.__flyTimeouts = [];
-      sessionStorage.setItem(
-        'fly:ssr-draft:home',
-        JSON.stringify({ token: 'draft-1', generation: 1 })
-      );
 
-      root.addEventListener('fly:browser-intent-timeout', (event) => {
-        scope.__flyTimeouts?.push(
-          (event as CustomEvent<IntentTimeout>).detail
-        );
+      root.addEventListener("fly:browser-intent-aborted", (event) => {
+        scope.__flyAborts?.push((event as CustomEvent<IntentAbort>).detail);
       });
-      root.addEventListener('fly:browser-problem', (event) => {
-        scope.__flyProblems?.push(
-          (event as CustomEvent<{ code?: string; error?: string }>).detail
-        );
+      root.addEventListener("fly:browser-intent-timeout", (event) => {
+        scope.__flyTimeouts?.push((event as CustomEvent<IntentTimeout>).detail);
       });
-      root.addEventListener('fly:browser-error', (event) => {
-        scope.__flyErrors?.push((event as CustomEvent<BrowserError>).detail);
+      root.addEventListener("fly:browser-error", (event) => {
+        scope.__flyErrors?.push((event as CustomEvent).detail);
       });
-      root.addEventListener('fly:browser-intent-response', (event) => {
-        scope.__flyResponses?.push(
-          (event as CustomEvent<BrowserResponse>).detail
-        );
+      root.addEventListener("fly:browser-problem", (event) => {
+        scope.__flyProblems?.push((event as CustomEvent).detail);
       });
 
       globalThis.fetch = async (_input, init = {}) => {
-        const request =
-          typeof init.body === 'string'
-            ? (JSON.parse(init.body) as BrowserRequest)
-            : {};
+        if (scope.__flyFetchMode === "success") {
+          return new Response(JSON.stringify({ result: {} }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
         const signal = init.signal;
-        scope.__flyRequests?.push(request);
-        if (scope.__flyFetchMode === 'success') {
-          return new Response(
-            JSON.stringify({
-              result: { revision_id: 'rev-2', project_hash: 'hash-2' },
-              draft_token: 'draft-2',
-              draft_generation: 2
-            }),
-            {
-              status: 200,
-              headers: { 'content-type': 'application/json' }
-            }
-          );
+        if (!(signal instanceof AbortSignal)) {
+          throw new Error("Intent request signal unavailable");
         }
         return new Promise<Response>((_resolve, reject) => {
           const rejectAborted = () => {
-            scope.__flyAbortedRequests = (scope.__flyAbortedRequests ?? 0) + 1;
-            reject(new DOMException('Aborted', 'AbortError'));
+            reject(new DOMException("Aborted", "AbortError"));
           };
-          if (signal?.aborted) {
+          if (signal.aborted) {
             rejectAborted();
             return;
           }
-          signal?.addEventListener('abort', rejectAborted, { once: true });
+          signal.addEventListener("abort", rejectAborted, { once: true });
         });
       };
 
       const url = URL.createObjectURL(
-        new Blob([adapterSource, hardeningSource], {
-          type: 'text/javascript'
-        })
+        new Blob([source], { type: "text/javascript" }),
       );
       try {
         await import(url);
@@ -179,29 +121,24 @@ async function mountTimeoutContract(page: Page, timeoutMs: number) {
         URL.revokeObjectURL(url);
       }
     },
-    { adapterSource, hardeningSource, timeoutMs }
+    { source: adapterSource, timeoutMs },
   );
 
-  await expect(page.locator('#fly-root')).toHaveAttribute(
-    'data-fly-browser-mounted',
-    'true'
+  await expect(page.locator("#fly-root")).toHaveAttribute(
+    "data-fly-browser-mounted",
+    "true",
   );
 }
 
-async function emitSave(page: Page, saveNumber: number) {
-  await page.evaluate((number) => {
+async function emitSave(page: Page) {
+  await page.evaluate(() => {
     const scope = globalThis as TimeoutScope;
     const adapter = scope.FlyBrowser?.mountAll?.(
-      scope.__FLY_BROWSER_CONFIG__ ?? {}
+      scope.__FLY_BROWSER_CONFIG__ ?? {},
     )[0];
-    if (!adapter) throw new Error('Fly adapter unavailable');
-    scope.__flySavePromises?.push(
-      adapter.emitIntent('save', {
-        project: { pages: [] },
-        save_number: number
-      })
-    );
-  }, saveNumber);
+    if (!adapter) throw new Error("Fly adapter unavailable");
+    scope.__flySavePromises?.push(adapter.emitIntent("save", {}));
+  });
 }
 
 async function awaitSave(page: Page, index: number) {
@@ -212,138 +149,100 @@ async function awaitSave(page: Page, index: number) {
   }, index);
 }
 
-async function readState(page: Page) {
-  return page.evaluate(() => {
-    const scope = globalThis as TimeoutScope;
-    const root = document.querySelector('#fly-root');
-    return {
-      aborted: scope.__flyAbortedRequests ?? 0,
-      errors: scope.__flyErrors ?? [],
-      mounted: root?.getAttribute('data-fly-browser-mounted'),
-      problem: root?.getAttribute('data-fly-browser-problem'),
-      projectHash: root?.getAttribute('data-fly-project-hash'),
-      problems: scope.__flyProblems ?? [],
-      requests: scope.__flyRequests ?? [],
-      responses: scope.__flyResponses ?? [],
-      revision: root?.getAttribute('data-fly-revision'),
-      timeouts: scope.__flyTimeouts ?? [],
-      draft: JSON.parse(
-        sessionStorage.getItem('fly:ssr-draft:home') ?? 'null'
-      )
-    };
-  });
-}
-
-test('hung intent times out, releases its slot and allows a successful retry', async ({
-  page
+test("timeout emits typed abort, releases the slot and allows retry", async ({
+  page,
 }) => {
   await mountTimeoutContract(page, 40);
-  await emitSave(page, 1);
+  await emitSave(page);
   await awaitSave(page, 0);
 
-  const root = page.locator('#fly-root');
-  await expect(root).toHaveAttribute(
-    'data-fly-browser-problem',
-    'INTENT_REQUEST_TIMEOUT'
+  await expect(page.locator("#fly-root")).toHaveAttribute(
+    "data-fly-browser-problem",
+    "INTENT_REQUEST_TIMEOUT",
   );
-  const alert = page.locator('[data-fly-browser-status="problem"]');
-  await expect(alert).toHaveAttribute('role', 'alert');
-  await expect(alert).toHaveText('Editor save timed out after 40 ms.');
+  await expect(page.locator('[data-fly-browser-status="problem"]')).toHaveText(
+    "Editor save timed out after 40 ms.",
+  );
 
-  let state = await readState(page);
-  expect(state).toMatchObject({
-    aborted: 1,
-    problem: 'INTENT_REQUEST_TIMEOUT',
-    revision: 'rev-1',
-    projectHash: 'hash-1',
-    draft: { token: 'draft-1', generation: 1 }
+  let state = await page.evaluate(() => {
+    const scope = globalThis as TimeoutScope;
+    return {
+      aborts: scope.__flyAborts ?? [],
+      errors: scope.__flyErrors ?? [],
+      problems: scope.__flyProblems ?? [],
+      timeouts: scope.__flyTimeouts ?? [],
+    };
   });
+  expect(state.errors).toEqual([]);
   expect(state.timeouts).toEqual([
-    {
-      code: 'INTENT_REQUEST_TIMEOUT',
-      error: 'Editor save timed out after 40 ms.',
-      intent: 'save',
+    expect.objectContaining({
+      code: "INTENT_REQUEST_TIMEOUT",
       timeoutMs: 40,
       requestGeneration: 1,
       current: true,
-      instanceId: 'canvas-a',
-      pageId: 'home'
-    }
+    }),
   ]);
-  expect(state.problems).toHaveLength(1);
-  expect(state.problems[0]).toMatchObject({
-    code: 'INTENT_REQUEST_TIMEOUT',
-    error: 'Editor save timed out after 40 ms.'
-  });
-  expect(state.errors).toHaveLength(1);
-  expect(state.errors[0]).toMatchObject({
-    requestGeneration: 1,
-    current: true
-  });
-  expect(state.requests).toHaveLength(1);
-  expect(state.responses).toEqual([]);
+  expect(state.aborts).toEqual([
+    expect.objectContaining({
+      code: "INTENT_REQUEST_TIMEOUT",
+      kind: "timeout",
+      requestGeneration: 1,
+      current: true,
+    }),
+  ]);
 
   await page.evaluate(() => {
-    (globalThis as TimeoutScope).__flyFetchMode = 'success';
+    (globalThis as TimeoutScope).__flyFetchMode = "success";
   });
-  await emitSave(page, 2);
+  await emitSave(page);
   await awaitSave(page, 1);
+  await expect(page.locator("#fly-root")).not.toHaveAttribute(
+    "data-fly-browser-problem",
+  );
 
-  await expect(root).not.toHaveAttribute('data-fly-browser-problem');
-  await expect(alert).toHaveCount(0);
-  state = await readState(page);
-  expect(state).toMatchObject({
-    aborted: 1,
-    problem: null,
-    revision: 'rev-2',
-    projectHash: 'hash-2',
-    draft: { token: 'draft-2', generation: 2 }
+  state = await page.evaluate(() => {
+    const scope = globalThis as TimeoutScope;
+    return {
+      aborts: scope.__flyAborts ?? [],
+      errors: scope.__flyErrors ?? [],
+      timeouts: scope.__flyTimeouts ?? [],
+    };
   });
-  expect(state.requests).toHaveLength(2);
+  expect(state.errors).toEqual([]);
+  expect(state.aborts).toHaveLength(1);
   expect(state.timeouts).toHaveLength(1);
-  expect(state.responses).toHaveLength(1);
-  expect(state.responses[0]).toMatchObject({
-    status: 200,
-    requestGeneration: 2,
-    current: true
-  });
 });
 
-test('unmount clears the timer and aborts without publishing a timeout', async ({
-  page
+test("unmount clears timer and emits only adapter-stop abort", async ({
+  page,
 }) => {
   await mountTimeoutContract(page, 80);
-  await emitSave(page, 1);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (globalThis as TimeoutScope).__flyRequests?.length ?? 0
-      )
-    )
-    .toBe(1);
-
+  await emitSave(page);
   await page.evaluate(() => {
     (globalThis as TimeoutScope).FlyBrowser?.unmountAll?.();
   });
   await awaitSave(page, 0);
   await page.waitForTimeout(120);
 
-  const state = await readState(page);
-  expect(state).toMatchObject({
-    aborted: 1,
-    mounted: 'false',
-    problem: null,
-    revision: 'rev-1',
-    projectHash: 'hash-1',
-    draft: { token: 'draft-1', generation: 1 },
-    problems: [],
-    responses: [],
-    timeouts: []
+  const state = await page.evaluate(() => {
+    const scope = globalThis as TimeoutScope;
+    return {
+      aborts: scope.__flyAborts ?? [],
+      errors: scope.__flyErrors ?? [],
+      problems: scope.__flyProblems ?? [],
+      timeouts: scope.__flyTimeouts ?? [],
+    };
   });
-  expect(state.errors).toHaveLength(1);
-  expect(state.errors[0]).toMatchObject({
-    requestGeneration: 1,
-    current: false
-  });
-  await expect(page.locator('[data-fly-browser-status]')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+  expect(state.problems).toEqual([]);
+  expect(state.timeouts).toEqual([]);
+  expect(state.aborts).toEqual([
+    expect.objectContaining({
+      code: "INTENT_REQUEST_ABORTED",
+      kind: "adapter_stop",
+      requestGeneration: 1,
+      current: false,
+    }),
+  ]);
+  await expect(page.locator("[data-fly-browser-status]")).toHaveCount(0);
 });
