@@ -61,7 +61,12 @@ mod-fulfillment = ["dep:rustok-fulfillment", "rustok-distribution/mod-fulfillmen
 mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment", "rustok-distribution/mod-commerce"]
 mod-marketplace_seller = ["dep:rustok-marketplace-seller", "rustok-marketplace-seller/graphql", "rustok-distribution/mod-marketplace_seller"]
 mod-marketplace_listing = ["dep:rustok-marketplace-listing", "mod-marketplace_seller", "mod-product", "rustok-distribution/mod-marketplace_listing"]
-mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "rustok-distribution/mod-marketplace"]
+mod-marketplace_allocation = ["dep:rustok-marketplace-allocation", "mod-order", "mod-marketplace_seller", "mod-marketplace_listing", "rustok-distribution/mod-marketplace_allocation"]
+mod-marketplace_commission = ["dep:rustok-marketplace-commission", "mod-marketplace_allocation", "rustok-distribution/mod-marketplace_commission"]
+mod-marketplace_ledger = ["dep:rustok-marketplace-ledger", "mod-marketplace_commission", "rustok-distribution/mod-marketplace_ledger"]
+mod-marketplace_payout = ["dep:rustok-marketplace-payout", "mod-marketplace_ledger", "rustok-distribution/mod-marketplace_payout"]
+mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_ledger", "mod-marketplace_payout", "rustok-distribution/mod-marketplace"]
+mod-moderation = ["dep:rustok-moderation", "rustok-distribution/mod-moderation"]
 mod-content   = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content", "rustok-distribution/mod-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog", "rustok-distribution/mod-blog"]
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
@@ -106,7 +111,12 @@ rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce  = { workspace = true, optional = true }
 rustok-marketplace-seller = { workspace = true, optional = true }
 rustok-marketplace-listing = { workspace = true, optional = true }
+rustok-marketplace-allocation = { workspace = true, optional = true }
+rustok-marketplace-commission = { workspace = true, optional = true }
+rustok-marketplace-ledger = { workspace = true, optional = true }
+rustok-marketplace-payout = { workspace = true, optional = true }
 rustok-marketplace = { workspace = true, optional = true }
+rustok-moderation = { workspace = true, optional = true }
 rustok-blog      = { workspace = true, optional = true }
 rustok-comments  = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
@@ -148,51 +158,3 @@ serde_yaml.workspace = true
 tera.workspace = true
 toml.workspace = true
 uuid.workspace = true
-chrono.workspace = true
-tracing.workspace = true
-base64.workspace = true
-eyre = "0.6"
-async-trait.workspace = true
-thiserror.workspace = true
-anyhow.workspace = true
-rust_decimal.workspace = true
-argon2.workspace = true
-hex.workspace = true
-jsonwebtoken.workspace = true
-password-hash.workspace = true
-rhai = { workspace = true, features = ["sync", "metadata"] }
-sha2.workspace = true
-moka = { workspace = true, features = ["future"] }
-once_cell.workspace = true
-utoipa = { workspace = true, features = ["axum_extras", "uuid", "chrono", "yaml"] }
-redis = { version = "1.2", features = ["tokio-comp", "connection-manager"] }
-futures-util = "0.3"
-rust-embed = { version = "8.0", features = ["interpolate-folder-path"], optional = true }
-tower-http = { workspace = true, features = ["fs"] }
-mime_guess = "2.0"
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
-semver = "1.0"
-rand.workspace = true
-subtle = "2"
-bytes = "1.0"
-ipnet = "2.12"
-url = "2.5"
-
-# Server migration and schema composition
-rustok-migrations = { path = "../../crates/rustok-migrations" }
-sea-orm-migration.workspace = true
-
-[dev-dependencies]
-serial_test = "3.5"
-rustok-test-utils.workspace = true
-tempfile = "3.27"
-tower.workspace = true
-url = "2.5"
-
-[build-dependencies]
-serde.workspace = true
-toml.workspace = true
-
-[package.metadata.cargo-udeps.ignore]
-development = ["serial_test"]
-normal = ["rustok-rbac", "rustok-tenant", "password-hash"]
