@@ -140,17 +140,36 @@
       "marketplace consumers never parse raw provider payloads"
     ]
   },
+  "processed_event_observers": {
+    "contract": "PaymentProviderProcessedEventObserver",
+    "registry": "PaymentProviderEventObservers",
+    "applier": "PaymentObservedDomainEventApplier",
+    "execution_order": [
+      "payment owner apply",
+      "host-composed observers",
+      "payment inbox processed checkpoint"
+    ],
+    "mounted_surfaces": [
+      "webhook ingress",
+      "manual recovery API",
+      "scheduled recovery worker"
+    ],
+    "empty_registry_is_noop": true,
+    "observer_failure_uses_payment_inbox_retry_classification": true,
+    "cross_module_dependency_direction": "host composition only"
+  },
   "delivery_semantics": {
     "provider_delivery": "at-least-once",
-    "domain_apply": "effectively-once-through-inbox-and-owner-idempotency",
+    "domain_apply": "effectively-once-through-inbox-owner-idempotency-and-observer-deduplication",
     "duplicate_same_payload": "return-existing",
     "same_key_different_payload": "reject",
-    "retryable_apply_failure": "failed",
-    "non_retryable_apply_failure": "dead_letter",
+    "retryable_owner_or_observer_failure": "failed",
+    "non_retryable_owner_or_observer_failure": "dead_letter",
     "expired_processing_lease": "claimable",
-    "processed_replay": "acknowledge-without-domain-reapply",
+    "processed_replay": "acknowledge-without-owner-or-observer-reapply",
     "retryable_recovery": "bounded_received_failed_or_expired_processing_sweep_from_normalized_checkpoint",
-    "dead_letter_replay": "operator-only-dead_letter-to-processing-using-normalized-checkpoint"
+    "dead_letter_replay": "operator-only-dead_letter-to-processing-using-normalized-checkpoint",
+    "marketplace_historical_backfill": "bounded polling of processed normalized events with independent reversal inbox deduplication"
   },
   "operator_api": {
     "read_event": {
