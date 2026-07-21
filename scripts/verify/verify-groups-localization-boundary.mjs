@@ -230,8 +230,20 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
     if (commandPort?.last_translation_delete !== "deny") {
       failures.push("Groups localization commands must deny last-translation deletion");
     }
+    if (commandPort?.serialized_group_row !== "exclusive_lock_where_supported") {
+      failures.push("Groups localization commands must declare base-row serialization");
+    }
     if (registry?.localization?.module_local_fallback !== false) {
       failures.push("Groups localization registry must reject module-local fallback");
+    }
+    if (registry?.localization?.mutation_serialization !== "base_group_row") {
+      failures.push("Groups localization registry must bind mutation serialization to the group row");
+    }
+    if (
+      registry?.evidence?.localization_static_boundary !==
+      "scripts/verify/verify-groups-localization-boundary.mjs"
+    ) {
+      failures.push("Groups localization registry must reference the focused static guard");
     }
     const profile = registry?.transport_profiles?.find(
       (entry) => entry?.name === "embedded_localization_native",
@@ -252,7 +264,8 @@ requireMarkers("crates/rustok-groups/docs/README.md", [
   "GroupLocalizationCommandPort",
   "delete rejects removal of the final translation row",
   "translation mutation and group-version increment commit in one transaction",
-  "do not yet persist replay receipts",
+  "do not yet persist",
+  "replay receipts",
 ]);
 requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
   "localization idempotent receipts/replay",
