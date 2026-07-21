@@ -296,14 +296,14 @@ async fn revision_diff_emits_only_new_targets_and_replay_is_immutable() {
     .expect("current projection");
 
     let diff = diff_forum_mentions(Some(&previous), &current).expect("valid diff");
-    assert_eq!(diff.added_users.len(), 1);
-    assert_eq!(diff.added_users[0].user_id, bob.user_id);
-    assert_eq!(diff.unchanged_users.len(), 1);
-    assert_eq!(diff.unchanged_users[0].user_id, alice.user_id);
-    assert_eq!(diff.removed_audiences, vec![ForumMentionAudience::Moderators]);
+    assert_eq!(diff.added_users().len(), 1);
+    assert_eq!(diff.added_users()[0].user_id, bob.user_id);
+    assert_eq!(diff.unchanged_users().len(), 1);
+    assert_eq!(diff.unchanged_users()[0].user_id, alice.user_id);
+    assert_eq!(diff.removed_audiences(), &[ForumMentionAudience::Moderators]);
     let candidates = diff.event_candidates();
     assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].source, *current.source());
+    assert_eq!(&candidates[0].source, current.source());
     assert_eq!(candidates[0].target, ForumMentionEventTarget::User(bob.user_id));
 
     let identical_replay = diff_forum_mentions(Some(&current), &current)
