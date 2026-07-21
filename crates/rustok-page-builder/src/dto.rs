@@ -112,10 +112,42 @@ pub struct BuilderTreeNode {
     pub children: Vec<BuilderTreeNode>,
 }
 
+fn empty_runtime_context() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageBuilderPreviewRuntime {
+    #[serde(default = "empty_runtime_context")]
+    pub context: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scenario_id: Option<String>,
+}
+
+impl Default for PageBuilderPreviewRuntime {
+    fn default() -> Self {
+        Self {
+            context: empty_runtime_context(),
+            scenario_id: None,
+        }
+    }
+}
+
+impl PageBuilderPreviewRuntime {
+    pub fn new(context: serde_json::Value, scenario_id: Option<String>) -> Self {
+        Self {
+            context,
+            scenario_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewPageBuilderInput {
     pub page_id: String,
     pub project_data: serde_json::Value,
+    #[serde(default)]
+    pub runtime: PageBuilderPreviewRuntime,
 }
 
 impl PreviewPageBuilderInput {
@@ -123,7 +155,13 @@ impl PreviewPageBuilderInput {
         Self {
             page_id: page_id.into(),
             project_data,
+            runtime: PageBuilderPreviewRuntime::default(),
         }
+    }
+
+    pub fn with_runtime(mut self, runtime: PageBuilderPreviewRuntime) -> Self {
+        self.runtime = runtime;
+        self
     }
 }
 
@@ -131,6 +169,8 @@ impl PreviewPageBuilderInput {
 pub struct PreviewPageBuilderResult {
     pub page_id: String,
     pub html: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_scenario_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
