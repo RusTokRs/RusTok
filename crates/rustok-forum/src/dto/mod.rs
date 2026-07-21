@@ -1,4 +1,5 @@
 pub mod category;
+pub mod category_command;
 pub mod category_tree;
 pub mod event;
 pub mod read_model;
@@ -10,6 +11,7 @@ pub mod user_stats;
 pub mod widget;
 
 pub use category::*;
+pub use category_command::*;
 pub use category_tree::*;
 pub use event::*;
 pub use read_model::*;
