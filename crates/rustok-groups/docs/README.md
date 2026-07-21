@@ -102,6 +102,13 @@ Required context semantics:
 - governance state, idempotency receipt, and immutable audit entry commit in one
   owner transaction.
 
+Governance commands are exposed through the typed Rust port, the merged
+`graphql_governance::GroupsMutationRoot`, and module-owned Leptos server functions.
+All surfaces construct the same `PortContext` fields and call
+`GroupGovernanceService`; they do not copy role or ownership policy. Runtime result,
+error, replay, and concurrency parity remain evidence gates rather than inferred
+from source presence.
+
 Consumers must not import Groups entities or query Groups tables directly.
 
 ## FFA contract
@@ -123,6 +130,14 @@ ui/leptos.rs
 - transport selection never falls back implicitly;
 - locale comes only from host-provided `UiRouteContext.locale`;
 - reusable UI primitives come from shared UI crates.
+
+The admin core validates and normalizes governance UUID input and creates a fresh
+idempotency key for each deliberate submission. The Leptos adapter renders
+localized role-delegation and ownership-transfer forms, calls only the selected
+transport facade, and displays group-version/replay evidence. It does not decide
+who may assign a role or transfer ownership. Group/member pickers, explicit
+confirmation, audit history, accessibility evidence, and executed transport parity
+remain later work.
 
 ## Integration
 
