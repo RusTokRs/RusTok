@@ -17,7 +17,9 @@ headers are not interpreted inside the Blog module.
 The search lifecycle is implemented in `rustok-search`: Blog events upsert or
 delete `blog_post` search documents, and `ReindexRequested` supports both one
 post and the complete Blog scope. Search owns the SQL projection and does not
-depend on the Blog crate.
+depend on the Blog crate. The projector stores the post slug in payload, but the
+shared search GraphQL URL derivation still handles only `product` and `node`, so
+`blog_post` result navigation remains the next cross-module parity gap.
 
 Public comment listing uses a Comments-owned approved-only projection. Pending,
 spam, trash, and deleted comments cannot leave the owner boundary. The selected
@@ -25,7 +27,8 @@ storefront post renders the same public payload through native `#[server]` and
 GraphQL transports. Admin moderation is a separate GraphQL slice: a current-
 tenant actor with `blog_posts:manage` can inspect the non-deleted owner queue and
 apply approve/spam/trash transitions without coupling the CRUD editor to that
-permission.
+permission. The admin queue is paginated through bounded GraphQL variables and
+resets page state when the selected post changes.
 
 ## FFA/FBA status
 
@@ -51,6 +54,9 @@ permission.
   Blog manage decision, it performs the trusted owner read used by the existing
   REST moderation adapter; `moderateComment` uses the same domain service and is
   represented as a dedicated field-aware rate-limit surface.
+- The admin moderation transport passes explicit `page/perPage`, clamps the page
+  size, exposes previous/next controls, and keeps moderation contract failures
+  isolated from post CRUD.
 - `BlogCommentProjectionHandler` consumes `comment.created` and
   `comment.deleted`, records a durable event-id delivery ledger, updates the
   Blog-owned reply count with optimistic version locking, and publishes
@@ -90,6 +96,9 @@ permission.
     `moderateComment`, manage permission and rate-limit gates, a separate admin
     transport adapter, selected-post approve/spam/trash UI, localized copy, and
     canonical/negative boundary fixtures.
+11. Added admin moderation pagination: bounded GraphQL variables, page reset on
+    post selection, total-page calculation, disabled invalid navigation, and
+    localized previous/next/page controls.
 
 ## Next results
 
@@ -101,11 +110,16 @@ permission.
    delete event-to-document behavior, targeted recovery, full Blog recovery, and
    module-disabled cleanup against PostgreSQL.
 3. **Close comments owner/projection runtime evidence.** Exercise approved-only
-   public reads, moderation queue/status changes, independent create commands on
-   one post, duplicate delivery, concurrent count updates, missing-post retry,
-   delivery-ledger rollback, and outbox publication.
-4. **Continue admin/storefront parity.** Add comment pagination and search-result
-   navigation while preserving native `#[server]` plus GraphQL transport paths.
+   public reads, moderation queue/status changes and pagination, independent
+   create commands on one post, duplicate delivery, concurrent count updates,
+   missing-post retry, delivery-ledger rollback, and outbox publication.
+4. **Complete search-result navigation.** Extend the shared search URL derivation
+   for `blog_post` by reading the projected slug and producing the canonical
+   `/modules/blog?slug=...` route, with an empty/invalid slug remaining
+   non-navigable. Then lock GraphQL/native storefront parity in search guardrails.
+5. **Add storefront comment pagination.** Preserve native `#[server]` plus
+   GraphQL transport paths while moving the current fixed first-page public
+   comments payload to route-owned page state.
 
 ## Verification
 
