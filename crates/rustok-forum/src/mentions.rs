@@ -110,8 +110,8 @@ pub enum ForumContentTargetKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumContentTarget {
-    pub kind: ForumContentTargetKind,
-    pub id: Uuid,
+    kind: ForumContentTargetKind,
+    id: Uuid,
 }
 
 impl ForumContentTarget {
@@ -128,14 +128,22 @@ impl ForumContentTarget {
             id,
         }
     }
+
+    pub fn kind(&self) -> ForumContentTargetKind {
+        self.kind
+    }
+
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumRevisionIdentity {
-    pub tenant_id: Uuid,
-    pub target: ForumContentTarget,
-    pub revision_id: i64,
-    pub locale: String,
+    tenant_id: Uuid,
+    target: ForumContentTarget,
+    revision_id: i64,
+    locale: String,
 }
 
 impl ForumRevisionIdentity {
@@ -145,7 +153,7 @@ impl ForumRevisionIdentity {
         revision_id: i64,
         locale: impl Into<String>,
     ) -> ForumResult<Self> {
-        if tenant_id.is_nil() || target.id.is_nil() {
+        if tenant_id.is_nil() || target.id().is_nil() {
             return Err(ForumError::Validation(
                 "Forum revision identity requires non-nil tenant and target IDs".to_string(),
             ));
@@ -166,18 +174,67 @@ impl ForumRevisionIdentity {
             locale,
         })
     }
+
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn target(&self) -> ForumContentTarget {
+        self.target
+    }
+
+    pub fn revision_id(&self) -> i64 {
+        self.revision_id
+    }
+
+    pub fn locale(&self) -> &str {
+        &self.locale
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumQuoteReference {
-    pub target: ForumContentTarget,
-    pub revision_id: i64,
+    target: ForumContentTarget,
+    revision_id: i64,
+}
+
+impl ForumQuoteReference {
+    pub fn new(target: ForumContentTarget, revision_id: i64) -> ForumResult<Self> {
+        if target.id().is_nil() || revision_id <= 0 {
+            return Err(ForumError::Validation(
+                "Forum quote references require a non-nil target and positive revision ID"
+                    .to_string(),
+            ));
+        }
+        Ok(Self {
+            target,
+            revision_id,
+        })
+    }
+
+    pub fn target(&self) -> ForumContentTarget {
+        self.target
+    }
+
+    pub fn revision_id(&self) -> i64 {
+        self.revision_id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ResolvedForumMention {
-    pub user_id: Uuid,
-    pub handle: String,
+    user_id: Uuid,
+    handle: String,
+}
+
+impl ResolvedForumMention {
+    pub fn user_id(&self) -> Uuid {
+        self.user_id
+    }
+
+    pub fn handle(&self) -> &str {
+        &self.handle
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -251,8 +308,18 @@ pub enum ForumMentionEventTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumMentionEventCandidate {
-    pub source: ForumRevisionIdentity,
-    pub target: ForumMentionEventTarget,
+    source: ForumRevisionIdentity,
+    target: ForumMentionEventTarget,
+}
+
+impl ForumMentionEventCandidate {
+    pub fn source(&self) -> &ForumRevisionIdentity {
+        &self.source
+    }
+
+    pub fn target(&self) -> &ForumMentionEventTarget {
+        &self.target
+    }
 }
 
 pub fn extract_forum_mention_candidates(
@@ -313,7 +380,7 @@ pub async fn resolve_forum_mentions(
                 tenant_default_locale,
             )
             .await
-            .map_err(|error| map_profile_mention_error(&handle, error))?;
+            .map_err(|error| map_profile_mention_error(error))?;
         validate_resolved_profile(tenant_id, &handle, &profile)?;
         users.insert(
             profile.user_id,
@@ -340,13 +407,9 @@ pub fn validate_forum_quote_references(
         )));
     }
     for reference in &references {
-        if reference.target.id.is_nil() || reference.revision_id <= 0 {
-            return Err(ForumError::Validation(
-                "Forum quote references require a non-nil target and positive revision ID"
-                    .to_string(),
-            ));
-        }
-        if reference.target == source.target && reference.revision_id == source.revision_id {
+        if reference.target() == source.target()
+            && reference.revision_id() == source.revision_id()
+        {
             return Err(ForumError::Validation(
                 "Forum revision cannot quote itself".to_string(),
             ));
@@ -367,7 +430,7 @@ pub fn diff_forum_mentions(
                     "Forum mention replay changed an existing revision projection".to_string(),
                 ));
             }
-        } else if current.source().revision_id <= previous.source().revision_id {
+        } else if current.source().revision_id() <= previous.source().revision_id() {
             return Err(ForumError::Validation(
                 "Forum mention diff cannot move revision identity backwards".to_string(),
             ));
@@ -380,7 +443,7 @@ pub fn diff_forum_mentions(
                 .users()
                 .iter()
                 .cloned()
-                .map(|mention| (mention.user_id, mention))
+                .map(|mention| (mention.user_id(), mention))
                 .collect::<BTreeMap<_, _>>()
         })
         .unwrap_or_default();
@@ -388,7 +451,7 @@ pub fn diff_forum_mentions(
         .users()
         .iter()
         .cloned()
-        .map(|mention| (mention.user_id, mention))
+        .map(|mention| (mention.user_id(), mention))
         .collect::<BTreeMap<_, _>>();
     let previous_audiences = previous
         .map(|value| value.audiences().iter().copied().collect::<BTreeSet<_>>())
@@ -465,7 +528,7 @@ impl ForumMentionDiff {
             .iter()
             .map(|mention| ForumMentionEventCandidate {
                 source: self.source.clone(),
-                target: ForumMentionEventTarget::User(mention.user_id),
+                target: ForumMentionEventTarget::User(mention.user_id()),
             })
             .chain(self.added_audiences.iter().map(|audience| {
                 ForumMentionEventCandidate {
@@ -664,15 +727,15 @@ fn validate_resolved_profile(
             ProfileVisibility::Public | ProfileVisibility::Authenticated
         );
     if !visible {
-        return Err(ForumError::mention_target_unavailable(requested_handle));
+        return Err(ForumError::mention_target_unavailable());
     }
     Ok(())
 }
 
-fn map_profile_mention_error(handle: &str, error: ProfileError) -> ForumError {
+fn map_profile_mention_error(error: ProfileError) -> ForumError {
     match error {
         ProfileError::ProfileByHandleNotFound(_) | ProfileError::ProfileNotFound(_) => {
-            ForumError::mention_target_unavailable(handle)
+            ForumError::mention_target_unavailable()
         }
         ProfileError::Database(_) => ForumError::capability_failure(
             FORUM_MENTION_PROFILES_CAPABILITY,
@@ -693,9 +756,9 @@ fn ensure_same_revision_stream(
     previous: &ForumRevisionIdentity,
     current: &ForumRevisionIdentity,
 ) -> ForumResult<()> {
-    if previous.tenant_id != current.tenant_id
-        || previous.target != current.target
-        || previous.locale != current.locale
+    if previous.tenant_id() != current.tenant_id()
+        || previous.target() != current.target()
+        || previous.locale() != current.locale()
     {
         return Err(ForumError::Validation(
             "Forum mention diff requires the same tenant, target and locale".to_string(),
