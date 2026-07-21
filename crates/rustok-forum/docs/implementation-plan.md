@@ -203,7 +203,7 @@ at the end of this file remain authoritative.
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
 | `FORUM-12` | `planned` | Mentions, quote relations and recipient projection. |
-| `FORUM-13` | `in_progress` | Verified FORUM-13A adds bounded icon/color and transport-neutral cover candidate policy; Media quarantine/deletion state, persistence and UI remain. |
+| `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
 | `FORUM-16` | `planned` | Durable read tracking and unread projections. |
@@ -522,14 +522,30 @@ typed capability-unavailable error.
   image URL/path fields;
 - maintainer verification of the `FORUM-13A` commands passed on 2026-07-21.
 
+### Delivered in `FORUM-13B`
+
+- `resolve_category_cover_for_write` resolves Media metadata only through
+  `MediaAssetReadPort`, validates the candidate and returns stable
+  `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when the optional Media
+  owner is not composed;
+- `hydrate_category_cover_for_read` degrades to an absent descriptor only in
+  the explicit Media-disabled profile;
+- not-found, timeout, storage and other Media provider failures remain typed
+  `ForumError::CapabilityFailure` values with source code and retryability;
+- the category-presentation verifier locks the optional-capability split and
+  rejects swallowed provider failures;
+- source-level contracts and fixtures were added in this slice; maintainer
+  execution of the verification commands remains pending.
+
 ### Remaining scope
 
 - Media must publish quarantine and deletion lifecycle state through its owner
   read contract before Forum persists `cover_media_id`;
-- add the owner command, persistence, response descriptor hydration and
-  admin/storefront image selection after that state is available;
-- add typed capability-unavailable transport mapping and degraded-mode runtime
-  evidence for Media-disabled deployments.
+- add the owner command, persistence, response integration and admin/storefront
+  image selection after that state is available;
+- compose the Media read provider into actual Forum transport entrypoints and
+  capture executable media-disabled/media-enabled evidence after persistence
+  exists.
 
 ### Definition of done
 
