@@ -44,6 +44,20 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(registry)
     };
 
+    #[cfg(feature = "mod-commerce")]
+    let host = {
+        let runtime = server
+            .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+            .unwrap_or_else(|| {
+                let runtime = rustok_commerce::MarketplaceFinancialRuntime::in_process(
+                    server.db_clone(),
+                );
+                server.shared_insert(runtime.clone());
+                runtime
+            });
+        host.with_shared_value(runtime)
+    };
+
     #[cfg(all(feature = "mod-ai", feature = "mod-order"))]
     let host = if let Some(event_bus) = server.shared_get::<rustok_outbox::TransactionalEventBus>()
     {
