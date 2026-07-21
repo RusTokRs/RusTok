@@ -30,6 +30,7 @@ mod journaled_checkout;
 mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
+mod marketplace_paid_event_inbox;
 mod order_change_orchestration;
 mod paid_order_create_label;
 mod paid_order_create_label_sweep;
@@ -134,6 +135,12 @@ pub(crate) use fulfillment_orchestration_facade::FulfillmentOrchestrationService
 pub use fulfillment_reconciliation::FulfillmentReconciliationService;
 pub use journaled_checkout::{
     JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
+};
+pub use marketplace_paid_event_inbox::{
+    IngestMarketplacePaidEvent, MarketplacePaidEventInboxError,
+    MarketplacePaidEventInboxJournal, MarketplacePaidEventInboxResult,
+    MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
+    MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
 };
 pub use order_change_orchestration::OrderChangeOrchestrationService;
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
