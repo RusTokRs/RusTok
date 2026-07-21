@@ -12,7 +12,9 @@ fn seller_balance_transfer_source_is_append_only_replay_safe_and_capacity_bound(
     );
     let migration_registry = include_str!("../src/migrations/mod.rs");
     let ledger_contract = include_str!("../contracts/marketplace-ledger-fba-registry.json");
-    let family_contract = include_str!("../../rustok-marketplace/contracts/marketplace-fba-registry.json");
+    let transfer_contract = include_str!("../contracts/seller-balance-transfer-v1.json");
+    let family_contract =
+        include_str!("../../rustok-marketplace/contracts/marketplace-fba-registry.json");
 
     for kind in [
         "PendingRelease",
@@ -83,13 +85,26 @@ fn seller_balance_transfer_source_is_append_only_replay_safe_and_capacity_bound(
     assert!(immutability.contains("BEFORE UPDATE OR DELETE"));
     assert!(immutability.contains("append-only"));
     assert!(migration_registry.contains("m20260721_000003_add_seller_balance_transfers"));
-    assert!(migration_registry.contains("m20260721_000004_enforce_seller_balance_transfer_immutability"));
+    assert!(migration_registry.contains(
+        "m20260721_000004_enforce_seller_balance_transfer_immutability"
+    ));
 
     assert!(ledger_contract.contains("marketplace.ledger.v3"));
     assert!(ledger_contract.contains("post_seller_balance_transfer"));
     assert!(ledger_contract.contains("cumulative_transfer_must_not_exceed_reference_credit"));
     assert!(ledger_contract.contains("fresh_locking_reread_after_wait"));
     assert!(ledger_contract.contains("append_only_database_guards"));
+
+    assert!(transfer_contract.contains("marketplace_ledger.seller_balance_transfer.v1"));
+    assert!(transfer_contract.contains("pending_release"));
+    assert!(transfer_contract.contains("reserve_hold"));
+    assert!(transfer_contract.contains("reserve_release"));
+    assert!(transfer_contract.contains("payout_settlement"));
+    assert!(transfer_contract.contains("payout_reversal"));
+    assert!(transfer_contract.contains("projection_used_for_admission\": false"));
+    assert!(transfer_contract.contains("cumulative_reference_amount_must_not_exceed_credit"));
+    assert!(transfer_contract.contains("append_only_guards"));
+
     assert!(family_contract.contains("marketplace.family.v3"));
     assert!(family_contract.contains("seller_balance_transfer_owner_contract"));
     assert!(family_contract.contains("root_persistence\": false"));
