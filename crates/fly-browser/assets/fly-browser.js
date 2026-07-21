@@ -6,7 +6,23 @@ const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
 const TOKEN_KEY = "rustok-admin-token";
 const TENANT_KEY = "rustok-admin-tenant";
 const DRAFT_PREFIX = "fly:ssr-draft:";
+const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024;
+const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
+const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
+const DEFAULT_INTENT_REQUEST_TIMEOUT_MS = 30_000;
+const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
+const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
+const NETWORK_ERROR_CODE = "NETWORK_ERROR";
+const INTENT_ABORT_KIND = Object.freeze({
+  EXTERNAL: "external",
+  TIMEOUT: "timeout",
+  ADAPTER_STOP: "adapter_stop",
+});
+const RESOURCE_STATUS_SELECTOR = '[data-fly-browser-status="resource-limit"]';
+const PROBLEM_STATUS_SELECTOR = '[data-fly-browser-status="problem"]';
+const VISUALLY_HIDDEN_STYLE =
+  "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0";
 
 /**
  * @typedef {"external" | "timeout" | "adapter_stop"} IntentAbortKind
@@ -68,6 +84,174 @@ function intentAbortDetail(
     instanceId: adapter.instanceId,
     pageId: adapter.pageId,
   };
+}
+
+function boundedPositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function limitFor(adapter, optionName, dataName, fallback) {
+  return boundedPositiveInteger(
+    adapter.options?.[optionName] ?? adapter.root.dataset[dataName],
+    fallback,
+  );
+}
+
+function utf8ByteLength(value) {
+  if (typeof TextEncoder === "function") {
+    return new TextEncoder().encode(value).byteLength;
+  }
+  return typeof Blob === "function" ? new Blob([value]).size : value.length;
+}
+
+function ensureStatus(adapter, selector, kind, role, live) {
+  let status = adapter.root.querySelector(selector);
+  if (status) return status;
+  status = document.createElement("p");
+  status.dataset.flyBrowserStatus = kind;
+  status.setAttribute("role", role);
+  status.setAttribute("aria-live", live);
+  status.setAttribute("aria-atomic", "true");
+  status.style.cssText = VISUALLY_HIDDEN_STYLE;
+  adapter.root.appendChild(status);
+  return status;
+}
+
+function ensureResourceStatus(adapter) {
+  return ensureStatus(
+    adapter,
+    RESOURCE_STATUS_SELECTOR,
+    "resource-limit",
+    "status",
+    "polite",
+  );
+}
+
+function ensureProblemStatus(adapter) {
+  return ensureStatus(
+    adapter,
+    PROBLEM_STATUS_SELECTOR,
+    "problem",
+    "alert",
+    "assertive",
+  );
+}
+
+function normalizedStringList(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((item) => typeof item === "string" && item))]
+    : [];
+}
+
+function normalizedProblem(adapter, detail, fallbackCode) {
+  const result = isObject(detail?.result) ? detail.result : {};
+  const request = isObject(detail?.request) ? detail.request : {};
+  const status = Number.isSafeInteger(detail?.status) ? detail.status : 0;
+  const code =
+    nonEmptyString(result.code) ||
+    fallbackCode ||
+    (status > 0 ? `HTTP_${status}` : "BROWSER_REQUEST_FAILED");
+  const error =
+    nonEmptyString(result.error) ||
+    nonEmptyString(detail?.error) ||
+    (status > 0
+      ? `Editor action failed with status ${status}.`
+      : "Editor action failed.");
+  return {
+    status,
+    code,
+    error,
+    intent: nonEmptyString(result.intent) || nonEmptyString(request.intent),
+    capability: nonEmptyString(result.capability),
+    required: normalizedStringList(result.required),
+    missing: normalizedStringList(result.missing),
+    instanceId: adapter.instanceId,
+    pageId: adapter.pageId,
+  };
+}
+
+function clearBrowserProblem(adapter) {
+  delete adapter.root.dataset.flyBrowserProblem;
+  adapter.root.querySelector(PROBLEM_STATUS_SELECTOR)?.remove();
+}
+
+function reportBrowserProblem(adapter, detail, fallbackCode) {
+  const problem = normalizedProblem(adapter, detail, fallbackCode);
+  adapter.root.dataset.flyBrowserProblem = problem.code;
+  adapter.root.dispatchEvent(
+    new CustomEvent("fly:browser-problem", {
+      bubbles: true,
+      detail: problem,
+    }),
+  );
+  const status = ensureProblemStatus(adapter);
+  status.textContent = "";
+  queueMicrotask(() => {
+    status.textContent = problem.error;
+  });
+}
+
+function normalizedLimit(detail, fallbackKind) {
+  return {
+    kind: nonEmptyString(detail?.kind) || fallbackKind,
+    limit: boundedPositiveInteger(detail?.limit, 1),
+    observed: Math.max(0, Number(detail?.observed) || 0),
+  };
+}
+
+function reportResourceLimit(adapter, detail, fallbackKind) {
+  const resourceLimit = normalizedLimit(detail, fallbackKind);
+  adapter.root.dataset.flyResourceLimited = resourceLimit.kind;
+  adapter.root.dispatchEvent(
+    new CustomEvent("fly:browser-resource-limit", {
+      bubbles: true,
+      detail: {
+        ...resourceLimit,
+        instanceId: adapter.instanceId,
+        pageId: adapter.pageId,
+      },
+    }),
+  );
+  const message =
+    nonEmptyString(adapter.options?.resourceLimitMessage) ||
+    nonEmptyString(adapter.root.dataset.flyResourceLimitMessage) ||
+    "Editor canvas resource limit reached.";
+  const status = ensureResourceStatus(adapter);
+  status.textContent = "";
+  queueMicrotask(() => {
+    status.textContent = `${message} ${resourceLimit.kind}: ${resourceLimit.observed}/${resourceLimit.limit}.`;
+  });
+}
+
+function newAbortMetadata() {
+  return {
+    code: INTENT_REQUEST_ABORTED_CODE,
+    kind: INTENT_ABORT_KIND.EXTERNAL,
+    error: "Editor action cancelled.",
+  };
+}
+
+function forwardedAbortError(signal) {
+  return signal.reason === undefined
+    ? "Editor action cancelled."
+    : String(signal.reason);
+}
+
+function forwardAbortSignal(signal, controller, abort) {
+  if (!signal) return null;
+  const forward = () => {
+    abort.code = INTENT_REQUEST_ABORTED_CODE;
+    abort.kind = INTENT_ABORT_KIND.EXTERNAL;
+    abort.error = forwardedAbortError(signal);
+    controller.abort(signal.reason);
+  };
+  if (signal.aborted) {
+    forward();
+    return null;
+  }
+  signal.addEventListener("abort", forward, { once: true });
+  return () => signal.removeEventListener("abort", forward);
 }
 
 function storedString(key) {
@@ -270,6 +454,7 @@ export class FlyBrowserAdapter {
     this.postIntents = options.postIntents !== false;
     this.intentRequestGeneration = 0;
     this.latestIntentRequestGeneration = 0;
+    this.pendingIntentRequests = new Map();
     this.lastSequence = null;
     this.geometry = new Map();
     this.selectedId = null;
@@ -322,6 +507,59 @@ export class FlyBrowserAdapter {
       },
       { signal },
     );
+    this.root.addEventListener(
+      "fly:browser-intent-response",
+      (event) => {
+        if (event.detail?.current === false) return;
+        if (event.detail?.ok === true) {
+          clearBrowserProblem(this);
+        } else {
+          reportBrowserProblem(this, event.detail, null);
+        }
+      },
+      { signal },
+    );
+    this.root.addEventListener(
+      "fly:browser-intent-aborted",
+      (event) => {
+        if (
+          event.detail?.current === false ||
+          event.detail?.kind !== INTENT_ABORT_KIND.TIMEOUT
+        ) {
+          return;
+        }
+        reportBrowserProblem(
+          this,
+          {
+            status: 0,
+            result: {
+              code: event.detail.code,
+              error: event.detail.error,
+              intent: event.detail.intent,
+            },
+            request: event.detail.request,
+          },
+          INTENT_REQUEST_TIMEOUT_CODE,
+        );
+      },
+      { signal },
+    );
+    this.root.addEventListener(
+      "fly:browser-error",
+      (event) => {
+        if (event.detail?.current === false) return;
+        reportBrowserProblem(
+          this,
+          {
+            status: 0,
+            error: event.detail?.error,
+            request: event.detail?.request,
+          },
+          NETWORK_ERROR_CODE,
+        );
+      },
+      { signal },
+    );
     this.bindSsrControls(signal);
     this.root.dataset.flyBrowserMounted = "true";
     this.root.dispatchEvent(
@@ -335,9 +573,25 @@ export class FlyBrowserAdapter {
 
   stop() {
     this.latestIntentRequestGeneration = ++this.intentRequestGeneration;
+    for (const record of this.pendingIntentRequests.values()) {
+      if (record.timeoutId !== null) {
+        globalThis.clearTimeout(record.timeoutId);
+      }
+      if (!record.controller.signal.aborted) {
+        record.abort.code = INTENT_REQUEST_ABORTED_CODE;
+        record.abort.kind = INTENT_ABORT_KIND.ADAPTER_STOP;
+        record.abort.error =
+          "Editor action cancelled because the adapter stopped.";
+        record.controller.abort(record.abort.error);
+      }
+    }
+    this.pendingIntentRequests.clear();
     this.abortController.abort();
     this.root.dataset.flyBrowserMounted = "false";
     this.root.dataset.flyCanvasConnected = "false";
+    delete this.root.dataset.flyResourceLimited;
+    this.root.querySelector(RESOURCE_STATUS_SELECTOR)?.remove();
+    clearBrowserProblem(this);
     this.lastSequence = null;
     this.geometry.clear();
     this.selectedId = null;
@@ -352,6 +606,23 @@ export class FlyBrowserAdapter {
   onMessage(event) {
     if (event.source !== this.iframe.contentWindow) return;
     if (event.origin !== this.expectedOrigin) return;
+    if (typeof event.data === "string") {
+      const limit = limitFor(
+        this,
+        "maxMessageBytes",
+        "flyMaxMessageBytes",
+        DEFAULT_MAX_MESSAGE_BYTES,
+      );
+      const observed = utf8ByteLength(event.data);
+      if (observed > limit) {
+        reportResourceLimit(
+          this,
+          { kind: "message_bytes", limit, observed },
+          "message_bytes",
+        );
+        return;
+      }
+    }
     const envelope = parseEnvelope(event.data);
     if (!envelope || envelope.instance_id !== this.instanceId) return;
     if (this.lastSequence !== null && envelope.sequence <= this.lastSequence)
@@ -377,6 +648,46 @@ export class FlyBrowserAdapter {
   }
 
   applyBrowserMessage(message) {
+    if (message?.type === "geometry_snapshot") {
+      if (isObject(message.resource_limit)) {
+        this.geometry.clear();
+        this.drawSelection();
+        this.drawDrop();
+        reportResourceLimit(
+          this,
+          message.resource_limit,
+          "geometry_components",
+        );
+        return;
+      }
+      const components = Array.isArray(message.components)
+        ? message.components
+        : [];
+      const limit = limitFor(
+        this,
+        "maxGeometryComponents",
+        "flyMaxGeometryComponents",
+        DEFAULT_MAX_GEOMETRY_COMPONENTS,
+      );
+      if (components.length > limit) {
+        this.geometry.clear();
+        this.drawSelection();
+        this.drawDrop();
+        reportResourceLimit(
+          this,
+          {
+            kind: "geometry_components",
+            limit,
+            observed: components.length,
+          },
+          "geometry_components",
+        );
+        return;
+      }
+      if (this.root.dataset.flyResourceLimited === "geometry_components") {
+        delete this.root.dataset.flyResourceLimited;
+      }
+    }
     switch (message.type) {
       case "ready":
         this.root.dataset.flyCanvasConnected = "true";
@@ -634,6 +945,70 @@ export class FlyBrowserAdapter {
     return ["key_stroke"].includes(type);
   }
 
+  rejectPendingIntent(request, limit, observed) {
+    const message =
+      nonEmptyString(this.options?.pendingIntentLimitMessage) ||
+      nonEmptyString(this.root.dataset.flyPendingIntentLimitMessage) ||
+      "Editor action limit reached.";
+    const error = `${message} ${observed}/${limit}.`;
+    const detail = {
+      code: PENDING_INTENT_LIMIT_CODE,
+      error,
+      intent: request.intent || null,
+      limit,
+      observed,
+      instanceId: this.instanceId,
+      pageId: this.pageId,
+    };
+    this.root.dispatchEvent(
+      new CustomEvent("fly:browser-intent-rejected", {
+        bubbles: true,
+        detail,
+      }),
+    );
+    reportBrowserProblem(
+      this,
+      {
+        status: 0,
+        result: {
+          code: detail.code,
+          error: detail.error,
+          intent: detail.intent,
+        },
+        request,
+      },
+      PENDING_INTENT_LIMIT_CODE,
+    );
+    return null;
+  }
+
+  reportIntentTimeout(record) {
+    const message =
+      nonEmptyString(this.options?.intentRequestTimeoutMessage) ||
+      nonEmptyString(this.root.dataset.flyIntentRequestTimeoutMessage) ||
+      "Editor action timed out";
+    record.abort.code = INTENT_REQUEST_TIMEOUT_CODE;
+    record.abort.kind = INTENT_ABORT_KIND.TIMEOUT;
+    record.abort.error = `${message} after ${record.timeoutMs} ms.`;
+    const detail = {
+      code: record.abort.code,
+      error: record.abort.error,
+      intent: record.intent,
+      timeoutMs: record.timeoutMs,
+      requestGeneration: record.requestGeneration,
+      current: record.requestGeneration === this.latestIntentRequestGeneration,
+      instanceId: this.instanceId,
+      pageId: this.pageId,
+    };
+    this.root.dispatchEvent(
+      new CustomEvent("fly:browser-intent-timeout", {
+        bubbles: true,
+        detail,
+      }),
+    );
+    return detail;
+  }
+
   /**
    * @param {unknown} input
    * @param {IntentTransportOptions} requestOptions
@@ -642,9 +1017,44 @@ export class FlyBrowserAdapter {
     if (!this.intentEndpoint) return null;
     const request = normalizedIntent(this, input);
     if (!request.intent) return null;
+
+    const limit = limitFor(
+      this,
+      "maxPendingIntentRequests",
+      "flyMaxPendingIntentRequests",
+      DEFAULT_MAX_PENDING_INTENT_REQUESTS,
+    );
+    const observed = this.pendingIntentRequests.size + 1;
+    if (observed > limit) {
+      return this.rejectPendingIntent(request, limit, observed);
+    }
+
     const transport = normalizedTransportOptions(requestOptions);
+    const abort = newAbortMetadata();
+    const controller = new AbortController();
+    const releaseForwardedAbort = forwardAbortSignal(
+      transport.signal,
+      controller,
+      abort,
+    );
+    const requestKey = Symbol("fly.browser.intent.request");
     const requestGeneration = ++this.intentRequestGeneration;
     this.latestIntentRequestGeneration = requestGeneration;
+    const record = {
+      abort,
+      controller,
+      intent: request.intent,
+      requestGeneration,
+      timeoutId: null,
+      timeoutMs: limitFor(
+        this,
+        "intentRequestTimeoutMs",
+        "flyIntentRequestTimeoutMs",
+        DEFAULT_INTENT_REQUEST_TIMEOUT_MS,
+      ),
+    };
+    this.pendingIntentRequests.set(requestKey, record);
+
     const headers = {
       "content-type": "application/json",
       "x-fly-browser": ADAPTER_VERSION,
@@ -655,13 +1065,27 @@ export class FlyBrowserAdapter {
       headers["x-fly-access-token"] = this.accessToken;
     }
     if (this.tenantSlug) headers["x-tenant-slug"] = this.tenantSlug;
+
+    if (!controller.signal.aborted) {
+      record.timeoutId = globalThis.setTimeout(() => {
+        if (
+          !this.pendingIntentRequests.has(requestKey) ||
+          controller.signal.aborted
+        ) {
+          return;
+        }
+        this.reportIntentTimeout(record);
+        controller.abort(record.abort.error);
+      }, record.timeoutMs);
+    }
+
     try {
       const response = await fetch(this.intentEndpoint, {
         method: "POST",
         credentials: "same-origin",
         headers,
         body: JSON.stringify(request),
-        signal: transport.signal,
+        signal: controller.signal,
       });
       const result = response.headers
         .get("content-type")
@@ -712,13 +1136,13 @@ export class FlyBrowserAdapter {
       return result;
     } catch (error) {
       const current = requestGeneration === this.latestIntentRequestGeneration;
-      if (transport.signal?.aborted) {
+      if (controller.signal.aborted) {
         this.root.dispatchEvent(
           new CustomEvent("fly:browser-intent-aborted", {
             bubbles: true,
             detail: intentAbortDetail(
               this,
-              transport,
+              { signal: controller.signal, abort },
               request,
               requestGeneration,
               current,
@@ -740,6 +1164,12 @@ export class FlyBrowserAdapter {
         }),
       );
       return null;
+    } finally {
+      if (record.timeoutId !== null) {
+        globalThis.clearTimeout(record.timeoutId);
+      }
+      releaseForwardedAbort?.();
+      this.pendingIntentRequests.delete(requestKey);
     }
   }
 
