@@ -3,6 +3,7 @@ use rustok_fulfillment::{FulfillmentError, FulfillmentResponse, FulfillmentServi
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_marketplace_allocation::MarketplaceAllocationCommandPort;
 use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
+use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_order::{OrderError, OrderResponse, OrderService};
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
@@ -19,13 +20,14 @@ use super::{
     CheckoutFulfillmentStageExecutor, CheckoutMarketplaceAllocationError,
     CheckoutMarketplaceAllocationStage, CheckoutMarketplaceCommissionError,
     CheckoutMarketplaceCommissionStage, CheckoutMarketplaceEconomicsCheckpointError,
-    CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutOperationError,
-    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOperationStatus,
-    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
-    CheckoutOrderPlanRecord, CheckoutOrderStageError, CheckoutOrderStageExecutor,
-    CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
-    CheckoutPaymentStageExecutor, RecordCheckoutMarketplaceEconomicsCheckpoint,
-    build_marketplace_economics_evidence, validate_marketplace_economics_checkpoint,
+    CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutMarketplaceFinancialError,
+    CheckoutMarketplaceFinancialStage, CheckoutOperationError, CheckoutOperationJournal,
+    CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanError,
+    CheckoutOrderPlanJournal, CheckoutOrderPlanPayload, CheckoutOrderPlanRecord,
+    CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutPaymentCapturedState,
+    CheckoutPaymentReadyState, CheckoutPaymentStageError, CheckoutPaymentStageExecutor,
+    RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
+    validate_marketplace_economics_checkpoint,
 };
 
 #[derive(Debug, Error)]
@@ -42,6 +44,8 @@ pub enum CheckoutStagePipelineError {
     MarketplaceCommission(#[from] CheckoutMarketplaceCommissionError),
     #[error(transparent)]
     MarketplaceEconomicsCheckpoint(#[from] CheckoutMarketplaceEconomicsCheckpointError),
+    #[error(transparent)]
+    MarketplaceFinancial(#[from] CheckoutMarketplaceFinancialError),
     #[error(transparent)]
     PaymentStage(#[from] CheckoutPaymentStageError),
     #[error(transparent)]
@@ -67,12 +71,14 @@ impl From<CheckoutOrderStageError> for CheckoutStagePipelineError {
 }
 
 pub struct CheckoutStagePipeline {
+    db: sea_orm::DatabaseConnection,
     operation_journal: CheckoutOperationJournal,
     plan_journal: CheckoutOrderPlanJournal,
     order_stage: CheckoutOrderStageExecutor,
     marketplace_allocation_stage: Option<CheckoutMarketplaceAllocationStage>,
     marketplace_commission_stage: Option<CheckoutMarketplaceCommissionStage>,
     marketplace_economics_checkpoint_journal: CheckoutMarketplaceEconomicsCheckpointJournal,
+    marketplace_financial_stage: Option<CheckoutMarketplaceFinancialStage>,
     payment_stage: CheckoutPaymentStageExecutor,
     fulfillment_stage: CheckoutFulfillmentStageExecutor,
     finalization: CheckoutFinalizationExecutor,
@@ -89,6 +95,7 @@ impl CheckoutStagePipeline {
         cart_checkout_port: Arc<dyn CartCheckoutPort>,
     ) -> Self {
         Self {
+            db: db.clone(),
             operation_journal: CheckoutOperationJournal::new(db.clone()),
             plan_journal: CheckoutOrderPlanJournal::new(db.clone()),
             order_stage: CheckoutOrderStageExecutor::new(
@@ -100,6 +107,7 @@ impl CheckoutStagePipeline {
             marketplace_commission_stage: None,
             marketplace_economics_checkpoint_journal:
                 CheckoutMarketplaceEconomicsCheckpointJournal::new(db.clone()),
+            marketplace_financial_stage: None,
             payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
             fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
             finalization: CheckoutFinalizationExecutor::new(db.clone(), cart_checkout_port),
@@ -125,6 +133,17 @@ impl CheckoutStagePipeline {
     ) -> Self {
         self.marketplace_commission_stage = Some(CheckoutMarketplaceCommissionStage::new(
             marketplace_commission_port,
+        ));
+        self
+    }
+
+    pub fn with_marketplace_ledger_port(
+        mut self,
+        marketplace_ledger_port: Arc<dyn MarketplaceLedgerCommandPort>,
+    ) -> Self {
+        self.marketplace_financial_stage = Some(CheckoutMarketplaceFinancialStage::new(
+            self.db.clone(),
+            marketplace_ledger_port,
         ));
         self
     }
@@ -201,6 +220,14 @@ impl CheckoutStagePipeline {
             self.load_payment_captured_state(tenant_id, operation_id)
                 .await?
         };
+
+        self.ensure_marketplace_financial_after_capture(
+            tenant_id,
+            actor_id,
+            lease_owner.as_str(),
+            &payment_captured,
+        )
+        .await?;
 
         let operation = self.operation_journal.get(tenant_id, operation_id).await?;
         let fulfillment_created =
@@ -327,6 +354,32 @@ impl CheckoutStagePipeline {
             payment_ready.order.currency_code.as_str(),
             marketplace_line_count,
         )?;
+        Ok(())
+    }
+
+    async fn ensure_marketplace_financial_after_capture(
+        &self,
+        tenant_id: Uuid,
+        actor_id: Uuid,
+        lease_owner: &str,
+        payment_captured: &CheckoutPaymentCapturedState,
+    ) -> CheckoutStagePipelineResult<()> {
+        if payment_captured.plan.payload.marketplace_lines.is_empty() {
+            return Ok(());
+        }
+        let stage = self.marketplace_financial_stage.as_ref().ok_or_else(|| {
+            CheckoutStagePipelineError::Conflict(
+                "marketplace checkout lines require a composed ledger command port".to_string(),
+            )
+        })?;
+        stage
+            .post_after_capture_if_present(
+                tenant_id,
+                actor_id,
+                lease_owner,
+                payment_captured,
+            )
+            .await?;
         Ok(())
     }
 
