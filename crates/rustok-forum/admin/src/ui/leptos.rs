@@ -30,6 +30,7 @@ use crate::core::{
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};
 use crate::transport;
+use crate::ui::category_dnd::CategoryDndGrid;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -170,7 +171,7 @@ pub fn ForumAdmin() -> impl IntoView {
             )
         },
         move |(token_value, tenant_value, _, locale)| async move {
-            transport::fetch_categories(token_value, tenant_value, locale).await
+            transport::fetch_category_tree(token_value, tenant_value, locale).await
         },
     );
 
@@ -675,6 +676,7 @@ pub fn ForumAdmin() -> impl IntoView {
                 view! {
                     <CategoriesPage
                         categories=categories
+                        set_refresh_nonce=set_refresh_nonce
                         busy_key=busy_key
                         editing_id=editing_category_id
                         locale=category_locale
@@ -794,6 +796,7 @@ fn StaticChip(label: String) -> impl IntoView {
 #[component]
 fn CategoriesPage(
     categories: LocalResource<Result<Vec<CategoryListItem>, String>>,
+    set_refresh_nonce: WriteSignal<u64>,
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
     locale: ReadSignal<String>,
@@ -1014,7 +1017,20 @@ fn CategoriesPage(
                         {matrix_labels.matrix_body.clone()}
                     </p>
                     <Suspense fallback=move || view! { <div class="mt-6 h-48 animate-pulse rounded-[1.5rem] bg-muted"></div> }>
-                        {move || categories.get().map(|result| render_category_grid(result, editing_id.get(), busy_key.get(), on_edit, on_delete, ui_locale.clone()))}
+                        {move || categories.get().map(|result| match result {
+                  Ok(items) if !items.is_empty() => view! {
+                      <CategoryDndGrid
+                          items=items
+                          editing_id=editing_id.get()
+                          busy_key=busy_key.get()
+                          on_edit=on_edit
+                          on_delete=on_delete
+                          set_refresh_nonce=set_refresh_nonce
+                          locale=ui_locale.clone()
+                      />
+                  }.into_any(),
+                  other => render_category_grid(other, editing_id.get(), busy_key.get(), on_edit, on_delete, ui_locale.clone()),
+              })}
                     </Suspense>
                 </section>
 
