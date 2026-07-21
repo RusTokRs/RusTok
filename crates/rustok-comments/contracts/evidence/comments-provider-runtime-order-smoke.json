@@ -7,11 +7,12 @@
   "fallback_profiles": ["embedded_native"],
   "degraded_modes": ["hide_comment_form", "show_cached_thread_snapshot"],
   "cases": [
-    { "operation": "create_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.create_comment(", ".map_err(comments_error_to_port_error)"] },
-    { "operation": "get_comment", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.get_comment(", ".map_err(comments_error_to_port_error)"] },
-    { "operation": "list_comments_for_target", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.list_comments_for_target(", ".map_err(comments_error_to_port_error)"] },
-    { "operation": "update_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.update_comment(", ".map_err(comments_error_to_port_error)"] },
-    { "operation": "set_comment_status", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.set_comment_status(", ".map_err(comments_error_to_port_error)"] },
-    { "operation": "delete_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.delete_comment(", ".map_err(comments_error_to_port_error)"] }
+    { "operation": "create_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.service", ".create_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "get_comment", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.service", ".get_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "list_comments_for_target", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "self.service", ".list_comments_for_target(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "list_public_comments_for_target", "write": false, "source_order": ["context.require_policy(PortCallPolicy::read())?", "crate::public_read::list_public_comments_for_target(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "update_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.service", ".update_comment(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "set_comment_status", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.service", ".set_comment_status(", ".map_err(comments_error_to_port_error)"] },
+    { "operation": "delete_comment", "write": true, "source_order": ["context.require_policy(PortCallPolicy::write())?", "self.service", ".delete_comment(", ".map_err(comments_error_to_port_error)"] }
   ]
 }
