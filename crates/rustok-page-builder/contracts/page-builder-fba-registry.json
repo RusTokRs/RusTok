@@ -89,6 +89,24 @@
         "publish"
       ],
       "rollout_state": "wave0_baseline",
+      "materialization_persistence": {
+        "state": "integrated",
+        "entity": "page_static_landing_artifact",
+        "materialization_hash_column": "materialization_hash",
+        "materialization_identity_column": "materialization_identity",
+        "runtime_snapshots_column": "runtime_snapshots",
+        "unique_key": [
+          "tenant_id",
+          "page_id",
+          "locale",
+          "build_hash",
+          "materialization_hash"
+        ],
+        "legacy_mode": "verified_static_artifact_with_null_evidence",
+        "partial_evidence": "rejected",
+        "storefront_integrity": "PageBuilderMaterializedStaticLandingArtifact::verify_integrity",
+        "raw_context_persisted": false
+      },
       "error_catalog": {
         "validation": "validation",
         "sanitize": "sanitize",
