@@ -43,7 +43,8 @@ RusToK ownership boundaries:
 
 - `planned`: contract or implementation is not yet source-complete.
 - `in_progress`: useful source exists, but one or more required runtime, parity,
-  concurrency, security, accessibility, or degraded-mode gates remain open.
+  concurrency, security, accessibility, migration, or degraded-mode gates remain
+  open.
 - `done`: implementation and every declared gate have executable evidence.
 - `blocked`: an external owner capability is required before work can continue.
 
@@ -75,10 +76,17 @@ module-local fallback.
 Membership-application policies follow the same rule:
 
 - `group_membership_policies` stores language-neutral revision/enabled state;
-- `group_membership_policy_translations` stores bounded questions and rules by exact
-  locale;
+- `group_membership_policy_translations` stores ordered bounded questions and rules
+  by exact locale;
+- `group_membership_policy_revisions` stores append-only exact-locale snapshots of
+  successful policy writes;
 - a submitted application stores the policy revision, locale, and immutable
   question/rule snapshot seen by the candidate.
+
+The visual policy editor in this source slice is intentionally bound to the
+host-resolved effective locale. An explicit multi-locale management picker requires a
+future read contract carrying the selected locale rather than mutating only the UI
+field.
 
 ### Privacy
 
@@ -96,6 +104,15 @@ Writes require deadline plus idempotency key. Owner services repeat authorizatio
 and invariant checks inside the transaction. Successful command state, group
 version, receipt, and audit commit together where the contract declares them.
 
+Policy revision capture is performed by a database trigger after the owner-managed
+translation INSERT/UPDATE, so the current policy write and append-only history row
+commit or roll back together. The history table rejects UPDATE and DELETE.
+
+The current admin editor performs a non-atomic stale preflight by rereading the
+current policy revision before save. This reduces accidental overwrites but is not an
+atomic expected-revision guarantee. A future command contract must compare an
+expected revision while holding the owner transaction lock.
+
 ## Current implementation state
 
 The following source exists:
@@ -110,11 +127,15 @@ The following source exists:
 - bounded token invitations, revocation, token acceptance, targeted accept-by-ID,
   one-time plaintext delivery, SHA-256-only storage, redemption, and membership
   activation;
-- append-only targeted invitation owner events and a neutral Notifications source
-  provider resolving one exact recipient;
+- append-only `groups.invitation.targeted_created` owner events and a neutral
+  Notifications source provider resolving one exact recipient;
 - owner-owned membership-application policy, exact-locale questions/rules, candidate
   submission snapshot, required answer/rule validation, pending listing, and
   approve/reject review;
+- append-only membership policy revision storage, manager-only history port, native
+  and GraphQL history adapters, and a localized visual policy editor;
+- editor controls for add/remove/reorder questions and rules, bounds preparation,
+  loading/history states, and a disclosed non-atomic stale preflight;
 - Rust ports, final merged GraphQL roots, native Leptos server functions, explicit
   native/GraphQL transport selection, admin review UI, and storefront application UI;
 - EN/RU copy, FBA registry, live README contracts, and focused static guards.
@@ -124,8 +145,10 @@ The following evidence remains open and must not be inferred:
 - compilation and executed unit/integration tests;
 - PostgreSQL and SQLite migration execution/rollback evidence;
 - native/GraphQL result and error parity;
-- idempotency replay, concurrent submit/review, and lock-order evidence;
-- membership policy revision-history and stale-policy behavior evidence;
+- policy history backfill, trigger atomicity, append-only rejection, and pagination
+  execution;
+- atomic expected-revision enforcement for policy save and candidate submission;
+- idempotency replay, concurrent submit/review/policy-write, and lock-order evidence;
 - bulk-review limits, confirmation, partial-failure, and audit evidence;
 - accessibility and keyboard/screen-reader execution;
 - Notifications consumer ingestion/fan-out/retry/recovery evidence;
@@ -139,9 +162,9 @@ The following evidence remains open and must not be inferred:
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
 | GROUPS-02 | in_progress | group identity, localized presentation, visibility, join policy, feature bindings, receipts/audit, targeted source events | lifecycle/runtime/concurrency evidence |
 | GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | request/bans/concurrency completion |
-| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, governance ports | provider/consumer/fallback runtime matrix |
+| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, storefront discovery, invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
-| GROUPS-06 | in_progress | localized application policy, questions, rules, answers, acknowledgements, submit/review, admin/storefront FFA | policy editor, revision history, bulk safety, parity, concurrency, accessibility |
+| GROUPS-06 | in_progress | localized policy, ordered questions/rules, application snapshots, submit/review, append-only revision history, visual editor, stale preflight | atomic revision guard, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
 | GROUPS-07 | planned | bans, suspension, expiry, reason, bulk moderation, moderation adapter | all implementation/evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and group navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
@@ -158,26 +181,32 @@ The following evidence remains open and must not be inferred:
 
 ## GROUPS-06 membership-application contract
 
-### Source implemented in this slice
-
-Owner tables:
+### Owner tables
 
 - `group_membership_policies` — one current language-neutral policy per group with a
   monotonic revision and enabled flag;
-- `group_membership_policy_translations` — exact-locale bounded questions/rules;
+- `group_membership_policy_translations` — exact-locale ordered questions/rules;
+- `group_membership_policy_revisions` — append-only `(tenant, policy, revision,
+  locale)` snapshots containing enabled state, ordered questions/rules, actor, and
+  timestamp;
 - `group_membership_applications` — one current tenant/group/user application with
   policy identity, revision, locale, immutable policy snapshot, answers,
   acknowledgements, status, and review metadata.
 
-Owner ports:
+### Owner ports
 
 - `GroupApplicationReadPort::read_group_application_policy`;
 - `GroupApplicationReadPort::list_group_membership_applications`;
+- `GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions`;
 - `GroupApplicationCommandPort::upsert_group_application_policy`;
 - `GroupApplicationCommandPort::submit_group_membership_application`;
 - `GroupApplicationCommandPort::review_group_membership_application`.
 
-Policy invariants:
+The history read port uses the same active owner/admin/moderator or platform-manage
+authorization boundary as application review. Candidates cannot enumerate policy
+history.
+
+### Policy invariants
 
 - policy management requires active owner/admin or platform `groups:manage`;
 - questions and rules use stable normalized keys;
@@ -186,9 +215,13 @@ Policy invariants:
   scalar count;
 - policy reads require the host-resolved exact locale and never select another row;
 - policy upsert increments policy revision and group version atomically with receipt
-  and audit.
+  and audit;
+- policy revision capture occurs in the same database transaction through PostgreSQL
+  or SQLite triggers;
+- current policy rows remain mutable owner state while revision rows are append-only;
+- history ordering is revision descending and locale ascending within a tenant/group.
 
-Submission invariants:
+### Submission invariants
 
 - only active `request` join-policy groups accept applications;
 - secret groups return not-found semantics;
@@ -201,7 +234,7 @@ Submission invariants:
 - application snapshot, pending membership, group version, audit, and receipt commit
   in one owner transaction.
 
-Review invariants:
+### Review invariants
 
 - listing/review requires active owner/admin/moderator or platform authority;
 - only a pending application may be reviewed;
@@ -213,10 +246,15 @@ Review invariants:
 - application, membership, group version, audit, and receipt commit together;
 - application and group rows use exclusive locks where supported.
 
-FFA surfaces:
+### FFA surfaces
 
-- admin framework-neutral policy/review models and preparation core;
-- admin native and GraphQL policy/list/review adapters through one facade;
+- admin framework-neutral policy/history/review models and preparation core;
+- admin native and GraphQL policy/history/list/review adapters through one facade;
+- localized visual policy editor for adding/removing/reordering questions and rules;
+- editor history list with revision, locale, actor, timestamp, enabled state, and item
+  counts;
+- host-resolved locale rendered read-only in the current editor;
+- non-atomic stale preflight that blocks the save UX when the loaded revision differs;
 - localized pending review workspace displaying candidate, policy revision/locale,
   answers, and acknowledged rules;
 - storefront request-group links using `apply=<group_uuid>`;
@@ -228,10 +266,12 @@ FFA surfaces:
 
 ### GROUPS-06 remaining work
 
-- visual owner/admin policy editor for adding/removing/reordering questions and rules;
-- durable policy revision history rather than only current policy plus application
-  snapshots;
-- explicit stale-policy/version conflict UX;
+- atomic expected-revision enforcement inside policy upsert and candidate submit
+  transactions, including a stable conflict code;
+- explicit candidate stale-policy reload UX when the policy changes between render and
+  submit;
+- explicit multi-locale admin picker backed by an owner read contract carrying the
+  selected exact locale;
 - candidate cancellation and manager reopen/resubmit policy;
 - bulk review with bounded selection, confirmation, per-item results, and audit;
 - profile-backed candidate summaries through `ProfilesReader` without copying profile
@@ -241,6 +281,17 @@ FFA surfaces:
 - keyboard, focus, validation association, and screen-reader evidence;
 - executed parity, replay, concurrency, lock-order, migration, security, and recovery
   evidence.
+
+## Other open Groups contracts
+
+Localization remains `in_progress`: localization idempotent receipts/replay,
+last-translation delete rejection execution, localization idempotency replay, and
+native/GraphQL concurrency evidence remain open.
+
+Targeted invitation delivery remains `in_progress`: the owner emits
+`groups.invitation.targeted_created`, exposes `GroupTargetedInvitationCommandPort`,
+and registers a neutral source provider, while targeted invitation notification
+runtime, fan-out, retry, and recovery evidence remain open.
 
 ## Feature-provider integration order
 
@@ -254,14 +305,16 @@ FFA surfaces:
 5. `media.gallery`, `events.calendar`, and `chat.room` — provider-owned lifecycle and
    UI contributions.
 
-A feature binding expresses policy/configuration only. It never transfers storage
+A feature binding expresses policy/configuration only. It never transfers persistence
 ownership and Groups never embeds another module's business UI directly.
 
 ## Degraded modes
 
 - Groups access provider unavailable: deny private content.
-- Application exact-locale policy unavailable: application form is unavailable; do
-  not select another locale.
+- Application exact-locale policy unavailable: application form/editor is unavailable;
+  do not select another locale.
+- Policy history unavailable: current owner policy remains authoritative; hide history
+  and do not synthesize revisions.
 - Native or GraphQL application transport failure: surface the selected-path error;
   never retry through the other path.
 - Profiles unavailable: show stable UUID/placeholder, never copy canonical profile
@@ -286,6 +339,7 @@ node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
+node scripts/verify/verify-groups-membership-policy-revisions.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
@@ -294,16 +348,19 @@ npm run verify:frontend:host-ffa-contract
 Additional executable evidence required for GROUPS-06 promotion:
 
 - PostgreSQL and SQLite migration up/down or documented irreversible-policy evidence;
+- policy revision backfill, capture trigger, append-only update/delete rejection, and
+  manager authorization;
 - policy exact-locale read and missing-locale failure;
 - required/optional question and rule validation;
 - banned, active-member, secret-group, and non-request-group denial;
-- idempotent submit and review replay;
+- idempotent policy save, submit, and review replay;
+- concurrent policy writers with atomic expected-revision conflict;
 - concurrent duplicate submit;
 - concurrent approve/reject with one terminal outcome;
 - approve member-count correctness and no double increment;
 - native/GraphQL result and stable error parity;
 - selected-transport no-fallback behavior;
-- EN/RU form/review rendering and accessibility execution.
+- EN/RU editor/form/review rendering and accessibility execution.
 
 ## Evidence state for this change
 
