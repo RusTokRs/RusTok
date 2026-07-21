@@ -22,25 +22,12 @@ use crate::services::rbac::enforce_scope;
 
 pub struct CategoryService {
     db: DatabaseConnection,
-    event_bus: Option<TransactionalEventBus>,
+    event_bus: TransactionalEventBus,
 }
 
 impl CategoryService {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self {
-            db,
-            event_bus: None,
-        }
-    }
-
-    pub fn new_with_event_bus(
-        db: DatabaseConnection,
-        event_bus: TransactionalEventBus,
-    ) -> Self {
-        Self {
-            db,
-            event_bus: Some(event_bus),
-        }
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
     }
 
     #[instrument(skip(self, security, input))]
@@ -320,11 +307,7 @@ impl CategoryService {
         tenant_id: Uuid,
         actor_id: Option<Uuid>,
     ) -> BlogResult<()> {
-        let Some(event_bus) = self.event_bus.as_ref() else {
-            return Ok(());
-        };
-
-        event_bus
+        self.event_bus
             .publish_in_tx(
                 txn,
                 tenant_id,
