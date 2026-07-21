@@ -1,7 +1,8 @@
 use crate::model::{PageDetail, PageMutationResult};
 use crate::transport;
 use rustok_page_builder::dto::{
-    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
+    PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderInput,
+    PublishPageBuilderResult,
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
@@ -10,7 +11,32 @@ use rustok_page_builder_admin::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+#[cfg(feature = "ssr")]
+use async_trait::async_trait;
+#[cfg(feature = "ssr")]
+use fly::{PageSelection, RenderPolicy};
+#[cfg(feature = "ssr")]
+use rustok_api::{Action, Permission, PortActor, PortContext, Resource};
+#[cfg(feature = "ssr")]
+use rustok_page_builder::composition::compose_fly_page_builder_handlers;
+#[cfg(feature = "ssr")]
+use rustok_page_builder::render::PageBuilderRenderer;
+#[cfg(feature = "ssr")]
+use rustok_page_builder::rollout::BuilderCapabilityFlags;
+#[cfg(feature = "ssr")]
+use rustok_page_builder::service::{
+    PageBuilderProjectStore, PageBuilderRenderingAdapter, PageBuilderRequestAuth,
+    PageBuilderServiceError, PageBuilderServiceResult,
+};
+#[cfg(feature = "ssr")]
+use std::sync::Mutex;
+#[cfg(feature = "ssr")]
+use std::time::Duration;
+
 const PAGE_PUBLISHED_DOCUMENT_IMMUTABLE: &str = "PAGE_PUBLISHED_DOCUMENT_IMMUTABLE";
+const REVISION_CONFLICT: &str = "REVISION_CONFLICT";
+#[cfg(feature = "ssr")]
+const PAGE_BUILDER_PORT_DEADLINE: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PagesBuilderSaveSnapshot {
@@ -51,76 +77,343 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
                     "Pages consumer facade accepts only Page Builder publish requests",
                 ));
             };
-            if input.page_id != snapshot.page_id {
-                return Err(PageBuilderAdminFacadeError::new(format!(
-                    "Page Builder requested page `{}`, but Pages is editing `{}`",
-                    input.page_id, snapshot.page_id
-                )));
-            }
-
-            let current_page = transport::fetch_page(
-                snapshot.token.clone(),
-                snapshot.tenant_slug.clone(),
-                snapshot.page_id.clone(),
-            )
-            .await
-            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
-            .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
-            if current_page.status.eq_ignore_ascii_case("published") {
-                return Err(PageBuilderAdminFacadeError::with_stable_code(
-                    "Published page documents are immutable. Unpublish the page before editing, then publish the new revision explicitly.",
-                    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
-                ));
-            }
-
-            let current_revision = page_revision(&current_page);
-            if input.revision_id != current_revision {
-                return Err(PageBuilderAdminFacadeError::with_stable_code(
-                    format!(
-                        "Page Builder revision conflict: expected `{}`, current `{current_revision}`",
-                        input.revision_id
-                    ),
-                    "REVISION_CONFLICT",
-                ));
-            }
-
-            let project_data = canonicalize_builder_project(input.project_data)?;
-            let locale = current_page
-                .body
-                .as_ref()
-                .map(|body| body.locale.clone())
-                .or_else(|| {
-                    current_page
-                        .translation
-                        .as_ref()
-                        .map(|translation| translation.locale.clone())
-                })
-                .unwrap_or(snapshot.default_locale);
-            let saved_page = transport::save_page_document(
-                snapshot.token,
-                snapshot.tenant_slug,
-                snapshot.page_id,
-                current_revision,
-                locale,
-                project_data.clone(),
-            )
-            .await
-            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-            let persisted_revision = page_revision(&saved_page);
-            if persisted_revision.starts_with("page:") {
-                return Err(PageBuilderAdminFacadeError::new(
-                    "Pages document save succeeded without a persisted body revision",
-                ));
-            }
-
-            let response = PublishPageBuilderResult {
-                page_id: saved_page.id.clone(),
-                revision_id: persisted_revision,
-                published: saved_page.status.eq_ignore_ascii_case("published"),
-            };
-            on_saved(PageMutationResult::from(&saved_page), project_data);
-            Ok(PageBuilderCapabilityResponse::Publish(response))
+            ensure_requested_page(&snapshot, &input)?;
+            execute_publish(snapshot, on_saved, input).await
         })
+    }
+}
+
+fn ensure_requested_page(
+    snapshot: &PagesBuilderSaveSnapshot,
+    input: &PublishPageBuilderInput,
+) -> Result<(), PageBuilderAdminFacadeError> {
+    if input.page_id == snapshot.page_id {
+        Ok(())
+    } else {
+        Err(PageBuilderAdminFacadeError::new(format!(
+            "Page Builder requested page `{}`, but Pages is editing `{}`",
+            input.page_id, snapshot.page_id
+        )))
+    }
+}
+
+#[cfg(feature = "ssr")]
+async fn execute_publish(
+    snapshot: PagesBuilderSaveSnapshot,
+    on_saved: SavedHandler,
+    input: PublishPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    let token = required_snapshot_value(snapshot.token.clone(), "access token")?;
+    let tenant_slug = required_snapshot_value(snapshot.tenant_slug.clone(), "tenant")?;
+    let current_page = transport::fetch_page(
+        Some(token.clone()),
+        Some(tenant_slug.clone()),
+        snapshot.page_id.clone(),
+    )
+    .await
+    .map_err(facade_transport_error)?
+    .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
+    ensure_page_is_editable(&current_page, &input.revision_id)?;
+
+    let verified_user = leptos_auth::api::fetch_current_user(token, tenant_slug.clone())
+        .await
+        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
+        .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
+    let permissions = page_builder_permissions_for_role(&verified_user.role);
+    let auth = PageBuilderRequestAuth::new(permissions);
+    let context = PortContext::new(
+        tenant_slug,
+        PortActor::user(verified_user.id),
+        snapshot.default_locale.clone(),
+        format!("page-builder:{}:{}", input.page_id, input.revision_id),
+    )
+    .with_deadline(PAGE_BUILDER_PORT_DEADLINE)
+    .with_idempotency_key(format!(
+        "page-builder-save:{}:{}",
+        input.page_id, input.revision_id
+    ));
+
+    let saved_page = Arc::new(Mutex::new(None::<PageDetail>));
+    let store = PagesPageBuilderProjectStore {
+        snapshot,
+        on_saved,
+        saved_page: Arc::clone(&saved_page),
+    };
+    let handlers = compose_fly_page_builder_handlers(
+        store,
+        PagesPageBuilderRenderer,
+        BuilderCapabilityFlags::default(),
+    )
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    let response = handlers
+        .handle(
+            &context,
+            &auth,
+            PageBuilderCapabilityRequest::Publish(input),
+        )
+        .await
+        .map_err(facade_service_error)?;
+    if !matches!(response, PageBuilderCapabilityResponse::Publish(_)) {
+        return Err(PageBuilderAdminFacadeError::new(
+            "Page Builder composition returned an unexpected capability response",
+        ));
+    }
+
+    let saved_page = saved_page
+        .lock()
+        .map_err(|_| PageBuilderAdminFacadeError::new("Pages save state lock was poisoned"))?
+        .take()
+        .ok_or_else(|| {
+            PageBuilderAdminFacadeError::new(
+                "Page Builder service completed without a persisted Pages document",
+            )
+        })?;
+    let revision_id = page_revision(&saved_page);
+    Ok(PageBuilderCapabilityResponse::Publish(
+        PublishPageBuilderResult {
+            page_id: saved_page.id.clone(),
+            revision_id,
+            published: saved_page.status.eq_ignore_ascii_case("published"),
+        },
+    ))
+}
+
+#[cfg(not(feature = "ssr"))]
+async fn execute_publish(
+    snapshot: PagesBuilderSaveSnapshot,
+    on_saved: SavedHandler,
+    input: PublishPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    let current_page = transport::fetch_page(
+        snapshot.token.clone(),
+        snapshot.tenant_slug.clone(),
+        snapshot.page_id.clone(),
+    )
+    .await
+    .map_err(facade_transport_error)?
+    .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
+    ensure_page_is_editable(&current_page, &input.revision_id)?;
+
+    let current_revision = page_revision(&current_page);
+    let project_data = canonicalize_builder_project(input.project_data)?;
+    let locale = page_locale(&current_page, snapshot.default_locale);
+    let saved_page = transport::save_page_document(
+        snapshot.token,
+        snapshot.tenant_slug,
+        snapshot.page_id,
+        current_revision,
+        locale,
+        project_data.clone(),
+    )
+    .await
+    .map_err(facade_transport_error)?;
+    let persisted_revision = persisted_revision(&saved_page)?;
+    on_saved(PageMutationResult::from(&saved_page), project_data);
+    Ok(PageBuilderCapabilityResponse::Publish(
+        PublishPageBuilderResult {
+            page_id: saved_page.id.clone(),
+            revision_id: persisted_revision,
+            published: saved_page.status.eq_ignore_ascii_case("published"),
+        },
+    ))
+}
+
+fn ensure_page_is_editable(
+    page: &PageDetail,
+    requested_revision: &str,
+) -> Result<(), PageBuilderAdminFacadeError> {
+    if page.status.eq_ignore_ascii_case("published") {
+        return Err(PageBuilderAdminFacadeError::with_stable_code(
+            "Published page documents are immutable. Unpublish the page before editing, then publish the new revision explicitly.",
+            PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+        ));
+    }
+    let current_revision = page_revision(page);
+    if requested_revision != current_revision {
+        return Err(PageBuilderAdminFacadeError::with_stable_code(
+            format!(
+                "Page Builder revision conflict: expected `{requested_revision}`, current `{current_revision}`"
+            ),
+            REVISION_CONFLICT,
+        ));
+    }
+    Ok(())
+}
+
+fn page_locale(page: &PageDetail, default_locale: String) -> String {
+    page.body
+        .as_ref()
+        .map(|body| body.locale.clone())
+        .or_else(|| {
+            page.translation
+                .as_ref()
+                .map(|translation| translation.locale.clone())
+        })
+        .unwrap_or(default_locale)
+}
+
+fn persisted_revision(page: &PageDetail) -> Result<String, PageBuilderAdminFacadeError> {
+    let revision = page_revision(page);
+    if revision.starts_with("page:") {
+        Err(PageBuilderAdminFacadeError::new(
+            "Pages document save succeeded without a persisted body revision",
+        ))
+    } else {
+        Ok(revision)
+    }
+}
+
+fn facade_transport_error(error: transport::TransportError) -> PageBuilderAdminFacadeError {
+    PageBuilderAdminFacadeError::new(error.to_string())
+}
+
+#[cfg(feature = "ssr")]
+fn required_snapshot_value(
+    value: Option<String>,
+    label: &str,
+) -> Result<String, PageBuilderAdminFacadeError> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| PageBuilderAdminFacadeError::new(format!("Pages {label} is missing")))
+}
+
+#[cfg(feature = "ssr")]
+fn page_builder_permissions_for_role(role: &str) -> Vec<Permission> {
+    let capabilities = crate::access::pages_editor_permissions_for_role(Some(role));
+    if capabilities.publish {
+        vec![Permission::new(Resource::Pages, Action::Publish)]
+    } else {
+        Vec::new()
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn facade_service_error(error: PageBuilderServiceError) -> PageBuilderAdminFacadeError {
+    let message = error.to_string();
+    for code in [PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, REVISION_CONFLICT] {
+        if message.contains(code) {
+            return PageBuilderAdminFacadeError::with_stable_code(message, code);
+        }
+    }
+    PageBuilderAdminFacadeError::new(message)
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone)]
+struct PagesPageBuilderProjectStore {
+    snapshot: PagesBuilderSaveSnapshot,
+    on_saved: SavedHandler,
+    saved_page: Arc<Mutex<Option<PageDetail>>>,
+}
+
+#[cfg(feature = "ssr")]
+#[async_trait]
+impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
+    async fn load_project(
+        &self,
+        _context: &PortContext,
+        page_id: &str,
+    ) -> PageBuilderServiceResult<Option<Value>> {
+        if page_id != self.snapshot.page_id {
+            return Err(PageBuilderServiceError::Validation(format!(
+                "Page Builder requested page `{page_id}`, but Pages store owns `{}`",
+                self.snapshot.page_id
+            )));
+        }
+        let page = transport::fetch_page(
+            self.snapshot.token.clone(),
+            self.snapshot.tenant_slug.clone(),
+            page_id.to_string(),
+        )
+        .await
+        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        page.map(|page| {
+            let seed = crate::core::edit_form_seed_from_page(&page, &self.snapshot.default_locale);
+            let project = crate::core::parse_project_data(&seed.project_data_text)
+                .map_err(PageBuilderServiceError::Validation)?;
+            canonicalize_builder_project(project)
+                .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))
+        })
+        .transpose()
+    }
+
+    async fn save_project(
+        &self,
+        _context: &PortContext,
+        page_id: &str,
+        revision_id: &str,
+        project_data: Value,
+    ) -> PageBuilderServiceResult<()> {
+        if page_id != self.snapshot.page_id {
+            return Err(PageBuilderServiceError::Validation(format!(
+                "Page Builder requested page `{page_id}`, but Pages store owns `{}`",
+                self.snapshot.page_id
+            )));
+        }
+        let current_page = transport::fetch_page(
+            self.snapshot.token.clone(),
+            self.snapshot.tenant_slug.clone(),
+            page_id.to_string(),
+        )
+        .await
+        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
+        .ok_or_else(|| PageBuilderServiceError::Runtime("Pages document no longer exists".into()))?;
+        if current_page.status.eq_ignore_ascii_case("published") {
+            return Err(PageBuilderServiceError::Validation(format!(
+                "{PAGE_PUBLISHED_DOCUMENT_IMMUTABLE}: published page documents are immutable"
+            )));
+        }
+        let current_revision = page_revision(&current_page);
+        if revision_id != current_revision {
+            return Err(PageBuilderServiceError::Validation(format!(
+                "{REVISION_CONFLICT}: expected `{revision_id}`, current `{current_revision}`"
+            )));
+        }
+
+        let project_data = canonicalize_builder_project(project_data)
+            .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
+        let locale = page_locale(&current_page, self.snapshot.default_locale.clone());
+        let saved_page = transport::save_page_document(
+            self.snapshot.token.clone(),
+            self.snapshot.tenant_slug.clone(),
+            page_id.to_string(),
+            current_revision,
+            locale,
+            project_data.clone(),
+        )
+        .await
+        .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        persisted_revision(&saved_page)
+            .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
+        (self.on_saved)(PageMutationResult::from(&saved_page), project_data);
+        *self
+            .saved_page
+            .lock()
+            .map_err(|_| PageBuilderServiceError::Runtime("Pages save state lock was poisoned".into()))? =
+            Some(saved_page);
+        Ok(())
+    }
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, Clone, Copy)]
+struct PagesPageBuilderRenderer;
+
+#[cfg(feature = "ssr")]
+#[async_trait]
+impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer {
+    async fn render_preview(
+        &self,
+        _context: &PortContext,
+        project_data: &Value,
+    ) -> PageBuilderServiceResult<String> {
+        PageBuilderRenderer
+            .render_document_html(
+                project_data.clone(),
+                PageSelection::First,
+                RenderPolicy::default(),
+            )
+            .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))
     }
 }
 
