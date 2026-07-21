@@ -4,7 +4,8 @@
   "authority": [
     "docs/architecture/database.md",
     "docs/architecture/i18n.md",
-    "DECISIONS/2026-04-05-multilingual-db-storage-parallel-localized-records.md"
+    "DECISIONS/2026-04-05-multilingual-db-storage-parallel-localized-records.md",
+    "DECISIONS/2026-07-21-language-agnostic-legacy-locale-provenance.md"
   ],
   "rules": {
     "base_rows": "language_agnostic",
@@ -12,7 +13,9 @@
     "localized_heavy_content": "parallel_body_rows",
     "tenant_locale_policy_owns_fields": false,
     "normalized_locale_min_varchar_width": 32,
-    "locale_width_rollback": "never_narrow"
+    "locale_width_rollback": "never_narrow",
+    "legacy_unknown_locale": "und_or_null_with_explicit_provenance",
+    "runtime_fallback_is_storage_provenance": false
   },
   "guarded_surfaces": [
     {
@@ -124,6 +127,116 @@
           ]
         }
       ]
+    },
+    {
+      "id": "commerce_core_localized_records",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-commerce/src/migrations/m20260721_000007_align_language_agnostic_locale_contract.rs",
+          "required_markers": [
+            "ALTER TABLE collection_translations",
+            "ALTER TABLE product_category_translations",
+            "VARCHAR(32)",
+            "DatabaseBackend::Postgres",
+            "DatabaseBackend::MySql",
+            "DatabaseBackend::Sqlite",
+            "narrowing locale columns"
+          ]
+        },
+        {
+          "path": "crates/rustok-commerce/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000007_align_language_agnostic_locale_contract;",
+            "Box::new(m20260721_000007_align_language_agnostic_locale_contract::Migration)",
+            "m20250130_000017_create_commerce_collections",
+            "m20250130_000018_create_commerce_categories"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "commerce_transaction_line_copy",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-cart/src/migrations/m20260411_000110_add_cart_line_item_translations.rs",
+          "required_markers": [
+            "CartLineItemTranslations::Locale",
+            ".string_len(32)",
+            ".drop_column(CartLineItems::Title)"
+          ]
+        },
+        {
+          "path": "crates/rustok-order/src/migrations/m20260411_000107_add_order_line_item_translations.rs",
+          "required_markers": [
+            "OrderLineItemTranslations::Locale",
+            ".string_len(32)",
+            ".drop_column(OrderLineItems::Title)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "customer_locale_policy",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-customer/src/migrations/m20260325_000103_create_customers_table.rs",
+          "required_markers": [
+            "ColumnDef::new(Customers::Locale).string_len(32)"
+          ]
+        },
+        {
+          "path": "crates/rustok-customer/src/migrations/m20260713_000104_enforce_customer_identity.rs",
+          "required_markers": [
+            "octet_length(locale) <= 32",
+            "length(trim(NEW.locale)) > 32"
+          ]
+        },
+        {
+          "path": "crates/rustok-customer/src/migrations/m20260721_000105_expand_customer_locale_contract.rs",
+          "required_markers": [
+            "ALTER TABLE customers ALTER COLUMN locale TYPE VARCHAR(32)",
+            "MODIFY COLUMN locale VARCHAR(32) NULL",
+            "rebuild_sqlite_customers",
+            "Forward-only"
+          ]
+        },
+        {
+          "path": "crates/rustok-customer/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000105_expand_customer_locale_contract;",
+            "Box::new(m20260721_000105_expand_customer_locale_contract::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "legacy_locale_provenance_cutovers",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-region/src/migrations/m20260411_000001_add_region_translations.rs",
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+        },
+        {
+          "path": "crates/rustok-inventory/src/migrations/m20260411_000001_add_stock_location_translations.rs",
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+        },
+        {
+          "path": "crates/rustok-fulfillment/src/migrations/m20260411_000108_add_shipping_option_translations.rs",
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+        },
+        {
+          "path": "crates/rustok-pricing/src/migrations/m20260411_000005_add_price_list_translations.rs",
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+        },
+        {
+          "path": "crates/rustok-commerce/src/migrations/m20260411_000004_add_shipping_profile_translations.rs",
+          "required_markers": ["LEGACY_UNDETERMINED_LOCALE", "\"und\""]
+        }
+      ]
     }
   ],
   "known_gaps": [
@@ -165,7 +278,7 @@
         ".string_len(5)",
         "ColumnDef::new(Bodies::Locale).string_len(5)"
       ],
-      "next_action": "append an irreversible PostgreSQL widening migration for all content-owned locale columns"
+      "next_action": "append an irreversible widening migration for all content-owned locale columns"
     },
     {
       "id": "blog-locale-width",
@@ -206,15 +319,28 @@
       "next_action": "append an irreversible widening migration for comment body locales"
     },
     {
-      "id": "customer-locale-width",
-      "owner": "rustok-customer",
-      "kind": "locale_width",
+      "id": "marketplace-seller-prose-copy",
+      "owner": "rustok-marketplace-seller",
+      "kind": "duplicated_localized_event_projection",
       "status": "open",
-      "path": "crates/rustok-customer/src/migrations/m20260325_000103_create_customers_table.rs",
+      "path": "crates/rustok-marketplace-seller/src/entities/seller.rs",
       "evidence_markers": [
-        "ColumnDef::new(Customers::Locale).string_len(16)"
+        "pub onboarding_note: Option<String>",
+        "pub suspension_reason: Option<String>"
       ],
-      "next_action": "widen the customer locale preference column to the platform-safe width"
+      "next_action": "pass command prose directly into immutable locale-attributed seller events, remove response fallback to base columns, then drop onboarding_note and suspension_reason after the legacy snapshot backfill"
+    },
+    {
+      "id": "registry-legacy-locale-provenance",
+      "owner": "rustok-registry",
+      "kind": "fabricated_legacy_locale",
+      "status": "open",
+      "path": "crates/rustok-migrations/src/m20260412_000002_split_registry_localized_metadata.rs",
+      "evidence_markers": [
+        "const DEFAULT_REGISTRY_LOCALE: &str = \"en\"",
+        ".default(DEFAULT_REGISTRY_LOCALE)"
+      ],
+      "next_action": "separate runtime default locale from legacy copy provenance and migrate unknown historical module copy without asserting English"
     }
   ]
 }
