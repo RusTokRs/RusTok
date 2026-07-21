@@ -1,3 +1,4 @@
+mod comments_pagination;
 mod core;
 mod i18n;
 mod model;
