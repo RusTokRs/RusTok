@@ -34,6 +34,7 @@ const required = [
   "crates/rustok-groups/src/localization.rs",
   "crates/rustok-groups/src/graphql_localization.rs",
   "crates/rustok-groups/src/graphql_governance.rs",
+  "crates/rustok-groups/src/graphql_invitations.rs",
   "crates/rustok-groups/src/ports.rs",
   "crates/rustok-groups/rustok-module.toml",
   "crates/rustok-groups/contracts/groups-fba-registry.json",
@@ -92,9 +93,15 @@ requireMarkers("crates/rustok-groups/src/graphql_governance.rs", [
   "GroupsLocalizationMutation",
   "GroupsMutationRoot",
 ]);
+requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
+  "GroupsBaseQueryRoot",
+  "GroupsBaseMutationRoot",
+  "pub struct GroupsQueryRoot",
+  "pub struct GroupsMutationRoot",
+]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  "query = \"graphql_localization::GroupsQueryRoot\"",
-  "mutation = \"graphql_governance::GroupsMutationRoot\"",
+  "query = \"graphql_invitations::GroupsQueryRoot\"",
+  "mutation = \"graphql_invitations::GroupsMutationRoot\"",
 ]);
 
 requireMarkers("crates/rustok-groups/admin/src/core.rs", [
