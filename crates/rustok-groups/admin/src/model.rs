@@ -91,6 +91,11 @@ pub struct GroupsAdminTranslation {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminTranslationQuery {
+    pub group_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpsertGroupTranslationCommand {
     pub idempotency_key: String,
     pub group_id: String,
