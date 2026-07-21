@@ -90,6 +90,7 @@ for (const marker of [
   "AUDIENCE_CURSOR_MAX_BYTES",
   "TARGET_ROUTE_MAX_BYTES",
   "InvalidRoute",
+  'segment != "." && segment != ".."',
 ]) {
   requireText(keys, marker, `${keysPath}: missing bounded key invariant ${marker}`);
 }
@@ -102,6 +103,8 @@ for (const marker of [
   "InvalidSourceRevision",
   "impl<'de> Deserialize<'de> for NotificationSourceEventRef",
   "impl<'de> Deserialize<'de> for NotificationAudiencePage",
+  "pub fn source_revision(&self)",
+  "pub fn recipients(&self)",
   "NotificationOpenAuthorization",
 ]) {
   requireText(model, marker, `${modelPath}: missing bounded semantic invariant ${marker}`);
@@ -153,6 +156,8 @@ const notificationSources = [
 reject(notificationSources, /rustok_email|smtp|phone_number|email_address|rendered_html/i, "notification foundation must not own channel SDKs, contact data, or rendered HTML");
 reject(provider, /DatabaseConnection|sea_orm::|entities::/, `${providerPath}: neutral source provider contract must not expose persistence`);
 reject(model, /serde_json::Value|HashMap<String,\s*serde_json::Value>/, `${modelPath}: semantic descriptor must not accept arbitrary JSON`);
+reject(model, /pub\s+source_revision\s*:/, `${modelPath}: source revision must remain constructor-validated and private`);
+reject(model, /pub\s+recipients\s*:/, `${modelPath}: audience recipients must remain constructor-validated and private`);
 reject(adminTransport, /localStorage|gloo_storage|reqwest|DatabaseConnection/, `${adminTransportPath}: bootstrap admin must not create shadow state or direct backend access`);
 reject(storefrontTransport, /localStorage|gloo_storage|Some\s*\(\s*[1-9]/, `${storefrontTransportPath}: bootstrap storefront must not create shadow unread state`);
 
