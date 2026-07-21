@@ -1,4 +1,5 @@
 pub mod adapters;
+pub mod browser_host;
 pub mod dto;
 pub mod health;
 pub mod landing;
