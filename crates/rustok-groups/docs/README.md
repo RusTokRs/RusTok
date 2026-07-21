@@ -64,11 +64,19 @@ so Cyrillic, CJK, and Latin text receive the same 240-character title and
 500-character summary limits. PostgreSQL CHECK constraints and SQLite validation
 triggers enforce normalized locale shape and presentation length at the DB boundary.
 
-The base `groups.metadata` value must be a JSON object and must not contain
-localized presentation copies such as `title`, `summary`, `body`, `name`,
-`description`, `translations`, `localized`, `locales`, `i18n`, or `seo`. Those
-values belong to owner translation rows or their dedicated owner modules. The
-service rejects these keys and the database repeats the guard for direct SQL.
+The base JSON objects `groups.metadata`, `group_memberships.metadata`, and
+`group_feature_bindings.configuration` must remain language-agnostic. Their
+reserved top-level presentation fields are `title`, `summary`, `body`, `name`,
+`description`, `translations`, `localized`, `locales`, `i18n`, and `seo`. Canonical
+localized copy under those fields belongs to owner translation rows or a dedicated
+provider-owned localized contract. The Groups service validates public group
+metadata, while PostgreSQL CHECK constraints and SQLite insert/update triggers
+repeat the rule for all three objects and direct SQL writes.
+
+This restriction is intentionally top-level. Nested provider-schema fields with
+technical names such as `name` or `title` remain valid configuration when they are
+not canonical localized business copy. JSON configuration is allowed; using it as
+a shadow translation store is not.
 
 Heavy rich-text evolution may split `body` into a future `group_bodies` table.
 That change must preserve one canonical body authority and must not introduce a
