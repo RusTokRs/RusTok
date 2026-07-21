@@ -22,12 +22,18 @@ pub mod runtime_telemetry;
 #[cfg(feature = "server")]
 pub mod service;
 pub mod static_landing;
+pub mod static_landing_materialization;
 pub mod transport;
 
 pub use fly::{
     ComponentRegistryManifest, LandingRenderer, LandingRendererManifest, LandingSectionSnapshot,
     PageHead, RuntimeContextExamplePolicy, RuntimeContextScenario, StaticLandingArtifact,
     StaticLandingBuildIdentity, StaticLandingPage,
+};
+pub use static_landing_materialization::{
+    compile_materialized_static_landing, PageBuilderMaterializedStaticLandingArtifact,
+    PageBuilderStaticLandingMaterializationError, PageBuilderStaticLandingMaterializationIdentity,
+    PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT,
 };
 
 #[cfg(feature = "server")]
