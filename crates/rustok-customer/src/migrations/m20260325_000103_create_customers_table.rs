@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Customers::FirstName).string_len(100))
                     .col(ColumnDef::new(Customers::LastName).string_len(100))
                     .col(ColumnDef::new(Customers::Phone).string_len(50))
-                    .col(ColumnDef::new(Customers::Locale).string_len(16))
+                    .col(ColumnDef::new(Customers::Locale).string_len(32))
                     .col(
                         ColumnDef::new(Customers::Metadata)
                             .json_binary()
