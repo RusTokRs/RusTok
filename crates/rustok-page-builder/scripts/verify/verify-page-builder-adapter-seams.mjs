@@ -90,8 +90,11 @@ for (const port of Object.values(contract.ports ?? {})) {
       `PageBuilderServiceResult<${port.save_result}>`,
       "persistence save signature",
     );
-    requireMarker(flyService, "revision_id: saved.revision_id", "persisted revision mapping");
-    requireMarker(flyService, "published: saved.published", "persisted publish state mapping");
+    requireOrderedMarkers(
+      flyService,
+      port.save_result_order,
+      "persistence save result validation",
+    );
   }
 }
 
