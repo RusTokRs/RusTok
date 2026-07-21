@@ -111,8 +111,14 @@ pub async fn complete_storefront_checkout(
             event_bus.clone(),
         )),
     );
-    let marketplace_allocation_port = Arc::new(
+    let marketplace_allocation_service = Arc::new(
         rustok_marketplace_allocation::MarketplaceAllocationService::new(runtime.db_clone()),
+    );
+    let marketplace_commission_service = Arc::new(
+        rustok_marketplace_commission::MarketplaceCommissionService::new(
+            runtime.db_clone(),
+            marketplace_allocation_service.clone(),
+        ),
     );
     let pipeline = crate::CheckoutStagePipeline::new(
         runtime.db_clone(),
@@ -120,7 +126,8 @@ pub async fn complete_storefront_checkout(
         reservation_port.clone(),
         atomic_cart.port.clone(),
     )
-    .with_marketplace_allocation_port(marketplace_allocation_port)
+    .with_marketplace_allocation_port(marketplace_allocation_service)
+    .with_marketplace_commission_port(marketplace_commission_service)
     .with_payment_provider_registry(payment_provider_registry.clone());
     let staged = crate::StagedCheckoutService::new(
         plan_builder,
