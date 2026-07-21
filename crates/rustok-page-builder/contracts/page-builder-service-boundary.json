@@ -61,46 +61,52 @@
     "pages": {
       "source": "crates/rustok-pages/admin/src/builder.rs",
       "manifest": "crates/rustok-pages/admin/Cargo.toml",
-      "server_entrypoint": "execute_publish",
-      "client_entrypoint_marker": "#[cfg(not(feature = \"ssr\"))]\nasync fn execute_publish",
       "server_feature_marker": "\"rustok-page-builder/server\"",
-      "tenant_ports": [
-        "PagesPageBuilderProjectStore",
-        "PagesPageBuilderRenderer"
+      "capability_server_function": "pages_page_builder_capability",
+      "capability_server_function_markers": [
+        "#[server(prefix = \"/api/fn\", endpoint = \"pages/page-builder-capability\")]",
+        "request: PageBuilderCapabilityRequest",
+        "dispatch_pages_page_builder_capability(",
+        "noop_saved_handler()"
       ],
-      "required_server_order": [
+      "capability_dispatch_helper": "dispatch_pages_page_builder_capability",
+      "capability_client_entrypoint_marker": "#[cfg(not(feature = \"ssr\"))]\nasync fn dispatch_pages_page_builder_capability",
+      "capability_client_end_marker": "fn page_locale(",
+      "capability_required_server_order": [
+        "pages_request_page_id(&request)?",
+        "ensure_requested_page(&snapshot",
         "leptos_auth::api::fetch_current_user",
         "PageBuilderRequestAuth::new",
         "PortContext::new",
         ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
         ".with_idempotency_key",
-        "PagesPageBuilderProjectStore {",
-        "compose_fly_page_builder_handlers",
-        ".handle("
-      ],
-      "dispatch_marker": ".handle(",
-      "forbidden_before_dispatch": [
-        "transport::fetch_page(",
-        "transport::save_page_document(",
-        "ensure_page_is_editable("
-      ],
-      "preview_server_entrypoint": "execute_preview",
-      "preview_client_entrypoint_marker": "#[cfg(not(feature = \"ssr\"))]\nasync fn execute_preview",
-      "preview_transport_marker": "pages_page_builder_preview(",
-      "preview_required_server_order": [
-        "leptos_auth::api::fetch_current_user",
-        "PageBuilderRequestAuth::new",
-        "PortContext::new",
-        ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
         "PagesPageBuilderRenderer {",
         "PagesPageBuilderProjectStore {",
-        "compose_fly_page_builder_handlers",
-        ".handle("
+        "let handlers = compose_fly_page_builder_handlers(",
+        ".handle(&context, &auth, request)"
       ],
-      "preview_dispatch_marker": ".handle(",
-      "preview_forbidden_before_dispatch": [
+      "capability_dispatch_marker": ".handle(&context, &auth, request)",
+      "capability_forbidden_before_dispatch": [
         "transport::fetch_page(",
         "transport::save_page_document("
+      ],
+      "capability_client_transport_marker": "let response = pages_page_builder_capability(",
+      "capability_client_forbidden_symbols": [
+        "transport::save_page_document(",
+        "ensure_page_is_editable(",
+        "PublishPageBuilderResult {"
+      ],
+      "capability_wrapper_markers": [
+        "async fn execute_preview(",
+        "PageBuilderCapabilityRequest::Preview(input)",
+        "async fn execute_publish(",
+        "PageBuilderCapabilityRequest::Publish(input)"
+      ],
+      "composition_call_marker": "let handlers = compose_fly_page_builder_handlers(",
+      "composition_call_count": 1,
+      "tenant_ports": [
+        "PagesPageBuilderProjectStore",
+        "PagesPageBuilderRenderer"
       ],
       "preview_renderer_context_guard": "ensure_port_context(context, &self.tenant_slug, &self.actor_id, \"renderer\")?",
       "tenant_context_guards": [
@@ -114,7 +120,10 @@
       "forbidden_symbols": [
         "Arc<Mutex<Option<PublishPageBuilderResult>>>",
         "persisted_result: Arc<Mutex",
-        "Pages save state lock was poisoned"
+        "Pages save state lock was poisoned",
+        "pages_page_builder_preview(",
+        "#[cfg(feature = \"ssr\")]\nasync fn execute_preview",
+        "#[cfg(feature = \"ssr\")]\nasync fn execute_publish"
       ],
       "admin_preview": {
         "runtime_source": "crates/rustok-page-builder/admin/src/editor/runtime.rs",
