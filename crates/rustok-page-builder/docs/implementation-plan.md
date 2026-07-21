@@ -30,12 +30,16 @@ runtime arguments.
 uses `StaticLandingCompiler::prepare_document`, captures one Fly `RuntimeScenarioRenderSnapshot` per
 page with the same runtime context and render policy, materializes the project through
 `materialize_project_with_runtime_context`, and compiles the resulting document through the existing
-static landing compiler. `PageBuilderMaterializedStaticLandingArtifact` wraps the verified
-`StaticLandingArtifact` with `PageBuilderStaticLandingMaterializationIdentity`: runtime context hash,
-optional scenario identity, combined snapshot hash, Fly static build/artifact hashes and a final
-materialization hash. Raw runtime context is deliberately absent from the persisted evidence. Each
-snapshot case must have `document_hash` equal to the corresponding static page `content_hash`, which
-proves preview/static output parity without introducing another renderer pipeline.
+static landing compiler. The exact materialized document is checked again for insecure public resource
+URLs before artifact creation, so runtime bindings cannot bypass the HTTPS-only publish policy.
+`PageBuilderMaterializedStaticLandingArtifact` wraps the verified `StaticLandingArtifact` with
+`PageBuilderStaticLandingMaterializationIdentity`: SHA-256 runtime context hash, optional scenario
+identity, SHA-256 combined snapshot hash, Fly static build/artifact hashes and a final SHA-256
+materialization hash. Raw runtime context is deliberately absent from the persisted evidence.
+Snapshot `document_hash` remains Fly's compact `ProjectHash`; integrity recomputes it from the exact
+static page `document_html`, while the static page independently retains its SHA-256 `content_hash`.
+This proves preview/static output parity without conflating hash algorithms or introducing another
+renderer pipeline.
 
 The capability contract is `1.1`; `consumer_min_version` remains `1.0`. The compatibility guard
 accepts consumers in the inclusive range `1.0..=1.1`. Pages adopts `1.1` because it supplies the new
