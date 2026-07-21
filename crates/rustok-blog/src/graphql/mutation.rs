@@ -216,8 +216,8 @@ impl BlogMutation {
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let auth = require_blog_permission(
             ctx,
-            &[Permission::BLOG_POSTS_UPDATE],
-            "Permission denied: blog_posts:update required",
+            &[Permission::BLOG_POSTS_PUBLISH],
+            "Permission denied: blog_posts:publish required",
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
