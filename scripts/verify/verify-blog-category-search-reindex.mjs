@@ -78,7 +78,7 @@ rejectMarker(service, "enforce_owned_scope", servicePath);
 
 for (const marker of [
   "pub(crate) fn enforce_any_scope",
-  "resources.iter()",
+  ".iter()",
   "security.get_scope(*resource, action)",
   "any_scope_accepts_primary_or_legacy_resource",
 ]) {
