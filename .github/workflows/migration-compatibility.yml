@@ -34,22 +34,33 @@ jobs:
       - name: Format
         run: cargo fmt --all
 
-      - name: Verify multilingual DB contract
-        run: node scripts/verify/verify-db-multilingual-contract.mjs
+      - name: Capture multilingual DB verification
+        id: db_contract
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify/verify-db-multilingual-contract.mjs > verifier.log 2>&1
+          status=$?
+          echo "$status" > verifier.exit
+          cat verifier.log
+          exit 0
 
       - name: Check Auth admin SSR
+        if: steps.db_contract.outcome == 'success'
         run: cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
 
       - name: Check Channel admin SSR
+        if: steps.db_contract.outcome == 'success'
         run: cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
 
       - name: Check host admin SSR
+        if: steps.db_contract.outcome == 'success'
         run: cargo check -p rustok-admin --no-default-features --features ssr --locked
 
       - name: Validate patch
         run: git diff --check
 
-      - name: Package verified files
+      - name: Package patched files and diagnostics
         run: |
           tar -czf oauth-cutover.tar.gz \
             crates/rustok-auth/admin/src/transport/native_server_adapter.rs \
@@ -57,12 +68,17 @@ jobs:
             crates/rustok-channel/admin/src/transport/native_server_adapter.rs \
             docs/architecture/database-multilingual-contract.json \
             docs/architecture/database-multilingual-transport-drift.md \
-            docs/architecture/database-multilingual-audit.md
+            docs/architecture/database-multilingual-audit.md \
+            verifier.log verifier.exit
 
-      - name: Upload verified OAuth cutover
+      - name: Upload OAuth cutover artifact
         uses: actions/upload-artifact@v7
         with:
           name: oauth-cutover-${{ github.sha }}
           path: oauth-cutover.tar.gz
           if-no-files-found: error
           retention-days: 7
+
+      - name: Enforce multilingual DB verification
+        shell: bash
+        run: exit "$(cat verifier.exit)"
