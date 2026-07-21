@@ -125,7 +125,12 @@
     "revocation": "owner_state",
     "acceptance_serialization": "invitation_row_plus_unique_redemption",
     "membership_activation": "same_transaction",
-    "synchronous_notification_delivery": false
+    "synchronous_notification_delivery": false,
+    "storefront_acceptance_ui": "implemented",
+    "storefront_token_query_key": "invite",
+    "storefront_token_query_clear": "on_submit",
+    "storefront_plaintext_result_rendering": "never",
+    "storefront_transport_fallback": "never"
   },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
@@ -157,7 +162,14 @@
       "name": "embedded_invitations_native",
       "provider": "GroupInvitationService",
       "status": "implemented",
-      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "storefront_core",
+        "storefront_graphql_adapter",
+        "storefront_leptos_ui"
+      ],
       "implicit_fallback": false
     },
     {
@@ -177,6 +189,7 @@
     "static_boundary": "scripts/verify/verify-groups-boundary.mjs",
     "localization_static_boundary": "scripts/verify/verify-groups-localization-boundary.mjs",
     "invitation_static_boundary": "scripts/verify/verify-groups-invitations-boundary.mjs",
+    "invitation_acceptance_ui_static_boundary": "scripts/verify/verify-groups-invitation-acceptance-ui.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
