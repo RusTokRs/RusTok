@@ -140,6 +140,17 @@
     return controllers;
   };
 
+  const forwardAbortSignal = (signal, controller) => {
+    if (!signal || typeof signal.addEventListener !== "function") return null;
+    const abort = () => controller.abort();
+    if (signal.aborted) {
+      abort();
+      return null;
+    }
+    signal.addEventListener("abort", abort, { once: true });
+    return () => signal.removeEventListener("abort", abort);
+  };
+
   const intentName = (input) => {
     const request = isObject(input) ? input : {};
     const message = isObject(request.message) ? request.message : {};
@@ -324,10 +335,15 @@
   };
 
   const originalPostIntent = Adapter.prototype.postIntent;
-  Adapter.prototype.postIntent = function postIntentWithPendingLimit(input) {
-    if (!this.intentEndpoint) return originalPostIntent.call(this, input);
+  Adapter.prototype.postIntent = function postIntentWithPendingLimit(
+    input,
+    requestOptions = {},
+  ) {
+    if (!this.intentEndpoint) {
+      return originalPostIntent.call(this, input, requestOptions);
+    }
     const intent = intentName(input);
-    if (!intent) return originalPostIntent.call(this, input);
+    if (!intent) return originalPostIntent.call(this, input, requestOptions);
     const controllers = pendingIntentControllers(this);
     const limit = limitFor(
       this,
@@ -346,7 +362,12 @@
       "flyIntentRequestTimeoutMs",
       DEFAULT_INTENT_REQUEST_TIMEOUT_MS,
     );
+    const transport = isObject(requestOptions) ? requestOptions : {};
     const controller = new AbortController();
+    const releaseForwardedAbort = forwardAbortSignal(
+      transport.signal,
+      controller,
+    );
     const requestKey = Symbol("fly.browser.intent.request");
     const record = {
       controller,
@@ -358,35 +379,32 @@
       timeoutMs,
     };
     controllers.set(requestKey, record);
-    const originalFetch = globalThis.fetch;
     let pending;
     try {
-      if (typeof originalFetch === "function") {
-        globalThis.fetch = (resource, init = {}) =>
-          originalFetch.call(globalThis, resource, {
-            ...init,
-            signal: controller.signal,
-          });
-      }
-      pending = originalPostIntent.call(this, input);
+      pending = originalPostIntent.call(this, input, {
+        ...transport,
+        signal: controller.signal,
+      });
       record.requestGeneration = Number.isSafeInteger(
         this.intentRequestGeneration,
       )
         ? this.intentRequestGeneration
         : null;
-      record.timeoutId = globalThis.setTimeout(() => {
-        if (!controllers.has(requestKey) || controller.signal.aborted) return;
-        reportIntentTimeout(this, input, record);
-        controller.abort();
-      }, timeoutMs);
+      if (!controller.signal.aborted) {
+        record.timeoutId = globalThis.setTimeout(() => {
+          if (!controllers.has(requestKey) || controller.signal.aborted) return;
+          reportIntentTimeout(this, input, record);
+          controller.abort();
+        }, timeoutMs);
+      }
     } catch (error) {
+      releaseForwardedAbort?.();
       controllers.delete(requestKey);
       throw error;
-    } finally {
-      if (typeof originalFetch === "function") globalThis.fetch = originalFetch;
     }
     return Promise.resolve(pending).finally(() => {
       if (record.timeoutId !== null) globalThis.clearTimeout(record.timeoutId);
+      releaseForwardedAbort?.();
       controllers.delete(requestKey);
     });
   };
