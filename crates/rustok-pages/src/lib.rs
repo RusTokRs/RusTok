@@ -10,8 +10,9 @@
 
 //! Pages module for RusToK platform.
 //!
-//! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, atomic publish receipts, and Page Builder release baselines.
+//! The module owns pages, localized bodies, menus, active menu bindings, menu items,
+//! deterministic Page Builder artifacts, atomic publish receipts, and Page Builder release
+//! baselines.
 //!
 //! # Example
 //!
@@ -53,14 +54,14 @@ pub mod services;
 
 pub use dto::*;
 pub use entities::{
-    Menu, Page, PageBuilderScenarioBaseline, PagePublishOperation,
+    Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
     PagePublishedLandingArtifact, PageStaticLandingArtifact,
 };
-pub use error::{PagesError, PagesResult, CANNOT_DELETE_PUBLISHED_ERROR_CODE};
+pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
-    PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
+    MenuBindingService, MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService,
+    PageService, PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISH_IDEMPOTENCY_CONFLICT,
