@@ -95,8 +95,11 @@ Pages public publication now crosses the reviewed boundary:
   selection, and a missing, stale or foreign selection fails closed in the Pages transport;
 - `PageService::create` cannot publish or compile through a default runtime.
 
-The old lifecycle method remains internal pending cleanup, but it is no longer reachable from the
-public GraphQL, HTTP or admin Page Builder publication surfaces.
+The mixed legacy lifecycle has been removed. Non-builder pages use explicitly named
+`publish_non_builder` / `publish_non_builder_if_current`; both check before and inside the transaction
+that no GrapesJS/Fly body exists. A builder document receives
+`PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` and cannot reach artifact compilation or a raw lifecycle
+transition.
 
 ## Machine-readable contracts
 
@@ -104,12 +107,12 @@ public GraphQL, HTTP or admin Page Builder publication surfaces.
 - `contracts/page-builder-fba-registry.json` records provider/consumer versions and materialization
   persistence.
 - `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, sanitizer, Pages
-  atomic service, body revision identity, receipt schema, replay semantics, public transport cutover
-  and explicit ephemeral scenario selection.
+  atomic service, body revision identity, receipt schema, replay semantics, public transport cutover,
+  explicit ephemeral scenario selection and the isolated non-builder lifecycle.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks core atomic invariants.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
-  publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt and scenario-selection
-  boundaries.
+  publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
+  non-builder lifecycle boundaries.
 
 ## FFA/FBA status
 
@@ -117,8 +120,9 @@ public GraphQL, HTTP or admin Page Builder publication surfaces.
   connected for both single- and multi-scenario baselines; typed metadata properties and inline edit
   mode remain open.
 - **FBA:** `boundary_ready` for preview/materialization and
-  `service_and_public_transport_integrated` for Pages reviewed publication. Rollback,
-  cache-consumer proof, executed verification and observed rollout evidence remain open.
+  `service_and_public_transport_integrated` for Pages reviewed publication. The default-runtime
+  lifecycle is removed; rollback, cache-consumer proof, executed verification and observed rollout
+  evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability and
   publish contracts.
 - **Evidence:**
@@ -130,6 +134,7 @@ public GraphQL, HTTP or admin Page Builder publication surfaces.
   - `admin/src/editor/publish_scenario_selector.rs`;
   - `crates/rustok-pages/src/dto/page.rs`;
   - `crates/rustok-pages/src/services/page/reviewed_publish.rs`;
+  - `crates/rustok-pages/src/services/page/lifecycle.rs`;
   - `crates/rustok-pages/src/graphql/mutation.rs`;
   - `crates/rustok-pages/src/http.rs`;
   - `crates/rustok-pages/admin/src/transport/graphql_adapter.rs`;
@@ -140,19 +145,16 @@ public GraphQL, HTTP or admin Page Builder publication surfaces.
 
 ## Open results
 
-1. Remove the now-publicly-unreachable builder publication branch from
-   `PageService::publish_if_current` or split non-builder lifecycle transitions into an explicitly
-   non-Page-Builder command.
-2. Prove the transactional `NodePublished` outbox consumer invalidates all artifact, route and page
+1. Prove the transactional `NodePublished` outbox consumer invalidates all artifact, route and page
    cache keys, and correlate receipt through storefront read telemetry.
-3. Add rollback to a previous immutable artifact set with its own idempotent receipt and outbox
+2. Add rollback to a previous immutable artifact set with its own idempotent receipt and outbox
    semantics.
-4. Connect the next production consumer's concrete tenant-scoped store and contextual preview
+3. Connect the next production consumer's concrete tenant-scoped store and contextual preview
    renderer to the canonical composition root without consumer-local authorization or save-result
    side channels.
-5. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
+4. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
-6. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
+5. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
    sanitizer identity, materialization, Pages receipt and storefront read.
 
 ## Verification
