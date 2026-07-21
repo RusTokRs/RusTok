@@ -11,7 +11,9 @@ use uuid::Uuid;
 use crate::dto::{CompleteCheckoutInput, CompleteCheckoutResponse};
 
 use super::{
-    BeginCheckoutOperation, CheckoutCompletedState, CheckoutError, CheckoutOperationCheckpoint,
+    BeginCheckoutOperation, CheckoutCompletedState, CheckoutError,
+    CheckoutMarketplaceAllocationError, CheckoutMarketplaceCommissionError,
+    CheckoutMarketplaceEconomicsCheckpointError, CheckoutOperationCheckpoint,
     CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationStage,
     CheckoutOperationStatus, CheckoutPlanBuilder, CheckoutStagePipeline,
     CheckoutStagePipelineError, DEFAULT_CHECKOUT_LEASE_SECONDS,
@@ -307,17 +309,31 @@ impl StagedCheckoutService {
         lease_owner: String,
         pipeline: CheckoutStagePipelineError,
     ) -> StagedCheckoutError {
-        match self
-            .journal
-            .mark_compensation_required(
-                tenant_id,
-                operation_id,
-                lease_owner,
-                "checkout.pipeline_failed",
-                pipeline.to_string(),
-            )
-            .await
-        {
+        let journal_result = match pipeline_failure_disposition(&pipeline) {
+            FailureDisposition::Retryable => {
+                self.journal
+                    .mark_retryable_error(
+                        tenant_id,
+                        operation_id,
+                        lease_owner,
+                        pipeline_error_code(&pipeline),
+                        pipeline.to_string(),
+                    )
+                    .await
+            }
+            FailureDisposition::CompensationRequired => {
+                self.journal
+                    .mark_compensation_required(
+                        tenant_id,
+                        operation_id,
+                        lease_owner,
+                        pipeline_error_code(&pipeline),
+                        pipeline.to_string(),
+                    )
+                    .await
+            }
+        };
+        match journal_result {
             Ok(_) => pipeline.into(),
             Err(journal) => StagedCheckoutError::PipelineAndJournal {
                 pipeline: Box::new(pipeline),
@@ -347,6 +363,25 @@ fn checkout_failure_disposition(error: &CheckoutError) -> FailureDisposition {
     }
 }
 
+fn pipeline_failure_disposition(error: &CheckoutStagePipelineError) -> FailureDisposition {
+    match error {
+        CheckoutStagePipelineError::MarketplaceAllocation(
+            CheckoutMarketplaceAllocationError::Boundary {
+                retryable: true, ..
+            },
+        )
+        | CheckoutStagePipelineError::MarketplaceCommission(
+            CheckoutMarketplaceCommissionError::Boundary {
+                retryable: true, ..
+            },
+        )
+        | CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(
+            CheckoutMarketplaceEconomicsCheckpointError::Database(_),
+        ) => FailureDisposition::Retryable,
+        _ => FailureDisposition::CompensationRequired,
+    }
+}
+
 fn checkout_error_code(error: &CheckoutError) -> String {
     match error {
         CheckoutError::Validation(_) => "checkout.validation",
@@ -357,6 +392,24 @@ fn checkout_error_code(error: &CheckoutError) -> String {
         CheckoutError::StageFailure { stage, .. } => stage,
     }
     .to_string()
+}
+
+fn pipeline_error_code(error: &CheckoutStagePipelineError) -> String {
+    match error {
+        CheckoutStagePipelineError::MarketplaceAllocation(
+            CheckoutMarketplaceAllocationError::Boundary { code, .. },
+        )
+        | CheckoutStagePipelineError::MarketplaceCommission(
+            CheckoutMarketplaceCommissionError::Boundary { code, .. },
+        ) => code.clone(),
+        CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(
+            CheckoutMarketplaceEconomicsCheckpointError::Database(_),
+        ) => "checkout.marketplace_economics_checkpoint_unavailable".to_string(),
+        CheckoutStagePipelineError::MarketplaceEconomicsCheckpoint(_) => {
+            "checkout.marketplace_economics_checkpoint_conflict".to_string()
+        }
+        _ => "checkout.pipeline_failed".to_string(),
+    }
 }
 
 fn checkout_request_hash(
@@ -456,6 +509,21 @@ mod tests {
         };
         assert!(matches!(
             checkout_failure_disposition(&error),
+            FailureDisposition::Retryable
+        ));
+    }
+
+    #[test]
+    fn retryable_marketplace_boundary_does_not_force_compensation() {
+        let error = CheckoutStagePipelineError::MarketplaceCommission(
+            CheckoutMarketplaceCommissionError::Boundary {
+                code: "marketplace_commission.storage_unavailable".to_string(),
+                message: "temporarily unavailable".to_string(),
+                retryable: true,
+            },
+        );
+        assert!(matches!(
+            pipeline_failure_disposition(&error),
             FailureDisposition::Retryable
         ));
     }
