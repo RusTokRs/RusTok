@@ -49,6 +49,24 @@ pub struct MarketplaceReversalEventResponse {
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
+pub struct MarketplaceReversalAdaptationFailureResponse {
+    pub id: Uuid,
+    pub provider_event_id: Uuid,
+    pub event_source: String,
+    pub event_id: String,
+    pub event_type: String,
+    pub status: String,
+    pub retryable: bool,
+    pub attempt_count: i32,
+    pub last_error_code: String,
+    pub last_error_message: String,
+    pub next_retry_at: Option<DateTime<FixedOffset>>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub resolved_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct MarketplaceReversalSweepFailureResponse {
     pub inbox_id: Uuid,
     pub retryable: bool,
@@ -80,6 +98,18 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
         .route(
             "/reversal-events/recovery-sweep",
             axum::routing::post(run_recovery_sweep),
+        )
+        .route(
+            "/reversal-adaptation-failures/operator-review",
+            axum::routing::get(list_adaptation_failures_operator_review),
+        )
+        .route(
+            "/reversal-adaptation-failures/{id}",
+            axum::routing::get(show_adaptation_failure),
+        )
+        .route(
+            "/reversal-adaptation-failures/{id}/retry",
+            axum::routing::post(retry_adaptation_failure),
         )
 }
 
@@ -201,6 +231,86 @@ pub async fn run_recovery_sweep(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/admin/marketplace-financial/reversal-adaptation-failures/operator-review",
+    tag = "admin-marketplace-financial",
+    params(MarketplaceReversalOperatorListQuery),
+    responses(
+        (status = 200, description = "Historical reversal adaptation failures requiring operator review", body = [MarketplaceReversalAdaptationFailureResponse]),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub async fn list_adaptation_failures_operator_review(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Query(query): Query<MarketplaceReversalOperatorListQuery>,
+) -> HttpResult<Json<Vec<MarketplaceReversalAdaptationFailureResponse>>> {
+    ensure_read_permission(&auth)?;
+    let items = runtime
+        .marketplace_reversal_operator_service()
+        .list_adaptation_failures_operator_review(tenant.id, query.limit.unwrap_or(50))
+        .await
+        .map_err(map_operator_error)?;
+    Ok(Json(items.into_iter().map(Into::into).collect()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/admin/marketplace-financial/reversal-adaptation-failures/{id}",
+    tag = "admin-marketplace-financial",
+    params(("id" = Uuid, Path, description = "Marketplace reversal adaptation failure ID")),
+    responses(
+        (status = 200, description = "Marketplace reversal adaptation failure", body = MarketplaceReversalAdaptationFailureResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Adaptation failure not found")
+    )
+)]
+pub async fn show_adaptation_failure(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<MarketplaceReversalAdaptationFailureResponse>> {
+    ensure_read_permission(&auth)?;
+    runtime
+        .marketplace_reversal_operator_service()
+        .get_adaptation_failure(tenant.id, id)
+        .await
+        .map(Into::into)
+        .map(Json)
+        .map_err(map_operator_error)
+}
+
+#[utoipa::path(
+    post,
+    path = "/admin/marketplace-financial/reversal-adaptation-failures/{id}/retry",
+    tag = "admin-marketplace-financial",
+    params(("id" = Uuid, Path, description = "Marketplace reversal adaptation failure ID")),
+    responses(
+        (status = 200, description = "Adaptation failure resolved after explicit retry", body = MarketplaceReversalAdaptationFailureResponse),
+        (status = 401, description = "Unauthorized"),
+        (status = 409, description = "Adaptation remains invalid or is not retryable"),
+        (status = 503, description = "Adaptation dependencies are temporarily unavailable")
+    )
+)]
+pub async fn retry_adaptation_failure(
+    State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+) -> HttpResult<Json<MarketplaceReversalAdaptationFailureResponse>> {
+    ensure_manage_permission(&auth)?;
+    runtime
+        .marketplace_reversal_operator_service()
+        .retry_adaptation_failure(tenant.id, id)
+        .await
+        .map(Into::into)
+        .map(Json)
+        .map_err(map_operator_error)
+}
+
 fn ensure_read_permission(auth: &AuthContext) -> HttpResult<()> {
     ensure_permissions(
         auth,
@@ -228,13 +338,13 @@ fn map_operator_error(error: crate::MarketplaceReversalOperatorError) -> HttpErr
         {
             HttpError::not_found(
                 "marketplace_reversal_operator_not_found",
-                "Marketplace reversal event was not found",
+                "Marketplace reversal event or adaptation failure was not found",
             )
         }
         crate::MarketplaceReversalOperatorError::Conflict(_) => HttpError::new(
             StatusCode::CONFLICT,
             "marketplace_reversal_operator_conflict",
-            "Marketplace reversal event requires reconciliation or is not safely retryable",
+            "Marketplace reversal recovery requires reconciliation or is not safely retryable",
         ),
         crate::MarketplaceReversalOperatorError::Database(_) => {
             HttpError::internal("Marketplace reversal operator storage is unavailable")
@@ -251,6 +361,45 @@ fn map_operator_error(error: crate::MarketplaceReversalOperatorError) -> HttpErr
                     StatusCode::CONFLICT,
                     "marketplace_reversal_reconciliation_required",
                     "Marketplace reversal recovery requires operator review",
+                )
+            }
+        }
+        crate::MarketplaceReversalOperatorError::AdaptationFailure(error) => match error {
+            crate::MarketplaceReversalAdaptationFailureError::Validation(_) => {
+                HttpError::bad_request(
+                    "marketplace_reversal_adaptation_invalid",
+                    "Marketplace reversal adaptation request is invalid",
+                )
+            }
+            crate::MarketplaceReversalAdaptationFailureError::Conflict(message)
+                if message.contains("was not found") =>
+            {
+                HttpError::not_found(
+                    "marketplace_reversal_adaptation_not_found",
+                    "Marketplace reversal adaptation failure was not found",
+                )
+            }
+            crate::MarketplaceReversalAdaptationFailureError::Conflict(_) => HttpError::new(
+                StatusCode::CONFLICT,
+                "marketplace_reversal_adaptation_conflict",
+                "Marketplace reversal adaptation failure is not safely retryable",
+            ),
+            crate::MarketplaceReversalAdaptationFailureError::Database(_) => {
+                HttpError::internal("Marketplace reversal adaptation storage is unavailable")
+            }
+        },
+        crate::MarketplaceReversalOperatorError::Adapter(error) => {
+            if error.retryable() {
+                HttpError::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "marketplace_reversal_adaptation_unavailable",
+                    "Marketplace reversal adaptation is temporarily unavailable",
+                )
+            } else {
+                HttpError::new(
+                    StatusCode::CONFLICT,
+                    "marketplace_reversal_adaptation_requires_review",
+                    "Marketplace reversal adaptation still requires operator review",
                 )
             }
         }
@@ -282,6 +431,29 @@ impl From<crate::MarketplaceReversalEventOperatorView> for MarketplaceReversalEv
             created_at: value.created_at,
             updated_at: value.updated_at,
             processed_at: value.processed_at,
+        }
+    }
+}
+
+impl From<crate::services::MarketplaceReversalAdaptationFailureOperatorView>
+    for MarketplaceReversalAdaptationFailureResponse
+{
+    fn from(value: crate::services::MarketplaceReversalAdaptationFailureOperatorView) -> Self {
+        Self {
+            id: value.id,
+            provider_event_id: value.provider_event_id,
+            event_source: value.event_source,
+            event_id: value.event_id,
+            event_type: value.event_type,
+            status: value.status,
+            retryable: value.retryable,
+            attempt_count: value.attempt_count,
+            last_error_code: value.last_error_code,
+            last_error_message: value.last_error_message,
+            next_retry_at: value.next_retry_at,
+            created_at: value.created_at,
+            updated_at: value.updated_at,
+            resolved_at: value.resolved_at,
         }
     }
 }
