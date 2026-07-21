@@ -39,16 +39,19 @@ Fly service validates and maps that result into the canonical publish response.
 The Pages preview path uses the same module-owned composition root. CSR and hydrate call the Pages
 Leptos server-function transport; the server verifies the backend actor, constructs canonical read
 authorization and a deadline-bound `PortContext`, then dispatches `Preview` through the handlers.
-`PagesPageBuilderRenderer` revalidates tenant and actor identity before rendering. The Page Builder
-admin runtime consumes `PreviewPageBuilderResult` and exposes the returned HTML in a separate
-sandboxed read-only iframe. The local instrumented canvas remains the authoring surface and is not a
-second server renderer pipeline.
+`PagesPageBuilderRenderer` revalidates tenant and actor identity and confirms that the requested Pages
+document exists in the tenant before rendering. The Page Builder admin runtime projects only the
+active internal Fly page into the preview request, consumes `PreviewPageBuilderResult`, and exposes
+the returned HTML in a separate sandboxed read-only iframe. A response is accepted only while the
+project hash and active-page index still match the request, so a late server response cannot replace
+the current preview with stale HTML. The local instrumented canvas remains the authoring surface and
+is not a second server renderer pipeline.
 
 The current machine-readable service contract is
 `contracts/page-builder-service-boundary.json`. It records the composition root, persisted save
-result and validation order, the Pages publish and server preview order, tenant-context guards and
-admin preview surface, and forbids reference services, migration decorators, manual JSON preview
-rendering and the removed Pages mutex save-result side channel.
+result and validation order, the Pages publish and server preview order, tenant/page-context guards
+and admin preview request identity, and forbids reference services, migration decorators, manual JSON
+preview rendering and the removed Pages mutex save-result side channel.
 
 ## FFA/FBA status
 
@@ -85,10 +88,13 @@ rendering and the removed Pages mutex save-result side channel.
 2. Extend server preview with the selected runtime context and scenario contract. Context must flow
    through a canonical Page Builder DTO/port contract rather than through Pages-local renderer
    arguments, and the same request must be usable by future host frameworks.
-3. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
+3. Consolidate the Pages preview and publish server-function wrappers around one consumer-owned
+   capability dispatch helper without moving authorization, port policy or Fly validation out of the
+   module-owned composition root.
+4. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
    the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
    its optional CSP nonce, and must not copy lifecycle, form, selection or draft-route policy.
-4. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
+5. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
    correlate builder write, Pages publish and storefront read across the required rollout profiles.
 
 ## Verification
