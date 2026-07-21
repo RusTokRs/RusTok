@@ -25,6 +25,7 @@ mod m20260716_000005_enforce_return_completion_resolution_identity;
 mod m20260716_000006_create_return_completion_commands;
 mod m20260721_000001_create_checkout_marketplace_economics_checkpoints;
 mod m20260721_000002_create_marketplace_financial_operations;
+mod m20260721_000003_create_marketplace_paid_event_inbox;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -58,6 +59,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
             m20260721_000001_create_checkout_marketplace_economics_checkpoints::Migration,
         ),
         Box::new(m20260721_000002_create_marketplace_financial_operations::Migration),
+        Box::new(m20260721_000003_create_marketplace_paid_event_inbox::Migration),
     ]
 }
 
@@ -183,6 +185,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
                 "m20260721_000001_create_checkout_marketplace_economics_checkpoints",
                 "m20260719_000001_create_marketplace_ledger",
                 "m20260713_000015_bind_checkout_payment_collections",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260721_000003_create_marketplace_paid_event_inbox",
+            vec![
+                "m20260721_000002_create_marketplace_financial_operations",
+                "m20260714_000117_lock_provider_event_normalized_facts",
             ],
         ),
     ]
