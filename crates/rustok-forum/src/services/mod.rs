@@ -7,6 +7,8 @@ mod category_policy;
 mod category_tree;
 pub mod event;
 mod mention_relation;
+#[cfg(test)]
+mod mention_relation_tests;
 pub mod moderation;
 mod rbac;
 pub mod read_model;
