@@ -15,7 +15,7 @@ function writeFixture(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function topicOwner({ deref = false, omitList = false } = {}) {
+function topicFacade({ deref = false, omitList = false } = {}) {
   return `
 pub struct TopicService;
 impl TopicService {
@@ -32,7 +32,7 @@ ${deref ? "use std::ops::Deref; impl Deref for TopicService { type Target = (); 
 `;
 }
 
-function replyOwner({ deref = false } = {}) {
+function replyFacade({ deref = false } = {}) {
   return `
 pub struct ReplyService;
 impl ReplyService {
@@ -56,14 +56,14 @@ function withFixture(options = {}) {
     root,
     "crates/rustok-forum/src/services/mod.rs",
     options.publicRawModules
-      ? "pub mod topic;\npub mod reply;\npub use topic_owner::TopicService;\npub use reply_owner::ReplyService;\n"
-      : "mod topic;\nmod reply;\npub use topic_owner::TopicService;\npub use reply_owner::ReplyService;\n",
+      ? "pub mod topic;\npub mod reply;\nmod topic_facade;\nmod reply_facade;\npub use topic_facade::TopicService;\npub use reply_facade::ReplyService;\n"
+      : options.ownerReexport
+        ? "mod topic;\nmod reply;\nmod topic_owner;\nmod reply_owner;\npub use topic_owner::TopicService;\npub use reply_owner::ReplyService;\n"
+        : "mod topic;\nmod reply;\nmod topic_owner;\nmod reply_owner;\nmod topic_facade;\nmod reply_facade;\npub use topic_facade::TopicService;\npub use reply_facade::ReplyService;\n",
   );
-  writeFixture(root, "crates/rustok-forum/src/services/topic_owner.rs", topicOwner(options));
-  writeFixture(root, "crates/rustok-forum/src/services/reply_owner.rs", replyOwner(options));
+  writeFixture(root, "crates/rustok-forum/src/services/topic_facade.rs", topicFacade(options));
+  writeFixture(root, "crates/rustok-forum/src/services/reply_facade.rs", replyFacade(options));
   writeFixture(root, "crates/rustok-forum/src/lib.rs", "pub use services::{ReplyService, TopicService};\n");
-  writeFixture(root, "crates/rustok-forum/CRATE_API.md", "verify-forum-owner-boundary.mjs\n");
-  writeFixture(root, "crates/rustok-forum/docs/implementation-plan.md", "verify-forum-owner-boundary.mjs\n");
   if (options.externalRawImport) {
     writeFixture(
       root,
@@ -93,7 +93,7 @@ function withTempFixture(options, assertion) {
   }
 }
 
-test("forum owner boundary verifier passes canonical owner facade", () => {
+test("forum owner boundary verifier passes canonical public facades", () => {
   withTempFixture({}, (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /forum owner boundary verification passed/);
@@ -107,23 +107,30 @@ test("forum owner boundary verifier rejects public raw modules", () => {
   });
 });
 
-test("forum owner boundary verifier rejects persistence deref", () => {
+test("forum owner boundary verifier rejects internal owner re-export", () => {
+  withTempFixture({ ownerReexport: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /internal owner implementations must not be re-exported/);
+  });
+});
+
+test("forum owner boundary verifier rejects facade deref", () => {
   withTempFixture({ deref: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /must not dereference into persistence service/);
+    assert.match(result.stderr, /public facade must not dereference/);
   });
 });
 
 test("forum owner boundary verifier rejects external raw imports", () => {
   withTempFixture({ externalRawImport: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /imports a raw forum topic\/reply persistence service/);
+    assert.match(result.stderr, /imports a non-public forum topic\/reply implementation service/);
   });
 });
 
-test("forum owner boundary verifier rejects missing explicit owner method", () => {
+test("forum owner boundary verifier rejects missing explicit facade method", () => {
   withTempFixture({ omitList: true }, (result) => {
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /explicit owner method missing/);
+    assert.match(result.stderr, /explicit topic facade method missing/);
   });
 });
