@@ -4,15 +4,20 @@
   "family": "marketplace",
   "role": "provider",
   "status": "in_progress",
-  "contract_version": "marketplace.ledger.v1",
+  "contract_version": "marketplace.ledger.v2",
   "ownership": {
     "transaction_table": "marketplace_ledger_transactions",
     "entry_table": "marketplace_ledger_entries",
     "receipt_table": "marketplace_ledger_receipts",
+    "reversal_table": "marketplace_ledger_reversals",
+    "reversal_line_table": "marketplace_ledger_reversal_lines",
+    "seller_balance_projection_table": "marketplace_seller_balance_projections",
     "cross_module_foreign_keys": false,
+    "owner_local_tenant_composite_foreign_keys": true,
     "entries_append_only": true,
+    "original_transactions_are_never_mutated_by_reversal": true,
     "one_commission_batch_transaction_per_order": true,
-    "one_entry_per_assessment_account": true,
+    "one_reversal_per_tenant_kind_source": true,
     "amount_representation": "signed_64_bit_minor_units"
   },
   "dependencies": [
@@ -31,7 +36,8 @@
       "name": "MarketplaceLedgerReadPort",
       "operations": [
         "read_order_ledger",
-        "list_seller_entries"
+        "list_seller_entries",
+        "read_seller_balance"
       ],
       "deadline_required": true,
       "idempotency_required": false
@@ -39,7 +45,9 @@
     {
       "name": "MarketplaceLedgerCommandPort",
       "operations": [
-        "post_order_commissions"
+        "post_order_commissions",
+        "post_financial_reversal",
+        "rebuild_seller_balance"
       ],
       "deadline_required": true,
       "idempotency_required": true
@@ -57,7 +65,7 @@
     "reposting_with_another_key": "marketplace_ledger.order_already_posted"
   },
   "double_entry": {
-    "per_assessment_entries": [
+    "order_posting": [
       {
         "account": "marketplace_clearing",
         "direction": "debit",
@@ -72,18 +80,57 @@
         "account": "seller_payable",
         "direction": "credit",
         "amount": "seller_proceeds_amount",
-        "seller_scoped": true
+        "seller_scoped": true,
+        "default_balance_bucket": "pending"
+      }
+    ],
+    "refund_or_chargeback_reversal": [
+      {
+        "account": "platform_commission_revenue",
+        "direction": "debit",
+        "amount": "commission_reversal_amount"
+      },
+      {
+        "account": "seller_payable",
+        "direction": "debit",
+        "amount": "seller_reversal_amount",
+        "seller_scoped": true,
+        "typed_balance_bucket_required": true
+      },
+      {
+        "account": "marketplace_clearing",
+        "direction": "credit",
+        "amount": "commission_reversal_amount + seller_reversal_amount"
       }
     ],
     "assessment_invariant": "commission_amount + seller_proceeds_amount = allocation_total_amount",
     "transaction_invariant": "debit_total_amount = credit_total_amount",
-    "negative_amounts_allowed": false,
+    "negative_entry_amounts_allowed": false,
     "checked_arithmetic": true
+  },
+  "reversals": {
+    "supported_kinds": ["refund", "chargeback"],
+    "source_identity": ["tenant_id", "reversal_kind", "source_id"],
+    "exact_original_entry_links": true,
+    "original_entry_lock_before_capacity_check": true,
+    "cumulative_reversal_must_not_exceed_original_entry": true,
+    "original_transaction_status_is_not_mutated": true,
+    "receipt_replay_before_owner_reads": true
+  },
+  "seller_balance_projection": {
+    "authoritative_source": "marketplace_ledger_entries",
+    "buckets": ["pending", "available", "reserved", "paid"],
+    "negative_amount": "max(0, -(pending + available + reserved))",
+    "unclassified_original_seller_payable_entries": "pending",
+    "rebuildable": true,
+    "rebuild_scope": ["tenant_id", "seller_id", "currency_code"],
+    "projection_failure_does_not_mutate_ledger": true
   },
   "read_model": {
     "order_transaction_includes_entries": true,
     "seller_entries_bounded": true,
     "seller_entries_account": "seller_payable",
+    "seller_balance_projection": true,
     "max_page_size": 200
   },
   "composition": {
@@ -92,12 +139,12 @@
     "marketplace_root_read_projection": true
   },
   "known_gaps": [
-    "automatic posting orchestration",
-    "reversal transactions",
-    "external event contracts and outbox",
-    "seller balance materialization",
-    "payout consumption",
-    "postgres contention evidence",
-    "admin accounting surface"
+    "normalized refund and chargeback event orchestration into the ledger reversal command",
+    "available, reserved, and paid bucket transfer transactions",
+    "payout settlement and payout reversal ledger transactions",
+    "reserve hold and reserve release transactions",
+    "external ledger event contracts and transactional outbox",
+    "postgres reversal contention evidence",
+    "admin accounting and seller balance transport surfaces"
   ]
 }
