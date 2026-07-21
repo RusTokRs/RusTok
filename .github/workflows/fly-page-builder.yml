@@ -46,6 +46,147 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare-current-only-pages-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-current-only-compile-fix
+      - name: Apply current-only Pages fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          artifact = Path("crates/rustok-pages/src/services/page_builder_artifact.rs")
+          text = artifact.read_text()
+          old = """use rustok_page_builder::{\n    ComponentRegistryManifest, LandingSectionSnapshot, PageBuilderMaterializedStaticLandingArtifact,\n    PageBuilderPreviewRuntime, PageBuilderStaticLandingMaterializationIdentity, PageHead,\n    StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,\n    compile_materialized_static_landing,\n};\n"""
+          new = """use rustok_page_builder::dto::PageBuilderPreviewRuntime;\nuse rustok_page_builder::{\n    ComponentRegistryManifest, LandingSectionSnapshot, PageBuilderMaterializedStaticLandingArtifact,\n    PageBuilderStaticLandingMaterializationIdentity, PageHead, StaticLandingArtifact,\n    StaticLandingBuildIdentity, StaticLandingPage, compile_materialized_static_landing,\n};\n"""
+          assert old in text
+          artifact.write_text(text.replace(old, new, 1))
+
+          read = Path("crates/rustok-pages/src/services/page/read.rs")
+          text = read.read_text()
+          old = "use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};"
+          new = "use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};"
+          assert old in text
+          read.write_text(text.replace(old, new, 1))
+
+          lifecycle = Path("crates/rustok-pages/src/services/page/lifecycle.rs")
+          text = lifecycle.read_text()
+          old = '''            let digest = Sha256::digest(format!("{}\\0{}", body.format, body.content).as_bytes());\n            (\n                body.locale.clone(),\n                format!("{}:{digest:x}", body.updated_at),\n            )\n'''
+          new = '''            let digest = Sha256::digest(format!("{}\\0{}", body.format, body.content).as_bytes());\n            (\n                body.locale.clone(),\n                format!("{}:{}", body.updated_at, encode_digest(&digest)),\n            )\n'''
+          assert old in text
+          text = text.replace(old, new, 1)
+          marker = "\nfn format_body_revisions(revisions: &BodyRevisionSnapshot) -> String {"
+          helper = '''\nfn encode_digest(digest: &[u8]) -> String {\n    use std::fmt::Write as _;\n\n    let mut encoded = String::with_capacity(digest.len() * 2);\n    for byte in digest {\n        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");\n    }\n    encoded\n}\n'''
+          assert marker in text
+          lifecycle.write_text(text.replace(marker, helper + marker, 1))
+
+          seo = Path("crates/rustok-pages/src/seo_targets.rs")
+          text = seo.read_text()
+          old_import = '''use crate::{\n    BlockPayload, ListPagesFilter, PageListItem, PageResponse, PageService, PageTranslationResponse,\n};'''
+          new_import = '''use crate::{\n    ListPagesFilter, PageListItem, PageResponse, PageService, PageTranslationResponse,\n};'''
+          assert old_import in text
+          text = text.replace(old_import, new_import, 1)
+          start = text.index("fn page_primary_image_descriptor(")
+          end_marker = "\n    None\n}\n"
+          end = text.index(end_marker, start) + len(end_marker)
+          replacement = r'''fn page_primary_image_descriptor(
+              page: &PageResponse,
+              fallback_alt: &str,
+          ) -> Option<SeoTargetImageRecord> {
+              let fallback_alt = normalize_image_text(Some(fallback_alt.to_string()));
+              let document = page.body.as_ref()?.content_json.as_ref()?;
+              find_image_descriptor(document, fallback_alt.as_deref())
+          }
+
+          fn find_image_descriptor(
+              value: &serde_json::Value,
+              fallback_alt: Option<&str>,
+          ) -> Option<SeoTargetImageRecord> {
+              match value {
+                  serde_json::Value::Array(items) => items
+                      .iter()
+                      .find_map(|item| find_image_descriptor(item, fallback_alt)),
+                  serde_json::Value::Object(object) => {
+                      let local_alt = ["alt", "caption", "title"]
+                          .iter()
+                          .find_map(|key| object.get(*key).and_then(serde_json::Value::as_str))
+                          .and_then(|text| normalize_image_text(Some(text.to_string())))
+                          .or_else(|| fallback_alt.map(str::to_string));
+                      let image_component = object
+                          .get("type")
+                          .and_then(serde_json::Value::as_str)
+                          .is_some_and(|kind| matches!(kind, "image" | "hero" | "gallery"))
+                          || object
+                              .get("tagName")
+                              .and_then(serde_json::Value::as_str)
+                              .is_some_and(|tag| tag.eq_ignore_ascii_case("img"));
+                      let explicit_keys = [
+                          "background_image_url",
+                          "backgroundImage",
+                          "background-image",
+                          "image_url",
+                          "imageUrl",
+                      ];
+                      let image_url = explicit_keys
+                          .iter()
+                          .find_map(|key| object.get(*key).and_then(serde_json::Value::as_str))
+                          .or_else(|| {
+                              image_component
+                                  .then(|| object.get("src").and_then(serde_json::Value::as_str))
+                                  .flatten()
+                          })
+                          .map(str::trim)
+                          .filter(|url| !url.is_empty());
+                      if let Some(url) = image_url {
+                          if let Some(record) = SeoTargetImageRecord::from_parts(
+                              url.to_string(),
+                              local_alt,
+                              None,
+                              None,
+                              None,
+                          ) {
+                              return Some(record);
+                          }
+                      }
+                      object
+                          .values()
+                          .find_map(|item| find_image_descriptor(item, fallback_alt))
+                  }
+                  _ => None,
+              }
+          }
+'''
+          seo.write_text(text[:start] + replacement + text[end:])
+      - name: Format and compile Pages
+        shell: bash
+        run: |
+          set +e
+          cargo fmt -p rustok-pages
+          cargo test -p rustok-pages --lib --tests --no-run 2>&1 | tee /tmp/pages-current-only-compile.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > /tmp/pages-current-only-compile.status
+          tar -czf /tmp/pages-current-only-compile-fix.tar.gz \
+            crates/rustok-pages/src/services/page_builder_artifact.rs \
+            crates/rustok-pages/src/services/page/lifecycle.rs \
+            crates/rustok-pages/src/services/page/read.rs \
+            crates/rustok-pages/src/seo_targets.rs
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pages-current-only-compile-fix
+          path: |
+            /tmp/pages-current-only-compile-fix.tar.gz
+            /tmp/pages-current-only-compile.log
+            /tmp/pages-current-only-compile.status
+          if-no-files-found: error
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
