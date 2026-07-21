@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -9,6 +9,8 @@ use uuid::Uuid;
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
@@ -20,11 +22,25 @@ use crate::services::rbac::{enforce_owned_scope, enforce_scope};
 
 pub struct CategoryService {
     db: DatabaseConnection,
+    event_bus: Option<TransactionalEventBus>,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            event_bus: None,
+        }
+    }
+
+    pub fn new_with_event_bus(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+    ) -> Self {
+        Self {
+            db,
+            event_bus: Some(event_bus),
+        }
     }
 
     #[instrument(skip(self, security, input))]
@@ -37,8 +53,10 @@ impl CategoryService {
         enforce_scope(&security, Resource::Categories, Action::Create)?;
         validate_category_name(&input.name)?;
         let slug = normalize_category_slug(input.slug.as_deref(), &input.name);
+        let locale = normalize_locale(&input.locale)?;
         let now = Utc::now();
         let id = Uuid::new_v4();
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
 
         blog_category::ActiveModel {
             id: Set(id),
@@ -51,21 +69,22 @@ impl CategoryService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
         blog_category_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             category_id: Set(id),
             tenant_id: Set(tenant_id),
-            locale: Set(normalize_locale(&input.locale)?),
+            locale: Set(locale),
             name: Set(input.name),
             slug: Set(slug),
             description: Set(input.description),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
+        txn.commit().await.map_err(BlogError::from)?;
         Ok(id)
     }
 
@@ -100,9 +119,10 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
         enforce_owned_scope(&security, Resource::Categories, Action::Update, category.id)?;
@@ -115,13 +135,14 @@ impl CategoryService {
         if let Some(settings) = input.settings {
             active.settings = Set(settings);
         }
-        let category = active.update(&self.db).await?;
+        let category = active.update(&txn).await?;
 
         let locale = normalize_locale(&input.locale)?;
         let existing_translation = blog_category_translation::Entity::find()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
             .filter(blog_category_translation::Column::Locale.eq(&locale))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         match existing_translation {
@@ -140,7 +161,7 @@ impl CategoryService {
                 if input.description.is_some() {
                     active.description = Set(input.description);
                 }
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
             }
             None => {
                 let name = input
@@ -161,17 +182,23 @@ impl CategoryService {
                     slug: Set(slug),
                     description: Set(input.description),
                 }
-                .insert(&self.db)
+                .insert(&txn)
                 .await?;
             }
         }
 
-        let translations = blog_category_translation::Entity::find()
-            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-            .all(&self.db)
+        self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
 
-        Ok(to_category_response(category, translations, &locale))
+        let translations = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+        let response = to_category_response(category, translations, &locale);
+
+        txn.commit().await.map_err(BlogError::from)?;
+        Ok(response)
     }
 
     #[instrument(skip(self, security))]
@@ -181,19 +208,26 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
         enforce_owned_scope(&security, Resource::Categories, Action::Delete, category.id)?;
 
         blog_category_translation::Entity::delete_many()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-            .exec(&self.db)
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .exec(&txn)
             .await?;
 
-        category.delete(&self.db).await?;
+        category.delete(&txn).await?;
+
+        self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
+            .await?;
+
+        txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
 
@@ -222,6 +256,7 @@ impl CategoryService {
             Vec::new()
         } else {
             blog_category_translation::Entity::find()
+                .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
                 .filter(blog_category_translation::Column::CategoryId.is_in(category_ids))
                 .all(&self.db)
                 .await?
@@ -271,6 +306,30 @@ impl CategoryService {
             return Err(BlogError::category_not_found(category_id));
         }
         Ok(())
+    }
+
+    async fn publish_blog_reindex_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+    ) -> BlogResult<()> {
+        let Some(event_bus) = self.event_bus.as_ref() else {
+            return Ok(());
+        };
+
+        event_bus
+            .publish_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                DomainEvent::ReindexRequested {
+                    target_type: "blog".to_string(),
+                    target_id: None,
+                },
+            )
+            .await
+            .map_err(BlogError::from)
     }
 }
 
@@ -341,7 +400,10 @@ fn resolve_category_translation<'a>(
         .copied()
         .find(|translation| translation.locale == PLATFORM_FALLBACK_LOCALE)
     {
-        return (Some(translation), PLATFORM_FALLBACK_LOCALE.to_string());
+        return (
+            Some(translation),
+            PLATFORM_FALLBACK_LOCALE.to_string(),
+        );
     }
     if let Some(translation) = translations.first().copied() {
         return (Some(translation), translation.locale.clone());
