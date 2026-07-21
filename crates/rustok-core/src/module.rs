@@ -184,18 +184,14 @@ pub trait RusToKModule: Send + Sync + MigrationSource {
     ) {
     }
 
-    /// Legacy infallible runtime-extension hook.
+    /// Registers module-owned typed runtime capabilities.
     ///
-    /// New module-owned registration that can reject duplicates or invalid
-    /// deployment configuration should override `try_register_runtime_extensions`
-    /// instead so the host can fail startup with a controlled error.
-    fn register_runtime_extensions(&self, _extensions: &mut ModuleRuntimeExtensions) {}
-
-    fn try_register_runtime_extensions(
+    /// Duplicate providers and invalid deployment configuration must be returned
+    /// as errors so the host can fail startup cleanly instead of panicking.
+    fn register_runtime_extensions(
         &self,
-        extensions: &mut ModuleRuntimeExtensions,
+        _extensions: &mut ModuleRuntimeExtensions,
     ) -> crate::Result<()> {
-        self.register_runtime_extensions(extensions);
         Ok(())
     }
 
