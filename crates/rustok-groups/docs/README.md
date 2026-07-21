@@ -69,8 +69,8 @@ operations inside one group. Owner services re-check both boundaries.
 
 ## FBA contract
 
-`GroupSummaryReadPort`, `GroupMembershipReadPort`, and `GroupAccessReadPort` use
-`PortContext`, `PortCallPolicy`, and `PortError`.
+`GroupSummaryReadPort`, `GroupMembershipReadPort`, `GroupAccessReadPort`, and
+`GroupCommandPort` use `PortContext`, `PortCallPolicy`, and `PortError`.
 
 Required context semantics:
 
