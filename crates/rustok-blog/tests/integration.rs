@@ -427,7 +427,9 @@ async fn test_category_crud() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
 
-    let category_service = CategoryService::new(db.clone());
+    let transport = MemoryTransport::new();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let category_service = CategoryService::new(db.clone(), event_bus);
 
     let tenant_id = Uuid::new_v4();
     let admin = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
@@ -565,7 +567,9 @@ async fn test_taxonomy_services_enforce_rbac() -> TestResult<()> {
     let db = setup_blog_test_db().await;
     ensure_blog_schema(&db).await;
 
-    let category_service = CategoryService::new(db.clone());
+    let transport = MemoryTransport::new();
+    let event_bus = TransactionalEventBus::new(Arc::new(transport));
+    let category_service = CategoryService::new(db.clone(), event_bus);
     let tag_service = TagService::new(db);
 
     let tenant_id = Uuid::new_v4();
