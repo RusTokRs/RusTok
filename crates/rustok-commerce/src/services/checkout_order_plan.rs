@@ -240,17 +240,28 @@ fn validate_payload(payload: &CheckoutOrderPlanPayload) -> CheckoutOrderPlanResu
                     line.order_line_index
                 ))
             })?;
+        let expected_subtotal = i64::from(order_line.quantity)
+            .checked_mul(line.snapshot.unit_amount)
+            .ok_or_else(|| {
+                CheckoutOrderPlanError::Validation(format!(
+                    "marketplace snapshot subtotal overflow for cart line {}",
+                    line.snapshot.cart_line_item_id
+                ))
+            })?;
         if order_line.product_id != Some(line.snapshot.master_product_id)
             || order_line.variant_id != Some(line.snapshot.master_variant_id)
-            || i64::from(order_line.quantity) * line.snapshot.unit_amount
-                != line.snapshot.subtotal_amount
+            || expected_subtotal != line.snapshot.subtotal_amount
         {
             return Err(CheckoutOrderPlanError::Validation(format!(
                 "marketplace snapshot for cart line {} does not match its immutable order line",
                 line.snapshot.cart_line_item_id
             )));
         }
-        if order_line.seller_id.as_deref() != Some(line.snapshot.seller_id.to_string().as_str()) {
+        let order_seller_id = order_line
+            .seller_id
+            .as_deref()
+            .and_then(|value| Uuid::parse_str(value.trim()).ok());
+        if order_seller_id != Some(line.snapshot.seller_id) {
             return Err(CheckoutOrderPlanError::Validation(format!(
                 "marketplace snapshot for cart line {} does not match seller identity",
                 line.snapshot.cart_line_item_id
