@@ -84,6 +84,9 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Tenant control-plane packet schemas and verification scripts.
 - [x] Deterministic landing rendering/publish primitives are available through
   Fly and Pages artifact services.
+- [x] Canonical preview runtime DTO validation is shared with deterministic static
+  materialization. The provider emits a runtime-bound artifact envelope with
+  context/scenario/snapshot hashes and Fly preview/static document parity evidence.
 - [ ] Authoritative sanitization is not fully integrated into every publish path.
 - [ ] Observed tenant Wave 0/Wave 1 evidence is incomplete.
 
@@ -98,6 +101,8 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Admin `PageBlock` and block GraphQL fields are removed.
 - [x] Pages storefront renders current Page Builder documents and static landing
   artifacts.
+- [ ] Pages artifact persistence does not yet store and verify the Page Builder
+  runtime materialization identity/snapshots.
 - [ ] Backend/storefront block persistence and fallback code still require full
   deletion.
 - [ ] Typed metadata-only patch and document-only save commands are not separated.
@@ -131,13 +136,15 @@ persistence. Rich text remains an external dedicated capability.
   consumer domain (Pages)
     -> metadata/document revisions
     -> validation/sanitization port
-    -> deterministic artifact build
+    -> canonical runtime materialization
+    -> deterministic artifact build + snapshot/hash evidence
     -> immutable artifact persistence
     -> atomic published pointer
 
   rustok-page-builder
     -> capability policy / health / rollout
     -> provider adapter seams
+    -> preview/static materialization identity
 ```
 
 Hosts are composition roots only. They supply route, locale, auth and tenant
@@ -216,6 +223,8 @@ Rules:
 
 - Arbitrary component scripts are disabled.
 - HTML, CSS, URLs and attributes require authoritative backend policy.
+- Runtime-bound public resource URLs are revalidated on the exact materialized
+  document before immutable artifact creation.
 - Storefront edit mode requires explicit authentication and authorization.
 - Dynamic widgets cannot bypass module RBAC.
 - Missing providers never cause silent deletion.
@@ -223,6 +232,8 @@ Rules:
 - Project/history/observer/overlay limits are configurable.
 - Anonymous storefront bundles exclude authoring assets.
 - Artifact identity and integrity are verified before publication/read.
+- Raw runtime context is not persisted in publication evidence; only canonical
+  scenario identity and cryptographic hashes are retained.
 - Save, publish, artifact and storefront read share correlation identifiers.
 
 ## Implementation phases
@@ -280,6 +291,9 @@ editor authority.
 
 - [x] Landing renderer and build identity.
 - [x] Immutable Pages landing artifact entities/services.
+- [x] Canonical runtime materialization envelope, snapshot evidence and
+  preview/static exact-document parity checks.
+- [ ] Persist and verify runtime materialization identity/snapshots in Pages.
 - [ ] Atomic idempotent publish transaction and outbox/cache invalidation.
 - [ ] Rollback to previous immutable artifacts.
 - [ ] Repair/rebuild and integrity-audit commands.
@@ -296,6 +310,7 @@ editor authority.
 
 - [x] Current published document/static artifact rendering foundations.
 - [ ] Render only selected immutable published artifacts.
+- [ ] Verify Page Builder runtime materialization evidence before storefront read.
 - [ ] Authenticated real-DOM editing and draft/published switching.
 - [ ] Prove anonymous bundles exclude authoring code.
 - [ ] Visual/accessibility parity across admin preview and published output.
@@ -320,10 +335,12 @@ editor authority.
 1. Delete backend/storefront `PageBlock`/`page_blocks`/`BlockService` production
    code and rewrite fresh-install migrations.
 2. Separate Pages metadata patch from Fly document save.
-3. Complete atomic artifact publication, rollback, correlation and repair.
-4. Complete Page Builder property/asset/degraded-state controls.
-5. Implement authenticated real-DOM storefront editing and bundle exclusion.
-6. Run accepted Rust/WASM/browser and observed tenant evidence.
+3. Persist and verify `PageBuilderMaterializedStaticLandingArtifact` evidence in
+   Pages staging/published artifact records without persisting raw runtime context.
+4. Complete atomic artifact publication, rollback, correlation and repair.
+5. Complete Page Builder property/asset/degraded-state controls.
+6. Implement authenticated real-DOM storefront editing and bundle exclusion.
+7. Run accepted Rust/WASM/browser and observed tenant evidence.
 
 ## Verification programme
 
@@ -342,6 +359,7 @@ cargo xtask module validate pages
 node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
+node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
 npm run verify:page-builder:fba:baseline
 npm run verify:page-builder:consumer:pages
 npm run verify:i18n:ui
@@ -352,8 +370,8 @@ cargo audit
 
 Required evidence covers current GrapesJS/Fly round trips, iframe rejection and
 cleanup, DnD/keyboard/accessibility, revision/hash conflicts, deterministic
-artifact integrity, publish/rollback correlation, anonymous bundle exclusion and
-provider degradation.
+artifact integrity, preview/static materialization parity, publish/rollback
+correlation, anonymous bundle exclusion and provider degradation.
 
 ## Update rules
 
