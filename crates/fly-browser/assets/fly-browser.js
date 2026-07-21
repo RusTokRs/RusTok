@@ -483,7 +483,7 @@ export class FlyBrowserAdapter {
     return ["key_stroke"].includes(type);
   }
 
-  async postIntent(input) {
+  async postIntent(input, requestOptions = {}) {
     if (!this.intentEndpoint) return null;
     const request = normalizedIntent(this, input);
     if (!request.intent) return null;
@@ -505,6 +505,7 @@ export class FlyBrowserAdapter {
         credentials: "same-origin",
         headers,
         body: JSON.stringify(request),
+        signal: requestOptions?.signal,
       });
       const result = response.headers.get("content-type")?.includes("application/json")
         ? await response.json()
