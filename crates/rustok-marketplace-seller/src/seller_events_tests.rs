@@ -127,6 +127,7 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         approved.onboarding_status,
         MarketplaceSellerOnboardingStatus::Approved
     );
+    assert_eq!(approved.onboarding_note.as_deref(), Some("verification passed"));
 
     let replay = service
         .review_onboarding_with_receipt(
@@ -140,8 +141,9 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         .await
         .unwrap();
     assert_eq!(replay.id, approved.id);
+    assert_eq!(replay.onboarding_note, approved.onboarding_note);
 
-    service
+    let suspended = service
         .suspend_seller_with_receipt(
             tenant_id,
             actor_id,
@@ -154,7 +156,8 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         )
         .await
         .unwrap();
-    service
+    assert_eq!(suspended.suspension_reason.as_deref(), Some("risk hold"));
+    let suspended_replay = service
         .suspend_seller_with_receipt(
             tenant_id,
             actor_id,
@@ -167,11 +170,13 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         )
         .await
         .unwrap();
+    assert_eq!(suspended_replay.suspension_reason, suspended.suspension_reason);
 
-    service
+    let reactivated = service
         .reactivate_seller_with_receipt(tenant_id, actor_id, "reactivate-seller", "en", seller_id)
         .await
         .unwrap();
+    assert!(reactivated.suspension_reason.is_none());
 
     let events = service.list_events(tenant_id, seller_id, 20).await.unwrap();
     assert_eq!(events.len(), 3, "replay must not append duplicate events");
@@ -192,6 +197,15 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         .find(|event| event.event_kind == MarketplaceSellerEventKind::OnboardingApproved)
         .unwrap();
     assert_eq!(review_event.note.as_deref(), Some("verification passed"));
+    let suspension_event = events
+        .iter()
+        .find(|event| event.event_kind == MarketplaceSellerEventKind::Suspended)
+        .unwrap();
+    assert_eq!(suspension_event.note.as_deref(), Some("risk hold"));
+
+    let projected = service.get_seller(tenant_id, seller_id, "en").await.unwrap();
+    assert_eq!(projected.onboarding_note.as_deref(), Some("verification passed"));
+    assert!(projected.suspension_reason.is_none());
 
     let receipts = seller_command_receipt::Entity::find()
         .filter(seller_command_receipt::Column::TenantId.eq(tenant_id))
@@ -290,8 +304,6 @@ async fn insert_seller_with_state(
         legal_name: Set(None),
         status: Set(status.to_string()),
         onboarding_status: Set(onboarding_status.to_string()),
-        onboarding_note: Set(None),
-        suspension_reason: Set(None),
         metadata: Set(serde_json::json!({})),
         created_at: Set(now),
         updated_at: Set(now),
