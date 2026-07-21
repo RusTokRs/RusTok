@@ -3,9 +3,10 @@
 ## Ownership
 
 `rustok-payment` owns provider webhook verification, durable inbox state,
-payment/refund lifecycle application, retry classification, bounded recovery,
-safe operator reads, and dead-letter replay. `rustok-commerce` orchestrates the
-ecommerce family but must not parse provider payloads or persist payment state.
+payment/refund lifecycle application, chargeback validation, retry classification,
+bounded recovery, safe operator reads, and dead-letter replay. `rustok-commerce`
+orchestrates the ecommerce family but must not parse provider payloads or persist
+payment state.
 
 Implementation tasks, completion marks, verification state, execution order, and
 promotion gates are tracked only in:
@@ -53,11 +54,13 @@ Reading requires `payments:read` or `payments:manage`. Recovery and replay requi
    external reference, and bounded normalized metadata. Raw body and signature are
    discarded.
 7. Claim a bounded processing lease.
-8. `PaymentDomainEventApplier` routes the normalized event to payment/refund owner
-   commands.
-9. Mark the inbox event `processed` only after the owner command succeeds.
+8. `PaymentDomainEventApplier` routes payment/refund lifecycle events and validates
+   completed chargeback facts against the authoritative payment collection.
+9. Mark the payment inbox event `processed` only after the owner command succeeds.
 10. Classify retryable failures as `failed`; permanent failures or exhausted retry
     budgets become `dead_letter`.
+11. The commerce marketplace worker consumes only processed normalized events with a
+    `marketplace_reversal` extension and writes its own durable reversal inbox.
 
 Writing verified identity and normalized facts with the first receipt removes the
 crash window between signature verification and durable replay data. Database
@@ -80,6 +83,7 @@ Supported event types:
 - `payment.captured`
 - `payment.cancelled`
 - `refund.completed`
+- `chargeback.completed`
 
 Payment metadata:
 
@@ -103,9 +107,60 @@ Refund metadata:
 }
 ```
 
-Authorized, captured, and completed-refund events require a provider external
-reference. Provider adapters must return immutable owner ids in normalized
-metadata; owner records are never discovered from an untrusted external reference.
+Chargeback metadata:
+
+```json
+{
+  "chargeback_id": "uuid",
+  "collection_id": "uuid",
+  "amount": "10.00",
+  "currency_code": "USD",
+  "metadata": {}
+}
+```
+
+Authorized, captured, completed-refund, and completed-chargeback events require a
+provider external reference. Provider adapters must return immutable owner ids in
+normalized metadata; owner records are never discovered from an untrusted external
+reference.
+
+## Marketplace reversal extension
+
+A completed refund or chargeback concerning marketplace lines carries a normalized
+`marketplace_reversal` object either directly in event metadata or under
+`metadata.marketplace_reversal`:
+
+```json
+{
+  "marketplace_reversal": {
+    "source_id": "refund-or-chargeback-uuid",
+    "order_id": "order-uuid",
+    "occurred_at": "2026-07-21T12:00:00Z",
+    "currency_code": "USD",
+    "currency_exponent": 2,
+    "lines": [
+      {
+        "assessment_id": "uuid",
+        "allocation_id": "uuid",
+        "order_line_item_id": "uuid",
+        "seller_id": "uuid",
+        "commission_amount": 100,
+        "seller_amount": 900,
+        "seller_balance_bucket": "pending"
+      }
+    ]
+  }
+}
+```
+
+The extension contains normalized domain facts only. Payment and marketplace code do
+not parse a provider SDK object or raw payload. Commerce converts the provider amount
+to minor units exactly, rejects implicit rounding, verifies the line total, reloads
+the authoritative refund/payment collection, and then invokes the marketplace root
+financial port.
+
+Ordinary non-marketplace refund and chargeback events omit this extension and are a
+no-op for marketplace recovery.
 
 ## Identity and deduplication
 
@@ -121,11 +176,19 @@ idempotency-key
 When a hint is present, it must equal the verified provider result or the request is
 rejected before inbox insertion.
 
-The inbox enforces:
+The payment inbox enforces:
 
 ```text
 (tenant_id, provider_id, delivery_id)
 (tenant_id, provider_id, idempotency_key)
+```
+
+The marketplace reversal inbox additionally enforces:
+
+```text
+(tenant_id, provider_event_id)
+(tenant_id, event_source, event_id)
+(tenant_id, reversal_kind, source_id)
 ```
 
 The same identity, payload digest, and normalized event returns the existing row.
@@ -134,14 +197,28 @@ replay does not repeat the owner command.
 
 ## Statuses and recovery
 
+Payment provider inbox:
+
 - `received`: verified facts stored, not claimed.
 - `processing`: owned by one non-expired lease.
 - `failed`: retryable failure without an active lease.
 - `processed`: owner mutation committed.
 - `dead_letter`: permanent failure or exhausted retry budget.
 
-Automatic recovery selects only `received`, `failed`, and expired `processing`
-rows. It never claims `dead_letter`.
+Marketplace reversal inbox:
+
+- `received`;
+- `processing`;
+- `retryable_error`;
+- `operator_review`;
+- `processed`.
+
+Automatic payment recovery selects only `received`, `failed`, and expired
+`processing` rows. It never claims `dead_letter`.
+
+The marketplace financial worker runs every 10 seconds with delayed missed ticks and
+bounded batches. It adapts processed provider events containing marketplace facts,
+recovers reversal inbox rows, and then runs the existing paid-event recovery sweep.
 
 Manual terminal replay is limited to:
 
@@ -151,25 +228,15 @@ dead_letter -> processing -> processed | dead_letter
 
 It requires durable normalized facts and `payments:manage`.
 
-The standard server background-worker lifecycle runs bounded recovery when the
-runtime profile enables workers. It uses the shared shutdown handle, prevents
-duplicate startup within one process, pages through tenants, and relies on CAS
-leases for cross-replica exclusion. The recovery endpoint invokes the same service
-for an immediate bounded operator sweep.
-
 ## Safe operator projection
 
-The operator API returns only:
+Payment operator APIs exclude idempotency keys, payload digest, normalized metadata,
+lease details, raw error messages, signatures, and raw payloads.
 
-- event id;
-- provider id and delivery id;
-- status and normalized event type;
-- external reference;
-- attempt count and stable error code;
-- received, updated, and processed timestamps.
-
-It excludes idempotency key, payload digest, normalized metadata, lease details,
-raw error message, signature, and raw payload.
+Marketplace reversal operator APIs expose only normalized identifiers, reversal kind,
+order/payment identity, currency/exponent, total amount, line count, status, stable
+error fields, timestamps, and resulting reversal/ledger transaction ids. They never
+return `lines_json` or provider metadata.
 
 ## Security rules
 
@@ -183,23 +250,34 @@ raw error message, signature, and raw payload.
 - Resolve tenant scope before provider lookup or inbox access.
 - Require `payments:manage` for recovery and replay.
 - Do not expose the manual provider as a production webhook adapter.
+- Keep marketplace reversal lines in minor units and require exact amount conversion.
+- Retry an operator-review reversal row only while no reversal or ledger transaction
+  evidence has been stored.
 
 ## Operator workflow
 
-For `received`, `failed`, or expired `processing`:
+For payment `received`, `failed`, or expired `processing`:
 
 1. Resolve the temporary owner/storage dependency.
 2. Allow the scheduled worker to recover the event, or call
    `POST /api/payment/provider-events/recovery/run?limit=N`.
 3. Review stable error codes only.
 
-For `dead_letter`:
+For payment `dead_letter`:
 
 1. Inspect the safe event projection.
 2. Verify the provider-owned delivery reference in the provider dashboard.
 3. Resolve identity, currency, amount, provider, or lifecycle conflicts.
 4. Call `POST /api/payment/provider-events/{event_id}/replay`.
 5. Never edit the inbox row manually.
+
+For marketplace reversal `operator_review`:
+
+1. Read the safe REST or GraphQL reversal projection.
+2. Reconcile refund/chargeback, order, currency, and line attribution.
+3. Retry only through the authenticated marketplace reversal operator mutation or REST
+   route.
+4. Never reset rows with stored reversal or ledger transaction evidence.
 
 Current completion and verification status is maintained only in the main commerce
 implementation plan.
