@@ -12,6 +12,9 @@ use crate::transport;
 pub(crate) fn BlogModerationPanel() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
+    let resource_locale = ui_locale.clone();
+    let action_locale = ui_locale.clone();
+    let panel_locale = ui_locale;
     let selected_post_query = use_route_query_value(AdminQueryKey::PostId.as_str());
     let token = use_token();
     let tenant = use_tenant();
@@ -23,7 +26,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
         let post_id = selected_post_query.get();
         let token = token.get();
         let tenant = tenant.get();
-        let locale = ui_locale.clone();
+        let locale = resource_locale.clone();
         let _ = refresh_nonce.get();
 
         async move {
@@ -31,7 +34,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
             else {
-                return Ok(None);
+                return Ok::<Option<BlogModerationCommentList>, transport::ApiError>(None);
             };
 
             transport::fetch_moderation_comments(token, tenant, post_id, locale)
@@ -44,7 +47,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
         move |(comment_id, status): (String, BlogModerationStatus)| {
             let token = token.get_untracked();
             let tenant = tenant.get_untracked();
-            let locale = ui_locale.clone();
+            let locale = action_locale.clone();
             set_action_error.set(None);
             set_busy_comment_id.set(Some(comment_id.clone()));
 
@@ -69,7 +72,6 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
         },
     );
 
-    let panel_locale = ui_locale.clone();
     view! {
         <section class="mx-auto mt-6 max-w-7xl rounded-3xl border border-border bg-card p-6 shadow-sm">
             <div class="flex flex-wrap items-start justify-between gap-3">
