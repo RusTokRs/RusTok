@@ -204,6 +204,26 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
         "Box::new(m20260721_000008_expand_search_query_locale_storage::Migration)",
       ],
     },
+    {
+      path: "crates/rustok-order/src/migrations/m20260721_000117_add_order_change_source_locale.rs",
+      requiredMarkers: [
+        "LEGACY_UNDETERMINED_LOCALE",
+        "ColumnDef::new(OrderChanges::SourceLocale)",
+        ".string_len(32)",
+        ".not_null()",
+        ".default(LEGACY_UNDETERMINED_LOCALE)",
+        "ck_order_changes_source_locale_shape",
+        "order_changes_source_locale_insert",
+        "Forward-only",
+      ],
+    },
+    {
+      path: "crates/rustok-order/src/migrations/mod.rs",
+      requiredMarkers: [
+        "mod m20260721_000117_add_order_change_source_locale;",
+        "Box::new(m20260721_000117_add_order_change_source_locale::Migration)",
+      ],
+    },
   ];
   for (const file of directGuardedFiles) {
     if (requireFile(root, file.path, failures)) {
