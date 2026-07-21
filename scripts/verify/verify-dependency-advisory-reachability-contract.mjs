@@ -27,6 +27,7 @@ const repoRoot = path.resolve(options.root || path.resolve(scriptDir, "../.."));
 const workflowPath = ".github/workflows/dependency-advisory-reachability.yml";
 const hardeningPath = ".github/workflows/hardening-gates.yml";
 const verifierPath = "scripts/verify/verify-dependency-advisory-reachability-contract.mjs";
+const verifierCommand = `node ${verifierPath}`;
 const failures = [];
 
 function readRegularFile(relativePath) {
@@ -81,6 +82,7 @@ requireMarkers(workflow, workflowPath, [
   "rustup toolchain install 1.96.0 --profile minimal --no-self-update",
   "node scripts/verify/verify-dependency-feature-hygiene.mjs",
   "node scripts/verify/verify-advisory-exceptions.mjs",
+  verifierCommand,
   'grep -q \'^name = "rsa"$\' Cargo.lock',
   'grep -q \'^name = "atomic-polyfill"$\' Cargo.lock',
   "check_empty_tree()",
@@ -95,6 +97,7 @@ requireMarkers(workflow, workflowPath, [
 ]);
 
 requireOccurrenceCount(workflow, workflowPath, `- ${verifierPath}`, 2);
+requireOccurrenceCount(workflow, workflowPath, verifierCommand, 1);
 
 forbidMarkers(workflow, workflowPath, [
   "pull_request_target:",
@@ -115,11 +118,12 @@ forbidMarkers(workflow, workflowPath, [
 
 requireMarkers(hardening, hardeningPath, [
   "Verify dependency advisory reachability structure",
-  "node scripts/verify/verify-dependency-advisory-reachability-contract.mjs",
+  verifierCommand,
 ]);
+requireOccurrenceCount(hardening, hardeningPath, verifierCommand, 1);
 
 forbidMarkers(hardening, hardeningPath, [
-  "node scripts/verify/verify-dependency-advisory-reachability-contract.mjs --root /tmp",
+  `${verifierCommand} --root /tmp`,
 ]);
 
 if (failures.length > 0) {
@@ -129,5 +133,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `✔ dependency advisory reachability remains read-only, pinned, lock-aware and target-bounded in ${repoRoot}`,
+  `✔ dependency advisory reachability remains read-only, pinned, self-verifying, lock-aware and target-bounded in ${repoRoot}`,
 );
