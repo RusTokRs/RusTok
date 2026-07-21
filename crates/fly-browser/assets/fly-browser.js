@@ -19,6 +19,12 @@ const INTENT_ABORT_KIND = Object.freeze({
   TIMEOUT: "timeout",
   ADAPTER_STOP: "adapter_stop",
 });
+const ADAPTER_LIFECYCLE = Object.freeze({
+  CREATED: "created",
+  STARTED: "started",
+  STOPPED: "stopped",
+});
+const ADAPTER_STOPPED_CODE = "ADAPTER_STOPPED";
 const RESOURCE_STATUS_SELECTOR = '[data-fly-browser-status="resource-limit"]';
 const PROBLEM_STATUS_SELECTOR = '[data-fly-browser-status="problem"]';
 const VISUALLY_HIDDEN_STYLE =
@@ -33,7 +39,6 @@ const VISUALLY_HIDDEN_STYLE =
  * }} IntentAbortMetadata
  * @typedef {{
  *   signal?: AbortSignal,
- *   abort?: IntentAbortMetadata,
  * }} IntentTransportOptions
  */
 
@@ -49,7 +54,6 @@ function normalizedTransportOptions(value) {
   const transport = isObject(value) ? value : {};
   return {
     signal: isAbortSignal(transport.signal) ? transport.signal : undefined,
-    abort: isObject(transport.abort) ? transport.abort : {},
   };
 }
 
@@ -57,26 +61,26 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function abortError(transport, error) {
-  const configured = nonEmptyString(transport.abort.error);
+function abortError(abort, signal, error) {
+  const configured = nonEmptyString(abort.error);
   if (configured) return configured;
-  if (transport.signal?.reason !== undefined)
-    return String(transport.signal.reason);
+  if (signal?.reason !== undefined) return String(signal.reason);
   return String(error);
 }
 
 function intentAbortDetail(
   adapter,
-  transport,
+  abort,
+  signal,
   request,
   requestGeneration,
   current,
   error,
 ) {
   return {
-    code: nonEmptyString(transport.abort.code) || INTENT_REQUEST_ABORTED_CODE,
-    kind: nonEmptyString(transport.abort.kind) || "external",
-    error: abortError(transport, error),
+    code: nonEmptyString(abort.code) || INTENT_REQUEST_ABORTED_CODE,
+    kind: nonEmptyString(abort.kind) || "external",
+    error: abortError(abort, signal, error),
     intent: request.intent || null,
     request,
     requestGeneration,
@@ -84,6 +88,13 @@ function intentAbortDetail(
     instanceId: adapter.instanceId,
     pageId: adapter.pageId,
   };
+}
+
+function lifecycleError(code, message) {
+  const error = new Error(message);
+  error.name = "FlyBrowserLifecycleError";
+  error.code = code;
+  return error;
 }
 
 function boundedPositiveInteger(value, fallback) {
@@ -462,6 +473,7 @@ export class FlyBrowserAdapter {
     this.activeDrag = null;
     this.activeDrop = null;
     this.zoom = 1;
+    this.lifecycleState = ADAPTER_LIFECYCLE.CREATED;
     this.abortController = new AbortController();
     this.frameHost = this.iframe.parentElement || root;
     this.overlays = this.drawOverlays
@@ -474,6 +486,14 @@ export class FlyBrowserAdapter {
   }
 
   start() {
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STARTED) return this;
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) {
+      throw lifecycleError(
+        ADAPTER_STOPPED_CODE,
+        "Fly browser adapter cannot start after it has stopped.",
+      );
+    }
+    this.lifecycleState = ADAPTER_LIFECYCLE.STARTED;
     const { signal } = this.abortController;
     window.addEventListener("message", (event) => this.onMessage(event), {
       signal,
@@ -572,6 +592,8 @@ export class FlyBrowserAdapter {
   }
 
   stop() {
+    if (this.lifecycleState === ADAPTER_LIFECYCLE.STOPPED) return this;
+    this.lifecycleState = ADAPTER_LIFECYCLE.STOPPED;
     this.latestIntentRequestGeneration = ++this.intentRequestGeneration;
     for (const record of this.pendingIntentRequests.values()) {
       if (record.timeoutId !== null) {
@@ -601,6 +623,7 @@ export class FlyBrowserAdapter {
     this.drawSelection();
     for (const overlay of Object.values(this.overlays || {})) overlay.remove();
     if (this.root[ADAPTER_KEY] === this) delete this.root[ADAPTER_KEY];
+    return this;
   }
 
   onMessage(event) {
@@ -1142,7 +1165,8 @@ export class FlyBrowserAdapter {
             bubbles: true,
             detail: intentAbortDetail(
               this,
-              { signal: controller.signal, abort },
+              abort,
+              controller.signal,
               request,
               requestGeneration,
               current,
