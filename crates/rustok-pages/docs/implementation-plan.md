@@ -57,10 +57,14 @@ capability contracts, not Pages persistence or tenant policy.
 - [x] Admin publication calls the reviewed GraphQL command, gathers every current
   localized body revision, creates a deterministic retry key and consumes the
   durable publish receipt.
-- [x] A single promoted runtime scenario can be published automatically; missing
-  or ambiguous scenario sets fail closed.
-- [ ] The workspace still needs an explicit scenario selector for promoted
-  baselines containing more than one runtime scenario.
+- [x] `PublishScenarioSelectorPanel` renders the promoted baseline scenarios next
+  to the regression panel and reacts to capture/import/clear through one live
+  baseline signal.
+- [x] Selection is scoped by `page_id + baseline_hash` and browser session storage
+  contains only the selected scenario id. A one-scenario baseline is automatic;
+  multiple scenarios require an explicit exact selection.
+- [x] Missing baseline, empty scenarios, missing selection, stale selection and
+  foreign scenario ids fail closed before the reviewed command is built.
 - [ ] Metadata editing still needs a typed metadata-only property contribution.
 
 ### Storefront FFA
@@ -103,6 +107,8 @@ capability contracts, not Pages persistence or tenant policy.
   the atomic publish wrapper.
 - [x] Admin GraphQL transport sends reviewed runtime, exact localized body
   revisions and deterministic idempotency evidence and returns a receipt.
+- [x] The admin transport resolves only the explicitly selected scenario from the
+  exact current promoted baseline; baseline changes invalidate the selection key.
 - [x] Create-and-publish is rejected in the domain, so no public transport can
   revive default-runtime builder publication.
 - [ ] Dedicated cache-consumer invalidation evidence remains open even though the
@@ -111,13 +117,14 @@ capability contracts, not Pages persistence or tenant policy.
 
 ## FFA/FBA status
 
-- **FFA:** `in_progress` — reviewed publish transport is connected for the
-  single-scenario path; explicit multi-scenario selection, typed metadata
-  properties and inline edit mode remain open.
+- **FFA:** `in_progress` — reviewed publication and explicit promoted-scenario
+  selection are connected; typed metadata properties and inline edit mode remain
+  open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
-  materialization evidence, idempotent atomic service and GraphQL/HTTP/admin
-  transport cutover are integrated at source level; rollback, cache-consumer
-  proof, executed verification and observed rollout evidence remain open.
+  materialization evidence, idempotent atomic service, GraphQL/HTTP/admin transport
+  cutover and scenario selection are integrated at source level; rollback,
+  cache-consumer proof, executed verification and observed rollout evidence remain
+  open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -126,7 +133,8 @@ capability contracts, not Pages persistence or tenant policy.
   menus, revisions, publish transaction, receipts, artifact selection, redirects,
   deletion and audit.
 - **Pages admin FFA:** list/create/select workspace, metadata property
-  contributions, Pages persistence facade and permissions.
+  contributions, Pages persistence facade, promoted-scenario selection and
+  permissions.
 - **Pages storefront FFA:** published reads, routing, renderer composition, cache
   integration and optional authenticated edit mode.
 - **Page Builder admin:** editor behaviour and canonical capability envelope.
@@ -143,7 +151,10 @@ GraphQL / HTTP / admin reviewed command
   + page metadata version
   + exact localized body revisions
   + idempotency key
-  + reviewed runtime scenario/context hash
+  + promoted baseline hash
+  + explicit promoted scenario id
+  + transient scenario context
+  + reviewed runtime hash
   -> page/body locks
   -> feature and promoted-scenario gates
   -> authoritative sanitization
@@ -168,17 +179,19 @@ Invariants:
    snapshot hash; raw context is never stored.
 7. Reviewed runtime is valid only when SHA-256 binds format, explicit scenario and
    transient context, and promoted baseline evidence matches that scenario/context.
-8. Authoritative sanitization happens before runtime materialization and is bound
+8. The admin selection is ephemeral, stores only a scenario id and is invalidated
+   by a different page id or baseline hash.
+9. Authoritative sanitization happens before runtime materialization and is bound
    into the operation through `sanitized_set_hash`.
-9. A committed idempotency key is immutable: exact replay returns its receipt;
-   different input fails closed.
-10. Page state, artifact bindings, outbox events and publish receipt commit or roll
+10. A committed idempotency key is immutable: exact replay returns its receipt;
+    different input fails closed.
+11. Page state, artifact bindings, outbox events and publish receipt commit or roll
     back together.
-11. Create never publishes; every publication crosses the reviewed command.
-12. Missing providers fail visibly and never cause silent deletion.
-13. Dynamic widgets persist versioned configuration, not privileged snapshots.
-14. Anonymous storefront bundles contain no editor code.
-15. No block or shadow-editor fallback exists.
+12. Create never publishes; every publication crosses the reviewed command.
+13. Missing providers fail visibly and never cause silent deletion.
+14. Dynamic widgets persist versioned configuration, not privileged snapshots.
+15. Anonymous storefront bundles contain no editor code.
+16. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -204,10 +217,13 @@ Invariants:
   idempotency collision and receipt integrity.
 - Cut GraphQL, HTTP and admin publication over to the reviewed command and receipt.
 - Removed create-time default-runtime compilation/publication from the domain.
-- Added a dedicated transport source guard and integrated it into the Page Builder
-  FBA baseline. The guard has not yet been executed in this slice.
-- Expanded the machine-readable contract. Raw runtime context remains forbidden in
-  both artifacts and publish receipts.
+- Added explicit ephemeral promoted-scenario selection, live baseline wiring and
+  transport validation against the exact current baseline.
+- Unified publish and unpublish UI transport outcomes through
+  `PagePublicationResult`.
+- Expanded the transport source guard and machine-readable contract. The guard has
+  not yet been executed in this slice, and raw runtime context remains forbidden in
+  selection storage, artifacts and publish receipts.
 
 ## Next implementation order
 
@@ -231,7 +247,9 @@ Invariants:
 - [x] Cut GraphQL, HTTP and admin transports over to `PublishPageInput`; remove
   public builder publication through the default runtime and disable
   create-and-publish.
-- [ ] Add explicit admin scenario selection for multi-scenario baselines.
+- [x] Add explicit admin scenario selection for multi-scenario baselines.
+- [ ] Remove or split the now-publicly-unreachable builder publication branch in
+  `PageService::publish_if_current`.
 - [ ] Add rollback to a previous immutable artifact.
 - [ ] Correlate receipt, editor save, page/body revisions, runtime review,
   materialization, artifact and storefront read in operational telemetry.
