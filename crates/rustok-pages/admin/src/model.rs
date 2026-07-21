@@ -114,6 +114,12 @@ pub struct PublishPageReceipt {
     pub published_at: String,
 }
 
+#[derive(Clone, Debug)]
+pub enum PagePublicationResult {
+    Published(PublishPageReceipt),
+    Unpublished(PageMutationResult),
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct PageBuilderScenarioReleaseStatus {
     #[serde(rename = "pageId")]
