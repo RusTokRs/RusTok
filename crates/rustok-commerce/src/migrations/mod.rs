@@ -29,6 +29,7 @@ mod m20260721_000003_create_marketplace_paid_event_inbox;
 mod m20260721_000004_create_marketplace_reversal_event_inbox;
 mod m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity;
 mod m20260721_000006_create_marketplace_reversal_adaptation_failures;
+mod m20260721_000007_align_language_agnostic_locale_contract;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -68,6 +69,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
             m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity::Migration,
         ),
         Box::new(m20260721_000006_create_marketplace_reversal_adaptation_failures::Migration),
+        Box::new(m20260721_000007_align_language_agnostic_locale_contract::Migration),
     ]
 }
 
@@ -219,6 +221,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
             vec![
                 "m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity",
                 "m20260714_000117_lock_provider_event_normalized_facts",
+            ],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260721_000007_align_language_agnostic_locale_contract",
+            vec![
+                "m20250130_000017_create_commerce_collections",
+                "m20250130_000018_create_commerce_categories",
             ],
         ),
     ]
