@@ -123,7 +123,7 @@
         "raw_context_persisted": false
       },
       "atomic_publish": {
-        "state": "service_integrated",
+        "state": "service_and_public_transport_integrated",
         "input": "PublishPageInput",
         "result": "PublishPageResult",
         "service": "PageService::publish_reviewed",
@@ -144,8 +144,10 @@
           "NodePublished"
         ],
         "replay": "stored_receipt_without_rebuild_or_duplicate_events",
-        "public_transport": "pending_cutover",
-        "legacy_default_publish": "pending_removal",
+        "public_transport": "graphql_http_admin_reviewed_cutover",
+        "scenario_selection": "explicit_ephemeral_promoted_scenario_scoped_by_page_and_baseline_hash",
+        "legacy_default_publish": "removed_non_builder_lifecycle_split",
+        "non_builder_publish": "publish_non_builder_if_current_rejects_grapesjs_with_PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED",
         "raw_context_persisted": false
       },
       "error_catalog": {
@@ -160,7 +162,8 @@
         "sanitize_failed": "PAGE_BUILDER_PUBLISH_SANITIZE_FAILED",
         "materialization_mismatch": "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH",
         "idempotency_conflict": "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT",
-        "receipt_integrity": "PAGE_PUBLISH_OPERATION_INTEGRITY"
+        "receipt_integrity": "PAGE_PUBLISH_OPERATION_INTEGRITY",
+        "reviewed_publish_required": "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED"
       },
       "degraded_mode_errors": {
         "builder_disabled": "FEATURE_DISABLED",
@@ -196,6 +199,7 @@
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-page-builder-fba-baseline.mjs",
     "reviewed_publish_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
+    "publish_transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
     "runtime_order_smoke": "crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   }
