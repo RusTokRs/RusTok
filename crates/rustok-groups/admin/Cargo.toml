@@ -30,5 +30,4 @@ rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
 rustok-ui-transport.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 uuid.workspace = true
