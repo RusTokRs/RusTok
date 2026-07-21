@@ -48,6 +48,42 @@
       "AuthorizedPageBuilderHandlers::with_authorizer"
     ]
   },
+  "production_consumers": {
+    "pages": {
+      "source": "crates/rustok-pages/admin/src/builder.rs",
+      "manifest": "crates/rustok-pages/admin/Cargo.toml",
+      "server_entrypoint": "execute_publish",
+      "client_entrypoint_marker": "#[cfg(not(feature = \"ssr\"))]\nasync fn execute_publish",
+      "server_feature_marker": "\"rustok-page-builder/server\"",
+      "tenant_ports": [
+        "PagesPageBuilderProjectStore",
+        "PagesPageBuilderRenderer"
+      ],
+      "required_server_order": [
+        "leptos_auth::api::fetch_current_user",
+        "PageBuilderRequestAuth::new",
+        "PortContext::new",
+        ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
+        ".with_idempotency_key",
+        "PagesPageBuilderProjectStore {",
+        "compose_fly_page_builder_handlers",
+        ".handle("
+      ],
+      "dispatch_marker": ".handle(",
+      "forbidden_before_dispatch": [
+        "transport::fetch_page(",
+        "transport::save_page_document(",
+        "ensure_page_is_editable("
+      ],
+      "tenant_context_guards": [
+        "fn ensure_context(&self, context: &PortContext)",
+        "context.tenant_id.as_str()",
+        "context.actor.id.as_str()",
+        "self.ensure_context(context)?"
+      ],
+      "persisted_result_marker": "Arc<Mutex<Option<PublishPageBuilderResult>>>"
+    }
+  },
   "transport_entrypoints": [
     "handle_page_builder_graphql_endpoint",
     "handle_page_builder_leptos_server_function_endpoint"
