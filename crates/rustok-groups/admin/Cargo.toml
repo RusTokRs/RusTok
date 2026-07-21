@@ -1,0 +1,34 @@
+[package]
+name = "rustok-groups-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos admin FFA package for social group administration"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate", "leptos-auth/hydrate"]
+ssr = [
+  "leptos/ssr",
+  "leptos-auth/ssr",
+  "rustok-api/server",
+  "dep:leptos_axum",
+  "dep:rustok-groups",
+]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+leptos-auth = { workspace = true, default-features = false }
+rustok-api = { workspace = true, default-features = false }
+rustok-graphql.workspace = true
+rustok-groups = { workspace = true, optional = true }
+rustok-ui-core.workspace = true
+rustok-ui-i18n-leptos.workspace = true
+rustok-ui-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
