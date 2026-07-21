@@ -11,6 +11,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(MarketplaceSellers::Table)
                     .drop_column(MarketplaceSellers::OnboardingNote)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(MarketplaceSellers::Table)
                     .drop_column(MarketplaceSellers::SuspensionReason)
                     .to_owned(),
             )
@@ -23,6 +30,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(MarketplaceSellers::Table)
                     .add_column(ColumnDef::new(MarketplaceSellers::OnboardingNote).text().null())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(MarketplaceSellers::Table)
                     .add_column(ColumnDef::new(MarketplaceSellers::SuspensionReason).text().null())
                     .to_owned(),
             )
