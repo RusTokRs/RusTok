@@ -8,8 +8,22 @@
     "properties",
     "publish"
   ],
+  "dto_contracts": {
+    "preview_runtime": {
+      "source": "dto",
+      "markers": [
+        "pub struct PageBuilderPreviewRuntime",
+        "pub context: serde_json::Value",
+        "pub scenario_id: Option<String>",
+        "pub runtime: PageBuilderPreviewRuntime",
+        "pub fn with_runtime",
+        "pub runtime_scenario_id: Option<String>"
+      ]
+    }
+  },
   "ports": {
     "persistence": {
+      "source": "service",
       "trait": "PageBuilderProjectStore",
       "methods": [
         "load_project",
@@ -27,13 +41,22 @@
       ]
     },
     "preview_rendering": {
-      "trait": "PageBuilderRenderingAdapter",
+      "source": "preview_port",
+      "trait": "PageBuilderPreviewRenderingPort",
       "methods": [
         "render_preview"
       ],
-      "invocation_order": "after Fly decode and validation"
+      "input": "PreviewPageBuilderInput",
+      "invocation_order": "after Fly decode, structural validation and runtime-contract validation",
+      "runtime_order": [
+        "self.inspect(&input.project_data)?",
+        "validate_preview_runtime(&input.runtime)?",
+        "render_preview(context, &input)",
+        "runtime_scenario_id: input.runtime.scenario_id"
+      ]
     },
     "runtime_telemetry": {
+      "source": "telemetry",
       "trait": "PageBuilderRuntimeTelemetry",
       "evidence": "PageBuilderRuntimeCallEvidence",
       "statuses": [
@@ -51,6 +74,7 @@
     "module": "composition",
     "default_entrypoint": "compose_fly_page_builder_handlers",
     "configured_entrypoint": "compose_configured_fly_page_builder_handlers",
+    "preview_port": "PageBuilderPreviewRenderingPort",
     "invocation_order": [
       "FlyAdapterBackedPageBuilderService::new",
       "CapabilityGuardedService::with_policies",
@@ -99,6 +123,8 @@
       "capability_wrapper_markers": [
         "async fn execute_preview(",
         "PageBuilderCapabilityRequest::Preview(input)",
+        "requested_runtime_scenario_id",
+        "result.runtime_scenario_id == requested_runtime_scenario_id",
         "async fn execute_publish(",
         "PageBuilderCapabilityRequest::Publish(input)"
       ],
@@ -109,6 +135,13 @@
         "PagesPageBuilderRenderer"
       ],
       "preview_renderer_context_guard": "ensure_port_context(context, &self.tenant_slug, &self.actor_id, \"renderer\")?",
+      "preview_runtime_markers": [
+        "impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer",
+        "input: &PreviewPageBuilderInput",
+        "if input.page_id != self.page_id",
+        ".render_runtime_document_html(",
+        "input.runtime.context.clone()"
+      ],
       "tenant_context_guards": [
         "fn ensure_context(&self, context: &PortContext)",
         "context.tenant_id.as_str()",
@@ -123,20 +156,25 @@
         "Pages save state lock was poisoned",
         "pages_page_builder_preview(",
         "#[cfg(feature = \"ssr\")]\nasync fn execute_preview",
-        "#[cfg(feature = \"ssr\")]\nasync fn execute_publish"
+        "#[cfg(feature = \"ssr\")]\nasync fn execute_publish",
+        "impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer"
       ],
       "admin_preview": {
         "runtime_source": "crates/rustok-page-builder/admin/src/editor/runtime.rs",
         "surface_source": "crates/rustok-page-builder/admin/src/editor/server_preview.rs",
         "host_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
         "runtime_markers": [
-          "PreviewPageBuilderInput::new",
+          "PageBuilderPreviewRuntime::new",
+          "let runtime_context = if self.runtime_context_configured",
+          "let runtime_scenario_id = self.active_runtime_scenario",
           "let active_page_index = controller.active_page_index()",
           "document.project.pages = document",
-          "set(Some((project_hash, active_page_index)))",
+          "runtime_context.clone()",
+          "runtime_scenario_id.clone()",
           "PageBuilderCapabilityResponse::Preview(response)",
-          "expected != (current.1, current.2)",
-          "project changed while the server preview was rendering",
+          "response.runtime_scenario_id != current_runtime_scenario",
+          "current_runtime_context",
+          "project or runtime context changed while the server preview was rendering",
           "server_preview_html.set(Some(response.html))",
           "preview_in_progress.set(true)",
           "UiIntent::ActivatePage { .. }"
@@ -160,6 +198,7 @@
     "ReferencePageBuilderService",
     "AdapterBackedPageBuilderService",
     "FlyValidatedPageBuilderService",
+    "PageBuilderRenderingAdapter",
     "render_preview_html",
     "extract_tree_nodes"
   ]
