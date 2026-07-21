@@ -1,19 +1,30 @@
+mod marketplace_financial;
 mod mutations;
 mod query;
 mod types;
 
-use async_graphql::{Context, ErrorExtensions, FieldError, Result};
+use async_graphql::{Context, ErrorExtensions, FieldError, MergedObject, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, RequestContext, TenantContext, graphql::GraphQLError, has_any_effective_permission,
+    AuthContext, RequestContext, TenantContext, graphql::GraphQLError,
+    has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
 
 use crate::storefront_channel::is_module_enabled_for_request_channel;
 
+pub use marketplace_financial::{
+    MarketplaceFinancialOperationGql, MarketplaceFinancialSweepFailureGql,
+    MarketplaceFinancialSweepGql, MarketplacePaidEventGql,
+};
 pub use mutations::CommerceMutation;
-pub use query::CommerceQuery;
 pub use types::*;
+
+#[derive(MergedObject, Default)]
+pub struct CommerceQuery(
+    query::CommerceQuery,
+    marketplace_financial::MarketplaceFinancialQuery,
+);
 
 pub(crate) const MODULE_SLUG: &str = "commerce";
 pub(crate) const PRODUCT_MODULE_SLUG: &str = "product";
