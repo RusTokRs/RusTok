@@ -1,3 +1,5 @@
+#[cfg(feature = "mod-blog")]
+pub mod blog_rate_limit;
 pub mod dashboard_security;
 pub mod forum_principal_security;
 pub mod legacy_disable_user;
