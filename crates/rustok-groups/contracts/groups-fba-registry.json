@@ -82,6 +82,19 @@
         "serialized_invitation_row": "exclusive_lock_where_supported"
       },
       {
+        "name": "GroupTargetedInvitationCommandPort",
+        "operations": ["accept_targeted_group_invitation"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "authorization": "authenticated_exact_target_only",
+        "targeted_only": true,
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "serialized_invitation_row": "exclusive_lock_where_supported"
+      },
+      {
         "name": "GroupGovernanceCommandPort",
         "operations": ["change_group_role", "transfer_group_ownership"],
         "policy": "write",
@@ -128,9 +141,22 @@
     "synchronous_notification_delivery": false,
     "storefront_acceptance_ui": "implemented",
     "storefront_token_query_key": "invite",
+    "storefront_targeted_query_key": "invitation",
     "storefront_token_query_clear": "on_submit",
+    "storefront_targeted_query_clear": "on_submit",
     "storefront_plaintext_result_rendering": "never",
-    "storefront_transport_fallback": "never"
+    "storefront_transport_fallback": "never",
+    "targeted_acceptance": "authenticated_invitation_id",
+    "targeted_acceptance_wrong_recipient": "not_found",
+    "targeted_domain_event_table": "group_domain_events",
+    "targeted_domain_event_type": "groups.invitation.targeted_created",
+    "targeted_domain_event_atomicity": "same_owner_transaction_via_trigger",
+    "targeted_domain_event_token_fields": "forbidden",
+    "targeted_notification_source": "groups",
+    "targeted_notification_audience_max": 1,
+    "targeted_notification_open_authorization": "active_exact_recipient_only",
+    "shareable_notification_event": false,
+    "notifications_consumer_required_for_create": false
   },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
@@ -173,6 +199,21 @@
       "implicit_fallback": false
     },
     {
+      "name": "embedded_targeted_invitations_native",
+      "provider": "GroupTargetedInvitationService",
+      "status": "implemented",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "storefront_core",
+        "storefront_graphql_adapter",
+        "storefront_leptos_ui",
+        "notification_source_provider"
+      ],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
       "status": "implemented",
@@ -190,6 +231,7 @@
     "localization_static_boundary": "scripts/verify/verify-groups-localization-boundary.mjs",
     "invitation_static_boundary": "scripts/verify/verify-groups-invitations-boundary.mjs",
     "invitation_acceptance_ui_static_boundary": "scripts/verify/verify-groups-invitation-acceptance-ui.mjs",
+    "targeted_invitation_delivery_static_boundary": "scripts/verify/verify-groups-targeted-invitation-delivery.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
@@ -198,6 +240,7 @@
     "invitation_transport_parity": null,
     "invitation_concurrency": null,
     "invitation_delivery": null,
+    "targeted_invitation_notification_runtime": null,
     "governance_transport_parity": null,
     "governance_concurrency": null
   }
