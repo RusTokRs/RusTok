@@ -13,7 +13,6 @@ use crate::dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfile
 use crate::entities::{self, ProfileRecord};
 use crate::error::{ProfileError, ProfileResult};
 
-const DEFAULT_PROFILE_LOCALE: &str = "en";
 const PROFILE_SCOPE_VALUE: &str = "profiles";
 const MIN_HANDLE_LENGTH: usize = 3;
 const MAX_HANDLE_LENGTH: usize = 32;
@@ -114,7 +113,9 @@ impl ProfileService {
         let translation_locale = preferred_locale
             .clone()
             .or(normalized_tenant_default_locale.clone())
-            .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string());
+            .ok_or_else(|| {
+                ProfileError::InvalidLocale("effective profile locale is required".to_string())
+            })?;
 
         self.ensure_handle_available(tenant_id, &handle, Some(user_id))
             .await?;
@@ -236,33 +237,26 @@ impl ProfileService {
         preferred_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> ProfileResult<ProfileRecord> {
-        let current_profile = self
-            .get_profile(tenant_id, user_id, None, tenant_default_locale)
-            .await?;
         let preferred_locale = Self::normalize_locale(preferred_locale)?;
-        let profile = self.get_existing_profile_model(tenant_id, user_id).await?;
-        let translation_locale = preferred_locale
+        let requested_locale = preferred_locale
             .clone()
             .or(Self::normalize_locale(tenant_default_locale)?)
-            .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string());
+            .ok_or_else(|| {
+                ProfileError::InvalidLocale("effective profile locale is required".to_string())
+            })?;
+        let profile = self.get_existing_profile_model(tenant_id, user_id).await?;
 
-        let mut active: entities::profile::ActiveModel = profile.clone().into();
+        let mut active: entities::profile::ActiveModel = profile.into();
         active.preferred_locale = Set(preferred_locale);
         active.updated_at = Set(Utc::now().into());
         active.update(&self.db).await?;
 
-        self.upsert_translation(
-            user_id,
-            &translation_locale,
-            &current_profile.display_name,
-            current_profile.bio.as_deref(),
-        )
-        .await?;
-
+        // Locale preference changes selection policy only. They must never copy
+        // localized display copy into a different locale and fabricate a translation.
         self.get_profile(
             tenant_id,
             user_id,
-            Some(translation_locale.as_str()),
+            Some(requested_locale.as_str()),
             tenant_default_locale,
         )
         .await
@@ -599,8 +593,9 @@ impl ProfileService {
     where
         C: ConnectionTrait,
     {
-        let normalized_locale = Self::normalize_locale(Some(locale))?
-            .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string());
+        let normalized_locale = Self::normalize_locale(Some(locale))?.ok_or_else(|| {
+            ProfileError::InvalidLocale("effective profile locale is required".to_string())
+        })?;
         let now = Utc::now();
         let existing = entities::profile_translation::Entity::find()
             .filter(entities::profile_translation::Column::ProfileUserId.eq(user_id))
@@ -744,7 +739,9 @@ impl ProfileService {
             .transpose()?
             .flatten()
             .or(Self::normalize_locale(tenant_default_locale)?)
-            .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string());
+            .ok_or_else(|| {
+                ProfileError::InvalidLocale("effective profile locale is required".to_string())
+            })?;
         let fallback_locale = Self::normalize_locale(tenant_default_locale)?;
 
         let mut term_ids = Vec::new();
@@ -1008,11 +1005,11 @@ fn resolve_profile_translation_locale(
     profile: &entities::profile::Model,
     tenant_default_locale: Option<&str>,
 ) -> ProfileResult<String> {
-    Ok(
-        ProfileService::normalize_locale(profile.preferred_locale.as_deref())?
-            .or(ProfileService::normalize_locale(tenant_default_locale)?)
-            .unwrap_or_else(|| DEFAULT_PROFILE_LOCALE.to_string()),
-    )
+    ProfileService::normalize_locale(profile.preferred_locale.as_deref())?
+        .or(ProfileService::normalize_locale(tenant_default_locale)?)
+        .ok_or_else(|| {
+            ProfileError::InvalidLocale("effective profile locale is required".to_string())
+        })
 }
 
 fn collect_batch_locales(
