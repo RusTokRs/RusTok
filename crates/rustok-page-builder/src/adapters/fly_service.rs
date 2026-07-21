@@ -252,10 +252,7 @@ where
             )
             .await
         {
-            Ok(saved) => {
-                self.telemetry.record_runtime_call(&evidence.succeeded());
-                saved
-            }
+            Ok(saved) => saved,
             Err(error) => {
                 self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
@@ -263,16 +260,21 @@ where
         };
 
         if saved.page_id != input.page_id {
-            return Err(PageBuilderServiceError::Runtime(format!(
+            let error = PageBuilderServiceError::Runtime(format!(
                 "project store persisted page `{}`, expected `{}`",
                 saved.page_id, input.page_id
-            )));
+            ));
+            self.telemetry.record_runtime_call(&evidence.failed(&error));
+            return Err(error);
         }
         if saved.revision_id.trim().is_empty() {
-            return Err(PageBuilderServiceError::Runtime(
+            let error = PageBuilderServiceError::Runtime(
                 "project store returned an empty persisted revision".to_string(),
-            ));
+            );
+            self.telemetry.record_runtime_call(&evidence.failed(&error));
+            return Err(error);
         }
+        self.telemetry.record_runtime_call(&evidence.succeeded());
 
         Ok(crate::dto::PublishPageBuilderResult {
             page_id: saved.page_id,
