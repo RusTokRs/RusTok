@@ -16,7 +16,6 @@ pub struct Model {
     pub moderated: bool,
     pub topic_count: i32,
     pub reply_count: i32,
-    pub archived_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }
