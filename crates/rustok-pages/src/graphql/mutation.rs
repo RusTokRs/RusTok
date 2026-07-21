@@ -1,15 +1,17 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, Action, AuthContext, Permission, Resource, TenantContext,
+    Action, AuthContext, Permission, Resource, TenantContext,
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
+    has_any_effective_permission,
 };
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    CreatePageInput, PageBodyInput, PageService, PageTranslationInput, PagesError,
-    PatchPageMetadataInput, SavePageDocumentInput, CANNOT_DELETE_PUBLISHED_ERROR_CODE,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuItemInput,
+    MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput, PageBodyInput,
+    PageService, PageTranslationInput, PagesError, PatchPageMetadataInput, SavePageDocumentInput,
 };
 
 use super::types::*;
@@ -59,6 +61,41 @@ impl PagesMutation {
             .map_err(map_pages_error)?;
 
         Ok(page.into())
+    }
+
+    async fn create_menu(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateGqlMenuInput,
+        locale: Option<String>,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlMenu> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_CREATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+        let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        MenuService::new(db.clone(), event_bus.clone())
+            .create(
+                tenant_id,
+                page_security(&auth),
+                &effective_locale,
+                CreateMenuInput {
+                    translations: input
+                        .translations
+                        .into_iter()
+                        .map(menu_translation_input)
+                        .collect(),
+                    location: menu_location_input(input.location),
+                    items: input.items.into_iter().map(menu_item_input).collect(),
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
     }
 
     async fn patch_page_metadata(
@@ -207,10 +244,51 @@ fn page_body_input(input: GqlPageBodyInput) -> PageBodyInput {
     }
 }
 
+fn menu_translation_input(input: GqlMenuTranslationInput) -> MenuTranslationInput {
+    MenuTranslationInput {
+        locale: input.locale,
+        name: input.name,
+    }
+}
+
+fn menu_item_translation_input(input: GqlMenuItemTranslationInput) -> MenuItemTranslationInput {
+    MenuItemTranslationInput {
+        locale: input.locale,
+        title: input.title,
+    }
+}
+
+fn menu_item_input(input: GqlMenuItemInput) -> MenuItemInput {
+    MenuItemInput {
+        translations: input
+            .translations
+            .into_iter()
+            .map(menu_item_translation_input)
+            .collect(),
+        url: input.url,
+        page_id: input.page_id,
+        icon: input.icon,
+        position: input.position,
+        children: input
+            .children
+            .map(|children| children.into_iter().map(menu_item_input).collect()),
+    }
+}
+
+fn menu_location_input(input: GqlMenuLocation) -> MenuLocation {
+    match input {
+        GqlMenuLocation::Header => MenuLocation::Header,
+        GqlMenuLocation::Footer => MenuLocation::Footer,
+        GqlMenuLocation::Sidebar => MenuLocation::Sidebar,
+        GqlMenuLocation::Mobile => MenuLocation::Mobile,
+    }
+}
+
 fn map_pages_error(error: PagesError) -> async_graphql::Error {
     let code = match &error {
         PagesError::VersionConflict { .. } => PAGE_METADATA_VERSION_CONFLICT,
         PagesError::PageNotFound(_) => "PAGE_NOT_FOUND",
+        PagesError::MenuNotFound(_) => "MENU_NOT_FOUND",
         PagesError::DuplicateSlug { .. } => "DUPLICATE_SLUG",
         PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
         PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",
@@ -246,7 +324,7 @@ fn mutation_tenant_id(
     }
     if requested.is_some_and(|tenant_id| tenant_id != tenant.id) {
         return Err(<FieldError as GraphQLError>::permission_denied(
-            "Page mutations must use the current tenant",
+            "Pages mutations must use the current tenant",
         ));
     }
     Ok(tenant.id)
