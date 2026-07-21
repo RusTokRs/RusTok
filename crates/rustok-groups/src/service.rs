@@ -528,8 +528,9 @@ impl GroupsService {
             false
         } else {
             match action {
-                GroupAction::Discover | GroupAction::ViewSummary => {
-                    visibility != GroupVisibility::Secret
+                GroupAction::Discover => visibility != GroupVisibility::Secret,
+                GroupAction::ViewSummary => {
+                    visibility != GroupVisibility::Secret || active_member
                 }
                 GroupAction::View | GroupAction::ViewMembers => {
                     visibility == GroupVisibility::Public || active_member
