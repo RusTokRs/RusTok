@@ -135,9 +135,23 @@
       "admin": {
         "source": "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
         "result": "PublishPageReceipt",
+        "action_result": "PagePublicationResult",
         "body_revisions": "all_available_localized_bodies",
         "idempotency": "deterministic_snapshot_identity",
-        "scenario_selection": "single_promoted_scenario_only_fail_closed_otherwise"
+        "scenario_selection": {
+          "mode": "explicit_ephemeral_promoted_scenario",
+          "selection_source": "crates/rustok-page-builder/admin/src/publish_scenario_selection.rs",
+          "selector_source": "crates/rustok-page-builder/admin/src/editor/publish_scenario_selector.rs",
+          "scope": [
+            "page_id",
+            "baseline_hash"
+          ],
+          "storage": "browser_session_storage_scenario_id_only",
+          "single_scenario": "automatic_exact_selection",
+          "multiple_scenarios": "explicit_selection_required",
+          "missing_or_stale_selection": "fail_closed",
+          "runtime_context_persisted": false
+        }
       },
       "create_publish": "rejected_in_domain",
       "source_guard": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
