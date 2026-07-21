@@ -6,6 +6,7 @@
   "compile_policy": "not_run_by_request",
   "production_contract": {
     "permission_resource": "blog_categories",
+    "category_service_constructor": "CategoryService::new(DatabaseConnection, TransactionalEventBus)",
     "owner_service": "crates/rustok-blog/src/services/category.rs",
     "owner_rbac": "crates/rustok-blog/src/services/rbac.rs",
     "platform_permissions": "crates/rustok-api/src/permissions.rs",
@@ -44,6 +45,10 @@
       "expected": "Blog category operations require blog_categories actions; blog_posts and catalog categories actions do not authorize the owner or HTTP adapter"
     },
     {
+      "name": "mandatory_transactional_event_bus",
+      "expected": "CategoryService has one constructor that requires DatabaseConnection and TransactionalEventBus; no optional bus, alternate constructor, or database-only write path exists"
+    },
+    {
       "name": "category_has_no_owner_scope",
       "expected": "category update/delete use tenant-wide blog_categories resource scope rather than comparing the authenticated user UUID to the category UUID"
     },
@@ -53,7 +58,7 @@
     },
     {
       "name": "mounted_http_write_path",
-      "expected": "Blog category HTTP mutations construct CategoryService with TransactionalEventBus from HostRuntimeContext"
+      "expected": "Blog category HTTP mutations construct CategoryService with the required TransactionalEventBus from HostRuntimeContext"
     },
     {
       "name": "bounded_category_list",
@@ -72,6 +77,7 @@
     "execute category create/update/delete HTTP requests with blog_categories RBAC",
     "verify blog_posts and catalog categories permissions are rejected for Blog category operations",
     "verify BlogModule registration seeds blog_categories permissions and no catalog category permissions",
+    "verify CategoryService cannot be constructed without TransactionalEventBus",
     "verify unauthorized direct update/delete calls perform no category lookup",
     "verify one outbox record is committed for category update and delete",
     "verify an outbox write failure rolls back the category mutation",
