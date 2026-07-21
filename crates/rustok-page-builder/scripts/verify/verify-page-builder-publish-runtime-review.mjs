@@ -92,12 +92,12 @@ for (const marker of [
 }
 requireMarker(
   provider,
-  `MAX_PREVIEW_RUNTIME_CONTEXT_BYTES`,
+  "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES",
   "provider context limit",
 );
 requireMarker(
   provider,
-  `MAX_PREVIEW_SCENARIO_ID_BYTES`,
+  "MAX_PREVIEW_SCENARIO_ID_BYTES",
   "provider scenario limit",
 );
 requireMarker(providerLib, "pub mod publish_runtime;", "provider module export");
@@ -144,9 +144,9 @@ for (const code of contract.pages_consumer.error_codes) {
 }
 for (const marker of [
   "reviewed.preview_runtime()",
-  "reviewed.runtime_context_hash()",
+  ".runtime_context_hash()",
   "compile_materialized_static_landing(&project_data, runtime.clone())",
-  "materialized.verify_integrity()",
+  ".verify_integrity()",
   "materialized.identity.runtime_scenario_id",
   "materialized.identity.runtime_context_hash",
 ]) {
