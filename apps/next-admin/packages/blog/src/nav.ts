@@ -20,12 +20,6 @@ export const blogNavItems: NavItem[] = [
         url: '/dashboard/blog/new',
         i18nKey: 'newPost',
         shortcut: ['b', 'n']
-      },
-      {
-        title: 'Page Builder',
-        url: '/dashboard/blog/page-builder',
-        i18nKey: 'pageBuilder',
-        shortcut: ['b', 'g']
       }
     ]
   }
