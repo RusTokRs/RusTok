@@ -47,6 +47,14 @@ impl MigrationTrait for Migration {
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_menu_bindings_channel")
+                            .from(MenuBindings::Table, MenuBindings::ChannelId)
+                            .to(Channels::Table, Channels::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -102,4 +110,10 @@ enum Menus {
     Table,
     Id,
     TenantId,
+}
+
+#[derive(DeriveIden)]
+enum Channels {
+    Table,
+    Id,
 }
