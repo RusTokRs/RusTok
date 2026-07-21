@@ -33,6 +33,10 @@ type FlyAdapter = {
     intent: string,
     payload: Record<string, unknown>,
   ) => Promise<unknown>;
+  postIntent: (
+    input: Record<string, unknown>,
+    options?: { signal?: AbortSignal },
+  ) => Promise<unknown>;
   stop: () => void;
 };
 
@@ -64,6 +68,9 @@ test("expected aborts stay separate from network failures", async ({
     <div id="network-root" data-fly-browser-root data-fly-page-id="network-page">
       <iframe id="network-frame" data-fly-iframe-canvas title="Network canvas"></iframe>
     </div>
+    <div id="external-root" data-fly-browser-root data-fly-page-id="external-page">
+      <iframe id="external-frame" data-fly-iframe-canvas title="External abort canvas"></iframe>
+    </div>
   `);
 
   const state = await page.evaluate(
@@ -73,11 +80,13 @@ test("expected aborts stay separate from network failures", async ({
         timeout: document.querySelector("#timeout-root"),
         stop: document.querySelector("#stop-root"),
         network: document.querySelector("#network-root"),
+        external: document.querySelector("#external-root"),
       };
       if (
         !(roots.timeout instanceof HTMLElement) ||
         !(roots.stop instanceof HTMLElement) ||
-        !(roots.network instanceof HTMLElement)
+        !(roots.network instanceof HTMLElement) ||
+        !(roots.external instanceof HTMLElement)
       ) {
         throw new Error("Fly browser roots unavailable");
       }
@@ -98,9 +107,14 @@ test("expected aborts stay separate from network failures", async ({
           errors: [] as BrowserFailure[],
           problems: [] as BrowserFailure[],
         },
+        external: {
+          aborts: [] as IntentAbort[],
+          errors: [] as BrowserFailure[],
+          problems: [] as BrowserFailure[],
+        },
       };
 
-      for (const name of ["timeout", "stop", "network"] as const) {
+      for (const name of ["timeout", "stop", "network", "external"] as const) {
         const root = roots[name];
         root.addEventListener("fly:browser-intent-aborted", (event) => {
           events[name].aborts.push((event as CustomEvent<IntentAbort>).detail);
@@ -160,7 +174,16 @@ test("expected aborts stay separate from network failures", async ({
         intentEndpoint: "/network",
         intentRequestTimeoutMs: 1_000,
       });
-      if (!timeoutAdapter || !stopAdapter || !networkAdapter) {
+      const externalAdapter = scope.FlyBrowser?.mount?.(roots.external, {
+        intentEndpoint: "/external",
+        intentRequestTimeoutMs: 1_000,
+      });
+      if (
+        !timeoutAdapter ||
+        !stopAdapter ||
+        !networkAdapter ||
+        !externalAdapter
+      ) {
         throw new Error("Fly browser adapters unavailable");
       }
 
@@ -171,12 +194,24 @@ test("expected aborts stay separate from network failures", async ({
       const networkRequest = networkAdapter.emitIntent("save", {
         source: "network",
       });
+      const externalController = new AbortController();
+      const externalRequest = externalAdapter.postIntent(
+        { intent: "save", payload: { source: "external" } },
+        { signal: externalController.signal },
+      );
       stopAdapter.stop();
+      externalController.abort("navigation");
 
-      await Promise.all([timeoutRequest, stopRequest, networkRequest]);
+      await Promise.all([
+        timeoutRequest,
+        stopRequest,
+        networkRequest,
+        externalRequest,
+      ]);
       await new Promise((resolve) => globalThis.setTimeout(resolve, 20));
       timeoutAdapter.stop();
       networkAdapter.stop();
+      externalAdapter.stop();
 
       return events;
     },
@@ -214,4 +249,15 @@ test("expected aborts stay separate from network failures", async ({
     code: "NETWORK_ERROR",
   });
   expect(state.network.errors).toHaveLength(1);
+
+  expect(state.external.aborts).toHaveLength(1);
+  expect(state.external.aborts[0]).toMatchObject({
+    code: "INTENT_REQUEST_ABORTED",
+    kind: "external",
+    error: "navigation",
+    intent: "save",
+    current: true,
+    pageId: "external-page",
+  });
+  expect(state.external.problems).toEqual([]);
 });
