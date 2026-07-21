@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "contract_id": "marketplace_ledger.seller_balance_transfer.v1",
+  "owner_module": "marketplace_ledger",
+  "status": "source_ready_unvalidated",
+  "command": {
+    "port": "MarketplaceLedgerCommandPort",
+    "operation": "post_seller_balance_transfer",
+    "receipt_command_kind": "post_seller_balance_transfer",
+    "idempotency_required": true,
+    "request_hash": "canonical_sha256_v1",
+    "actor_bound": true,
+    "lost_response_replay": "return_saved_response"
+  },
+  "transfer_kinds": {
+    "pending_release": {
+      "from": "pending",
+      "to": "available",
+      "source_kind": "seller_balance_pending_release"
+    },
+    "reserve_hold": {
+      "from": "available",
+      "to": "reserved",
+      "source_kind": "seller_balance_reserve_hold"
+    },
+    "reserve_release": {
+      "from": "reserved",
+      "to": "available",
+      "source_kind": "seller_balance_reserve_release"
+    },
+    "payout_settlement": {
+      "from": "reserved",
+      "to": "paid",
+      "source_kind": "seller_balance_payout_settlement"
+    },
+    "payout_reversal": {
+      "from": "paid",
+      "to": "available",
+      "source_kind": "seller_balance_payout_reversal"
+    }
+  },
+  "identity": {
+    "source_deduplication": ["tenant_id", "transfer_kind", "source_id"],
+    "transaction_deduplication": ["tenant_id", "source_kind", "source_id"],
+    "reference_line_identity": ["tenant_id", "transfer_id", "reference_entry_id"],
+    "single_order_scope": true,
+    "multi_order_policy": "caller orchestration emits one transfer command per order scope"
+  },
+  "line_validation": {
+    "minimum_lines": 1,
+    "maximum_lines": 500,
+    "reference_entry_required": true,
+    "reference_entry_account": "seller_payable",
+    "reference_entry_direction": "credit",
+    "reference_entry_seller_match": true,
+    "reference_entry_currency_match": true,
+    "reference_entry_bucket_match": true,
+    "positive_amount_required": true,
+    "duplicate_reference_forbidden_within_command": true,
+    "duplicate_assessment_forbidden_within_transaction": true,
+    "cumulative_reference_amount_must_not_exceed_credit": true,
+    "transferred_at_not_before_reference_entry": true
+  },
+  "double_entry": {
+    "per_line": [
+      {
+        "account": "seller_payable",
+        "direction": "debit",
+        "bucket": "from_bucket",
+        "amount": "line.amount"
+      },
+      {
+        "account": "seller_payable",
+        "direction": "credit",
+        "bucket": "to_bucket",
+        "amount": "line.amount"
+      }
+    ],
+    "transaction_debit_total_equals_credit_total": true,
+    "negative_entry_amounts": false,
+    "checked_integer_arithmetic": true,
+    "original_entries_mutated": false
+  },
+  "capacity": {
+    "authoritative_source": "immutable seller_payable entries plus owner-local bucket classifications",
+    "projection_used_for_admission": false,
+    "seller_scope_locked_before_calculation": true,
+    "fresh_locking_reread_after_concurrent_wait": true,
+    "prior_reference_lines_locked": true,
+    "source_bucket_must_cover_total": true,
+    "reference_credit_must_cover_cumulative_lineage": true,
+    "sqlite_policy": "single writer transaction semantics"
+  },
+  "persistence": {
+    "entry_bucket_table": "marketplace_ledger_entry_balance_buckets",
+    "transfer_table": "marketplace_seller_balance_transfers",
+    "line_table": "marketplace_seller_balance_transfer_lines",
+    "owner_local_foreign_keys_only": true,
+    "append_only_guards": ["postgres", "sqlite", "mysql"],
+    "projection_table": "marketplace_seller_balance_projections",
+    "projection_rebuilt_after_post": true,
+    "projection_rebuilt_after_receipt_replay": true
+  },
+  "projection": {
+    "explicit_entry_bucket_precedence": true,
+    "reversal_line_bucket_fallback": true,
+    "unclassified_original_seller_credit_default": "pending",
+    "buckets": ["pending", "available", "reserved", "paid"],
+    "negative_amount": "max(0, -(pending + available + reserved))"
+  },
+  "migrations": [
+    "m20260721_000003_add_seller_balance_transfers",
+    "m20260721_000004_enforce_seller_balance_transfer_immutability"
+  ],
+  "validation": {
+    "commands_run": [],
+    "evidence": "not_current",
+    "production_gate": "closed"
+  }
+}
