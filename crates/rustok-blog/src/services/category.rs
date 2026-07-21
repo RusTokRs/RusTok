@@ -18,7 +18,9 @@ use crate::dto::{
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
-use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::rbac::enforce_any_scope;
+
+const CATEGORY_PERMISSION_RESOURCES: [Resource; 2] = [Resource::BlogPosts, Resource::Categories];
 
 pub struct CategoryService {
     db: DatabaseConnection,
@@ -50,7 +52,11 @@ impl CategoryService {
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
-        enforce_scope(&security, Resource::Categories, Action::Create)?;
+        enforce_any_scope(
+            &security,
+            &CATEGORY_PERMISSION_RESOURCES,
+            Action::Create,
+        )?;
         validate_category_name(&input.name)?;
         let slug = normalize_category_slug(input.slug.as_deref(), &input.name)?;
         let locale = normalize_locale(&input.locale)?;
@@ -100,7 +106,7 @@ impl CategoryService {
         category_id: Uuid,
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
-        enforce_scope(&security, Resource::Categories, Action::Read)?;
+        enforce_any_scope(&security, &CATEGORY_PERMISSION_RESOURCES, Action::Read)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -130,7 +136,11 @@ impl CategoryService {
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_owned_scope(&security, Resource::Categories, Action::Update, category.id)?;
+        enforce_any_scope(
+            &security,
+            &CATEGORY_PERMISSION_RESOURCES,
+            Action::Update,
+        )?;
 
         let mut active: blog_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
@@ -219,7 +229,11 @@ impl CategoryService {
             .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_owned_scope(&security, Resource::Categories, Action::Delete, category.id)?;
+        enforce_any_scope(
+            &security,
+            &CATEGORY_PERMISSION_RESOURCES,
+            Action::Delete,
+        )?;
 
         blog_category_translation::Entity::delete_many()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
@@ -243,7 +257,7 @@ impl CategoryService {
         security: SecurityContext,
         filter: ListCategoriesFilter,
     ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
-        enforce_scope(&security, Resource::Categories, Action::List)?;
+        enforce_any_scope(&security, &CATEGORY_PERMISSION_RESOURCES, Action::List)?;
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
