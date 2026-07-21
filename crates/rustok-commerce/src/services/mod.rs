@@ -32,6 +32,7 @@ mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
 mod marketplace_financial_operator;
 mod marketplace_paid_event_inbox;
+mod marketplace_paid_order_financial;
 mod marketplace_provider_paid_event_adapter;
 mod order_change_orchestration;
 mod paid_order_create_label;
@@ -148,6 +149,7 @@ pub use marketplace_paid_event_inbox::{
     MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
     MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
 };
+pub(crate) use marketplace_paid_order_financial::MarketplacePaidOrderFinancialHandler;
 pub use marketplace_provider_paid_event_adapter::{
     MarketplaceProviderPaidEventAdapter, MarketplaceProviderPaidEventAdapterError,
     MarketplaceProviderPaidEventAdapterResult,
