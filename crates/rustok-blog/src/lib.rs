@@ -120,9 +120,17 @@ impl RusToKModule for BlogModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)
-            .expect("blog SEO target registration should remain unique");
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "blog SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 
     fn register_event_listeners(
