@@ -3,9 +3,7 @@
 use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext};
 use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;
-use rustok_page_builder::dto::{
-    PageBuilderPreviewRuntime, PreviewPageBuilderInput,
-};
+use rustok_page_builder::dto::{PageBuilderPreviewRuntime, PreviewPageBuilderInput};
 use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
 use rustok_page_builder::service::{
     PageBuilderCapabilityService, PageBuilderProjectSaveResult, PageBuilderProjectStore,
@@ -121,13 +119,33 @@ async fn preview_rejects_non_object_runtime_before_renderer() {
     let error = service
         .preview(
             &port_context(),
-            PreviewPageBuilderInput::new("home", project()).with_runtime(
-                PageBuilderPreviewRuntime::new(json!(["invalid"]), None),
-            ),
+            PreviewPageBuilderInput::new("home", project())
+                .with_runtime(PageBuilderPreviewRuntime::new(json!(["invalid"]), None)),
         )
         .await
         .expect_err("non-object context must fail");
 
     assert!(error.to_string().contains("runtime context must be a JSON object"));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn preview_rejects_oversized_runtime_before_renderer() {
+    let renderer = RecordingRenderer::default();
+    let calls = Arc::clone(&renderer.calls);
+    let service = FlyAdapterBackedPageBuilderService::new(NoopStore, renderer);
+    let oversized = "x".repeat(256 * 1024);
+
+    let error = service
+        .preview(
+            &port_context(),
+            PreviewPageBuilderInput::new("home", project()).with_runtime(
+                PageBuilderPreviewRuntime::new(json!({ "payload": oversized }), None),
+            ),
+        )
+        .await
+        .expect_err("oversized context must fail");
+
+    assert!(error.to_string().contains("runtime context exceeds 262144 bytes"));
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
