@@ -35,15 +35,57 @@ impl GroupsService {
         Self { db }
     }
 
+    async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
+        group::Entity::find()
+            .filter(group::Column::TenantId.eq(tenant_id))
+            .filter(group::Column::Id.eq(group_id))
+            .one(&self.db)
+            .await?
+            .ok_or(GroupsError::NotFound)
+    }
+
+    async fn membership_model(
+        &self,
+        tenant_id: Uuid,
+        group_id: Uuid,
+        user_id: Uuid,
+    ) -> GroupsResult<Option<membership::Model>> {
+        Ok(membership::Entity::find()
+            .filter(membership::Column::TenantId.eq(tenant_id))
+            .filter(membership::Column::GroupId.eq(group_id))
+            .filter(membership::Column::UserId.eq(user_id))
+            .one(&self.db)
+            .await?)
+    }
+
+    async fn load_translations(
+        &self,
+        tenant_id: Uuid,
+        group_ids: Vec<Uuid>,
+    ) -> GroupsResult<HashMap<Uuid, Vec<translation::Model>>> {
+        if group_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let mut grouped = HashMap::<Uuid, Vec<translation::Model>>::new();
+        for row in translation::Entity::find()
+            .filter(translation::Column::TenantId.eq(tenant_id))
+            .filter(translation::Column::GroupId.is_in(group_ids))
+            .all(&self.db)
+            .await?
+        {
+            grouped.entry(row.group_id).or_default().push(row);
+        }
+        Ok(grouped)
+    }
+
     async fn create_group_owned(
         &self,
         context: &PortContext,
         input: CreateGroupInput,
     ) -> GroupsResult<GroupDetails> {
-        context
-            .require_policy(PortCallPolicy::write())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        require_write(context)?;
+        let tenant_id = context_tenant_id(context)?;
         let owner_user_id = actor_user_id(context)?;
         let handle = normalize_group_handle(&input.handle).map_err(GroupsError::Validation)?;
         let locale = normalize_locale_tag(&input.locale)
@@ -61,12 +103,12 @@ impl GroupsService {
         }
 
         let transaction = self.db.begin().await?;
-        let exists = group::Entity::find()
+        let duplicate = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Handle.eq(handle.clone()))
             .one(&transaction)
             .await?;
-        if exists.is_some() {
+        if duplicate.is_some() {
             return Err(GroupsError::HandleConflict);
         }
 
@@ -97,7 +139,7 @@ impl GroupsService {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             group_id: Set(group_id),
-            locale: Set(locale.clone()),
+            locale: Set(locale),
             title: Set(title.to_string()),
             summary: Set(normalize_optional_text(input.summary)),
             body: Set(normalize_optional_text(input.body)),
@@ -140,24 +182,23 @@ impl GroupsService {
         context: &PortContext,
         request: ReadGroupRequest,
     ) -> GroupsResult<GroupDetails> {
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        require_read(context)?;
+        let tenant_id = context_tenant_id(context)?;
         let mut query = group::Entity::find().filter(group::Column::TenantId.eq(tenant_id));
-        query = if let Some(group_id) = request.group_id {
-            query.filter(group::Column::Id.eq(group_id))
-        } else if let Some(handle) = request.handle {
-            query.filter(
+        query = match (request.group_id, request.handle) {
+            (Some(group_id), _) => query.filter(group::Column::Id.eq(group_id)),
+            (None, Some(handle)) => query.filter(
                 group::Column::Handle.eq(
                     normalize_group_handle(&handle).map_err(GroupsError::Validation)?,
                 ),
-            )
-        } else {
-            return Err(GroupsError::Validation(
-                "group id or handle is required".to_string(),
-            ));
+            ),
+            (None, None) => {
+                return Err(GroupsError::Validation(
+                    "group id or handle is required".to_string(),
+                ));
+            }
         };
+
         let model = query.one(&self.db).await?.ok_or(GroupsError::NotFound)?;
         let decision = self
             .decide_access_owned(context, model.id, GroupAction::View)
@@ -173,10 +214,8 @@ impl GroupsService {
         context: &PortContext,
         request: ListGroupsRequest,
     ) -> GroupsResult<GroupConnection> {
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        require_read(context)?;
+        let tenant_id = context_tenant_id(context)?;
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, 100);
         let include_non_public = request.include_non_public && has_platform_manage(context);
@@ -187,16 +226,17 @@ impl GroupsService {
         if !include_non_public {
             query = query.filter(group::Column::Visibility.eq(GroupVisibility::Public.as_str()));
         }
+
         if let Some(search) = normalize_optional_text(request.search) {
-            let matching_ids = translation::Entity::find()
+            let group_ids = translation::Entity::find()
                 .filter(translation::Column::TenantId.eq(tenant_id))
                 .filter(translation::Column::Title.contains(&search))
                 .all(&self.db)
                 .await?
                 .into_iter()
-                .map(|item| item.group_id)
+                .map(|row| row.group_id)
                 .collect::<Vec<_>>();
-            if matching_ids.is_empty() {
+            if group_ids.is_empty() {
                 return Ok(GroupConnection {
                     items: Vec::new(),
                     total: 0,
@@ -204,7 +244,7 @@ impl GroupsService {
                     per_page,
                 });
             }
-            query = query.filter(group::Column::Id.is_in(matching_ids));
+            query = query.filter(group::Column::Id.is_in(group_ids));
         }
 
         let paginator = query
@@ -218,10 +258,11 @@ impl GroupsService {
                 models.iter().map(|model| model.id).collect::<Vec<_>>(),
             )
             .await?;
-        let mut items = Vec::with_capacity(models.len());
-        for model in models {
-            items.push(self.map_summary(context, model, &translations)?);
-        }
+        let items = models
+            .into_iter()
+            .map(|model| self.map_summary(context, model, &translations))
+            .collect::<GroupsResult<Vec<_>>>()?;
+
         Ok(GroupConnection {
             items,
             total,
@@ -235,10 +276,8 @@ impl GroupsService {
         context: &PortContext,
         request: JoinGroupRequest,
     ) -> GroupsResult<GroupMembership> {
-        context
-            .require_policy(PortCallPolicy::write())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        require_write(context)?;
+        let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
         let group_model = group::Entity::find()
@@ -247,8 +286,10 @@ impl GroupsService {
             .one(&transaction)
             .await?
             .ok_or(GroupsError::NotFound)?;
-        let visibility = parse_visibility(&group_model.visibility)?;
-        let join_policy = parse_join_policy(&group_model.join_policy)?;
+        if group_model.status != GroupStatus::Active.as_str() {
+            return Err(GroupsError::Conflict("group is not active".to_string()));
+        }
+
         let existing = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(request.group_id))
@@ -257,21 +298,23 @@ impl GroupsService {
             .await?;
         if existing
             .as_ref()
-            .is_some_and(|item| item.status == GroupMembershipStatus::Banned.as_str())
+            .is_some_and(|row| row.status == GroupMembershipStatus::Banned.as_str())
         {
             return Err(GroupsError::Forbidden(
                 "group membership is banned".to_string(),
             ));
         }
-        if existing
+        if let Some(active) = existing
             .as_ref()
-            .is_some_and(|item| item.status == GroupMembershipStatus::Active.as_str())
+            .filter(|row| row.status == GroupMembershipStatus::Active.as_str())
         {
-            return map_membership(existing.expect("active membership exists"));
+            return map_membership(active.clone());
         }
 
+        let visibility = parse_visibility(&group_model.visibility)?;
+        let join_policy = parse_join_policy(&group_model.join_policy)?;
         let target_status = match (visibility, join_policy, existing.as_ref()) {
-            (_, _, Some(item)) if item.status == GroupMembershipStatus::Invited.as_str() => {
+            (_, _, Some(row)) if row.status == GroupMembershipStatus::Invited.as_str() => {
                 GroupMembershipStatus::Active
             }
             (GroupVisibility::Public, GroupJoinPolicy::Open, _) => {
@@ -284,8 +327,9 @@ impl GroupsService {
             }
             _ => GroupMembershipStatus::Pending,
         };
+
         let now = Utc::now().fixed_offset();
-        let model = if let Some(existing) = existing {
+        let updated_membership = if let Some(existing) = existing {
             let mut active: membership::ActiveModel = existing.into();
             active.role = Set(GroupRole::Member.as_str().to_string());
             active.status = Set(target_status.as_str().to_string());
@@ -311,15 +355,19 @@ impl GroupsService {
             .insert(&transaction)
             .await?
         };
+
         if target_status == GroupMembershipStatus::Active {
+            let next_member_count = group_model.member_count.saturating_add(1);
+            let next_version = group_model.version.saturating_add(1);
             let mut active: group::ActiveModel = group_model.into();
-            active.member_count = Set(active.member_count.unwrap_or(0).saturating_add(1));
-            active.version = Set(active.version.unwrap_or(0).saturating_add(1));
+            active.member_count = Set(next_member_count);
+            active.version = Set(next_version);
             active.updated_at = Set(now);
             active.update(&transaction).await?;
         }
+
         transaction.commit().await?;
-        map_membership(model)
+        map_membership(updated_membership)
     }
 
     async fn leave_group_owned(
@@ -327,10 +375,8 @@ impl GroupsService {
         context: &PortContext,
         request: LeaveGroupRequest,
     ) -> GroupsResult<GroupMembership> {
-        context
-            .require_policy(PortCallPolicy::write())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        require_write(context)?;
+        let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
         let group_model = group::Entity::find()
@@ -345,28 +391,36 @@ impl GroupsService {
             .filter(membership::Column::UserId.eq(user_id))
             .one(&transaction)
             .await?
-            .ok_or_else(|| GroupsError::Conflict("active membership is required".to_string()))?;
+            .ok_or_else(|| GroupsError::Conflict("membership is required".to_string()))?;
         if membership_model.role == GroupRole::Owner.as_str() {
             return Err(GroupsError::Invariant(
                 "group owner must transfer ownership before leaving".to_string(),
             ));
         }
+        if membership_model.status == GroupMembershipStatus::Left.as_str() {
+            return map_membership(membership_model);
+        }
+
         let was_active = membership_model.status == GroupMembershipStatus::Active.as_str();
         let now = Utc::now().fixed_offset();
         let mut active: membership::ActiveModel = membership_model.into();
         active.status = Set(GroupMembershipStatus::Left.as_str().to_string());
         active.left_at = Set(Some(now));
         active.updated_at = Set(now);
-        let updated = active.update(&transaction).await?;
+        let updated_membership = active.update(&transaction).await?;
+
         if was_active {
-            let mut group_active: group::ActiveModel = group_model.into();
-            group_active.member_count = Set(group_active.member_count.unwrap_or(1).saturating_sub(1));
-            group_active.version = Set(group_active.version.unwrap_or(0).saturating_add(1));
-            group_active.updated_at = Set(now);
-            group_active.update(&transaction).await?;
+            let next_member_count = group_model.member_count.saturating_sub(1);
+            let next_version = group_model.version.saturating_add(1);
+            let mut active: group::ActiveModel = group_model.into();
+            active.member_count = Set(next_member_count);
+            active.version = Set(next_version);
+            active.updated_at = Set(now);
+            active.update(&transaction).await?;
         }
+
         transaction.commit().await?;
-        map_membership(updated)
+        map_membership(updated_membership)
     }
 
     async fn set_group_feature_owned(
@@ -374,29 +428,36 @@ impl GroupsService {
         context: &PortContext,
         request: SetGroupFeatureRequest,
     ) -> GroupsResult<GroupFeatureBinding> {
-        context
-            .require_policy(PortCallPolicy::write())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
+        require_write(context)?;
+        let tenant_id = context_tenant_id(context)?;
         let actor_id = actor_user_id(context)?;
-        let feature_key = normalize_feature_key(&request.feature_key)
-            .map_err(GroupsError::Validation)?;
-        let (owner_module, _) = feature_key
-            .split_once('.')
-            .expect("normalized feature key is namespaced");
+        self.group_model(tenant_id, request.group_id).await?;
+
         let membership = self
             .membership_model(tenant_id, request.group_id, actor_id)
             .await?;
         let local_allowed = membership
             .as_ref()
-            .filter(|item| item.status == GroupMembershipStatus::Active.as_str())
-            .and_then(|item| GroupRole::from_str(&item.role).ok())
+            .filter(|row| row.status == GroupMembershipStatus::Active.as_str())
+            .and_then(|row| GroupRole::from_str(&row.role).ok())
             .is_some_and(GroupRole::can_manage_settings);
         if !local_allowed && !has_platform_manage(context) {
             return Err(GroupsError::Forbidden(
                 "group owner or administrator role is required".to_string(),
             ));
         }
+
+        let feature_key = normalize_feature_key(&request.feature_key)
+            .map_err(GroupsError::Validation)?;
+        let owner_module = feature_key
+            .split_once('.')
+            .map(|(owner, _)| owner)
+            .ok_or_else(|| GroupsError::Invariant("feature key lost namespace".to_string()))?;
+        let status = if request.enabled {
+            GroupFeatureStatus::Enabled
+        } else {
+            GroupFeatureStatus::Disabled
+        };
         let now = Utc::now().fixed_offset();
         let existing = feature_binding::Entity::find()
             .filter(feature_binding::Column::TenantId.eq(tenant_id))
@@ -404,11 +465,7 @@ impl GroupsService {
             .filter(feature_binding::Column::FeatureKey.eq(feature_key.clone()))
             .one(&self.db)
             .await?;
-        let status = if request.enabled {
-            GroupFeatureStatus::Enabled
-        } else {
-            GroupFeatureStatus::Disabled
-        };
+
         let model = if let Some(existing) = existing {
             let mut active: feature_binding::ActiveModel = existing.into();
             active.contract_version = Set(request.contract_version);
@@ -443,54 +500,50 @@ impl GroupsService {
         group_id: Uuid,
         action: GroupAction,
     ) -> GroupsResult<GroupAccessDecision> {
-        context
-            .require_policy(PortCallPolicy::read())
-            .map_err(|error| GroupsError::Validation(error.message))?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id")?;
-        let group_model = group::Entity::find()
-            .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Id.eq(group_id))
-            .one(&self.db)
-            .await?
-            .ok_or(GroupsError::NotFound)?;
+        require_read(context)?;
+        let tenant_id = context_tenant_id(context)?;
+        let group_model = self.group_model(tenant_id, group_id).await?;
         let visibility = parse_visibility(&group_model.visibility)?;
-        let actor_id = optional_actor_user_id(context);
-        let membership = if let Some(actor_id) = actor_id {
-            self.membership_model(tenant_id, group_id, actor_id).await?
-        } else {
-            None
+        let membership = match optional_actor_user_id(context) {
+            Some(user_id) => self.membership_model(tenant_id, group_id, user_id).await?,
+            None => None,
         };
-        let role = membership
+        let membership_role = membership
             .as_ref()
-            .and_then(|item| GroupRole::from_str(&item.role).ok());
+            .and_then(|row| GroupRole::from_str(&row.role).ok());
         let membership_status = membership
             .as_ref()
-            .and_then(|item| GroupMembershipStatus::from_str(&item.status).ok());
+            .and_then(|row| GroupMembershipStatus::from_str(&row.status).ok());
         let active_member = membership_status == Some(GroupMembershipStatus::Active);
-        let platform_manage = has_platform_manage(context);
-        let allowed = if platform_manage {
+
+        let allowed = if has_platform_manage(context) {
             true
         } else if group_model.status != GroupStatus::Active.as_str() {
             false
         } else {
             match action {
                 GroupAction::Discover => visibility != GroupVisibility::Secret,
-                GroupAction::View => visibility == GroupVisibility::Public || active_member,
-                GroupAction::ViewMembers => visibility == GroupVisibility::Public || active_member,
+                GroupAction::View | GroupAction::ViewMembers => {
+                    visibility == GroupVisibility::Public || active_member
+                }
                 GroupAction::Join => {
                     visibility != GroupVisibility::Secret
                         && membership_status != Some(GroupMembershipStatus::Banned)
                 }
                 GroupAction::Post | GroupAction::Comment => active_member,
-                GroupAction::Invite | GroupAction::ReviewMemberships | GroupAction::Moderate => {
-                    active_member && role.is_some_and(GroupRole::can_moderate)
+                GroupAction::Invite
+                | GroupAction::ReviewMemberships
+                | GroupAction::Moderate => {
+                    active_member && membership_role.is_some_and(GroupRole::can_moderate)
                 }
                 GroupAction::ManageFeatures | GroupAction::ManageSettings => {
-                    active_member && role.is_some_and(GroupRole::can_manage_settings)
+                    active_member
+                        && membership_role.is_some_and(GroupRole::can_manage_settings)
                 }
-                GroupAction::TransferOwnership => role == Some(GroupRole::Owner),
+                GroupAction::TransferOwnership => membership_role == Some(GroupRole::Owner),
             }
         };
+
         Ok(GroupAccessDecision {
             group_id,
             action,
@@ -501,23 +554,9 @@ impl GroupsService {
                 "groups.access.denied"
             }
             .to_string(),
-            membership_role: role,
+            membership_role,
             membership_status,
         })
-    }
-
-    async fn membership_model(
-        &self,
-        tenant_id: Uuid,
-        group_id: Uuid,
-        user_id: Uuid,
-    ) -> GroupsResult<Option<membership::Model>> {
-        Ok(membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(group_id))
-            .filter(membership::Column::UserId.eq(user_id))
-            .one(&self.db)
-            .await?)
     }
 
     async fn map_details(
@@ -525,18 +564,19 @@ impl GroupsService {
         context: &PortContext,
         model: group::Model,
     ) -> GroupsResult<GroupDetails> {
-        let tenant_id = model.tenant_id;
         let group_id = model.id;
+        let tenant_id = model.tenant_id;
         let translations = self.load_translations(tenant_id, vec![group_id]).await?;
         let selected = select_translation(&translations, group_id, &context.locale)?;
+        let body = selected.body.clone();
         let summary = self.map_summary(context, model, &translations)?;
-        let viewer_membership = if let Some(user_id) = optional_actor_user_id(context) {
-            self.membership_model(tenant_id, group_id, user_id)
+        let viewer_membership = match optional_actor_user_id(context) {
+            Some(user_id) => self
+                .membership_model(tenant_id, group_id, user_id)
                 .await?
                 .map(map_membership)
-                .transpose()?
-        } else {
-            None
+                .transpose()?,
+            None => None,
         };
         let features = feature_binding::Entity::find()
             .filter(feature_binding::Column::TenantId.eq(tenant_id))
@@ -547,9 +587,10 @@ impl GroupsService {
             .into_iter()
             .map(map_feature)
             .collect::<GroupsResult<Vec<_>>>()?;
+
         Ok(GroupDetails {
             summary,
-            body: selected.body.clone(),
+            body,
             viewer_membership,
             features,
         })
@@ -566,10 +607,11 @@ impl GroupsService {
             .get(&model.id)
             .into_iter()
             .flatten()
-            .map(|item| item.locale.clone())
+            .map(|row| row.locale.clone())
             .collect::<Vec<_>>();
         available_locales.sort();
         available_locales.dedup();
+
         Ok(GroupSummary {
             id: model.id,
             tenant_id: model.tenant_id,
@@ -587,26 +629,6 @@ impl GroupsService {
             effective_locale: selected.locale.clone(),
             available_locales,
         })
-    }
-
-    async fn load_translations(
-        &self,
-        tenant_id: Uuid,
-        group_ids: Vec<Uuid>,
-    ) -> GroupsResult<HashMap<Uuid, Vec<translation::Model>>> {
-        if group_ids.is_empty() {
-            return Ok(HashMap::new());
-        }
-        let mut result: HashMap<Uuid, Vec<translation::Model>> = HashMap::new();
-        for item in translation::Entity::find()
-            .filter(translation::Column::TenantId.eq(tenant_id))
-            .filter(translation::Column::GroupId.is_in(group_ids))
-            .all(&self.db)
-            .await?
-        {
-            result.entry(item.group_id).or_default().push(item);
-        }
-        Ok(result)
     }
 }
 
@@ -637,7 +659,7 @@ impl GroupMembershipReadPort for GroupsService {
         request: ReadGroupMembershipRequest,
     ) -> Result<Option<GroupMembership>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id").map_err(PortError::from)?;
+        let tenant_id = context_tenant_id(&context).map_err(PortError::from)?;
         self.membership_model(tenant_id, request.group_id, request.user_id)
             .await
             .map_err(PortError::from)?
@@ -662,7 +684,8 @@ impl GroupMembershipReadPort for GroupsService {
                 "group memberships are not visible",
             ));
         }
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id").map_err(PortError::from)?;
+
+        let tenant_id = context_tenant_id(&context).map_err(PortError::from)?;
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, 100);
         let paginator = membership::Entity::find()
@@ -671,19 +694,19 @@ impl GroupMembershipReadPort for GroupsService {
             .filter(membership::Column::Status.ne(GroupMembershipStatus::Left.as_str()))
             .order_by_asc(membership::Column::CreatedAt)
             .paginate(&self.db, per_page);
-        let total = paginator.num_items().await.map_err(|error| {
-            PortError::unavailable("groups.memberships_unavailable", error.to_string())
-        })?;
+        let total = paginator
+            .num_items()
+            .await
+            .map_err(|error| PortError::unavailable("groups.memberships_unavailable", error.to_string()))?;
         let items = paginator
             .fetch_page(page.saturating_sub(1))
             .await
-            .map_err(|error| {
-                PortError::unavailable("groups.memberships_unavailable", error.to_string())
-            })?
+            .map_err(|error| PortError::unavailable("groups.memberships_unavailable", error.to_string()))?
             .into_iter()
             .map(map_membership)
             .collect::<GroupsResult<Vec<_>>>()
             .map_err(PortError::from)?;
+
         Ok(GroupMembershipConnection {
             items,
             total,
@@ -720,7 +743,8 @@ impl GroupAccessReadPort for GroupsService {
                 "group features are not visible",
             ));
         }
-        let tenant_id = parse_uuid(&context.tenant_id, "tenant_id").map_err(PortError::from)?;
+
+        let tenant_id = context_tenant_id(&context).map_err(PortError::from)?;
         feature_binding::Entity::find()
             .filter(feature_binding::Column::TenantId.eq(tenant_id))
             .filter(feature_binding::Column::GroupId.eq(group_id))
@@ -773,50 +797,20 @@ impl GroupCommandPort for GroupsService {
     }
 }
 
-fn select_translation<'a>(
-    translations: &'a HashMap<Uuid, Vec<translation::Model>>,
-    group_id: Uuid,
-    requested_locale: &str,
-) -> GroupsResult<&'a translation::Model> {
-    let items = translations.get(&group_id).ok_or_else(|| {
-        GroupsError::Invariant("group has no localized presentation".to_string())
-    })?;
-    let candidates = build_locale_candidates(
-        [Some(requested_locale), Some(PLATFORM_FALLBACK_LOCALE)],
-        true,
-    );
-    for candidate in candidates {
-        if let Some(item) = items.iter().find(|item| item.locale == candidate) {
-            return Ok(item);
-        }
-    }
-    items.first().ok_or_else(|| {
-        GroupsError::Invariant("group has no localized presentation".to_string())
-    })
+fn require_read(context: &PortContext) -> GroupsResult<()> {
+    context
+        .require_policy(PortCallPolicy::read())
+        .map_err(|error| GroupsError::Validation(error.message))
 }
 
-fn map_membership(model: membership::Model) -> GroupsResult<GroupMembership> {
-    Ok(GroupMembership {
-        id: model.id,
-        group_id: model.group_id,
-        user_id: model.user_id,
-        role: GroupRole::from_str(&model.role).map_err(GroupsError::Invariant)?,
-        status: GroupMembershipStatus::from_str(&model.status)
-            .map_err(GroupsError::Invariant)?,
-    })
+fn require_write(context: &PortContext) -> GroupsResult<()> {
+    context
+        .require_policy(PortCallPolicy::write())
+        .map_err(|error| GroupsError::Validation(error.message))
 }
 
-fn map_feature(model: feature_binding::Model) -> GroupsResult<GroupFeatureBinding> {
-    Ok(GroupFeatureBinding {
-        id: model.id,
-        group_id: model.group_id,
-        feature_key: model.feature_key,
-        owner_module: model.owner_module,
-        contract_version: model.contract_version,
-        status: GroupFeatureStatus::from_str(&model.status).map_err(GroupsError::Invariant)?,
-        sort_order: model.sort_order,
-        configuration: model.configuration,
-    })
+fn context_tenant_id(context: &PortContext) -> GroupsResult<Uuid> {
+    parse_uuid(&context.tenant_id, "tenant_id")
 }
 
 fn actor_user_id(context: &PortContext) -> GroupsResult<Uuid> {
@@ -859,4 +853,49 @@ fn has_platform_manage(context: &PortContext) -> bool {
         .claims
         .iter()
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
+}
+
+fn select_translation<'a>(
+    translations: &'a HashMap<Uuid, Vec<translation::Model>>,
+    group_id: Uuid,
+    requested_locale: &str,
+) -> GroupsResult<&'a translation::Model> {
+    let rows = translations.get(&group_id).ok_or_else(|| {
+        GroupsError::Invariant("group has no localized presentation".to_string())
+    })?;
+    for candidate in build_locale_candidates(
+        [Some(requested_locale), Some(PLATFORM_FALLBACK_LOCALE)],
+        true,
+    ) {
+        if let Some(row) = rows.iter().find(|row| row.locale == candidate) {
+            return Ok(row);
+        }
+    }
+    rows.first().ok_or_else(|| {
+        GroupsError::Invariant("group has no localized presentation".to_string())
+    })
+}
+
+fn map_membership(model: membership::Model) -> GroupsResult<GroupMembership> {
+    Ok(GroupMembership {
+        id: model.id,
+        group_id: model.group_id,
+        user_id: model.user_id,
+        role: GroupRole::from_str(&model.role).map_err(GroupsError::Invariant)?,
+        status: GroupMembershipStatus::from_str(&model.status)
+            .map_err(GroupsError::Invariant)?,
+    })
+}
+
+fn map_feature(model: feature_binding::Model) -> GroupsResult<GroupFeatureBinding> {
+    Ok(GroupFeatureBinding {
+        id: model.id,
+        group_id: model.group_id,
+        feature_key: model.feature_key,
+        owner_module: model.owner_module,
+        contract_version: model.contract_version,
+        status: GroupFeatureStatus::from_str(&model.status).map_err(GroupsError::Invariant)?,
+        sort_order: model.sort_order,
+        configuration: model.configuration,
+    })
 }
