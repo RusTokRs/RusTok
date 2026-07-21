@@ -36,6 +36,8 @@ ssr = [
   "rustok-fulfillment-storefront/ssr",
   "dep:rustok-forum-storefront",
   "rustok-forum-storefront/ssr",
+  "dep:rustok-groups-storefront",
+  "rustok-groups-storefront/ssr",
   "dep:rustok-notifications-storefront",
   "rustok-notifications-storefront/ssr",
   "dep:rustok-order-storefront",
@@ -92,6 +94,7 @@ rustok-cart-storefront = { path = "../../crates/rustok-cart/storefront", default
 rustok-commerce-storefront = { path = "../../crates/rustok-commerce/storefront", default-features = false, optional = true }
 rustok-fulfillment-storefront = { path = "../../crates/rustok-fulfillment/storefront", default-features = false, optional = true }
 rustok-forum-storefront = { path = "../../crates/rustok-forum/storefront", default-features = false, optional = true }
+rustok-groups-storefront = { path = "../../crates/rustok-groups/storefront", default-features = false, optional = true }
 rustok-notifications-storefront = { path = "../../crates/rustok-notifications/storefront", default-features = false, optional = true }
 rustok-order-storefront = { path = "../../crates/rustok-order/storefront", default-features = false, optional = true }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }
@@ -128,6 +131,7 @@ normal = [
   "rustok-commerce-storefront",
   "rustok-fulfillment-storefront",
   "rustok-forum-storefront",
+  "rustok-groups-storefront",
   "rustok-notifications-storefront",
   "rustok-order-storefront",
   "rustok-pages-storefront",
