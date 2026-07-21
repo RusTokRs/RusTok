@@ -243,13 +243,28 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     insert_topic_source(&db, other_tenant_id, other_topic_id, "Foreign quote").await;
 
     let manager = SchemaManager::new(&db);
-    let migration = crate::migrations::migrations()
-        .pop()
-        .expect("mention relation migration should be last");
-    migration
-        .up(&manager)
-        .await
-        .expect("mention relation migration should apply");
+    let mut migrations = crate::migrations::migrations();
+    let relation_migrations = migrations.split_off(
+        migrations
+            .len()
+            .checked_sub(2)
+            .expect("two mention relation migrations should be registered"),
+    );
+    for migration in relation_migrations {
+        migration
+            .up(&manager)
+            .await
+            .expect("mention relation migration should apply");
+    }
+
+    let before_seed = relation_revision_count(&db, tenant_id).await;
+    let seeded_topic_id = Uuid::new_v4();
+    insert_topic_source(&db, tenant_id, seeded_topic_id, "Created after migration").await;
+    assert_eq!(
+        relation_revision_count(&db, tenant_id).await,
+        before_seed + 1,
+        "new source rows must receive one legacy relation identity before FORUM-12B2"
+    );
 
     let alice_id = Uuid::new_v4();
     let bob_id = Uuid::new_v4();
