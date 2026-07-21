@@ -68,7 +68,15 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   legacy base copy under storage-only locale `und`, blocks a conflicting existing
   `und` row, and drops `profiles.display_name`. Runtime reads do not treat `und`
   as request fallback and fail closed when no requested/preferred/tenant-default
-  translation is available.
+  translation is available. Writes require a host-resolved effective locale;
+  changing `preferred_locale` changes selection policy only and never copies text
+  into a different locale as a fabricated translation.
+- **Marketplace Seller prose** — `marketplace_sellers` now stores only
+  language-neutral seller state. Onboarding notes and suspension reasons flow
+  directly from the receipted command into immutable, locale-attributed seller
+  events in the same transaction. Reads project prose only from the event log;
+  the preceding migration preserves legacy snapshots and the final migration
+  drops `onboarding_note` and `suspension_reason` from the base table.
 - **Commerce collections/categories** — a forward-only PostgreSQL/MySQL/SQLite
   migration widens collection and product-category translation locales to
   `VARCHAR(32)` and is registered after both owner tables.
@@ -89,11 +97,6 @@ These are not accepted exceptions. They remain explicit migration targets:
 - `auth-oauth-app-copy`: `oauth_apps.name` and `oauth_apps.description` still
   store display copy inline. `rustok-auth` owns the atomic translation-table and
   transport cutover.
-- `marketplace-seller-prose-copy`: immutable locale-aware seller events are the
-  intended prose source, but `marketplace_sellers.onboarding_note` and
-  `marketplace_sellers.suspension_reason` remain mutable compatibility copies.
-  The command completion path must pass prose directly into the event before
-  these columns and response fallback are removed.
 - `registry-legacy-locale-provenance`: the registry split migration still assigns
   `en` as both runtime default and historical copy provenance. The owner must
   separate those concerns before the cutover is treated as compliant.
