@@ -5,25 +5,41 @@ use uuid::Uuid;
 
 use rustok_core::SecurityContext;
 
-use crate::dto::{bounded_forum_read_limit, CategoryListItem, MAX_FORUM_READ_LIMIT};
+use crate::dto::{
+    bounded_forum_read_limit, CategoryListItem, CategoryTreeQuery, CategoryTreeResponse,
+    MAX_FORUM_READ_LIMIT,
+};
 use crate::error::ForumResult;
 
-use super::category;
+use super::{category, category_tree};
 
 /// Public category service with bounded compatibility reads.
 ///
 /// Category commands and point reads continue to delegate to the raw
 /// persistence service. Legacy collection methods are capped so callers cannot
-/// bypass the canonical cursor read model with a large offset page.
+/// bypass the canonical cursor or nested-tree read models with a large offset
+/// page.
 pub struct CategoryService {
     inner: category::CategoryService,
+    tree: category_tree::CategoryTreeService,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            inner: category::CategoryService::new(db),
+            inner: category::CategoryService::new(db.clone()),
+            tree: category_tree::CategoryTreeService::new(db),
         }
+    }
+
+    /// Return the complete tenant category hierarchy in one bounded owner call.
+    pub async fn tree(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        query: CategoryTreeQuery,
+    ) -> ForumResult<CategoryTreeResponse> {
+        self.tree.read(tenant_id, security, query).await
     }
 
     pub async fn list(
