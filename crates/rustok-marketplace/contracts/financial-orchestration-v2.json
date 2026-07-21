@@ -1,0 +1,83 @@
+{
+  "schema_version": 2,
+  "module": "marketplace",
+  "status": "source_ready_unvalidated",
+  "stores_own_state": false,
+  "write_context_required": true,
+  "operations": [
+    {
+      "name": "process_order_financials",
+      "input": "ProcessMarketplaceOrderFinancialsInput",
+      "stages": [
+        {
+          "position": 1,
+          "module": "marketplace_commission",
+          "operation": "assess_order",
+          "key_suffix": ":commission:v1"
+        },
+        {
+          "position": 2,
+          "module": "marketplace_ledger",
+          "operation": "post_order_commissions",
+          "key_suffix": ":ledger:v1"
+        }
+      ],
+      "checks": [
+        "order identities match",
+        "commission assessments are present",
+        "commission aggregates match allocation totals",
+        "ledger debits equal credits",
+        "ledger total matches commission derived total"
+      ]
+    },
+    {
+      "name": "process_financial_reversal",
+      "input": "ProcessMarketplaceFinancialReversalInput",
+      "normalized_facts_required": true,
+      "raw_provider_payload_allowed": false,
+      "commission_reassessment_allowed": false,
+      "stages": [
+        {
+          "position": 1,
+          "module": "marketplace_ledger",
+          "operation": "post_financial_reversal",
+          "key_suffix": ":ledger-reversal:v1"
+        }
+      ],
+      "checks": [
+        "reversal kind matches request",
+        "reversal source identity matches request",
+        "order and currency match request",
+        "correction transaction is append-only",
+        "correction transaction source kind matches reversal kind",
+        "ledger debits equal credits",
+        "ledger total matches normalized reversal lines"
+      ]
+    }
+  ],
+  "context_copy": [
+    "tenant_id",
+    "actor",
+    "claims",
+    "roles",
+    "channel",
+    "locale",
+    "correlation_id",
+    "traceparent",
+    "deadline_ms"
+  ],
+  "idempotency": {
+    "root_key_required": true,
+    "maximum_child_key_bytes": 191,
+    "owner_receipts_are_authoritative": true,
+    "root_receipt": false
+  },
+  "payout_stage_included": false,
+  "event_normalization_included": false,
+  "remaining_slices": [
+    "payment refund and chargeback event normalization",
+    "durable reversal event inbox and recovery worker",
+    "seller balance bucket transfer transactions",
+    "payout settlement and payout reversal transactions"
+  ]
+}
