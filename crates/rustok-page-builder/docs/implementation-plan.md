@@ -2,63 +2,66 @@
 
 ## Current state
 
-`rustok-page-builder` owns the `grapesjs` capability provider for preview,
-tree, properties, and publish. The provider has a versioned registry,
-permission map, typed error catalog, fallback profiles, control-plane evidence
-contracts, and framework-neutral endpoint adapter seam in `src/adapters.rs`.
-`handle_page_builder_graphql_endpoint` and
-`handle_page_builder_leptos_server_function_endpoint` delegate through the
-canonical request, authorization, policy, and error envelopes.
-The transport bridge is source-locked by
-`scripts/verify/verify-page-builder-transport-bridge.mjs`.
+`rustok-page-builder` exposes one Fly-backed capability service for preview, tree, properties and
+publish. `FlyAdapterBackedPageBuilderService` owns the runtime sequence; consumer composition roots
+supply `PageBuilderProjectStore` and `PageBuilderRenderingAdapter` implementations.
 
-The provider has adapter extension points and source-locked dry-run evidence,
-but no selected persistence/rendering adapter or observed tenant rollout. Pages
-is the reference consumer; consumer fallback and migration safety stay owned by
-the relevant consumer plan and contracts.
-Control-plane dry run evidence defines the required flags, snapshots, decisions,
-and waiver policy before a tenant can be promoted.
+The service:
+
+1. decodes imported project data through `FlyProjectInspection`;
+2. validates the Fly document before preview or publish;
+3. evaluates the optional runtime-scenario release gate;
+4. invokes the selected rendering or persistence port;
+5. records `PageBuilderRuntimeCallEvidence`;
+6. returns the canonical typed capability response.
+
+`CapabilityGuardedService` and `AuthorizedPageBuilderHandlers` enforce rollout, port-call policy and
+permissions. GraphQL and Leptos server-function endpoints delegate through the same handlers and
+transport envelopes.
+
+The current machine-readable service contract is
+`contracts/page-builder-service-boundary.json`. It explicitly forbids reference services,
+migration decorators and manual JSON preview rendering.
 
 ## FFA/FBA status
 
-- FFA status: `not_started` — this provider has no module-owned UI surface.
-- FBA status: `boundary_ready` — the provider contract, endpoint adapter seam,
-  and no-compile evidence are ready; runtime integration and live evidence are
-  still open.
-- Evidence: `contracts/page-builder-fba-registry.json`,
-- Structural shape: `no_ui_boundary`
-  `contracts/page-builder-adapter-seams.json`,
-  `scripts/verify/verify-page-builder-endpoint-adapters.mjs`, and
-  `scripts/verify/verify-page-builder-transport-bridge.mjs`, and
-  `npm run verify:page-builder:fba:baseline`.
+- FFA status: `core_transport_ui` for the browser-host slice. `src/browser_host.rs` is
+  framework-neutral and the Leptos component is a thin script renderer. A future Dioxus renderer
+  can consume the same source.
+- FBA status: `boundary_ready`. Fly is the domain owner; Page Builder owns capability/port/transport
+  boundaries; consumer modules own persistence and publication lifecycle.
+- Structural shape: `core_transport_ui` for browser host and `core_transport` for capability service.
+- Evidence:
+  - `contracts/page-builder-service-boundary.json`;
+  - `contracts/page-builder-fba-registry.json`;
+  - `scripts/verify/verify-page-builder-adapter-seams.mjs`;
+  - `scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
+  - `scripts/verify/verify-page-builder-transport-bridge.mjs`;
+  - `npm run verify:page-builder:fba:baseline`.
 
 ## Open results
 
-1. Bind a selected persistence and rendering adapter to the provider and wire
-   owner-owned GraphQL and Leptos server-function endpoints. Done when preview,
-   save, publish, and typed fallback behaviour execute against a tenant-scoped
-   adapter without transport-local capability or error aliases.
-   Dependency: the chosen persistence/rendering implementation and host
-   composition. Verification: `npm run verify:page-builder:fba:baseline` plus
-   targeted adapter runtime tests.
-2. Replace synthetic Wave evidence with observed tenant control-plane packets.
-   Done when Wave 0 and Wave 1 carry correlation from builder write through
-   Pages publish to storefront read across required profiles, owner approval,
-   and no waiver; Flutter Wave 1 participation also supplies device/runtime
-   evidence.
-   Dependency: priority 1 and Pages reference-consumer readiness. Verification:
-   `npm run verify:page-builder:fba:baseline`.
-   migration, removal preconditions, and an owner outcome are recorded without
-   deleting existing blocks through builder body writes.
+1. Connect a production consumer composition root to concrete tenant-scoped project storage and
+   preview rendering ports. Done when preview, save and publish execute through
+   `FlyAdapterBackedPageBuilderService`, `CapabilityGuardedService` and
+   `AuthorizedPageBuilderHandlers` without another service implementation.
+2. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
+   `page_builder_browser_module_source` and must not copy lifecycle, form, selection or draft-route
+   policy.
+3. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
+   correlate builder write, Pages publish and storefront read across the required rollout profiles.
 
 ## Verification
 
-- `npm run verify:page-builder:fba:baseline`
-- Targeted adapter runtime tests after a persistence/rendering adapter is chosen.
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
+- `cargo test -p rustok-page-builder --all-targets --all-features`;
+- `cargo xtask module validate page_builder`.
 
 ## Boundaries
 
-- Page Builder owns capability delivery, provider contracts, endpoint envelopes,
-  feature profiles, and rollout mechanics.
-  later consumer of the public capability contract.
-- Hosts compose provider endpoints and do not define provider-local contracts.
+- Fly owns the project domain and validation/rendering semantics.
+- Page Builder owns capability delivery, ports, authorization, transport envelopes, feature
+  profiles, runtime evidence and framework-neutral browser host source.
+- Consumer modules own persistence and publish lifecycle.
+- Host frameworks render or bind module surfaces and do not define provider-local contracts.
