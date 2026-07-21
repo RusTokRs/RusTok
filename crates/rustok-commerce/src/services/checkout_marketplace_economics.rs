@@ -85,14 +85,6 @@ impl CheckoutMarketplaceEconomicsCheckpointJournal {
         checkout_marketplace_economics_checkpoint::Model,
     > {
         let input = normalize_record_input(input)?;
-        if let Some(existing) = self
-            .get(input.tenant_id, input.checkout_operation_id)
-            .await?
-        {
-            ensure_same_evidence(&existing, &input.evidence)?;
-            return Ok(existing);
-        }
-
         let transaction = self.db.begin().await?;
         let operation = checkout_operation::Entity::find_by_id(input.checkout_operation_id)
             .filter(checkout_operation::Column::TenantId.eq(input.tenant_id))
@@ -172,9 +164,10 @@ pub fn build_marketplace_economics_evidence(
         if item.order_id != allocation.order_id
             || item.status != MarketplaceAllocationStatus::Allocated
             || normalize_currency_code(&item.currency_code)? != currency_code
+            || item.total_amount < 0
         {
             return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
-                "allocation {} does not match the checkpoint order, currency, or active status",
+                "allocation {} does not match the checkpoint order, currency, or active economics",
                 item.id
             )));
         }
@@ -298,8 +291,11 @@ pub fn validate_marketplace_economics_checkpoint(
         || checkpoint.currency_code != currency_code
         || checkpoint.allocation_count != expected_count
         || checkpoint.assessment_count != expected_count
+        || checkpoint.allocation_total_amount < 0
         || checkpoint.commission_total_amount < 0
         || checkpoint.seller_proceeds_total_amount < 0
+        || normalize_sha256(&checkpoint.allocation_set_hash, "allocation_set_hash").is_err()
+        || normalize_sha256(&checkpoint.assessment_set_hash, "assessment_set_hash").is_err()
         || checkpoint
             .commission_total_amount
             .checked_add(checkpoint.seller_proceeds_total_amount)
@@ -317,11 +313,15 @@ fn validate_operation_lease(
     input: &RecordCheckoutMarketplaceEconomicsCheckpoint,
 ) -> CheckoutMarketplaceEconomicsCheckpointResult<()> {
     let now = Utc::now().fixed_offset();
+    let lease_expired = match operation.lease_expires_at {
+        Some(expires_at) => expires_at <= now,
+        None => true,
+    };
     if operation.status != CheckoutOperationStatus::Executing.as_str()
         || operation.stage != CheckoutOperationStage::PaymentReady.as_str()
         || operation.order_id != Some(input.evidence.order_id)
         || operation.lease_owner.as_deref() != Some(input.lease_owner.as_str())
-        || operation.lease_expires_at.is_none_or(|expires_at| expires_at <= now)
+        || lease_expired
     {
         return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(format!(
             "checkout operation {} is not actively leased at payment_ready for this economics checkpoint",
@@ -348,9 +348,9 @@ fn normalize_record_input(
     input.evidence.plan_hash = normalize_hash(&input.evidence.plan_hash, "plan_hash")?;
     input.evidence.currency_code = normalize_currency_code(&input.evidence.currency_code)?;
     input.evidence.allocation_set_hash =
-        normalize_hash(&input.evidence.allocation_set_hash, "allocation_set_hash")?;
+        normalize_sha256(&input.evidence.allocation_set_hash, "allocation_set_hash")?;
     input.evidence.assessment_set_hash =
-        normalize_hash(&input.evidence.assessment_set_hash, "assessment_set_hash")?;
+        normalize_sha256(&input.evidence.assessment_set_hash, "assessment_set_hash")?;
     Ok(input)
 }
 
@@ -388,6 +388,19 @@ fn normalize_hash(
         )));
     }
     Ok(value.to_string())
+}
+
+fn normalize_sha256(
+    value: &str,
+    field: &str,
+) -> CheckoutMarketplaceEconomicsCheckpointResult<String> {
+    let value = value.trim().to_ascii_lowercase();
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
+            "{field} must be a lowercase SHA-256 hex digest"
+        )));
+    }
+    Ok(value)
 }
 
 fn normalize_currency_code(
