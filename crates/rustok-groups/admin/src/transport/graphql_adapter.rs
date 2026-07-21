@@ -3,11 +3,16 @@ use leptos::web_sys;
 use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{GroupsAdminDirectory, GroupsAdminFilters, GroupsAdminListItem};
+use crate::model::{
+    ChangeGroupRoleCommand, GroupsAdminDirectory, GroupsAdminFilters,
+    GroupsAdminGovernanceResult, GroupsAdminListItem, TransferGroupOwnershipCommand,
+};
 
 pub type GraphqlGroupsAdminError = String;
 
 const DIRECTORY_QUERY: &str = "query GroupsAdminDirectory($page: Int, $perPage: Int, $search: String, $includeNonPublic: Boolean) { groups(page: $page, perPage: $perPage, search: $search, includeNonPublic: $includeNonPublic) { total page per_page: perPage items { id handle title visibility join_policy: joinPolicy status member_count: memberCount effective_locale: effectiveLocale } } }";
+const CHANGE_ROLE_MUTATION: &str = "mutation GroupsAdminChangeRole($idempotencyKey: String!, $groupId: UUID!, $targetUserId: UUID!, $role: GroupRoleGql!) { change_group_role: changeGroupRole(idempotencyKey: $idempotencyKey, groupId: $groupId, targetUserId: $targetUserId, role: $role) { group_id: groupId actor_user_id: actorUserId target_user_id: targetUserId previous_role: previousRole current_role: currentRole group_version: groupVersion replayed } }";
+const TRANSFER_OWNERSHIP_MUTATION: &str = "mutation GroupsAdminTransferOwnership($idempotencyKey: String!, $groupId: UUID!, $newOwnerUserId: UUID!) { transfer_group_ownership: transferGroupOwnership(idempotencyKey: $idempotencyKey, groupId: $groupId, newOwnerUserId: $newOwnerUserId) { group_id: groupId actor_user_id: actorUserId target_user_id: targetUserId previous_role: previousRole current_role: currentRole group_version: groupVersion replayed } }";
 
 #[derive(Debug, Serialize)]
 struct DirectoryVariables {
@@ -19,9 +24,40 @@ struct DirectoryVariables {
     include_non_public: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct ChangeRoleVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "groupId")]
+    group_id: String,
+    #[serde(rename = "targetUserId")]
+    target_user_id: String,
+    role: String,
+}
+
+#[derive(Debug, Serialize)]
+struct TransferOwnershipVariables {
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    #[serde(rename = "groupId")]
+    group_id: String,
+    #[serde(rename = "newOwnerUserId")]
+    new_owner_user_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct DirectoryResponse {
     groups: DirectoryWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChangeRoleResponse {
+    change_group_role: GovernanceWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct TransferOwnershipResponse {
+    transfer_group_ownership: GovernanceWire,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +78,17 @@ struct GroupWire {
     status: String,
     member_count: u64,
     effective_locale: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GovernanceWire {
+    group_id: String,
+    actor_user_id: String,
+    target_user_id: String,
+    previous_role: String,
+    current_role: String,
+    group_version: u64,
+    replayed: bool,
 }
 
 pub async fn load_directory(
@@ -89,6 +136,69 @@ pub async fn load_directory(
         page: response.groups.page,
         per_page: response.groups.per_page,
     })
+}
+
+pub async fn change_group_role(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: ChangeGroupRoleCommand,
+) -> Result<GroupsAdminGovernanceResult, GraphqlGroupsAdminError> {
+    let response: ChangeRoleResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            CHANGE_ROLE_MUTATION,
+            Some(ChangeRoleVariables {
+                idempotency_key: command.idempotency_key,
+                group_id: command.group_id,
+                target_user_id: command.target_user_id,
+                role: command.role.as_graphql_enum().to_string(),
+            }),
+        ),
+        token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(response.change_group_role.into())
+}
+
+pub async fn transfer_group_ownership(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    command: TransferGroupOwnershipCommand,
+) -> Result<GroupsAdminGovernanceResult, GraphqlGroupsAdminError> {
+    let response: TransferOwnershipResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            TRANSFER_OWNERSHIP_MUTATION,
+            Some(TransferOwnershipVariables {
+                idempotency_key: command.idempotency_key,
+                group_id: command.group_id,
+                new_owner_user_id: command.new_owner_user_id,
+            }),
+        ),
+        token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(response.transfer_group_ownership.into())
+}
+
+impl From<GovernanceWire> for GroupsAdminGovernanceResult {
+    fn from(value: GovernanceWire) -> Self {
+        Self {
+            group_id: value.group_id,
+            actor_user_id: value.actor_user_id,
+            target_user_id: value.target_user_id,
+            previous_role: normalize_enum(value.previous_role),
+            current_role: normalize_enum(value.current_role),
+            group_version: value.group_version,
+            replayed: value.replayed,
+        }
+    }
 }
 
 fn normalize_enum(value: String) -> String {
