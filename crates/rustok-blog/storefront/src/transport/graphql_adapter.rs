@@ -1,4 +1,4 @@
-use crate::comments_pagination::COMMENTS_PAGE_SIZE;
+use crate::comments_pagination::{bounded_comments_request_page, COMMENTS_PAGE_SIZE};
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::{BlogPostDetail, BlogPostList, StorefrontBlogData};
 use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
@@ -87,7 +87,7 @@ pub async fn fetch_blog(
                 per_page: 6,
             },
             locale: fetch_request.locale,
-            comments_page: comments_page.max(1),
+            comments_page: bounded_comments_request_page(comments_page),
             comments_per_page: COMMENTS_PAGE_SIZE,
         },
     )
