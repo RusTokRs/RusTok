@@ -74,6 +74,7 @@ pub struct CreateGroupInput {
     pub body: Option<String>,
     pub visibility: GroupVisibility,
     pub join_policy: GroupJoinPolicy,
+    pub category_id: Option<Uuid>,
     pub avatar_media_id: Option<Uuid>,
     pub cover_media_id: Option<Uuid>,
     pub metadata: Value,
