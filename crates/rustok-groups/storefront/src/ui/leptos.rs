@@ -9,6 +9,7 @@ use crate::core::{
 use crate::i18n::t;
 use crate::model::GroupsStorefrontDirectory;
 use crate::transport::{load_groups_storefront_directory, GroupsStorefrontTransportContext};
+use crate::ui::application::GroupsMembershipApplication;
 use crate::ui::invitation_acceptance::GroupsInvitationAcceptance;
 
 #[component]
@@ -47,6 +48,7 @@ pub fn GroupsView() -> impl IntoView {
         "No public groups are available yet.",
     );
     let members_label = t(locale.as_deref(), "groups.storefront.members", "members");
+    let apply_label = t(locale.as_deref(), "groups.storefront.application.open", "Apply to join");
 
     view! {
         <section class="groups-storefront space-y-8">
@@ -56,11 +58,12 @@ pub fn GroupsView() -> impl IntoView {
                 <small>{format!("transport: {}", profile.as_str())}</small>
             </header>
 
-            <GroupsInvitationAcceptance transport=transport />
+            <GroupsInvitationAcceptance transport=transport.clone() />
+            <GroupsMembershipApplication transport=transport />
 
             <Suspense fallback=move || view! { <p>{loading.clone()}</p> }>
                 {move || directory.get().map(|result| match result {
-                    Ok(directory) => render_directory(directory, &empty, &members_label).into_any(),
+                    Ok(directory) => render_directory(directory, &empty, &members_label, &apply_label).into_any(),
                     Err(error) => view! {
                         <p class="groups-storefront__error">{groups_storefront_error(&load_error, &error.to_string())}</p>
                     }.into_any(),
@@ -74,6 +77,7 @@ fn render_directory(
     directory: GroupsStorefrontDirectory,
     empty: &str,
     members_label: &str,
+    apply_label: &str,
 ) -> impl IntoView {
     if directory.items.is_empty() {
         return view! { <p class="groups-storefront__empty">{empty.to_string()}</p> }.into_any();
@@ -83,12 +87,17 @@ fn render_directory(
         <div class="groups-storefront__grid">
             {directory.items.into_iter().map(|group| {
                 let summary = group.summary.unwrap_or_default();
+                let application_href = format!("/modules/groups?apply={}", group.id);
+                let can_apply = group.join_policy == "request";
                 view! {
                     <article class="groups-storefront__card">
                         <h2>{group.title}</h2>
                         <p>{summary}</p>
                         <p>{format!("@{} · {}", group.handle, group.visibility)}</p>
                         <small>{format!("{} {}", group.member_count, members_label)}</small>
+                        <Show when=move || can_apply>
+                            <a class="mt-4 inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" href=application_href.clone()>{apply_label.to_string()}</a>
+                        </Show>
                     </article>
                 }
             }).collect_view()}
