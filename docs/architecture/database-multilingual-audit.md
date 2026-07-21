@@ -77,17 +77,24 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   events in the same transaction. Reads project prose only from the event log;
   the preceding migration preserves legacy snapshots and the final migration
   drops `onboarding_note` and `suspension_reason` from the base table.
-- **OAuth applications** — `oauth_apps` now owns protocol identity, credentials,
+- **OAuth applications** — `oauth_apps` owns protocol identity, credentials,
   grants, redirect URIs, status, and configuration only. Human-facing name and
-  description live in `oauth_app_translations` under
-  `(tenant_id, app_id, locale)`. Legacy copy is retained as `und` before base
-  columns are dropped. Admin GraphQL propagates the host effective locale and
-  requires an exact translation; `und` is deleted once a command supplies known
-  locale provenance.
+  description live in `oauth_app_translations` under the tenant-safe unique key
+  `(tenant_id, app_id, locale)` and a composite tenant/app foreign key. Legacy
+  copy is retained as storage-only `und` before base columns are dropped. Manual
+  writes require the host-resolved effective locale and commit base state plus
+  translation in one transaction; manifest-generated English copy uses explicit
+  `en`. Admin reads require the exact requested locale and runtime code rejects
+  `und`. Consent presentation resolves the tenant-policy locale and may show the
+  stable language-neutral slug when localized presentation copy is unavailable;
+  it never returns the `und` provenance row as a translation fallback.
 - **Registry publish/release copy** — runtime default locale remains `en`, while
-  historical copy with unknown provenance is stored as `und`. The migration no
+  historical copy with unknown provenance is stored as `und`. Backfill and
+  rollback placeholders are backend-aware, and rollback prefers the preserved
+  provenance row before the runtime default. The clean-install migration no
   longer asserts that legacy text was English merely because English is the
-  runtime fallback.
+  runtime fallback. Databases that already applied the former synthetic-`en`
+  migration still require an operator audit before any relocalization.
 - **Commerce collections/categories** — a forward-only PostgreSQL/MySQL/SQLite
   migration widens collection and product-category translation locales to
   `VARCHAR(32)` and is registered after both owner tables.
