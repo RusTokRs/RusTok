@@ -39,6 +39,28 @@ const staticMaterialization = read(
 );
 const health = read("crates", "rustok-page-builder", "src", "health.rs");
 const pagesBuilder = read("crates", "rustok-pages", "admin", "src", "builder.rs");
+const pagesArtifact = read(
+  "crates",
+  "rustok-pages",
+  "src",
+  "services",
+  "page_builder_artifact.rs",
+);
+const pagesArtifactEntity = read(
+  "crates",
+  "rustok-pages",
+  "src",
+  "entities",
+  "page_static_landing_artifact.rs",
+);
+const pagesMigrations = read("crates", "rustok-pages", "src", "migrations", "mod.rs");
+const pagesMaterializationMigration = read(
+  "crates",
+  "rustok-pages",
+  "src",
+  "migrations",
+  "m20260721_000006_add_static_landing_materialization_evidence.rs",
+);
 const adminRuntime = read(
   "crates",
   "rustok-page-builder",
@@ -69,6 +91,12 @@ const contract = registry.provider?.preview_runtime_contract;
 if (!contract) fail("provider.preview_runtime_contract is missing");
 const staticContract = registry.provider?.static_materialization_contract;
 if (!staticContract) fail("provider.static_materialization_contract is missing");
+const pagesConsumer = registry.consumers?.find((consumer) => consumer.module_slug === "pages");
+if (!pagesConsumer) fail("Pages consumer is missing");
+const persistence = pagesConsumer.materialization_persistence;
+if (!persistence || persistence.state !== "integrated") {
+  fail("Pages materialization persistence is not integrated");
+}
 if (contract.context_shape !== "json_object") {
   fail(`unsupported context shape: ${contract.context_shape}`);
 }
@@ -78,7 +106,7 @@ if (!Number.isInteger(contract.context_max_bytes) || contract.context_max_bytes 
 if (!Number.isInteger(contract.scenario_id_max_bytes) || contract.scenario_id_max_bytes <= 0) {
   fail("scenario_id_max_bytes must be a positive integer");
 }
-if (staticContract.raw_context_persisted !== false) {
+if (staticContract.raw_context_persisted !== false || persistence.raw_context_persisted !== false) {
   fail("static materialization must not persist raw runtime context");
 }
 if (staticContract.evidence_hash_algorithm !== "sha256") {
@@ -89,6 +117,19 @@ if (staticContract.snapshot_document_hash_algorithm !== "fly_project_hash_fnv1a6
 }
 if (staticContract.preview_static_parity !== "document_html") {
   fail("static materialization preview_static_parity must be document_html");
+}
+const expectedUniqueKey = [
+  "tenant_id",
+  "page_id",
+  "locale",
+  "build_hash",
+  "materialization_hash",
+];
+if (JSON.stringify(persistence.unique_key) !== JSON.stringify(expectedUniqueKey)) {
+  fail("Pages materialization unique key is invalid");
+}
+if (persistence.partial_evidence !== "rejected") {
+  fail("Pages must reject partial materialization evidence");
 }
 
 for (const { filename, packet } of wavePackets) {
@@ -195,5 +236,52 @@ requireMarker(pagesBuilder, "input.runtime.context.clone()", "Pages runtime cont
 requireMarker(adminRuntime, `${contract.input}::new`, "admin preview runtime request");
 requireMarker(adminRuntime, "response.runtime_scenario_id", "admin preview response identity");
 requireMarker(adminRuntime, "current_runtime_context", "admin preview stale-context guard");
+
+for (const [field, rustType] of [
+  [persistence.materialization_hash_column, "Option<String>"],
+  [persistence.materialization_identity_column, "Option<Json>"],
+  [persistence.runtime_snapshots_column, "Option<Json>"],
+]) {
+  requireMarker(pagesArtifactEntity, `pub ${field}: ${rustType}`, "Pages artifact evidence entity");
+}
+requireMarker(
+  pagesMigrations,
+  "m20260721_000006_add_static_landing_materialization_evidence",
+  "Pages materialization migration registration",
+);
+for (const marker of [
+  "MaterializationHash",
+  "MaterializationIdentity",
+  "RuntimeSnapshots",
+  ".col(PageStaticLandingArtifacts::BuildHash)",
+  ".col(PageStaticLandingArtifacts::MaterializationHash)",
+  ".unique()",
+]) {
+  requireMarker(pagesMaterializationMigration, marker, "Pages materialization migration");
+}
+for (const marker of [
+  "compile_materialized_static_landing(",
+  "PageBuilderPreviewRuntime::default()",
+  "materialization_hash: Set(Some(",
+  "materialization_identity: Set(Some(",
+  "runtime_snapshots: Set(Some(",
+  "page_static_landing_artifact::Column::MaterializationHash",
+  "(None, None, None) => Ok(())",
+  "stored landing materialization evidence is partial",
+  "PageBuilderMaterializedStaticLandingArtifact",
+  ".verify_integrity()",
+  "materialization_hash: record.materialization_hash",
+]) {
+  requireMarker(pagesArtifact, marker, "Pages materialization persistence");
+}
+for (const forbidden of [
+  "pub runtime_context:",
+  "runtime_context: Set(",
+  "raw_runtime_context",
+]) {
+  if (pagesArtifact.includes(forbidden) || pagesArtifactEntity.includes(forbidden)) {
+    fail(`Pages materialization persistence contains forbidden raw context marker: ${forbidden}`);
+  }
+}
 
 console.log("[verify-page-builder-preview-runtime-contract] PASS");
