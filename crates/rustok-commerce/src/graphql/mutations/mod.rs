@@ -1,5 +1,7 @@
 use async_graphql::MergedObject;
 
+use super::marketplace_financial::MarketplaceFinancialMutation;
+
 pub mod cart;
 pub mod catalog;
 pub mod checkout;
@@ -18,7 +20,7 @@ pub struct CommerceMutation(
     pub pricing::CommercePricingMutation,
     pub provider_operations::CommerceProviderMutation,
     pub reconciliation::CommerceReconciliationMutation,
-    pub super::marketplace_financial::MarketplaceFinancialMutation,
+    pub MarketplaceFinancialMutation,
 );
 
 #[cfg(test)]
