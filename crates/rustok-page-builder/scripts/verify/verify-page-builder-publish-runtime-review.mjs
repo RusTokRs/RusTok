@@ -80,6 +80,12 @@ if (
 ) {
   fail("review, sanitization and receipt identities must use sha256");
 }
+if (
+  JSON.stringify(contract.provider.sanitization.hash_payload) !==
+  JSON.stringify(["format", "sanitized_project"])
+) {
+  fail("sanitization hash must bind format and the exact sanitized project");
+}
 if (contract.provider.scenario.required !== true) {
   fail("reviewed publish runtime must require an explicit scenario");
 }
@@ -145,7 +151,8 @@ for (const marker of [
   `pub fn ${contract.provider.sanitization.function}`,
   "StaticLandingCompiler::default().prepare_document(project_data)",
   "serde_json::to_value(document.project)",
-  "stable_hash(&sanitized_project)",
+  "sanitization_hash(&sanitized_project)",
+  "PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,",
   "Sha256::digest(bytes)",
   "result.verify_integrity()",
 ]) {
