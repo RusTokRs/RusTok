@@ -6,38 +6,40 @@
   "compile_policy": "not_run_by_request",
   "test_targets": [
     "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
-    "apps/server/src/graphql/blog_rate_limit.rs"
+    "apps/server/src/graphql/blog_rate_limit.rs",
+    "apps/server/src/controllers/graphql.rs"
   ],
   "production_contract": {
     "policy": "crates/rustok-blog/src/graphql/rate_limit.rs",
     "host_adapter": "apps/server/src/graphql/blog_rate_limit.rs",
-    "schema_wiring": "apps/server/src/graphql/schema.rs"
+    "schema_wiring": "apps/server/src/graphql/schema.rs",
+    "http_handoff": "apps/server/src/controllers/graphql.rs"
   },
   "cases": [
     {
       "name": "allowed_public_read",
       "layer": "module_policy",
-      "expected": "resolver executes and one tenant-scoped trusted-IP key is consumed"
+      "expected": "resolver executes, no Retry-After header is attached, and one tenant-scoped trusted-IP key is consumed"
     },
     {
       "name": "read_limit_exceeded",
       "layer": "module_policy",
-      "expected": "GraphQL error contains BLOG_RATE_LIMITED, surface, limit, and retryAfter extensions"
+      "expected": "GraphQL error contains BLOG_RATE_LIMITED, surface, limit, and retryAfter extensions and the same retry value is attached as the Retry-After response header"
     },
     {
       "name": "backend_unavailable",
       "layer": "module_policy",
-      "expected": "request fails closed with BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE"
+      "expected": "request fails closed with BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE and does not advertise Retry-After"
     },
     {
       "name": "authorized_write",
       "layer": "module_policy",
-      "expected": "write limiter key uses authenticated user identity and operation surface"
+      "expected": "write limiter key uses authenticated user identity and operation surface and an exceeded result carries Retry-After"
     },
     {
       "name": "unauthorized_write",
       "layer": "module_policy",
-      "expected": "module limiter is skipped so resolver authentication and RBAC remain authoritative"
+      "expected": "module limiter is skipped so resolver authentication and RBAC remain authoritative without Retry-After"
     },
     {
       "name": "moderation_write",
@@ -53,12 +55,17 @@
       "name": "disabled_memory_adapter",
       "layer": "host_adapter",
       "expected": "disabled host configuration remains unlimited through the Blog adapter"
+    },
+    {
+      "name": "http_response_header_handoff",
+      "layer": "host_controller",
+      "expected": "the GraphQL HTTP controller preserves async-graphql response headers while retaining the JSON content type"
     }
   ],
   "runtime_promotion_requirements": [
-    "execute the module integration target and host adapter unit target",
+    "execute the module integration target, host adapter unit target, and controller header-handoff target",
     "execute mounted GraphQL requests against Redis-backed host composition",
-    "retain HTTP Retry-After and GraphQL extension evidence",
+    "retain a real HTTP Retry-After response together with matching GraphQL retryAfter evidence",
     "retain publication, channel visibility, tenant isolation, and RBAC non-regression evidence"
   ]
 }
