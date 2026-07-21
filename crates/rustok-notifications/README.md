@@ -31,13 +31,21 @@ registry; persistence and delivery execution follow in later slices.
 - `NotificationsService`
 - `rustok_notifications::api` re-export of the neutral source contract
 
-## Current degraded behavior
+## Interactions
+
+Producer modules depend on `rustok-notifications-api`, publish semantic outbox
+events, and register optional source providers through runtime extensions.
+`rustok-notifications` consumes those contracts after producer commits. Delivery
+providers and identity/contact providers remain separate owner capabilities.
 
 With no source providers registered, the module initializes an empty registry
 and remains healthy. With the module absent, producers still commit owner state
 and semantic outbox events. The bootstrap admin/storefront packages expose only
 foundation/unavailable states until inbox persistence exists.
 
-Task status remains canonical in
-`crates/rustok-forum/docs/implementation-plan.md` until a deliberate plan
-ownership migration is approved.
+## Documentation
+
+- [Live module contract](docs/README.md)
+- [Module-local implementation gates](docs/implementation-plan.md)
+- Canonical cross-module status:
+  `crates/rustok-forum/docs/implementation-plan.md`
