@@ -1,11 +1,18 @@
 use std::sync::Arc;
 
-use rustok_marketplace::{MarketplaceFinancialCommandPort, MarketplaceFinancialOrchestrationService};
+use rustok_marketplace::{
+    MarketplaceFinancialCommandPort, MarketplaceFinancialOrchestrationService,
+};
+use rustok_marketplace_allocation::MarketplaceAllocationReadPort;
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentProviderEventObservers;
 use sea_orm::DatabaseConnection;
 
+#[path = "marketplace_reversal_fact_guard.rs"]
+mod marketplace_reversal_fact_guard;
+
+use self::marketplace_reversal_fact_guard::MarketplaceReversalFactGuardObserver;
 use super::{
     MarketplaceFinancialOperatorService, MarketplacePaidEventInboxService,
     MarketplaceProviderReversalBackfillService, MarketplaceProviderReversalEventAdapter,
@@ -17,6 +24,7 @@ use super::{
 #[derive(Clone)]
 pub struct MarketplaceFinancialRuntime {
     ledger_port: Arc<dyn MarketplaceLedgerCommandPort>,
+    allocation_reader: Option<Arc<dyn MarketplaceAllocationReadPort>>,
     financial_port: Option<Arc<dyn MarketplaceFinancialCommandPort>>,
 }
 
@@ -24,8 +32,17 @@ impl MarketplaceFinancialRuntime {
     pub fn new(ledger_port: Arc<dyn MarketplaceLedgerCommandPort>) -> Self {
         Self {
             ledger_port,
+            allocation_reader: None,
             financial_port: None,
         }
+    }
+
+    pub fn with_allocation_reader(
+        mut self,
+        allocation_reader: Arc<dyn MarketplaceAllocationReadPort>,
+    ) -> Self {
+        self.allocation_reader = Some(allocation_reader);
+        self
     }
 
     pub fn with_financial_port(
@@ -43,7 +60,7 @@ impl MarketplaceFinancialRuntime {
         let commission = Arc::new(
             rustok_marketplace_commission::MarketplaceCommissionService::new(
                 db.clone(),
-                allocation,
+                allocation.clone(),
             ),
         );
         let ledger = Arc::new(rustok_marketplace_ledger::MarketplaceLedgerService::new(
@@ -54,11 +71,19 @@ impl MarketplaceFinancialRuntime {
             commission,
             ledger.clone(),
         ));
-        Self::new(ledger).with_financial_port(financial)
+        Self::new(ledger)
+            .with_allocation_reader(allocation)
+            .with_financial_port(financial)
     }
 
     pub fn ledger_port(&self) -> Arc<dyn MarketplaceLedgerCommandPort> {
         self.ledger_port.clone()
+    }
+
+    pub fn allocation_reader(&self) -> Arc<dyn MarketplaceAllocationReadPort> {
+        self.allocation_reader.clone().expect(
+            "MarketplaceAllocationReadPort must be host-composed for reversal fact guards",
+        )
     }
 
     pub fn financial_port(&self) -> Arc<dyn MarketplaceFinancialCommandPort> {
@@ -100,9 +125,13 @@ impl MarketplaceFinancialRuntime {
         &self,
         db: DatabaseConnection,
     ) -> PaymentProviderEventObservers {
-        PaymentProviderEventObservers::default().with_observer(Arc::new(
-            self.provider_reversal_event_adapter(db),
-        ))
+        let delegate = self.provider_reversal_event_adapter(db.clone());
+        let guarded = MarketplaceReversalFactGuardObserver::new(
+            db,
+            self.allocation_reader(),
+            delegate,
+        );
+        PaymentProviderEventObservers::default().with_observer(Arc::new(guarded))
     }
 
     pub fn operator_service(
