@@ -15,8 +15,6 @@ use crate::service::{
 #[cfg(feature = "server")]
 use crate::transport::{dispatch_graphql_envelope, dispatch_leptos_server_function_envelope};
 #[cfg(feature = "server")]
-use async_trait::async_trait;
-#[cfg(feature = "server")]
 use rustok_api::PortContext;
 
 #[cfg(feature = "server")]
@@ -185,87 +183,6 @@ impl std::error::Error for FlyProjectAdapterError {}
 impl From<FlyProjectAdapterError> for PageBuilderServiceError {
     fn from(value: FlyProjectAdapterError) -> Self {
         PageBuilderServiceError::Validation(value.to_string())
-    }
-}
-
-/// Service decorator that makes Fly the structural validator for preview and publish calls while
-/// preserving the existing transport envelopes, authorization, persistence, rendering, and rollout
-/// behaviour of the wrapped service.
-#[cfg(feature = "server")]
-pub struct FlyValidatedPageBuilderService<S> {
-    inner: S,
-    registries: RegistrySet,
-    limits: ValidationLimits,
-}
-
-#[cfg(feature = "server")]
-impl<S> FlyValidatedPageBuilderService<S> {
-    pub fn new(inner: S) -> Self {
-        Self {
-            inner,
-            registries: RegistrySet::with_builtins(),
-            limits: ValidationLimits::default(),
-        }
-    }
-
-    pub fn with_policy(inner: S, registries: RegistrySet, limits: ValidationLimits) -> Self {
-        Self {
-            inner,
-            registries,
-            limits,
-        }
-    }
-
-    pub fn inner(&self) -> &S {
-        &self.inner
-    }
-
-    fn validate_project(&self, project_data: &Value) -> Result<(), PageBuilderServiceError> {
-        let inspection =
-            FlyProjectInspection::decode_with(project_data, &self.registries, self.limits)?;
-        inspection.require_valid()?;
-        Ok(())
-    }
-}
-
-#[cfg(feature = "server")]
-#[async_trait]
-impl<S> PageBuilderCapabilityService for FlyValidatedPageBuilderService<S>
-where
-    S: PageBuilderCapabilityService,
-{
-    async fn preview(
-        &self,
-        context: &PortContext,
-        input: crate::dto::PreviewPageBuilderInput,
-    ) -> crate::service::PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
-        self.validate_project(&input.project_data)?;
-        self.inner.preview(context, input).await
-    }
-
-    async fn tree(
-        &self,
-        context: &PortContext,
-        input: crate::dto::BuilderTreeInput,
-    ) -> crate::service::PageBuilderServiceResult<crate::dto::BuilderTreeResult> {
-        self.inner.tree(context, input).await
-    }
-
-    async fn properties(
-        &self,
-        context: &PortContext,
-        input: crate::dto::BuilderNodePropertiesInput,
-    ) -> crate::service::PageBuilderServiceResult<crate::dto::BuilderNodePropertiesResult> {
-        self.inner.properties(context, input).await
-    }
-
-    async fn publish(
-        &self,
-        context: &PortContext,
-        input: crate::dto::PublishPageBuilderInput,
-    ) -> crate::service::PageBuilderServiceResult<crate::dto::PublishPageBuilderResult> {
-        self.validate_project(&input.project_data)?;
-        self.inner.publish(context, input).await
     }
 }
 
