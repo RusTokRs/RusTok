@@ -11,7 +11,6 @@ mod core;
 mod i18n;
 mod model;
 mod transport;
-pub mod ui;
 
 pub use access::{
     pages_editor_capability_policy, pages_editor_capability_policy_for_role,
