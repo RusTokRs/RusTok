@@ -18,7 +18,6 @@ pub struct GqlPage {
     pub translations: Vec<GqlPageTranslation>,
     pub body: Option<GqlPageBody>,
     pub channel_slugs: Vec<String>,
-    pub blocks: Vec<GqlBlock>,
     pub metadata: String,
 }
 
@@ -62,7 +61,6 @@ pub struct CreateGqlPageInput {
     pub translations: Vec<GqlPageTranslationInput>,
     pub template: Option<String>,
     pub body: Option<GqlPageBodyInput>,
-    pub blocks: Option<Vec<CreateGqlBlockInput>>,
     pub channel_slugs: Option<Vec<String>>,
     pub publish: Option<bool>,
 }
@@ -93,47 +91,6 @@ pub struct GqlPageBodyInput {
     pub content_json: Option<Value>,
 }
 
-#[derive(Clone, Debug, SimpleObject)]
-pub struct GqlBlock {
-    pub id: Uuid,
-    pub block_type: String,
-    pub position: i32,
-    pub data: Value,
-    pub translations: Option<Vec<GqlBlockTranslation>>,
-}
-
-#[derive(Clone, Debug, InputObject)]
-pub struct CreateGqlBlockInput {
-    pub block_type: String,
-    pub position: i32,
-    pub data: Value,
-    pub translations: Option<Vec<GqlBlockTranslationInput>>,
-}
-
-#[derive(Clone, Debug, InputObject)]
-pub struct UpdateGqlBlockInput {
-    pub position: Option<i32>,
-    pub data: Option<Value>,
-    pub translations: Option<Vec<GqlBlockTranslationInput>>,
-}
-
-#[derive(Clone, Debug, InputObject)]
-pub struct GqlBlockTranslationInput {
-    pub locale: String,
-    pub data: Value,
-}
-
-#[derive(Clone, Debug, SimpleObject)]
-pub struct GqlBlockTranslation {
-    pub locale: String,
-    pub data: Value,
-}
-
-#[derive(Clone, Debug, InputObject)]
-pub struct ReorderBlocksInput {
-    pub block_ids: Vec<Uuid>,
-}
-
 #[derive(InputObject)]
 pub struct ListGqlPagesFilter {
     pub locale: Option<String>,
@@ -159,7 +116,6 @@ impl From<crate::PageResponse> for GqlPage {
             translations: r.translations.into_iter().map(Into::into).collect(),
             body: r.body.map(Into::into),
             channel_slugs: r.channel_slugs,
-            blocks: r.blocks.into_iter().map(Into::into).collect(),
             metadata: r.metadata.to_string(),
         }
     }
@@ -200,47 +156,6 @@ impl From<crate::PageListItem> for GqlPageListItem {
             channel_slugs: r.channel_slugs,
             updated_at: r.updated_at,
         }
-    }
-}
-
-impl From<crate::BlockResponse> for GqlBlock {
-    fn from(r: crate::BlockResponse) -> Self {
-        Self {
-            id: r.id,
-            block_type: block_type_str(&r.block_type),
-            position: r.position,
-            data: r.data,
-            translations: r.translations.map(|items| {
-                items
-                    .into_iter()
-                    .map(|translation| GqlBlockTranslation {
-                        locale: translation.locale,
-                        data: translation.data,
-                    })
-                    .collect()
-            }),
-        }
-    }
-}
-
-fn block_type_str(block_type: &crate::BlockType) -> String {
-    use crate::BlockType;
-    match block_type {
-        BlockType::Hero => "hero".to_string(),
-        BlockType::Text => "text".to_string(),
-        BlockType::Image => "image".to_string(),
-        BlockType::Gallery => "gallery".to_string(),
-        BlockType::Cta => "cta".to_string(),
-        BlockType::Features => "features".to_string(),
-        BlockType::Testimonials => "testimonials".to_string(),
-        BlockType::Pricing => "pricing".to_string(),
-        BlockType::Faq => "faq".to_string(),
-        BlockType::Contact => "contact".to_string(),
-        BlockType::ProductGrid => "product_grid".to_string(),
-        BlockType::Newsletter => "newsletter".to_string(),
-        BlockType::Video => "video".to_string(),
-        BlockType::Html => "html".to_string(),
-        BlockType::Spacer => "spacer".to_string(),
     }
 }
 
