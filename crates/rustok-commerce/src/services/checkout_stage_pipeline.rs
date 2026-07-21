@@ -18,11 +18,14 @@ use super::{
     CheckoutFulfillmentCreatedState, CheckoutFulfillmentStageError,
     CheckoutFulfillmentStageExecutor, CheckoutMarketplaceAllocationError,
     CheckoutMarketplaceAllocationStage, CheckoutMarketplaceCommissionError,
-    CheckoutMarketplaceCommissionStage, CheckoutOperationError, CheckoutOperationJournal,
-    CheckoutOperationStage, CheckoutOrderPlanError, CheckoutOrderPlanJournal,
-    CheckoutOrderPlanPayload, CheckoutOrderPlanRecord, CheckoutOrderStageError,
-    CheckoutOrderStageExecutor, CheckoutPaymentCapturedState, CheckoutPaymentReadyState,
-    CheckoutPaymentStageError, CheckoutPaymentStageExecutor,
+    CheckoutMarketplaceCommissionStage, CheckoutMarketplaceEconomicsCheckpointError,
+    CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOperationStatus,
+    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
+    CheckoutOrderPlanRecord, CheckoutOrderStageError, CheckoutOrderStageExecutor,
+    CheckoutPaymentCapturedState, CheckoutPaymentReadyState, CheckoutPaymentStageError,
+    CheckoutPaymentStageExecutor, RecordCheckoutMarketplaceEconomicsCheckpoint,
+    build_marketplace_economics_evidence, validate_marketplace_economics_checkpoint,
 };
 
 #[derive(Debug, Error)]
@@ -37,6 +40,8 @@ pub enum CheckoutStagePipelineError {
     MarketplaceAllocation(#[from] CheckoutMarketplaceAllocationError),
     #[error(transparent)]
     MarketplaceCommission(#[from] CheckoutMarketplaceCommissionError),
+    #[error(transparent)]
+    MarketplaceEconomicsCheckpoint(#[from] CheckoutMarketplaceEconomicsCheckpointError),
     #[error(transparent)]
     PaymentStage(#[from] CheckoutPaymentStageError),
     #[error(transparent)]
@@ -67,6 +72,7 @@ pub struct CheckoutStagePipeline {
     order_stage: CheckoutOrderStageExecutor,
     marketplace_allocation_stage: Option<CheckoutMarketplaceAllocationStage>,
     marketplace_commission_stage: Option<CheckoutMarketplaceCommissionStage>,
+    marketplace_economics_checkpoint_journal: CheckoutMarketplaceEconomicsCheckpointJournal,
     payment_stage: CheckoutPaymentStageExecutor,
     fulfillment_stage: CheckoutFulfillmentStageExecutor,
     finalization: CheckoutFinalizationExecutor,
@@ -92,6 +98,8 @@ impl CheckoutStagePipeline {
             ),
             marketplace_allocation_stage: None,
             marketplace_commission_stage: None,
+            marketplace_economics_checkpoint_journal:
+                CheckoutMarketplaceEconomicsCheckpointJournal::new(db.clone()),
             payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
             fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
             finalization: CheckoutFinalizationExecutor::new(db.clone(), cart_checkout_port),
@@ -169,17 +177,11 @@ impl CheckoutStagePipeline {
                 .await?
         };
 
-        self.allocate_marketplace_before_capture(
+        self.ensure_marketplace_economics_before_capture(
             tenant_id,
             actor_id,
             operation_id,
-            &payment_ready,
-        )
-        .await?;
-        self.assess_marketplace_commission_before_capture(
-            tenant_id,
-            actor_id,
-            operation_id,
+            lease_owner.as_str(),
             &payment_ready,
         )
         .await?;
@@ -222,23 +224,59 @@ impl CheckoutStagePipeline {
             .map_err(Into::into)
     }
 
-    async fn allocate_marketplace_before_capture(
+    async fn ensure_marketplace_economics_before_capture(
         &self,
         tenant_id: Uuid,
         actor_id: Uuid,
         operation_id: Uuid,
+        lease_owner: &str,
         payment_ready: &CheckoutPaymentReadyState,
     ) -> CheckoutStagePipelineResult<()> {
-        if payment_ready.plan.payload.marketplace_lines.is_empty() {
+        let marketplace_line_count = payment_ready.plan.payload.marketplace_lines.len();
+        if marketplace_line_count == 0 {
             return Ok(());
         }
-        let stage = self.marketplace_allocation_stage.as_ref().ok_or_else(|| {
+
+        if let Some(checkpoint) = self
+            .marketplace_economics_checkpoint_journal
+            .get(tenant_id, operation_id)
+            .await?
+        {
+            validate_marketplace_economics_checkpoint(
+                &checkpoint,
+                tenant_id,
+                operation_id,
+                payment_ready.order.id,
+                payment_ready.plan.plan_hash.as_str(),
+                payment_ready.order.currency_code.as_str(),
+                marketplace_line_count,
+            )?;
+            return Ok(());
+        }
+
+        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        if operation.status != CheckoutOperationStatus::Executing.as_str()
+            || operation.stage != CheckoutOperationStage::PaymentReady.as_str()
+        {
+            return Err(CheckoutStagePipelineError::Conflict(format!(
+                "checkout operation {operation_id} advanced beyond payment_ready without a marketplace economics checkpoint"
+            )));
+        }
+
+        let allocation_stage = self.marketplace_allocation_stage.as_ref().ok_or_else(|| {
             CheckoutStagePipelineError::Conflict(
                 "marketplace checkout lines require a composed allocation command port"
                     .to_string(),
             )
         })?;
-        stage
+        let commission_stage = self.marketplace_commission_stage.as_ref().ok_or_else(|| {
+            CheckoutStagePipelineError::Conflict(
+                "marketplace checkout lines require a composed commission command port"
+                    .to_string(),
+            )
+        })?;
+
+        let allocation = allocation_stage
             .allocate_if_present(
                 tenant_id,
                 actor_id,
@@ -246,27 +284,13 @@ impl CheckoutStagePipeline {
                 &payment_ready.plan.payload,
                 &payment_ready.order,
             )
-            .await?;
-        Ok(())
-    }
-
-    async fn assess_marketplace_commission_before_capture(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Uuid,
-        operation_id: Uuid,
-        payment_ready: &CheckoutPaymentReadyState,
-    ) -> CheckoutStagePipelineResult<()> {
-        if payment_ready.plan.payload.marketplace_lines.is_empty() {
-            return Ok(());
-        }
-        let stage = self.marketplace_commission_stage.as_ref().ok_or_else(|| {
-            CheckoutStagePipelineError::Conflict(
-                "marketplace checkout lines require a composed commission command port"
-                    .to_string(),
-            )
-        })?;
-        stage
+            .await?
+            .ok_or_else(|| {
+                CheckoutStagePipelineError::Conflict(
+                    "marketplace checkout plan did not produce an allocation result".to_string(),
+                )
+            })?;
+        let commission = commission_stage
             .assess_if_present(
                 tenant_id,
                 actor_id,
@@ -274,7 +298,35 @@ impl CheckoutStagePipeline {
                 &payment_ready.plan.payload,
                 &payment_ready.order,
             )
+            .await?
+            .ok_or_else(|| {
+                CheckoutStagePipelineError::Conflict(
+                    "marketplace checkout plan did not produce a commission result".to_string(),
+                )
+            })?;
+        let evidence = build_marketplace_economics_evidence(
+            payment_ready.plan.plan_hash.as_str(),
+            &allocation,
+            &commission,
+        )?;
+        let checkpoint = self
+            .marketplace_economics_checkpoint_journal
+            .record(RecordCheckoutMarketplaceEconomicsCheckpoint {
+                tenant_id,
+                checkout_operation_id: operation_id,
+                lease_owner: lease_owner.to_string(),
+                evidence,
+            })
             .await?;
+        validate_marketplace_economics_checkpoint(
+            &checkpoint,
+            tenant_id,
+            operation_id,
+            payment_ready.order.id,
+            payment_ready.plan.plan_hash.as_str(),
+            payment_ready.order.currency_code.as_str(),
+            marketplace_line_count,
+        )?;
         Ok(())
     }
 
