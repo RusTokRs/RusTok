@@ -22,7 +22,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-struct PagesPublishHttpRuntime {
+pub struct PagesPublishHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
 }
