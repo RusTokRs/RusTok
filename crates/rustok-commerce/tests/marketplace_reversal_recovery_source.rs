@@ -48,12 +48,18 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(adapter.contains("CAST(event_metadata AS TEXT)"));
     assert!(adapter.contains("DatabaseBackend::MySql"));
     assert!(adapter.contains("CAST(event_metadata AS CHAR)"));
+    assert!(adapter.contains("pub fn safe_message(&self) -> &'static str"));
+    assert!(adapter.contains("error.safe_message()"));
+    assert!(adapter.contains("marketplace reversal live observer failed"));
+    assert!(!adapter.contains("error.to_string(),\n                    error.retryable()"));
     assert!(!adapter.contains("raw_payload"));
 
     assert!(backfill.contains("marketplace_reversal_adaptation_failures"));
     assert!(backfill.contains("next_retry_at > CURRENT_TIMESTAMP"));
     assert!(backfill.contains("record_failure"));
     assert!(backfill.contains("mark_resolved"));
+    assert!(backfill.contains("let safe_message = error.safe_message()"));
+    assert!(!backfill.contains("safe_reversal_adapter_message"));
     assert!(!backfill.contains("raw_payload"));
 
     assert!(adaptation_failures.contains("RetryableError"));
