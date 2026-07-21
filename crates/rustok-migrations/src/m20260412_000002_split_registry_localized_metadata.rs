@@ -1,11 +1,13 @@
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
-
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-const DEFAULT_REGISTRY_LOCALE: &str = "en";
+/// Runtime selection policy for newly created registry records.
+const RUNTIME_DEFAULT_REGISTRY_LOCALE: &str = "en";
+/// Storage-only provenance for legacy display copy whose source language was not recorded.
+const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
@@ -127,7 +129,7 @@ async fn add_registry_default_locale_columns(manager: &SchemaManager<'_>) -> Res
                     ColumnDef::new(RegistryPublishRequests::DefaultLocale)
                         .string_len(32)
                         .not_null()
-                        .default(DEFAULT_REGISTRY_LOCALE),
+                        .default(RUNTIME_DEFAULT_REGISTRY_LOCALE),
                 )
                 .to_owned(),
         )
@@ -141,7 +143,7 @@ async fn add_registry_default_locale_columns(manager: &SchemaManager<'_>) -> Res
                     ColumnDef::new(RegistryModuleReleases::DefaultLocale)
                         .string_len(32)
                         .not_null()
-                        .default(DEFAULT_REGISTRY_LOCALE),
+                        .default(RUNTIME_DEFAULT_REGISTRY_LOCALE),
                 )
                 .to_owned(),
         )
@@ -162,20 +164,23 @@ async fn backfill_publish_request_translations(
     let rows = db
         .query_all(Statement::from_string(
             backend,
-            "SELECT id, default_locale, module_name, description FROM registry_publish_requests"
-                .to_string(),
+            "SELECT id, module_name, description FROM registry_publish_requests".to_string(),
         ))
         .await?;
 
     for row in rows {
         let request_id = row.try_get::<String>("", "id")?;
-        let locale = row.try_get::<String>("", "default_locale")?;
         let name = row.try_get::<String>("", "module_name")?;
         let description = row.try_get::<String>("", "description")?;
         execute_statement(
             db,
             "INSERT INTO registry_publish_request_translations (request_id, locale, name, description, created_at, updated_at) VALUES ({v1}, {v2}, {v3}, {v4}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-            vec![request_id.into(), locale.into(), name.into(), description.into()],
+            vec![
+                request_id.into(),
+                LEGACY_UNDETERMINED_LOCALE.into(),
+                name.into(),
+                description.into(),
+            ],
         )
         .await?;
     }
@@ -188,20 +193,23 @@ async fn backfill_release_translations(db: &SchemaManagerConnection<'_>) -> Resu
     let rows = db
         .query_all(Statement::from_string(
             backend,
-            "SELECT id, default_locale, module_name, description FROM registry_module_releases"
-                .to_string(),
+            "SELECT id, module_name, description FROM registry_module_releases".to_string(),
         ))
         .await?;
 
     for row in rows {
         let release_id = row.try_get::<String>("", "id")?;
-        let locale = row.try_get::<String>("", "default_locale")?;
         let name = row.try_get::<String>("", "module_name")?;
         let description = row.try_get::<String>("", "description")?;
         execute_statement(
             db,
             "INSERT INTO registry_module_release_translations (release_id, locale, name, description, created_at, updated_at) VALUES ({v1}, {v2}, {v3}, {v4}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-            vec![release_id.into(), locale.into(), name.into(), description.into()],
+            vec![
+                release_id.into(),
+                LEGACY_UNDETERMINED_LOCALE.into(),
+                name.into(),
+                description.into(),
+            ],
         )
         .await?;
     }
@@ -384,8 +392,9 @@ fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> St
     let mut sql = template.to_string();
     for index in 0..value_count {
         let placeholder = match backend {
+            DbBackend::Postgres => format!("${}", index + 1),
+            DbBackend::MySql => "?".to_string(),
             DbBackend::Sqlite => format!("?{}", index + 1),
-            _ => format!("${}", index + 1),
         };
         sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
     }
@@ -417,14 +426,18 @@ async fn load_translation_row(
 ) -> Result<LocalizedMetadataRow, DbErr> {
     let backend = db.get_database_backend();
     let sql = format!(
-        "SELECT locale, name, description FROM {table} WHERE {owner_column} = {{v1}} ORDER BY CASE WHEN locale = {{v2}} THEN 0 ELSE 1 END, locale ASC LIMIT 1"
+        "SELECT name, description FROM {table} WHERE {owner_column} = {{v1}} ORDER BY CASE WHEN locale = {{v2}} THEN 0 WHEN locale = {{v3}} THEN 1 ELSE 2 END, locale ASC LIMIT 1"
     );
-    let sql = placeholder_sql(backend, &sql, 2);
+    let sql = placeholder_sql(backend, &sql, 3);
     let row = db
         .query_one(Statement::from_sql_and_values(
             backend,
             sql,
-            vec![owner_id.into(), default_locale.into()],
+            vec![
+                owner_id.into(),
+                LEGACY_UNDETERMINED_LOCALE.into(),
+                default_locale.into(),
+            ],
         ))
         .await?
         .ok_or_else(|| {
@@ -434,15 +447,12 @@ async fn load_translation_row(
         })?;
 
     Ok(LocalizedMetadataRow {
-        locale: row.try_get("", "locale")?,
         name: row.try_get("", "name")?,
         description: row.try_get("", "description")?,
     })
 }
 
 struct LocalizedMetadataRow {
-    #[allow(dead_code)]
-    locale: String,
     name: String,
     description: String,
 }
