@@ -9,6 +9,22 @@ pub enum GroupsAdminTransportProfile {
     Graphql,
 }
 
+impl GroupsAdminTransportProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Graphql => "graphql",
+        }
+    }
+}
+
+pub fn selected_transport_profile(value: Option<&str>) -> GroupsAdminTransportProfile {
+    match value.unwrap_or_default().trim().to_ascii_lowercase().as_str() {
+        "graphql" => GroupsAdminTransportProfile::Graphql,
+        _ => GroupsAdminTransportProfile::Native,
+    }
+}
+
 pub fn default_groups_admin_filters() -> GroupsAdminFilters {
     GroupsAdminFilters {
         page: DEFAULT_GROUPS_PAGE,
@@ -55,5 +71,17 @@ mod tests {
         assert_eq!(request.page, 1);
         assert_eq!(request.per_page, 24);
         assert!(request.include_non_public);
+    }
+
+    #[test]
+    fn transport_selection_has_no_implicit_fallback() {
+        assert_eq!(
+            selected_transport_profile(Some("graphql")),
+            GroupsAdminTransportProfile::Graphql
+        );
+        assert_eq!(
+            selected_transport_profile(Some("native")),
+            GroupsAdminTransportProfile::Native
+        );
     }
 }
