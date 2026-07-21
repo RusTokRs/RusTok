@@ -40,20 +40,42 @@ mod tests {
     }
 
     #[test]
+    fn source_revision_is_validated_during_deserialization() {
+        let value = serde_json::json!({
+            "tenant_id": Uuid::new_v4(),
+            "event_id": Uuid::new_v4(),
+            "source": "forum",
+            "event_type": "forum.reply.approved",
+            "source_revision": 0
+        });
+        assert!(serde_json::from_value::<NotificationSourceEventRef>(value).is_err());
+    }
+
+    #[test]
     fn audience_pages_reject_duplicates_and_excessive_fanout() {
         let recipient_id = Uuid::new_v4();
         let duplicate = vec![
             NotificationAudienceCandidate { recipient_id },
             NotificationAudienceCandidate { recipient_id },
         ];
-        assert!(NotificationAudiencePage::try_new(duplicate, None).is_err());
+        assert!(NotificationAudiencePage::try_new(duplicate.clone(), None).is_err());
+        assert!(serde_json::from_value::<NotificationAudiencePage>(serde_json::json!({
+            "recipients": duplicate,
+            "next_cursor": null
+        }))
+        .is_err());
 
         let oversized = (0..=MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE)
             .map(|_| NotificationAudienceCandidate {
                 recipient_id: Uuid::new_v4(),
             })
-            .collect();
-        assert!(NotificationAudiencePage::try_new(oversized, None).is_err());
+            .collect::<Vec<_>>();
+        assert!(NotificationAudiencePage::try_new(oversized.clone(), None).is_err());
+        assert!(serde_json::from_value::<NotificationAudiencePage>(serde_json::json!({
+            "recipients": oversized,
+            "next_cursor": null
+        }))
+        .is_err());
     }
 
     #[test]
