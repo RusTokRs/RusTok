@@ -33,7 +33,7 @@
 ### TopicListItem
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### ReplyResponse / ReplyListItem
-- Added: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (in ListItem), `vote_score: i32`, `current_user_vote: Option<i32`, `is_solution: bool`
+- Added: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (in ListItem), `vote_score: i32`, `current_user_vote: Option<i32>`, `is_solution: bool`
 ### CategoryResponse
 - Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### CategoryListItem
@@ -70,7 +70,7 @@
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
-- `CategoryCoverMediaCandidate` is the transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
+- `CategoryCoverMediaCandidate` is a transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
 - `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
 - `resolve_category_cover_for_write` calls the Media owner port and fails with stable code `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed; it never treats a missing capability as a clear-cover command.
 - `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled deployment profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
