@@ -2,13 +2,17 @@ use rustok_api::normalize_locale_tag;
 use uuid::Uuid;
 
 use crate::model::{
-    ChangeGroupRoleCommand, DeleteGroupTranslationCommand, GroupsAdminAssignableRole,
-    GroupsAdminFilters, GroupsAdminTranslationQuery, TransferGroupOwnershipCommand,
+    ChangeGroupRoleCommand, CreateGroupInvitationCommand, DeleteGroupTranslationCommand,
+    GroupsAdminAssignableRole, GroupsAdminFilters, GroupsAdminInvitationQuery,
+    GroupsAdminTranslationQuery, RevokeGroupInvitationCommand, TransferGroupOwnershipCommand,
     UpsertGroupTranslationCommand,
 };
 
 pub const DEFAULT_GROUPS_PAGE: u64 = 1;
 pub const DEFAULT_GROUPS_PER_PAGE: u64 = 24;
+pub const MIN_GROUP_INVITATION_EXPIRY_SECONDS: u64 = 300;
+pub const MAX_GROUP_INVITATION_EXPIRY_SECONDS: u64 = 30 * 24 * 60 * 60;
+pub const MAX_GROUP_INVITATION_USES: u32 = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupsAdminTransportProfile {
@@ -82,6 +86,16 @@ pub enum GroupsAdminLocalizationInputError {
     MissingTitle,
     TitleTooLong,
     SummaryTooLong,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupsAdminInvitationInputError {
+    InvalidGroupId,
+    InvalidInvitationId,
+    InvalidTargetUserId,
+    InvalidExpiry,
+    InvalidMaxUses,
+    TargetedInviteMustBeSingleUse,
 }
 
 pub fn prepare_change_group_role(
@@ -174,6 +188,65 @@ pub fn prepare_delete_group_translation(
     })
 }
 
+pub fn prepare_group_invitation_query(
+    group_id: &str,
+    include_inactive: bool,
+) -> Result<GroupsAdminInvitationQuery, GroupsAdminInvitationInputError> {
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminInvitationInputError::InvalidGroupId)?;
+    Ok(GroupsAdminInvitationQuery {
+        group_id,
+        page: DEFAULT_GROUPS_PAGE,
+        per_page: DEFAULT_GROUPS_PER_PAGE,
+        include_inactive,
+    })
+}
+
+pub fn prepare_create_group_invitation(
+    group_id: &str,
+    target_user_id: Option<&str>,
+    expires_in_seconds: u64,
+    max_uses: u32,
+) -> Result<CreateGroupInvitationCommand, GroupsAdminInvitationInputError> {
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminInvitationInputError::InvalidGroupId)?;
+    if !(MIN_GROUP_INVITATION_EXPIRY_SECONDS..=MAX_GROUP_INVITATION_EXPIRY_SECONDS)
+        .contains(&expires_in_seconds)
+    {
+        return Err(GroupsAdminInvitationInputError::InvalidExpiry);
+    }
+    if !(1..=MAX_GROUP_INVITATION_USES).contains(&max_uses) {
+        return Err(GroupsAdminInvitationInputError::InvalidMaxUses);
+    }
+    let target_user_id = target_user_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_uuid)
+        .transpose()
+        .map_err(|_| GroupsAdminInvitationInputError::InvalidTargetUserId)?;
+    if target_user_id.is_some() && max_uses != 1 {
+        return Err(GroupsAdminInvitationInputError::TargetedInviteMustBeSingleUse);
+    }
+    Ok(CreateGroupInvitationCommand {
+        idempotency_key: format!("groups-admin-create-invitation-{}", Uuid::new_v4()),
+        group_id,
+        target_user_id,
+        expires_in_seconds,
+        max_uses,
+    })
+}
+
+pub fn prepare_revoke_group_invitation(
+    invitation_id: &str,
+) -> Result<RevokeGroupInvitationCommand, GroupsAdminInvitationInputError> {
+    let invitation_id = normalize_uuid(invitation_id)
+        .map_err(|_| GroupsAdminInvitationInputError::InvalidInvitationId)?;
+    Ok(RevokeGroupInvitationCommand {
+        idempotency_key: format!("groups-admin-revoke-invitation-{}", Uuid::new_v4()),
+        invitation_id,
+    })
+}
+
 fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {
     Uuid::parse_str(value.trim()).map(|value| value.to_string())
 }
@@ -220,5 +293,18 @@ mod tests {
         )
         .expect("valid localization command");
         assert_eq!(command.locale, "pt-BR");
+    }
+
+    #[test]
+    fn targeted_invitation_is_single_use() {
+        assert!(matches!(
+            prepare_create_group_invitation(
+                "550e8400-e29b-41d4-a716-446655440000",
+                Some("550e8400-e29b-41d4-a716-446655440001"),
+                3600,
+                2,
+            ),
+            Err(GroupsAdminInvitationInputError::TargetedInviteMustBeSingleUse)
+        ));
     }
 }
