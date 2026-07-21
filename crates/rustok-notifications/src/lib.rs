@@ -1,3 +1,6 @@
+pub mod entities;
+pub mod migrations;
+pub mod model;
 mod service;
 
 use async_trait::async_trait;
@@ -39,7 +42,11 @@ impl RusToKModule for NotificationsModule {
 
 impl MigrationSource for NotificationsModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }
 
@@ -51,11 +58,12 @@ mod tests {
     use super::{NotificationsModule, NotificationsService};
 
     #[test]
-    fn module_initializes_an_empty_optional_source_registry() {
+    fn module_initializes_source_registry_and_persistence_migration() {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert!(module.migrations().is_empty());
+        assert_eq!(module.migrations().len(), 1);
+        assert_eq!(module.migration_dependencies().len(), 1);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module.register_runtime_extensions(&mut extensions);
