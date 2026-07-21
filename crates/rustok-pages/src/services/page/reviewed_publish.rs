@@ -15,7 +15,10 @@ use uuid::Uuid;
 
 use crate::dto::PageResponse;
 use crate::entities::{page, page_body};
-use crate::error::{PagesError, PagesResult};
+use crate::error::{
+    PagesError, PagesResult, PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID,
+};
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::enforce_owned_scope;
 use crate::services::{PageBuilderArtifactService, PageBuilderScenarioBaselineService};
@@ -30,11 +33,6 @@ use super::{PAGE_KIND, PageService, PageTransition};
 const MAX_DOCUMENT_HTML_BYTES: usize = 2 * 1024 * 1024;
 const MAX_BODY_HTML_BYTES: usize = 1536 * 1024;
 const MAX_CSS_BYTES: usize = 512 * 1024;
-
-pub const PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID: &str =
-    "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID";
-pub const PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH: &str =
-    "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH";
 
 type BodyRevisionSnapshot = Vec<(String, String)>;
 
@@ -286,14 +284,12 @@ fn enforce_max(label: &str, actual: usize, maximum: usize) -> PagesResult<()> {
 }
 
 fn review_contract_error(error: impl std::fmt::Display) -> PagesError {
-    PagesError::validation(format!(
-        "{PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID}: {error}"
-    ))
+    PagesError::publish_runtime_review_invalid(error.to_string())
 }
 
 fn materialization_mismatch_error(locale: &str) -> PagesError {
-    PagesError::artifact_integrity(format!(
-        "{PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH}: reviewed runtime does not match the materialized landing for locale `{locale}`"
+    PagesError::publish_runtime_materialization_mismatch(format!(
+        "reviewed runtime does not match the materialized landing for locale `{locale}`"
     ))
 }
 
