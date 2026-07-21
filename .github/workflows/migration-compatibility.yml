@@ -39,24 +39,48 @@ jobs:
         run: |
           set +e
           node scripts/verify/verify-db-multilingual-contract.mjs > verifier.log 2>&1
-          status=$?
-          echo "$status" > verifier.exit
+          echo "$?" > verifier.exit
           cat verifier.log
           exit 0
 
-      - name: Check Auth admin SSR
-        run: cargo check -p rustok-auth-admin --no-default-features --features ssr --locked
+      - name: Capture Auth admin SSR check
+        shell: bash
+        run: |
+          set +e
+          cargo check -p rustok-auth-admin --no-default-features --features ssr --locked > auth-admin.log 2>&1
+          echo "$?" > auth-admin.exit
+          tail -n 160 auth-admin.log
+          exit 0
 
-      - name: Check Channel admin SSR
-        run: cargo check -p rustok-channel-admin --no-default-features --features ssr --locked
+      - name: Capture Channel admin SSR check
+        shell: bash
+        run: |
+          set +e
+          cargo check -p rustok-channel-admin --no-default-features --features ssr --locked > channel-admin.log 2>&1
+          echo "$?" > channel-admin.exit
+          tail -n 160 channel-admin.log
+          exit 0
 
-      - name: Check host admin SSR
-        run: cargo check -p rustok-admin --no-default-features --features ssr --locked
+      - name: Capture host admin SSR check
+        shell: bash
+        run: |
+          set +e
+          cargo check -p rustok-admin --no-default-features --features ssr --locked > host-admin.log 2>&1
+          echo "$?" > host-admin.exit
+          tail -n 160 host-admin.log
+          exit 0
 
-      - name: Validate patch
-        run: git diff --check
+      - name: Capture patch validation
+        shell: bash
+        run: |
+          set +e
+          git diff --check > diff-check.log 2>&1
+          echo "$?" > diff-check.exit
+          cat diff-check.log
+          exit 0
 
       - name: Package patched files and diagnostics
+        if: always()
         run: |
           tar -czf oauth-cutover.tar.gz \
             crates/rustok-auth/admin/src/transport/native_server_adapter.rs \
@@ -65,9 +89,14 @@ jobs:
             docs/architecture/database-multilingual-contract.json \
             docs/architecture/database-multilingual-transport-drift.md \
             docs/architecture/database-multilingual-audit.md \
-            verifier.log verifier.exit
+            verifier.log verifier.exit \
+            auth-admin.log auth-admin.exit \
+            channel-admin.log channel-admin.exit \
+            host-admin.log host-admin.exit \
+            diff-check.log diff-check.exit
 
       - name: Upload OAuth cutover artifact
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: oauth-cutover-${{ github.sha }}
@@ -75,6 +104,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Enforce multilingual DB verification
+      - name: Enforce captured checks
         shell: bash
-        run: exit "$(cat verifier.exit)"
+        run: |
+          test "$(cat verifier.exit)" = 0
+          test "$(cat auth-admin.exit)" = 0
+          test "$(cat channel-admin.exit)" = 0
+          test "$(cat host-admin.exit)" = 0
+          test "$(cat diff-check.exit)" = 0
