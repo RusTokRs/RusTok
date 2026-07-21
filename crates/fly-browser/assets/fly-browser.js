@@ -189,6 +189,8 @@ export class FlyBrowserAdapter {
     this.draftSession = readDraftSession(this.pageId);
     this.drawOverlays = options.drawOverlays !== false;
     this.postIntents = options.postIntents !== false;
+    this.intentRequestGeneration = 0;
+    this.latestIntentRequestGeneration = 0;
     this.lastSequence = null;
     this.geometry = new Map();
     this.selectedId = null;
@@ -231,6 +233,7 @@ export class FlyBrowserAdapter {
   }
 
   stop() {
+    this.latestIntentRequestGeneration = ++this.intentRequestGeneration;
     this.abortController.abort();
     this.root.dataset.flyBrowserMounted = "false";
     this.root.dataset.flyCanvasConnected = "false";
@@ -484,6 +487,8 @@ export class FlyBrowserAdapter {
     if (!this.intentEndpoint) return null;
     const request = normalizedIntent(this, input);
     if (!request.intent) return null;
+    const requestGeneration = ++this.intentRequestGeneration;
+    this.latestIntentRequestGeneration = requestGeneration;
     const headers = {
       "content-type": "application/json",
       "x-fly-browser": ADAPTER_VERSION,
@@ -504,11 +509,19 @@ export class FlyBrowserAdapter {
       const result = response.headers.get("content-type")?.includes("application/json")
         ? await response.json()
         : await response.text();
+      const current = requestGeneration === this.latestIntentRequestGeneration;
       this.root.dispatchEvent(new CustomEvent("fly:browser-intent-response", {
         bubbles: true,
-        detail: { ok: response.ok, status: response.status, result, request },
+        detail: {
+          ok: response.ok,
+          status: response.status,
+          result,
+          request,
+          requestGeneration,
+          current,
+        },
       }));
-      if (response.ok && isObject(result)) {
+      if (current && response.ok && isObject(result)) {
         const state = isObject(result.result) ? result.result : result;
         if (typeof state.revision_id === "string") this.root.dataset.flyRevision = state.revision_id;
         if (typeof state.project_hash === "string") this.root.dataset.flyProjectHash = state.project_hash;
@@ -529,9 +542,10 @@ export class FlyBrowserAdapter {
       }
       return result;
     } catch (error) {
+      const current = requestGeneration === this.latestIntentRequestGeneration;
       this.root.dispatchEvent(new CustomEvent("fly:browser-error", {
         bubbles: true,
-        detail: { error: String(error), request },
+        detail: { error: String(error), request, requestGeneration, current },
       }));
       return null;
     }

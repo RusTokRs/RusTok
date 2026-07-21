@@ -133,6 +133,7 @@
     adapter.root.addEventListener(
       "fly:browser-intent-response",
       (event) => {
+        if (event.detail?.current === false) return;
         if (event.detail?.ok === true) {
           clearBrowserProblem(adapter);
         } else {
@@ -144,6 +145,7 @@
     adapter.root.addEventListener(
       "fly:browser-error",
       (event) => {
+        if (event.detail?.current === false) return;
         reportBrowserProblem(
           adapter,
           {
