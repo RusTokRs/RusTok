@@ -1,0 +1,8 @@
+{
+  "groups.storefront.title": "Communities",
+  "groups.storefront.body": "Discover public groups and join communities around shared interests.",
+  "groups.storefront.loading": "Loading communities...",
+  "groups.storefront.loadError": "Failed to load communities",
+  "groups.storefront.empty": "No public groups are available yet.",
+  "groups.storefront.members": "members"
+}
