@@ -1,0 +1,9 @@
+{
+  "groups.admin.title": "Groups",
+  "groups.admin.body": "Manage group privacy, memberships, local roles, and modular feature bindings.",
+  "groups.admin.badge": "community control room",
+  "groups.admin.loading": "Loading groups...",
+  "groups.admin.loadError": "Failed to load groups",
+  "groups.admin.empty": "No groups are available for this tenant.",
+  "groups.admin.total": "Total"
+}
