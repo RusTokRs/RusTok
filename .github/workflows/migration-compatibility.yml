@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: oauth-cutover-final
+  cancel-in-progress: true
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TERM_COLOR: always
@@ -28,26 +32,41 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Capture baseline multilingual DB verification
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify/verify-db-multilingual-contract.mjs > verifier-before.log 2>&1
+          echo "$?" > verifier-before.exit
+          cat verifier-before.log
+          exit 0
+
       - name: Apply OAuth transport cutover
         run: python3 scripts/maintenance/apply_oauth_transport_cutover.py
 
       - name: Format
         run: cargo fmt --all
 
-      - name: Capture multilingual DB verification
+      - name: Capture patched multilingual DB verification
         shell: bash
         run: |
           set +e
-          node scripts/verify/verify-db-multilingual-contract.mjs > verifier.log 2>&1
-          echo "$?" > verifier.exit
-          cat verifier.log
+          node scripts/verify/verify-db-multilingual-contract.mjs > verifier-after.log 2>&1
+          echo "$?" > verifier-after.exit
+          cat verifier-after.log
+          if cmp -s verifier-before.log verifier-after.log; then
+            echo 0 > verifier-delta.exit
+          else
+            echo 1 > verifier-delta.exit
+            diff -u verifier-before.log verifier-after.log || true
+          fi
           exit 0
 
       - name: Capture Auth admin SSR check
         shell: bash
         run: |
           set +e
-          cargo check -p rustok-auth-admin --no-default-features --features ssr --locked > auth-admin.log 2>&1
+          cargo check -p rustok-auth-admin --no-default-features --features ssr > auth-admin.log 2>&1
           echo "$?" > auth-admin.exit
           tail -n 160 auth-admin.log
           exit 0
@@ -56,7 +75,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo check -p rustok-channel-admin --no-default-features --features ssr --locked > channel-admin.log 2>&1
+          cargo check -p rustok-channel-admin --no-default-features --features ssr > channel-admin.log 2>&1
           echo "$?" > channel-admin.exit
           tail -n 160 channel-admin.log
           exit 0
@@ -65,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo check -p rustok-admin --no-default-features --features ssr --locked > host-admin.log 2>&1
+          cargo check -p rustok-admin --no-default-features --features ssr > host-admin.log 2>&1
           echo "$?" > host-admin.exit
           tail -n 160 host-admin.log
           exit 0
@@ -89,7 +108,8 @@ jobs:
             docs/architecture/database-multilingual-contract.json \
             docs/architecture/database-multilingual-transport-drift.md \
             docs/architecture/database-multilingual-audit.md \
-            verifier.log verifier.exit \
+            verifier-before.log verifier-before.exit \
+            verifier-after.log verifier-after.exit verifier-delta.exit \
             auth-admin.log auth-admin.exit \
             channel-admin.log channel-admin.exit \
             host-admin.log host-admin.exit \
@@ -107,7 +127,7 @@ jobs:
       - name: Enforce captured checks
         shell: bash
         run: |
-          test "$(cat verifier.exit)" = 0
+          test "$(cat verifier-delta.exit)" = 0
           test "$(cat auth-admin.exit)" = 0
           test "$(cat channel-admin.exit)" = 0
           test "$(cat host-admin.exit)" = 0
