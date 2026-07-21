@@ -25,6 +25,8 @@ pub mod event_bus;
 pub mod graphql_schema;
 pub mod marketplace_catalog;
 pub mod marketplace_catalog_cache;
+#[cfg(feature = "mod-commerce")]
+pub mod marketplace_financial_worker;
 pub mod mcp_management;
 pub mod mcp_management_authority;
 pub mod mcp_management_guard;
