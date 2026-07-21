@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -10,12 +10,28 @@ pub struct PageList {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageListItem {
     pub id: String,
-    pub status: String,
+    #[serde(deserialize_with = "deserialize_page_status")]
+    pub status: &'static str,
     pub template: String,
     pub title: Option<String>,
     pub slug: Option<String>,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+}
+
+fn deserialize_page_status<'de, D>(deserializer: D) -> Result<&'static str, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    match value.as_str() {
+        "draft" => Ok("draft"),
+        "published" => Ok("published"),
+        "archived" => Ok("archived"),
+        _ => Err(D::Error::custom(format!(
+            "unsupported Pages status `{value}`"
+        ))),
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
