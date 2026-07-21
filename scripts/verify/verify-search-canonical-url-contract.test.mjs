@@ -15,7 +15,12 @@ function write(root, relativePath, content) {
   writeFileSync(target, content);
 }
 
-function fixture({ localGraphqlPolicy = false, missingBlogSourceCheck = false } = {}) {
+function fixture({
+  localGraphqlPolicy = false,
+  missingBlogSourceCheck = false,
+  missingStorefrontNativeDelegation = false,
+  adminDefinesBlogRoute = false,
+} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-search-url-contract-"));
   write(
     root,
@@ -53,6 +58,20 @@ function fixture({ localGraphqlPolicy = false, missingBlogSourceCheck = false } 
   );
   write(
     root,
+    "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+    missingStorefrontNativeDelegation
+      ? "let url = None;"
+      : "let url = rustok_search::canonical_search_result_url(&value);",
+  );
+  write(
+    root,
+    "crates/rustok-search/admin/src/transport/native_server_adapter.rs",
+    adminDefinesBlogRoute
+      ? 'fn derive_search_result_url(_: &SearchResultItem) -> Option<String> { let _ = "blog_post"; Some("/modules/blog".to_string()) }'
+      : "fn derive_search_result_url(_: &SearchResultItem) -> Option<String> { None }",
+  );
+  write(
+    root,
     "crates/rustok-search/storefront/src/transport/navigation.rs",
     "item.url.is_some(); item.url = blog_result_url(item.payload.as_str()); preserves_backend_url_and_rejects_invalid_slug",
   );
@@ -68,14 +87,19 @@ function fixture({ localGraphqlPolicy = false, missingBlogSourceCheck = false } 
       production_contract: {
         normalized_result: "crates/rustok-search/src/engine.rs",
         graphql_projection: "crates/rustok-search/src/graphql/types.rs",
-        compatibility_fallback: "crates/rustok-search/storefront/src/transport/navigation.rs",
+        storefront_native_projection:
+          "crates/rustok-search/storefront/src/transport/native_server_adapter.rs",
+        admin_native_projection:
+          "crates/rustok-search/admin/src/transport/native_server_adapter.rs",
+        compatibility_fallback:
+          "crates/rustok-search/storefront/src/transport/navigation.rs",
       },
     }),
   );
   write(
     root,
     "crates/rustok-search/docs/implementation-plan.md",
-    "search-canonical-url-contract.json canonical_search_result_url compatibility fallback",
+    "search-canonical-url-contract.json canonical_search_result_url compatibility fallback admin native",
   );
   return root;
 }
@@ -88,7 +112,7 @@ function run(root) {
   });
 }
 
-test("canonical Search URL verifier accepts the owner contract", () => {
+test("canonical Search URL verifier accepts the staged owner contract", () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -104,7 +128,10 @@ test("canonical Search URL verifier rejects a transport-local GraphQL switch", (
   try {
     const result = run(root);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /missing crate::canonical_search_result_url|forbidden fn derive_search_result_url/);
+    assert.match(
+      result.stderr,
+      /missing crate::canonical_search_result_url|forbidden fn derive_search_result_url/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -116,6 +143,31 @@ test("canonical Search URL verifier rejects missing Blog source ownership", () =
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing value.source_module == BLOG_SOURCE_MODULE/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("canonical Search URL verifier rejects missing storefront native delegation", () => {
+  const root = fixture({ missingStorefrontNativeDelegation: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /missing rustok_search::canonical_search_result_url\(&value\)/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("canonical Search URL verifier rejects a second Blog policy in admin native", () => {
+  const root = fixture({ adminDefinesBlogRoute: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /forbidden "blog_post"|forbidden "\/modules\/blog"/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
