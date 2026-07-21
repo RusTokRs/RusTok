@@ -1,5 +1,6 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
+  "contract_version": "marketplace.financial_orchestration.v2",
   "module": "marketplace",
   "status": "source_ready_unvalidated",
   "stores_own_state": false,
@@ -48,6 +49,7 @@
         "reversal kind matches request",
         "reversal source identity matches request",
         "order and currency match request",
+        "reversal transaction identity matches the embedded transaction",
         "correction transaction is append-only",
         "correction transaction source kind matches reversal kind",
         "ledger debits equal credits",
