@@ -1,0 +1,68 @@
+mod service;
+
+use async_trait::async_trait;
+use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_notifications_api::ensure_notification_source_registry;
+use sea_orm_migration::MigrationTrait;
+
+pub use rustok_notifications_api as api;
+pub use service::NotificationsService;
+
+pub struct NotificationsModule;
+
+#[async_trait]
+impl RusToKModule for NotificationsModule {
+    fn slug(&self) -> &'static str {
+        "notifications"
+    }
+
+    fn name(&self) -> &'static str {
+        "Notifications"
+    }
+
+    fn description(&self) -> &'static str {
+        "Notification inbox, preferences, bounded fan-out, grouping, digests, and delivery orchestration"
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn dependencies(&self) -> &[&'static str] {
+        &["outbox"]
+    }
+
+    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+        let _ = ensure_notification_source_registry(extensions);
+    }
+}
+
+impl MigrationSource for NotificationsModule {
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        Vec::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+    use rustok_notifications_api::notification_source_registry_from_extensions;
+
+    use super::{NotificationsModule, NotificationsService};
+
+    #[test]
+    fn module_initializes_an_empty_optional_source_registry() {
+        let module = NotificationsModule;
+        assert_eq!(module.slug(), "notifications");
+        assert_eq!(module.dependencies(), &["outbox"]);
+        assert!(module.migrations().is_empty());
+
+        let mut extensions = ModuleRuntimeExtensions::default();
+        module.register_runtime_extensions(&mut extensions);
+        assert!(notification_source_registry_from_extensions(&extensions).is_some());
+
+        let service = NotificationsService::from_runtime_extensions(&extensions);
+        assert_eq!(service.source_count(), 0);
+        assert!(!service.has_sources());
+    }
+}
