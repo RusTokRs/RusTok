@@ -4,9 +4,10 @@
 
 `rustok-groups` owns social-group identity, multilingual presentation, privacy,
 membership, local roles, feature bindings, and group access policy for RusToK.
-Role delegation, ownership transfer, governance receipts, and immutable audit are
-implemented; invitations, questions, rules, bans, and event publication remain
-subsequent owner slices in the canonical implementation plan.
+Role delegation, ownership transfer, governance receipts, immutable audit, and
+native/GraphQL governance transports are implemented; invitations, questions,
+rules, bans, and event publication remain subsequent owner slices in the canonical
+implementation plan.
 
 A group is a social container and policy owner. It is not the persistence owner
 for forum topics, blog posts, Pages documents, marketplace listings, products,
@@ -17,6 +18,9 @@ media assets, comments, notifications, or search documents.
 - Own tenant-scoped group identity, handle, lifecycle, visibility, and join policy.
 - Store language-neutral state in `groups` and localized title, summary, and body
   fields in `group_translations` with normalized `VARCHAR(32)` locales.
+- Separate discoverable shell access (`view_summary`) from private content access
+  (`view`): closed shells are visible with body/feature redaction, while secret
+  shells remain undisclosed to non-members.
 - Own memberships, local roles, membership status, role delegation, and atomic
   ownership transfer; invitations, bans, rules, and membership questions remain
   plan-led work.
@@ -46,8 +50,10 @@ media assets, comments, notifications, or search documents.
 - `GroupCommandPort`
 - `GroupGovernanceCommandPort`
 - `graphql::GroupsQuery` with the `graphql` feature
-- `graphql::GroupsMutation` with the `graphql` feature
+- `graphql_governance::GroupsMutationRoot` with the `graphql` feature
 - `rustok_groups_admin::GroupsAdmin`
+- `rustok_groups_admin::change_group_admin_role`
+- `rustok_groups_admin::transfer_group_admin_ownership`
 - `rustok_groups_storefront::GroupsView`
 
 ## Interactions
