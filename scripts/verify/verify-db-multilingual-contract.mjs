@@ -170,6 +170,34 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     }
   }
 
+  const directGuardedFiles = [
+    {
+      path: "crates/rustok-search/src/migrations/m20260325_000003_create_search_query_logs.rs",
+      requiredMarkers: ["ColumnDef::new(SearchQueryLogs::Locale).string_len(32)"],
+    },
+    {
+      path: "crates/rustok-search/src/migrations/m20260721_000008_expand_search_query_locale_storage.rs",
+      requiredMarkers: [
+        "ALTER TABLE search_query_logs ALTER COLUMN locale TYPE VARCHAR(32)",
+        "MODIFY COLUMN locale VARCHAR(32) NULL",
+        "SQLite does not enforce declared VARCHAR lengths",
+        "Forward-only",
+      ],
+    },
+    {
+      path: "crates/rustok-search/src/migrations/mod.rs",
+      requiredMarkers: [
+        "mod m20260721_000008_expand_search_query_locale_storage;",
+        "Box::new(m20260721_000008_expand_search_query_locale_storage::Migration)",
+      ],
+    },
+  ];
+  for (const file of directGuardedFiles) {
+    if (requireFile(root, file.path, failures)) {
+      requireMarkers(read(root, file.path), file.requiredMarkers, file.path, failures);
+    }
+  }
+
   const audit = read(root, auditPath);
   const gapIds = new Set();
   if (!Array.isArray(contract.known_gaps)) {
@@ -178,7 +206,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
     for (const [gapIndex, gap] of contract.known_gaps.entries()) {
       const label = `${contractPath}: known_gaps[${gapIndex}]`;
       for (const field of ["id", "owner", "kind", "status", "path", "next_action"]) {
-        requireNonEmptyString(gap[field], `${label}.${field}`, failures);
+        requireNonEmptyString(gap[field], `${label}.${field`, failures);
       }
       if (gapIds.has(gap.id)) failures.push(`${label}.id duplicates ${gap.id}`);
       gapIds.add(gap.id);
@@ -212,6 +240,7 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       ["m20260721_000007_expand_comment_locale_storage_columns", "rustok-comments"],
       ["m20260721_000009_expand_profile_locale_storage_columns", "rustok-profiles"],
       ["m20260721_000007_align_language_agnostic_locale_contract", "rustok-commerce"],
+      ["m20260721_000008_expand_search_query_locale_storage", "rustok-search"],
       ["m20260721_000105_expand_customer_locale_contract", "rustok-customer"],
     ]);
 
