@@ -72,7 +72,7 @@ impl CategoryTopicPolicyService {
                 ])
                 .to_owned(),
         )
-        .exec(&txn)
+        .exec_without_returning(&txn)
         .await?;
         txn.commit().await?;
 
