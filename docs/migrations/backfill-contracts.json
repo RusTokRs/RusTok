@@ -74,6 +74,24 @@
       "reason": "Widen localized content and product projection locale attribution to the platform locale width; projection rows require no semantic backfill"
     },
     {
+      "id": "flex-schema-copy-provenance",
+      "migration": "m20260405_000002_split_flex_schema_localized_fields",
+      "mode": "fixture",
+      "owner": "flex",
+      "reason": "Legacy Flex schema name and description had no source locale and must be preserved under storage-only und before base columns are removed",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('30000000-0000-0000-0000-000000000001', 'Flex fixture tenant', 'flex-fixture-tenant'); INSERT INTO flex_schemas (id, tenant_id, slug, name, description, fields_config, settings, is_active, created_at, updated_at) VALUES ('30000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', 'legacy-schema', 'Legacy Flex Schema', 'Legacy Flex description', '[]'::jsonb, '{}'::jsonb, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'flex_schemas' AND column_name IN ('name', 'description')) AND EXISTS (SELECT 1 FROM flex_schema_translations WHERE schema_id = '30000000-0000-0000-0000-000000000002'::uuid AND locale = 'und' AND name = 'Legacy Flex Schema' AND description = 'Legacy Flex description')) AS passed"
+    },
+    {
+      "id": "flex-entry-localized-values-provenance",
+      "migration": "m20260407_000001_split_flex_entry_localized_values",
+      "mode": "fixture",
+      "owner": "flex",
+      "reason": "Legacy localized Flex entry JSON had no source locale and must be extracted under storage-only und instead of the tenant fallback locale",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('31000000-0000-0000-0000-000000000001', 'Flex entry fixture tenant', 'flex-entry-fixture-tenant'); INSERT INTO flex_schemas (id, tenant_id, slug, fields_config, settings, is_active, created_at, updated_at) VALUES ('31000000-0000-0000-0000-000000000002', '31000000-0000-0000-0000-000000000001', 'entry-schema', '[{\"field_key\":\"headline\",\"is_localized\":true},{\"field_key\":\"code\",\"is_localized\":false}]'::jsonb, '{}'::jsonb, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT INTO flex_entries (id, tenant_id, schema_id, data, status, created_at, updated_at) VALUES ('31000000-0000-0000-0000-000000000003', '31000000-0000-0000-0000-000000000001', '31000000-0000-0000-0000-000000000002', '{\"headline\":\"Legacy headline\",\"code\":\"A\"}'::jsonb, 'draft', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (EXISTS (SELECT 1 FROM flex_entry_localized_values WHERE entry_id = '31000000-0000-0000-0000-000000000003'::uuid AND locale = 'und' AND data ->> 'headline' = 'Legacy headline') AND NOT ((SELECT data FROM flex_entries WHERE id = '31000000-0000-0000-0000-000000000003'::uuid) ? 'headline') AND (SELECT data ->> 'code' FROM flex_entries WHERE id = '31000000-0000-0000-0000-000000000003'::uuid) = 'A') AS passed"
+    },
+    {
       "id": "marketplace-seller-prose-events",
       "migration": "m20260721_000005_drop_seller_legacy_prose_columns",
       "mode": "none",
