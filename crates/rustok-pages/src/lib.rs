@@ -107,9 +107,17 @@ impl RusToKModule for PagesModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider)
-            .expect("pages SEO target registration should remain unique");
+    fn try_register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "pages SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 }
 
