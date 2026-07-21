@@ -6,6 +6,7 @@ mod category_owner;
 mod category_policy;
 mod category_tree;
 pub mod event;
+mod mention_relation;
 pub mod moderation;
 mod rbac;
 pub mod read_model;
@@ -23,6 +24,9 @@ pub mod widget_contract;
 
 pub use category_owner::CategoryService;
 pub use event::ForumEventService;
+pub(crate) use mention_relation::{
+    MentionRelationService, MentionRelationSyncResult, PreparedMentionRelations,
+};
 pub use moderation::ModerationService;
 pub use read_model::ForumReadModelService;
 pub use reply_facade::ReplyService;
