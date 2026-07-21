@@ -23,6 +23,7 @@ function fixture({
   missingTypedErrors = false,
   ownedScopeRegression = false,
   advertisesCatalogPermissions = false,
+  lookupBeforeAuthorization = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-category-reindex-"));
   const servicePath = "crates/rustok-blog/src/services/category.rs";
@@ -36,13 +37,18 @@ function fixture({
   const evidencePath =
     "crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json";
 
+  const authorization = "enforce_any_scope(&security, &CATEGORY_PERMISSION_RESOURCES, action)?;";
+  const transaction = "let txn = self.db.begin().await;";
+  const orderedWrite = lookupBeforeAuthorization
+    ? `${transaction}\n${authorization}`
+    : `${authorization}\n${transaction}`;
+
   write(
     root,
     servicePath,
     `
       event_bus: Option<TransactionalEventBus>
       pub fn new_with_event_bus() {}
-      self.db.begin().await
       publish_blog_reindex_in_tx
       ${missingOutbox ? "" : "DomainEvent::ReindexRequested"}
       target_type: "blog".to_string()
@@ -52,11 +58,22 @@ function fixture({
       Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?
       normalize_category_slug(input.slug.as_deref(), &input.name)?
       ${missingSlugGuard ? "" : "Slug must contain at least one ASCII letter or digit"}
-      ${unboundedServicePagination ? "let per_page = filter.per_page.max(1)" : "let per_page = filter.per_page.clamp(1, 100)"}
-      .paginate(&self.db, per_page)
       const CATEGORY_PERMISSION_RESOURCES: [Resource; 2] = [Resource::BlogPosts, Resource::Categories];
-      enforce_any_scope
       ${ownedScopeRegression ? "enforce_owned_scope" : ""}
+
+      pub async fn update() {
+        ${orderedWrite}
+      }
+
+      pub async fn delete() {
+        ${orderedWrite}
+      }
+
+      pub async fn list() {
+        enforce_any_scope
+        ${unboundedServicePagination ? "let per_page = filter.per_page.max(1)" : "let per_page = filter.per_page.clamp(1, 100)"}
+        .paginate(&self.db, per_page)
+      }
     `,
   );
   write(
@@ -164,6 +181,7 @@ function fixture({
         "non_empty_slug",
         "bounded_permission_namespace",
         "category_has_no_owner_scope",
+        "authorization_precedes_lookup",
         "bounded_category_list",
         "typed_http_errors",
         "search_payload_dependency",
@@ -270,6 +288,17 @@ test("Blog category reindex verifier rejects catalog permission advertisement", 
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /forbidden Permission::new\(Resource::Categories/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Blog category reindex verifier rejects lookup before authorization", () => {
+  const root = fixture({ lookupBeforeAuthorization: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /expected enforce_any_scope\( before let txn = self\.db\.begin\(\)\.await/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
