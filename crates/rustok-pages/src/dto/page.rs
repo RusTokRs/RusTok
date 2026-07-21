@@ -56,6 +56,13 @@ pub struct SavePageDocumentInput {
     pub body: PageBodyInput,
 }
 
+/// One exact localized document revision reviewed by the publish actor.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PageBodyRevisionInput {
+    pub locale: String,
+    pub revision: String,
+}
+
 /// Transport-safe reviewed runtime used by the atomic Pages publish command.
 ///
 /// The runtime context is transient input. Pages persists only the hashes and snapshots produced by
@@ -87,6 +94,7 @@ impl TryFrom<ReviewedPagePublishRuntimeInput> for PageBuilderReviewedPublishRunt
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PublishPageInput {
     pub expected_version: i32,
+    pub expected_body_revisions: Vec<PageBodyRevisionInput>,
     pub idempotency_key: String,
     pub runtime: ReviewedPagePublishRuntimeInput,
 }
