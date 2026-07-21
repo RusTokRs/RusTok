@@ -275,3 +275,40 @@ async fn moderation_uses_manage_permission_and_dedicated_surface() {
         )]
     );
 }
+
+#[tokio::test]
+async fn selected_operation_keeps_document_wide_fail_closed_accounting() {
+    let tenant_id = Uuid::new_v4();
+    let actor = auth(tenant_id, vec![Permission::BLOG_POSTS_CREATE]);
+    let actor_id = actor.user_id;
+    let limiter = Arc::new(ScriptedLimiter::new(LimiterOutcome::Allow));
+    let schema = schema(tenant(tenant_id), Some(actor), None, limiter.clone());
+
+    let response = schema
+        .execute(
+            Request::new(
+                r#"
+                    query PublicBlog {
+                        posts
+                    }
+
+                    mutation HiddenCreate {
+                        createPost
+                    }
+                "#,
+            )
+            .operation_name("PublicBlog"),
+        )
+        .await;
+
+    assert!(response.errors.is_empty());
+    assert_eq!(
+        limiter.keys(),
+        vec![
+            format!("tenant:{tenant_id}:blog:graphql:read:posts:user:{actor_id}"),
+            format!(
+                "tenant:{tenant_id}:blog:graphql:write:create_post:user:{actor_id}"
+            ),
+        ]
+    );
+}
