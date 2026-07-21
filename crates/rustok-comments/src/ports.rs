@@ -65,12 +65,20 @@ pub trait CommentsThreadPort: Send + Sync {
         -> Result<(), PortError>;
 }
 
+struct InProcessCommentsThreadProvider {
+    db: DatabaseConnection,
+    service: CommentsService,
+}
+
 /// Builds the owner-managed in-process comments thread provider for consumers.
 pub fn in_process_comments_thread_port(
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
 ) -> Arc<dyn CommentsThreadPort> {
-    Arc::new(CommentsService::with_event_bus(db, event_bus))
+    Arc::new(InProcessCommentsThreadProvider {
+        service: CommentsService::with_event_bus(db.clone(), event_bus),
+        db,
+    })
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -80,7 +88,7 @@ pub struct SetCommentStatusRequest {
 }
 
 #[async_trait]
-impl CommentsThreadPort for CommentsService {
+impl CommentsThreadPort for InProcessCommentsThreadProvider {
     async fn create_comment(
         &self,
         context: PortContext,
@@ -88,13 +96,14 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.create_comment(
-            tenant_id,
-            SecurityContext::try_from_port_context(&context)?,
-            request,
-        )
-        .await
-        .map_err(comments_error_to_port_error)
+        self.service
+            .create_comment(
+                tenant_id,
+                SecurityContext::try_from_port_context(&context)?,
+                request,
+            )
+            .await
+            .map_err(comments_error_to_port_error)
     }
 
     async fn get_comment(
@@ -105,15 +114,16 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.get_comment(
-            tenant_id,
-            SecurityContext::try_from_port_context(&context)?,
-            comment_id,
-            &context.locale,
-            fallback_locale.as_deref(),
-        )
-        .await
-        .map_err(comments_error_to_port_error)
+        self.service
+            .get_comment(
+                tenant_id,
+                SecurityContext::try_from_port_context(&context)?,
+                comment_id,
+                &context.locale,
+                fallback_locale.as_deref(),
+            )
+            .await
+            .map_err(comments_error_to_port_error)
     }
 
     async fn list_comments_for_target(
@@ -126,16 +136,17 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<(Vec<CommentListItem>, u64), PortError> {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.list_comments_for_target(
-            tenant_id,
-            SecurityContext::try_from_port_context(&context)?,
-            &target_type,
-            target_id,
-            filter,
-            fallback_locale.as_deref(),
-        )
-        .await
-        .map_err(comments_error_to_port_error)
+        self.service
+            .list_comments_for_target(
+                tenant_id,
+                SecurityContext::try_from_port_context(&context)?,
+                &target_type,
+                target_id,
+                filter,
+                fallback_locale.as_deref(),
+            )
+            .await
+            .map_err(comments_error_to_port_error)
     }
 
     async fn list_public_comments_for_target(
@@ -149,7 +160,7 @@ impl CommentsThreadPort for CommentsService {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         crate::public_read::list_public_comments_for_target(
-            &self.database,
+            &self.db,
             tenant_id,
             &target_type,
             target_id,
@@ -168,14 +179,15 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.update_comment(
-            tenant_id,
-            SecurityContext::try_from_port_context(&context)?,
-            comment_id,
-            request,
-        )
-        .await
-        .map_err(comments_error_to_port_error)
+        self.service
+            .update_comment(
+                tenant_id,
+                SecurityContext::try_from_port_context(&context)?,
+                comment_id,
+                request,
+            )
+            .await
+            .map_err(comments_error_to_port_error)
     }
 
     async fn delete_comment(
@@ -185,13 +197,14 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<(), PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.delete_comment(
-            tenant_id,
-            SecurityContext::try_from_port_context(&context)?,
-            comment_id,
-        )
-        .await
-        .map_err(comments_error_to_port_error)
+        self.service
+            .delete_comment(
+                tenant_id,
+                SecurityContext::try_from_port_context(&context)?,
+                comment_id,
+            )
+            .await
+            .map_err(comments_error_to_port_error)
     }
 
     async fn set_comment_status(
@@ -202,16 +215,17 @@ impl CommentsThreadPort for CommentsService {
     ) -> Result<CommentRecord, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.set_comment_status(
-            tenant_id,
-            SecurityContext::try_from_port_context(&context)?,
-            comment_id,
-            request.status,
-            &context.locale,
-            request.fallback_locale.as_deref(),
-        )
-        .await
-        .map_err(comments_error_to_port_error)
+        self.service
+            .set_comment_status(
+                tenant_id,
+                SecurityContext::try_from_port_context(&context)?,
+                comment_id,
+                request.status,
+                &context.locale,
+                request.fallback_locale.as_deref(),
+            )
+            .await
+            .map_err(comments_error_to_port_error)
     }
 }
 
