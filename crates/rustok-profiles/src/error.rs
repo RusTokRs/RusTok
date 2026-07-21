@@ -26,6 +26,8 @@ pub enum ProfileError {
     ProfileNotFound(Uuid),
     #[error("profile for handle {0} not found")]
     ProfileByHandleNotFound(String),
+    #[error("localized profile copy for user {0} was not found")]
+    LocalizedCopyNotFound(Uuid),
     #[error("profile handle already exists: {0}")]
     DuplicateHandle(String),
     #[error("profile validation failed: {0}")]
