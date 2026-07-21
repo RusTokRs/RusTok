@@ -43,6 +43,11 @@
     ],
     "payment_event_processed_after_observers": true,
     "scheduled_processed_event_polling": "bounded backfill and fallback",
+    "backfill_filter_by_database": {
+      "postgres": "event_metadata::text",
+      "sqlite": "CAST(event_metadata AS TEXT)",
+      "mysql": "CAST(event_metadata AS CHAR)"
+    },
     "duplicate_delivery_safe_through": [
       "payment owner idempotency",
       "marketplace reversal inbox deduplication",
@@ -53,6 +58,11 @@
     "table": "marketplace_reversal_event_inbox",
     "normalized_facts_immutable": true,
     "processed_rows_immutable": true,
+    "database_integrity": {
+      "postgres": "checks plus immutable-fact and processed-row trigger",
+      "sqlite": "insert and update triggers",
+      "mysql": "insert and update triggers"
+    },
     "statuses": [
       "received",
       "processing",
@@ -124,12 +134,14 @@
     "openapi_registered": true
   },
   "migration": {
-    "name": "m20260721_000004_create_marketplace_reversal_event_inbox",
+    "schema": "m20260721_000004_create_marketplace_reversal_event_inbox",
+    "mysql_integrity": "m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity",
     "dependencies": [
       "m20260721_000003_create_marketplace_paid_event_inbox",
       "m20260721_000002_add_reversals_and_seller_balances",
       "m20260714_000117_lock_provider_event_normalized_facts"
     ],
+    "mysql_integrity_depends_on": "m20260721_000004_create_marketplace_reversal_event_inbox",
     "cross_module_foreign_keys": false
   },
   "validation": {
