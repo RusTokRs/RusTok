@@ -50,5 +50,17 @@
   "blog.error.runtimeBadge": "Рантайм",
   "blog.seo.title": "SEO поста",
   "blog.seo.subtitle": "Явные метаданные, social tags и диагностика для выбранного поста блога.",
-  "blog.seo.empty": "Сначала создайте или откройте пост. SEO остаётся внутри редактора блога, а не в глобальном SEO-хабе."
+  "blog.seo.empty": "Сначала создайте или откройте пост. SEO остаётся внутри редактора блога, а не в глобальном SEO-хабе.",
+  "blog.moderation.title": "Модерация комментариев",
+  "blog.moderation.subtitle": "Проверяйте неудалённые комментарии выбранного поста через owner boundary модуля Comments.",
+  "blog.moderation.graphql": "Управляется через GraphQL",
+  "blog.moderation.selectPost": "Откройте пост, чтобы проверить его комментарии.",
+  "blog.moderation.unavailable": "Модерация комментариев недоступна в этой сокращённой сборке сервера.",
+  "blog.moderation.loadError": "Не удалось загрузить очередь модерации комментариев",
+  "blog.moderation.empty": "У этого поста нет комментариев для модерации.",
+  "blog.moderation.total": "Всего",
+  "blog.moderation.reply": "ответ",
+  "blog.moderation.approve": "Одобрить",
+  "blog.moderation.spam": "Отметить как спам",
+  "blog.moderation.trash": "Переместить в корзину"
 }
