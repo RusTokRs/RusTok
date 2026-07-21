@@ -38,7 +38,7 @@ fn ensure_category_permission(auth: &AuthContext, action: Action) -> HttpResult<
 }
 
 fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
-    CategoryService::new_with_event_bus(runtime.db_clone(), runtime.event_bus())
+    CategoryService::new(runtime.db_clone(), runtime.event_bus())
 }
 
 fn map_category_error(error: BlogError) -> HttpError {
