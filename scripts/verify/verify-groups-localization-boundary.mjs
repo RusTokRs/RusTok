@@ -51,14 +51,19 @@ requireMarkers("crates/rustok-groups/src/graphql_localization.rs", [
   "GroupLocalizationCommandPort",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  'query = "graphql_applications::GroupsQueryRoot"',
-  'mutation = "graphql_applications::GroupsMutationRoot"',
+  'query = "graphql_policy_history::GroupsQueryRoot"',
+  'mutation = "graphql_policy_history::GroupsMutationRoot"',
 ]);
 requireMarkers("crates/rustok-groups/src/graphql_applications.rs", [
   "GroupsBaseQueryRoot",
   "GroupsBaseMutationRoot",
   "pub struct GroupsQueryRoot",
   "pub struct GroupsMutationRoot",
+]);
+requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
+  "GroupsBaseQueryRoot",
+  "pub struct GroupsQueryRoot",
+  "pub type GroupsMutationRoot",
 ]);
 
 requireMarkers("crates/rustok-groups/admin/src/core.rs", [
