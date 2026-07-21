@@ -97,6 +97,11 @@ where
         &self,
         document: &ProjectDocument,
     ) -> LandingProjectResult<StaticLandingArtifact> {
+        // Runtime bindings can materialize new resource URLs after the authoring document was
+        // prepared. Re-run the public artifact security policy on the exact document being built.
+        if !self.render_policy.allow_http {
+            require_secure_resource_urls(document)?;
+        }
         let build = build_static_landing_artifact_with_renderer(
             document,
             &self.registries,
