@@ -15,16 +15,20 @@ function writeFixtureFile(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false, includeApiLikeText = false } = {}) {
+function libSource({ publicTransportPassthrough = false, includeLegacyApiMod = false, includeApiLikeText = false, omitModeration = false } = {}) {
   return `
 ${includeLegacyApiMod ? "mod api;" : ""}
 mod core;
 mod i18n;
 mod model;
+${omitModeration ? "" : "mod moderation;"}
 mod transport;
 mod ui;
 
-pub use ui::BlogAdmin;
+pub fn BlogAdmin() {
+  <BlogEditor />;
+  ${omitModeration ? "" : "<BlogModerationPanel />;"}
+}
 ${publicTransportPassthrough ? "pub async fn fetch_posts() {}" : ""}
 ${includeApiLikeText ? "// harmless api; text must not be treated as module wiring" : ""}
 `;
@@ -134,9 +138,24 @@ pub fn BlogAdmin() {
 `;
 }
 
-function transportSource({ includeServerEndpoint = false } = {}) {
+function moderationSource({ rawServiceCall = false, omitModeration = false } = {}) {
+  if (omitModeration) return "pub fn placeholder() {}";
+  return `
+use_route_query_value(AdminQueryKey::PostId.as_str());
+transport::fetch_moderation_comments;
+transport::moderate_comment;
+transport::is_moderation_contract_unavailable;
+BlogModerationStatus::Approved;
+BlogModerationStatus::Spam;
+BlogModerationStatus::Trash;
+${rawServiceCall ? "CommentService::new;" : ""}
+`;
+}
+
+function transportSource({ includeServerEndpoint = false, omitModeration = false } = {}) {
   return `
 mod graphql_adapter;
+${omitModeration ? "" : "mod moderation_adapter;"}
 
 pub fn is_posts_contract_unavailable() { graphql_adapter::is_posts_contract_unavailable(); }
 pub async fn fetch_posts() { graphql_adapter::fetch_posts().await; }
@@ -147,6 +166,7 @@ pub async fn publish_post() { graphql_adapter::publish_post().await; }
 pub async fn unpublish_post() { graphql_adapter::unpublish_post().await; }
 pub async fn archive_post() { graphql_adapter::archive_post().await; }
 pub async fn delete_post() { graphql_adapter::delete_post().await; }
+${omitModeration ? "" : "pub async fn fetch_moderation_comments() { moderation_adapter::fetch_comments().await; }\npub async fn moderate_comment() { moderation_adapter::moderate_comment().await; }\npub fn is_moderation_contract_unavailable() { moderation_adapter::is_contract_unavailable(); }"}
 ${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
@@ -169,17 +189,30 @@ pub async fn delete_post() {}
 `;
 }
 
+function moderationAdapterSource({ omitModeration = false } = {}) {
+  if (omitModeration) return "pub fn placeholder() {}";
+  return `
+const BLOG_MODERATION_COMMENTS_QUERY: &str = "moderationComments";
+const MODERATE_BLOG_COMMENT_MUTATION: &str = "moderateComment BlogCommentModerationStatus!";
+`;
+}
+
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-boundary-"));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/lib.rs", libSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/core.rs", coreSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/ui/leptos.rs", uiSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/moderation.rs", moderationSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/admin/src/transport/moderation_adapter.rs", moderationAdapterSource(options));
+  writeFixtureFile(root, "crates/rustok-blog/src/graphql/types.rs", options.omitModeration ? "pub struct GqlPost;" : "async fn moderation_comments() {} Permission::BLOG_POSTS_MANAGE GqlModerationCommentList");
+  writeFixtureFile(root, "crates/rustok-blog/src/graphql/mutation.rs", options.omitModeration ? "pub struct BlogMutation;" : "async fn moderate_comment() {} Permission::BLOG_POSTS_MANAGE ModerateCommentInput");
+  writeFixtureFile(root, "crates/rustok-blog/src/graphql/rate_limit.rs", options.omitModeration ? "enum Surface {}" : "ModerateComment moderateComment Permission::BLOG_POSTS_MANAGE");
   if (options.includeLegacyApiFile) {
     writeFixtureFile(root, "crates/rustok-blog/admin/src/api.rs", "pub async fn fetch_posts() {}");
   }
-  writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", "verify-blog-admin-boundary.mjs");
+  writeFixtureFile(root, "crates/rustok-blog/docs/implementation-plan.md", `verify-blog-admin-boundary.mjs ${options.omitModeration ? "" : "moderation"}`);
   writeFixtureFile(root, "docs/modules/registry.md", "verify-blog-admin-boundary.mjs");
   return root;
 }
@@ -192,113 +225,94 @@ function runVerifier(root) {
   });
 }
 
-test("blog admin boundary verifier passes canonical fixture", () => {
-  const root = withFixture();
+function withRoot(options, callback) {
+  const root = withFixture(options);
   try {
-    const result = runVerifier(root);
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /blog admin boundary verification passed/);
+    callback(runVerifier(root));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}
+
+test("blog admin boundary verifier passes canonical fixture", () => {
+  withRoot({}, (result) => {
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /blog admin boundary verification passed/);
+  });
 });
 
 test("blog admin boundary verifier rejects Leptos-specific core", () => {
-  const root = withFixture({ includeLeptos: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected Leptos core fixture to fail");
+  withRoot({ includeLeptos: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /core must stay Leptos\/server-function free/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
-
-
 test("blog admin boundary verifier allows non-module api text in crate root", () => {
-  const root = withFixture({ includeApiLikeText: true });
-  try {
-    const result = runVerifier(root);
+  withRoot({ includeApiLikeText: true }, (result) => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 test("blog admin boundary verifier rejects legacy api module wiring", () => {
-  const root = withFixture({ includeLegacyApiMod: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected legacy api module wiring fixture to fail");
+  withRoot({ includeLegacyApiMod: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must not wire legacy api.rs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 test("blog admin boundary verifier rejects legacy api file", () => {
-  const root = withFixture({ includeLegacyApiFile: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected legacy api file fixture to fail");
+  withRoot({ includeLegacyApiFile: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /legacy GraphQL api adapter must live under transport\/graphql_adapter.rs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
-test("blog admin boundary verifier rejects raw api calls from UI", () => {
-  const root = withFixture({ rawApiCall: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
-    assert.match(result.stderr, /UI adapter must not call raw transport or services/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("blog admin boundary verifier rejects raw api calls from CRUD UI", () => {
+  withRoot({ rawApiCall: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /CRUD UI adapter must not call raw transport or services/);
+  });
+});
+
+test("blog admin boundary verifier rejects raw service calls from moderation UI", () => {
+  withRoot({ rawServiceCall: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /moderation UI must use only the transport facade/);
+  });
 });
 
 test("blog admin boundary verifier rejects public crate-root transport passthroughs", () => {
-  const root = withFixture({ publicTransportPassthrough: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected public transport passthrough fixture to fail");
+  withRoot({ publicTransportPassthrough: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /crate root must not expose public transport passthroughs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 test("blog admin boundary verifier rejects missing save command helper", () => {
-  const root = withFixture({ omitSaveCommand: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected missing save-command fixture to fail");
+  withRoot({ omitSaveCommand: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /prepare_blog_post_save_command/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 test("blog admin boundary verifier rejects server functions in transport facade", () => {
-  const root = withFixture({ includeServerEndpoint: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected transport server-function fixture to fail");
+  withRoot({ includeServerEndpoint: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /server\/native endpoints must not live in the blog admin transport facade/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
 });
 
 test("blog admin boundary verifier rejects swallowed posts contract-unavailable errors", () => {
-  const root = withFixture({ swallowPostsContractUnavailable: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected swallowed contract-unavailable fixture to fail");
+  withRoot({ swallowPostsContractUnavailable: true }, (result) => {
+    assert.notEqual(result.status, 0);
     assert.match(result.stderr, /must not swallow posts contract-unavailable errors/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+  });
+});
+
+test("blog admin boundary verifier rejects missing moderation slice", () => {
+  withRoot({ omitModeration: true }, (result) => {
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /moderation/);
+  });
 });
