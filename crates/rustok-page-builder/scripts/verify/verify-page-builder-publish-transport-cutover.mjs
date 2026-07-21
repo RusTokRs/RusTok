@@ -117,7 +117,7 @@ for (const marker of [
   "ScenarioNotFound { scenario_id: String }",
   "session_storage()",
   "resolve_publish_scenario",
-  "scenarios.len() > 1",
+  "count: scenarios.len()",
 ]) {
   requireMarker(publishSelection, marker, "Page Builder publish scenario selection");
 }
