@@ -5,6 +5,7 @@ mod lifecycle;
 mod metadata;
 mod persistence;
 mod read;
+mod reviewed_publish;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
@@ -13,6 +14,10 @@ use sea_orm::DatabaseConnection;
 use crate::entities::page_translation;
 
 pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
+pub use reviewed_publish::{
+    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID,
+};
 pub(crate) use helpers::is_page_visible_for_channel;
 
 pub(super) const PAGE_KIND: &str = "page";
