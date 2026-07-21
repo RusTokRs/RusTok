@@ -1,12 +1,16 @@
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
 use fly::{
-    ProjectHash, RuntimeContextScenario, RuntimePublishGateEvaluation, RuntimePublishGatePolicy,
-    TraitSchemaRegistry, ValidationSeverity, evaluate_runtime_publish_gate,
+    GrapesJsCodec, ProjectHash, RuntimeContextScenario, RuntimePublishGateEvaluation,
+    RuntimePublishGatePolicy, TraitSchemaRegistry, ValidationSeverity,
+    evaluate_runtime_publish_gate,
 };
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
+use rustok_page_builder::dto::{
+    BuilderCapabilityKind, PageBuilderCapabilityRequest, PageBuilderCapabilityResponse,
+    PreviewPageBuilderInput,
+};
 use serde_json::{Map, Value};
 use std::sync::Arc;
 
@@ -15,6 +19,8 @@ pub struct AdminEditorRuntime {
     pub controller: RwSignal<AdminCanvasController>,
     pub last_error: RwSignal<Option<String>>,
     pub last_announcement: RwSignal<Option<String>>,
+    pub server_preview_html: RwSignal<Option<String>>,
+    pub preview_in_progress: RwSignal<bool>,
     pub trait_schemas: Arc<TraitSchemaRegistry>,
     pub editor_capability_evaluation: Option<Arc<EditorCapabilityEvaluation>>,
     pub runtime_context: RwSignal<Value>,
@@ -41,6 +47,8 @@ impl AdminEditorRuntime {
             controller: RwSignal::new(controller),
             last_error: RwSignal::new(None),
             last_announcement: RwSignal::new(None),
+            server_preview_html: RwSignal::new(None),
+            preview_in_progress: RwSignal::new(false),
             trait_schemas: Arc::new(TraitSchemaRegistry::with_builtins()),
             editor_capability_evaluation: None,
             runtime_context: RwSignal::new(Value::Object(Map::new())),
@@ -141,12 +149,33 @@ impl AdminEditorRuntime {
         }))
     }
 
+    pub fn request_server_preview(&self) {
+        if self.preview_in_progress.get_untracked() {
+            return;
+        }
+        let request = self.controller.with(|controller| {
+            GrapesJsCodec::encode_value(controller.editor().document())
+                .map(|project_data| {
+                    PageBuilderCapabilityRequest::Preview(PreviewPageBuilderInput::new(
+                        controller.page_id(),
+                        project_data,
+                    ))
+                })
+                .map_err(|error| error.to_string())
+        });
+        match request {
+            Ok(request) => self.execute_request(request, None),
+            Err(error) => self.fail(error),
+        }
+    }
+
     pub fn dispatch(&self, intent: UiIntent) {
         if matches!(
             &intent,
             UiIntent::Execute(_) | UiIntent::Undo | UiIntent::Redo
         ) {
             self.runtime_publish_gate_evaluation.set(None);
+            self.server_preview_html.set(None);
         }
         if matches!(&intent, UiIntent::RequestSave) {
             if let Some(evaluation) = self.evaluate_runtime_publish_gate() {
@@ -211,6 +240,7 @@ impl AdminEditorRuntime {
         request: PageBuilderCapabilityRequest,
         expected_hash: Option<ProjectHash>,
     ) {
+        let capability = request.capability();
         if let Some(facade) = self.facade.as_ref() {
             let facade = Arc::clone(facade);
             let runtime = self.clone();
@@ -219,24 +249,48 @@ impl AdminEditorRuntime {
                     .controller
                     .with(|controller| controller.ui().state.dirty.project_hash)
             });
-            let start = runtime
-                .controller
-                .try_update(|controller| controller.mark_save_started());
-            match start {
-                Some(Ok(())) => {}
-                Some(Err(error)) => {
-                    runtime.fail(error.to_string());
-                    return;
+            if capability == BuilderCapabilityKind::Publish {
+                let start = runtime
+                    .controller
+                    .try_update(|controller| controller.mark_save_started());
+                match start {
+                    Some(Ok(())) => {}
+                    Some(Err(error)) => {
+                        runtime.fail(error.to_string());
+                        return;
+                    }
+                    None => {
+                        runtime.fail("Page Builder controller is no longer available");
+                        return;
+                    }
                 }
-                None => {
-                    runtime.fail("Page Builder controller is no longer available");
-                    return;
-                }
+            } else if capability == BuilderCapabilityKind::Preview {
+                runtime.preview_in_progress.set(true);
             }
 
             spawn_local(async move {
                 match facade.execute(request).await {
-                    Ok(PageBuilderCapabilityResponse::Publish(response)) => {
+                    Ok(PageBuilderCapabilityResponse::Preview(response))
+                        if capability == BuilderCapabilityKind::Preview =>
+                    {
+                        let expected_page_id = runtime
+                            .controller
+                            .with(|controller| controller.page_id().to_string());
+                        runtime.preview_in_progress.set(false);
+                        if response.page_id != expected_page_id {
+                            runtime.fail(format!(
+                                "Page Builder preview returned page `{}` for `{expected_page_id}`",
+                                response.page_id
+                            ));
+                            return;
+                        }
+                        runtime.server_preview_html.set(Some(response.html));
+                        runtime.last_error.set(None);
+                        runtime.announce("Server preview refreshed");
+                    }
+                    Ok(PageBuilderCapabilityResponse::Publish(response))
+                        if capability == BuilderCapabilityKind::Publish =>
+                    {
                         let result = runtime.controller.try_update(|controller| {
                             if response.page_id != controller.page_id() {
                                 return Err(format!(
@@ -269,22 +323,32 @@ impl AdminEditorRuntime {
                         }
                     }
                     Ok(response) => {
-                        runtime.mark_save_failed();
+                        runtime.finish_failed_request(capability);
                         runtime.fail(format!(
-                            "Page Builder facade returned `{}` for a publish request",
+                            "Page Builder facade returned `{}` for a `{capability}` request",
                             response.capability()
                         ));
                     }
                     Err(error) => {
-                        runtime.mark_save_failed();
+                        runtime.finish_failed_request(capability);
                         runtime.fail(error.to_string());
                     }
                 }
             });
         } else if let Some(callback) = self.on_request.as_ref() {
+            self.preview_in_progress.set(false);
             callback.run(request);
         } else {
+            self.preview_in_progress.set(false);
             self.fail(self.facade_missing.clone());
+        }
+    }
+
+    fn finish_failed_request(&self, capability: BuilderCapabilityKind) {
+        match capability {
+            BuilderCapabilityKind::Publish => self.mark_save_failed(),
+            BuilderCapabilityKind::Preview => self.preview_in_progress.set(false),
+            BuilderCapabilityKind::Tree | BuilderCapabilityKind::Properties => {}
         }
     }
 
