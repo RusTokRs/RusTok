@@ -44,6 +44,15 @@
       "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no backfill"
     },
     {
+      "id": "profiles-display-name-translations",
+      "migration": "m20260721_000010_move_profile_display_name_to_translations",
+      "mode": "fixture",
+      "owner": "rustok-profiles",
+      "reason": "Legacy base-row display copy without a matching translation must be retained with truthful und provenance before the base column is dropped",
+      "setup_sql": "INSERT INTO profiles (user_id, tenant_id, handle, display_name, preferred_locale, visibility, status, created_at, updated_at) VALUES ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'legacy-profile', 'Legacy Profile', NULL, 'public', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'profiles' AND column_name = 'display_name') AND EXISTS (SELECT 1 FROM profile_translations WHERE profile_user_id = '10000000-0000-0000-0000-000000000001'::uuid AND locale = 'und' AND display_name = 'Legacy Profile')) AS passed"
+    },
+    {
       "id": "commerce-localized-records-width-32",
       "migration": "m20260721_000007_align_language_agnostic_locale_contract",
       "mode": "none",
