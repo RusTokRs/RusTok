@@ -8,11 +8,13 @@ use rustok_profiles::{
     ProfilesReader,
 };
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, TransactionTrait,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, TransactionTrait,
 };
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::entities::forum_relation_revision;
 use crate::mentions::{ForumContentTarget, ForumQuoteReference};
 
 use super::MentionRelationService;
@@ -220,6 +222,14 @@ async fn update_topic_body(db: &DatabaseConnection, tenant_id: Uuid, topic_id: U
     .expect("topic body should update");
 }
 
+async fn relation_revision_count(db: &DatabaseConnection, tenant_id: Uuid) -> u64 {
+    forum_relation_revision::Entity::find()
+        .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+        .count(db)
+        .await
+        .expect("relation revision count should load")
+}
+
 #[tokio::test]
 async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     let db = setup_db().await;
@@ -352,6 +362,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     txn.commit().await.expect("quote transaction should commit");
     assert_eq!(quoted.quote_count(), 1);
 
+    let before_foreign = relation_revision_count(&db, other_tenant_id).await;
     let foreign_prepared = service
         .prepare(
             other_tenant_id,
@@ -369,8 +380,15 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
         .persist_in_tx(&txn, foreign_prepared)
         .await
         .expect_err("cross-tenant quote revision must fail closed");
-    txn.rollback().await.expect("foreign transaction should roll back");
+    txn.commit()
+        .await
+        .expect("validation error transaction should contain no writes");
     assert_eq!(error.stable_code(), "FORUM_QUOTE_TARGET_UNAVAILABLE");
+    assert_eq!(
+        relation_revision_count(&db, other_tenant_id).await,
+        before_foreign,
+        "quote validation must run before the first relation write"
+    );
 
     let immutable_error = db
         .execute_unprepared(&format!(
