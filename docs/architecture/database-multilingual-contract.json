@@ -103,58 +103,7 @@
             ".string_len(32)",
             "GroupTranslations::Title",
             "GroupTranslations::Summary",
-            "GroupTranslations::Body",
-            "ux_group_translations_tenant_group_locale",
-            "fk_group_translations_tenant_group"
-          ]
-        },
-        {
-          "path": "crates/rustok-groups/src/migrations/m20260721_000003_enforce_group_language_agnostic_storage.rs",
-          "required_markers": [
-            "ck_group_translations_locale_normalized",
-            "ck_group_translations_presentation_shape",
-            "ck_groups_metadata_language_agnostic",
-            "group_translations_language_agnostic_insert",
-            "group_translations_language_agnostic_update",
-            "groups_language_agnostic_metadata_insert",
-            "groups_language_agnostic_metadata_update",
-            "sqlite_locale_violation",
-            "Irreversible by design"
-          ]
-        },
-        {
-          "path": "crates/rustok-groups/src/migrations/mod.rs",
-          "required_markers": [
-            "mod m20260721_000003_enforce_group_language_agnostic_storage;",
-            "Box::new(m20260721_000003_enforce_group_language_agnostic_storage::Migration)"
-          ]
-        },
-        {
-          "path": "crates/rustok-groups/src/service.rs",
-          "required_markers": [
-            "normalize_effective_locale",
-            "normalize_language_agnostic_metadata",
-            "translation::Column::Locale.eq(effective_locale.clone())",
-            "title.chars().count() > 240",
-            "value.chars().count() > 500",
-            "object.contains_key(*key)",
-            "GroupsError::NotFound"
-          ],
-          "forbidden_markers": [
-            "PLATFORM_FALLBACK_LOCALE",
-            "build_locale_candidates",
-            "rows.first()"
-          ]
-        },
-        {
-          "path": "crates/rustok-groups/docs/README.md",
-          "required_markers": [
-            "base + translations + optional bodies",
-            "host supplies the already-resolved effective locale",
-            "never injects an English or arbitrary first-row fallback",
-            "catalog and search queries are scoped to that effective locale",
-            "Unicode scalar values rather than UTF-8 bytes",
-            "must not contain localized presentation copies"
+            "GroupTranslations::Body"
           ]
         }
       ]
@@ -302,6 +251,54 @@
       ]
     },
     {
+      "id": "profiles_localized_copy",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-profiles/src/migrations/m20260721_000010_move_profile_display_name_to_translations.rs",
+          "required_markers": [
+            "LEGACY_UNDETERMINED_LOCALE",
+            "matching_copy",
+            "existing und copy",
+            ".drop_column(Profiles::DisplayName)",
+            "profile_translations"
+          ]
+        },
+        {
+          "path": "crates/rustok-profiles/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000010_move_profile_display_name_to_translations;",
+            "Box::new(m20260721_000010_move_profile_display_name_to_translations::Migration)"
+          ]
+        },
+        {
+          "path": "crates/rustok-profiles/src/entities/profile.rs",
+          "forbidden_markers": ["pub display_name: String"]
+        },
+        {
+          "path": "crates/rustok-profiles/src/services.rs",
+          "required_markers": [
+            "const MAX_LOCALE_LENGTH: usize = 32;",
+            "ProfileError::LocalizedCopyNotFound",
+            "upsert_translation_in_conn"
+          ],
+          "forbidden_markers": [
+            "active.display_name",
+            "profile.display_name.clone()"
+          ]
+        },
+        {
+          "path": "docs/migrations/backfill-contracts.json",
+          "required_markers": [
+            "profiles-display-name-translations",
+            "m20260721_000010_move_profile_display_name_to_translations",
+            "Legacy Profile",
+            "locale = 'und'"
+          ]
+        }
+      ]
+    },
+    {
       "id": "commerce_core_localized_records",
       "status": "enforced",
       "files": [
@@ -424,18 +421,6 @@
       "path": "crates/rustok-auth/src/migrations/m20260308_000001_create_oauth_apps.rs",
       "evidence_markers": ["OAuthApps::Name", "OAuthApps::Description"],
       "next_action": "atomically move OAuth application display copy to an owner translation table across storage and transports"
-    },
-    {
-      "id": "profiles-display-name",
-      "owner": "rustok-profiles",
-      "kind": "mixed_storage_cutover",
-      "status": "open",
-      "path": "crates/rustok-profiles/src/migrations/m20260326_000001_create_profiles_tables.rs",
-      "evidence_markers": [
-        "ColumnDef::new(Profiles::DisplayName)",
-        "ColumnDef::new(ProfileTranslations::DisplayName)"
-      ],
-      "next_action": "define identity-vs-localized display-name ownership, backfill translations, and remove the duplicated localized copy"
     },
     {
       "id": "marketplace-seller-prose-copy",
