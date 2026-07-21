@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -52,11 +52,15 @@ impl CategoryService {
     ) -> BlogResult<Uuid> {
         enforce_scope(&security, Resource::Categories, Action::Create)?;
         validate_category_name(&input.name)?;
-        let slug = normalize_category_slug(input.slug.as_deref(), &input.name);
+        let slug = normalize_category_slug(input.slug.as_deref(), &input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
+
+        if let Some(parent_id) = input.parent_id {
+            Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
+        }
 
         blog_category::ActiveModel {
             id: Set(id),
@@ -103,8 +107,9 @@ impl CategoryService {
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
 
-        let translations = category
-            .find_related(blog_category_translation::Entity)
+        let translations = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
             .all(&self.db)
             .await?;
 
@@ -152,7 +157,7 @@ impl CategoryService {
                     validate_category_name(name)?;
                     active.name = Set(name.to_string());
                     if input.slug.is_none() {
-                        active.slug = Set(normalize_slug_like(name));
+                        active.slug = Set(normalize_non_empty_slug(name)?);
                     }
                 }
                 if let Some(slug_value) = input.slug.as_deref() {
@@ -170,7 +175,7 @@ impl CategoryService {
                 validate_category_name(&name)?;
                 let slug = match input.slug.as_deref() {
                     Some(slug_value) => normalize_non_empty_slug(slug_value)?,
-                    None => normalize_slug_like(&name),
+                    None => normalize_non_empty_slug(&name)?,
                 };
 
                 blog_category_translation::ActiveModel {
@@ -243,11 +248,12 @@ impl CategoryService {
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let page = filter.page.max(1);
+        let per_page = filter.per_page.clamp(1, 100);
 
         let paginator = blog_category::Entity::find()
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .order_by_asc(blog_category::Column::Position)
-            .paginate(&self.db, filter.per_page.max(1));
+            .paginate(&self.db, per_page);
 
         let total = paginator.num_items().await?;
         let categories = paginator.fetch_page(page - 1).await?;
@@ -353,18 +359,20 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
     Ok(normalized)
 }
 
-fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> String {
-    input
+fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResult<String> {
+    let value = input
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(normalize_slug_like)
-        .unwrap_or_else(|| normalize_slug_like(fallback_name))
+        .unwrap_or(fallback_name);
+    normalize_non_empty_slug(value)
 }
 
 fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
     let normalized = normalize_slug_like(slug);
     if normalized.is_empty() {
-        return Err(BlogError::validation("Slug cannot be empty"));
+        return Err(BlogError::validation(
+            "Slug must contain at least one ASCII letter or digit",
+        ));
     }
     Ok(normalized)
 }
