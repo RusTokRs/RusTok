@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rust_decimal::Decimal;
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,7 @@ use crate::entities::{marketplace_financial_operation, marketplace_paid_event_in
 use super::{
     MarketplaceFinancialOperationStatus, MarketplacePaidEventInboxError,
     MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
+    MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
 };
 
 const MAX_OPERATOR_ITEMS: u64 = 100;
@@ -174,6 +175,65 @@ impl MarketplaceFinancialOperatorService {
             .await
             .map(|models| models.into_iter().map(map_paid_event).collect())
             .map_err(Into::into)
+    }
+
+    pub async fn sweep_tenant(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+    ) -> MarketplaceFinancialOperatorResult<MarketplacePaidEventSweepReport> {
+        if tenant_id.is_nil() {
+            return Err(MarketplaceFinancialOperatorError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        let now = Utc::now().fixed_offset();
+        let recoverable = Condition::any()
+            .add(
+                marketplace_paid_event_inbox::Column::Status.is_in([
+                    MarketplacePaidEventStatus::Received.as_str(),
+                    MarketplacePaidEventStatus::RetryableError.as_str(),
+                ]),
+            )
+            .add(
+                Condition::all()
+                    .add(
+                        marketplace_paid_event_inbox::Column::Status
+                            .eq(MarketplacePaidEventStatus::Processing.as_str()),
+                    )
+                    .add(marketplace_paid_event_inbox::Column::LeaseExpiresAt.lte(now)),
+            );
+        let events = marketplace_paid_event_inbox::Entity::find()
+            .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
+            .filter(recoverable)
+            .order_by_asc(marketplace_paid_event_inbox::Column::UpdatedAt)
+            .order_by_asc(marketplace_paid_event_inbox::Column::Id)
+            .limit(limit.clamp(1, MAX_OPERATOR_ITEMS))
+            .all(&self.db)
+            .await?;
+        let mut report = MarketplacePaidEventSweepReport {
+            selected: events.len(),
+            ..Default::default()
+        };
+        for event in events {
+            match self.inbox.process(tenant_id, event.id).await {
+                Ok(_) => report.processed += 1,
+                Err(error) => {
+                    let retryable = error.retryable();
+                    if retryable {
+                        report.retryable_failures += 1;
+                    } else {
+                        report.operator_review_failures += 1;
+                    }
+                    report.failures.push(MarketplacePaidEventSweepFailure {
+                        inbox_id: event.id,
+                        retryable,
+                        message: error.to_string(),
+                    });
+                }
+            }
+        }
+        Ok(report)
     }
 
     pub async fn retry_financial_operation(
