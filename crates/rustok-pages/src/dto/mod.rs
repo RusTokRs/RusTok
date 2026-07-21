@@ -2,7 +2,10 @@
 pub mod menu;
 pub mod page;
 
-pub use menu::{CreateMenuInput, MenuItemInput, MenuItemResponse, MenuLocation, MenuResponse};
+pub use menu::{
+    CreateMenuInput, MenuItemInput, MenuItemResponse, MenuItemTranslationInput, MenuLocation,
+    MenuResponse, MenuTranslationInput,
+};
 pub use page::{
     CreatePageInput, ListPagesFilter, PageBodyInput, PageBodyResponse, PageListItem, PageResponse,
     PageTranslationInput, PageTranslationResponse, PatchPageMetadataInput, SavePageDocumentInput,

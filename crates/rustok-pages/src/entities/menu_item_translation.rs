@@ -7,6 +7,8 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub menu_id: Uuid,
     pub menu_item_id: Uuid,
     pub locale: String,
     pub title: String,
