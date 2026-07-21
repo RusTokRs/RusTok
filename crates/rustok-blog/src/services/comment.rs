@@ -61,10 +61,20 @@ impl CommentService {
         )
         .map_err(BlogError::validation)?;
 
+        // A create call has no comment id yet. Use a per-command nonce so two
+        // independent comments on the same post never share an idempotency key.
+        let command_id = Uuid::new_v4();
         let record = self
             .comments_thread_port
             .create_comment(
-                comments_write_port_context(tenant_id, &security, locale.as_str(), post_id)?,
+                comments_write_port_context(
+                    tenant_id,
+                    &security,
+                    locale.as_str(),
+                    "create",
+                    post_id,
+                    command_id,
+                )?,
                 DomainCreateCommentInput {
                     target_type: TARGET_TYPE_BLOG_POST.to_string(),
                     target_id: post_id,
@@ -154,7 +164,14 @@ impl CommentService {
         let record = self
             .comments_thread_port
             .update_comment(
-                comments_write_port_context(tenant_id, &security, locale.as_str(), comment_id)?,
+                comments_write_port_context(
+                    tenant_id,
+                    &security,
+                    locale.as_str(),
+                    "update",
+                    comment_id,
+                    comment_id,
+                )?,
                 comment_id,
                 domain_input,
             )
@@ -204,6 +221,8 @@ impl CommentService {
                     tenant_id,
                     &SecurityContext::system(),
                     locale,
+                    "moderate",
+                    comment_id,
                     comment_id,
                 )?,
                 comment_id,
@@ -246,6 +265,8 @@ impl CommentService {
                     tenant_id,
                     &security,
                     PLATFORM_FALLBACK_LOCALE,
+                    "delete",
+                    comment_id,
                     comment_id,
                 )?,
                 comment_id,
@@ -385,18 +406,34 @@ fn comments_write_port_context(
     tenant_id: Uuid,
     security: &SecurityContext,
     locale: &str,
-    comment_id: Uuid,
+    operation: &str,
+    resource_id: Uuid,
+    command_id: Uuid,
 ) -> BlogResult<PortContext> {
-    comments_port_context(tenant_id, security, locale, "update", comment_id, true)
+    comments_port_context(
+        tenant_id,
+        security,
+        locale,
+        operation,
+        resource_id,
+        Some(command_id),
+    )
 }
 
 fn comments_read_port_context(
     tenant_id: Uuid,
     security: &SecurityContext,
     locale: &str,
-    comment_id: Uuid,
+    resource_id: Uuid,
 ) -> BlogResult<PortContext> {
-    comments_port_context(tenant_id, security, locale, "read", comment_id, false)
+    comments_port_context(
+        tenant_id,
+        security,
+        locale,
+        "read",
+        resource_id,
+        None,
+    )
 }
 
 fn comments_port_context(
@@ -404,8 +441,8 @@ fn comments_port_context(
     security: &SecurityContext,
     locale: &str,
     operation: &str,
-    comment_id: Uuid,
-    is_write: bool,
+    resource_id: Uuid,
+    command_id: Option<Uuid>,
 ) -> BlogResult<PortContext> {
     let actor = match security.actor_kind {
         SecurityActorKind::System => PortActor::system(),
@@ -417,17 +454,23 @@ fn comments_port_context(
         ),
         SecurityActorKind::Service | SecurityActorKind::Public => {
             return Err(BlogError::forbidden(
-                "comment updates require an authenticated user or system actor",
+                "comment writes require an authenticated user or system actor",
             ));
         }
     };
 
-    let correlation_id = format!("blog-comment:{operation}:{comment_id}");
-    let mut context =
-        PortContext::new(tenant_id.to_string(), actor, locale, correlation_id.clone())
-            .with_deadline(std::time::Duration::from_secs(2));
-    if is_write {
-        context = context.with_idempotency_key(correlation_id);
+    let correlation_id = format!("blog-comment:{operation}:{resource_id}");
+    let mut context = PortContext::new(
+        tenant_id.to_string(),
+        actor,
+        locale,
+        correlation_id.clone(),
+    )
+    .with_deadline(std::time::Duration::from_secs(2));
+    if let Some(command_id) = command_id {
+        context = context.with_idempotency_key(format!(
+            "{correlation_id}:command:{command_id}"
+        ));
     }
 
     if security.actor_kind != SecurityActorKind::System {
