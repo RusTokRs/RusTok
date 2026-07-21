@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{normalize_locale_tag, PortActorKind, PortCallPolicy, PortContext, PortError};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -210,12 +211,18 @@ impl GroupLocalizationService {
         group_id: Uuid,
         actor_user_id: Uuid,
     ) -> GroupsResult<group::Model> {
-        let group_model = group::Entity::find()
-            .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Id.eq(group_id))
-            .one(transaction)
-            .await?
-            .ok_or(GroupsError::NotFound)?;
+        let query = || {
+            group::Entity::find()
+                .filter(group::Column::TenantId.eq(tenant_id))
+                .filter(group::Column::Id.eq(group_id))
+        };
+        let group_model = match transaction.get_database_backend() {
+            DbBackend::Sqlite => query().one(transaction).await?,
+            DbBackend::Postgres | DbBackend::MySql => {
+                query().lock_exclusive().one(transaction).await?
+            }
+        }
+        .ok_or(GroupsError::NotFound)?;
         if has_platform_manage(context) {
             return Ok(group_model);
         }
