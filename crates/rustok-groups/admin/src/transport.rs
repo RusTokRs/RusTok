@@ -1,5 +1,9 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/graphql_invitations_adapter.rs"]
+mod graphql_invitations_adapter;
+#[path = "transport/native_invitations_adapter.rs"]
+mod native_invitations_adapter;
 #[path = "transport/native_localization_adapter.rs"]
 mod native_localization_adapter;
 #[path = "transport/native_server_adapter.rs"]
@@ -9,10 +13,12 @@ use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTranspo
 
 use crate::core::GroupsAdminTransportProfile;
 use crate::model::{
-    ChangeGroupRoleCommand, DeleteGroupTranslationCommand, GroupsAdminDeleteTranslationResult,
-    GroupsAdminDirectory, GroupsAdminFilters, GroupsAdminGovernanceResult, GroupsAdminTranslation,
+    ChangeGroupRoleCommand, CreateGroupInvitationCommand, DeleteGroupTranslationCommand,
+    GroupsAdminCreateInvitationResult, GroupsAdminDeleteTranslationResult, GroupsAdminDirectory,
+    GroupsAdminFilters, GroupsAdminGovernanceResult, GroupsAdminInvitationConnection,
+    GroupsAdminInvitationQuery, GroupsAdminRevokeInvitationResult, GroupsAdminTranslation,
     GroupsAdminTranslationMutationResult, GroupsAdminTranslationQuery,
-    TransferGroupOwnershipCommand, UpsertGroupTranslationCommand,
+    RevokeGroupInvitationCommand, TransferGroupOwnershipCommand, UpsertGroupTranslationCommand,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -139,6 +145,54 @@ pub async fn delete_group_admin_translation(
         context.path(),
         move || native_localization_adapter::delete_group_translation(native_command),
         move || graphql_adapter::delete_group_translation(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn load_group_admin_invitations(
+    context: GroupsAdminTransportContext,
+    query: GroupsAdminInvitationQuery,
+) -> UiTransportResult<GroupsAdminInvitationConnection> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.admin.invitations.list",
+        context.path(),
+        move || native_invitations_adapter::load_group_invitations(native_query),
+        move || graphql_invitations_adapter::load_group_invitations(token, tenant, query),
+    )
+    .await
+}
+
+pub async fn create_group_admin_invitation(
+    context: GroupsAdminTransportContext,
+    command: CreateGroupInvitationCommand,
+) -> UiTransportResult<GroupsAdminCreateInvitationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.invitations.create",
+        context.path(),
+        move || native_invitations_adapter::create_group_invitation(native_command),
+        move || graphql_invitations_adapter::create_group_invitation(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn revoke_group_admin_invitation(
+    context: GroupsAdminTransportContext,
+    command: RevokeGroupInvitationCommand,
+) -> UiTransportResult<GroupsAdminRevokeInvitationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.invitations.revoke",
+        context.path(),
+        move || native_invitations_adapter::revoke_group_invitation(native_command),
+        move || graphql_invitations_adapter::revoke_group_invitation(token, tenant, command),
     )
     .await
 }
