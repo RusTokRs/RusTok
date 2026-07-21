@@ -40,10 +40,24 @@ mod tests {
     }
 
     #[test]
-    fn source_revision_is_validated_during_deserialization() {
+    fn source_revision_is_private_and_validated_during_deserialization() {
+        let tenant_id = Uuid::new_v4();
+        let event_id = Uuid::new_v4();
+        let event = NotificationSourceEventRef::new(
+            tenant_id,
+            event_id,
+            NotificationSourceSlug::new("forum").expect("source"),
+            NotificationTypeKey::new("forum.reply.approved").expect("type"),
+            1,
+        )
+        .expect("event");
+        assert_eq!(event.tenant_id(), tenant_id);
+        assert_eq!(event.event_id(), event_id);
+        assert_eq!(event.source_revision(), 1);
+
         let value = serde_json::json!({
-            "tenant_id": Uuid::new_v4(),
-            "event_id": Uuid::new_v4(),
+            "tenant_id": tenant_id,
+            "event_id": event_id,
             "source": "forum",
             "event_type": "forum.reply.approved",
             "source_revision": 0
@@ -76,6 +90,14 @@ mod tests {
             "next_cursor": null
         }))
         .is_err());
+
+        let page = NotificationAudiencePage::try_new(
+            vec![NotificationAudienceCandidate { recipient_id }],
+            None,
+        )
+        .expect("bounded page");
+        assert_eq!(page.recipients().len(), 1);
+        assert!(page.is_complete());
     }
 
     #[test]
@@ -86,6 +108,10 @@ mod tests {
             "//example.invalid/topic/123",
             "forum/topic/123",
             "/forum/topic/123\nset-cookie:x",
+            "/../admin",
+            "/forum/./topic",
+            "/forum/topic?preview=true",
+            "/forum\\topic",
         ] {
             assert!(NotificationTargetRoute::new(invalid).is_err(), "accepted {invalid:?}");
         }
