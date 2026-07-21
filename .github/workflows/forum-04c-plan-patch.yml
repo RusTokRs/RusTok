@@ -1,0 +1,56 @@
+name: Apply FORUM-04C plan patch
+
+on:
+  push:
+    branches:
+      - agent/forum-04c-category-write-guards
+
+permissions:
+  contents: write
+
+jobs:
+  patch-plan:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/forum-04c-category-write-guards
+          fetch-depth: 1
+      - name: Patch canonical forum plan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-forum/docs/implementation-plan.md")
+          text = path.read_text()
+
+          replacements = {
+              "last_reviewed: 2026-07-15": "last_reviewed: 2026-07-21",
+              "| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded canonical nested tree read; atomic move/reorder, topic policy and subtree archive/restore remain. |": "| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B adds atomic move/reorder; FORUM-04C enforces write depth and owner-only placement. Topic policy and subtree archive/restore remain. |",
+              "### Remaining scope\n\n- add atomic move and sibling-reorder owner commands;\n- reject self-parenting, descendant cycles, cross-tenant parents and excessive\n  depth at every category write boundary, not only when reading the tree;\n- define container/category topic-creation policy;": "### Delivered in `FORUM-04B` and `FORUM-04C`\n\n- tenant-serialized `CategoryService::move_category` and `reorder_siblings`\n  normalize complete source/destination sibling groups atomically;\n- REST, GraphQL and OpenAPI expose owner commands guarded by\n  `forum_categories:manage`;\n- move/reorder rejects self/descendant cycles, missing or cross-tenant parents,\n  incomplete sibling sets, duplicate IDs, oversized trees and depth overflow;\n- PostgreSQL and SQLite enforce zero-based depth 16 at the database write\n  boundary, including internal direct writes;\n- generic category metadata updates reject `position`, so transports cannot\n  bypass owner placement commands;\n- shared PostgreSQL/SQLite scenarios cover reorder, cross-parent move, sibling\n  normalization, cycle/foreign-parent rejection, write-depth rejection and\n  tenant isolation.\n\n### Remaining scope\n\n- define container/category topic-creation policy;",
+              "```bash\ncargo test -p rustok-forum category_tree\ncargo test -p rustok-forum --test runtime_regression_baseline\nnpm run verify:forum:admin-boundary\n```": "```bash\ncargo test -p rustok-forum category_tree\ncargo test -p rustok-forum --test category_commands_sqlite -- --nocapture\ncargo test -p rustok-forum --test category_commands_postgres -- --nocapture --test-threads=1\ncargo test -p rustok-forum --test runtime_regression_baseline\ncargo xtask module validate forum\nnpm run verify:forum:admin-boundary\n```",
+              "1. `FORUM-04`: atomic move/reorder commands and tests;": "1. `FORUM-04`: topic-creation policy and subtree archive/restore owner workflows;",
+              "The next implementation task is the second `FORUM-04` slice: atomic category\nmove/reorder commands, write-time depth/cycle enforcement and concurrency tests.": "The next implementation task is the remaining `FORUM-04` policy slice: category\ntopic-creation policy, subtree archive/restore owner workflows and admin\ndrag-and-drop consumption of the existing placement commands.",
+          }
+
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"missing expected plan anchor: {old[:100]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit plan synchronization
+        shell: bash
+        run: |
+          if git diff --quiet -- crates/rustok-forum/docs/implementation-plan.md; then
+            echo "Plan already synchronized"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-forum/docs/implementation-plan.md
+          git commit -m "docs(forum): synchronize FORUM-04 progress [plan-patched]"
+          git push origin HEAD:agent/forum-04c-category-write-guards
