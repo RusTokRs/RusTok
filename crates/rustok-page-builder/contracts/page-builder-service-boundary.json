@@ -38,6 +38,16 @@
     "CapabilityGuardedService",
     "AuthorizedPageBuilderHandlers"
   ],
+  "composition_root": {
+    "module": "composition",
+    "default_entrypoint": "compose_fly_page_builder_handlers",
+    "configured_entrypoint": "compose_configured_fly_page_builder_handlers",
+    "invocation_order": [
+      "FlyAdapterBackedPageBuilderService::new",
+      "CapabilityGuardedService::with_policies",
+      "AuthorizedPageBuilderHandlers::with_authorizer"
+    ]
+  },
   "transport_entrypoints": [
     "handle_page_builder_graphql_endpoint",
     "handle_page_builder_leptos_server_function_endpoint"
