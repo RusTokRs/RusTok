@@ -5,8 +5,8 @@ use rustok_core::Error;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, Set,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, Set, TransactionTrait, sea_query::Expr,
 };
 use std::sync::Arc;
 
