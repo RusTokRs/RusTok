@@ -16,6 +16,12 @@ async fn setup() -> (DatabaseConnection, Uuid, Uuid, Uuid) {
     let db = setup_test_db().await;
     db.execute(Statement::from_string(
         db.get_database_backend(),
+        "PRAGMA foreign_keys = ON",
+    ))
+    .await
+    .expect("sqlite foreign keys should be enabled");
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
         r#"
         CREATE TABLE tenants (
             id TEXT PRIMARY KEY NOT NULL,
@@ -27,7 +33,14 @@ async fn setup() -> (DatabaseConnection, Uuid, Uuid, Uuid) {
             is_active BOOLEAN NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
+        )
+        "#,
+    ))
+    .await
+    .expect("tenant table should exist for Pages migrations");
+    db.execute(Statement::from_string(
+        db.get_database_backend(),
+        r#"
         CREATE TABLE channels (
             id TEXT PRIMARY KEY NOT NULL,
             tenant_id TEXT NOT NULL,
@@ -45,7 +58,7 @@ async fn setup() -> (DatabaseConnection, Uuid, Uuid, Uuid) {
         "#,
     ))
     .await
-    .expect("tenant and channel tables should exist for Pages migrations");
+    .expect("channel table should exist for active menu bindings");
 
     let tenant_id = Uuid::new_v4();
     let other_tenant_id = Uuid::new_v4();
