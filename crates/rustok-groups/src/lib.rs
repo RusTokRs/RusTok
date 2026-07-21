@@ -16,8 +16,6 @@ pub mod graphql_governance;
 pub mod graphql_invitations;
 #[cfg(feature = "graphql")]
 pub mod graphql_localization;
-#[cfg(feature = "graphql")]
-pub mod graphql_targeted_invitations;
 pub mod governance;
 pub mod governance_entities;
 pub mod group_event_entities;
