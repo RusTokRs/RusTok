@@ -109,7 +109,7 @@ pub(crate) async fn admin_global_search_native(
                         })
                 })
                 .map(|item| {
-                    let url = derive_admin_search_result_url(&item);
+                    let url = rustok_search::canonical_search_result_url(&item);
                     AdminGlobalSearchItem {
                         id: item.id.to_string(),
                         entity_type: item.entity_type,
@@ -161,15 +161,13 @@ fn required_admin_search_permission(
 ) -> Option<rustok_api::Permission> {
     use rustok_api::Permission;
 
-    match entity_type.trim() {
-        "product" => Some(Permission::PRODUCTS_READ),
-        "node" => match source_module.trim() {
-            "" | "content" | "rustok-content" => Some(Permission::NODES_READ),
-            "blog" | "rustok-blog" => Some(Permission::BLOG_POSTS_READ),
-            "pages" | "rustok-pages" => Some(Permission::PAGES_READ),
-            "flex" | "rustok-flex" => Some(Permission::FLEX_ENTRIES_READ),
-            _ => None,
-        },
+    match (entity_type.trim(), source_module.trim()) {
+        ("product", _) => Some(Permission::PRODUCTS_READ),
+        ("blog_post", "blog" | "rustok-blog") => Some(Permission::BLOG_POSTS_READ),
+        ("node", "" | "content" | "rustok-content") => Some(Permission::NODES_READ),
+        ("node", "blog" | "rustok-blog") => Some(Permission::BLOG_POSTS_READ),
+        ("node", "pages" | "rustok-pages") => Some(Permission::PAGES_READ),
+        ("node", "flex" | "rustok-flex") => Some(Permission::FLEX_ENTRIES_READ),
         _ => None,
     }
 }
@@ -206,22 +204,6 @@ async fn record_admin_search_query_log(
     .flatten()
 }
 
-#[cfg(feature = "ssr")]
-fn derive_admin_search_result_url(item: &rustok_search::SearchResultItem) -> Option<String> {
-    match item.entity_type.as_str() {
-        "node" => {
-            let module_slug = if item.source_module.trim().is_empty() {
-                "content"
-            } else {
-                item.source_module.as_str()
-            };
-            Some(format!("/modules/{module_slug}?id={}", item.id))
-        }
-        "product" => Some(format!("/modules/search/playground?focusId={}", item.id)),
-        _ => None,
-    }
-}
-
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
     use super::required_admin_search_permission;
@@ -232,6 +214,10 @@ mod tests {
         assert_eq!(
             required_admin_search_permission("product", "catalog"),
             Some(Permission::PRODUCTS_READ)
+        );
+        assert_eq!(
+            required_admin_search_permission("blog_post", "blog"),
+            Some(Permission::BLOG_POSTS_READ)
         );
         assert_eq!(
             required_admin_search_permission("node", "blog"),
@@ -246,6 +232,7 @@ mod tests {
     #[test]
     fn unknown_search_sources_fail_closed() {
         assert_eq!(required_admin_search_permission("secret", "unknown"), None);
+        assert_eq!(required_admin_search_permission("blog_post", "content"), None);
         assert_eq!(required_admin_search_permission("node", "unknown"), None);
     }
 }
