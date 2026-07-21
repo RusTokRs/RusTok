@@ -63,32 +63,31 @@ function sliceBetween(source, start, end, label) {
 if (contract.status !== "atomic_service_ready") {
   fail(`unexpected contract status: ${contract.status}`);
 }
-if (contract.provider.context.persisted !== false) {
+if (
+  contract.provider.context.persisted !== false ||
+  contract.provider.sanitization.raw_context_persisted !== false ||
+  contract.pages_consumer.raw_context_persisted !== false
+) {
   fail("reviewed runtime context must remain transient");
 }
 if (contract.provider.context.shape !== "json_object") {
   fail("reviewed runtime context must be a JSON object");
 }
-if (contract.provider.review_hash.algorithm !== "sha256") {
-  fail("reviewed runtime hash algorithm must be sha256");
+if (
+  contract.provider.review_hash.algorithm !== "sha256" ||
+  contract.provider.sanitization.hash_algorithm !== "sha256" ||
+  contract.pages_consumer.receipt.hash_algorithm !== "sha256"
+) {
+  fail("review, sanitization and receipt identities must use sha256");
 }
 if (contract.provider.scenario.required !== true) {
   fail("reviewed publish runtime must require an explicit scenario");
-}
-if (contract.provider.sanitization.hash_algorithm !== "sha256") {
-  fail("publish sanitization hash algorithm must be sha256");
-}
-if (contract.provider.sanitization.raw_context_persisted !== false) {
-  fail("publish sanitization must not persist raw runtime context");
 }
 if (contract.pages_consumer.atomic_pipeline !== "service_integrated") {
   fail("Pages atomic reviewed publish service is not integrated");
 }
 if (contract.pages_consumer.typed_errors !== true) {
   fail("Pages reviewed publish failures must remain typed");
-}
-if (contract.pages_consumer.raw_context_persisted !== false) {
-  fail("Pages must not persist raw reviewed runtime context");
 }
 if (contract.pages_consumer.public_transport !== "pending_cutover") {
   fail("public transport status must remain explicit until cutover");
@@ -108,17 +107,17 @@ for (const marker of [
   "serde_json::to_vec(&self.context)",
   "Sha256::digest(bytes)",
   "ReviewHashMismatch",
+  "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES",
+  "MAX_PREVIEW_SCENARIO_ID_BYTES",
 ]) {
   requireMarker(provider, marker, "provider review validation");
 }
-requireMarker(provider, "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES", "provider context limit");
-requireMarker(provider, "MAX_PREVIEW_SCENARIO_ID_BYTES", "provider scenario limit");
 requireMarker(providerLib, "pub mod publish_runtime;", "provider runtime module export");
 requireMarker(providerLib, "PageBuilderReviewedPublishRuntime", "provider runtime export");
 
 requireMarker(
   sanitizer,
-  `pub const PAGE_BUILDER_STATIC_SANITIZATION_FORMAT`,
+  "pub const PAGE_BUILDER_STATIC_SANITIZATION_FORMAT",
   "publish sanitizer format",
 );
 requireMarker(sanitizer, contract.provider.sanitization.format, "publish sanitizer format");
@@ -133,7 +132,7 @@ for (const marker of [
   "serde_json::to_value(document.project)",
   "stable_hash(&sanitized_project)",
   "Sha256::digest(bytes)",
-  "verify_integrity",
+  "result.verify_integrity()",
 ]) {
   requireMarker(sanitizer, marker, "authoritative publish sanitization");
 }
@@ -183,10 +182,10 @@ requireMarker(publishMethod, "txn.commit().await?", "Pages atomic commit");
 
 for (const marker of [
   "sanitize_static_landing_project(&project_data)",
-  "sanitized.verify_integrity()",
+  "sanitization_integrity_error",
   "sanitized.project_data()",
   "compile_materialized_static_landing(",
-  "materialized.verify_integrity()",
+  "artifact_integrity_error",
   "materialized.identity.runtime_scenario_id",
   "materialized.identity.runtime_context_hash",
 ]) {
@@ -237,11 +236,15 @@ requireMarker(
   "pub mod page_publish_operation;",
   "publish receipt entity registration",
 );
-requireMarker(pages, "insert_publish_operation_in_tx", "publish receipt insert");
-requireMarker(pages, "verify_publish_operation", "publish receipt integrity");
-requireMarker(pages, "ensure_same_publish_request", "publish request collision guard");
-requireMarker(pages, "sanitized_set_hash", "sanitized set identity");
-requireMarker(pages, "artifact_set_hash", "artifact set identity");
+for (const marker of [
+  "insert_publish_operation_in_tx",
+  "verify_publish_operation",
+  "ensure_same_publish_request",
+  "sanitized_set_hash",
+  "artifact_set_hash",
+]) {
+  requireMarker(pages, marker, "publish receipt boundary");
+}
 
 for (const marker of contract.pages_consumer.materialization_match) {
   requireMarker(pages, marker, "Pages materialization match");
