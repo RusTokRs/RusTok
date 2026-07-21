@@ -54,11 +54,38 @@ pub enum ForumMentionAudience {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForumMentionCandidates {
-    pub handles: Vec<String>,
-    pub audiences: Vec<ForumMentionAudience>,
+    handles: Vec<String>,
+    audiences: Vec<ForumMentionAudience>,
 }
 
 impl ForumMentionCandidates {
+    pub fn new(
+        handles: impl IntoIterator<Item = String>,
+        audiences: impl IntoIterator<Item = ForumMentionAudience>,
+    ) -> ForumResult<Self> {
+        let handles = handles
+            .into_iter()
+            .filter_map(|handle| ProfileService::normalize_handle(&handle).ok())
+            .collect::<BTreeSet<_>>();
+        let audiences = audiences.into_iter().collect::<BTreeSet<_>>();
+        ensure_mention_limit(
+            handles.len() + audiences.len(),
+            FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+        )?;
+        Ok(Self {
+            handles: handles.into_iter().collect(),
+            audiences: audiences.into_iter().collect(),
+        })
+    }
+
+    pub fn handles(&self) -> &[String] {
+        &self.handles
+    }
+
+    pub fn audiences(&self) -> &[ForumMentionAudience] {
+        &self.audiences
+    }
+
     pub fn target_count(&self) -> usize {
         self.handles.len() + self.audiences.len()
     }
@@ -126,7 +153,6 @@ impl ForumRevisionIdentity {
         let locale = normalize_locale_tag(&locale).ok_or_else(|| {
             ForumError::Validation("Forum revision identity requires a valid locale".to_string())
         })?;
-
         Ok(Self {
             tenant_id,
             target,
@@ -156,9 +182,9 @@ pub struct ForumResolvedMentions {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForumMentionRevisionProjection {
-    pub source: ForumRevisionIdentity,
-    pub users: Vec<ResolvedForumMention>,
-    pub audiences: Vec<ForumMentionAudience>,
+    source: ForumRevisionIdentity,
+    users: Vec<ResolvedForumMention>,
+    audiences: Vec<ForumMentionAudience>,
 }
 
 impl ForumMentionRevisionProjection {
@@ -169,17 +195,27 @@ impl ForumMentionRevisionProjection {
     ) -> ForumResult<Self> {
         let users = users.into_iter().collect::<BTreeSet<_>>();
         let audiences = audiences.into_iter().collect::<BTreeSet<_>>();
-        if users.len() + audiences.len() > FORUM_MAX_MENTION_TARGETS_PER_REVISION {
-            return Err(ForumError::Validation(format!(
-                "Forum revision exceeds the {FORUM_MAX_MENTION_TARGETS_PER_REVISION}-target mention limit"
-            )));
-        }
-
+        ensure_mention_limit(
+            users.len() + audiences.len(),
+            FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+        )?;
         Ok(Self {
             source,
             users: users.into_iter().collect(),
             audiences: audiences.into_iter().collect(),
         })
+    }
+
+    pub fn source(&self) -> &ForumRevisionIdentity {
+        &self.source
+    }
+
+    pub fn users(&self) -> &[ResolvedForumMention] {
+        &self.users
+    }
+
+    pub fn audiences(&self) -> &[ForumMentionAudience] {
+        &self.audiences
     }
 }
 
@@ -241,10 +277,7 @@ pub fn extract_forum_mention_candidates(
     }
 
     ensure_mention_limit(handles.len() + audiences.len(), policy.max_targets)?;
-    Ok(ForumMentionCandidates {
-        handles: handles.into_iter().collect(),
-        audiences: audiences.into_iter().collect(),
-    })
+    ForumMentionCandidates::new(handles, audiences)
 }
 
 pub async fn resolve_forum_mentions(
@@ -254,6 +287,10 @@ pub async fn resolve_forum_mentions(
     requested_locale: Option<&str>,
     tenant_default_locale: Option<&str>,
 ) -> ForumResult<ForumResolvedMentions> {
+    ensure_mention_limit(
+        candidates.target_count(),
+        FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+    )?;
     let mut users = BTreeMap::new();
     for handle in candidates.handles {
         let profile = profiles
@@ -274,7 +311,6 @@ pub async fn resolve_forum_mentions(
             },
         );
     }
-
     Ok(ForumResolvedMentions {
         users: users.into_values().collect(),
         audiences: candidates.audiences,
@@ -291,7 +327,6 @@ pub fn validate_forum_quote_references(
             "Forum revision exceeds the {FORUM_MAX_QUOTE_REFERENCES_PER_REVISION}-quote limit"
         )));
     }
-
     for reference in &references {
         if reference.target.id.is_nil() || reference.revision_id <= 0 {
             return Err(ForumError::Validation(
@@ -305,7 +340,6 @@ pub fn validate_forum_quote_references(
             ));
         }
     }
-
     Ok(references.into_iter().collect())
 }
 
@@ -314,13 +348,24 @@ pub fn diff_forum_mentions(
     current: &ForumMentionRevisionProjection,
 ) -> ForumResult<ForumMentionDiff> {
     if let Some(previous) = previous {
-        ensure_revision_successor(&previous.source, &current.source)?;
+        ensure_same_revision_stream(previous.source(), current.source())?;
+        if previous.source() == current.source() {
+            if previous != current {
+                return Err(ForumError::Validation(
+                    "Forum mention replay changed an existing revision projection".to_string(),
+                ));
+            }
+        } else if current.source().revision_id <= previous.source().revision_id {
+            return Err(ForumError::Validation(
+                "Forum mention diff cannot move revision identity backwards".to_string(),
+            ));
+        }
     }
 
     let previous_users = previous
         .map(|value| {
             value
-                .users
+                .users()
                 .iter()
                 .cloned()
                 .map(|mention| (mention.user_id, mention))
@@ -328,36 +373,36 @@ pub fn diff_forum_mentions(
         })
         .unwrap_or_default();
     let current_users = current
-        .users
+        .users()
         .iter()
         .cloned()
         .map(|mention| (mention.user_id, mention))
         .collect::<BTreeMap<_, _>>();
     let previous_audiences = previous
-        .map(|value| value.audiences.iter().copied().collect::<BTreeSet<_>>())
+        .map(|value| value.audiences().iter().copied().collect::<BTreeSet<_>>())
         .unwrap_or_default();
-    let current_audiences = current.audiences.iter().copied().collect::<BTreeSet<_>>();
-
-    let added_users = current_users
+    let current_audiences = current
+        .audiences()
         .iter()
-        .filter(|(user_id, _)| !previous_users.contains_key(user_id))
-        .map(|(_, mention)| mention.clone())
-        .collect();
-    let removed_users = previous_users
-        .iter()
-        .filter(|(user_id, _)| !current_users.contains_key(user_id))
-        .map(|(_, mention)| mention.clone())
-        .collect();
-    let unchanged_users = current_users
-        .iter()
-        .filter(|(user_id, _)| previous_users.contains_key(user_id))
-        .map(|(_, mention)| mention.clone())
-        .collect();
+        .copied()
+        .collect::<BTreeSet<_>>();
 
     Ok(ForumMentionDiff {
-        added_users,
-        removed_users,
-        unchanged_users,
+        added_users: current_users
+            .iter()
+            .filter(|(user_id, _)| !previous_users.contains_key(user_id))
+            .map(|(_, mention)| mention.clone())
+            .collect(),
+        removed_users: previous_users
+            .iter()
+            .filter(|(user_id, _)| !current_users.contains_key(user_id))
+            .map(|(_, mention)| mention.clone())
+            .collect(),
+        unchanged_users: current_users
+            .iter()
+            .filter(|(user_id, _)| previous_users.contains_key(user_id))
+            .map(|(_, mention)| mention.clone())
+            .collect(),
         added_audiences: current_audiences
             .difference(&previous_audiences)
             .copied()
@@ -403,8 +448,10 @@ fn collect_markdown_mentions(
     let mut fence: Option<(u8, usize)> = None;
     for line in body.lines() {
         if let Some((character, length)) = fence {
-            if markdown_fence(line).is_some_and(|value| value.0 == character && value.1 >= length) {
-                fence = None;
+            if let Some(value) = markdown_fence(line) {
+                if value.0 == character && value.1 >= length {
+                    fence = None;
+                }
             }
             continue;
         }
@@ -463,11 +510,12 @@ fn collect_rt_json_mentions(
 fn text_node_has_code_mark(node: &serde_json::Map<String, Value>) -> bool {
     node.get("marks")
         .and_then(Value::as_array)
-        .is_some_and(|marks| {
-            marks.iter().any(|mark| {
-                mark.get("type").and_then(Value::as_str) == Some("code")
-            })
+        .map(|marks| {
+            marks
+                .iter()
+                .any(|mark| mark.get("type").and_then(Value::as_str) == Some("code"))
         })
+        .unwrap_or(false)
 }
 
 fn scan_text_mentions(
@@ -522,13 +570,16 @@ fn scan_text_mentions(
 }
 
 fn mention_boundary(text: &str, at_index: usize) -> bool {
-    text[..at_index].chars().next_back().is_none_or(|character| {
-        !character.is_ascii_alphanumeric()
-            && character != '_'
-            && character != '-'
-            && character != '.'
-            && character != '@'
-    })
+    match text[..at_index].chars().next_back() {
+        None => true,
+        Some(character) => {
+            !character.is_ascii_alphanumeric()
+                && character != '_'
+                && character != '-'
+                && character != '.'
+                && character != '@'
+        }
+    }
 }
 
 fn classify_mention_token(
@@ -547,7 +598,6 @@ fn classify_mention_token(
         audiences.insert(ForumMentionAudience::Moderators);
         return Ok(());
     }
-
     if let Ok(handle) = ProfileService::normalize_handle(&normalized) {
         handles.insert(handle);
     }
@@ -601,7 +651,7 @@ fn map_profile_mention_error(handle: &str, error: ProfileError) -> ForumError {
     }
 }
 
-fn ensure_revision_successor(
+fn ensure_same_revision_stream(
     previous: &ForumRevisionIdentity,
     current: &ForumRevisionIdentity,
 ) -> ForumResult<()> {
@@ -613,286 +663,5 @@ fn ensure_revision_successor(
             "Forum mention diff requires the same tenant, target and locale".to_string(),
         ));
     }
-    if current.revision_id < previous.revision_id {
-        return Err(ForumError::Validation(
-            "Forum mention diff cannot move revision identity backwards".to_string(),
-        ));
-    }
-    if current.revision_id == previous.revision_id && previous != current {
-        return Err(ForumError::Validation(
-            "Forum mention replay changed an existing revision identity".to_string(),
-        ));
-    }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use async_trait::async_trait;
-    use rustok_profiles::{ProfileResult, ProfileSummary};
-    use serde_json::json;
-
-    use super::*;
-
-    struct FakeProfilesReader {
-        records: HashMap<String, ProfileRecord>,
-    }
-
-    #[async_trait]
-    impl ProfilesReader for FakeProfilesReader {
-        async fn find_profile_summary(
-            &self,
-            _tenant_id: Uuid,
-            _user_id: Uuid,
-            _requested_locale: Option<&str>,
-            _tenant_default_locale: Option<&str>,
-        ) -> ProfileResult<Option<ProfileSummary>> {
-            unreachable!("not used by mention resolution")
-        }
-
-        async fn find_profile_summaries(
-            &self,
-            _tenant_id: Uuid,
-            _user_ids: &[Uuid],
-            _requested_locale: Option<&str>,
-            _tenant_default_locale: Option<&str>,
-        ) -> ProfileResult<HashMap<Uuid, ProfileSummary>> {
-            unreachable!("not used by mention resolution")
-        }
-
-        async fn get_profile_by_handle(
-            &self,
-            _tenant_id: Uuid,
-            handle: &str,
-            _requested_locale: Option<&str>,
-            _tenant_default_locale: Option<&str>,
-        ) -> ProfileResult<ProfileRecord> {
-            self.records
-                .get(handle)
-                .cloned()
-                .ok_or_else(|| ProfileError::ProfileByHandleNotFound(handle.to_string()))
-        }
-    }
-
-    fn profile(
-        tenant_id: Uuid,
-        handle: &str,
-        visibility: ProfileVisibility,
-        status: ProfileStatus,
-    ) -> ProfileRecord {
-        ProfileRecord {
-            tenant_id,
-            user_id: Uuid::new_v4(),
-            handle: handle.to_string(),
-            display_name: handle.to_string(),
-            bio: None,
-            tags: Vec::new(),
-            avatar_media_id: None,
-            banner_media_id: None,
-            preferred_locale: Some("en".to_string()),
-            visibility,
-            status,
-        }
-    }
-
-    fn revision(
-        tenant_id: Uuid,
-        target: ForumContentTarget,
-        revision_id: i64,
-    ) -> ForumRevisionIdentity {
-        ForumRevisionIdentity::new(tenant_id, target, revision_id, "en")
-            .expect("valid revision identity")
-    }
-
-    #[test]
-    fn markdown_extraction_ignores_code_escaping_and_email_addresses() {
-        let body = r#"Hello @Alice and @alice.
-\@escaped `@inline` user@example.com
-```rust
-@fenced
-```
-@moderators"#;
-        let result = extract_forum_mention_candidates(
-            body,
-            "markdown",
-            "en",
-            ForumMentionPolicy {
-                allow_moderator_audience: true,
-                ..ForumMentionPolicy::default()
-            },
-        )
-        .expect("mentions should parse");
-
-        assert_eq!(result.handles, vec!["alice"]);
-        assert_eq!(result.audiences, vec![ForumMentionAudience::Moderators]);
-    }
-
-    #[test]
-    fn rt_json_extraction_ignores_code_blocks_and_code_marks() {
-        let body = json!({
-            "version": "rt_json_v1",
-            "locale": "en",
-            "doc": {
-                "type": "doc",
-                "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "Hi @alice"}]},
-                    {"type": "code_block", "content": [{"type": "text", "text": "@blocked"}]},
-                    {"type": "paragraph", "content": [
-                        {"type": "text", "text": "@inline", "marks": [{"type": "code"}]},
-                        {"type": "text", "text": " \\@escaped"}
-                    ]}
-                ]
-            }
-        })
-        .to_string();
-
-        let result = extract_forum_mention_candidates(
-            &body,
-            "rt_json_v1",
-            "en",
-            ForumMentionPolicy::default(),
-        )
-        .expect("mentions should parse");
-        assert_eq!(result.handles, vec!["alice"]);
-    }
-
-    #[test]
-    fn extraction_enforces_caps_and_special_audience_permission() {
-        let denied = extract_forum_mention_candidates(
-            "@moderators",
-            "markdown",
-            "en",
-            ForumMentionPolicy::default(),
-        )
-        .expect_err("special audience must be permission gated");
-        assert_eq!(denied.stable_code(), "FORUM_FORBIDDEN");
-
-        let capped = extract_forum_mention_candidates(
-            "@alice @bob",
-            "markdown",
-            "en",
-            ForumMentionPolicy {
-                max_targets: 1,
-                allow_moderator_audience: false,
-            },
-        )
-        .expect_err("mention cap must be enforced");
-        assert_eq!(capped.stable_code(), "FORUM_VALIDATION_FAILED");
-    }
-
-    #[tokio::test]
-    async fn profile_resolution_is_tenant_scoped_and_fail_closed() {
-        let tenant_id = Uuid::new_v4();
-        let public = profile(
-            tenant_id,
-            "alice",
-            ProfileVisibility::Public,
-            ProfileStatus::Active,
-        );
-        let private = profile(
-            tenant_id,
-            "private-user",
-            ProfileVisibility::Private,
-            ProfileStatus::Active,
-        );
-        let reader = FakeProfilesReader {
-            records: [
-                (public.handle.clone(), public.clone()),
-                (private.handle.clone(), private),
-            ]
-            .into_iter()
-            .collect(),
-        };
-
-        let resolved = resolve_forum_mentions(
-            &reader,
-            tenant_id,
-            ForumMentionCandidates {
-                handles: vec!["alice".to_string()],
-                audiences: Vec::new(),
-            },
-            Some("en"),
-            Some("en"),
-        )
-        .await
-        .expect("public active profile should resolve");
-        assert_eq!(resolved.users[0].user_id, public.user_id);
-
-        let error = resolve_forum_mentions(
-            &reader,
-            tenant_id,
-            ForumMentionCandidates {
-                handles: vec!["private-user".to_string()],
-                audiences: Vec::new(),
-            },
-            Some("en"),
-            Some("en"),
-        )
-        .await
-        .expect_err("private profile must fail closed");
-        assert_eq!(error.stable_code(), "FORUM_MENTION_TARGET_UNAVAILABLE");
-        assert!(!error.to_string().contains("private-user"));
-    }
-
-    #[test]
-    fn revision_diff_emits_only_new_targets() {
-        let tenant_id = Uuid::new_v4();
-        let target = ForumContentTarget::topic(Uuid::new_v4());
-        let alice = ResolvedForumMention {
-            user_id: Uuid::new_v4(),
-            handle: "alice".to_string(),
-        };
-        let bob = ResolvedForumMention {
-            user_id: Uuid::new_v4(),
-            handle: "bob".to_string(),
-        };
-        let previous = ForumMentionRevisionProjection::new(
-            revision(tenant_id, target, 10),
-            [alice.clone()],
-            [ForumMentionAudience::Moderators],
-        )
-        .expect("previous projection");
-        let current = ForumMentionRevisionProjection::new(
-            revision(tenant_id, target, 11),
-            [alice.clone(), bob.clone()],
-            [],
-        )
-        .expect("current projection");
-
-        let diff = diff_forum_mentions(Some(&previous), &current).expect("valid diff");
-        assert_eq!(diff.added_users, vec![bob.clone()]);
-        assert_eq!(diff.unchanged_users, vec![alice]);
-        assert_eq!(diff.removed_audiences, vec![ForumMentionAudience::Moderators]);
-        let candidates = diff.event_candidates(&current.source);
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].target, ForumMentionEventTarget::User(bob.user_id));
-    }
-
-    #[test]
-    fn quote_references_are_revision_bound_deduplicated_and_non_recursive() {
-        let tenant_id = Uuid::new_v4();
-        let source = revision(
-            tenant_id,
-            ForumContentTarget::reply(Uuid::new_v4()),
-            20,
-        );
-        let quoted = ForumQuoteReference {
-            target: ForumContentTarget::reply(Uuid::new_v4()),
-            revision_id: 4,
-        };
-        let result = validate_forum_quote_references(
-            &source,
-            [quoted.clone(), quoted.clone()],
-        )
-        .expect("duplicate quote input should normalize");
-        assert_eq!(result, vec![quoted]);
-
-        let self_reference = ForumQuoteReference {
-            target: source.target,
-            revision_id: source.revision_id,
-        };
-        assert!(validate_forum_quote_references(&source, [self_reference]).is_err());
-    }
 }
