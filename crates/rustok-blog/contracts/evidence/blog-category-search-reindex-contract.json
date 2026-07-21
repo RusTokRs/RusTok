@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "category_search_reindex",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "production_contract": {
+    "owner_service": "crates/rustok-blog/src/services/category.rs",
+    "http_adapter": "crates/rustok-blog/src/controllers/categories.rs",
+    "router": "crates/rustok-blog/src/controllers/mod.rs",
+    "openapi": "crates/rustok-blog/src/openapi.rs",
+    "search_projector": "crates/rustok-search/src/blog_projector.rs",
+    "search_ingestion": "crates/rustok-search/src/ingestion.rs"
+  },
+  "cases": [
+    {
+      "name": "category_update_atomic_reindex",
+      "expected": "category row, localized translation, and Blog-scope ReindexRequested outbox record commit in one transaction"
+    },
+    {
+      "name": "category_delete_atomic_reindex",
+      "expected": "category deletion and Blog-scope ReindexRequested outbox record commit together; failed deletion publishes no event"
+    },
+    {
+      "name": "tenant_scoped_translations",
+      "expected": "category translation reads, updates, and deletes are constrained by tenant_id and category_id"
+    },
+    {
+      "name": "mounted_http_write_path",
+      "expected": "Blog category HTTP mutations construct CategoryService with TransactionalEventBus from HostRuntimeContext"
+    },
+    {
+      "name": "bounded_category_list",
+      "expected": "HTTP category pagination normalizes page to at least one and per_page to the range 1..100"
+    },
+    {
+      "name": "search_payload_dependency",
+      "expected": "Blog search documents project category_name and category_slug, so category changes require Blog-scope rebuild"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute category create/update/delete HTTP requests with real RBAC",
+    "verify one outbox record is committed for category update and delete",
+    "verify an outbox write failure rolls back the category mutation",
+    "run Search ingestion and confirm category_name/category_slug change in related Blog documents",
+    "verify cross-tenant category IDs and translations cannot be read or mutated"
+  ]
+}
