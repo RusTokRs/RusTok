@@ -84,8 +84,18 @@ pub async fn fetch_moderation_comments(
     tenant_slug: Option<String>,
     post_id: String,
     locale: Option<String>,
+    page: u64,
+    per_page: u64,
 ) -> Result<BlogModerationCommentList, ApiError> {
-    moderation_adapter::fetch_comments(token, tenant_slug, post_id, locale).await
+    moderation_adapter::fetch_comments(
+        token,
+        tenant_slug,
+        post_id,
+        locale,
+        page,
+        per_page,
+    )
+    .await
 }
 
 pub async fn moderate_comment(
