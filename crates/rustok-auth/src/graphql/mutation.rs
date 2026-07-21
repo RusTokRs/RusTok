@@ -22,7 +22,7 @@ impl OAuthMutation {
         let result = runtime(ctx)?
             .port()
             .create_oauth_app(
-                &mutation_context(auth),
+                &mutation_context(ctx, auth),
                 CreateOAuthAppCommand {
                     name: input.name,
                     slug: input.slug,
@@ -53,7 +53,7 @@ impl OAuthMutation {
         runtime(ctx)?
             .port()
             .update_oauth_app(
-                &mutation_context(auth),
+                &mutation_context(ctx, auth),
                 UpdateOAuthAppCommand {
                     id,
                     name: input.name,
@@ -78,7 +78,7 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         let result = runtime(ctx)?
             .port()
-            .rotate_oauth_app_secret(&mutation_context(auth), id)
+            .rotate_oauth_app_secret(&mutation_context(ctx, auth), id)
             .await
             .map_err(map_error)?;
         Ok(RotateSecretResultGql {
@@ -91,7 +91,7 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
-            .revoke_oauth_app(&mutation_context(auth), id)
+            .revoke_oauth_app(&mutation_context(ctx, auth), id)
             .await
             .map(OAuthAppGql)
             .map_err(map_error)
@@ -106,7 +106,7 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
-            .grant_oauth_app_consent(&mutation_context(auth), app_id, scopes)
+            .grant_oauth_app_consent(&mutation_context(ctx, auth), app_id, scopes)
             .await
             .map_err(map_error)?;
         Ok(true)
@@ -116,7 +116,7 @@ impl OAuthMutation {
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
-            .revoke_oauth_app_consent(&mutation_context(auth), app_id)
+            .revoke_oauth_app_consent(&mutation_context(ctx, auth), app_id)
             .await
             .map_err(map_error)?;
         Ok(true)
