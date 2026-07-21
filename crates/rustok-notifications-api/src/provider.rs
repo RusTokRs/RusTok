@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::HostRuntimeContext;
 use rustok_core::ModuleRuntimeExtensions;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -94,10 +95,36 @@ pub trait NotificationSourceProvider: Send + Sync {
     ) -> NotificationProviderResult<NotificationOpenAuthorization>;
 }
 
+/// Deferred provider construction owned by the source module.
+///
+/// Module registration runs before database-backed host services exist. A source
+/// registers this factory through `ModuleRuntimeExtensions`; the executable host
+/// materializes it only after `HostRuntimeContext` is available.
+pub trait NotificationSourceProviderFactory: Send + Sync {
+    fn slug(&self) -> NotificationSourceSlug;
+
+    fn build(
+        &self,
+        host: &HostRuntimeContext,
+    ) -> NotificationProviderResult<Arc<dyn NotificationSourceProvider>>;
+}
+
 #[derive(Debug, Error, Clone, Eq, PartialEq)]
 pub enum NotificationSourceRegistryError {
     #[error("notification source `{0}` is already registered")]
     DuplicateSource(NotificationSourceSlug),
+    #[error("notification source factory `{0}` is already registered")]
+    DuplicateFactory(NotificationSourceSlug),
+    #[error("notification source factory `{declared}` built provider `{built}`")]
+    FactorySourceMismatch {
+        declared: NotificationSourceSlug,
+        built: NotificationSourceSlug,
+    },
+    #[error("notification source factory `{source}` failed: {error}")]
+    FactoryBuild {
+        source: NotificationSourceSlug,
+        error: NotificationProviderError,
+    },
 }
 
 #[derive(Clone, Default)]
@@ -163,12 +190,56 @@ impl NotificationSourceRegistry {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct NotificationSourceFactoryRegistry {
+    factories: BTreeMap<NotificationSourceSlug, Arc<dyn NotificationSourceProviderFactory>>,
+}
+
+impl NotificationSourceFactoryRegistry {
+    pub fn register<F>(&mut self, factory: F) -> Result<(), NotificationSourceRegistryError>
+    where
+        F: NotificationSourceProviderFactory + 'static,
+    {
+        self.register_arc(Arc::new(factory))
+    }
+
+    pub fn register_arc(
+        &mut self,
+        factory: Arc<dyn NotificationSourceProviderFactory>,
+    ) -> Result<(), NotificationSourceRegistryError> {
+        let slug = factory.slug();
+        if self.factories.contains_key(&slug) {
+            return Err(NotificationSourceRegistryError::DuplicateFactory(slug));
+        }
+        self.factories.insert(slug, factory);
+        Ok(())
+    }
+
+    pub fn len(&self) -> usize {
+        self.factories.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.factories.is_empty()
+    }
+}
+
 pub fn ensure_notification_source_registry(
     extensions: &mut ModuleRuntimeExtensions,
 ) -> Arc<NotificationSourceRegistry> {
     extensions
         .get_or_insert_with::<Arc<NotificationSourceRegistry>, _>(|| {
             Arc::new(NotificationSourceRegistry::default())
+        })
+        .clone()
+}
+
+pub fn ensure_notification_source_factory_registry(
+    extensions: &mut ModuleRuntimeExtensions,
+) -> Arc<NotificationSourceFactoryRegistry> {
+    extensions
+        .get_or_insert_with::<Arc<NotificationSourceFactoryRegistry>, _>(|| {
+            Arc::new(NotificationSourceFactoryRegistry::default())
         })
         .clone()
 }
@@ -187,10 +258,64 @@ where
     Arc::make_mut(registry).register(provider)
 }
 
+pub fn register_notification_source_provider_factory<F>(
+    extensions: &mut ModuleRuntimeExtensions,
+    factory: F,
+) -> Result<(), NotificationSourceRegistryError>
+where
+    F: NotificationSourceProviderFactory + 'static,
+{
+    let registry = extensions
+        .get_or_insert_with::<Arc<NotificationSourceFactoryRegistry>, _>(|| {
+            Arc::new(NotificationSourceFactoryRegistry::default())
+        });
+    Arc::make_mut(registry).register(factory)
+}
+
+pub fn materialize_notification_source_registry(
+    extensions: &mut ModuleRuntimeExtensions,
+    host: &HostRuntimeContext,
+) -> Result<Arc<NotificationSourceRegistry>, NotificationSourceRegistryError> {
+    let mut providers = notification_source_registry_from_extensions(extensions)
+        .map(|registry| registry.as_ref().clone())
+        .unwrap_or_default();
+    let factories = notification_source_factory_registry_from_extensions(extensions)
+        .unwrap_or_else(|| Arc::new(NotificationSourceFactoryRegistry::default()));
+
+    for (declared, factory) in &factories.factories {
+        let provider = factory.build(host).map_err(|error| {
+            NotificationSourceRegistryError::FactoryBuild {
+                source: declared.clone(),
+                error,
+            }
+        })?;
+        let built = provider.slug();
+        if built != *declared {
+            return Err(NotificationSourceRegistryError::FactorySourceMismatch {
+                declared: declared.clone(),
+                built,
+            });
+        }
+        providers.register_arc(provider)?;
+    }
+
+    let providers = Arc::new(providers);
+    extensions.insert(providers.clone());
+    Ok(providers)
+}
+
 pub fn notification_source_registry_from_extensions(
     extensions: &ModuleRuntimeExtensions,
 ) -> Option<Arc<NotificationSourceRegistry>> {
     extensions
         .get::<Arc<NotificationSourceRegistry>>()
+        .cloned()
+}
+
+pub fn notification_source_factory_registry_from_extensions(
+    extensions: &ModuleRuntimeExtensions,
+) -> Option<Arc<NotificationSourceFactoryRegistry>> {
+    extensions
+        .get::<Arc<NotificationSourceFactoryRegistry>>()
         .cloned()
 }
