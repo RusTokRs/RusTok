@@ -7,6 +7,7 @@ mod checkout_inventory_order_adoption;
 mod checkout_inventory_reservation_executor;
 mod checkout_inventory_reservation_journal;
 mod checkout_marketplace_allocation;
+mod checkout_marketplace_commission;
 mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
@@ -71,6 +72,10 @@ pub use checkout_inventory_reservation_journal::{
 pub use checkout_marketplace_allocation::{
     order_contains_marketplace_lines, CheckoutMarketplaceAllocationError,
     CheckoutMarketplaceAllocationResult, CheckoutMarketplaceAllocationStage,
+};
+pub use checkout_marketplace_commission::{
+    CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionResult,
+    CheckoutMarketplaceCommissionStage,
 };
 pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
