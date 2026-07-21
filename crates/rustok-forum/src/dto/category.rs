@@ -46,6 +46,8 @@ pub struct CategoryResponse {
     pub topic_count: i32,
     pub reply_count: i32,
     pub moderated: bool,
+    pub archived_at: Option<String>,
+    pub is_archived: bool,
     pub is_subscribed: bool,
 }
 
@@ -61,6 +63,11 @@ pub struct CategoryListItem {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub color: Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub position: i32,
+    pub moderated: bool,
+    pub archived_at: Option<String>,
+    pub is_archived: bool,
     pub topic_count: i32,
     pub reply_count: i32,
     pub is_subscribed: bool,
