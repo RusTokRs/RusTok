@@ -56,14 +56,16 @@ The current owner foundation provides:
 - `GroupGovernanceCommandPort` with role delegation and atomic ownership transfer;
 - transactional `group_command_receipts` and immutable `group_audit_entries` for
   governance commands;
-- GraphQL query/mutation roots for the initial group/member/feature foundation;
-- admin/storefront FFA package structure with host locale and dual transports;
+- a merged GraphQL mutation root exposing role delegation and ownership transfer;
+- native Leptos server functions and a selected native/GraphQL admin transport
+  facade for the same governance commands;
+- admin/storefront FFA package structure with host locale and explicit transports;
 - FBA registry and source guardrail;
 - module-local documentation and platform registry integration.
 
 This is a functional foundation, not full phpFox feature parity. Governance
-commands are currently public through the typed Rust port only; GraphQL/native UI
-transport is a later slice.
+commands are available through typed Rust, GraphQL, and native server-function
+surfaces, while the operator UI workspace and executable parity evidence remain.
 
 ## FFA/FBA status
 
@@ -71,15 +73,16 @@ transport is a later slice.
 - FBA status: `in_progress`.
 - Structural shape: `core_transport_ui`.
 - Admin evidence: framework-neutral core, selected native/GraphQL transport,
-  host locale, and thin Leptos binding are present.
+  host locale, thin Leptos binding, and governance command facade are present.
 - Storefront evidence: framework-neutral core, selected native/GraphQL transport,
   host locale, and thin Leptos binding are present.
 - Backend evidence: typed read/write ports, request context, stable errors, owner
   services, closed-shell/private-content action separation, governance
-  audit/receipt persistence, and machine-readable registry are present.
+  audit/receipt persistence, merged GraphQL root, native server functions, and
+  machine-readable registry are present.
 - Remaining FBA evidence: runtime provider/consumer order, fallback execution,
-  closed/secret leakage evidence, governance concurrency/replay races,
-  retry/recovery, and remote-adapter smoke.
+  closed/secret leakage evidence, native/GraphQL governance parity execution,
+  governance concurrency/replay races, retry/recovery, and remote-adapter smoke.
 - Last verified at (UTC): not executed in these changes.
 - Owner: `rustok-groups`.
 
@@ -111,6 +114,8 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     command receipt, and immutable audit entry commit in one transaction.
 16. Closed-group discoverability exposes only the localized shell; it never grants
     body, feature-binding, member-list, or provider-owned content access.
+17. Governance transport selection is explicit and never retries through another
+    transport after an owner command error.
 
 ## Program ledger
 
@@ -120,17 +125,17 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central navigation are connected. |
 | `GROUPS-02` | `in_progress` | Base schema/service plus governance audit and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, and PostgreSQL evidence remain. |
 | `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed shells are discoverable while body/features remain membership-gated, and the complete granular action matrix plus leakage evidence remain. |
-| `GROUPS-04` | `in_progress` | Typed role delegation and atomic ownership transfer are implemented with audit/receipts; GraphQL/native transports, concurrent-owner proof, and operator recovery remain. |
+| `GROUPS-04` | `in_progress` | Role delegation and atomic ownership transfer have typed Rust, GraphQL, and native server-function transports with audit/receipts; operator UI, concurrent-owner proof, parity execution, and recovery remain. |
 | `GROUPS-05` | `planned` | Invitations, invitation links, expiry, token hashing, revocation, and bounded delivery. |
 | `GROUPS-06` | `planned` | Membership questions, answers, rule acknowledgements, application review, and bulk-safety limits. |
 | `GROUPS-07` | `planned` | Bans, temporary restrictions, removal, appeal handoff, and immutable local moderation audit. |
 | `GROUPS-08` | `in_progress` | Versioned namespaced feature bindings exist; provider registry, health, settings schemas, and UI contributions remain. |
 | `GROUPS-09` | `planned` | Media-owned avatar/cover/gallery references and quarantine/deletion reconciliation. |
 | `GROUPS-10` | `planned` | SEO targets, canonical localized routes, aliases, redirects, and secret-group exclusions. |
-| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature surface exists and read/list inherit closed-shell redaction; governance transport and REST remain pending explicit integration demand. |
-| `GROUPS-12` | `in_progress` | Admin FFA shell exists; full category, membership, moderation, settings, governance, and audit workspaces remain. |
+| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature/governance surface exists and read/list inherit closed-shell redaction; REST remains deferred until explicit integration demand. |
+| `GROUPS-12` | `in_progress` | Admin FFA has explicit native/GraphQL directory and governance command facades; category, membership, moderation, settings, governance UI, and audit workspaces remain. |
 | `GROUPS-13` | `in_progress` | Storefront FFA catalog exposes public and closed shells without private body/features; detail routing, role-aware management, and accessibility remain. |
-| `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist; executable provider/consumer and degraded-mode evidence remain. |
+| `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist across Rust/GraphQL/native surfaces; executable provider/consumer, parity, and degraded-mode evidence remain. |
 | `GROUPS-15` | `planned` | Forum group-context provider, ACL inheritance, local category binding, and leakage tests. |
 | `GROUPS-16` | `planned` | Blog group-context binding and author/publish policy. |
 | `GROUPS-17` | `planned` | Pages/Wiki binding without shadow documents or group-owned blocks. |
@@ -203,6 +208,7 @@ PostgreSQL verification must eventually cover:
 - owner transfer and last-owner protection;
 - idempotent command replay, key-payload conflicts, and simultaneous first writes;
 - audit/receipt rollback when a governance command fails;
+- native/GraphQL governance result and error parity;
 - public/closed catalog visibility, closed shell redaction, and member content access;
 - secret-group query/search/SEO/direct-read leakage;
 - feature-provider unavailable/read-only/hidden profiles;
