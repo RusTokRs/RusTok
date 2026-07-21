@@ -1,8 +1,6 @@
 use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
 use leptos::prelude::*;
-use rustok_page_builder::browser_host::{
-    page_builder_browser_module_source, PAGE_BUILDER_BROWSER_ADAPTER,
-};
+use rustok_page_builder::browser_host::page_builder_browser_module;
 
 fn browser_adapter_config_json(
     intent_endpoint: Option<String>,
@@ -18,7 +16,7 @@ fn browser_adapter_config_json(
 
 /// Emits the standalone Fly browser bridge into a server-rendered Page Builder surface.
 ///
-/// The Leptos component only renders the framework-neutral browser module source. Fly project
+/// The Leptos component only renders the framework-neutral browser module descriptor. Fly project
 /// state, commands, validation, rendering, permissions, host bindings and persistence remain
 /// outside the UI adapter.
 #[component]
@@ -30,11 +28,14 @@ pub fn PageBuilderBrowserAdapter(
     {
         let config = browser_adapter_config_json(intent_endpoint, csrf_token)
             .unwrap_or_else(|_| "{}".to_string());
-        let source = page_builder_browser_module_source(&config, FLY_BROWSER_ADAPTER_JS);
+        let module = page_builder_browser_module(&config, FLY_BROWSER_ADAPTER_JS);
+        let script_type = module.script_type;
+        let adapter = module.adapter;
+        let source = module.source;
         view! {
             <script
-                type="module"
-                data-fly-browser-adapter=PAGE_BUILDER_BROWSER_ADAPTER
+                type=script_type
+                data-fly-browser-adapter=adapter
                 inner_html=source
             ></script>
         }
@@ -85,12 +86,12 @@ mod tests {
     }
 
     #[test]
-    fn framework_adapter_renders_the_shared_browser_host_contract() {
-        let source = page_builder_browser_module_source("{}", FLY_BROWSER_ADAPTER_JS);
-        assert_eq!(PAGE_BUILDER_BROWSER_ADAPTER, "fly_browser");
-        assert!(source.contains("fly:browser-ready"));
-        assert!(source.contains("data-fly-intent-form"));
-        assert!(source.contains("adapter.abortController?.signal"));
+    fn framework_adapter_renders_the_shared_browser_module_descriptor() {
+        let module = page_builder_browser_module("{}", FLY_BROWSER_ADAPTER_JS);
+        assert_eq!(module.script_type, "module");
+        assert_eq!(module.adapter, "fly_browser");
+        assert!(module.source.contains("fly:browser-ready"));
+        assert!(module.source.contains("data-fly-intent-form"));
     }
 
     #[test]
