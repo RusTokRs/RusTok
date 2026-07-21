@@ -16,6 +16,7 @@ Leptos storefront UI package for the `rustok-search` module.
 - Provides the baseline route/slot scaffold for query input, suggestions, filters, and results.
 - Keeps storefront results summary, preset, locale, item, source, score, and snippet presentation in framework-agnostic core view-model helpers so the Leptos layer renders prepared fields and host click actions.
 - Uses native Leptos `#[server]` entry points in parallel with the existing GraphQL transport.
+- Normalizes result navigation after transport selection. Existing backend URLs stay authoritative; a `blog/blog_post` result without a URL receives `/modules/blog?slug=...` only when its indexed payload contains a bounded safe slug.
 - Ships package-owned `storefront/locales/en.json` and `storefront/locales/ru.json` bundles declared through `[provides.storefront_ui.i18n]`.
 
 ## Entry Points
@@ -27,6 +28,8 @@ Leptos storefront UI package for the `rustok-search` module.
 - Consumed by `apps/storefront` via manifest-driven `build.rs` code generation.
 - Uses the shared `UiRouteContext` to read query-string state without leaking host-specific routing details, including locale-aware generic module routes.
 - Runtime data access is build-profile-selected: native `#[server]` for monolith/hydrate builds and GraphQL for headless/CSR builds. GraphQL is retained and not removed.
+- The transport facade applies the same Blog navigation fallback to both selected paths, so native and GraphQL search results remain behaviorally aligned even while the shared backend GraphQL URL derivation is reduced.
+- Invalid, missing, oversized, or route-breaking Blog slugs remain non-navigable; URLs supplied by Search are never overwritten.
 - Will remain aligned with the future Next storefront package on the same API/query model.
 - Reads the effective locale from `UiRouteContext.locale` for visible chrome, empty states, and result helper copy.
 
