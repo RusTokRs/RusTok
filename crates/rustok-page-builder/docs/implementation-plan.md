@@ -29,19 +29,26 @@ services, explicit port policies and an explicit authorizer without changing tha
 GraphQL and Leptos server-function endpoints delegate through the composed handlers and canonical
 transport envelopes.
 
-`rustok-pages` is the first production consumer of the server composition root. Its SSR publish path
-verifies the backend actor, builds a tenant-scoped `PortContext` with deadline and idempotency, and
-dispatches through `AuthorizedPageBuilderHandlers` before the Pages store can read or write tenant
-persistence. `PagesPageBuilderProjectStore` revalidates tenant and actor identity at the port
-boundary and returns the actual persisted `PageBuilderProjectSaveResult`. The Fly service validates
-and maps that result into the canonical publish response. CSR and hydrate remain a transport-only
-FFA path.
+`rustok-pages` is the first production consumer of both server write and server preview delivery.
+Its SSR publish path verifies the backend actor, builds a tenant-scoped `PortContext` with deadline
+and idempotency, and dispatches through `AuthorizedPageBuilderHandlers` before the Pages store can
+read or write tenant persistence. `PagesPageBuilderProjectStore` revalidates tenant and actor
+identity at the port boundary and returns the actual persisted `PageBuilderProjectSaveResult`. The
+Fly service validates and maps that result into the canonical publish response.
+
+The Pages preview path uses the same module-owned composition root. CSR and hydrate call the Pages
+Leptos server-function transport; the server verifies the backend actor, constructs canonical read
+authorization and a deadline-bound `PortContext`, then dispatches `Preview` through the handlers.
+`PagesPageBuilderRenderer` revalidates tenant and actor identity before rendering. The Page Builder
+admin runtime consumes `PreviewPageBuilderResult` and exposes the returned HTML in a separate
+sandboxed read-only iframe. The local instrumented canvas remains the authoring surface and is not a
+second server renderer pipeline.
 
 The current machine-readable service contract is
 `contracts/page-builder-service-boundary.json`. It records the composition root, persisted save
-result and validation order, the Pages production-consumer order and tenant-context guards, and
-forbids reference services, migration decorators, manual JSON preview rendering and the removed
-Pages mutex save-result side channel.
+result and validation order, the Pages publish and server preview order, tenant-context guards and
+admin preview surface, and forbids reference services, migration decorators, manual JSON preview
+rendering and the removed Pages mutex save-result side channel.
 
 ## FFA/FBA status
 
@@ -49,9 +56,9 @@ Pages mutex save-result side channel.
   framework-neutral `PageBuilderBrowserModuleDescriptor`; the Leptos component only renders its
   script type, adapter marker, optional CSP nonce and source. A future Dioxus renderer consumes the
   same descriptor and nonce contract.
-- FBA status: `boundary_ready` with the first production write consumer integrated. Fly is the
+- FBA status: `boundary_ready` with the first production read/write consumer integrated. Fly is the
   domain owner; Page Builder owns capability/port/transport boundaries and server composition order;
-  consumer modules own persistence and publication lifecycle.
+  consumer modules own persistence, publication lifecycle and concrete tenant-scoped ports.
 - Structural shape: `core_transport_ui` for browser host and `core_transport` for capability service.
 - Evidence:
   - `contracts/page-builder-service-boundary.json`;
@@ -59,6 +66,9 @@ Pages mutex save-result side channel.
   - `src/composition.rs`;
   - `crates/rustok-pages/admin/src/builder.rs`;
   - `crates/rustok-pages/admin/Cargo.toml`;
+  - `admin/src/editor/runtime.rs`;
+  - `admin/src/editor/server_preview.rs`;
+  - `admin/src/editor/modular_canvas.rs`;
   - `scripts/verify/verify-page-builder-adapter-seams.mjs`;
   - `scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
   - `scripts/verify/verify-page-builder-transport-bridge.mjs`;
@@ -72,9 +82,9 @@ Pages mutex save-result side channel.
    construct canonical auth/context, dispatch handlers, then access tenant ports. Consumer-local
    service/guard pipelines, pre-authorization persistence reads and save-result side channels are
    forbidden.
-2. Extend the Pages production consumer from the publish/write path to server preview delivery
-   through the same composition root. The admin runtime must consume the canonical preview response
-   without introducing a Pages-local renderer pipeline.
+2. Extend server preview with the selected runtime context and scenario contract. Context must flow
+   through a canonical Page Builder DTO/port contract rather than through Pages-local renderer
+   arguments, and the same request must be usable by future host frameworks.
 3. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
    the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
    its optional CSP nonce, and must not copy lifecycle, form, selection or draft-route policy.
