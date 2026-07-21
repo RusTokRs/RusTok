@@ -25,6 +25,10 @@ const adapters = fs.readFileSync(
   path.join(moduleRoot, "src", "adapters.rs"),
   "utf8",
 );
+const composition = fs.readFileSync(
+  path.join(moduleRoot, "src", "composition.rs"),
+  "utf8",
+);
 const telemetry = fs.readFileSync(
   path.join(moduleRoot, "src", "runtime_telemetry.rs"),
   "utf8",
@@ -67,6 +71,29 @@ for (const guard of contract.guards ?? []) {
   requireMarker(service, `pub struct ${guard}`, "service guards");
 }
 
+const compositionRoot = contract.composition_root;
+if (!compositionRoot) fail("service contract is missing composition_root");
+requireMarker(
+  composition,
+  `pub fn ${compositionRoot.default_entrypoint}`,
+  "default composition entrypoint",
+);
+requireMarker(
+  composition,
+  `pub fn ${compositionRoot.configured_entrypoint}`,
+  "configured composition entrypoint",
+);
+requireMarker(composition, "flags.validate()?", "composition rollout validation");
+let previousCompositionIndex = -1;
+for (const marker of compositionRoot.invocation_order ?? []) {
+  const index = composition.indexOf(marker);
+  if (index < 0) fail(`composition root is missing ${marker}`);
+  if (index <= previousCompositionIndex) {
+    fail(`composition root invocation is out of order: ${marker}`);
+  }
+  previousCompositionIndex = index;
+}
+
 for (const entrypoint of contract.transport_entrypoints ?? []) {
   requireMarker(adapters, entrypoint, "transport entrypoints");
 }
@@ -83,6 +110,7 @@ const currentSources = [
   service,
   flyService,
   adapters,
+  composition,
   telemetry,
   readme,
   implementationPlan,
@@ -110,12 +138,17 @@ for (const marker of [
 requireMarker(readme, "src/adapters/fly_service.rs", "local documentation");
 requireMarker(
   readme,
-  "FlyAdapterBackedPageBuilderService",
+  "compose_fly_page_builder_handlers",
   "local documentation",
 );
 requireMarker(
   implementationPlan,
   "page-builder-service-boundary.json",
+  "implementation plan",
+);
+requireMarker(
+  implementationPlan,
+  "compose_fly_page_builder_handlers",
   "implementation plan",
 );
 
