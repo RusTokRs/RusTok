@@ -4,7 +4,8 @@
 
 `rustok-groups` owns social-group identity, multilingual presentation, privacy,
 membership, local roles, feature bindings, and group access policy for RusToK.
-Invitations, questions, rules, bans, audit, and event publication are tracked as
+Role delegation, ownership transfer, governance receipts, and immutable audit are
+implemented; invitations, questions, rules, bans, and event publication remain
 subsequent owner slices in the canonical implementation plan.
 
 A group is a social container and policy owner. It is not the persistence owner
@@ -16,12 +17,16 @@ media assets, comments, notifications, or search documents.
 - Own tenant-scoped group identity, handle, lifecycle, visibility, and join policy.
 - Store language-neutral state in `groups` and localized title, summary, and body
   fields in `group_translations` with normalized `VARCHAR(32)` locales.
-- Own memberships, local roles, and membership status in the current slice;
-  invitations, bans, rules, and membership questions remain plan-led work.
+- Own memberships, local roles, membership status, role delegation, and atomic
+  ownership transfer; invitations, bans, rules, and membership questions remain
+  plan-led work.
+- Persist successful governance state, idempotency receipt, and immutable audit
+  evidence in one transaction.
 - Own versioned group feature bindings such as `forum.discussions`, `blog.posts`,
   `pages.wiki`, and `marketplace.store` without importing those modules' tables.
 - Publish `GroupSummaryReadPort`, `GroupMembershipReadPort`,
-  `GroupAccessReadPort`, and `GroupCommandPort` for FBA consumers.
+  `GroupAccessReadPort`, `GroupCommandPort`, and `GroupGovernanceCommandPort` for
+  FBA consumers.
 - Introduce transactional semantic events only with the planned owner
   event/outbox slice; optional consumers must never become a synchronous command
   dependency.
@@ -34,10 +39,12 @@ media assets, comments, notifications, or search documents.
 
 - `GroupsModule`
 - `GroupsService`
+- `GroupGovernanceService`
 - `GroupSummaryReadPort`
 - `GroupMembershipReadPort`
 - `GroupAccessReadPort`
 - `GroupCommandPort`
+- `GroupGovernanceCommandPort`
 - `graphql::GroupsQuery` with the `graphql` feature
 - `graphql::GroupsMutation` with the `graphql` feature
 - `rustok_groups_admin::GroupsAdmin`
@@ -52,8 +59,8 @@ media assets, comments, notifications, or search documents.
   references only.
 - Forum, Blog, Pages, Marketplace, Media Social, Events, and future modules keep
   their own persistence and consume Groups access decisions through typed ports.
-- `rustok-moderation` may issue validated decisions through a future Groups-owned
-  command boundary; it must never update Groups tables directly.
+- `rustok-moderation` may issue validated decisions through a future moderation
+  command adapter; it must never update Groups tables directly.
 - `rustok-index`, `rustok-search`, and notifications will consume committed
   semantic events after that owner event slice exists and must preserve
   secret/closed visibility.
