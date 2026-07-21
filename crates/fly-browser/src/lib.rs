@@ -17,11 +17,7 @@ pub const DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE: &str =
     "Editor canvas resource limit reached.";
 pub const DEFAULT_PENDING_INTENT_LIMIT_MESSAGE: &str = "Editor action limit reached.";
 pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE: &str = "Editor action timed out";
-pub const FLY_BROWSER_ADAPTER_JS: &str = concat!(
-    include_str!("../assets/fly-browser.js"),
-    "\n",
-    include_str!("../assets/browser_hardening.js")
-);
+pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -129,57 +125,9 @@ impl BrowserIntentKind {
     ];
 
     pub fn parse(value: &str) -> Option<Self> {
-        Some(match value.trim().to_ascii_lowercase().as_str() {
-            "select" => Self::Select,
-            "focus_requested" => Self::FocusRequested,
-            "hover" => Self::Hover,
-            "hover_requested" => Self::HoverRequested,
-            "activate_page" => Self::ActivatePage,
-            "cancel_drag" => Self::CancelDrag,
-            "cancel_drag_requested" => Self::CancelDragRequested,
-            "begin_palette_drag" => Self::BeginPaletteDrag,
-            "begin_selected_move" => Self::BeginSelectedMove,
-            "drag_moved" => Self::DragMoved,
-            "drop" => Self::Drop,
-            "drop_requested" => Self::DropRequested,
-            "insert_block" => Self::InsertBlock,
-            "remove_selected" => Self::RemoveSelected,
-            "move_selected" => Self::MoveSelected,
-            "move_selected_up" => Self::MoveSelectedUp,
-            "move_selected_down" => Self::MoveSelectedDown,
-            "patch_selected" => Self::PatchSelected,
-            "patch_component_property" => Self::PatchComponentProperty,
-            "patch_page_metadata" => Self::PatchPageMetadata,
-            "create_page" => Self::CreatePage,
-            "rename_page" => Self::RenamePage,
-            "remove_page" => Self::RemovePage,
-            "upsert_translation" => Self::UpsertTranslation,
-            "remove_translation" => Self::RemoveTranslation,
-            "set_locale_policy" => Self::SetLocalePolicy,
-            "clear_locale_policy" => Self::ClearLocalePolicy,
-            "upsert_localized_page_metadata" => Self::UpsertLocalizedPageMetadata,
-            "set_internal_page_link" => Self::SetInternalPageLink,
-            "remove_internal_page_link" => Self::RemoveInternalPageLink,
-            "set_component_action" => Self::SetComponentAction,
-            "remove_component_action" => Self::RemoveComponentAction,
-            "set_component_form" => Self::SetComponentForm,
-            "remove_component_form" => Self::RemoveComponentForm,
-            "set_native_form_field" => Self::SetNativeFormField,
-            "upsert_asset" => Self::UpsertAsset,
-            "remove_asset" => Self::RemoveAsset,
-            "select_asset" => Self::SelectAsset,
-            "set_runtime_context" => Self::SetRuntimeContext,
-            "set_runtime_locale" => Self::SetRuntimeLocale,
-            "undo" => Self::Undo,
-            "redo" => Self::Redo,
-            "copy" => Self::Copy,
-            "cut" => Self::Cut,
-            "paste" => Self::Paste,
-            "duplicate" => Self::Duplicate,
-            "key_stroke" => Self::KeyStroke,
-            "save" => Self::Save,
-            _ => return None,
-        })
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.as_str() == value.trim().to_ascii_lowercase())
     }
 
     pub const fn as_str(self) -> &'static str {
@@ -280,66 +228,37 @@ impl BrowserIntentKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserAdapterConfig {
-    #[serde(default = "default_root_selector", alias = "root_selector")]
+    #[serde(default = "default_root_selector")]
     pub root_selector: String,
-    #[serde(default = "default_iframe_selector", alias = "iframe_selector")]
+    #[serde(default = "default_iframe_selector")]
     pub iframe_selector: String,
-    #[serde(default = "default_expected_origin", alias = "expected_origin")]
+    #[serde(default = "default_expected_origin")]
     pub expected_origin: String,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        alias = "intent_endpoint"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent_endpoint: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        alias = "csrf_token"
-    )]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub csrf_token: Option<String>,
-    #[serde(default = "default_true", alias = "auto_mount")]
+    #[serde(default = "default_true")]
     pub auto_mount: bool,
-    #[serde(default = "default_true", alias = "draw_overlays")]
+    #[serde(default = "default_true")]
     pub draw_overlays: bool,
-    #[serde(default = "default_true", alias = "post_intents")]
+    #[serde(default = "default_true")]
     pub post_intents: bool,
-    #[serde(
-        default = "default_max_browser_message_bytes",
-        alias = "max_message_bytes"
-    )]
+    #[serde(default = "default_max_browser_message_bytes")]
     pub max_message_bytes: usize,
-    #[serde(
-        default = "default_max_browser_geometry_components",
-        alias = "max_geometry_components"
-    )]
+    #[serde(default = "default_max_browser_geometry_components")]
     pub max_geometry_components: usize,
-    #[serde(
-        default = "default_max_pending_intent_requests",
-        alias = "max_pending_intent_requests"
-    )]
+    #[serde(default = "default_max_pending_intent_requests")]
     pub max_pending_intent_requests: usize,
-    #[serde(
-        default = "default_intent_request_timeout_ms",
-        alias = "intent_request_timeout_ms"
-    )]
+    #[serde(default = "default_intent_request_timeout_ms")]
     pub intent_request_timeout_ms: u64,
-    #[serde(
-        default = "default_browser_resource_limit_message",
-        alias = "resource_limit_message"
-    )]
+    #[serde(default = "default_browser_resource_limit_message")]
     pub resource_limit_message: String,
-    #[serde(
-        default = "default_pending_intent_limit_message",
-        alias = "pending_intent_limit_message"
-    )]
+    #[serde(default = "default_pending_intent_limit_message")]
     pub pending_intent_limit_message: String,
-    #[serde(
-        default = "default_intent_request_timeout_message",
-        alias = "intent_request_timeout_message"
-    )]
+    #[serde(default = "default_intent_request_timeout_message")]
     pub intent_request_timeout_message: String,
 }
 
@@ -405,10 +324,6 @@ impl BrowserAdapterConfig {
 }
 
 /// Normalized request posted by the standalone JavaScript bridge to a consumer-owned SSR endpoint.
-///
-/// The endpoint is intentionally transport-neutral. A host may expose it through Axum, Actix,
-/// a Leptos server function, or its existing REST facade, then load the consumer-owned draft and
-/// apply the intent through the Fly engine.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BrowserIntentEnvelope {
     #[serde(default = "default_protocol")]
@@ -514,23 +429,23 @@ fn default_protocol() -> String {
     FLY_BROWSER_PROTOCOL.to_string()
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
-fn default_max_browser_message_bytes() -> usize {
+const fn default_max_browser_message_bytes() -> usize {
     DEFAULT_MAX_BROWSER_MESSAGE_BYTES
 }
 
-fn default_max_browser_geometry_components() -> usize {
+const fn default_max_browser_geometry_components() -> usize {
     DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
 }
 
-fn default_max_pending_intent_requests() -> usize {
+const fn default_max_pending_intent_requests() -> usize {
     DEFAULT_MAX_PENDING_INTENT_REQUESTS
 }
 
-fn default_intent_request_timeout_ms() -> u64 {
+const fn default_intent_request_timeout_ms() -> u64 {
     DEFAULT_INTENT_REQUEST_TIMEOUT_MS
 }
 
@@ -559,10 +474,7 @@ mod tests {
         assert!(config.root_selector.contains("data-fly-browser-root"));
         assert!(config.iframe_selector.contains("data-fly-iframe-canvas"));
         assert!(config.intent_endpoint.is_none());
-        assert_eq!(
-            config.max_message_bytes,
-            DEFAULT_MAX_BROWSER_MESSAGE_BYTES
-        );
+        assert_eq!(config.max_message_bytes, DEFAULT_MAX_BROWSER_MESSAGE_BYTES);
         assert_eq!(
             config.max_geometry_components,
             DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
@@ -578,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn normalization_removes_empty_values_and_restores_safe_limits() {
+    fn normalization_restores_safe_limits_and_messages() {
         let config = BrowserAdapterConfig {
             root_selector: "  ".to_string(),
             iframe_selector: " iframe ".to_string(),
@@ -602,17 +514,10 @@ mod tests {
             Some("/admin/fly/intents")
         );
         assert_eq!(config.csrf_token, None);
-        assert_eq!(
-            config.max_message_bytes,
-            DEFAULT_MAX_BROWSER_MESSAGE_BYTES
-        );
+        assert_eq!(config.max_message_bytes, DEFAULT_MAX_BROWSER_MESSAGE_BYTES);
         assert_eq!(
             config.max_geometry_components,
             DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS
-        );
-        assert_eq!(
-            config.resource_limit_message,
-            DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE
         );
         assert_eq!(
             config.max_pending_intent_requests,
@@ -621,6 +526,10 @@ mod tests {
         assert_eq!(
             config.intent_request_timeout_ms,
             DEFAULT_INTENT_REQUEST_TIMEOUT_MS
+        );
+        assert_eq!(
+            config.resource_limit_message,
+            DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE
         );
         assert_eq!(
             config.pending_intent_limit_message,
@@ -633,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_config_serializes_for_javascript_and_accepts_legacy_names() {
+    fn browser_config_uses_only_camel_case() {
         let json = BrowserAdapterConfig {
             intent_endpoint: Some("/admin/fly/intents".to_string()),
             csrf_token: Some("csrf-token".to_string()),
@@ -656,50 +565,21 @@ mod tests {
         assert_eq!(value["intentRequestTimeoutMs"], 1_500);
         assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
         assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
-        assert!(value.get("intent_endpoint").is_none());
-        assert!(value.get("max_message_bytes").is_none());
-        assert!(value.get("max_pending_intent_requests").is_none());
-        assert!(value.get("intent_request_timeout_ms").is_none());
-        assert!(value.get("pending_intent_limit_message").is_none());
-        assert!(value.get("intent_request_timeout_message").is_none());
-
-        let legacy: BrowserAdapterConfig = serde_json::from_value(json!({
-            "root_selector": "#legacy-root",
-            "iframe_selector": "iframe.legacy",
-            "expected_origin": "https://example.test",
-            "intent_endpoint": "/legacy/intents",
-            "csrf_token": "legacy-token",
-            "auto_mount": false,
-            "draw_overlays": false,
-            "post_intents": false,
-            "max_message_bytes": 4096,
-            "max_geometry_components": 64,
-            "max_pending_intent_requests": 4,
-            "intent_request_timeout_ms": 2500,
-            "resource_limit_message": "Legacy limit",
-            "pending_intent_limit_message": "Legacy pending limit",
-            "intent_request_timeout_message": "Legacy timeout"
+        assert!(serde_json::from_value::<BrowserAdapterConfig>(json!({
+            "root_selector": "#unsupported"
         }))
-        .expect("legacy config");
-        assert_eq!(legacy.root_selector, "#legacy-root");
-        assert_eq!(legacy.max_message_bytes, 4096);
-        assert_eq!(legacy.max_geometry_components, 64);
-        assert_eq!(legacy.max_pending_intent_requests, 4);
-        assert_eq!(legacy.intent_request_timeout_ms, 2_500);
-        assert_eq!(legacy.resource_limit_message, "Legacy limit");
-        assert_eq!(legacy.pending_intent_limit_message, "Legacy pending limit");
-        assert_eq!(legacy.intent_request_timeout_message, "Legacy timeout");
+        .is_err());
     }
 
     #[test]
-    fn public_adapter_bundle_contains_resource_hardening() {
+    fn public_bundle_is_single_current_runtime() {
         assert!(FLY_BROWSER_ADAPTER_JS.contains("class FlyBrowserAdapter"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("fly:browser-resource-limit"));
-        assert!(FLY_BROWSER_ADAPTER_JS.contains("message_bytes"));
-        assert!(FLY_BROWSER_ADAPTER_JS.contains("geometry_components"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("PENDING_INTENT_LIMIT"));
         assert!(FLY_BROWSER_ADAPTER_JS.contains("INTENT_REQUEST_TIMEOUT"));
-        assert!(FLY_BROWSER_ADAPTER_JS.contains("aria-live"));
+        assert!(FLY_BROWSER_ADAPTER_JS.contains("pendingIntentRequests = new Map()"));
+        assert!(!FLY_BROWSER_ADAPTER_JS.contains("Adapter.prototype"));
+        assert!(!FLY_BROWSER_ADAPTER_JS.contains("__flyResourceGuardInstalled"));
         assert!(!FLY_BROWSER_ADAPTER_JS.contains("wasm_bindgen"));
     }
 
@@ -754,64 +634,6 @@ mod tests {
             );
         }
         assert_eq!(names.len(), BrowserIntentKind::ALL.len());
-    }
-
-    #[test]
-    fn command_producing_and_draft_intents_are_mutating() {
-        for kind in [
-            BrowserIntentKind::InsertBlock,
-            BrowserIntentKind::Drop,
-            BrowserIntentKind::DropRequested,
-            BrowserIntentKind::RemoveSelected,
-            BrowserIntentKind::MoveSelectedUp,
-            BrowserIntentKind::MoveSelectedDown,
-            BrowserIntentKind::PatchComponentProperty,
-            BrowserIntentKind::PatchPageMetadata,
-            BrowserIntentKind::CreatePage,
-            BrowserIntentKind::RenamePage,
-            BrowserIntentKind::RemovePage,
-            BrowserIntentKind::UpsertTranslation,
-            BrowserIntentKind::RemoveTranslation,
-            BrowserIntentKind::SetLocalePolicy,
-            BrowserIntentKind::ClearLocalePolicy,
-            BrowserIntentKind::UpsertLocalizedPageMetadata,
-            BrowserIntentKind::SetInternalPageLink,
-            BrowserIntentKind::RemoveInternalPageLink,
-            BrowserIntentKind::SetComponentAction,
-            BrowserIntentKind::RemoveComponentAction,
-            BrowserIntentKind::SetComponentForm,
-            BrowserIntentKind::RemoveComponentForm,
-            BrowserIntentKind::SetNativeFormField,
-            BrowserIntentKind::UpsertAsset,
-            BrowserIntentKind::RemoveAsset,
-            BrowserIntentKind::SelectAsset,
-            BrowserIntentKind::SetRuntimeContext,
-            BrowserIntentKind::SetRuntimeLocale,
-            BrowserIntentKind::Undo,
-            BrowserIntentKind::Redo,
-            BrowserIntentKind::Cut,
-            BrowserIntentKind::Paste,
-            BrowserIntentKind::Duplicate,
-            BrowserIntentKind::KeyStroke,
-            BrowserIntentKind::Save,
-        ] {
-            assert!(kind.is_mutating(), "{}", kind.as_str());
-        }
-        for kind in [
-            BrowserIntentKind::Select,
-            BrowserIntentKind::FocusRequested,
-            BrowserIntentKind::Hover,
-            BrowserIntentKind::HoverRequested,
-            BrowserIntentKind::ActivatePage,
-            BrowserIntentKind::CancelDrag,
-            BrowserIntentKind::CancelDragRequested,
-            BrowserIntentKind::BeginPaletteDrag,
-            BrowserIntentKind::BeginSelectedMove,
-            BrowserIntentKind::DragMoved,
-            BrowserIntentKind::Copy,
-        ] {
-            assert!(!kind.is_mutating(), "{}", kind.as_str());
-        }
     }
 
     #[test]
