@@ -17,6 +17,11 @@ const service = fs.readFileSync(
   path.join(moduleRoot, "src", "service.rs"),
   "utf8",
 );
+const dto = fs.readFileSync(path.join(moduleRoot, "src", "dto.rs"), "utf8");
+const previewPort = fs.readFileSync(
+  path.join(moduleRoot, "src", "preview_port.rs"),
+  "utf8",
+);
 const flyService = fs.readFileSync(
   path.join(moduleRoot, "src", "adapters", "fly_service.rs"),
   "utf8",
@@ -61,6 +66,13 @@ const pageBuilderModularCanvas = fs.readFileSync(
   path.join(moduleRoot, "admin", "src", "editor", "modular_canvas.rs"),
   "utf8",
 );
+
+const namedSources = {
+  service,
+  dto,
+  preview_port: previewPort,
+  telemetry,
+};
 
 function fail(message) {
   console.error(`[verify-page-builder-adapter-seams] ${message}`);
@@ -133,10 +145,22 @@ requireMarker(
   "adapter exports",
 );
 
+for (const [name, dtoContract] of Object.entries(contract.dto_contracts ?? {})) {
+  const source = namedSources[dtoContract.source];
+  if (!source) fail(`DTO contract ${name} names unknown source ${dtoContract.source}`);
+  for (const marker of dtoContract.markers ?? []) {
+    requireMarker(source, marker, `DTO contract ${name}`);
+  }
+}
+
 for (const port of Object.values(contract.ports ?? {})) {
-  requireMarker(service + telemetry, port.trait, "service ports");
+  const portSource = namedSources[port.source] ?? service + telemetry;
+  requireMarker(portSource, port.trait, "service ports");
   for (const method of port.methods ?? []) {
-    requireMarker(service + telemetry, method, `port ${port.trait}`);
+    requireMarker(portSource, method, `port ${port.trait}`);
+  }
+  if (port.input) {
+    requireMarker(portSource, port.input, `port ${port.trait} input`);
   }
   if (port.save_result) {
     requireMarker(service, `pub struct ${port.save_result}`, "persistence save result");
@@ -149,6 +173,13 @@ for (const port of Object.values(contract.ports ?? {})) {
       flyService,
       port.save_result_order,
       "persistence save result validation",
+    );
+  }
+  if (port.runtime_order) {
+    requireOrderedMarkers(
+      flyService,
+      port.runtime_order,
+      "preview runtime context flow",
     );
   }
 }
@@ -168,6 +199,11 @@ requireMarker(
   composition,
   `pub fn ${compositionRoot.configured_entrypoint}`,
   "configured composition entrypoint",
+);
+requireMarker(
+  composition,
+  compositionRoot.preview_port,
+  "composition preview port",
 );
 requireMarker(composition, "flags.validate()?", "composition rollout validation");
 requireOrderedMarkers(
@@ -190,10 +226,13 @@ for (const capability of contract.capabilities ?? []) {
 
 const currentSources = [
   service,
+  dto,
+  previewPort,
   flyService,
   adapters,
   composition,
   telemetry,
+  pagesBuilder,
   readme,
   implementationPlan,
 ];
@@ -209,7 +248,7 @@ for (const marker of [
   "FlyProjectInspection::decode_with",
   "inspection.require_valid()",
   ".renderer",
-  ".render_preview(context, &input.project_data)",
+  ".render_preview(context, &input)",
   "PageBuilderRuntimeCallEvidence::render_preview",
   "PageBuilderRuntimeCallEvidence::load_project",
   "PageBuilderRuntimeCallEvidence::save_project",
@@ -224,6 +263,9 @@ for (const marker of pagesConsumer.tenant_ports ?? []) {
 }
 for (const marker of pagesConsumer.tenant_context_guards ?? []) {
   requireMarker(pagesBuilder, marker, "Pages tenant context guard");
+}
+for (const marker of pagesConsumer.preview_runtime_markers ?? []) {
+  requireMarker(pagesBuilder, marker, "Pages preview runtime port");
 }
 requireMarker(
   pagesBuilder,
