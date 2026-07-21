@@ -21,12 +21,12 @@ ssr = [
 [dependencies]
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
+leptos-ui-routing.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-graphql.workspace = true
 rustok-groups = { path = "..", optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
-rustok-ui-routing.workspace = true
 rustok-ui-transport.workspace = true
 serde.workspace = true
 uuid.workspace = true
