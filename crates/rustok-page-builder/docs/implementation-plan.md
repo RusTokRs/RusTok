@@ -15,13 +15,17 @@ The service:
 5. records `PageBuilderRuntimeCallEvidence`;
 6. returns the canonical typed capability response.
 
-`CapabilityGuardedService` and `AuthorizedPageBuilderHandlers` enforce rollout, port-call policy and
-permissions. GraphQL and Leptos server-function endpoints delegate through the same handlers and
+The module-owned `compose_fly_page_builder_handlers` entrypoint now fixes the server composition
+order. It validates rollout flags, wraps the Fly service with `CapabilityGuardedService`, and then
+creates `AuthorizedPageBuilderHandlers`. The configured variant accepts telemetry/baseline-enabled
+Fly services, explicit port policies and an explicit authorizer without changing that order.
+
+GraphQL and Leptos server-function endpoints delegate through the composed handlers and canonical
 transport envelopes.
 
 The current machine-readable service contract is
-`contracts/page-builder-service-boundary.json`. It explicitly forbids reference services,
-migration decorators and manual JSON preview rendering.
+`contracts/page-builder-service-boundary.json`. It explicitly records the composition root and
+forbids reference services, migration decorators and manual JSON preview rendering.
 
 ## FFA/FBA status
 
@@ -30,11 +34,13 @@ migration decorators and manual JSON preview rendering.
   script type, adapter marker, optional CSP nonce and source. A future Dioxus renderer consumes the
   same descriptor and nonce contract.
 - FBA status: `boundary_ready`. Fly is the domain owner; Page Builder owns capability/port/transport
-  boundaries; consumer modules own persistence and publication lifecycle.
+  boundaries and the server composition order; consumer modules own persistence and publication
+  lifecycle.
 - Structural shape: `core_transport_ui` for browser host and `core_transport` for capability service.
 - Evidence:
   - `contracts/page-builder-service-boundary.json`;
   - `contracts/page-builder-fba-registry.json`;
+  - `src/composition.rs`;
   - `scripts/verify/verify-page-builder-adapter-seams.mjs`;
   - `scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
   - `scripts/verify/verify-page-builder-transport-bridge.mjs`;
@@ -42,10 +48,10 @@ migration decorators and manual JSON preview rendering.
 
 ## Open results
 
-1. Connect a production consumer composition root to concrete tenant-scoped project storage and
-   preview rendering ports. Done when preview, save and publish execute through
-   `FlyAdapterBackedPageBuilderService`, `CapabilityGuardedService` and
-   `AuthorizedPageBuilderHandlers` without another service implementation.
+1. Connect a production consumer's concrete tenant-scoped store and preview renderer to
+   `compose_fly_page_builder_handlers` (or its configured variant). Done when preview, save and
+   publish execute through the module-owned composition root without a consumer-local service or
+   guard assembly.
 2. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
    the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
    its optional CSP nonce, and must not copy lifecycle, form, selection or draft-route policy.
@@ -63,6 +69,7 @@ migration decorators and manual JSON preview rendering.
 
 - Fly owns the project domain and validation/rendering semantics.
 - Page Builder owns capability delivery, ports, authorization, transport envelopes, feature
-  profiles, runtime evidence and the framework-neutral browser module descriptor/host source.
+  profiles, runtime evidence, server composition order and the framework-neutral browser module
+  descriptor/host source.
 - Consumer modules own persistence and publish lifecycle.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
