@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
+use rust_decimal::Decimal;
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     TransactionTrait, sea_query::Expr,
 };
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -18,6 +20,47 @@ use super::{
 };
 
 const MAX_OPERATOR_ITEMS: u64 = 100;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketplaceFinancialOperationOperatorView {
+    pub checkout_operation_id: Uuid,
+    pub tenant_id: Uuid,
+    pub order_id: Uuid,
+    pub payment_collection_id: Uuid,
+    pub currency_code: String,
+    pub status: String,
+    pub stage: String,
+    pub attempt_count: i32,
+    pub ledger_transaction_id: Option<Uuid>,
+    pub ledger_debit_total_amount: Option<i64>,
+    pub ledger_credit_total_amount: Option<i64>,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub completed_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MarketplacePaidEventOperatorView {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub event_source: String,
+    pub event_id: String,
+    pub checkout_operation_id: Uuid,
+    pub order_id: Uuid,
+    pub payment_collection_id: Uuid,
+    pub captured_at: DateTime<FixedOffset>,
+    pub currency_code: String,
+    pub captured_amount: Decimal,
+    pub status: String,
+    pub attempt_count: i32,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub processed_at: Option<DateTime<FixedOffset>>,
+}
 
 #[derive(Debug, Error)]
 pub enum MarketplaceFinancialOperatorError {
@@ -59,24 +102,17 @@ impl MarketplaceFinancialOperatorService {
         &self,
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
-    ) -> MarketplaceFinancialOperatorResult<marketplace_financial_operation::Model> {
-        validate_identity(tenant_id, checkout_operation_id)?;
-        marketplace_financial_operation::Entity::find_by_id(checkout_operation_id)
-            .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
-            .await?
-            .ok_or_else(|| {
-                MarketplaceFinancialOperatorError::Conflict(format!(
-                    "financial operation {checkout_operation_id} was not found"
-                ))
-            })
+    ) -> MarketplaceFinancialOperatorResult<MarketplaceFinancialOperationOperatorView> {
+        self.get_financial_operation_model(tenant_id, checkout_operation_id)
+            .await
+            .map(map_financial_operation)
     }
 
     pub async fn list_financial_operator_review(
         &self,
         tenant_id: Uuid,
         limit: u64,
-    ) -> MarketplaceFinancialOperatorResult<Vec<marketplace_financial_operation::Model>> {
+    ) -> MarketplaceFinancialOperatorResult<Vec<MarketplaceFinancialOperationOperatorView>> {
         if tenant_id.is_nil() {
             return Err(MarketplaceFinancialOperatorError::Validation(
                 "tenant_id must not be nil".to_string(),
@@ -93,6 +129,7 @@ impl MarketplaceFinancialOperatorService {
             .limit(limit.clamp(1, MAX_OPERATOR_ITEMS))
             .all(&self.db)
             .await
+            .map(|models| models.into_iter().map(map_financial_operation).collect())
             .map_err(Into::into)
     }
 
@@ -100,7 +137,7 @@ impl MarketplaceFinancialOperatorService {
         &self,
         tenant_id: Uuid,
         limit: u64,
-    ) -> MarketplaceFinancialOperatorResult<Vec<marketplace_paid_event_inbox::Model>> {
+    ) -> MarketplaceFinancialOperatorResult<Vec<MarketplacePaidEventOperatorView>> {
         if tenant_id.is_nil() {
             return Err(MarketplaceFinancialOperatorError::Validation(
                 "tenant_id must not be nil".to_string(),
@@ -117,6 +154,7 @@ impl MarketplaceFinancialOperatorService {
             .limit(limit.clamp(1, MAX_OPERATOR_ITEMS))
             .all(&self.db)
             .await
+            .map(|models| models.into_iter().map(map_paid_event).collect())
             .map_err(Into::into)
     }
 
@@ -124,7 +162,7 @@ impl MarketplaceFinancialOperatorService {
         &self,
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
-    ) -> MarketplaceFinancialOperatorResult<marketplace_financial_operation::Model> {
+    ) -> MarketplaceFinancialOperatorResult<MarketplaceFinancialOperationOperatorView> {
         validate_identity(tenant_id, checkout_operation_id)?;
         let now = Utc::now().fixed_offset();
         let update = marketplace_financial_operation::Entity::update_many()
@@ -170,7 +208,7 @@ impl MarketplaceFinancialOperatorService {
         &self,
         tenant_id: Uuid,
         inbox_id: Uuid,
-    ) -> MarketplaceFinancialOperatorResult<marketplace_paid_event_inbox::Model> {
+    ) -> MarketplaceFinancialOperatorResult<MarketplacePaidEventOperatorView> {
         validate_identity(tenant_id, inbox_id)?;
         let transaction = self.db.begin().await?;
         let event = marketplace_paid_event_inbox::Entity::find_by_id(inbox_id)
@@ -255,7 +293,70 @@ impl MarketplaceFinancialOperatorService {
         self.inbox
             .process(tenant_id, inbox_id)
             .await
+            .map(map_paid_event)
             .map_err(Into::into)
+    }
+
+    async fn get_financial_operation_model(
+        &self,
+        tenant_id: Uuid,
+        checkout_operation_id: Uuid,
+    ) -> MarketplaceFinancialOperatorResult<marketplace_financial_operation::Model> {
+        validate_identity(tenant_id, checkout_operation_id)?;
+        marketplace_financial_operation::Entity::find_by_id(checkout_operation_id)
+            .filter(marketplace_financial_operation::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| {
+                MarketplaceFinancialOperatorError::Conflict(format!(
+                    "financial operation {checkout_operation_id} was not found"
+                ))
+            })
+    }
+}
+
+fn map_financial_operation(
+    model: marketplace_financial_operation::Model,
+) -> MarketplaceFinancialOperationOperatorView {
+    MarketplaceFinancialOperationOperatorView {
+        checkout_operation_id: model.checkout_operation_id,
+        tenant_id: model.tenant_id,
+        order_id: model.order_id,
+        payment_collection_id: model.payment_collection_id,
+        currency_code: model.currency_code,
+        status: model.status,
+        stage: model.stage,
+        attempt_count: model.attempt_count,
+        ledger_transaction_id: model.ledger_transaction_id,
+        ledger_debit_total_amount: model.ledger_debit_total_amount,
+        ledger_credit_total_amount: model.ledger_credit_total_amount,
+        last_error_code: model.last_error_code,
+        last_error_message: model.last_error_message,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+        completed_at: model.completed_at,
+    }
+}
+
+fn map_paid_event(model: marketplace_paid_event_inbox::Model) -> MarketplacePaidEventOperatorView {
+    MarketplacePaidEventOperatorView {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        event_source: model.event_source,
+        event_id: model.event_id,
+        checkout_operation_id: model.checkout_operation_id,
+        order_id: model.order_id,
+        payment_collection_id: model.payment_collection_id,
+        captured_at: model.captured_at,
+        currency_code: model.currency_code,
+        captured_amount: model.captured_amount,
+        status: model.status,
+        attempt_count: model.attempt_count,
+        last_error_code: model.last_error_code,
+        last_error_message: model.last_error_message,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+        processed_at: model.processed_at,
     }
 }
 
