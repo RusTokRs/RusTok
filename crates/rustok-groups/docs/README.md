@@ -50,12 +50,29 @@ shadow document.
 
 ## Access and privacy
 
-Initial visibility values:
+Visibility values:
 
-- `public`: discoverable and publicly readable;
-- `closed`: discoverable, but private content requires active membership;
-- `secret`: not discoverable; every read requires membership or platform manage
-  authority.
+- `public`: the localized shell, body, and enabled feature bindings are publicly
+  readable;
+- `closed`: the localized shell is discoverable, while body, feature bindings,
+  member lists, and provider-owned content require active membership or platform
+  manage authority;
+- `secret`: not discoverable; an active member or platform manage authority is
+  required even for the localized shell.
+
+The access contract separates:
+
+- `discover`: inclusion in catalog/search-style discovery; never true for secret
+  groups without platform manage authority;
+- `view_summary`: localized group shell access; closed shells are public and secret
+  shells are visible only to active members or platform managers;
+- `view`: private group content access; public groups allow it, while closed and
+  secret groups require active membership or platform manage authority.
+
+A denied direct shell read uses not-found semantics so secret-group existence is
+not disclosed. A permitted closed shell read without `view` access returns the
+localized title/summary and neutral group metadata, but redacts translation body
+and feature bindings. Fallback locale selection never bypasses this policy.
 
 Initial join policies:
 
@@ -69,8 +86,9 @@ operations inside one group. Owner services re-check both boundaries.
 
 ## FBA contract
 
-`GroupSummaryReadPort`, `GroupMembershipReadPort`, `GroupAccessReadPort`, and
-`GroupCommandPort` use `PortContext`, `PortCallPolicy`, and `PortError`.
+`GroupSummaryReadPort`, `GroupMembershipReadPort`, `GroupAccessReadPort`,
+`GroupCommandPort`, and `GroupGovernanceCommandPort` use `PortContext`,
+`PortCallPolicy`, and `PortError`.
 
 Required context semantics:
 
@@ -80,7 +98,9 @@ Required context semantics:
 - locale and channel are preserved across transports;
 - private-content decisions fail closed when the Groups provider is unavailable;
 - an unavailable optional feature provider hides or downgrades only that feature,
-  never the group shell.
+  never the group shell;
+- governance state, idempotency receipt, and immutable audit entry commit in one
+  owner transaction.
 
 Consumers must not import Groups entities or query Groups tables directly.
 
