@@ -21,9 +21,13 @@ function fixture({
   unboundedServicePagination = false,
   unboundedHttpPagination = false,
   missingTypedErrors = false,
+  ownedScopeRegression = false,
+  advertisesCatalogPermissions = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-category-reindex-"));
   const servicePath = "crates/rustok-blog/src/services/category.rs";
+  const rbacPath = "crates/rustok-blog/src/services/rbac.rs";
+  const modulePath = "crates/rustok-blog/src/lib.rs";
   const controllerPath = "crates/rustok-blog/src/controllers/categories.rs";
   const routerPath = "crates/rustok-blog/src/controllers/mod.rs";
   const openapiPath = "crates/rustok-blog/src/openapi.rs";
@@ -50,6 +54,34 @@ function fixture({
       ${missingSlugGuard ? "" : "Slug must contain at least one ASCII letter or digit"}
       ${unboundedServicePagination ? "let per_page = filter.per_page.max(1)" : "let per_page = filter.per_page.clamp(1, 100)"}
       .paginate(&self.db, per_page)
+      const CATEGORY_PERMISSION_RESOURCES: [Resource; 2] = [Resource::BlogPosts, Resource::Categories];
+      enforce_any_scope
+      ${ownedScopeRegression ? "enforce_owned_scope" : ""}
+    `,
+  );
+  write(
+    root,
+    rbacPath,
+    `
+      pub(crate) fn enforce_any_scope() {
+        resources.iter();
+        security.get_scope(*resource, action);
+      }
+      any_scope_accepts_primary_or_legacy_resource
+    `,
+  );
+  write(
+    root,
+    modulePath,
+    `
+      Permission::BLOG_POSTS_CREATE
+      Permission::BLOG_POSTS_READ
+      Permission::BLOG_POSTS_UPDATE
+      Permission::BLOG_POSTS_DELETE
+      Permission::BLOG_POSTS_LIST
+      Permission::BLOG_POSTS_MANAGE
+      assert!(!permissions.iter().any(|p| p.resource == Resource::Categories));
+      ${advertisesCatalogPermissions ? "Permission::new(Resource::Categories, Action::Update)" : ""}
     `,
   );
   write(
@@ -61,7 +93,9 @@ function fixture({
       filter.page = filter.page.max(1)
       ${unboundedHttpPagination ? "filter.per_page = filter.per_page.max(1)" : "filter.per_page = filter.per_page.clamp(1, 100)"}
       ensure_category_permission
-      Resource::Categories
+      Permission::new(Resource::BlogPosts, action)
+      Permission::new(Resource::Categories, action)
+      has_any_effective_permission(&auth.permissions, &[primary, legacy])
       ${missingTypedErrors ? "" : "fn map_category_error BlogError::CategoryNotFound HttpError::not_found HttpError::internal"}
     `,
   );
@@ -115,6 +149,8 @@ function fixture({
       compile_policy: "not_run_by_request",
       production_contract: {
         owner_service: servicePath,
+        owner_rbac: rbacPath,
+        module_permissions: modulePath,
         http_adapter: controllerPath,
         router: routerPath,
         openapi: openapiPath,
@@ -126,6 +162,8 @@ function fixture({
         "category_delete_atomic_reindex",
         "tenant_scoped_parent",
         "non_empty_slug",
+        "bounded_permission_namespace",
+        "category_has_no_owner_scope",
         "bounded_category_list",
         "typed_http_errors",
         "search_payload_dependency",
@@ -135,7 +173,7 @@ function fixture({
   write(
     root,
     "crates/rustok-blog/docs/implementation-plan.md",
-    "blog-category-search-reindex-contract.json verify-blog-category-search-reindex.mjs category_name category_slug non-empty ASCII slug service and HTTP pagination",
+    "blog-category-search-reindex-contract.json verify-blog-category-search-reindex.mjs category_name category_slug non-empty ASCII slug service and HTTP pagination blog_posts:* Legacy `categories:*`",
   );
 
   return root;
@@ -210,6 +248,28 @@ test("Blog category reindex verifier rejects flattened HTTP errors", () => {
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing fn map_category_error/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Blog category reindex verifier rejects category UUID ownership checks", () => {
+  const root = fixture({ ownedScopeRegression: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /forbidden enforce_owned_scope/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Blog category reindex verifier rejects catalog permission advertisement", () => {
+  const root = fixture({ advertisesCatalogPermissions: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /forbidden Permission::new\(Resource::Categories/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
