@@ -65,6 +65,7 @@ impl MigrationTrait for Migration {
                     )
                     .check(Expr::cust("max_uses BETWEEN 1 AND 100"))
                     .check(Expr::cust("use_count >= 0 AND use_count <= max_uses"))
+                    .check(Expr::cust("target_user_id IS NULL OR max_uses = 1"))
                     .check(Expr::cust("expires_at > created_at"))
                     .check(Expr::cust(
                         "(revoked_at IS NULL AND revoked_by_user_id IS NULL) OR (revoked_at IS NOT NULL AND revoked_by_user_id IS NOT NULL)",
