@@ -200,13 +200,16 @@ impl GroupsService {
         };
 
         let model = query.one(&self.db).await?.ok_or(GroupsError::NotFound)?;
-        let decision = self
+        let summary_decision = self
+            .decide_access_owned(context, model.id, GroupAction::ViewSummary)
+            .await?;
+        if !summary_decision.allowed {
+            return Err(GroupsError::NotFound);
+        }
+        let content_decision = self
             .decide_access_owned(context, model.id, GroupAction::View)
             .await?;
-        if !decision.allowed {
-            return Err(GroupsError::Forbidden(decision.reason_code));
-        }
-        self.map_details(context, model).await
+        self.map_details(context, model, content_decision.allowed).await
     }
 
     async fn list_groups_owned(
@@ -224,7 +227,10 @@ impl GroupsService {
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Status.eq(GroupStatus::Active.as_str()));
         if !include_non_public {
-            query = query.filter(group::Column::Visibility.eq(GroupVisibility::Public.as_str()));
+            query = query.filter(group::Column::Visibility.is_in([
+                GroupVisibility::Public.as_str(),
+                GroupVisibility::Closed.as_str(),
+            ]));
         }
 
         if let Some(search) = normalize_optional_text(request.search) {
@@ -522,7 +528,9 @@ impl GroupsService {
             false
         } else {
             match action {
-                GroupAction::Discover => visibility != GroupVisibility::Secret,
+                GroupAction::Discover | GroupAction::ViewSummary => {
+                    visibility != GroupVisibility::Secret
+                }
                 GroupAction::View | GroupAction::ViewMembers => {
                     visibility == GroupVisibility::Public || active_member
                 }
@@ -563,12 +571,15 @@ impl GroupsService {
         &self,
         context: &PortContext,
         model: group::Model,
+        include_private_content: bool,
     ) -> GroupsResult<GroupDetails> {
         let group_id = model.id;
         let tenant_id = model.tenant_id;
         let translations = self.load_translations(tenant_id, vec![group_id]).await?;
         let selected = select_translation(&translations, group_id, &context.locale)?;
-        let body = selected.body.clone();
+        let body = include_private_content
+            .then(|| selected.body.clone())
+            .flatten();
         let summary = self.map_summary(context, model, &translations)?;
         let viewer_membership = match optional_actor_user_id(context) {
             Some(user_id) => self
@@ -578,15 +589,19 @@ impl GroupsService {
                 .transpose()?,
             None => None,
         };
-        let features = feature_binding::Entity::find()
-            .filter(feature_binding::Column::TenantId.eq(tenant_id))
-            .filter(feature_binding::Column::GroupId.eq(group_id))
-            .order_by_asc(feature_binding::Column::SortOrder)
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(map_feature)
-            .collect::<GroupsResult<Vec<_>>>()?;
+        let features = if include_private_content {
+            feature_binding::Entity::find()
+                .filter(feature_binding::Column::TenantId.eq(tenant_id))
+                .filter(feature_binding::Column::GroupId.eq(group_id))
+                .order_by_asc(feature_binding::Column::SortOrder)
+                .all(&self.db)
+                .await?
+                .into_iter()
+                .map(map_feature)
+                .collect::<GroupsResult<Vec<_>>>()?
+        } else {
+            Vec::new()
+        };
 
         Ok(GroupDetails {
             summary,
