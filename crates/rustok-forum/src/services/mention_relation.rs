@@ -160,7 +160,8 @@ impl MentionRelationService {
 
         if let Some(latest) = latest.as_ref() {
             if latest.projection_fingerprint == prepared.projection_fingerprint {
-                let persisted = load_snapshot_in_tx(txn, prepared.tenant_id, latest.revision_id).await?;
+                let persisted =
+                    load_snapshot_in_tx(txn, prepared.tenant_id, latest.revision_id).await?;
                 if persisted != current_snapshot {
                     return Err(ForumError::Validation(
                         "Forum relation replay fingerprint does not match persisted targets"
@@ -210,7 +211,6 @@ impl MentionRelationService {
         let quotes = validate_forum_quote_references(&source, prepared.quotes)?;
         validate_quote_targets_in_tx(txn, prepared.tenant_id, &quotes).await?;
 
-        let now = Utc::now();
         for mention in prepared.resolved.users() {
             forum_user_mention::ActiveModel {
                 tenant_id: Set(prepared.tenant_id),
@@ -220,7 +220,7 @@ impl MentionRelationService {
                 source_revision_id: Set(revision.revision_id),
                 mentioned_user_id: Set(mention.user_id()),
                 handle_snapshot: Set(mention.handle().to_string()),
-                created_at: Set(now.into()),
+                created_at: Set(Utc::now().into()),
             }
             .insert(txn)
             .await?;
@@ -233,7 +233,7 @@ impl MentionRelationService {
                 source_locale: Set(prepared.locale.clone()),
                 source_revision_id: Set(revision.revision_id),
                 audience: Set(audience_value(*audience).to_string()),
-                created_at: Set(now.into()),
+                created_at: Set(Utc::now().into()),
             }
             .insert(txn)
             .await?;
@@ -248,7 +248,7 @@ impl MentionRelationService {
                 quoted_kind: Set(target_kind_value(quote.target().kind()).to_string()),
                 quoted_id: Set(quote.target().id()),
                 quoted_revision_id: Set(quote.revision_id()),
-                created_at: Set(now.into()),
+                created_at: Set(Utc::now().into()),
             }
             .insert(txn)
             .await?;
@@ -359,7 +359,7 @@ async fn load_snapshot_in_tx(
         .into_iter()
         .map(|row| {
             Ok((
-                ForumContentTarget::new(parse_target_kind(&row.quoted_kind)?, row.quoted_id)?,
+                target_from_persisted(&row.quoted_kind, row.quoted_id)?,
                 row.quoted_revision_id,
             ))
         })
@@ -482,10 +482,15 @@ fn target_kind_value(kind: ForumContentTargetKind) -> &'static str {
     }
 }
 
-fn parse_target_kind(value: &str) -> ForumResult<ForumContentTargetKind> {
+fn target_from_persisted(value: &str, id: Uuid) -> ForumResult<ForumContentTarget> {
+    if id.is_nil() {
+        return Err(ForumError::Validation(
+            "Persisted Forum relation target ID is invalid".to_string(),
+        ));
+    }
     match value {
-        "topic" => Ok(ForumContentTargetKind::Topic),
-        "reply" => Ok(ForumContentTargetKind::Reply),
+        "topic" => Ok(ForumContentTarget::topic(id)),
+        "reply" => Ok(ForumContentTarget::reply(id)),
         _ => Err(ForumError::Validation(
             "Persisted Forum relation target kind is invalid".to_string(),
         )),
