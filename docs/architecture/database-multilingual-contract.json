@@ -368,6 +368,11 @@
             "OAuthAppTranslations::Table",
             ".string_len(32)",
             "LEGACY_UNDETERMINED_LOCALE",
+            "uq_oauth_apps_tenant_id_translation_parent",
+            "fk_oauth_app_translations_tenant_app",
+            "DbBackend::Postgres",
+            "DbBackend::MySql",
+            "DbBackend::Sqlite",
             ".drop_column(OAuthApps::Name)",
             ".drop_column(OAuthApps::Description)"
           ]
@@ -389,18 +394,29 @@
         {
           "path": "apps/server/src/models/oauth_apps.rs",
           "required_markers": [
-            "LEGACY_UNDETERMINED_LOCALE",
-            "DatabaseActiveModel",
-            "upsert_translation",
-            "resolve_translation"
+            "MANIFEST_GENERATED_COPY_LOCALE",
+            "normalize_runtime_copy_locale",
+            "OAuth runtime copy cannot use storage-only locale `und`",
+            "scope_runtime_copy_locale",
+            "update_in_transaction",
+            "OnConflict::columns",
+            "hydrate_exact_translation",
+            "model.name = model.slug.clone();"
+          ],
+          "forbidden_markers": [
+            "Column::Locale.eq(LEGACY_UNDETERMINED_LOCALE)"
           ]
         },
         {
           "path": "apps/server/src/services/auth_admin_mutation_provider.rs",
           "required_markers": [
             "auth administration requires a host-resolved effective locale",
+            "auth administration requires a valid effective locale other than `und`",
+            "scope_runtime_copy_locale",
+            "hydrate_exact_translation"
+          ],
+          "forbidden_markers": [
             "persist_command_translation",
-            "OAuth app localized copy missing",
             "oauth_app_translations::Column::Locale.eq(LEGACY_UNDETERMINED_LOCALE)"
           ]
         },
@@ -432,10 +448,11 @@
           "required_markers": [
             "RUNTIME_DEFAULT_REGISTRY_LOCALE",
             "LEGACY_UNDETERMINED_LOCALE",
-            "LEGACY_UNDETERMINED_LOCALE.into()"
+            "LEGACY_UNDETERMINED_LOCALE.into()",
+            "DbBackend::MySql => \"?\".to_string()"
           ],
           "forbidden_markers": [
-            "DEFAULT_REGISTRY_LOCALE"
+            "const DEFAULT_REGISTRY_LOCALE"
           ]
         }
       ]
