@@ -1,4 +1,5 @@
 mod category_command_mutation;
+mod category_lifecycle_mutation;
 mod category_policy;
 mod category_tree_query;
 mod connection;
@@ -12,6 +13,7 @@ pub use category_command_mutation::{
     GqlForumCategoryMove, GqlForumCategoryPlacement, GqlForumCategorySiblingOrder,
     MoveForumCategoryInput, ReorderForumCategorySiblingsInput,
 };
+pub use category_lifecycle_mutation::GqlForumCategorySubtreeLifecycle;
 pub use category_policy::{
     GqlForumCategoryTopicPolicy, UpdateForumCategoryTopicPolicyInput,
 };
@@ -32,5 +34,6 @@ pub struct ForumQuery(
 pub struct ForumMutation(
     mutation::ForumMutation,
     category_command_mutation::ForumCategoryCommandMutation,
+    category_lifecycle_mutation::ForumCategoryLifecycleMutation,
     category_policy::ForumCategoryTopicPolicyMutation,
 );
