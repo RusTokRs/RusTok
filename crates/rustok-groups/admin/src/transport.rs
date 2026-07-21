@@ -1,7 +1,11 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/graphql_applications_adapter.rs"]
+mod graphql_applications_adapter;
 #[path = "transport/graphql_invitations_adapter.rs"]
 mod graphql_invitations_adapter;
+#[path = "transport/native_applications_adapter.rs"]
+mod native_applications_adapter;
 #[path = "transport/native_invitations_adapter.rs"]
 mod native_invitations_adapter;
 #[path = "transport/native_localization_adapter.rs"]
@@ -11,6 +15,12 @@ mod native_server_adapter;
 
 use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
 
+use crate::application_model::{
+    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
+    GroupsAdminMembershipApplicationConnection, GroupsAdminMembershipApplicationQuery,
+    GroupsAdminReviewApplicationResult, GroupsAdminUpsertApplicationPolicyResult,
+    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
+};
 use crate::core::GroupsAdminTransportProfile;
 use crate::model::{
     ChangeGroupRoleCommand, CreateGroupInvitationCommand, DeleteGroupTranslationCommand,
@@ -193,6 +203,82 @@ pub async fn revoke_group_admin_invitation(
         context.path(),
         move || native_invitations_adapter::revoke_group_invitation(native_command),
         move || graphql_invitations_adapter::revoke_group_invitation(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn load_group_admin_application_policy(
+    context: GroupsAdminTransportContext,
+    query: GroupsAdminApplicationPolicyQuery,
+) -> UiTransportResult<GroupsAdminApplicationPolicy> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.admin.applications.policy.read",
+        context.path(),
+        move || native_applications_adapter::load_group_application_policy(native_query),
+        move || {
+            graphql_applications_adapter::load_group_application_policy(token, tenant, query)
+        },
+    )
+    .await
+}
+
+pub async fn upsert_group_admin_application_policy(
+    context: GroupsAdminTransportContext,
+    command: UpsertGroupApplicationPolicyCommand,
+) -> UiTransportResult<GroupsAdminUpsertApplicationPolicyResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.applications.policy.upsert",
+        context.path(),
+        move || native_applications_adapter::upsert_group_application_policy(native_command),
+        move || {
+            graphql_applications_adapter::upsert_group_application_policy(token, tenant, command)
+        },
+    )
+    .await
+}
+
+pub async fn load_group_admin_membership_applications(
+    context: GroupsAdminTransportContext,
+    query: GroupsAdminMembershipApplicationQuery,
+) -> UiTransportResult<GroupsAdminMembershipApplicationConnection> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.admin.applications.list",
+        context.path(),
+        move || native_applications_adapter::load_group_membership_applications(native_query),
+        move || {
+            graphql_applications_adapter::load_group_membership_applications(token, tenant, query)
+        },
+    )
+    .await
+}
+
+pub async fn review_group_admin_membership_application(
+    context: GroupsAdminTransportContext,
+    command: ReviewGroupMembershipApplicationCommand,
+) -> UiTransportResult<GroupsAdminReviewApplicationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.applications.review",
+        context.path(),
+        move || {
+            native_applications_adapter::review_group_membership_application(native_command)
+        },
+        move || {
+            graphql_applications_adapter::review_group_membership_application(
+                token, tenant, command,
+            )
+        },
     )
     .await
 }
