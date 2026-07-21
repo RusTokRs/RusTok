@@ -1,23 +1,30 @@
+use std::collections::BTreeMap;
+
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
+use fly::ProjectHash;
 use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder::PageBuilderReviewedPublishRuntime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
+use crate::model::{
+    CreatePageDraft, PageDetail, PageList, PageMutationResult, PublishPageReceipt,
+};
 
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id version status template updatedAt channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
-const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
-const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
-const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
+const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
+const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!, $input: PublishGqlPageInput!) { publishPage(id: $id, input: $input) { operationId pageId version idempotencyKey reviewHash sanitizedSetHash artifactSetHash replayed publishedAt } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
+const PUBLISH_IDEMPOTENCY_FORMAT: &str = "pages_admin_publish_v1";
 
 #[derive(Debug, Deserialize)]
 struct PagesResponse {
@@ -61,7 +68,7 @@ struct SavePageDocumentResponse {
 #[derive(Debug, Deserialize)]
 struct PublishPageResponse {
     #[serde(rename = "publishPage")]
-    publish_page: PageMutationResult,
+    publish_page: PublishPageReceipt,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +107,12 @@ struct PageWriteVariables<T> {
 }
 
 #[derive(Debug, Serialize)]
+struct PageVariables {
+    id: String,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct CreatePageInput {
     translations: Vec<PageTranslationWriteInput>,
     template: Option<String>,
@@ -124,6 +137,33 @@ struct SavePageDocumentInput {
     #[serde(rename = "expectedRevision")]
     expected_revision: String,
     body: PageBodyWriteInput,
+}
+
+#[derive(Debug, Serialize)]
+struct PublishPageInput {
+    #[serde(rename = "expectedVersion")]
+    expected_version: i32,
+    #[serde(rename = "expectedBodyRevisions")]
+    expected_body_revisions: Vec<PageBodyRevisionInput>,
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
+    runtime: ReviewedPagePublishRuntimeInput,
+}
+
+#[derive(Debug, Serialize)]
+struct PageBodyRevisionInput {
+    locale: String,
+    revision: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ReviewedPagePublishRuntimeInput {
+    format: String,
+    #[serde(rename = "scenarioId")]
+    scenario_id: String,
+    context: Value,
+    #[serde(rename = "reviewHash")]
+    review_hash: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -221,8 +261,22 @@ pub async fn fetch_page(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<Option<PageDetail>, ApiError> {
-    let response: PageResponse =
-        request(PAGE_QUERY, PageIdVariables { id }, token, tenant_slug).await?;
+    fetch_page_at_locale(token, tenant_slug, id, None).await
+}
+
+async fn fetch_page_at_locale(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+    locale: Option<String>,
+) -> Result<Option<PageDetail>, ApiError> {
+    let response: PageResponse = request(
+        PAGE_QUERY,
+        PageVariables { id, locale },
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.page)
 }
 
@@ -273,7 +327,7 @@ pub async fn create_page(
                     content_json: Some(draft.body_content_json),
                 }),
                 channel_slugs: Some(draft.channel_slugs),
-                publish: Some(draft.publish),
+                publish: Some(false),
             },
         },
         token,
@@ -353,15 +407,136 @@ pub async fn publish_page(
     token: Option<String>,
     tenant_slug: Option<String>,
     id: String,
-) -> Result<PageMutationResult, ApiError> {
+) -> Result<PublishPageReceipt, ApiError> {
+    let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
+    let revisions = fetch_page_body_revisions(
+        token.clone(),
+        tenant_slug.clone(),
+        &page,
+    )
+    .await?;
+    let baseline = fetch_page_builder_scenario_baseline(
+        token.clone(),
+        tenant_slug.clone(),
+        id.clone(),
+    )
+    .await?
+    .ok_or_else(|| {
+        GraphqlHttpError::Graphql(
+            "Publish requires a promoted Page Builder runtime scenario baseline".to_string(),
+        )
+    })?;
+    let scenario = select_single_reviewed_scenario(&baseline)?;
+    let reviewed = PageBuilderReviewedPublishRuntime::new(
+        scenario.id.clone(),
+        scenario.context.clone(),
+    )
+    .map_err(|error| {
+        GraphqlHttpError::Graphql(format!(
+            "Unable to prepare reviewed Page Builder runtime: {error}"
+        ))
+    })?;
+    let expected_body_revisions = revisions
+        .iter()
+        .map(|(locale, revision)| PageBodyRevisionInput {
+            locale: locale.clone(),
+            revision: revision.clone(),
+        })
+        .collect::<Vec<_>>();
+    let idempotency_key = publish_idempotency_key(&page, &revisions, &reviewed)?;
+
     let response: PublishPageResponse = request(
         PUBLISH_PAGE_MUTATION,
-        PageIdVariables { id },
+        PageWriteVariables {
+            id,
+            input: PublishPageInput {
+                expected_version: page.version,
+                expected_body_revisions,
+                idempotency_key,
+                runtime: ReviewedPagePublishRuntimeInput {
+                    format: reviewed.format,
+                    scenario_id: reviewed.scenario_id,
+                    context: reviewed.context,
+                    review_hash: reviewed.review_hash,
+                },
+            },
+        },
         token,
         tenant_slug,
     )
     .await?;
     Ok(response.publish_page)
+}
+
+async fn fetch_page_body_revisions(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page: &PageDetail,
+) -> Result<BTreeMap<String, String>, ApiError> {
+    let mut revisions = BTreeMap::new();
+    if let Some(body) = page.body.as_ref() {
+        revisions.insert(body.locale.clone(), body.updated_at.clone());
+    }
+    for locale in &page.available_locales {
+        let localized = fetch_page_at_locale(
+            token.clone(),
+            tenant_slug.clone(),
+            page.id.clone(),
+            Some(locale.clone()),
+        )
+        .await?;
+        if let Some(body) = localized.and_then(|page| page.body) {
+            revisions.insert(body.locale, body.updated_at);
+        }
+    }
+    if revisions.is_empty() {
+        return Err(GraphqlHttpError::Graphql(
+            "Publish requires at least one localized Page Builder body".to_string(),
+        ));
+    }
+    Ok(revisions)
+}
+
+fn select_single_reviewed_scenario(
+    baseline: &RuntimeScenarioReleaseBaseline,
+) -> Result<&fly::RuntimeContextScenario, ApiError> {
+    match baseline.scenarios.as_slice() {
+        [scenario] => Ok(scenario),
+        [] => Err(GraphqlHttpError::Graphql(
+            "The promoted Page Builder baseline has no runtime scenarios".to_string(),
+        )),
+        scenarios => Err(GraphqlHttpError::Graphql(format!(
+            "The promoted Page Builder baseline contains {} scenarios; select one explicitly before publish",
+            scenarios.len()
+        ))),
+    }
+}
+
+fn publish_idempotency_key(
+    page: &PageDetail,
+    revisions: &BTreeMap<String, String>,
+    reviewed: &PageBuilderReviewedPublishRuntime,
+) -> Result<String, ApiError> {
+    let bytes = serde_json::to_vec(&(
+        PUBLISH_IDEMPOTENCY_FORMAT,
+        page.id.as_str(),
+        page.version,
+        revisions,
+        reviewed.review_hash.as_str(),
+    ))
+    .map_err(|error| {
+        GraphqlHttpError::Graphql(format!(
+            "Unable to encode Page Builder publish identity: {error}"
+        ))
+    })?;
+    Ok(format!(
+        "pages-admin-v1:{}:{}:{}",
+        page.id,
+        page.version,
+        ProjectHash::from_bytes(&bytes).hex()
+    ))
 }
 
 pub async fn unpublish_page(
