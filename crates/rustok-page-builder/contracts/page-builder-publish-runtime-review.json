@@ -157,10 +157,21 @@
       "source_guard": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
       "executed_evidence": "pending"
     },
+    "non_builder_lifecycle": {
+      "source": "crates/rustok-pages/src/services/page/lifecycle.rs",
+      "entrypoints": [
+        "publish_non_builder",
+        "publish_non_builder_if_current"
+      ],
+      "builder_detection": "grapesjs_source_presence_checked_before_and_inside_transaction",
+      "builder_rejection_code": "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED",
+      "artifact_compilation": "forbidden",
+      "legacy_entrypoints": "removed"
+    },
     "typed_errors": true,
     "raw_context_persisted": false,
     "cache_invalidation": "transactional_node_published_outbox",
-    "legacy_default_publish": "publicly_unreachable_pending_domain_removal",
+    "legacy_default_publish": "removed_non_builder_lifecycle_split",
     "public_transport": "graphql_http_admin_reviewed_cutover",
     "atomic_pipeline": "service_and_public_transport_integrated"
   },
