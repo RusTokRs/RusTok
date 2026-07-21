@@ -10,6 +10,7 @@ const required = [
   "crates/rustok-groups/src/application_entities.rs",
   "crates/rustok-groups/src/applications.rs",
   "crates/rustok-groups/src/graphql_applications.rs",
+  "crates/rustok-groups/src/graphql_policy_history.rs",
   "crates/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs",
   "crates/rustok-groups/admin/src/application_core.rs",
   "crates/rustok-groups/admin/src/application_model.rs",
@@ -27,7 +28,7 @@ for (const relative of required) {
   if (!exists(relative)) failures.push(`missing membership application artifact: ${relative}`);
 }
 
-const migrationPath = required[3];
+const migrationPath = "crates/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs";
 if (exists(migrationPath)) {
   const migration = read(migrationPath);
   for (const marker of [
@@ -102,8 +103,8 @@ const manifestPath = "crates/rustok-groups/rustok-module.toml";
 if (exists(manifestPath)) {
   const manifest = read(manifestPath);
   for (const marker of [
-    'query = "graphql_applications::GroupsQueryRoot"',
-    'mutation = "graphql_applications::GroupsMutationRoot"',
+    'query = "graphql_policy_history::GroupsQueryRoot"',
+    'mutation = "graphql_policy_history::GroupsMutationRoot"',
     'subpath = "applications"',
   ]) {
     if (!manifest.includes(marker)) failures.push(`Groups manifest is missing application composition marker: ${marker}`);
