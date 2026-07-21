@@ -101,8 +101,9 @@ persistence. Rich text remains an external dedicated capability.
 - [x] Admin `PageBlock` and block GraphQL fields are removed.
 - [x] Pages storefront renders current Page Builder documents and static landing
   artifacts.
-- [ ] Pages artifact persistence does not yet store and verify the Page Builder
-  runtime materialization identity/snapshots.
+- [x] Pages persists and verifies Page Builder runtime materialization identity and
+  snapshots. New immutable records carry complete evidence, legacy all-`NULL`
+  records retain Fly integrity verification, and partial evidence fails closed.
 - [ ] Backend/storefront block persistence and fallback code still require full
   deletion.
 - [ ] Typed metadata-only patch and document-only save commands are not separated.
@@ -293,7 +294,9 @@ editor authority.
 - [x] Immutable Pages landing artifact entities/services.
 - [x] Canonical runtime materialization envelope, snapshot evidence and
   preview/static exact-document parity checks.
-- [ ] Persist and verify runtime materialization identity/snapshots in Pages.
+- [x] Pages persists runtime materialization identity/snapshots with
+  materialization-aware uniqueness and verifies complete evidence on binding and
+  storefront reads; legacy all-`NULL` evidence remains backward-compatible.
 - [ ] Atomic idempotent publish transaction and outbox/cache invalidation.
 - [ ] Rollback to previous immutable artifacts.
 - [ ] Repair/rebuild and integrity-audit commands.
@@ -310,7 +313,7 @@ editor authority.
 
 - [x] Current published document/static artifact rendering foundations.
 - [ ] Render only selected immutable published artifacts.
-- [ ] Verify Page Builder runtime materialization evidence before storefront read.
+- [x] Verify Page Builder runtime materialization evidence before storefront read.
 - [ ] Authenticated real-DOM editing and draft/published switching.
 - [ ] Prove anonymous bundles exclude authoring code.
 - [ ] Visual/accessibility parity across admin preview and published output.
@@ -335,8 +338,8 @@ editor authority.
 1. Delete backend/storefront `PageBlock`/`page_blocks`/`BlockService` production
    code and rewrite fresh-install migrations.
 2. Separate Pages metadata patch from Fly document save.
-3. Persist and verify `PageBuilderMaterializedStaticLandingArtifact` evidence in
-   Pages staging/published artifact records without persisting raw runtime context.
+3. Add an explicit reviewed publish-runtime/scenario selection using the canonical
+   Page Builder DTO without persisting raw runtime context.
 4. Complete atomic artifact publication, rollback, correlation and repair.
 5. Complete Page Builder property/asset/degraded-state controls.
 6. Implement authenticated real-DOM storefront editing and bundle exclusion.
