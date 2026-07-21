@@ -10,6 +10,7 @@ use rustok_api::{
 use uuid::Uuid;
 
 use crate::graphql::{GroupRoleGql, GroupsMutation};
+use crate::graphql_localization::GroupsLocalizationMutation;
 use crate::{
     ChangeGroupRoleRequest, GroupGovernanceCommandPort, GroupGovernanceResult,
     GroupGovernanceService, TransferGroupOwnershipRequest,
@@ -18,7 +19,11 @@ use crate::{
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(MergedObject, Default)]
-pub struct GroupsMutationRoot(GroupsMutation, GroupsGovernanceMutation);
+pub struct GroupsMutationRoot(
+    GroupsMutation,
+    GroupsGovernanceMutation,
+    GroupsLocalizationMutation,
+);
 
 #[derive(Default)]
 pub struct GroupsGovernanceMutation;
