@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{configured_tenant_slug, ApiError};
 
-const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
+const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: 1, perPage: 20) { total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontBlogResponse {
