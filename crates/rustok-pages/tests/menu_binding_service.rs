@@ -1,13 +1,15 @@
 use rustok_channel::{ChannelService, CreateChannelInput, migrations as channel_migrations};
 use rustok_core::MigrationSource;
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{
     CreateMenuInput, MenuItemInput, MenuItemTranslationInput, MenuLocation, MenuTranslationInput,
 };
 use rustok_pages::entities::menu_binding;
 use rustok_pages::services::{MenuBindingService, MenuService};
-use rustok_pages::PagesModule;
 use rustok_test_utils::{db::setup_test_db, helpers::admin_context, mock_transactional_event_bus};
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Statement,
+};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
