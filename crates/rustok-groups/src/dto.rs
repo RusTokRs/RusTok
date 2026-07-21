@@ -56,6 +56,30 @@ pub struct GroupFeatureBinding {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupTranslation {
+    pub id: Uuid,
+    pub group_id: Uuid,
+    pub locale: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupTranslationMutationResult {
+    pub translation: GroupTranslation,
+    pub group_version: u64,
+    pub created: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteGroupTranslationResult {
+    pub group_id: Uuid,
+    pub locale: String,
+    pub group_version: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupAccessDecision {
     pub group_id: Uuid,
     pub action: GroupAction,
@@ -120,6 +144,26 @@ pub struct SetGroupFeatureRequest {
     pub enabled: bool,
     pub sort_order: i32,
     pub configuration: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListGroupTranslationsRequest {
+    pub group_id: Uuid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpsertGroupTranslationRequest {
+    pub group_id: Uuid,
+    pub locale: String,
+    pub title: String,
+    pub summary: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeleteGroupTranslationRequest {
+    pub group_id: Uuid,
+    pub locale: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
