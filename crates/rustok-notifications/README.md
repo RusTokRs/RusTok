@@ -2,15 +2,17 @@
 
 ## Purpose
 
-`rustok-notifications` is the owner of notification inbox state, recipient
-preferences, bounded fan-out, grouping, digests, retention, and channel delivery
-attempts. This initial foundation publishes the owner boundary and source
-registry; persistence and delivery execution follow in later slices.
+`rustok-notifications` owns notification inbox state, recipient preferences,
+bounded fan-out, grouping, digests, retention, and channel delivery attempts.
+The current foundation publishes the owner boundary, optional runtime
+composition, and source-provider discovery. Persistence and durable delivery
+execution follow in later tasks.
 
 ## Responsibilities
 
 - consume committed semantic source events outside producer transactions;
-- discover producer-owned `NotificationSourceProvider` implementations;
+- materialize producer-owned `NotificationSourceProviderFactory` registrations
+  after the executable host has a neutral `HostRuntimeContext`;
 - resolve candidate recipients in bounded cursor pages;
 - apply notification preferences, privacy, visibility, blocks, and delivery
   policy before creating inbox or channel work;
@@ -34,14 +36,22 @@ registry; persistence and delivery execution follow in later slices.
 ## Interactions
 
 Producer modules depend on `rustok-notifications-api`, publish semantic outbox
-events, and register optional source providers through runtime extensions.
-`rustok-notifications` consumes those contracts after producer commits. Delivery
-providers and identity/contact providers remain separate owner capabilities.
+events, and register deferred source factories through runtime extensions. The
+server materializes those factories only after database-backed host services are
+available. `rustok-notifications` consumes the resulting providers after
+producer commits. Delivery and identity/contact providers remain separate owner
+capabilities.
 
-With no source providers registered, the module initializes an empty registry
-and remains healthy. With the module absent, producers still commit owner state
-and semantic outbox events. The bootstrap admin/storefront packages expose only
-foundation/unavailable states until inbox persistence exists.
+The first live producer is Forum for `forum.topic.created`. Forum reads its own
+event journal, resolves category watchers in bounded pages, and reauthorizes the
+current public target. Forum commands continue to succeed when the notifications
+owner is tenant-disabled or absent.
+
+The module is compiled into the selected distribution but is not in
+`settings.default_enabled`; tenant composition therefore remains notifications-
+off by default. With no source providers, the owner exposes a healthy empty
+registry. The bootstrap admin/storefront packages still expose only foundation
+or unavailable state until inbox persistence exists.
 
 ## Documentation
 

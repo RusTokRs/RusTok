@@ -101,8 +101,12 @@ mod tests {
     }
 
     #[test]
-    fn target_routes_are_root_relative_and_safe() {
+    fn target_routes_allow_only_bounded_internal_queries() {
         assert!(NotificationTargetRoute::new("/forum/topic/123").is_ok());
+        assert!(NotificationTargetRoute::new(
+            "/modules/forum?category=79ff97c4-1811-4e8e-bc12-3cfe49529ee4&topic=307c7a02-6298-4fea-a722-39c10202aef5"
+        )
+        .is_ok());
         for invalid in [
             "https://example.invalid/topic/123",
             "//example.invalid/topic/123",
@@ -110,7 +114,11 @@ mod tests {
             "/forum/topic/123\nset-cookie:x",
             "/../admin",
             "/forum/./topic",
-            "/forum/topic?preview=true",
+            "/forum?preview",
+            "/forum?preview=true&",
+            "/forum?redirect=https://example.invalid",
+            "/forum?topic=%2e%2e",
+            "/forum#topic",
             "/forum\\topic",
         ] {
             assert!(NotificationTargetRoute::new(invalid).is_err(), "accepted {invalid:?}");
@@ -119,7 +127,10 @@ mod tests {
 
     #[cfg(feature = "server")]
     mod server {
+        use std::sync::Arc;
+
         use async_trait::async_trait;
+        use rustok_api::HostRuntimeContext;
         use rustok_core::ModuleRuntimeExtensions;
 
         use super::*;
@@ -165,8 +176,23 @@ mod tests {
             }
         }
 
+        struct DummyFactory;
+
+        impl NotificationSourceProviderFactory for DummyFactory {
+            fn slug(&self) -> NotificationSourceSlug {
+                NotificationSourceSlug::new("forum").expect("valid dummy source")
+            }
+
+            fn build(
+                &self,
+                _host: &HostRuntimeContext,
+            ) -> NotificationProviderResult<Arc<dyn NotificationSourceProvider>> {
+                Ok(Arc::new(DummySource))
+            }
+        }
+
         #[test]
-        fn runtime_registry_is_unique_and_discoverable() {
+        fn runtime_registries_are_unique_and_discoverable() {
             let mut extensions = ModuleRuntimeExtensions::default();
             register_notification_source_provider(&mut extensions, DummySource)
                 .expect("first source registration");
@@ -177,6 +203,17 @@ mod tests {
             assert_eq!(registry.len(), 1);
             assert_eq!(registry.entries()[0].supported_types.len(), 1);
             assert!(registry.get_by_str("forum").is_some());
+
+            let mut factories = ModuleRuntimeExtensions::default();
+            register_notification_source_provider_factory(&mut factories, DummyFactory)
+                .expect("first factory registration");
+            assert!(
+                register_notification_source_provider_factory(&mut factories, DummyFactory)
+                    .is_err()
+            );
+            let registry = notification_source_factory_registry_from_extensions(&factories)
+                .expect("factory registry should be available");
+            assert_eq!(registry.len(), 1);
         }
     }
 }

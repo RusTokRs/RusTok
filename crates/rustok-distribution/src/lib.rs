@@ -147,6 +147,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_forum::ForumModule);
     }
+    #[cfg(feature = "mod-notifications")]
+    {
+        registry = registry.register(rustok_notifications::NotificationsModule);
+    }
     #[cfg(feature = "mod-comments")]
     {
         registry = registry.register(rustok_comments::CommentsModule);

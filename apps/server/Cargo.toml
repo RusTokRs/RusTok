@@ -30,6 +30,7 @@ default = [
     "mod-content",
     "mod-blog",
     "mod-forum",
+    "mod-notifications",
     "mod-comments",
     "mod-pages",
     "mod-page_builder",
@@ -70,6 +71,7 @@ mod-moderation = ["dep:rustok-moderation", "rustok-distribution/mod-moderation"]
 mod-content   = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content", "rustok-distribution/mod-content"]
 mod-blog      = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog", "rustok-distribution/mod-blog"]
 mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum", "rustok-distribution/mod-forum"]
+mod-notifications = ["dep:rustok-notifications", "rustok-distribution/mod-notifications"]
 mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
 mod-pages     = ["dep:rustok-pages", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
 mod-page_builder = ["dep:rustok-page-builder", "rustok-distribution/mod-page_builder"]
@@ -122,6 +124,7 @@ rustok-comments  = { workspace = true, optional = true }
 rustok-content   = { workspace = true, optional = true }
 rustok-content-orchestration = { workspace = true }
 rustok-forum     = { workspace = true, optional = true }
+rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy  = { workspace = true, optional = true }

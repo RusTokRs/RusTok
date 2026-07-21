@@ -24,6 +24,7 @@ uuid.workspace = true
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-notifications-api.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
 rustok-seo-targets.workspace = true
@@ -35,5 +36,6 @@ sea-orm-migration.workspace = true
 url = "2.5"
 
 [dev-dependencies]
+rustok-notifications.workspace = true
 tokio.workspace = true
 toml.workspace = true

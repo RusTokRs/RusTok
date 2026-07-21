@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_notifications_api::register_notification_source_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
@@ -13,6 +14,7 @@ pub mod error;
 pub mod graphql;
 pub mod locale;
 pub mod migrations;
+mod notification_source;
 pub mod openapi;
 mod seo_targets;
 pub mod services;
@@ -86,6 +88,11 @@ impl RusToKModule for ForumModule {
             .expect("forum category SEO target registration should remain unique");
         register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider)
             .expect("forum topic SEO target registration should remain unique");
+        register_notification_source_provider_factory(
+            extensions,
+            notification_source::ForumNotificationSourceProviderFactory,
+        )
+        .expect("forum notification source factory registration should remain unique");
     }
 }
 
