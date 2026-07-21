@@ -37,6 +37,7 @@ mod marketplace_paid_order_financial;
 mod marketplace_provider_paid_event_adapter;
 mod marketplace_provider_reversal_event_adapter;
 mod marketplace_reversal_event_inbox;
+mod marketplace_reversal_operator;
 mod order_change_orchestration;
 mod paid_order_create_label;
 mod paid_order_create_label_sweep;
@@ -169,6 +170,10 @@ pub use marketplace_reversal_event_inbox::{
     MarketplaceReversalEventInboxJournal, MarketplaceReversalEventInboxResult,
     MarketplaceReversalEventInboxService, MarketplaceReversalEventStatus,
     MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
+};
+pub use marketplace_reversal_operator::{
+    MarketplaceReversalEventOperatorView, MarketplaceReversalOperatorError,
+    MarketplaceReversalOperatorResult, MarketplaceReversalOperatorService,
 };
 pub use order_change_orchestration::OrderChangeOrchestrationService;
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;
