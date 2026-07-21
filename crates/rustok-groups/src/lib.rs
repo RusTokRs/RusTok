@@ -9,6 +9,8 @@ pub mod entities;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
+#[cfg(feature = "graphql")]
+pub mod graphql_governance;
 pub mod governance;
 pub mod governance_entities;
 pub mod migrations;
