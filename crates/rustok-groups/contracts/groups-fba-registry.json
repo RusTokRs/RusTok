@@ -46,6 +46,19 @@
         "authorization": "active_owner_admin_moderator_or_platform_manage"
       },
       {
+        "name": "GroupApplicationReadPort",
+        "operations": [
+          "read_group_application_policy",
+          "list_group_membership_applications"
+        ],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "policy_read_authorization": "authenticated_non_banned_request_group_candidate",
+        "application_list_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "exact_locale_only": true
+      },
+      {
         "name": "GroupCommandPort",
         "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
         "policy": "write",
@@ -93,6 +106,27 @@
         "transactional_audit": true,
         "transactional_membership": true,
         "serialized_invitation_row": "exclusive_lock_where_supported"
+      },
+      {
+        "name": "GroupApplicationCommandPort",
+        "operations": [
+          "upsert_group_application_policy",
+          "submit_group_membership_application",
+          "review_group_membership_application"
+        ],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "policy_management_authorization": "active_owner_admin_or_platform_manage",
+        "submission_authorization": "authenticated_non_banned_request_group_candidate",
+        "review_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "exact_locale_only": true,
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "transactional_group_version": true,
+        "serialized_group_row": "exclusive_lock_where_supported",
+        "serialized_application_row": "exclusive_lock_where_supported"
       },
       {
         "name": "GroupGovernanceCommandPort",
@@ -158,6 +192,35 @@
     "shareable_notification_event": false,
     "notifications_consumer_required_for_create": false
   },
+  "membership_applications": {
+    "join_policy": "request_only",
+    "secret_group_submission": "not_found",
+    "policy_owner_tables": [
+      "group_membership_policies",
+      "group_membership_policy_translations"
+    ],
+    "application_owner_table": "group_membership_applications",
+    "policy_locale_selection": "exact_host_effective_locale",
+    "module_local_fallback": false,
+    "policy_revision": "monotonic_per_group",
+    "submission_snapshot": "immutable_json_snapshot_on_application",
+    "question_limit": 20,
+    "rule_limit": 20,
+    "required_answers": "owner_revalidated",
+    "required_rule_acknowledgements": "owner_revalidated",
+    "unique_current_application": "tenant_group_user",
+    "approve_membership_state": "active",
+    "reject_membership_state": "left",
+    "approve_member_count": "increment_same_transaction",
+    "review_note_max_chars": 2000,
+    "admin_review_ui": "implemented",
+    "storefront_application_ui": "implemented",
+    "storefront_query_key": "apply",
+    "storefront_query_clear": "on_success",
+    "transport_fallback": "never",
+    "bulk_review": "planned",
+    "policy_revision_history": "planned"
+  },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
     "examples": [
@@ -214,6 +277,23 @@
       "implicit_fallback": false
     },
     {
+      "name": "embedded_membership_applications_native",
+      "provider": "GroupApplicationService",
+      "status": "implemented",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "admin_core",
+        "admin_graphql_adapter",
+        "admin_leptos_ui",
+        "storefront_core",
+        "storefront_graphql_adapter",
+        "storefront_leptos_ui"
+      ],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
       "status": "implemented",
@@ -232,6 +312,7 @@
     "invitation_static_boundary": "scripts/verify/verify-groups-invitations-boundary.mjs",
     "invitation_acceptance_ui_static_boundary": "scripts/verify/verify-groups-invitation-acceptance-ui.mjs",
     "targeted_invitation_delivery_static_boundary": "scripts/verify/verify-groups-targeted-invitation-delivery.mjs",
+    "membership_application_static_boundary": "scripts/verify/verify-groups-membership-applications.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
@@ -241,6 +322,10 @@
     "invitation_concurrency": null,
     "invitation_delivery": null,
     "targeted_invitation_notification_runtime": null,
+    "membership_application_transport_parity": null,
+    "membership_application_concurrency": null,
+    "membership_application_policy_revision": null,
+    "membership_application_bulk_review": null,
     "governance_transport_parity": null,
     "governance_concurrency": null
   }
