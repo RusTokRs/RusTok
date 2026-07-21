@@ -21,7 +21,13 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing ${marker}`);
 }
 
+function rejectMarker(source, marker, label) {
+  if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
+}
+
 const servicePath = "crates/rustok-blog/src/services/category.rs";
+const rbacPath = "crates/rustok-blog/src/services/rbac.rs";
+const modulePath = "crates/rustok-blog/src/lib.rs";
 const controllerPath = "crates/rustok-blog/src/controllers/categories.rs";
 const routerPath = "crates/rustok-blog/src/controllers/mod.rs";
 const openapiPath = "crates/rustok-blog/src/openapi.rs";
@@ -32,6 +38,8 @@ const evidencePath =
 const planPath = "crates/rustok-blog/docs/implementation-plan.md";
 
 const service = read(servicePath);
+const rbac = read(rbacPath);
+const moduleSource = read(modulePath);
 const controller = read(controllerPath);
 const router = read(routerPath);
 const openapi = read(openapiPath);
@@ -60,9 +68,35 @@ for (const marker of [
   "Slug must contain at least one ASCII letter or digit",
   "let per_page = filter.per_page.clamp(1, 100)",
   ".paginate(&self.db, per_page)",
+  "CATEGORY_PERMISSION_RESOURCES",
+  "[Resource::BlogPosts, Resource::Categories]",
+  "enforce_any_scope",
 ]) {
   requireMarker(service, marker, servicePath);
 }
+rejectMarker(service, "enforce_owned_scope", servicePath);
+
+for (const marker of [
+  "pub(crate) fn enforce_any_scope",
+  "resources.iter()",
+  "security.get_scope(*resource, action)",
+  "any_scope_accepts_primary_or_legacy_resource",
+]) {
+  requireMarker(rbac, marker, rbacPath);
+}
+
+for (const marker of [
+  "Permission::BLOG_POSTS_CREATE",
+  "Permission::BLOG_POSTS_READ",
+  "Permission::BLOG_POSTS_UPDATE",
+  "Permission::BLOG_POSTS_DELETE",
+  "Permission::BLOG_POSTS_LIST",
+  "Permission::BLOG_POSTS_MANAGE",
+  "p.resource == Resource::Categories",
+]) {
+  requireMarker(moduleSource, marker, modulePath);
+}
+rejectMarker(moduleSource, "Permission::new(Resource::Categories", modulePath);
 
 for (const marker of [
   "CategoryService::new_with_event_bus",
@@ -70,7 +104,9 @@ for (const marker of [
   "filter.page = filter.page.max(1)",
   "filter.per_page = filter.per_page.clamp(1, 100)",
   "ensure_category_permission",
-  "Resource::Categories",
+  "Permission::new(Resource::BlogPosts, action)",
+  "Permission::new(Resource::Categories, action)",
+  "has_any_effective_permission(&auth.permissions, &[primary, legacy])",
   "fn map_category_error",
   "BlogError::CategoryNotFound",
   "HttpError::not_found",
@@ -128,6 +164,8 @@ if (evidence) {
   const contract = evidence.production_contract ?? {};
   for (const [key, expected] of Object.entries({
     owner_service: servicePath,
+    owner_rbac: rbacPath,
+    module_permissions: modulePath,
     http_adapter: controllerPath,
     router: routerPath,
     openapi: openapiPath,
@@ -142,6 +180,8 @@ if (evidence) {
     "category_delete_atomic_reindex",
     "tenant_scoped_parent",
     "non_empty_slug",
+    "bounded_permission_namespace",
+    "category_has_no_owner_scope",
     "bounded_category_list",
     "typed_http_errors",
     "search_payload_dependency",
@@ -157,6 +197,8 @@ for (const marker of [
   "category_slug",
   "non-empty ASCII slug",
   "service and HTTP pagination",
+  "blog_posts:*",
+  "Legacy `categories:*`",
 ]) {
   requireMarker(plan, marker, planPath);
 }
