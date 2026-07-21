@@ -31,6 +31,7 @@ mod journaled_create_label_provider;
 mod journaled_fulfillment_orchestration;
 mod journaled_payment_provider;
 mod marketplace_financial_operator;
+mod marketplace_financial_runtime;
 mod marketplace_paid_event_inbox;
 mod marketplace_paid_order_financial;
 mod marketplace_provider_paid_event_adapter;
@@ -144,6 +145,7 @@ pub use marketplace_financial_operator::{
     MarketplaceFinancialOperatorResult, MarketplaceFinancialOperatorService,
     MarketplacePaidEventOperatorView,
 };
+pub use marketplace_financial_runtime::MarketplaceFinancialRuntime;
 pub use marketplace_paid_event_inbox::{
     IngestMarketplacePaidEvent, MarketplacePaidEventInboxError,
     MarketplacePaidEventInboxJournal, MarketplacePaidEventInboxResult,
