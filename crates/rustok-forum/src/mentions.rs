@@ -8,7 +8,7 @@ use rustok_core::{
 use rustok_profiles::{
     ProfileError, ProfileRecord, ProfileService, ProfileStatus, ProfileVisibility, ProfilesReader,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -44,15 +44,13 @@ impl ForumMentionPolicy {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumMentionAudience {
     Moderators,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumMentionCandidates {
     handles: Vec<String>,
     audiences: Vec<ForumMentionAudience>,
@@ -62,18 +60,30 @@ impl ForumMentionCandidates {
     pub fn new(
         handles: impl IntoIterator<Item = String>,
         audiences: impl IntoIterator<Item = ForumMentionAudience>,
+        policy: ForumMentionPolicy,
     ) -> ForumResult<Self> {
-        let handles = handles
-            .into_iter()
-            .filter_map(|handle| ProfileService::normalize_handle(&handle).ok())
-            .collect::<BTreeSet<_>>();
+        let policy = policy.validated()?;
+        let mut normalized_handles = BTreeSet::new();
+        for handle in handles {
+            let normalized = ProfileService::normalize_handle(&handle).map_err(|_| {
+                ForumError::Validation("Forum mention contains an invalid profile handle".to_string())
+            })?;
+            normalized_handles.insert(normalized);
+        }
         let audiences = audiences.into_iter().collect::<BTreeSet<_>>();
+        if audiences.contains(&ForumMentionAudience::Moderators)
+            && !policy.allow_moderator_audience
+        {
+            return Err(ForumError::forbidden(
+                "Mentioning the forum moderator audience requires moderation permission",
+            ));
+        }
         ensure_mention_limit(
-            handles.len() + audiences.len(),
-            FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+            normalized_handles.len() + audiences.len(),
+            policy.max_targets,
         )?;
         Ok(Self {
-            handles: handles.into_iter().collect(),
+            handles: normalized_handles.into_iter().collect(),
             audiences: audiences.into_iter().collect(),
         })
     }
@@ -91,18 +101,14 @@ impl ForumMentionCandidates {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumContentTargetKind {
     Topic,
     Reply,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumContentTarget {
     pub kind: ForumContentTargetKind,
     pub id: Uuid,
@@ -124,7 +130,7 @@ impl ForumContentTarget {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumRevisionIdentity {
     pub tenant_id: Uuid,
     pub target: ForumContentTarget,
@@ -162,25 +168,35 @@ impl ForumRevisionIdentity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumQuoteReference {
     pub target: ForumContentTarget,
     pub revision_id: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ResolvedForumMention {
     pub user_id: Uuid,
     pub handle: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumResolvedMentions {
-    pub users: Vec<ResolvedForumMention>,
-    pub audiences: Vec<ForumMentionAudience>,
+    users: Vec<ResolvedForumMention>,
+    audiences: Vec<ForumMentionAudience>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl ForumResolvedMentions {
+    pub fn users(&self) -> &[ResolvedForumMention] {
+        &self.users
+    }
+
+    pub fn audiences(&self) -> &[ForumMentionAudience] {
+        &self.audiences
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumMentionRevisionProjection {
     source: ForumRevisionIdentity,
     users: Vec<ResolvedForumMention>,
@@ -188,13 +204,9 @@ pub struct ForumMentionRevisionProjection {
 }
 
 impl ForumMentionRevisionProjection {
-    pub fn new(
-        source: ForumRevisionIdentity,
-        users: impl IntoIterator<Item = ResolvedForumMention>,
-        audiences: impl IntoIterator<Item = ForumMentionAudience>,
-    ) -> ForumResult<Self> {
-        let users = users.into_iter().collect::<BTreeSet<_>>();
-        let audiences = audiences.into_iter().collect::<BTreeSet<_>>();
+    pub fn new(source: ForumRevisionIdentity, resolved: ForumResolvedMentions) -> ForumResult<Self> {
+        let users = resolved.users.into_iter().collect::<BTreeSet<_>>();
+        let audiences = resolved.audiences.into_iter().collect::<BTreeSet<_>>();
         ensure_mention_limit(
             users.len() + audiences.len(),
             FORUM_MAX_MENTION_TARGETS_PER_REVISION,
@@ -219,8 +231,9 @@ impl ForumMentionRevisionProjection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ForumMentionDiff {
+    source: ForumRevisionIdentity,
     pub added_users: Vec<ResolvedForumMention>,
     pub removed_users: Vec<ResolvedForumMention>,
     pub unchanged_users: Vec<ResolvedForumMention>,
@@ -229,14 +242,14 @@ pub struct ForumMentionDiff {
     pub unchanged_audiences: Vec<ForumMentionAudience>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum ForumMentionEventTarget {
     User(Uuid),
     Audience(ForumMentionAudience),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ForumMentionEventCandidate {
     pub source: ForumRevisionIdentity,
     pub target: ForumMentionEventTarget,
@@ -276,8 +289,7 @@ pub fn extract_forum_mention_candidates(
         }
     }
 
-    ensure_mention_limit(handles.len() + audiences.len(), policy.max_targets)?;
-    ForumMentionCandidates::new(handles, audiences)
+    ForumMentionCandidates::new(handles, audiences, policy)
 }
 
 pub async fn resolve_forum_mentions(
@@ -388,6 +400,7 @@ pub fn diff_forum_mentions(
         .collect::<BTreeSet<_>>();
 
     Ok(ForumMentionDiff {
+        source: current.source().clone(),
         added_users: current_users
             .iter()
             .filter(|(user_id, _)| !previous_users.contains_key(user_id))
@@ -419,19 +432,20 @@ pub fn diff_forum_mentions(
 }
 
 impl ForumMentionDiff {
-    pub fn event_candidates(
-        &self,
-        source: &ForumRevisionIdentity,
-    ) -> Vec<ForumMentionEventCandidate> {
+    pub fn source(&self) -> &ForumRevisionIdentity {
+        &self.source
+    }
+
+    pub fn event_candidates(&self) -> Vec<ForumMentionEventCandidate> {
         self.added_users
             .iter()
             .map(|mention| ForumMentionEventCandidate {
-                source: source.clone(),
+                source: self.source.clone(),
                 target: ForumMentionEventTarget::User(mention.user_id),
             })
             .chain(self.added_audiences.iter().map(|audience| {
                 ForumMentionEventCandidate {
-                    source: source.clone(),
+                    source: self.source.clone(),
                     target: ForumMentionEventTarget::Audience(*audience),
                 }
             }))
