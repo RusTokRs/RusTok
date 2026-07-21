@@ -37,14 +37,6 @@ pub struct PageBody {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct PageBlock {
-    pub id: String,
-    #[serde(rename = "blockType")]
-    pub block_type: String,
-    pub position: i32,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageDetail {
     pub id: String,
     pub status: String,
@@ -53,8 +45,6 @@ pub struct PageDetail {
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
     pub body: Option<PageBody>,
-    #[serde(default)]
-    pub blocks: Vec<PageBlock>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

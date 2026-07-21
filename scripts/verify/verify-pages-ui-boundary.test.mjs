@@ -15,185 +15,77 @@ function writeFixtureFile(root, relativePath, content) {
   writeFileSync(filePath, content);
 }
 
-function libSource(entrypoint, { publicTransportPassthrough = false } = {}) {
+function adminLibSource({ publicTransportPassthrough = false } = {}) {
   return `
-mod core;
-mod i18n;
-mod model;
-mod transport;
-mod ui;
-
-pub use ui::leptos::${entrypoint};
-${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
-`;
-}
-
-function adminLibSource({ publicTransportPassthrough = false, legacyApi = false } = {}) {
-  return `
-${legacyApi ? "mod api;" : ""}
 mod builder;
 mod composition;
 mod core;
-mod i18n;
-mod model;
 mod transport;
-mod ui;
-
 pub use composition::PagesAdmin;
 ${publicTransportPassthrough ? "pub async fn fetch_pages() {}" : ""}
 `;
 }
 
-function adminBuilderSource() {
+function adminBuilderSource({ legacyFrameSync = false } = {}) {
   return `
 pub struct PagesBuilderFacade;
-
 impl PageBuilderAdminFacade for PagesBuilderFacade {}
-
-fn builder_contract() {
+fn current() {
   let _ = PageBuilderCapabilityRequest::Publish;
   let _ = transport::fetch_page;
   let _ = transport::update_page;
   let _ = REVISION_CONFLICT;
   let _ = canonicalize_builder_project;
-  let _ = copy_frame_component;
-  let _ = synchronize_frame_component;
-  let _ = controller_from_project;
+  let _ = "pages[].component";
+  ${legacyFrameSync ? "let _ = copy_frame_component; let _ = synchronize_frame_component;" : ""}
 }
 `;
 }
 
-function adminCompositionSource() {
+function adminCompositionSource({ parallelUi = false, rawAdapter = false } = {}) {
   return `
 pub fn PagesAdmin() {
-  let _ = use_route_query_value;
+  let _ = CreatePageCard;
+  let _ = PagesNavigator;
+  let _ = PageWorkspace;
+  let _ = transport::fetch_pages;
   let _ = transport::fetch_page;
-  let _ = PagesBuilderFacade;
+  let _ = transport::create_page;
+  let _ = transport::publish_page;
+  let _ = transport::unpublish_page;
+  let _ = transport::delete_page;
   let _ = PageBuilderAdminHostContext;
-  let _ = provide_context;
   let _ = PageBuilderAdmin;
-  let _ = crate::ui::leptos::PagesAdmin;
+  ${parallelUi ? "let _ = crate::ui::leptos::PagesAdmin; let _ = \"<textarea\";" : ""}
+  ${rawAdapter ? "let _ = graphql_adapter::fetch_pages;" : ""}
 }
 `;
 }
 
-function adminCoreSource({ includeLeptos = false, omitDraftHelper = false } = {}) {
+function adminCoreSource({ legacyBlock = false } = {}) {
   return `
-${includeLeptos ? "use leptos::prelude::*;" : ""}
 pub struct PageDraftFormInput;
-${omitDraftHelper ? "" : "pub fn build_create_page_draft() {}"}
-pub fn missing_required_page_field() {}
-pub fn write_path_issue_with_context() {}
-pub fn builder_host_fallback_surface() {}
-pub fn publish_state_view() {}
-pub fn channel_count_label() {}
-pub fn legacy_block_snapshot_label() {}
-pub fn is_save_action_busy() {}
-pub fn is_publish_action_disabled() {}
-pub fn admin_page_list_item_view() {}
-pub fn admin_page_row_action_state() {}
-pub fn admin_page_row_action_labels() {}
-pub fn issue_banner_view() {}
-pub fn compatibility_warning_view() {}
-pub fn page_properties_view() {}
+pub fn build_create_page_draft() {}
+pub fn edit_form_seed_from_page() {}
+pub fn default_project_data() {}
+pub fn parse_project_data() {}
+pub fn status_badge_class() {}
+${legacyBlock ? "pub struct PageBlock; pub fn legacy_block_snapshot_label() {}" : ""}
 `;
 }
 
-function storefrontCoreSource({ includeLeptos = false } = {}) {
+function adminModelSource({ legacyBlock = false } = {}) {
   return `
-${includeLeptos ? "use leptos::prelude::*;" : ""}
-pub fn selected_page_title() {}
-pub fn selected_page_slug() {}
-pub fn summarize_page_content() {}
-pub fn storefront_builder_fallback_read_contract() {}
-pub fn count_label() {}
-pub fn page_link_href() {}
-pub fn page_status_label() {}
-pub fn selected_page_empty_state() {}
-pub fn load_error_message() {}
-pub fn storefront_page_list_item_view() {}
-pub fn published_pages_empty_state() {}
-pub fn published_pages_header_view() {}
-`;
-}
-
-function adminUiSource({ rawApiCall = false, rawServiceCall = false, omitDraftHelper = false, bypassIssueBannerViewClass = false } = {}) {
-  return `
-use crate::core;
-use crate::transport;
-
-pub fn PagesAdmin() {
-    let _pages = transport::fetch_pages;
-    ${omitDraftHelper ? "" : "let _draft = core::build_create_page_draft;"}
-    let _publish_state = core::publish_state_view;
-    let _legacy_block_label = core::legacy_block_snapshot_label;
-    let _save_busy = core::is_save_action_busy;
-    let _publish_disabled = core::is_publish_action_disabled;
-    let _item_view = core::admin_page_list_item_view;
-    let _action_state = core::admin_page_row_action_state;
-    let _action_labels = core::admin_page_row_action_labels;
-    let _issue_banner = core::issue_banner_view;
-    let _compatibility_warning = core::compatibility_warning_view;
-    let _page_properties = core::page_properties_view;
-    let _issue_banner_class = banner.class_name;
-    ${bypassIssueBannerViewClass ? "let _bypass = core::issue_banner_class;" : ""}
-    ${rawApiCall ? "let _raw = api::fetch_pages;" : ""}
-    ${rawServiceCall ? "let _service = PageService::new;" : ""}
-}
-`;
-}
-
-function storefrontUiSource({ rawApiCall = false } = {}) {
-  return `
-use crate::core;
-use crate::transport;
-
-pub fn PagesView() {
-    let _pages = transport::fetch_pages;
-    let _title = core::selected_page_title;
-    let _empty = core::selected_page_empty_state;
-    let _load_error = core::load_error_message;
-    let _item_view = core::storefront_page_list_item_view;
-    let _published_empty = core::published_pages_empty_state;
-    let _published_header = core::published_pages_header_view;
-    ${rawApiCall ? "let _raw = api::fetch_storefront_pages;" : ""}
-}
+pub struct PageList;
+pub struct PageDetail;
+pub struct PageMutationResult;
+${legacyBlock ? "pub struct PageBlock; pub blocks: Vec<PageBlock>," : ""}
 `;
 }
 
 function adminTransportSource({ includeServerEndpoint = false } = {}) {
   return `
 mod graphql_adapter;
-
-pub async fn fetch_pages() { graphql_adapter::fetch_pages().await; }
-pub async fn fetch_page() { graphql_adapter::fetch_page().await; }
-pub async fn create_page() { graphql_adapter::create_page().await; }
-pub async fn update_page() { graphql_adapter::update_page().await; }
-pub async fn publish_page() { graphql_adapter::publish_page().await; }
-pub async fn unpublish_page() { graphql_adapter::unpublish_page().await; }
-pub async fn delete_page() { graphql_adapter::delete_page().await; }
-${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
-`;
-}
-
-function storefrontTransportSource({ includeServerEndpoint = false } = {}) {
-  return `
-mod graphql_adapter;
-mod native_server_adapter;
-
-pub async fn fetch_pages() {
-    match native_server_adapter::fetch_storefront_pages_server().await {
-        Ok(data) => Ok(data),
-        Err(_) => graphql_adapter::fetch_storefront_pages().await,
-    }
-}
-${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
-`;
-}
-
-function adminApiSource() {
-  return `
-use rustok_graphql::GraphqlRequest;
 pub async fn fetch_pages() {}
 pub async fn fetch_page() {}
 pub async fn create_page() {}
@@ -201,39 +93,86 @@ pub async fn update_page() {}
 pub async fn publish_page() {}
 pub async fn unpublish_page() {}
 pub async fn delete_page() {}
+${includeServerEndpoint ? '#[server(prefix = "/api/fn", endpoint = "bad")] async fn bad() {}' : ""}
 `;
 }
 
-function storefrontApiSource() {
+function adminGraphqlSource({ blocks = false } = {}) {
   return `
 use rustok_graphql::GraphqlRequest;
-#[server(prefix = "/api/fn", endpoint = "pages/storefront-data")]
-pub async fn fetch_storefront_pages_server() {}
-pub async fn fetch_storefront_pages() {}
+const PAGE_QUERY: &str = "page { id body { contentJson } ${blocks ? "blocks { id }" : ""} }";
+${blocks ? "struct CreatePageInput { blocks: Option<Vec<()>> }" : ""}
+`;
+}
+
+function storefrontLibSource() {
+  return `
+mod core;
+mod transport;
+mod ui;
+pub use ui::leptos::PagesView;
+`;
+}
+
+function storefrontCoreSource() {
+  return `
+pub fn selected_page_title() {}
+pub fn selected_page_empty_state() {}
+pub fn load_error_message() {}
+`;
+}
+
+function storefrontUiSource() {
+  return `
+use crate::core;
+use crate::transport;
+pub fn PagesView() {
+  let _ = core::selected_page_title;
+  let _ = core::selected_page_empty_state;
+  let _ = core::load_error_message;
+  let _ = transport::fetch_pages;
+}
+`;
+}
+
+function storefrontTransportSource() {
+  return `
+mod graphql_adapter;
+mod native_server_adapter;
+pub async fn fetch_pages() {}
 `;
 }
 
 function withFixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-pages-boundary-"));
+  writeFixtureFile(root, "crates/rustok-pages/admin/Cargo.toml", `
+[dependencies]
+rustok-page-builder = { path = "../../rustok-page-builder" }
+rustok-page-builder-admin = { path = "../../rustok-page-builder/admin" }
+`);
   writeFixtureFile(root, "crates/rustok-pages/admin/src/lib.rs", adminLibSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/builder.rs", adminBuilderSource());
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/composition.rs", adminCompositionSource());
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/builder.rs", adminBuilderSource(options));
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/composition.rs", adminCompositionSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/core.rs", adminCoreSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/ui/leptos.rs", adminUiSource(options));
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/model.rs", adminModelSource(options));
   writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/mod.rs", adminTransportSource(options));
-  if (options.legacyApi) writeFixtureFile(root, "crates/rustok-pages/admin/src/api.rs", adminApiSource());
-  writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/graphql_adapter.rs", adminApiSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/lib.rs", libSource("PagesView", options));
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/core.rs", storefrontCoreSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/ui/leptos.rs", storefrontUiSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/mod.rs", storefrontTransportSource(options));
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs", adminApiSource());
-  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs", `${storefrontApiSource()}\nexpect_context::<HostRuntimeContext>()\nshared_get::<TransactionalEventBus>()\nruntime_ctx.db_clone()`);
-  if (options.storefrontLegacyApi) writeFixtureFile(root, "crates/rustok-pages/storefront/src/api.rs", storefrontApiSource());
-  writeFixtureFile(root, "crates/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs");
-  writeFixtureFile(root, "docs/modules/registry.md", "verify-pages-ui-boundary.mjs");
-  writeFixtureFile(root, "crates/rustok-pages/admin/Cargo.toml", "[package]\nname = \"rustok-pages-admin-fixture\"\nversion = \"0.1.0\"\n\n[dependencies]\nrustok-page-builder = { path = \"../../rustok-page-builder\" }\nrustok-page-builder-admin = { path = \"../../rustok-page-builder/admin\" }\n");
-  writeFixtureFile(root, "crates/rustok-pages/storefront/Cargo.toml", "[package]\nname = \"rustok-pages-storefront-fixture\"\nversion = \"0.1.0\"\n");
+  writeFixtureFile(root, "crates/rustok-pages/admin/src/transport/graphql_adapter.rs", adminGraphqlSource(options));
+
+  if (options.legacyAdminUi) {
+    writeFixtureFile(root, "crates/rustok-pages/admin/src/ui/leptos.rs", "pub fn PagesAdmin() {}");
+  }
+
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/lib.rs", storefrontLibSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/core.rs", storefrontCoreSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/ui/leptos.rs", storefrontUiSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/mod.rs", storefrontTransportSource());
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;");
+  writeFixtureFile(root, "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs", `
+#[server(prefix = "/api/fn", endpoint = "pages")]
+async fn pages() { expect_context::<HostRuntimeContext>(); }
+`);
+  writeFixtureFile(root, "crates/rustok-pages/docs/implementation-plan.md", "verify-pages-ui-boundary.mjs\nno legacy\n");
+  writeFixtureFile(root, "docs/modules/registry.md", "verify-pages-ui-boundary.mjs\n");
   return root;
 }
 
@@ -245,7 +184,18 @@ function runVerifier(root) {
   });
 }
 
-test("pages UI boundary verifier passes canonical fixture", () => {
+function expectFailure(options, pattern) {
+  const root = withFixture(options);
+  try {
+    const result = runVerifier(root);
+    assert.notEqual(result.status, 0, "Expected Pages boundary fixture to fail");
+    assert.match(result.stderr, pattern);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("pages UI boundary verifier passes builder-only fixture", () => {
   const root = withFixture();
   try {
     const result = runVerifier(root);
@@ -256,90 +206,34 @@ test("pages UI boundary verifier passes canonical fixture", () => {
   }
 });
 
-test("pages UI boundary verifier rejects Leptos-specific core", () => {
-  const root = withFixture({ includeLeptos: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected Leptos core fixture to fail");
-    assert.match(result.stderr, /core must stay Leptos\/server-function free/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects deleted admin UI returning", () => {
+  expectFailure({ legacyAdminUi: true }, /obsolete Pages surface must stay deleted/);
 });
 
-test("pages UI boundary verifier rejects raw admin api calls", () => {
-  const root = withFixture({ rawApiCall: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected raw UI api fixture to fail");
-    assert.match(result.stderr, /UI adapter must not call raw transport or services/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects frame compatibility helpers", () => {
+  expectFailure({ legacyFrameSync: true }, /legacy frame compatibility marker/);
 });
 
-test("pages UI boundary verifier rejects public crate-root transport passthroughs", () => {
-  const root = withFixture({ publicTransportPassthrough: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected public transport passthrough fixture to fail");
-    assert.match(result.stderr, /crate root must not expose public transport passthroughs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects legacy block model", () => {
+  expectFailure({ legacyBlock: true }, /obsolete (UI helper|block model marker)/);
 });
 
-test("pages UI boundary verifier rejects legacy admin api module", () => {
-  const root = withFixture({ legacyApi: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected legacy admin api fixture to fail");
-    assert.match(result.stderr, /admin legacy api\.rs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects parallel JSON UI composition", () => {
+  expectFailure({ parallelUi: true }, /obsolete parallel UI marker/);
 });
 
-test("pages UI boundary verifier rejects legacy storefront api module", () => {
-  const root = withFixture({ storefrontLegacyApi: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected legacy storefront api fixture to fail");
-    assert.match(result.stderr, /storefront legacy api\.rs/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects raw adapter selection", () => {
+  expectFailure({ rawAdapter: true }, /must not select a raw transport adapter/);
 });
 
-test("pages UI boundary verifier rejects missing admin draft helper", () => {
-  const root = withFixture({ omitDraftHelper: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected missing draft helper fixture to fail");
-    assert.match(result.stderr, /build_create_page_draft/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects blocks in current GraphQL transport", () => {
+  expectFailure({ blocks: true }, /obsolete block transport marker/);
 });
 
-test("pages UI boundary verifier rejects issue banner class bypass in admin UI", () => {
-  const root = withFixture({ bypassIssueBannerViewClass: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected issue banner class bypass fixture to fail");
-    assert.match(result.stderr, /must not bypass issue_banner_view/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects public crate-root transport passthroughs", () => {
+  expectFailure({ publicTransportPassthrough: true }, /crate root must not expose transport passthroughs/);
 });
 
-test("pages UI boundary verifier rejects server functions in transport facades", () => {
-  const root = withFixture({ includeServerEndpoint: true });
-  try {
-    const result = runVerifier(root);
-    assert.notEqual(result.status, 0, "Expected transport server-function fixture to fail");
-    assert.match(result.stderr, /server\/native endpoints must not live in the transport facade/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+test("rejects server functions in transport facade", () => {
+  expectFailure({ includeServerEndpoint: true }, /server functions must not live in transport facade/);
 });

@@ -10,7 +10,7 @@ use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
     PageBuilderAdminFacadeFuture,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +49,7 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
         Box::pin(async move {
             let PageBuilderCapabilityRequest::Publish(input) = request else {
                 return Err(PageBuilderAdminFacadeError::new(
-                    "Pages consumer facade currently accepts only Page Builder publish requests",
+                    "Pages consumer facade accepts only Page Builder publish requests",
                 ));
             };
             if input.page_id != snapshot.page_id {
@@ -151,6 +151,11 @@ pub fn page_revision(page: &PageDetail) -> String {
         .unwrap_or_else(|| format!("page:{}:initial", page.id))
 }
 
+/// Normalizes only the current Fly document contract.
+///
+/// `pages[].component` is the sole component-tree authority. Historical frame
+/// mirrors are not imported, synchronized or generated. Unknown project and
+/// page fields remain untouched for forward-compatible codecs/providers.
 pub fn canonicalize_builder_project(
     mut project: Value,
 ) -> Result<Value, PageBuilderAdminFacadeError> {
@@ -173,14 +178,9 @@ pub fn canonicalize_builder_project(
                 "Page Builder page at index {page_index} must be an object"
             ))
         })?;
-        let component = page
-            .get("component")
-            .filter(|component| !component.is_null())
-            .cloned()
-            .or_else(|| copy_frame_component(page))
-            .unwrap_or_else(default_root_component);
-        page.insert("component".to_string(), component.clone());
-        synchronize_frame_component(page, component)?;
+        if page.get("component").is_none_or(Value::is_null) {
+            page.insert("component".to_string(), default_root_component());
+        }
         if page.get("id").is_none_or(Value::is_null) {
             page.insert(
                 "id".to_string(),
@@ -192,47 +192,10 @@ pub fn canonicalize_builder_project(
     Ok(project)
 }
 
-fn copy_frame_component(page: &Map<String, Value>) -> Option<Value> {
-    page.get("frames")
-        .and_then(Value::as_array)
-        .and_then(|frames| frames.first())
-        .and_then(Value::as_object)
-        .and_then(|frame| frame.get("component"))
-        .cloned()
-}
-
-fn synchronize_frame_component(
-    page: &mut Map<String, Value>,
-    component: Value,
-) -> Result<(), PageBuilderAdminFacadeError> {
-    let frames = page
-        .entry("frames".to_string())
-        .or_insert_with(|| Value::Array(Vec::new()))
-        .as_array_mut()
-        .ok_or_else(|| {
-            PageBuilderAdminFacadeError::new("Page Builder page `frames` must be an array")
-        })?;
-    if frames.is_empty() {
-        frames.push(Value::Object(Map::new()));
-    }
-    let frame = frames
-        .first_mut()
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| {
-            PageBuilderAdminFacadeError::new(
-                "Page Builder first frame must be an object for compatibility",
-            )
-        })?;
-    frame.insert("component".to_string(), component);
-    Ok(())
-}
-
 fn default_page() -> Value {
-    let component = default_root_component();
     json!({
         "id": "main",
-        "component": component.clone(),
-        "frames": [{ "component": component }]
+        "component": default_root_component()
     })
 }
 
@@ -249,30 +212,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn canonicalization_copies_frame_component_to_page_root() {
+    fn canonical_component_is_the_only_tree_authority() {
         let project = canonicalize_builder_project(json!({
-            "pages": [{
-                "id": "home",
-                "frames": [{
-                    "id": "frame-home",
-                    "component": {
-                        "id": "root",
-                        "type": "wrapper",
-                        "components": []
-                    }
-                }]
-            }]
-        }))
-        .expect("canonical project");
-
-        assert_eq!(project["pages"][0]["component"]["id"], "root");
-        assert_eq!(project["pages"][0]["frames"][0]["component"]["id"], "root");
-        assert_eq!(project["pages"][0]["frames"][0]["id"], "frame-home");
-    }
-
-    #[test]
-    fn canonical_component_refreshes_frame_snapshot() {
-        let project = canonicalize_builder_project(json!({
+            "providerMetadata": { "version": 3 },
             "pages": [{
                 "id": "home",
                 "component": {
@@ -280,29 +222,42 @@ mod tests {
                     "type": "wrapper",
                     "components": [{ "id": "current", "type": "section" }]
                 },
+                "pluginData": { "future": true }
+            }]
+        }))
+        .expect("canonical project");
+
+        assert_eq!(project["pages"][0]["component"]["components"][0]["id"], "current");
+        assert_eq!(project["pages"][0]["pluginData"]["future"], true);
+        assert_eq!(project["providerMetadata"]["version"], 3);
+        assert!(project["pages"][0].get("frames").is_none());
+    }
+
+    #[test]
+    fn historical_frame_tree_is_not_imported() {
+        let project = canonicalize_builder_project(json!({
+            "pages": [{
+                "id": "home",
                 "frames": [{
-                    "id": "frame-home",
                     "component": {
-                        "id": "root",
+                        "id": "old-root",
                         "type": "wrapper",
-                        "components": [{ "id": "stale", "type": "section" }]
+                        "components": [{ "id": "old", "type": "section" }]
                     }
                 }]
             }]
         }))
         .expect("canonical project");
 
-        assert_eq!(
-            project["pages"][0]["frames"][0]["component"]["components"][0]["id"],
-            "current"
-        );
+        assert_eq!(project["pages"][0]["component"]["id"], "root");
+        assert_eq!(project["pages"][0]["frames"][0]["component"]["id"], "old-root");
     }
 
     #[test]
-    fn empty_project_receives_editable_root_and_frame_snapshot() {
+    fn empty_project_receives_an_editable_current_root() {
         let project = canonicalize_builder_project(json!({})).expect("canonical project");
         assert_eq!(project["pages"][0]["component"]["id"], "root");
-        assert_eq!(project["pages"][0]["frames"][0]["component"]["id"], "root");
+        assert!(project["pages"][0].get("frames").is_none());
     }
 
     #[test]
@@ -314,7 +269,6 @@ mod tests {
             channel_slugs: Vec::new(),
             translation: None,
             body: None,
-            blocks: Vec::new(),
         };
         assert_eq!(page_revision(&page), "page:home:initial");
         page.body = Some(crate::model::PageBody {

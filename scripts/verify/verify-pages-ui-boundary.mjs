@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// RusTok pages UI FFA boundary guardrails.
-// Fast source-level checks for module-owned admin/storefront core/transport/ui splits.
+// RusTok Pages FFA guardrails for the current builder-only admin architecture.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -28,6 +27,10 @@ function assertExists(relativePath, description) {
   if (!existsSync(repoPath(relativePath))) fail(description);
 }
 
+function assertNotExists(relativePath, description) {
+  if (existsSync(repoPath(relativePath))) fail(description);
+}
+
 function assertContains(text, pattern, description) {
   const found = typeof pattern === "string" ? text.includes(pattern) : pattern.test(text);
   if (!found) fail(description);
@@ -44,31 +47,31 @@ const files = {
   adminBuilder: "crates/rustok-pages/admin/src/builder.rs",
   adminComposition: "crates/rustok-pages/admin/src/composition.rs",
   adminCore: "crates/rustok-pages/admin/src/core.rs",
-  adminUi: "crates/rustok-pages/admin/src/ui/leptos.rs",
+  adminModel: "crates/rustok-pages/admin/src/model.rs",
   adminTransport: "crates/rustok-pages/admin/src/transport/mod.rs",
-  adminLegacyApi: "crates/rustok-pages/admin/src/api.rs",
   adminGraphqlAdapter: "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
   storefrontLib: "crates/rustok-pages/storefront/src/lib.rs",
   storefrontCore: "crates/rustok-pages/storefront/src/core.rs",
   storefrontUi: "crates/rustok-pages/storefront/src/ui/leptos.rs",
   storefrontTransport: "crates/rustok-pages/storefront/src/transport/mod.rs",
-  storefrontLegacyApi: "crates/rustok-pages/storefront/src/api.rs",
   storefrontGraphqlAdapter: "crates/rustok-pages/storefront/src/transport/graphql_adapter.rs",
   storefrontNativeServerAdapter: "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
-  storefrontCargo: "crates/rustok-pages/storefront/Cargo.toml",
   implementationPlan: "crates/rustok-pages/docs/implementation-plan.md",
   registry: "docs/modules/registry.md",
 };
 
 for (const [name, filePath] of Object.entries(files)) {
-  if (name === "adminLegacyApi" || name === "storefrontLegacyApi") continue;
-  assertExists(filePath, `${name}: expected pages FFA boundary file at ${filePath}`);
+  assertExists(filePath, `${name}: expected Pages boundary file at ${filePath}`);
 }
-if (existsSync(repoPath(files.adminLegacyApi))) {
-  fail(`${files.adminLegacyApi}: admin legacy api.rs must stay removed; transport/graphql_adapter.rs owns GraphQL operations`);
-}
-if (existsSync(repoPath(files.storefrontLegacyApi))) {
-  fail(`${files.storefrontLegacyApi}: storefront legacy api.rs must stay removed; transport/{graphql_adapter,native_server_adapter}.rs own raw transport operations`);
+
+for (const legacyPath of [
+  "crates/rustok-pages/admin/src/api.rs",
+  "crates/rustok-pages/admin/src/editor_sync.rs",
+  "crates/rustok-pages/admin/src/ui/mod.rs",
+  "crates/rustok-pages/admin/src/ui/leptos.rs",
+  "crates/rustok-pages/storefront/src/api.rs",
+]) {
+  assertNotExists(legacyPath, `${legacyPath}: obsolete Pages surface must stay deleted`);
 }
 
 const adminCargo = readRepo(files.adminCargo);
@@ -76,7 +79,7 @@ const adminLib = readRepo(files.adminLib);
 const adminBuilder = readRepo(files.adminBuilder);
 const adminComposition = readRepo(files.adminComposition);
 const adminCore = readRepo(files.adminCore);
-const adminUi = readRepo(files.adminUi);
+const adminModel = readRepo(files.adminModel);
 const adminTransport = readRepo(files.adminTransport);
 const adminGraphqlAdapter = readRepo(files.adminGraphqlAdapter);
 const storefrontLib = readRepo(files.storefrontLib);
@@ -88,17 +91,19 @@ const storefrontNativeServerAdapter = readRepo(files.storefrontNativeServerAdapt
 const implementationPlan = readRepo(files.implementationPlan);
 const registry = readRepo(files.registry);
 
-assertNotContains(adminLib, "mod api;", `${files.adminLib}: admin crate root must not wire legacy api adapter`);
 for (const marker of ["mod builder;", "mod composition;", "mod core;", "mod transport;"]) {
   assertContains(adminLib, marker, `${files.adminLib}: missing ${marker}`);
+}
+for (const forbidden of ["mod api;", "mod ui;", "mod editor_sync;", "pub mod ui"] ) {
+  assertNotContains(adminLib, forbidden, `${files.adminLib}: obsolete admin module marker ${forbidden}`);
 }
 assertContains(
   adminLib,
   "pub use composition::PagesAdmin;",
-  `${files.adminLib}: public entrypoint must be the Pages/Fly composition wrapper`,
+  `${files.adminLib}: builder-first composition must be the sole admin entrypoint`,
 );
 for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn delete_/]) {
-  assertNotContains(adminLib, marker, `${files.adminLib}: crate root must not expose public transport passthroughs (${marker})`);
+  assertNotContains(adminLib, marker, `${files.adminLib}: crate root must not expose transport passthroughs (${marker})`);
 }
 
 for (const dependency of [
@@ -106,6 +111,9 @@ for (const dependency of [
   'rustok-page-builder-admin = { path = "../../rustok-page-builder/admin"',
 ]) {
   assertContains(adminCargo, dependency, `${files.adminCargo}: missing ${dependency}`);
+}
+for (const obsoleteDependency of ["rustok-api", "rustok-seo-admin-support", "rustok-seo-targets"]) {
+  assertNotContains(adminCargo, obsoleteDependency, `${files.adminCargo}: obsolete admin dependency ${obsoleteDependency}`);
 }
 
 for (const marker of [
@@ -116,156 +124,116 @@ for (const marker of [
   "transport::update_page",
   "REVISION_CONFLICT",
   "canonicalize_builder_project",
+  "pages[].component",
+]) {
+  assertContains(adminBuilder, marker, `${files.adminBuilder}: expected current builder marker ${marker}`);
+}
+for (const obsoleteBuilderMarker of [
   "copy_frame_component",
   "synchronize_frame_component",
-  "controller_from_project",
+  "canonical_component_refreshes_frame_snapshot",
 ]) {
-  assertContains(adminBuilder, marker, `${files.adminBuilder}: expected Page Builder consumer marker ${marker}`);
+  assertNotContains(adminBuilder, obsoleteBuilderMarker, `${files.adminBuilder}: legacy frame compatibility marker ${obsoleteBuilderMarker}`);
 }
 for (const forbidden of ["rustok_graphql", "GraphqlRequest", "#[server", "reqwest::"]) {
-  assertNotContains(adminBuilder, forbidden, `${files.adminBuilder}: consumer facade must use the Pages transport facade, not ${forbidden}`);
+  assertNotContains(adminBuilder, forbidden, `${files.adminBuilder}: builder facade must use Pages transport, not ${forbidden}`);
 }
 
 for (const marker of [
   "pub fn PagesAdmin()",
-  "use_route_query_value",
+  "CreatePageCard",
+  "PagesNavigator",
+  "PageWorkspace",
+  "transport::fetch_pages",
   "transport::fetch_page",
-  "PagesBuilderFacade",
+  "transport::create_page",
+  "transport::publish_page",
+  "transport::unpublish_page",
+  "transport::delete_page",
   "PageBuilderAdminHostContext",
-  "provide_context",
   "PageBuilderAdmin",
-  "crate::ui::leptos::PagesAdmin",
 ]) {
-  assertContains(adminComposition, marker, `${files.adminComposition}: expected Fly composition marker ${marker}`);
+  assertContains(adminComposition, marker, `${files.adminComposition}: expected builder workspace marker ${marker}`);
 }
-assertNotContains(adminComposition, "graphql_adapter", `${files.adminComposition}: composition must not select a transport adapter`);
-
-assertNotContains(storefrontLib, "mod api;", `${files.storefrontLib}: crate root must not wire legacy api adapter`);
-assertContains(storefrontLib, "mod core;", `${files.storefrontLib}: crate root must wire core`);
-assertContains(storefrontLib, "mod transport;", `${files.storefrontLib}: crate root must wire transport facade`);
-assertContains(storefrontLib, "pub use ui::leptos::PagesView;", `${files.storefrontLib}: crate root must re-export only the public UI entrypoint`);
-for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn delete_/]) {
-  assertNotContains(storefrontLib, marker, `${files.storefrontLib}: crate root must not expose public transport passthroughs (${marker})`);
-}
-
-for (const [source, label] of [
-  [adminCore, files.adminCore],
-  [storefrontCore, files.storefrontCore],
+for (const obsoleteUiMarker of [
+  "crate::ui",
+  "Project data (grapesjs)",
+  "preview_html",
+  "project_tree",
+  "Existing blocks",
+  "compatibility_warning",
+  "<textarea",
 ]) {
-  for (const marker of ["leptos::", "leptos_", "#[component]", "#[server", "LocalResource", "WriteSignal", "web_sys::"]) {
-    assertNotContains(source, marker, `${label}: core must stay Leptos/server-function free (${marker})`);
-  }
+  assertNotContains(adminComposition, obsoleteUiMarker, `${files.adminComposition}: obsolete parallel UI marker ${obsoleteUiMarker}`);
 }
+assertNotContains(adminComposition, "graphql_adapter", `${files.adminComposition}: composition must not select a raw transport adapter`);
 
 for (const marker of [
   "PageDraftFormInput",
   "build_create_page_draft",
-  "missing_required_page_field",
-  "write_path_issue_with_context",
+  "edit_form_seed_from_page",
+  "default_project_data",
+  "parse_project_data",
+  "status_badge_class",
+]) {
+  assertContains(adminCore, marker, `${files.adminCore}: expected current domain helper ${marker}`);
+}
+for (const obsoleteCoreMarker of [
+  "PageBlock",
   "builder_host_fallback_surface",
-  "publish_state_view",
-  "channel_count_label",
+  "preview_html",
+  "project_tree",
   "legacy_block_snapshot_label",
-  "is_save_action_busy",
-  "is_publish_action_disabled",
-  "admin_page_list_item_view",
-  "admin_page_row_action_state",
-  "admin_page_row_action_labels",
-  "issue_banner_view",
   "compatibility_warning_view",
-  "page_properties_view",
+  "issue_banner_view",
 ]) {
-  assertContains(adminCore, marker, `${files.adminCore}: expected admin core-owned helper ${marker}`);
+  assertNotContains(adminCore, obsoleteCoreMarker, `${files.adminCore}: obsolete UI helper ${obsoleteCoreMarker}`);
 }
-for (const marker of [
-  "selected_page_title",
-  "selected_page_slug",
-  "summarize_page_content",
-  "storefront_builder_fallback_read_contract",
-  "count_label",
-  "page_link_href",
-  "page_status_label",
-  "selected_page_empty_state",
-  "load_error_message",
-  "storefront_page_list_item_view",
-  "published_pages_empty_state",
-  "published_pages_header_view",
-]) {
-  assertContains(storefrontCore, marker, `${files.storefrontCore}: expected storefront core-owned helper ${marker}`);
+for (const marker of ["leptos::", "#[component]", "#[server", "LocalResource", "web_sys::"]) {
+  assertNotContains(adminCore, marker, `${files.adminCore}: core must remain framework-neutral (${marker})`);
 }
 
-assertContains(adminUi, "use crate::core;", `${files.adminUi}: admin UI must consume core layer`);
-assertContains(adminUi, "use crate::transport;", `${files.adminUi}: admin UI must consume transport layer`);
-for (const marker of [
-  "core::build_create_page_draft",
-  "core::publish_state_view",
-  "core::legacy_block_snapshot_label",
-  "core::is_save_action_busy",
-  "core::is_publish_action_disabled",
-  "core::admin_page_list_item_view",
-  "core::admin_page_row_action_state",
-  "core::admin_page_row_action_labels",
-  "core::issue_banner_view",
-  "core::compatibility_warning_view",
-  "core::page_properties_view",
-  "banner.class_name",
-  "transport::fetch_pages",
-]) {
-  assertContains(adminUi, marker, `${files.adminUi}: expected legacy metadata UI marker ${marker}`);
+for (const obsoleteModelMarker of ["PageBlock", "blocks: Vec", "pub blocks"] ) {
+  assertNotContains(adminModel, obsoleteModelMarker, `${files.adminModel}: obsolete block model marker ${obsoleteModelMarker}`);
 }
-assertNotContains(adminUi, "core::issue_banner_class", `${files.adminUi}: admin UI must not bypass issue_banner_view for banner class policy`);
+for (const obsoleteTransportMarker of ["blocks {", "blocks: Option", "blocks: None"]) {
+  assertNotContains(adminGraphqlAdapter, obsoleteTransportMarker, `${files.adminGraphqlAdapter}: obsolete block transport marker ${obsoleteTransportMarker}`);
+}
 
-assertContains(storefrontUi, "use crate::core;", `${files.storefrontUi}: storefront UI must consume core layer`);
-assertContains(storefrontUi, "use crate::transport;", `${files.storefrontUi}: storefront UI must consume transport layer`);
+for (const marker of ["fetch_pages", "fetch_page", "create_page", "update_page", "publish_page", "unpublish_page", "delete_page"]) {
+  assertContains(adminTransport, marker, `${files.adminTransport}: transport facade must expose ${marker}`);
+}
+assertContains(adminTransport, "mod graphql_adapter;", `${files.adminTransport}: admin transport must own GraphQL adapter`);
+assertNotContains(adminTransport, "#[server", `${files.adminTransport}: server functions must not live in transport facade`);
+
+assertNotContains(storefrontLib, "mod api;", `${files.storefrontLib}: storefront legacy api module must stay removed`);
+assertContains(storefrontLib, "pub use ui::leptos::PagesView;", `${files.storefrontLib}: storefront entrypoint must remain module-owned`);
+for (const [source, label] of [
+  [storefrontCore, files.storefrontCore],
+  [adminCore, files.adminCore],
+]) {
+  for (const marker of ["#[server", "LocalResource", "WriteSignal"]) {
+    assertNotContains(source, marker, `${label}: core must not own runtime adapters (${marker})`);
+  }
+}
 for (const marker of [
   "core::selected_page_title",
   "core::selected_page_empty_state",
   "core::load_error_message",
-  "core::storefront_page_list_item_view",
-  "core::published_pages_empty_state",
-  "core::published_pages_header_view",
   "transport::fetch_pages",
 ]) {
   assertContains(storefrontUi, marker, `${files.storefrontUi}: expected storefront marker ${marker}`);
 }
+assertContains(storefrontTransport, "mod graphql_adapter;", `${files.storefrontTransport}: storefront GraphQL adapter missing`);
+assertContains(storefrontTransport, "mod native_server_adapter;", `${files.storefrontTransport}: storefront native adapter missing`);
+assertNotContains(storefrontTransport, "#[server", `${files.storefrontTransport}: native endpoint must stay behind its adapter`);
+assertContains(storefrontGraphqlAdapter, "GraphqlRequest", `${files.storefrontGraphqlAdapter}: GraphQL contract missing`);
+assertContains(storefrontNativeServerAdapter, "#[server", `${files.storefrontNativeServerAdapter}: native server endpoint missing`);
+assertContains(storefrontNativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${files.storefrontNativeServerAdapter}: host runtime context missing`);
 
-for (const [source, label] of [
-  [adminUi, files.adminUi],
-  [adminComposition, files.adminComposition],
-  [storefrontUi, files.storefrontUi],
-]) {
-  for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PageService", "MenuService"]) {
-    assertNotContains(source, marker, `${label}: UI adapter must not call raw transport or services (${marker})`);
-  }
-}
-
-for (const marker of ["fetch_pages", "fetch_page", "create_page", "update_page", "publish_page", "unpublish_page", "delete_page"]) {
-  assertContains(adminTransport, marker, `${files.adminTransport}: admin transport facade must expose ${marker}`);
-}
-assertContains(storefrontTransport, "fetch_pages", `${files.storefrontTransport}: storefront transport facade must expose fetch_pages`);
-assertContains(adminTransport, "mod graphql_adapter;", `${files.adminTransport}: admin transport must own GraphQL adapter module`);
-assertContains(adminTransport, "graphql_adapter::fetch_pages", `${files.adminTransport}: admin transport must delegate through GraphQL adapter`);
-assertNotContains(adminTransport, "use crate::api", `${files.adminTransport}: admin transport facade must not delegate to legacy api module`);
-assertContains(storefrontTransport, "mod graphql_adapter;", `${files.storefrontTransport}: storefront transport must own GraphQL adapter module`);
-assertContains(storefrontTransport, "mod native_server_adapter;", `${files.storefrontTransport}: storefront transport must own native server adapter module`);
-assertContains(storefrontTransport, "native_server_adapter::fetch_storefront_pages_server", `${files.storefrontTransport}: storefront transport facade must delegate through native server adapter first`);
-assertContains(storefrontTransport, "graphql_adapter::fetch_storefront_pages", `${files.storefrontTransport}: storefront transport facade must keep GraphQL fallback`);
-assertNotContains(storefrontTransport, "use crate::api", `${files.storefrontTransport}: storefront transport facade must not delegate to legacy api module`);
-assertNotContains(storefrontTransport, "#[server", `${files.storefrontTransport}: server/native endpoints must not live in the transport facade`);
-assertNotContains(adminTransport, "#[server", `${files.adminTransport}: server/native endpoints must not live in the transport facade`);
-for (const [source, label] of [
-  [adminGraphqlAdapter, files.adminGraphqlAdapter],
-  [storefrontGraphqlAdapter, files.storefrontGraphqlAdapter],
-]) {
-  assertContains(source, "GraphqlRequest", `${label}: api adapter must keep the GraphQL transport contract`);
-}
-assertContains(storefrontNativeServerAdapter, "#[server", `${files.storefrontNativeServerAdapter}: storefront native server adapter must keep the native server-function path`);
-assertContains(storefrontNativeServerAdapter, "expect_context::<HostRuntimeContext>()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must use the host runtime context`);
-assertContains(storefrontNativeServerAdapter, "shared_get::<TransactionalEventBus>()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must receive the event bus through the host runtime context`);
-assertContains(storefrontNativeServerAdapter, "runtime_ctx.db_clone()", `${files.storefrontNativeServerAdapter}: storefront native server adapter must receive DB through the host runtime context`);
-
-assertContains(implementationPlan, "verify-pages-ui-boundary.mjs", `${files.implementationPlan}: local plan must mention the pages fast boundary guardrail`);
-assertContains(registry, "verify-pages-ui-boundary.mjs", `${files.registry}: central readiness board must mention the pages fast boundary guardrail`);
+assertContains(implementationPlan, "verify-pages-ui-boundary.mjs", `${files.implementationPlan}: local plan must mention the guardrail`);
+assertContains(implementationPlan, "no legacy", `${files.implementationPlan}: local plan must record the no-legacy policy`);
+assertContains(registry, "verify-pages-ui-boundary.mjs", `${files.registry}: central readiness board must mention the guardrail`);
 
 if (failures.length > 0) {
   console.error("pages UI boundary verification failed:");

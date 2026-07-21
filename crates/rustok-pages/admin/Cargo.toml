@@ -22,13 +22,10 @@ rustok-ui-core.workspace = true
 leptos.workspace = true
 leptos-auth.workspace = true
 rustok-graphql.workspace = true
-rustok-api = { workspace = true, default-features = false }
 rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }
 rustok-page-builder-admin = { path = "../../rustok-page-builder/admin", default-features = false }
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true
-rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
-rustok-seo-admin-support.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
