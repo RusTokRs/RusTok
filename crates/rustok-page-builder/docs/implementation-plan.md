@@ -18,11 +18,17 @@ The service:
 8. returns the canonical typed capability response.
 
 `PreviewPageBuilderInput` owns `PageBuilderPreviewRuntime`, which carries a JSON object context and
-an optional normalized scenario id. `FlyAdapterBackedPageBuilderService` passes the complete input to
-`PageBuilderPreviewRenderingPort` only after Fly structural validation and runtime-contract
+an optional normalized scenario id. Runtime context is limited to 256 KiB and scenario identity to
+128 bytes before the renderer port is called. `FlyAdapterBackedPageBuilderService` passes the complete
+input to `PageBuilderPreviewRenderingPort` only after Fly structural validation and runtime-contract
 validation. `PreviewPageBuilderResult` returns the selected scenario identity, allowing hosts to
 reject responses that no longer match their current context or scenario. Consumer renderers do not
 add provider-local runtime arguments.
+
+The capability contract is `1.1`; `consumer_min_version` remains `1.0`. The compatibility guard
+accepts consumers in the inclusive range `1.0..=1.1`. Pages adopts `1.1` because it supplies the new
+runtime context/scenario fields. Deferred Forum remains on compatible `1.0`; it is not required to
+claim runtime-context support before it consumes that surface.
 
 The persistence port returns `PageBuilderProjectSaveResult` directly. The result carries the actual
 persisted page id, revision id and publication state. `FlyAdapterBackedPageBuilderService` converts
@@ -62,11 +68,12 @@ is not a second server renderer pipeline.
 
 The current machine-readable service contract is
 `contracts/page-builder-service-boundary.json`. It records the preview runtime DTO, contextual port,
-Fly validation/port order, the single Pages capability endpoint and SSR dispatch helper, composition
-and authorization order, tenant/page-context guards, client write-path prohibition and admin preview
-request identity. It also forbids reference services, the removed legacy preview port, migration
-decorators, manual JSON preview rendering, capability-specific SSR wrappers and the removed Pages
-mutex save-result side channel.
+resource limits, Fly validation/port order, the single Pages capability endpoint and SSR dispatch
+helper, composition and authorization order, tenant/page-context guards, client write-path
+prohibition and admin preview request identity. `contracts/page-builder-fba-registry.json` records
+contract 1.1, the 1.0 minimum and the runtime-context registry fields. The guards also forbid
+reference services, the removed legacy preview port, migration decorators, manual JSON preview
+rendering, capability-specific SSR wrappers and the removed Pages mutex save-result side channel.
 
 ## FFA/FBA status
 
@@ -86,12 +93,14 @@ mutex save-result side channel.
   - `src/preview_port.rs`;
   - `src/adapters/fly_service.rs`;
   - `src/composition.rs`;
+  - `src/health.rs`;
   - `crates/rustok-pages/admin/src/builder.rs`;
   - `crates/rustok-pages/admin/Cargo.toml`;
   - `admin/src/editor/runtime.rs`;
   - `admin/src/editor/server_preview.rs`;
   - `admin/src/editor/modular_canvas.rs`;
   - `tests/preview_runtime_context.rs`;
+  - `scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
   - `scripts/verify/verify-page-builder-adapter-seams.mjs`;
   - `scripts/verify/verify-page-builder-endpoint-adapters.mjs`;
   - `scripts/verify/verify-page-builder-transport-bridge.mjs`;
@@ -115,6 +124,7 @@ mutex save-result side channel.
 
 ## Verification
 
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
 - `cargo test -p rustok-page-builder --all-targets --all-features`;
