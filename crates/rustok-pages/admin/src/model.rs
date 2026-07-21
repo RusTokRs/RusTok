@@ -64,6 +64,8 @@ pub struct PageDetail {
     pub template: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    #[serde(rename = "availableLocales", default)]
+    pub available_locales: Vec<String>,
     #[serde(rename = "channelSlugs", default)]
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
@@ -90,6 +92,26 @@ impl From<&PageDetail> for PageMutationResult {
             translation: page.translation.clone(),
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PublishPageReceipt {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "pageId")]
+    pub page_id: String,
+    pub version: i32,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: String,
+    #[serde(rename = "reviewHash")]
+    pub review_hash: String,
+    #[serde(rename = "sanitizedSetHash")]
+    pub sanitized_set_hash: String,
+    #[serde(rename = "artifactSetHash")]
+    pub artifact_set_hash: String,
+    pub replayed: bool,
+    #[serde(rename = "publishedAt")]
+    pub published_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
