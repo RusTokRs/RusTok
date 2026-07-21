@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-21
+Last reviewed: 2026-07-22
 
 ## Source of truth
 
@@ -253,11 +253,16 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   cumulative capacity.
 - [x] Add payment-owner processed-event observers, durable reversal inbox/recovery, safe
   operator transports, and a durable historical adaptation-failure journal.
+- [x] Sanitize live and backfill reversal-adapter failures before payment journals and
+  operator reports; retain full owner/storage diagnostics only in structured tracing.
 - [x] Add append-only pending release, reserve hold/release, payout settlement/reversal
   ledger transfers with exact reference-entry lineage and cumulative capacity.
 - [x] Keep PSP split-payment optional; internal allocation/ledger correctness does not
   depend on a PSP.
 - [x] Add payout scheduling owner and exclusive ledger-entry assignment.
+- [ ] Reserve payout-selected seller balance through ledger `reserve_hold` before payout
+  scheduling; persist the transfer identity and release the exact capacity on failed or
+  cancelled scheduling.
 - [ ] Add payout provider accounts, operation journal, verified webhook inbox, transfer
   execution, lookup recovery, and deterministic multi-order settlement orchestration.
 - [ ] Add accounting/vendor surfaces and retained contention/reconciliation evidence.
@@ -280,6 +285,8 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   only after payment owner application, and mark provider events processed only after observers
   succeed.
 - [x] Keep marketplace reversal consumers free of raw provider payloads and signatures.
+- [x] Keep payment webhook journals free of raw marketplace adapter, DB, payment-owner,
+  and inbox error messages.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
@@ -308,6 +315,8 @@ Source inspection is not execution evidence.
 ### Compile/tests
 
 - [ ] `cargo check -p rustok-commerce --lib`
+- [ ] `cargo test -p rustok-commerce marketplace_reversal_recovery_source`
+- [ ] `cargo test -p rustok-commerce safe_messages_do_not_include_internal_error_details`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
@@ -355,17 +364,22 @@ Source inspection is not execution evidence.
     adaptation-failure recovery, seller balance projections, and bucket-transfer primitives.
 13. [x] Extend seller event production to create/profile/onboarding-submit/member commands.
 14. [x] Add seller event history to native and GraphQL FFA transports.
-15. [ ] Mount authenticated request-scoped listing native composition.
-16. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-17. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
+15. [x] Sanitize live and backfill marketplace reversal observer failures before persistence.
+16. [ ] Detect marketplace-associated refund/chargeback events with missing typed facts and
+    route them to durable operator review.
+17. [ ] Reserve payout capacity through ledger `reserve_hold`, add durable release compensation,
+    and retain PostgreSQL contention evidence.
+18. [ ] Mount authenticated request-scoped listing native composition.
+19. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+20. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
     reconciliation surfaces.
-18. [ ] Run static verifiers and fix remaining source drift.
-19. [ ] Compile remaining commerce/payment/Marketplace packages and server features.
-20. [ ] Apply clean/upgraded migrations and targeted regression tests.
-21. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
+21. [ ] Run static verifiers and fix remaining source drift.
+22. [ ] Compile remaining commerce/payment/Marketplace packages and server features.
+23. [ ] Apply clean/upgraded migrations and targeted regression tests.
+24. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
     transfer, and mounted transport scenarios.
-22. [ ] Execute production-like payment and payout provider evidence.
-23. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+25. [ ] Execute production-like payment and payout provider evidence.
+26. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Change rules
 
