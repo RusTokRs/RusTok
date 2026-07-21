@@ -8,5 +8,6 @@ pub use menu::{
 };
 pub use page::{
     CreatePageInput, ListPagesFilter, PageBodyInput, PageBodyResponse, PageListItem, PageResponse,
-    PageTranslationInput, PageTranslationResponse, PatchPageMetadataInput, SavePageDocumentInput,
+    PageTranslationInput, PageTranslationResponse, PatchPageMetadataInput, PublishPageInput,
+    PublishPageResult, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
 };
