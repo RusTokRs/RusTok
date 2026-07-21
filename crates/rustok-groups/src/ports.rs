@@ -105,6 +105,7 @@ impl Default for GroupCapabilityDescriptor {
                 "GroupMembershipReadPort",
                 "GroupAccessReadPort",
                 "GroupCommandPort",
+                "GroupGovernanceCommandPort",
             ],
             private_content_fallback: "deny",
             implicit_transport_fallback: false,
