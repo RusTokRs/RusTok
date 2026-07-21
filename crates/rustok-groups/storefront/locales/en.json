@@ -7,8 +7,10 @@
   "groups.storefront.members": "members",
   "groups.storefront.invitation.title": "Accept a group invitation",
   "groups.storefront.invitation.body": "Sign in, review the invitation token, and join the group. The token is removed from the URL when the command is submitted.",
+  "groups.storefront.invitation.targetedBody": "This invitation was addressed to your account. Sign in and accept it without exposing an invitation token.",
   "groups.storefront.invitation.tokenLabel": "Invitation token",
   "groups.storefront.invitation.tokenHint": "Paste the opaque token from the invitation. It is never displayed after acceptance.",
+  "groups.storefront.invitation.targetedHint": "The invitation identifier came from an authorized notification route and can only be accepted by the addressed account.",
   "groups.storefront.invitation.accept": "Accept invitation",
   "groups.storefront.invitation.busy": "Accepting invitation...",
   "groups.storefront.invitation.error": "Invitation could not be accepted",
@@ -17,5 +19,6 @@
   "groups.storefront.invitation.role": "Role",
   "groups.storefront.invitation.status": "Membership status",
   "groups.storefront.invitation.missingToken": "Enter an invitation token.",
-  "groups.storefront.invitation.invalidToken": "The invitation token has an invalid length."
+  "groups.storefront.invitation.invalidToken": "The invitation token has an invalid length.",
+  "groups.storefront.invitation.invalidInvitationId": "The targeted invitation identifier is invalid."
 }
