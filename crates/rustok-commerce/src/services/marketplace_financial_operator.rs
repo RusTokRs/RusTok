@@ -108,6 +108,24 @@ impl MarketplaceFinancialOperatorService {
             .map(map_financial_operation)
     }
 
+    pub async fn get_paid_event(
+        &self,
+        tenant_id: Uuid,
+        inbox_id: Uuid,
+    ) -> MarketplaceFinancialOperatorResult<MarketplacePaidEventOperatorView> {
+        validate_identity(tenant_id, inbox_id)?;
+        marketplace_paid_event_inbox::Entity::find_by_id(inbox_id)
+            .filter(marketplace_paid_event_inbox::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .map(map_paid_event)
+            .ok_or_else(|| {
+                MarketplaceFinancialOperatorError::Conflict(format!(
+                    "paid-event inbox row {inbox_id} was not found"
+                ))
+            })
+    }
+
     pub async fn list_financial_operator_review(
         &self,
         tenant_id: Uuid,
