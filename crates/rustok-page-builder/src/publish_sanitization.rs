@@ -39,7 +39,7 @@ impl PageBuilderSanitizedStaticLandingProject {
                 "sanitized static landing hash must be SHA-256".to_string(),
             ));
         }
-        let expected = stable_hash(&self.sanitized_project)?;
+        let expected = sanitization_hash(&self.sanitized_project)?;
         if expected != self.sanitized_hash {
             return Err(PageBuilderStaticLandingSanitizationError::Integrity(
                 "sanitized static landing hash mismatch".to_string(),
@@ -73,11 +73,20 @@ pub fn sanitize_static_landing_project(
     })?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
-        sanitized_hash: stable_hash(&sanitized_project)?,
+        sanitized_hash: sanitization_hash(&sanitized_project)?,
         sanitized_project,
     };
     result.verify_integrity()?;
     Ok(result)
+}
+
+fn sanitization_hash(
+    sanitized_project: &Value,
+) -> Result<String, PageBuilderStaticLandingSanitizationError> {
+    stable_hash(&(
+        PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
+        sanitized_project,
+    ))
 }
 
 fn stable_hash(
@@ -101,7 +110,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn sanitization_assigns_stable_ids_and_hashes_the_exact_project() {
+    fn sanitization_assigns_stable_ids_and_hashes_the_versioned_project() {
         let project = json!({
             "pages": [{
                 "id": "home",
@@ -126,6 +135,10 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(first.sanitized_hash.len(), 64);
+        assert_eq!(
+            first.sanitized_hash,
+            sanitization_hash(&first.sanitized_project).expect("versioned sanitization hash")
+        );
         assert!(first.sanitized_project["pages"][0]["component"]["components"][0]["id"]
             .as_str()
             .is_some_and(|id| id.starts_with("fly-static-")));
