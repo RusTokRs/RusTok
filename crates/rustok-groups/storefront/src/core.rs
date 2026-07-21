@@ -1,10 +1,13 @@
 use uuid::Uuid;
 
-use crate::model::{AcceptGroupInvitationCommand, GroupsStorefrontFilters};
+use crate::model::{
+    AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand, GroupsStorefrontFilters,
+};
 
 pub const DEFAULT_GROUPS_PAGE: u64 = 1;
 pub const DEFAULT_GROUPS_PER_PAGE: u64 = 24;
 pub const GROUP_INVITATION_TOKEN_QUERY_KEY: &str = "invite";
+pub const GROUP_TARGETED_INVITATION_QUERY_KEY: &str = "invitation";
 pub const MIN_GROUP_INVITATION_TOKEN_LENGTH: usize = 32;
 pub const MAX_GROUP_INVITATION_TOKEN_LENGTH: usize = 160;
 
@@ -27,6 +30,7 @@ impl GroupsStorefrontTransportProfile {
 pub enum GroupsStorefrontInvitationInputError {
     MissingToken,
     InvalidTokenLength,
+    InvalidInvitationId,
 }
 
 pub fn selected_transport_profile(value: Option<&str>) -> GroupsStorefrontTransportProfile {
@@ -59,6 +63,20 @@ pub fn prepare_accept_group_invitation(
     Ok(AcceptGroupInvitationCommand {
         idempotency_key: format!("groups-storefront-accept-invitation-{}", Uuid::new_v4()),
         token: token.to_string(),
+    })
+}
+
+pub fn prepare_accept_targeted_group_invitation(
+    invitation_id: &str,
+) -> Result<AcceptTargetedGroupInvitationCommand, GroupsStorefrontInvitationInputError> {
+    let invitation_id = Uuid::parse_str(invitation_id.trim())
+        .map_err(|_| GroupsStorefrontInvitationInputError::InvalidInvitationId)?;
+    Ok(AcceptTargetedGroupInvitationCommand {
+        idempotency_key: format!(
+            "groups-storefront-accept-targeted-invitation-{}",
+            Uuid::new_v4()
+        ),
+        invitation_id: invitation_id.to_string(),
     })
 }
 
@@ -109,6 +127,25 @@ mod tests {
         assert_eq!(
             prepare_accept_group_invitation("too-short"),
             Err(GroupsStorefrontInvitationInputError::InvalidTokenLength)
+        );
+    }
+
+    #[test]
+    fn targeted_invitation_acceptance_requires_uuid() {
+        let command = prepare_accept_targeted_group_invitation(
+            "550e8400-e29b-41d4-a716-446655440000",
+        )
+        .expect("targeted invitation id must be accepted");
+        assert_eq!(
+            command.invitation_id,
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+        assert!(command
+            .idempotency_key
+            .starts_with("groups-storefront-accept-targeted-invitation-"));
+        assert_eq!(
+            prepare_accept_targeted_group_invitation("not-a-uuid"),
+            Err(GroupsStorefrontInvitationInputError::InvalidInvitationId)
         );
     }
 }
