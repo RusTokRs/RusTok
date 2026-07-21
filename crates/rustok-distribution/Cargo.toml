@@ -25,6 +25,7 @@ mod-marketplace_commission = ["dep:rustok-marketplace-commission", "mod-marketpl
 mod-marketplace_ledger = ["dep:rustok-marketplace-ledger", "mod-marketplace_commission"]
 mod-marketplace_payout = ["dep:rustok-marketplace-payout", "mod-marketplace_ledger"]
 mod-marketplace = ["dep:rustok-marketplace", "mod-marketplace_seller", "mod-marketplace_listing", "mod-marketplace_allocation", "mod-marketplace_commission", "mod-marketplace_ledger", "mod-marketplace_payout"]
+mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
@@ -64,11 +65,12 @@ rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }
 rustok-marketplace-seller = { workspace = true, optional = true }
 rustok-marketplace-listing = { workspace = true, optional = true }
-rustok-marketplace-allocation = { path = "../rustok-marketplace-allocation", optional = true }
-rustok-marketplace-commission = { path = "../rustok-marketplace-commission", optional = true }
-rustok-marketplace-ledger = { path = "../rustok-marketplace-ledger", optional = true }
-rustok-marketplace-payout = { path = "../rustok-marketplace-payout", optional = true }
+rustok-marketplace-allocation = { workspace = true, optional = true }
+rustok-marketplace-commission = { workspace = true, optional = true }
+rustok-marketplace-ledger = { workspace = true, optional = true }
+rustok-marketplace-payout = { workspace = true, optional = true }
 rustok-marketplace = { workspace = true, optional = true }
+rustok-moderation = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }
