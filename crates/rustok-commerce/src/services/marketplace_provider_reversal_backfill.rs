@@ -100,19 +100,42 @@ impl MarketplaceProviderReversalBackfillService {
                 }
                 Err(error) => {
                     let retryable = error.retryable();
+                    let safe_message = safe_reversal_adapter_message(&error);
                     self.failures
-                        .record_failure(&event, error.code(), error.to_string(), retryable)
+                        .record_failure(&event, error.code(), safe_message, retryable)
                         .await?;
                     report.failed += 1;
                     report.failures.push(MarketplaceProviderReversalAdaptFailure {
                         provider_event_id: event.id,
                         retryable,
-                        message: error.to_string(),
+                        message: safe_message.to_string(),
                     });
                 }
             }
         }
         Ok(report)
+    }
+}
+
+pub(super) fn safe_reversal_adapter_message(
+    error: &MarketplaceProviderReversalEventAdapterError,
+) -> &'static str {
+    match error {
+        MarketplaceProviderReversalEventAdapterError::Ineligible(_) => {
+            "Payment provider event is not eligible for marketplace reversal adaptation"
+        }
+        MarketplaceProviderReversalEventAdapterError::Validation(_) => {
+            "Normalized marketplace reversal facts require operator review"
+        }
+        MarketplaceProviderReversalEventAdapterError::Payment(_) => {
+            "Payment owner could not confirm marketplace reversal facts"
+        }
+        MarketplaceProviderReversalEventAdapterError::Inbox(_) => {
+            "Marketplace reversal inbox could not accept the normalized event"
+        }
+        MarketplaceProviderReversalEventAdapterError::Database(_) => {
+            "Marketplace reversal adaptation storage is unavailable"
+        }
     }
 }
 
