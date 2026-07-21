@@ -95,6 +95,8 @@ async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 CREATE OR REPLACE FUNCTION forum_validate_category_lifecycle_write()
 RETURNS trigger AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 2));
+
     IF NOT EXISTS (
         SELECT 1
         FROM forum_categories category
@@ -126,6 +128,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION forum_validate_category_lifecycle_delete()
 RETURNS trigger AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(OLD.tenant_id::text, 2));
+
     IF EXISTS (
         SELECT 1
         FROM forum_categories category
@@ -186,6 +190,8 @@ EXECUTE FUNCTION forum_validate_category_parent_lifecycle();
 CREATE OR REPLACE FUNCTION forum_validate_topic_category_policy()
 RETURNS trigger AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 2));
+
     IF EXISTS (
         SELECT 1
         FROM forum_category_lifecycle lifecycle
@@ -224,6 +230,8 @@ DROP FUNCTION IF EXISTS forum_validate_category_lifecycle_write();
 CREATE OR REPLACE FUNCTION forum_validate_topic_category_policy()
 RETURNS trigger AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text, 2));
+
     IF EXISTS (
         SELECT 1
         FROM forum_category_policies policy
