@@ -108,6 +108,15 @@
       "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'oauth_apps' AND column_name IN ('name', 'description')) AND EXISTS (SELECT 1 FROM oauth_app_translations WHERE tenant_id = '20000000-0000-0000-0000-000000000001'::uuid AND app_id = '20000000-0000-0000-0000-000000000002'::uuid AND locale = 'und' AND name = 'Legacy OAuth App' AND description = 'Legacy OAuth description')) AS passed"
     },
     {
+      "id": "order-change-source-provenance",
+      "migration": "m20260721_000117_add_order_change_source_locale",
+      "mode": "fixture",
+      "owner": "rustok-order",
+      "reason": "Existing immutable order change prose had no source locale and must receive explicit und attribution while the runtime transport propagation slice remains open",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('32000000-0000-0000-0000-000000000001', 'Order fixture tenant', 'order-fixture-tenant'); INSERT INTO orders (id, tenant_id, status, currency_code, total_amount, tax_total, tax_included, metadata, created_at, updated_at) VALUES ('32000000-0000-0000-0000-000000000002', '32000000-0000-0000-0000-000000000001', 'pending', 'USD', 0, 0, FALSE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT INTO order_changes (id, tenant_id, order_id, created_by, change_type, status, description, preview, metadata, created_at, updated_at) VALUES ('32000000-0000-0000-0000-000000000003', '32000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000002', '32000000-0000-0000-0000-000000000004', 'manual', 'pending', 'Legacy order change prose', '{}'::jsonb, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT EXISTS (SELECT 1 FROM order_changes WHERE id = '32000000-0000-0000-0000-000000000003'::uuid AND source_locale = 'und' AND description = 'Legacy order change prose') AS passed"
+    },
+    {
       "id": "customer-locale-width-32",
       "migration": "m20260721_000105_expand_customer_locale_contract",
       "mode": "none",
