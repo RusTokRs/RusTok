@@ -15,14 +15,21 @@ const required = [
   "crates/rustok-groups/src/governance.rs",
   "crates/rustok-groups/src/governance_entities.rs",
   "crates/rustok-groups/src/graphql_governance.rs",
+  "crates/rustok-groups/src/graphql_invitations.rs",
+  "crates/rustok-groups/src/invitation_entities.rs",
+  "crates/rustok-groups/src/invitations.rs",
   "crates/rustok-groups/src/migrations/m20260721_000002_create_group_governance.rs",
   "crates/rustok-groups/src/migrations/m20260721_000003_enforce_group_language_agnostic_storage.rs",
+  "crates/rustok-groups/src/migrations/m20260721_000004_create_group_invitations.rs",
   "crates/rustok-groups/admin/src/core.rs",
   "crates/rustok-groups/admin/src/model.rs",
   "crates/rustok-groups/admin/src/transport.rs",
   "crates/rustok-groups/admin/src/transport/native_server_adapter.rs",
+  "crates/rustok-groups/admin/src/transport/native_invitations_adapter.rs",
   "crates/rustok-groups/admin/src/transport/graphql_adapter.rs",
+  "crates/rustok-groups/admin/src/transport/graphql_invitations_adapter.rs",
   "crates/rustok-groups/admin/src/ui/leptos.rs",
+  "crates/rustok-groups/admin/src/ui/invitations.rs",
   "crates/rustok-groups/storefront/src/core.rs",
   "crates/rustok-groups/storefront/src/transport.rs",
   "crates/rustok-groups/storefront/src/transport/native_server_adapter.rs",
@@ -32,6 +39,7 @@ const required = [
   "crates/rustok-groups/admin/locales/ru.json",
   "crates/rustok-groups/storefront/locales/en.json",
   "crates/rustok-groups/storefront/locales/ru.json",
+  "scripts/verify/verify-groups-invitations-boundary.mjs",
 ];
 
 const failures = [];
@@ -54,6 +62,7 @@ for (const relative of [
 
 for (const relative of [
   "crates/rustok-groups/admin/src/ui/leptos.rs",
+  "crates/rustok-groups/admin/src/ui/invitations.rs",
   "crates/rustok-groups/storefront/src/ui/leptos.rs",
 ]) {
   if (fs.existsSync(path.join(root, relative))) {
@@ -61,7 +70,7 @@ for (const relative of [
     if (!content.includes("crate::transport")) {
       failures.push(`Leptos UI must consume the transport facade: ${relative}`);
     }
-    if (/graphql_adapter|native_server_adapter/.test(content)) {
+    if (/graphql_adapter|native_server_adapter|graphql_invitations_adapter|native_invitations_adapter/.test(content)) {
       failures.push(`Leptos UI must not consume raw adapters: ${relative}`);
     }
   }
@@ -202,8 +211,13 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/src/graphql_governance.r
 
 if (fs.existsSync(path.join(root, "crates/rustok-groups/rustok-module.toml"))) {
   const manifest = read("crates/rustok-groups/rustok-module.toml");
-  if (!manifest.includes('mutation = "graphql_governance::GroupsMutationRoot"')) {
-    failures.push("Groups manifest must publish the merged governance mutation root");
+  for (const marker of [
+    'query = "graphql_invitations::GroupsQueryRoot"',
+    'mutation = "graphql_invitations::GroupsMutationRoot"',
+  ]) {
+    if (!manifest.includes(marker)) {
+      failures.push(`Groups manifest must publish the final merged invitation root: ${marker}`);
+    }
   }
 }
 
@@ -361,4 +375,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups FFA/FBA, privacy, governance, language-agnostic DB, multilingual, and ownership boundary checks passed.");
+console.log("Groups FFA/FBA, privacy, governance, invitations, language-agnostic DB, multilingual, and ownership boundary checks passed.");
