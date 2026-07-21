@@ -17,6 +17,7 @@ const contract = JSON.parse(
 const provider = read(contract.provider.source);
 const providerLib = read("crates/rustok-page-builder/src/lib.rs");
 const pages = read(contract.pages_consumer.source);
+const pagesErrors = read(contract.pages_consumer.error_source);
 const pagesModule = read("crates/rustok-pages/src/services/page/mod.rs");
 const pagesServices = read("crates/rustok-pages/src/services/mod.rs");
 const pagesLib = read("crates/rustok-pages/src/lib.rs");
@@ -68,6 +69,9 @@ if (contract.provider.review_hash.algorithm !== "sha256") {
 }
 if (contract.provider.scenario.required !== true) {
   fail("reviewed publish runtime must require an explicit scenario");
+}
+if (contract.pages_consumer.typed_errors !== true) {
+  fail("Pages reviewed publish failures must remain typed");
 }
 if (contract.pages_consumer.raw_context_persisted !== false) {
   fail("Pages must not persist raw reviewed runtime context");
@@ -137,10 +141,20 @@ for (const marker of contract.pages_consumer.materialization_match) {
   requireMarker(pages, marker, "Pages materialization match");
 }
 for (const code of contract.pages_consumer.error_codes) {
-  requireMarker(pages, code, "Pages stable error code");
+  requireMarker(pages, code, "Pages stable error import");
+  requireMarker(pagesErrors, code, "Pages typed error code");
+  requireMarker(pagesErrors, `.with_error_code(${code})`, "Pages RichError mapping");
   requireMarker(pagesModule, code, "Pages module error export");
   requireMarker(pagesServices, code, "Pages service error export");
   requireMarker(pagesLib, code, "Pages crate error export");
+}
+for (const marker of [
+  "PublishRuntimeReviewInvalid",
+  "PublishRuntimeMaterializationMismatch",
+  "publish_runtime_review_invalid",
+  "publish_runtime_materialization_mismatch",
+]) {
+  requireMarker(pagesErrors, marker, "Pages typed reviewed publish error");
 }
 for (const marker of [
   "reviewed.preview_runtime()",
