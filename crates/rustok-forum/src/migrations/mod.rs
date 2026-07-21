@@ -24,6 +24,7 @@ mod m20260716_000004_add_topic_field_cache_generation_trigger;
 mod m20260721_000001_enforce_forum_category_depth;
 mod m20260721_000002_add_forum_category_topic_policy;
 mod m20260721_000003_add_forum_category_subtree_lifecycle;
+mod m20260722_000004_add_forum_mention_quote_relations;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -56,6 +57,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260721_000001_enforce_forum_category_depth::Migration),
         Box::new(m20260721_000002_add_forum_category_topic_policy::Migration),
         Box::new(m20260721_000003_add_forum_category_subtree_lifecycle::Migration),
+        Box::new(m20260722_000004_add_forum_mention_quote_relations::Migration),
     ]
 }
 
