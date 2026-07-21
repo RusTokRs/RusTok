@@ -11,6 +11,7 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use crate::common::settings::RustokSettings;
+use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -19,6 +20,7 @@ pub fn spawn_module_event_dispatcher(
     registry: &ModuleRegistry,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) {
+    let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
     let bus = ctx
         .shared_get::<Arc<EventRuntime>>()
         .expect("EventRuntime must be initialized before module event listeners")
@@ -48,6 +50,33 @@ pub fn spawn_module_event_dispatcher(
     });
 
     tracing::info!(handler_count, "Module event dispatcher initialized");
+}
+
+fn enrich_runtime_extensions_after_event_start(
+    ctx: &ServerRuntimeContext,
+    extensions: Arc<ModuleRuntimeExtensions>,
+) -> Arc<ModuleRuntimeExtensions> {
+    let mut enriched = extensions.as_ref().clone();
+
+    #[cfg(feature = "mod-commerce")]
+    {
+        let financial_runtime = ctx
+            .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+            .unwrap_or_else(|| {
+                let runtime =
+                    rustok_commerce::MarketplaceFinancialRuntime::in_process(ctx.db_clone());
+                ctx.shared_insert(runtime.clone());
+                runtime
+            });
+        let event_bus = transactional_event_bus_from_context(ctx);
+        ctx.shared_insert(event_bus.clone());
+        enriched.insert(financial_runtime);
+        enriched.insert(event_bus);
+    }
+
+    let enriched = Arc::new(enriched);
+    ctx.shared_insert(enriched.clone());
+    enriched
 }
 
 #[cfg(feature = "mod-commerce")]
@@ -199,9 +228,6 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                 runtime
             });
         extensions.insert(financial_runtime);
-        if let Some(event_bus) = runtime_ctx.shared_get::<rustok_outbox::TransactionalEventBus>() {
-            extensions.insert(event_bus);
-        }
     }
 
     let auth_admin_provider = Arc::new(
