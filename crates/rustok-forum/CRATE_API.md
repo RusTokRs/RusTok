@@ -9,6 +9,8 @@
 - `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
 - `CategoryService::move_category(tenant_id, category_id, security, MoveCategoryInput) -> MoveCategoryResponse`
 - `CategoryService::reorder_siblings(tenant_id, security, ReorderCategorySiblingsInput) -> ReorderCategorySiblingsResponse`
+- `CategoryService::topic_policy(tenant_id, category_id, security) -> CategoryTopicPolicyResponse`
+- `CategoryService::set_topic_policy(tenant_id, category_id, security, UpdateCategoryTopicPolicyInput) -> CategoryTopicPolicyResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -29,7 +31,7 @@
 ### Category tree
 - Added: `CategoryTreeQuery`, `CategoryBreadcrumb`, `CategoryTreeNode`, `CategoryTreeResponse`.
 - The canonical tree returns the complete tenant hierarchy in deterministic `(position, id)` sibling order through one owner call bounded to 512 nodes and zero-based depth 16.
-- Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs and nested children.
+- Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs, `allows_topics` and nested children.
 - REST entry point: `GET /api/forum/categories/tree`.
 - GraphQL entry point: `forumCategoryTree(tenantId, locale, fallbackLocale)` on the merged `ForumQuery`.
 - Categories without any localized translation fail closed instead of returning empty `name`/`slug` fields.
@@ -41,6 +43,13 @@
 - REST entry points: `PUT /api/forum/categories/{id}/move` and `PUT /api/forum/categories/reorder`.
 - PostgreSQL and SQLite reject category writes whose resulting zero-based depth would exceed 16, including internal direct writes that bypass owner services.
 - Generic `CategoryService::update` rejects `position`; placement changes must use `move_category` or `reorder_siblings`.
+### Category topic policy
+- Added: `UpdateCategoryTopicPolicyInput` and `CategoryTopicPolicyResponse`.
+- Absence of a stored row means `allows_topics = true`, preserving behavior for existing categories.
+- REST entry point: `GET/PUT /api/forum/categories/{id}/topic-policy`.
+- GraphQL entry points: `forumCategoryTopicPolicy` and `setForumCategoryTopicPolicy`.
+- PostgreSQL and SQLite reject direct `forum_topics` inserts or category moves into a category whose policy disables topic creation.
+- Existing topics remain unchanged when a category policy is disabled; the policy controls new topic placement only.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -96,6 +105,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Confuses `locale` (requested) and `effective_locale` (actually used).
 - Uses the flat category list to reconstruct hierarchy instead of `CategoryService::tree`.
 - Writes `parent_id` or sibling positions directly instead of using category owner commands.
+- Creates a topic without honoring the category-owned `allows_topics` policy.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -110,6 +120,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies.
 - Category move/reorder commands use a per-tenant transaction order and never persist a partial sibling normalization.
 - Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
+- Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
