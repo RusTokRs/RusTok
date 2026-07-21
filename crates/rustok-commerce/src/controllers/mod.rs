@@ -2,6 +2,7 @@ pub mod admin;
 #[path = "admin/checkout_operations.rs"]
 pub(crate) mod checkout_operations;
 mod common;
+mod marketplace_financial;
 pub mod products;
 mod reconciliation;
 pub(crate) mod return_completion_operations;
@@ -19,6 +20,7 @@ pub struct CommerceHttpRuntime {
     event_bus: TransactionalEventBus,
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
+    marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
 
 impl CommerceHttpRuntime {
@@ -41,6 +43,16 @@ impl CommerceHttpRuntime {
     fn fulfillment_provider_registry(&self) -> FulfillmentProviderRegistry {
         self.fulfillment_provider_registry.clone()
     }
+
+    fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
+        self.marketplace_financial_runtime
+            .operator_service(self.db_clone(), self.event_bus())
+    }
+
+    fn marketplace_paid_event_inbox_service(&self) -> crate::MarketplacePaidEventInboxService {
+        self.marketplace_financial_runtime
+            .paid_event_inbox(self.db_clone(), self.event_bus())
+    }
 }
 
 impl CommerceHttpRuntime {
@@ -52,6 +64,13 @@ impl CommerceHttpRuntime {
                     "Commerce HTTP routes require TransactionalEventBus in HostRuntimeContext"
                 )
             })?;
+        let marketplace_financial_runtime = runtime
+            .shared_get::<crate::MarketplaceFinancialRuntime>()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Commerce HTTP routes require MarketplaceFinancialRuntime in HostRuntimeContext"
+                )
+            })?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -61,6 +80,7 @@ impl CommerceHttpRuntime {
             fulfillment_provider_registry: runtime
                 .shared_get::<FulfillmentProviderRegistry>()
                 .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+            marketplace_financial_runtime,
         })
     }
 }
@@ -81,6 +101,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .nest(
             "/admin/fulfillment-provider-operations",
             reconciliation::axum_router(),
+        )
+        .nest(
+            "/admin/marketplace-financial",
+            marketplace_financial::axum_router(),
         )
         .with_state(state))
 }
