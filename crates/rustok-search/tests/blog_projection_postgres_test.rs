@@ -476,7 +476,7 @@ async fn count_blog_documents(
         ))
         .await?
         .expect("count query should return one row");
-    row.try_get("", "count")
+    Ok(row.try_get("", "count")?)
 }
 
 fn postgres_database_url() -> Option<String> {
@@ -496,8 +496,10 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
 }
 
 async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> TestResult<()> {
-    db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}""#))
-        .await?;
+    db.execute_unprepared(&format!(
+        r#"SET search_path TO "{schema_name}", public"#
+    ))
+    .await?;
     Ok(())
 }
 
