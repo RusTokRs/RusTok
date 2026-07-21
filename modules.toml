@@ -1,35 +1,30 @@
 # RusToK Module Manifest
-# Этот файл определяет состав модулей для сборки
-# Изменение = пересборка проекта
+# This file defines the module composition for a build.
+# Any change requires rebuilding the distribution.
 
 schema = 2
 app = "rustok-server"
 
-# ───────────────────────────────────────────────
-# Build: как собирать и что встраивать в сервер
-# ───────────────────────────────────────────────
+# Build composition
 [build]
 target = "x86_64-unknown-linux-gnu"
 profile = "release"
 
 [build.server]
-embed_admin = true           # Встроить Leptos admin в бинарник сервера
-embed_storefront = true      # Встроить Leptos storefront в бинарник сервера
+embed_admin = true
+embed_storefront = true
 
 [build.admin]
-stack = "leptos"             # "leptos" | "next"
+stack = "leptos"
 public_url = "http://localhost:3001"
 redirect_uris = ["http://localhost:3001/auth/callback"]
 
 [[build.storefront]]
 id = "default"
-stack = "leptos"             # "leptos" | "next"
+stack = "leptos"
 public_url = "http://localhost:3000"
 redirect_uris = ["http://localhost:3000/auth/callback"]
 
-# ───────────────────────────────────────────────
-# Modules: состав модулей платформы
-# ───────────────────────────────────────────────
 [modules]
 # Core modules (required and always active)
 modules = { crate = "rustok-modules", source = "path", path = "crates/rustok-modules", required = true }
@@ -49,6 +44,7 @@ cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
 product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }
 profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles", depends_on = ["taxonomy"] }
+groups = { crate = "rustok-groups", source = "path", path = "crates/rustok-groups" }
 region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
 pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
@@ -75,6 +71,7 @@ seo = { crate = "rustok-seo", source = "path", path = "crates/rustok-seo", depen
 workflow = { crate = "rustok-workflow", source = "path", path = "crates/rustok-workflow" }
 alloy = { crate = "alloy", source = "path", path = "crates/alloy" }
 flex = { crate = "flex", source = "path", path = "crates/flex" }
+
 # Capability extensions are deployment-scoped `RusToKModule` entries. They are
 # globally active when compiled and never tenant-toggled; the generic
 # runtime-extension host seam composes their handles and workers.
