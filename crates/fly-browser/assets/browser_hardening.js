@@ -6,7 +6,9 @@
   const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024;
   const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
   const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
+  const DEFAULT_INTENT_REQUEST_TIMEOUT_MS = 30_000;
   const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
+  const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
   const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
   const PROBLEM_REPORTER_KEY = Symbol.for("fly.browser.problem.reporter");
   const PENDING_INTENT_CONTROLLERS_KEY = Symbol.for(
@@ -138,6 +140,25 @@
     return controllers;
   };
 
+  const intentName = (input) => {
+    const request = isObject(input) ? input : {};
+    const message = isObject(request.message) ? request.message : {};
+    const intent = String(
+      request.intent || request.type || message.type || "",
+    ).trim().toLowerCase();
+    return intent || null;
+  };
+
+  const pendingIntentRecordForGeneration = (adapter, requestGeneration) => {
+    if (!Number.isSafeInteger(requestGeneration)) return null;
+    const controllers = adapter[PENDING_INTENT_CONTROLLERS_KEY];
+    if (!(controllers instanceof Map)) return null;
+    for (const record of controllers.values()) {
+      if (record?.requestGeneration === requestGeneration) return record;
+    }
+    return null;
+  };
+
   const rejectPendingIntent = (adapter, input, limit, observed) => {
     const request = isObject(input) ? input : {};
     const message =
@@ -145,12 +166,7 @@
       adapter.root.dataset.flyPendingIntentLimitMessage ||
       "Editor action limit reached.";
     const error = `${message} ${observed}/${limit}.`;
-    const intent =
-      typeof request.intent === "string" && request.intent
-        ? request.intent
-        : typeof request.type === "string" && request.type
-          ? request.type
-          : null;
+    const intent = intentName(request);
     const detail = {
       code: PENDING_INTENT_LIMIT_CODE,
       error,
@@ -182,6 +198,35 @@
     return null;
   };
 
+  const reportIntentTimeout = (adapter, input, record) => {
+    const timeoutMs = record.timeoutMs;
+    const message =
+      adapter.options?.intentRequestTimeoutMessage ||
+      adapter.root.dataset.flyIntentRequestTimeoutMessage ||
+      "Editor action timed out";
+    const error = `${message} after ${timeoutMs} ms.`;
+    const detail = {
+      code: INTENT_REQUEST_TIMEOUT_CODE,
+      error,
+      intent: record.intent,
+      timeoutMs,
+      requestGeneration: record.requestGeneration,
+      current:
+        record.requestGeneration === adapter.latestIntentRequestGeneration,
+      instanceId: adapter.instanceId,
+      pageId: adapter.pageId,
+    };
+    record.timedOut = true;
+    record.error = error;
+    adapter.root.dispatchEvent(
+      new CustomEvent("fly:browser-intent-timeout", {
+        bubbles: true,
+        detail,
+      }),
+    );
+    return detail;
+  };
+
   const installProblemReporter = (adapter) => {
     if (!adapter || adapter[PROBLEM_REPORTER_KEY]) return adapter;
     adapter[PROBLEM_REPORTER_KEY] = true;
@@ -203,6 +248,26 @@
       "fly:browser-error",
       (event) => {
         if (event.detail?.current === false) return;
+        const record = pendingIntentRecordForGeneration(
+          adapter,
+          event.detail?.requestGeneration,
+        );
+        if (record?.timedOut) {
+          reportBrowserProblem(
+            adapter,
+            {
+              status: 0,
+              result: {
+                code: INTENT_REQUEST_TIMEOUT_CODE,
+                error: record.error,
+                intent: record.intent,
+              },
+              request: event.detail?.request,
+            },
+            INTENT_REQUEST_TIMEOUT_CODE,
+          );
+          return;
+        }
         reportBrowserProblem(
           adapter,
           {
@@ -261,6 +326,8 @@
   const originalPostIntent = Adapter.prototype.postIntent;
   Adapter.prototype.postIntent = function postIntentWithPendingLimit(input) {
     if (!this.intentEndpoint) return originalPostIntent.call(this, input);
+    const intent = intentName(input);
+    if (!intent) return originalPostIntent.call(this, input);
     const controllers = pendingIntentControllers(this);
     const limit = limitFor(
       this,
@@ -273,9 +340,24 @@
       return Promise.resolve(rejectPendingIntent(this, input, limit, observed));
     }
 
+    const timeoutMs = limitFor(
+      this,
+      "intentRequestTimeoutMs",
+      "flyIntentRequestTimeoutMs",
+      DEFAULT_INTENT_REQUEST_TIMEOUT_MS,
+    );
     const controller = new AbortController();
     const requestKey = Symbol("fly.browser.intent.request");
-    controllers.set(requestKey, controller);
+    const record = {
+      controller,
+      error: null,
+      intent,
+      requestGeneration: null,
+      timedOut: false,
+      timeoutId: null,
+      timeoutMs,
+    };
+    controllers.set(requestKey, record);
     const originalFetch = globalThis.fetch;
     let pending;
     try {
@@ -287,6 +369,16 @@
           });
       }
       pending = originalPostIntent.call(this, input);
+      record.requestGeneration = Number.isSafeInteger(
+        this.intentRequestGeneration,
+      )
+        ? this.intentRequestGeneration
+        : null;
+      record.timeoutId = globalThis.setTimeout(() => {
+        if (!controllers.has(requestKey) || controller.signal.aborted) return;
+        reportIntentTimeout(this, input, record);
+        controller.abort();
+      }, timeoutMs);
     } catch (error) {
       controllers.delete(requestKey);
       throw error;
@@ -294,6 +386,7 @@
       if (typeof originalFetch === "function") globalThis.fetch = originalFetch;
     }
     return Promise.resolve(pending).finally(() => {
+      if (record.timeoutId !== null) globalThis.clearTimeout(record.timeoutId);
       controllers.delete(requestKey);
     });
   };
@@ -374,7 +467,10 @@
     const result = originalStop.call(this);
     const controllers = this[PENDING_INTENT_CONTROLLERS_KEY];
     if (controllers instanceof Map) {
-      for (const controller of controllers.values()) controller.abort();
+      for (const record of controllers.values()) {
+        if (record?.timeoutId !== null) globalThis.clearTimeout(record.timeoutId);
+        record?.controller?.abort();
+      }
       controllers.clear();
     }
     delete this[PENDING_INTENT_CONTROLLERS_KEY];
