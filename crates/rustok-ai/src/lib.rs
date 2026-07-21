@@ -140,7 +140,7 @@ impl rustok_core::RusToKModule for AiModule {
         rustok_core::ModuleKind::Core
     }
 
-    fn try_register_runtime_extensions(
+    fn register_runtime_extensions(
         &self,
         extensions: &mut rustok_core::ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
