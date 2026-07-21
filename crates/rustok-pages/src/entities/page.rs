@@ -29,6 +29,8 @@ pub enum Relation {
     ChannelVisibility,
     #[sea_orm(has_many = "super::page_static_landing_artifact::Entity")]
     StaticLandingArtifacts,
+    #[sea_orm(has_many = "super::page_publish_operation::Entity")]
+    PublishOperations,
 }
 
 impl Related<super::page_translation::Entity> for Entity {
@@ -52,6 +54,12 @@ impl Related<super::page_channel_visibility::Entity> for Entity {
 impl Related<super::page_static_landing_artifact::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::StaticLandingArtifacts.def()
+    }
+}
+
+impl Related<super::page_publish_operation::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PublishOperations.def()
     }
 }
 
