@@ -44,6 +44,13 @@
       "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no backfill"
     },
     {
+      "id": "commerce-localized-records-width-32",
+      "migration": "m20260721_000007_align_language_agnostic_locale_contract",
+      "mode": "none",
+      "owner": "rustok-commerce",
+      "reason": "Backend-specific widening of collection and product-category translation locale columns; existing locale values require no semantic backfill"
+    },
+    {
       "id": "customer-locale-width-32",
       "migration": "m20260721_000105_expand_customer_locale_contract",
       "mode": "none",
