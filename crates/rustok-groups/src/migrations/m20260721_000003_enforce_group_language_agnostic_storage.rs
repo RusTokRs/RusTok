@@ -109,24 +109,19 @@ END $$;
 }
 
 async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    let existing_locale_violation = sqlite_locale_violation("locale");
     ensure_sqlite_zero(
         manager,
-        r#"
+        &format!(
+            r#"
 SELECT COUNT(*) AS invalid_count
 FROM group_translations
-WHERE length(locale) < 2
-   OR length(locale) > 32
-   OR locale <> trim(locale)
-   OR locale GLOB '*[^A-Za-z0-9-]*'
-   OR locale GLOB '*--*'
-   OR substr(locale, 1, 1) = '-'
-   OR substr(locale, -1, 1) = '-'
-   OR length(substr(locale, 1, CASE WHEN instr(locale, '-') = 0 THEN length(locale) ELSE instr(locale, '-') - 1 END)) NOT BETWEEN 2 AND 8
-   OR substr(locale, 1, CASE WHEN instr(locale, '-') = 0 THEN length(locale) ELSE instr(locale, '-') - 1 END) GLOB '*[^a-z]*'
+WHERE ({existing_locale_violation})
    OR trim(title) = ''
    OR length(title) > 240
    OR (summary IS NOT NULL AND length(summary) > 500)
-"#,
+"#
+        ),
         "groups language-agnostic migration blocked: invalid localized presentation",
     )
     .await?;
@@ -153,19 +148,79 @@ WHERE json_valid(metadata) = 0
     )
     .await?;
 
-    for statement in [
-        r#"CREATE TRIGGER IF NOT EXISTS group_translations_language_agnostic_insert BEFORE INSERT ON group_translations FOR EACH ROW WHEN length(NEW.locale) < 2 OR length(NEW.locale) > 32 OR NEW.locale <> trim(NEW.locale) OR NEW.locale GLOB '*[^A-Za-z0-9-]*' OR NEW.locale GLOB '*--*' OR substr(NEW.locale, 1, 1) = '-' OR substr(NEW.locale, -1, 1) = '-' OR length(substr(NEW.locale, 1, CASE WHEN instr(NEW.locale, '-') = 0 THEN length(NEW.locale) ELSE instr(NEW.locale, '-') - 1 END)) NOT BETWEEN 2 AND 8 OR substr(NEW.locale, 1, CASE WHEN instr(NEW.locale, '-') = 0 THEN length(NEW.locale) ELSE instr(NEW.locale, '-') - 1 END) GLOB '*[^a-z]*' OR trim(NEW.title) = '' OR length(NEW.title) > 240 OR (NEW.summary IS NOT NULL AND length(NEW.summary) > 500) BEGIN SELECT RAISE(ABORT, 'group translation locale/presentation contract violation'); END"#,
-        r#"CREATE TRIGGER IF NOT EXISTS group_translations_language_agnostic_update BEFORE UPDATE OF locale, title, summary ON group_translations FOR EACH ROW WHEN length(NEW.locale) < 2 OR length(NEW.locale) > 32 OR NEW.locale <> trim(NEW.locale) OR NEW.locale GLOB '*[^A-Za-z0-9-]*' OR NEW.locale GLOB '*--*' OR substr(NEW.locale, 1, 1) = '-' OR substr(NEW.locale, -1, 1) = '-' OR length(substr(NEW.locale, 1, CASE WHEN instr(NEW.locale, '-') = 0 THEN length(NEW.locale) ELSE instr(NEW.locale, '-') - 1 END)) NOT BETWEEN 2 AND 8 OR substr(NEW.locale, 1, CASE WHEN instr(NEW.locale, '-') = 0 THEN length(NEW.locale) ELSE instr(NEW.locale, '-') - 1 END) GLOB '*[^a-z]*' OR trim(NEW.title) = '' OR length(NEW.title) > 240 OR (NEW.summary IS NOT NULL AND length(NEW.summary) > 500) BEGIN SELECT RAISE(ABORT, 'group translation locale/presentation contract violation'); END"#,
-        r#"CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_insert BEFORE INSERT ON groups FOR EACH ROW WHEN json_valid(NEW.metadata) = 0 OR json_type(NEW.metadata) <> 'object' OR json_type(NEW.metadata, '$.title') IS NOT NULL OR json_type(NEW.metadata, '$.summary') IS NOT NULL OR json_type(NEW.metadata, '$.body') IS NOT NULL OR json_type(NEW.metadata, '$.name') IS NOT NULL OR json_type(NEW.metadata, '$.description') IS NOT NULL OR json_type(NEW.metadata, '$.translations') IS NOT NULL OR json_type(NEW.metadata, '$.localized') IS NOT NULL OR json_type(NEW.metadata, '$.locales') IS NOT NULL OR json_type(NEW.metadata, '$.i18n') IS NOT NULL OR json_type(NEW.metadata, '$.seo') IS NOT NULL BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END"#,
-        r#"CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_update BEFORE UPDATE OF metadata ON groups FOR EACH ROW WHEN json_valid(NEW.metadata) = 0 OR json_type(NEW.metadata) <> 'object' OR json_type(NEW.metadata, '$.title') IS NOT NULL OR json_type(NEW.metadata, '$.summary') IS NOT NULL OR json_type(NEW.metadata, '$.body') IS NOT NULL OR json_type(NEW.metadata, '$.name') IS NOT NULL OR json_type(NEW.metadata, '$.description') IS NOT NULL OR json_type(NEW.metadata, '$.translations') IS NOT NULL OR json_type(NEW.metadata, '$.localized') IS NOT NULL OR json_type(NEW.metadata, '$.locales') IS NOT NULL OR json_type(NEW.metadata, '$.i18n') IS NOT NULL OR json_type(NEW.metadata, '$.seo') IS NOT NULL BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END"#,
-    ] {
+    let new_locale_violation = sqlite_locale_violation("NEW.locale");
+    let statements = [
+        format!(
+            r#"CREATE TRIGGER IF NOT EXISTS group_translations_language_agnostic_insert BEFORE INSERT ON group_translations FOR EACH ROW WHEN ({new_locale_violation}) OR trim(NEW.title) = '' OR length(NEW.title) > 240 OR (NEW.summary IS NOT NULL AND length(NEW.summary) > 500) BEGIN SELECT RAISE(ABORT, 'group translation locale/presentation contract violation'); END"#
+        ),
+        format!(
+            r#"CREATE TRIGGER IF NOT EXISTS group_translations_language_agnostic_update BEFORE UPDATE OF locale, title, summary ON group_translations FOR EACH ROW WHEN ({new_locale_violation}) OR trim(NEW.title) = '' OR length(NEW.title) > 240 OR (NEW.summary IS NOT NULL AND length(NEW.summary) > 500) BEGIN SELECT RAISE(ABORT, 'group translation locale/presentation contract violation'); END"#
+        ),
+        r#"CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_insert BEFORE INSERT ON groups FOR EACH ROW WHEN json_valid(NEW.metadata) = 0 OR json_type(NEW.metadata) <> 'object' OR json_type(NEW.metadata, '$.title') IS NOT NULL OR json_type(NEW.metadata, '$.summary') IS NOT NULL OR json_type(NEW.metadata, '$.body') IS NOT NULL OR json_type(NEW.metadata, '$.name') IS NOT NULL OR json_type(NEW.metadata, '$.description') IS NOT NULL OR json_type(NEW.metadata, '$.translations') IS NOT NULL OR json_type(NEW.metadata, '$.localized') IS NOT NULL OR json_type(NEW.metadata, '$.locales') IS NOT NULL OR json_type(NEW.metadata, '$.i18n') IS NOT NULL OR json_type(NEW.metadata, '$.seo') IS NOT NULL BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END"#.to_string(),
+        r#"CREATE TRIGGER IF NOT EXISTS groups_language_agnostic_metadata_update BEFORE UPDATE OF metadata ON groups FOR EACH ROW WHEN json_valid(NEW.metadata) = 0 OR json_type(NEW.metadata) <> 'object' OR json_type(NEW.metadata, '$.title') IS NOT NULL OR json_type(NEW.metadata, '$.summary') IS NOT NULL OR json_type(NEW.metadata, '$.body') IS NOT NULL OR json_type(NEW.metadata, '$.name') IS NOT NULL OR json_type(NEW.metadata, '$.description') IS NOT NULL OR json_type(NEW.metadata, '$.translations') IS NOT NULL OR json_type(NEW.metadata, '$.localized') IS NOT NULL OR json_type(NEW.metadata, '$.locales') IS NOT NULL OR json_type(NEW.metadata, '$.i18n') IS NOT NULL OR json_type(NEW.metadata, '$.seo') IS NOT NULL BEGIN SELECT RAISE(ABORT, 'group metadata must remain language-agnostic'); END"#.to_string(),
+    ];
+    for statement in statements {
         manager
             .get_connection()
-            .execute_unprepared(statement)
+            .execute_unprepared(&statement)
             .await?;
     }
 
     Ok(())
+}
+
+fn sqlite_locale_violation(locale_expression: &str) -> String {
+    format!(
+        r#"
+length({locale_expression}) < 2
+OR length({locale_expression}) > 32
+OR {locale_expression} <> trim({locale_expression})
+OR {locale_expression} GLOB '*[^A-Za-z0-9-]*'
+OR {locale_expression} GLOB '*--*'
+OR substr({locale_expression}, 1, 1) = '-'
+OR substr({locale_expression}, -1, 1) = '-'
+OR EXISTS (
+    WITH RECURSIVE locale_parts(rest, part, position) AS (
+        SELECT {locale_expression} || '-', '', 0
+        UNION ALL
+        SELECT
+            substr(rest, instr(rest, '-') + 1),
+            substr(rest, 1, instr(rest, '-') - 1),
+            position + 1
+        FROM locale_parts
+        WHERE rest <> ''
+    )
+    SELECT 1
+    FROM locale_parts
+    WHERE position > 0
+      AND (
+          (
+              position = 1
+              AND (
+                  length(part) NOT BETWEEN 2 AND 8
+                  OR part GLOB '*[^a-z]*'
+              )
+          )
+          OR (
+              position > 1
+              AND NOT (
+                  (length(part) = 2 AND part NOT GLOB '*[^A-Z]*')
+                  OR (
+                      length(part) = 4
+                      AND substr(part, 1, 1) GLOB '[A-Z]'
+                      AND substr(part, 2) NOT GLOB '*[^a-z]*'
+                  )
+                  OR (length(part) = 3 AND part NOT GLOB '*[^0-9]*')
+                  OR (
+                      length(part) BETWEEN 5 AND 8
+                      AND part NOT GLOB '*[^a-z0-9]*'
+                  )
+              )
+          )
+      )
+)
+"#
+    )
 }
 
 async fn ensure_sqlite_zero(
