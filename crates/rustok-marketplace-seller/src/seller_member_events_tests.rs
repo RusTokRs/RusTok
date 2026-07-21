@@ -7,9 +7,8 @@ use uuid::Uuid;
 
 use crate::dto::{
     AddMarketplaceSellerMemberInput, MarketplaceSellerEventKind,
-    MarketplaceSellerEventProvenance,
-    MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus,
-    UpdateMarketplaceSellerMemberInput,
+    MarketplaceSellerEventProvenance, MarketplaceSellerMemberRole,
+    MarketplaceSellerMemberStatus, UpdateMarketplaceSellerMemberInput,
 };
 use crate::entities::{seller, seller_command_receipt};
 use crate::error::MarketplaceSellerError;
@@ -175,8 +174,6 @@ async fn insert_seller(db: &DatabaseConnection, tenant_id: Uuid) -> Uuid {
         legal_name: Set(None),
         status: Set("active".to_string()),
         onboarding_status: Set("approved".to_string()),
-        onboarding_note: Set(None),
-        suspension_reason: Set(None),
         metadata: Set(serde_json::json!({})),
         created_at: Set(now),
         updated_at: Set(now),
