@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{BlogModerationCommentList, BlogModerationStatus};
 
-const BLOG_MODERATION_COMMENTS_QUERY: &str = "query BlogModerationComments($postId: UUID!, $locale: String) { post(id: $postId, locale: $locale) { moderationComments(locale: $locale, page: 1, perPage: 100) { total items { id effectiveLocale authorId contentPreview status parentCommentId createdAt } } } }";
+const BLOG_MODERATION_COMMENTS_QUERY: &str = "query BlogModerationComments($postId: UUID!, $locale: String, $page: Int!, $perPage: Int!) { post(id: $postId, locale: $locale) { moderationComments(locale: $locale, page: $page, perPage: $perPage) { total items { id effectiveLocale authorId contentPreview status parentCommentId createdAt } } } }";
 const MODERATE_BLOG_COMMENT_MUTATION: &str = "mutation ModerateBlogComment($id: UUID!, $status: BlogCommentModerationStatus!, $locale: String) { moderateComment(id: $id, status: $status, locale: $locale) }";
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +30,9 @@ struct ModerationCommentsVariables {
     #[serde(rename = "postId")]
     post_id: String,
     locale: Option<String>,
+    page: u64,
+    #[serde(rename = "perPage")]
+    per_page: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,10 +87,17 @@ pub async fn fetch_comments(
     tenant_slug: Option<String>,
     post_id: String,
     locale: Option<String>,
+    page: u64,
+    per_page: u64,
 ) -> Result<BlogModerationCommentList, GraphqlHttpError> {
     let response: ModerationCommentsResponse = request(
         BLOG_MODERATION_COMMENTS_QUERY,
-        ModerationCommentsVariables { post_id, locale },
+        ModerationCommentsVariables {
+            post_id,
+            locale,
+            page: page.max(1),
+            per_page: per_page.clamp(1, 100),
+        },
         token,
         tenant_slug,
     )
