@@ -15,7 +15,8 @@
         "load_project",
         "save_project"
       ],
-      "tenant_context_source": "PortContext"
+      "tenant_context_source": "PortContext",
+      "save_result": "PageBuilderProjectSaveResult"
     },
     "preview_rendering": {
       "trait": "PageBuilderRenderingAdapter",
@@ -81,7 +82,12 @@
         "context.actor.id.as_str()",
         "self.ensure_context(context)?"
       ],
-      "persisted_result_marker": "Arc<Mutex<Option<PublishPageBuilderResult>>>"
+      "persisted_result_marker": "PageBuilderProjectSaveResult",
+      "forbidden_symbols": [
+        "Arc<Mutex<Option<PublishPageBuilderResult>>>",
+        "persisted_result: Arc<Mutex",
+        "Pages save state lock was poisoned"
+      ]
     }
   },
   "transport_entrypoints": [
