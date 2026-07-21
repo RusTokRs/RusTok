@@ -101,7 +101,7 @@ pub fn GroupsInvitationAcceptance(
         let context = submit_transport.clone();
         let copy = submit_copy.clone();
         let query_writer = query_writer.clone();
-        let targeted = matches!(command, PendingInvitationAcceptance::Targeted(_));
+        let targeted = matches!(&command, PendingInvitationAcceptance::Targeted(_));
         set_busy.set(true);
         set_error.set(None);
         set_result.set(None);
