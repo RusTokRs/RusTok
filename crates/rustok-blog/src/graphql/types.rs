@@ -1,9 +1,16 @@
-use async_graphql::{Enum, InputObject, SimpleObject};
+use async_graphql::{ComplexObject, Context, Enum, InputObject, Result, SimpleObject};
+use rustok_api::TenantContext;
+use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
+use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{BlogPostStatus, CreatePostInput as DomainCreatePostInput, PostResponse, PostSummary};
+use crate::{
+    BlogPostStatus, CommentListItem as DomainCommentListItem, CommentService,
+    CreatePostInput as DomainCreatePostInput, ListCommentsFilter, PostResponse, PostSummary,
+};
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
 #[graphql(name = "BlogPostStatus", rename_items = "SCREAMING_SNAKE_CASE")]
@@ -34,7 +41,10 @@ impl From<GqlContentStatus> for BlogPostStatus {
 }
 
 #[derive(SimpleObject)]
+#[graphql(complex)]
 pub struct GqlPost {
+    #[graphql(skip)]
+    pub tenant_id: Uuid,
     pub id: Uuid,
     pub requested_locale: String,
     pub effective_locale: String,
@@ -56,6 +66,70 @@ pub struct GqlPost {
     pub seo_title: Option<String>,
     pub seo_description: Option<String>,
     pub channel_slugs: Vec<String>,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPublicCommentListItem {
+    pub id: Uuid,
+    pub effective_locale: String,
+    pub author_id: Option<Uuid>,
+    pub content_preview: String,
+    pub parent_comment_id: Option<Uuid>,
+    pub created_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlPublicCommentList {
+    pub items: Vec<GqlPublicCommentListItem>,
+    pub total: u64,
+}
+
+#[ComplexObject]
+impl GqlPost {
+    /// Comments safe for public storefront rendering. The Comments owner applies
+    /// approved-only visibility and pagination bounds before returning data.
+    async fn public_comments(
+        &self,
+        ctx: &Context<'_>,
+        locale: Option<String>,
+        page: Option<u64>,
+        per_page: Option<u64>,
+    ) -> Result<GqlPublicCommentList> {
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let request_tenant = ctx.data::<TenantContext>()?;
+        let requested_locale = locale
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| self.effective_locale.clone());
+        let fallback_locale = if request_tenant.id == self.tenant_id {
+            request_tenant.default_locale.as_str()
+        } else {
+            self.effective_locale.as_str()
+        };
+
+        let (items, total) = CommentService::new(db.clone(), event_bus.clone())
+            .list_for_post_with_locale_fallback(
+                self.tenant_id,
+                SecurityContext::public_read(),
+                self.id,
+                ListCommentsFilter {
+                    locale: Some(requested_locale),
+                    page: page.unwrap_or(1).max(1),
+                    per_page: per_page.unwrap_or(20).clamp(1, 100),
+                },
+                Some(fallback_locale),
+            )
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+
+        Ok(GqlPublicCommentList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+        })
+    }
 }
 
 #[derive(SimpleObject)]
@@ -127,6 +201,7 @@ pub struct PostsFilter {
 impl From<PostResponse> for GqlPost {
     fn from(post: PostResponse) -> Self {
         Self {
+            tenant_id: post.tenant_id,
             id: post.id,
             requested_locale: post.requested_locale,
             effective_locale: post.effective_locale,
@@ -152,6 +227,19 @@ impl From<PostResponse> for GqlPost {
             seo_title: post.seo_title,
             seo_description: post.seo_description,
             channel_slugs: post.channel_slugs,
+        }
+    }
+}
+
+impl From<DomainCommentListItem> for GqlPublicCommentListItem {
+    fn from(comment: DomainCommentListItem) -> Self {
+        Self {
+            id: comment.id,
+            effective_locale: comment.effective_locale,
+            author_id: comment.author_id,
+            content_preview: comment.content_preview,
+            parent_comment_id: comment.parent_comment_id,
+            created_at: comment.created_at,
         }
     }
 }
