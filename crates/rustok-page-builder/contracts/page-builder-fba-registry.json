@@ -20,6 +20,17 @@
       "scenario_id_max_bytes": 128,
       "response_identity": "runtime_scenario_id"
     },
+    "static_materialization_contract": {
+      "format": "page_builder_static_runtime_materialization_v1",
+      "envelope": "PageBuilderMaterializedStaticLandingArtifact",
+      "identity": "PageBuilderStaticLandingMaterializationIdentity",
+      "snapshot": "RuntimeScenarioRenderSnapshot",
+      "context_evidence": "runtime_context_hash",
+      "scenario_evidence": "runtime_scenario_id",
+      "snapshot_evidence": "runtime_snapshot_hash",
+      "preview_static_parity": "document_hash",
+      "raw_context_persisted": false
+    },
     "permission_map": {
       "preview": "pages:read",
       "tree": "pages:read",
