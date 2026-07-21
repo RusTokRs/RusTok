@@ -1,17 +1,21 @@
 use leptos::prelude::*;
-use leptos_ui_routing::read_route_query_value;
+use leptos_ui_routing::{
+    read_route_query_value, use_route_query_value, use_route_query_writer,
+};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
 use crate::model::{
     BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostListItem, StorefrontBlogData,
 };
-use crate::{core, transport};
+use crate::{comments_pagination, core, transport};
 
 #[component]
 pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let selected_locale = route_context.locale.clone();
+    let comments_page_query =
+        use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
     let route_state = core::build_storefront_route_state(
         read_route_query_value(&route_context, core::SELECTED_POST_QUERY_KEY),
         route_context.route_segment.as_ref().cloned(),
@@ -24,8 +28,15 @@ pub fn BlogView() -> impl IntoView {
     let load_error = shell_view.load_error;
 
     let posts_resource = Resource::new_blocking(
-        move || fetch_request.clone(),
-        move |request| async move { transport::fetch_blog(request).await },
+        move || {
+            (
+                fetch_request.clone(),
+                comments_pagination::comments_page_from_query(comments_page_query.get()),
+            )
+        },
+        move |(request, comments_page)| async move {
+            transport::fetch_blog(request, comments_page).await
+        },
     );
 
     view! {
@@ -55,14 +66,21 @@ pub fn BlogView() -> impl IntoView {
                     {move || {
                         let posts_resource = posts_resource;
                         let load_error = load_error.clone();
+                        let comments_page = comments_pagination::comments_page_from_query(
+                            comments_page_query.get(),
+                        );
                         Suspend::new(async move {
                             match posts_resource.await {
-                                Ok(data) => view! { <BlogShowcase data /> }.into_any(),
+                                Ok(data) => view! {
+                                    <BlogShowcase data comments_page />
+                                }
+                                .into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                                         {core::error_with_context(load_error.as_str(), &err.to_string())}
                                     </div>
-                                }.into_any(),
+                                }
+                                .into_any(),
                             }
                         })
                     }}
@@ -73,17 +91,17 @@ pub fn BlogView() -> impl IntoView {
 }
 
 #[component]
-fn BlogShowcase(data: StorefrontBlogData) -> impl IntoView {
+fn BlogShowcase(data: StorefrontBlogData, comments_page: u64) -> impl IntoView {
     view! {
         <div class="space-y-6">
-            <SelectedPostCard post=data.selected_post />
+            <SelectedPostCard post=data.selected_post comments_page />
             <PublishedPostsList items=data.posts.items total=data.posts.total />
         </div>
     }
 }
 
 #[component]
-fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
+fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let Some(post) = post else {
         let empty_state = core::selected_post_empty_state_typed_view(
@@ -204,22 +222,23 @@ fn SelectedPostCard(post: Option<BlogPostDetail>) -> impl IntoView {
             } else {
                 ().into_any()
             }}
-            <PublicCommentsList comments=public_comments />
+            <PublicCommentsList comments=public_comments comments_page />
         </article>
     }
     .into_any()
 }
 
 #[component]
-fn PublicCommentsList(comments: BlogCommentList) -> impl IntoView {
+fn PublicCommentsList(comments: BlogCommentList, comments_page: u64) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let query_writer = use_route_query_writer();
     let title = t(locale.as_deref(), "blog.comments.title", "Comments");
     let total_label = core::count_label(
         comments.total,
         &t(locale.as_deref(), "blog.comments.total", "total"),
     );
 
-    if !core::has_items(comments.items.as_slice()) {
+    if comments.total == 0 {
         return view! {
             <section class="mt-8 border-t border-border pt-6">
                 <div class="flex items-center justify-between gap-3">
@@ -238,18 +257,80 @@ fn PublicCommentsList(comments: BlogCommentList) -> impl IntoView {
         .into_any();
     }
 
+    let total_pages = comments_pagination::comments_total_pages(comments.total);
+    let current_page = comments_pagination::bounded_comments_page(comments_page, comments.total);
+    let can_previous = current_page > 1;
+    let can_next = current_page < total_pages;
+    let previous_writer = query_writer.clone();
+    let next_writer = query_writer;
+
     view! {
         <section class="mt-8 border-t border-border pt-6">
-            <div class="flex items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
                 <h4 class="text-lg font-semibold text-foreground">{title}</h4>
-                <span class="text-xs text-muted-foreground">{total_label}</span>
+                <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{total_label}</span>
+                    <span>
+                        {t(locale.as_deref(), "blog.comments.page", "Page")}
+                        {" "}
+                        {current_page}
+                        {" / "}
+                        {total_pages}
+                    </span>
+                </div>
             </div>
-            <div class="mt-4 space-y-3">
-                {comments
-                    .items
-                    .into_iter()
-                    .map(|comment| view! { <PublicCommentCard comment /> })
-                    .collect_view()}
+            {if core::has_items(comments.items.as_slice()) {
+                view! {
+                    <div class="mt-4 space-y-3">
+                        {comments
+                            .items
+                            .into_iter()
+                            .map(|comment| view! { <PublicCommentCard comment /> })
+                            .collect_view()}
+                    </div>
+                }
+                .into_any()
+            } else {
+                view! {
+                    <p class="mt-3 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        {t(
+                            locale.as_deref(),
+                            "blog.comments.emptyPage",
+                            "No approved comments are available on this page.",
+                        )}
+                    </p>
+                }
+                .into_any()
+            }}
+            <div class="mt-4 flex items-center justify-end gap-2">
+                <button
+                    type="button"
+                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                    disabled=!can_previous
+                    on:click=move |_| {
+                        previous_writer.apply_query_intent(
+                            comments_pagination::comments_page_query_intent(
+                                current_page.saturating_sub(1).max(1),
+                            ),
+                        );
+                    }
+                >
+                    {t(locale.as_deref(), "blog.comments.previous", "Previous")}
+                </button>
+                <button
+                    type="button"
+                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-40"
+                    disabled=!can_next
+                    on:click=move |_| {
+                        next_writer.apply_query_intent(
+                            comments_pagination::comments_page_query_intent(
+                                current_page.saturating_add(1).min(total_pages),
+                            ),
+                        );
+                    }
+                >
+                    {t(locale.as_deref(), "blog.comments.next", "Next")}
+                </button>
             </div>
         </section>
     }
