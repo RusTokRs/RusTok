@@ -2,8 +2,9 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    AcceptGroupInvitationCommand, GroupsStorefrontAcceptInvitationResult,
-    GroupsStorefrontDirectory, GroupsStorefrontFilters, GroupsStorefrontMembership,
+    AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
+    GroupsStorefrontAcceptInvitationResult, GroupsStorefrontDirectory, GroupsStorefrontFilters,
+    GroupsStorefrontMembership,
 };
 
 #[derive(Debug, Clone)]
@@ -35,6 +36,14 @@ pub async fn accept_invitation(
     command: AcceptGroupInvitationCommand,
 ) -> Result<GroupsStorefrontAcceptInvitationResult, NativeGroupsStorefrontError> {
     groups_storefront_accept_invitation_native(command)
+        .await
+        .map_err(Into::into)
+}
+
+pub async fn accept_targeted_invitation(
+    command: AcceptTargetedGroupInvitationCommand,
+) -> Result<GroupsStorefrontAcceptInvitationResult, NativeGroupsStorefrontError> {
+    groups_storefront_accept_targeted_invitation_native(command)
         .await
         .map_err(Into::into)
 }
@@ -165,13 +174,7 @@ async fn groups_storefront_accept_invitation_native(
         .await
         .map_err(|error| ServerFnError::new(error.message))?;
 
-        Ok(GroupsStorefrontAcceptInvitationResult {
-            invitation_id: result.invitation_id.to_string(),
-            group_id: result.group_id.to_string(),
-            membership: map_membership(result.membership),
-            group_version: result.group_version,
-            replayed: result.replayed,
-        })
+        Ok(map_acceptance_result(result))
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -179,6 +182,87 @@ async fn groups_storefront_accept_invitation_native(
         Err(ServerFnError::new(
             "groups storefront invitation native transport requires the `ssr` feature",
         ))
+    }
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "groups/storefront/targeted-invitations/accept"
+)]
+async fn groups_storefront_accept_targeted_invitation_native(
+    command: AcceptTargetedGroupInvitationCommand,
+) -> Result<GroupsStorefrontAcceptInvitationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use leptos::prelude::expect_context;
+        use rustok_api::{
+            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
+            TenantContext,
+        };
+        use rustok_groups::{
+            AcceptTargetedGroupInvitationRequest, GroupTargetedInvitationCommandPort,
+            GroupTargetedInvitationService,
+        };
+        use std::time::Duration;
+        use uuid::Uuid;
+
+        let runtime = expect_context::<HostRuntimeContext>();
+        let auth = leptos_axum::extract::<AuthContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if auth.tenant_id != tenant.id {
+            return Err(ServerFnError::new("groups tenant mismatch"));
+        }
+        let invitation_id = Uuid::parse_str(&command.invitation_id)
+            .map_err(|_| ServerFnError::new("invitation_id must be a UUID"))?;
+        let mut context = PortContext::new(
+            tenant.id.to_string(),
+            PortActor::user(auth.user_id.to_string()),
+            request.locale,
+            format!(
+                "groups-storefront-targeted-invitations-native-{}",
+                Uuid::new_v4()
+            ),
+        )
+        .with_deadline(Duration::from_secs(5))
+        .with_idempotency_key(command.idempotency_key);
+        for permission in auth.permissions {
+            context = context.with_claim(permission.to_string());
+        }
+        let result = GroupTargetedInvitationCommandPort::accept_targeted_group_invitation(
+            &GroupTargetedInvitationService::new(runtime.db_clone()),
+            context,
+            AcceptTargetedGroupInvitationRequest { invitation_id },
+        )
+        .await
+        .map_err(|error| ServerFnError::new(error.message))?;
+        Ok(map_acceptance_result(result))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = command;
+        Err(ServerFnError::new(
+            "groups storefront targeted invitation native transport requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_acceptance_result(
+    result: rustok_groups::AcceptGroupInvitationResult,
+) -> GroupsStorefrontAcceptInvitationResult {
+    GroupsStorefrontAcceptInvitationResult {
+        invitation_id: result.invitation_id.to_string(),
+        group_id: result.group_id.to_string(),
+        membership: map_membership(result.membership),
+        group_version: result.group_version,
+        replayed: result.replayed,
     }
 }
 
