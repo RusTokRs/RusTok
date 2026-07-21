@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "contract_id": "rustok-db-multilingual-storage",
+  "authority": [
+    "docs/architecture/database.md",
+    "docs/architecture/i18n.md",
+    "DECISIONS/2026-04-05-multilingual-db-storage-parallel-localized-records.md"
+  ],
+  "rules": {
+    "base_rows": "language_agnostic",
+    "localized_short_text": "parallel_translation_rows",
+    "localized_heavy_content": "parallel_body_rows",
+    "tenant_locale_policy_owns_fields": false,
+    "normalized_locale_min_varchar_width": 32,
+    "locale_width_rollback": "never_narrow"
+  },
+  "guarded_surfaces": [
+    {
+      "id": "foundation_locale_policy",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-migrations/src/m20260405_000001_expand_locale_storage_columns.rs",
+          "required_markers": [
+            "ALTER TABLE tenants",
+            "ALTER COLUMN default_locale TYPE VARCHAR(32)",
+            "ALTER TABLE tenant_locales",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "ALTER COLUMN fallback_locale TYPE VARCHAR(32)",
+            "shrinking locale columns can truncate valid BCP47-like tags"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pages",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-pages/src/migrations/m20260328_000001_create_pages_tables.rs",
+          "required_markers": [
+            "PageTranslations::Table",
+            "PageBodies::Table",
+            "MenuTranslations::Table",
+            "MenuItemTranslations::Table"
+          ]
+        },
+        {
+          "path": "crates/rustok-pages/src/migrations/m20260721_000003_expand_pages_locale_storage_columns.rs",
+          "required_markers": [
+            "ALTER TABLE page_translations",
+            "ALTER TABLE page_bodies",
+            "ALTER TABLE menu_translations",
+            "ALTER TABLE menu_item_translations",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "narrowing locale columns can truncate valid"
+          ]
+        },
+        {
+          "path": "crates/rustok-pages/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260721_000003_expand_pages_locale_storage_columns;",
+            "Box::new(m20260721_000003_expand_pages_locale_storage_columns::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "forum",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-forum/src/migrations/m20260712_000001_enforce_forum_core_tenant_integrity.rs",
+          "required_markers": [
+            "ALTER TABLE forum_category_translations",
+            "ALTER TABLE forum_topic_translations",
+            "ALTER TABLE forum_reply_bodies",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "Locale widths are intentionally not reduced"
+          ]
+        },
+        {
+          "path": "crates/rustok-forum/src/migrations/mod.rs",
+          "required_markers": [
+            "mod m20260712_000001_enforce_forum_core_tenant_integrity;",
+            "Box::new(m20260712_000001_enforce_forum_core_tenant_integrity::Migration)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "groups",
+      "status": "enforced",
+      "files": [
+        {
+          "path": "crates/rustok-groups/src/migrations/m20260721_000001_create_groups.rs",
+          "required_markers": [
+            "GroupTranslations::Table",
+            "ColumnDef::new(GroupTranslations::Locale)",
+            ".string_len(32)",
+            "GroupTranslations::Title",
+            "GroupTranslations::Summary",
+            "GroupTranslations::Body"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_catalog",
+      "status": "delegated_guard",
+      "files": [
+        {
+          "path": "scripts/verify/verify-product-catalog-schema.mjs",
+          "required_markers": [
+            "locale VARCHAR(32) NOT NULL",
+            "ALTER COLUMN locale TYPE VARCHAR(32)",
+            "shrinking locale columns can truncate valid BCP47-like tags"
+          ]
+        },
+        {
+          "path": "package.json",
+          "required_markers": [
+            "verify:product:catalog-schema"
+          ]
+        }
+      ]
+    }
+  ],
+  "known_gaps": [
+    {
+      "id": "auth-oauth-app-copy",
+      "owner": "rustok-auth",
+      "kind": "mixed_storage_cutover",
+      "status": "documented_open",
+      "path": "crates/rustok-auth/src/migrations/m20260308_000001_create_oauth_apps.rs",
+      "evidence_markers": [
+        "OAuthApps::Name",
+        "OAuthApps::Description"
+      ],
+      "next_action": "atomically move OAuth application display copy to an owner translation table across storage and transports"
+    },
+    {
+      "id": "profiles-display-name",
+      "owner": "rustok-profiles",
+      "kind": "mixed_storage_cutover",
+      "status": "open",
+      "path": "crates/rustok-profiles/src/migrations/m20260326_000001_create_profiles_tables.rs",
+      "evidence_markers": [
+        "ColumnDef::new(Profiles::DisplayName)",
+        "ColumnDef::new(ProfileTranslations::DisplayName)",
+        "ColumnDef::new(Profiles::PreferredLocale).string_len(16)",
+        "ColumnDef::new(ProfileTranslations::Locale)",
+        ".string_len(16)"
+      ],
+      "next_action": "define identity-vs-localized display-name ownership, backfill translations, remove duplicated localized copy, and widen locale columns"
+    },
+    {
+      "id": "content-locale-width",
+      "owner": "rustok-content",
+      "kind": "locale_width",
+      "status": "open",
+      "path": "crates/rustok-content/src/migrations/m20250130_000005_create_nodes.rs",
+      "evidence_markers": [
+        "ColumnDef::new(NodeTranslations::Locale)",
+        ".string_len(5)",
+        "ColumnDef::new(Bodies::Locale).string_len(5)"
+      ],
+      "next_action": "append an irreversible PostgreSQL widening migration for all content-owned locale columns"
+    },
+    {
+      "id": "blog-locale-width",
+      "owner": "rustok-blog",
+      "kind": "locale_width_and_slug_semantics",
+      "status": "open",
+      "path": "crates/rustok-blog/src/migrations/m20260328_000001_create_blog_post_tables.rs",
+      "evidence_markers": [
+        "ColumnDef::new(BlogPostTranslations::Locale)",
+        ".string_len(16)",
+        "ColumnDef::new(BlogPosts::Slug)"
+      ],
+      "next_action": "widen translation locales and explicitly document whether the base slug is a locale-neutral canonical route key or must move to translations"
+    },
+    {
+      "id": "taxonomy-locale-width",
+      "owner": "rustok-taxonomy",
+      "kind": "locale_width",
+      "status": "open",
+      "path": "crates/rustok-taxonomy/src/migrations/m20260329_000001_create_taxonomy_tables.rs",
+      "evidence_markers": [
+        "ColumnDef::new(TaxonomyTermTranslations::Locale)",
+        "ColumnDef::new(TaxonomyTermAliases::Locale)",
+        ".string_len(16)"
+      ],
+      "next_action": "append an irreversible widening migration for term translation and alias locales"
+    },
+    {
+      "id": "comments-locale-width",
+      "owner": "rustok-comments",
+      "kind": "locale_width",
+      "status": "open",
+      "path": "crates/rustok-comments/src/migrations/m20260328_000001_create_comments_tables.rs",
+      "evidence_markers": [
+        "ColumnDef::new(CommentBodies::Locale)",
+        ".string_len(16)"
+      ],
+      "next_action": "append an irreversible widening migration for comment body locales"
+    },
+    {
+      "id": "customer-locale-width",
+      "owner": "rustok-customer",
+      "kind": "locale_width",
+      "status": "open",
+      "path": "crates/rustok-customer/src/migrations/m20260325_000103_create_customers_table.rs",
+      "evidence_markers": [
+        "ColumnDef::new(Customers::Locale).string_len(16)"
+      ],
+      "next_action": "widen the customer locale preference column to the platform-safe width"
+    }
+  ]
+}
