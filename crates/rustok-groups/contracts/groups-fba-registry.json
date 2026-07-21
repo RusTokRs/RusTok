@@ -53,7 +53,8 @@
         "authorization": "active_owner_or_admin_or_platform_manage",
         "exact_locale_only": true,
         "last_translation_delete": "deny",
-        "transactional_group_version": true
+        "transactional_group_version": true,
+        "serialized_group_row": "exclusive_lock_where_supported"
       },
       {
         "name": "GroupGovernanceCommandPort",
@@ -84,7 +85,8 @@
     "module_local_fallback": false,
     "management_selection": "exact_normalized_locale",
     "delete_last_translation": "deny",
-    "version_bump": "same_transaction"
+    "version_bump": "same_transaction",
+    "mutation_serialization": "base_group_row"
   },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
@@ -127,6 +129,7 @@
   ],
   "evidence": {
     "static_boundary": "scripts/verify/verify-groups-boundary.mjs",
+    "localization_static_boundary": "scripts/verify/verify-groups-localization-boundary.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
