@@ -1,1 +1,1 @@
-Build the final OAuth cutover artifact against the current verifier baseline.
+Publish the verified OAuth exact-locale blobs to the staging branch.
