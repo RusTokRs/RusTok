@@ -2,7 +2,7 @@ pub mod admin;
 #[path = "admin/checkout_operations.rs"]
 pub(crate) mod checkout_operations;
 mod common;
-mod marketplace_financial;
+pub(crate) mod marketplace_financial;
 pub mod products;
 mod reconciliation;
 pub(crate) mod return_completion_operations;
@@ -47,11 +47,6 @@ impl CommerceHttpRuntime {
     fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
         self.marketplace_financial_runtime
             .operator_service(self.db_clone(), self.event_bus())
-    }
-
-    fn marketplace_paid_event_inbox_service(&self) -> crate::MarketplacePaidEventInboxService {
-        self.marketplace_financial_runtime
-            .paid_event_inbox(self.db_clone(), self.event_bus())
     }
 }
 
