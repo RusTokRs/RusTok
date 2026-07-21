@@ -306,11 +306,15 @@ async fn ensure_builder_publish_enabled_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> PagesResult<()> {
-    let module = tenant_module::Entity::find()
-        .filter(tenant_module::Column::TenantId.eq(tenant_id))
-        .filter(tenant_module::Column::ModuleSlug.eq("pages"))
-        .one(txn)
-        .await?;
+    let query = || {
+        tenant_module::Entity::find()
+            .filter(tenant_module::Column::TenantId.eq(tenant_id))
+            .filter(tenant_module::Column::ModuleSlug.eq("pages"))
+    };
+    let module = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    };
     let enabled = module.as_ref().is_none_or(|module| {
         is_builder_enabled(&module.settings) && is_builder_publish_enabled(&module.settings)
     });
@@ -327,12 +331,16 @@ async fn ensure_candidates_allowed_in_tx(
     reviewed: &PageBuilderReviewedPublishRuntime,
     project_data: Vec<serde_json::Value>,
 ) -> PagesResult<()> {
-    let Some(model) = page_builder_scenario_baseline::Entity::find()
-        .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
-        .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
-        .one(txn)
-        .await?
-    else {
+    let query = || {
+        page_builder_scenario_baseline::Entity::find()
+            .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
+            .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
+    };
+    let model = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    };
+    let Some(model) = model else {
         return Ok(());
     };
     let baseline: RuntimeScenarioReleaseBaseline =
