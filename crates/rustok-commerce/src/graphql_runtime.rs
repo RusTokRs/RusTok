@@ -12,6 +12,7 @@ use sea_orm::DatabaseConnection;
 pub struct CommerceGraphqlRuntimeData {
     payment_provider_registry: PaymentProviderRegistry,
     fulfillment_provider_registry: FulfillmentProviderRegistry,
+    marketplace_financial_runtime: crate::MarketplaceFinancialRuntime,
 }
 
 impl CommerceGraphqlRuntimeData {
@@ -21,6 +22,10 @@ impl CommerceGraphqlRuntimeData {
 
     pub fn fulfillment_provider_registry(&self) -> FulfillmentProviderRegistry {
         self.fulfillment_provider_registry.clone()
+    }
+
+    pub fn marketplace_financial_runtime(&self) -> crate::MarketplaceFinancialRuntime {
+        self.marketplace_financial_runtime.clone()
     }
 }
 
@@ -35,6 +40,12 @@ pub fn attach_schema_data(
         fulfillment_provider_registry: inputs
             .shared_get::<FulfillmentProviderRegistry>()
             .unwrap_or_else(FulfillmentProviderRegistry::with_manual_provider),
+        marketplace_financial_runtime: inputs
+            .shared_get::<crate::MarketplaceFinancialRuntime>()
+            .ok_or_else(|| {
+                "commerce GraphQL requires MarketplaceFinancialRuntime in host composition"
+                    .to_string()
+            })?,
     })
 }
 
