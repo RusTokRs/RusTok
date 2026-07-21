@@ -274,7 +274,7 @@ async fn insert_notification(
     let read = read_at
         .map(|value| format!("'{value}'"))
         .unwrap_or_else(|| "NULL".to_string());
-    let payload = payload.replace(''\'', "''");
+    let payload = payload.replace('\'', "''");
     db.execute_unprepared(&format!(
         "INSERT INTO notifications \
          (id, tenant_id, recipient_id, source_slug, source_event_id, source_revision, notification_type, \
