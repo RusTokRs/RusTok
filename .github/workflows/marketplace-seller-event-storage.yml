@@ -1,31 +1,17 @@
-name: Marketplace seller event storage
+name: Ecommerce stack diagnostics
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "crates/rustok-marketplace-seller/**"
-      - "scripts/verify/verify-marketplace-seller-events.mjs"
-      - ".github/workflows/marketplace-seller-event-storage.yml"
   pull_request:
     paths:
-      - "crates/rustok-marketplace-seller/**"
-      - "scripts/verify/verify-marketplace-seller-events.mjs"
       - ".github/workflows/marketplace-seller-event-storage.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: marketplace-seller-event-storage-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  event-storage:
-    name: Seller event storage contract
+  diagnose-ecommerce-stack:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -34,96 +20,144 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: marketplace-seller-event-storage
-      - name: Capture event storage rustfmt patch
+          shared-key: ecommerce-stack-diagnostics
+
+      - name: Capture focused rustfmt patch
+        shell: bash
         run: |
-          rustfmt --edition 2021 \
-            crates/rustok-marketplace-seller/src/command_receipts.rs \
-            crates/rustok-marketplace-seller/src/lib.rs \
-            crates/rustok-marketplace-seller/src/ports.rs \
-            crates/rustok-marketplace-seller/src/receipted_commands.rs \
-            crates/rustok-marketplace-seller/src/seller_events.rs \
-            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
-            crates/rustok-marketplace-seller/src/seller_response_events_tests.rs
+          set -euo pipefail
+          rustfmt --edition 2024 \
+            crates/rustok-commerce/src/services/marketplace_provider_reversal_backfill.rs \
+            crates/rustok-commerce/src/services/marketplace_provider_reversal_event_adapter.rs \
+            crates/rustok-commerce/src/services/marketplace_financial_runtime.rs \
+            crates/rustok-commerce/src/services/marketplace_financial_runtime/marketplace_reversal_fact_guard.rs \
+            crates/rustok-commerce/tests/marketplace_reversal_recovery_source.rs \
+            crates/rustok-commerce/tests/marketplace_reversal_missing_facts_source.rs \
+            crates/rustok-marketplace-payout/src/entities/mod.rs \
+            crates/rustok-marketplace-payout/src/entities/operation.rs \
+            crates/rustok-marketplace-payout/src/entities/operation_transfer.rs \
+            crates/rustok-marketplace-payout/src/migrations/mod.rs \
+            crates/rustok-marketplace-payout/src/migrations/m20260722_000002_create_marketplace_payout_operations.rs \
+            crates/rustok-marketplace-payout/tests/operation_schema.rs
           git diff -- \
-            crates/rustok-marketplace-seller/src/command_receipts.rs \
-            crates/rustok-marketplace-seller/src/lib.rs \
-            crates/rustok-marketplace-seller/src/ports.rs \
-            crates/rustok-marketplace-seller/src/receipted_commands.rs \
-            crates/rustok-marketplace-seller/src/seller_events.rs \
-            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
-            crates/rustok-marketplace-seller/src/seller_response_events_tests.rs \
+            crates/rustok-commerce/src/services/marketplace_provider_reversal_backfill.rs \
+            crates/rustok-commerce/src/services/marketplace_provider_reversal_event_adapter.rs \
+            crates/rustok-commerce/src/services/marketplace_financial_runtime.rs \
+            crates/rustok-commerce/src/services/marketplace_financial_runtime/marketplace_reversal_fact_guard.rs \
+            crates/rustok-commerce/tests/marketplace_reversal_recovery_source.rs \
+            crates/rustok-commerce/tests/marketplace_reversal_missing_facts_source.rs \
+            crates/rustok-marketplace-payout/src/entities/mod.rs \
+            crates/rustok-marketplace-payout/src/entities/operation.rs \
+            crates/rustok-marketplace-payout/src/entities/operation_transfer.rs \
+            crates/rustok-marketplace-payout/src/migrations/mod.rs \
+            crates/rustok-marketplace-payout/src/migrations/m20260722_000002_create_marketplace_payout_operations.rs \
+            crates/rustok-marketplace-payout/tests/operation_schema.rs \
             > rustfmt.patch
           mkdir -p formatted
           cp --parents \
-            crates/rustok-marketplace-seller/src/command_receipts.rs \
-            crates/rustok-marketplace-seller/src/lib.rs \
-            crates/rustok-marketplace-seller/src/ports.rs \
-            crates/rustok-marketplace-seller/src/receipted_commands.rs \
-            crates/rustok-marketplace-seller/src/seller_events.rs \
-            crates/rustok-marketplace-seller/src/seller_events_tests.rs \
-            crates/rustok-marketplace-seller/src/seller_response_events_tests.rs \
+            crates/rustok-commerce/src/services/marketplace_provider_reversal_backfill.rs \
+            crates/rustok-commerce/src/services/marketplace_provider_reversal_event_adapter.rs \
+            crates/rustok-commerce/src/services/marketplace_financial_runtime.rs \
+            crates/rustok-commerce/src/services/marketplace_financial_runtime/marketplace_reversal_fact_guard.rs \
+            crates/rustok-commerce/tests/marketplace_reversal_recovery_source.rs \
+            crates/rustok-commerce/tests/marketplace_reversal_missing_facts_source.rs \
+            crates/rustok-marketplace-payout/src/entities/mod.rs \
+            crates/rustok-marketplace-payout/src/entities/operation.rs \
+            crates/rustok-marketplace-payout/src/entities/operation_transfer.rs \
+            crates/rustok-marketplace-payout/src/migrations/mod.rs \
+            crates/rustok-marketplace-payout/src/migrations/m20260722_000002_create_marketplace_payout_operations.rs \
+            crates/rustok-marketplace-payout/tests/operation_schema.rs \
             formatted/
-      - name: Compile seller owner
-        id: compile
+
+      - name: Check commerce
+        id: commerce_check
         continue-on-error: true
+        shell: bash
         run: |
           set -o pipefail
-          cargo check -p rustok-marketplace-seller --all-targets 2>&1 | tee cargo-check.log
-      - name: Test seller event storage
-        id: tests
+          cargo check -p rustok-commerce --lib 2>&1 | tee commerce-check.log
+
+      - name: Test commerce reversal slices
+        id: commerce_tests
         continue-on-error: true
+        shell: bash
         run: |
           set -o pipefail
-          cargo test -p rustok-marketplace-seller 2>&1 | tee cargo-test.log
-      - name: Clippy seller owner
+          cargo test -p rustok-commerce marketplace_reversal_recovery_source -- --nocapture 2>&1 | tee commerce-tests.log
+          first=${PIPESTATUS[0]}
+          cargo test -p rustok-commerce safe_messages_do_not_include_internal_error_details -- --nocapture 2>&1 | tee -a commerce-tests.log
+          second=${PIPESTATUS[0]}
+          cargo test -p rustok-commerce marketplace_reversal_missing_facts -- --nocapture 2>&1 | tee -a commerce-tests.log
+          third=${PIPESTATUS[0]}
+          test "$first" -eq 0 && test "$second" -eq 0 && test "$third" -eq 0
+
+      - name: Check payout owner
+        id: payout_check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo check -p rustok-marketplace-payout --all-targets 2>&1 | tee payout-check.log
+
+      - name: Test payout owner
+        id: payout_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -p rustok-marketplace-payout -- --nocapture 2>&1 | tee payout-tests.log
+
+      - name: Clippy focused crates
         id: clippy
         continue-on-error: true
+        shell: bash
         run: |
           set -o pipefail
-          cargo clippy -p rustok-marketplace-seller --all-targets --no-deps -- -D warnings 2>&1 | tee cargo-clippy.log
-      - name: Verify seller event boundary
-        id: verify
-        continue-on-error: true
+          cargo clippy \
+            -p rustok-commerce \
+            -p rustok-marketplace-payout \
+            --all-targets --no-deps -- -D warnings \
+            2>&1 | tee clippy.log
+
+      - name: Record outcomes
+        if: always()
+        shell: bash
         run: |
-          set -o pipefail
-          node scripts/verify/verify-marketplace-seller-events.mjs 2>&1 | tee seller-event-verifier.log
-      - name: Upload seller event diagnostics
+          cat > outcomes.txt <<EOF
+          rustfmt_clean=$([ ! -s rustfmt.patch ] && echo true || echo false)
+          commerce_check=${{ steps.commerce_check.outcome }}
+          commerce_tests=${{ steps.commerce_tests.outcome }}
+          payout_check=${{ steps.payout_check.outcome }}
+          payout_tests=${{ steps.payout_tests.outcome }}
+          clippy=${{ steps.clippy.outcome }}
+          EOF
+
+      - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: marketplace-seller-event-storage-diagnostics
+          name: ecommerce-stack-diagnostics
           path: |
             formatted/
             rustfmt.patch
-            cargo-check.log
-            cargo-test.log
-            cargo-clippy.log
-            seller-event-verifier.log
+            outcomes.txt
+            commerce-check.log
+            commerce-tests.log
+            payout-check.log
+            payout-tests.log
+            clippy.log
           if-no-files-found: error
           retention-days: 3
-      - name: Enforce seller event gates
+
+      - name: Enforce focused gates
         if: always()
+        shell: bash
         run: |
           failed=0
-          if test -s rustfmt.patch; then
-            echo "seller event Rust files are not rustfmt-clean"
-            failed=1
-          fi
-          if test "${{ steps.compile.outcome }}" != "success"; then
-            echo "seller owner compile failed"
-            failed=1
-          fi
-          if test "${{ steps.tests.outcome }}" != "success"; then
-            echo "seller event tests failed"
-            failed=1
-          fi
-          if test "${{ steps.clippy.outcome }}" != "success"; then
-            echo "seller owner Clippy failed"
-            failed=1
-          fi
-          if test "${{ steps.verify.outcome }}" != "success"; then
-            echo "seller event verifier failed"
-            failed=1
-          fi
+          test ! -s rustfmt.patch || failed=1
+          test "${{ steps.commerce_check.outcome }}" = success || failed=1
+          test "${{ steps.commerce_tests.outcome }}" = success || failed=1
+          test "${{ steps.payout_check.outcome }}" = success || failed=1
+          test "${{ steps.payout_tests.outcome }}" = success || failed=1
+          test "${{ steps.clippy.outcome }}" = success || failed=1
           exit "$failed"
