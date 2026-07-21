@@ -28,6 +28,13 @@
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false
+      },
+      {
+        "name": "GroupCommandPort",
+        "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true
       }
     ]
   },
