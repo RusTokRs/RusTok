@@ -120,12 +120,36 @@
       "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT",
       "PAGE_PUBLISH_OPERATION_INTEGRITY"
     ],
+    "transport": {
+      "graphql": {
+        "mutation_source": "crates/rustok-pages/src/graphql/mutation.rs",
+        "types_source": "crates/rustok-pages/src/graphql/types.rs",
+        "input": "PublishGqlPageInput",
+        "result": "GqlPublishPageResult"
+      },
+      "http": {
+        "source": "crates/rustok-pages/src/http.rs",
+        "route": "/api/admin/pages/{id}/publish",
+        "manifest_factory": "http::axum_router"
+      },
+      "admin": {
+        "source": "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
+        "result": "PublishPageReceipt",
+        "body_revisions": "all_available_localized_bodies",
+        "idempotency": "deterministic_snapshot_identity",
+        "scenario_selection": "single_promoted_scenario_only_fail_closed_otherwise"
+      },
+      "create_publish": "rejected_in_domain",
+      "source_guard": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
+      "executed_evidence": "pending"
+    },
     "typed_errors": true,
     "raw_context_persisted": false,
     "cache_invalidation": "transactional_node_published_outbox",
-    "legacy_default_publish": "pending_removal",
-    "public_transport": "pending_cutover",
-    "atomic_pipeline": "service_integrated"
+    "legacy_default_publish": "publicly_unreachable_pending_domain_removal",
+    "public_transport": "graphql_http_admin_reviewed_cutover",
+    "atomic_pipeline": "service_and_public_transport_integrated"
   },
-  "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs"
+  "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
+  "transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs"
 }
