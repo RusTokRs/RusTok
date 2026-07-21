@@ -162,7 +162,6 @@ pub(super) fn CategoryDndGrid(
                     &category_labels,
                 );
                 let item_is_busy = vm.is_busy;
-                let item_is_busy = vm.is_busy;
                 let item_id = item.id.clone();
                 let before_target = item.id.clone();
                 let inside_target = item.id.clone();
