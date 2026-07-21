@@ -5,8 +5,13 @@
 
   const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024;
   const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
+  const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
+  const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
   const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
   const PROBLEM_REPORTER_KEY = Symbol.for("fly.browser.problem.reporter");
+  const PENDING_INTENT_CONTROLLERS_KEY = Symbol.for(
+    "fly.browser.pending.intent.controllers",
+  );
   const RESOURCE_STATUS_SELECTOR =
     '[data-fly-browser-status="resource-limit"]';
   const PROBLEM_STATUS_SELECTOR = '[data-fly-browser-status="problem"]';
@@ -125,6 +130,58 @@
     });
   };
 
+  const pendingIntentControllers = (adapter) => {
+    let controllers = adapter[PENDING_INTENT_CONTROLLERS_KEY];
+    if (controllers instanceof Map) return controllers;
+    controllers = new Map();
+    adapter[PENDING_INTENT_CONTROLLERS_KEY] = controllers;
+    return controllers;
+  };
+
+  const rejectPendingIntent = (adapter, input, limit, observed) => {
+    const request = isObject(input) ? input : {};
+    const message =
+      adapter.options?.pendingIntentLimitMessage ||
+      adapter.root.dataset.flyPendingIntentLimitMessage ||
+      "Editor action limit reached.";
+    const error = `${message} ${observed}/${limit}.`;
+    const intent =
+      typeof request.intent === "string" && request.intent
+        ? request.intent
+        : typeof request.type === "string" && request.type
+          ? request.type
+          : null;
+    const detail = {
+      code: PENDING_INTENT_LIMIT_CODE,
+      error,
+      intent,
+      limit,
+      observed,
+      instanceId: adapter.instanceId,
+      pageId: adapter.pageId,
+    };
+    adapter.root.dispatchEvent(
+      new CustomEvent("fly:browser-intent-rejected", {
+        bubbles: true,
+        detail,
+      }),
+    );
+    reportBrowserProblem(
+      adapter,
+      {
+        status: 0,
+        result: {
+          code: detail.code,
+          error: detail.error,
+          intent: detail.intent,
+        },
+        request,
+      },
+      PENDING_INTENT_LIMIT_CODE,
+    );
+    return null;
+  };
+
   const installProblemReporter = (adapter) => {
     if (!adapter || adapter[PROBLEM_REPORTER_KEY]) return adapter;
     adapter[PROBLEM_REPORTER_KEY] = true;
@@ -201,6 +258,46 @@
     return result;
   };
 
+  const originalPostIntent = Adapter.prototype.postIntent;
+  Adapter.prototype.postIntent = function postIntentWithPendingLimit(input) {
+    if (!this.intentEndpoint) return originalPostIntent.call(this, input);
+    const controllers = pendingIntentControllers(this);
+    const limit = limitFor(
+      this,
+      "maxPendingIntentRequests",
+      "flyMaxPendingIntentRequests",
+      DEFAULT_MAX_PENDING_INTENT_REQUESTS,
+    );
+    const observed = controllers.size + 1;
+    if (observed > limit) {
+      return Promise.resolve(rejectPendingIntent(this, input, limit, observed));
+    }
+
+    const controller = new AbortController();
+    const requestKey = Symbol("fly.browser.intent.request");
+    controllers.set(requestKey, controller);
+    const originalFetch = globalThis.fetch;
+    let pending;
+    try {
+      if (typeof originalFetch === "function") {
+        globalThis.fetch = (resource, init = {}) =>
+          originalFetch.call(globalThis, resource, {
+            ...init,
+            signal: controller.signal,
+          });
+      }
+      pending = originalPostIntent.call(this, input);
+    } catch (error) {
+      controllers.delete(requestKey);
+      throw error;
+    } finally {
+      if (typeof originalFetch === "function") globalThis.fetch = originalFetch;
+    }
+    return Promise.resolve(pending).finally(() => {
+      controllers.delete(requestKey);
+    });
+  };
+
   const originalOnMessage = Adapter.prototype.onMessage;
   Adapter.prototype.onMessage = function onMessageWithResourceLimit(event) {
     if (
@@ -275,6 +372,12 @@
   const originalStop = Adapter.prototype.stop;
   Adapter.prototype.stop = function stopWithBrowserHardeningCleanup() {
     const result = originalStop.call(this);
+    const controllers = this[PENDING_INTENT_CONTROLLERS_KEY];
+    if (controllers instanceof Map) {
+      for (const controller of controllers.values()) controller.abort();
+      controllers.clear();
+    }
+    delete this[PENDING_INTENT_CONTROLLERS_KEY];
     delete this.root.dataset.flyResourceLimited;
     this.root.querySelector(RESOURCE_STATUS_SELECTOR)?.remove();
     clearBrowserProblem(this);
