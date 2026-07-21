@@ -1,10 +1,18 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/graphql_applications_adapter.rs"]
+mod graphql_applications_adapter;
+#[path = "transport/native_applications_adapter.rs"]
+mod native_applications_adapter;
 #[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
 use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
 
+use crate::application_model::{
+    GroupsStorefrontApplicationPolicy, GroupsStorefrontApplicationPolicyQuery,
+    GroupsStorefrontSubmitApplicationResult, SubmitGroupMembershipApplicationCommand,
+};
 use crate::core::GroupsStorefrontTransportProfile;
 use crate::model::{
     AcceptGroupInvitationCommand, AcceptTargetedGroupInvitationCommand,
@@ -93,6 +101,46 @@ pub async fn accept_groups_storefront_targeted_invitation(
         context.path(),
         move || native_server_adapter::accept_targeted_invitation(native_command),
         move || graphql_adapter::accept_targeted_invitation(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn load_groups_storefront_application_policy(
+    context: GroupsStorefrontTransportContext,
+    query: GroupsStorefrontApplicationPolicyQuery,
+) -> UiTransportResult<GroupsStorefrontApplicationPolicy> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.storefront.applications.policy",
+        context.path(),
+        move || native_applications_adapter::load_group_application_policy(native_query),
+        move || {
+            graphql_applications_adapter::load_group_application_policy(token, tenant, query)
+        },
+    )
+    .await
+}
+
+pub async fn submit_groups_storefront_membership_application(
+    context: GroupsStorefrontTransportContext,
+    command: SubmitGroupMembershipApplicationCommand,
+) -> UiTransportResult<GroupsStorefrontSubmitApplicationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.storefront.applications.submit",
+        context.path(),
+        move || {
+            native_applications_adapter::submit_group_membership_application(native_command)
+        },
+        move || {
+            graphql_applications_adapter::submit_group_membership_application(
+                token, tenant, command,
+            )
+        },
     )
     .await
 }

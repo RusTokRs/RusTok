@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 
+use super::applications::GroupsApplicationsAdmin;
 use super::invitations::GroupsInvitationsAdmin;
 use super::leptos::GroupsAdmin as GroupsAdminCore;
 use super::localization::GroupsLocalizationAdmin;
@@ -10,6 +11,7 @@ pub fn GroupsAdmin() -> impl IntoView {
         <div class="space-y-6">
             <GroupsAdminCore />
             <GroupsLocalizationAdmin />
+            <GroupsApplicationsAdmin />
             <GroupsInvitationsAdmin />
         </div>
     }

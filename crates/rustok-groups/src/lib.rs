@@ -4,12 +4,16 @@ use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_notifications_api::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
+pub mod application_entities;
+pub mod applications;
 pub mod domain;
 pub mod dto;
 pub mod entities;
 pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
+#[cfg(feature = "graphql")]
+pub mod graphql_applications;
 #[cfg(feature = "graphql")]
 pub mod graphql_governance;
 #[cfg(feature = "graphql")]
@@ -28,6 +32,7 @@ pub mod ports;
 pub mod service;
 pub mod targeted_invitations;
 
+pub use applications::*;
 pub use domain::*;
 pub use dto::*;
 pub use error::{GroupsError, GroupsResult};
@@ -105,7 +110,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 5);
+        assert_eq!(module.migrations().len(), 6);
         assert_eq!(module.permissions().len(), 7);
     }
 
