@@ -22,17 +22,15 @@ ALTER TABLE product_category_translations
                     .await?;
             }
             DatabaseBackend::MySql => {
-                manager
-                    .get_connection()
-                    .execute_unprepared(
-                        r#"
-ALTER TABLE collection_translations
-    MODIFY COLUMN locale VARCHAR(32) NOT NULL;
-ALTER TABLE product_category_translations
-    MODIFY COLUMN locale VARCHAR(32) NOT NULL;
-"#,
-                    )
-                    .await?;
+                for statement in [
+                    "ALTER TABLE collection_translations MODIFY COLUMN locale VARCHAR(32) NOT NULL",
+                    "ALTER TABLE product_category_translations MODIFY COLUMN locale VARCHAR(32) NOT NULL",
+                ] {
+                    manager
+                        .get_connection()
+                        .execute_unprepared(statement)
+                        .await?;
+                }
             }
             DatabaseBackend::Sqlite => rebuild_sqlite_translation_tables(manager).await?,
         }
