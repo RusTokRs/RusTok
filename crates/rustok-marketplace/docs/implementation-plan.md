@@ -7,7 +7,7 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `checkout_financial_recovery_worker_rest_graphql_wired_unvalidated`.
+- Runtime integration status: `append_only_reversals_seller_balance_projection_root_orchestration_source_ready_unvalidated`.
 - Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
@@ -40,6 +40,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   bounded recovery sweep, and operator recovery service source.
 - [x] Host-composed marketplace financial runtime, scheduled recovery worker, authenticated
   REST and GraphQL operator transports, and OpenAPI source.
+- [x] Append-only refund/chargeback ledger reversals with exact original-entry links,
+  cumulative reversal capacity, rebuildable seller balances, and root reversal orchestration.
 
 ## Architecture contract
 
@@ -257,17 +259,33 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   safe projections and `payments:read` / `payments:manage` authorization.
 - [x] Register REST routes in commerce OpenAPI and preserve the existing `CommerceQuery`
   type/value construction contract while merging the financial query root.
+- [x] Add owner-local append-only refund and chargeback reversal transactions with durable
+  receipts, exact links to original entries, stable source identity, and balanced postings.
+- [x] Lock original entries before cumulative reversal-capacity checks to prevent concurrent
+  over-reversal on databases that support row locking.
+- [x] Add pending, available, reserved, paid, and negative seller balance projections that
+  rebuild from immutable seller-payable entries.
+- [x] Rebuild affected seller balances after initial posting, reversal posting, and receipt
+  replay without making the projection authoritative.
+- [x] Add root `process_financial_reversal` orchestration with stable
+  `<root>:ledger-reversal:v1` child identity and no commission reassessment.
+- [x] Publish marketplace ledger v2 and marketplace family v2 contracts plus source tests for
+  replay, duplicate source, cumulative capacity, immutable originals, projection rebuild,
+  root child-key propagation, and result invariants.
 
 ### Remaining critical path
 
 - [ ] Mount provider-event adapter polling/subscription if webhook-specific recovery is
   required in addition to the registered paid-order domain listener.
-- [ ] Add append-only reversal transactions for refunds, chargebacks, adjustments,
-  payout settlement, payout reversal, reserve hold, and reserve release.
-- [ ] Add seller balance projections for pending, available, reserved, paid, and
-  negative amounts, rebuildable from ledger entries.
-- [ ] Retain clean/upgraded migrations, duplicate-paid-event, balancing, recovery,
-  authorization, mounted REST/GraphQL, worker lifecycle, and concurrent posting evidence.
+- [ ] Normalize completed payment refunds and chargebacks into typed marketplace reversal
+  facts without parsing raw provider payloads in the marketplace root.
+- [ ] Add a durable financial-reversal event inbox, CAS leases, scheduled recovery, and
+  authenticated operator review/retry surfaces.
+- [ ] Add append-only adjustment, payout settlement, payout reversal, reserve hold, reserve
+  release, and seller balance bucket-transfer transactions.
+- [ ] Retain clean/upgraded migrations, reversal replay, duplicate source, cumulative
+  capacity, PostgreSQL contention, balance rebuild, paid-event recovery, authorization,
+  mounted REST/GraphQL, worker lifecycle, and concurrent posting evidence.
 
 ## Payout
 
@@ -332,7 +350,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 - [ ] Support split fulfillment and tracking per seller allocation.
 - [ ] Add return/refund attribution to order line, allocation, seller, and commission
   assessment.
-- [ ] Add commission and ledger reversal orchestration for partial refunds.
+- [ ] Connect normalized partial refunds and chargebacks to the source-ready ledger reversal
+  orchestration.
 - [ ] Add disputes, evidence, financial holds, and resolution lifecycle.
 - [ ] Preserve one customer-facing aggregate order.
 
@@ -371,6 +390,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
   composition and enrich listener extensions after event transport startup.
 - [x] Mount scheduled paid-event recovery and authenticated REST/GraphQL operator
   transports.
+- [x] Register marketplace ledger reversal and seller balance migrations through the
+  existing ledger `MigrationSource` composition.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
 - [ ] Register request-scoped runtime providers for payout and moderation; compile-time
   module registration is not sufficient.
@@ -379,8 +400,8 @@ PostgreSQL contention, mounted transport execution, or remote-provider evidence 
 ## Consolidated maintainer validation queue
 
 No new tests were run for the 2026-07-21 source composition, typed-checkout, checkpoint,
-post-capture financial-operation, paid-event recovery, scheduled worker, or operator
-transport batches.
+post-capture financial-operation, paid-event recovery, scheduled worker, operator transport,
+append-only reversal, seller balance projection, or root reversal orchestration batches.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed cart, commerce, marketplace, moderation, distribution,
@@ -403,6 +424,11 @@ transport batches.
   multi-tenant fairness, and repeated sweep scenarios.
 - [ ] Run REST/OpenAPI and GraphQL schema mounting, tenant isolation, payment RBAC,
   safe-projection, list/show/retry, and manual sweep scenarios.
+- [ ] Run reversal receipt replay, same-key/different-request conflict, duplicate source,
+  cumulative over-reversal, immutable original-entry, and corrupted projection rebuild scenarios.
+- [ ] Run concurrent PostgreSQL reversal admission against the same original entries.
+- [ ] Run root reversal child-key, deadline/causation propagation, no-commission-call, identity,
+  transaction binding, and balanced-total scenarios.
 - [ ] Run idempotency conflict and lost-response replay scenarios.
 - [ ] Run allocation, commission, ledger, payout, seller, listing, and moderation
   contention scenarios.
@@ -425,12 +451,14 @@ transport batches.
 6. [x] Add paid-event inbox, paid-order listener, verified provider adapter, bounded sweep,
    and operator recovery service source.
 7. [x] Mount scheduled sweep and authenticated REST/GraphQL operator transports.
-8. [ ] Add refund/chargeback ledger reversals and seller balance projections.
-9. [ ] Add payout provider journal, webhook inbox, transfer execution, and settlement.
-10. [ ] Add seller/listing moderation adapters and decision-application recovery.
-11. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
-12. [ ] Build vendor and finance control-room surfaces.
-13. [ ] Execute the consolidated validation queue and only then promote readiness.
+8. [x] Add refund/chargeback ledger reversals and seller balance projections.
+9. [ ] Normalize refund/chargeback owner events and add durable reversal recovery.
+10. [ ] Add balance bucket transfers, payout provider journal, webhook inbox, transfer
+    execution, and settlement.
+11. [ ] Add seller/listing moderation adapters and decision-application recovery.
+12. [ ] Add seller-order, fulfillment, return, refund, and dispute projections.
+13. [ ] Build vendor and finance control-room surfaces.
+14. [ ] Execute the consolidated validation queue and only then promote readiness.
 
 ## Primary source paths
 
@@ -440,7 +468,14 @@ transport batches.
 - `crates/rustok-marketplace-allocation/`
 - `crates/rustok-marketplace-commission/`
 - `crates/rustok-marketplace-ledger/`
+- `crates/rustok-marketplace-ledger/src/reversal.rs`
+- `crates/rustok-marketplace-ledger/src/balance.rs`
+- `crates/rustok-marketplace-ledger/src/migrations/m20260721_000002_add_reversals_and_seller_balances.rs`
+- `crates/rustok-marketplace-ledger/tests/reversal_projection_test.rs`
 - `crates/rustok-marketplace-payout/`
+- `crates/rustok-marketplace/src/financial_orchestration.rs`
+- `crates/rustok-marketplace/tests/financial_reversal_orchestration_test.rs`
+- `crates/rustok-marketplace/contracts/financial-orchestration-v2.json`
 - `crates/rustok-cart/src/entities/cart_line_item_marketplace_snapshot.rs`
 - `crates/rustok-cart/src/services/marketplace_snapshot.rs`
 - `crates/rustok-cart/src/marketplace_snapshot.rs`
