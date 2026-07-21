@@ -6,10 +6,6 @@ const adapterPath = resolve(
   process.cwd(),
   '../../crates/fly-browser/assets/fly-browser.js'
 );
-const hardeningPath = resolve(
-  process.cwd(),
-  '../../crates/fly-browser/assets/browser_hardening.js'
-);
 
 type ResourceLimitEvent = {
   kind?: string;
@@ -20,10 +16,7 @@ type ResourceLimitEvent = {
 };
 
 async function mountResourceGuard(page: Page) {
-  const [adapterSource, hardeningSource] = await Promise.all([
-    readFile(adapterPath, 'utf8'),
-    readFile(hardeningPath, 'utf8')
-  ]);
+  const adapterSource = await readFile(adapterPath, 'utf8');
 
   await page.setContent(`
     <div
@@ -44,7 +37,7 @@ async function mountResourceGuard(page: Page) {
   `);
 
   await page.evaluate(
-    async ({ adapterSource, hardeningSource }) => {
+    async ({ adapterSource }) => {
       const root = document.querySelector('#fly-root');
       const iframe = document.querySelector('#canvas-a-frame');
       if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
@@ -73,7 +66,7 @@ async function mountResourceGuard(page: Page) {
       };
 
       const url = URL.createObjectURL(
-        new Blob([adapterSource, hardeningSource], {
+        new Blob([adapterSource], {
           type: 'text/javascript'
         })
       );
@@ -106,7 +99,7 @@ async function mountResourceGuard(page: Page) {
           </body>
         </html>`;
     },
-    { adapterSource, hardeningSource }
+    { adapterSource }
   );
 
   await expect(page.locator('#fly-root')).toHaveAttribute(

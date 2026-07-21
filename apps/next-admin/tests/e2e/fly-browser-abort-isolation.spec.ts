@@ -6,10 +6,6 @@ const adapterPath = resolve(
   process.cwd(),
   "../../crates/fly-browser/assets/fly-browser.js",
 );
-const hardeningPath = resolve(
-  process.cwd(),
-  "../../crates/fly-browser/assets/browser_hardening.js",
-);
 
 type FlyAdapter = {
   emitIntent: (
@@ -32,10 +28,7 @@ type IsolationScope = typeof globalThis & {
 test("parallel adapters keep abort signals request-scoped without replacing fetch", async ({
   page,
 }) => {
-  const [adapterSource, hardeningSource] = await Promise.all([
-    readFile(adapterPath, "utf8"),
-    readFile(hardeningPath, "utf8"),
-  ]);
+  const adapterSource = await readFile(adapterPath, "utf8");
 
   await page.setContent(`
     <div
@@ -71,7 +64,7 @@ test("parallel adapters keep abort signals request-scoped without replacing fetc
   `);
 
   const state = await page.evaluate(
-    async ({ adapterSource, hardeningSource }) => {
+    async ({ adapterSource }) => {
       const scope = globalThis as IsolationScope;
       const abortedEndpoints: string[] = [];
       const requestSignals: AbortSignal[] = [];
@@ -107,7 +100,7 @@ test("parallel adapters keep abort signals request-scoped without replacing fetc
 
       scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
       const url = URL.createObjectURL(
-        new Blob([adapterSource, hardeningSource], {
+        new Blob([adapterSource], {
           type: "text/javascript",
         }),
       );
@@ -165,7 +158,7 @@ test("parallel adapters keep abort signals request-scoped without replacing fetc
           requestSignals[0] !== requestSignals[1],
       };
     },
-    { adapterSource, hardeningSource },
+    { adapterSource },
   );
 
   expect(state).toEqual({

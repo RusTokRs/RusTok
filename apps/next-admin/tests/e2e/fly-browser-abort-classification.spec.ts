@@ -6,10 +6,6 @@ const adapterPath = resolve(
   process.cwd(),
   "../../crates/fly-browser/assets/fly-browser.js",
 );
-const hardeningPath = resolve(
-  process.cwd(),
-  "../../crates/fly-browser/assets/browser_hardening.js",
-);
 
 type IntentAbort = {
   code?: string;
@@ -53,10 +49,7 @@ type ClassificationScope = typeof globalThis & {
 test("expected aborts stay separate from network failures", async ({
   page,
 }) => {
-  const [adapterSource, hardeningSource] = await Promise.all([
-    readFile(adapterPath, "utf8"),
-    readFile(hardeningPath, "utf8"),
-  ]);
+  const adapterSource = await readFile(adapterPath, "utf8");
 
   await page.setContent(`
     <div id="timeout-root" data-fly-browser-root data-fly-page-id="timeout-page">
@@ -74,7 +67,7 @@ test("expected aborts stay separate from network failures", async ({
   `);
 
   const state = await page.evaluate(
-    async ({ adapterSource, hardeningSource }) => {
+    async ({ adapterSource }) => {
       const scope = globalThis as ClassificationScope;
       const roots = {
         timeout: document.querySelector("#timeout-root"),
@@ -152,7 +145,7 @@ test("expected aborts stay separate from network failures", async ({
 
       scope.__FLY_BROWSER_CONFIG__ = { autoMount: false };
       const url = URL.createObjectURL(
-        new Blob([adapterSource, hardeningSource], {
+        new Blob([adapterSource], {
           type: "text/javascript",
         }),
       );
@@ -215,7 +208,7 @@ test("expected aborts stay separate from network failures", async ({
 
       return events;
     },
-    { adapterSource, hardeningSource },
+    { adapterSource },
   );
 
   expect(state.timeout.aborts).toHaveLength(1);
