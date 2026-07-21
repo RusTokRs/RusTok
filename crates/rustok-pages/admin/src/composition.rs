@@ -14,7 +14,7 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_page_builder::runtime_context::{
-    PageBuilderRuntimeExampleRequest, generate_page_builder_runtime_example,
+    generate_page_builder_runtime_example, PageBuilderRuntimeExampleRequest,
 };
 use rustok_page_builder::runtime_scenario_release::{
     PageBuilderScenarioBaselineChange, RuntimeScenarioReleaseBaseline,
@@ -24,7 +24,7 @@ use rustok_page_builder_admin::{
     PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext, SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
@@ -512,7 +512,12 @@ fn PageWorkspace(
                         <button
                             type="button"
                             class="rounded-lg border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                            disabled=move || action_busy.get().is_some()
+                            disabled=move || action_busy.get().is_some() || is_published
+                            title=if is_published {
+                                "Unpublish the page before deleting it"
+                            } else {
+                                "Delete page"
+                            }
                             on:click=delete_action
                         >
                             "Delete"
@@ -533,18 +538,24 @@ fn PageWorkspace(
                 })}
             </section>
 
-            <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <PagesFlyBuilder
-                    page=page_for_builder
-                    baseline
-                    release_status
-                    token
-                    tenant
-                    default_locale
-                    draft_token
-                    refresh_generation
-                />
-            </section>
+            {if is_published {
+                view! { <PublishedDocumentLocked /> }.into_any()
+            } else {
+                view! {
+                    <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                        <PagesFlyBuilder
+                            page=page_for_builder
+                            baseline
+                            release_status
+                            token
+                            tenant
+                            default_locale
+                            draft_token
+                            refresh_generation
+                        />
+                    </section>
+                }.into_any()
+            }}
         </div>
     }
 }
@@ -556,6 +567,28 @@ fn MetadataItem(label: &'static str, value: String) -> impl IntoView {
             <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
             <dd class="mt-1 truncate text-sm text-foreground">{value}</dd>
         </div>
+    }
+}
+
+#[component]
+fn PublishedDocumentLocked() -> impl IntoView {
+    view! {
+        <section
+            class="rounded-2xl border border-amber-300/60 bg-amber-50 px-6 py-8 text-amber-950 shadow-sm"
+            role="status"
+        >
+            <div class="max-w-3xl">
+                <div class="text-xs font-semibold uppercase tracking-wide">
+                    "Published document locked"
+                </div>
+                <h3 class="mt-2 text-lg font-semibold">
+                    "Unpublish before editing the Fly document"
+                </h3>
+                <p class="mt-2 text-sm leading-6">
+                    "The published artifact remains immutable and the editable Fly host is not mounted. Use Unpublish above, edit and save the draft, then publish the new revision explicitly."
+                </p>
+            </div>
+        </section>
     }
 }
 

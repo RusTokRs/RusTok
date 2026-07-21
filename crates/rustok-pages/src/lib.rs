@@ -56,12 +56,12 @@ pub use entities::{
     Menu, Page, PageBuilderScenarioBaseline, PagePublishedLandingArtifact,
     PageStaticLandingArtifact,
 };
-pub use error::{PagesError, PagesResult};
+pub use error::{PagesError, PagesResult, CANNOT_DELETE_PUBLISHED_ERROR_CODE};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuService, PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
-    PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
+    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
     PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
+    PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
 };
 
 use async_trait::async_trait;

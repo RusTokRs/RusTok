@@ -1,15 +1,15 @@
 use anyhow::Context;
 use axum::{
-    Json,
     body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{header, HeaderMap, StatusCode},
     response::Response,
+    Json,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rustok_api::HostRuntimeContext;
+use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
-use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_channel::ChannelService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_web::{HttpError, HttpResult};
@@ -20,9 +20,9 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    CreatePageInput, PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
-    PageBuilderArtifactService, PageResponse, PageService, PagesError, PatchPageMetadataInput,
-    SavePageDocumentInput,
+    CreatePageInput, PageBuilderArtifactService, PageResponse, PageService, PagesError,
+    PatchPageMetadataInput, SavePageDocumentInput, CANNOT_DELETE_PUBLISHED_ERROR_CODE,
+    PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
@@ -289,6 +289,7 @@ pub async fn save_page_document(
     params(("id" = Uuid, Path, description = "Page ID")),
     responses(
         (status = 204, description = "Page deleted"),
+        (status = 409, description = "Published page must be unpublished before deletion"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -378,6 +379,11 @@ fn map_pages_error(error: PagesError) -> HttpError {
             "page_metadata_version_conflict",
             message,
         ),
+        PagesError::CannotDeletePublished => HttpError::new(
+            StatusCode::CONFLICT,
+            CANNOT_DELETE_PUBLISHED_ERROR_CODE.to_ascii_lowercase(),
+            message,
+        ),
         PagesError::Rich(rich)
             if rich.error_code.as_deref() == Some(PAGE_DOCUMENT_REVISION_CONFLICT) =>
         {
@@ -417,7 +423,7 @@ fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpRe
 
 #[cfg(test)]
 mod tests {
-    use super::{ARTIFACT_VARY, artifact_content_security_policy, etag_matches};
+    use super::{artifact_content_security_policy, etag_matches, ARTIFACT_VARY};
 
     #[test]
     fn artifact_csp_hashes_exact_css() {
