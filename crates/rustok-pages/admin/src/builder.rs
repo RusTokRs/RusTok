@@ -21,13 +21,15 @@ use rustok_api::{Action, Permission, PortActor, PortContext, Resource};
 #[cfg(feature = "ssr")]
 use rustok_page_builder::composition::compose_fly_page_builder_handlers;
 #[cfg(feature = "ssr")]
+use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
+#[cfg(feature = "ssr")]
 use rustok_page_builder::render::PageBuilderRenderer;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::service::{
-    PageBuilderProjectSaveResult, PageBuilderProjectStore, PageBuilderRenderingAdapter,
-    PageBuilderRequestAuth, PageBuilderServiceError, PageBuilderServiceResult,
+    PageBuilderProjectSaveResult, PageBuilderProjectStore, PageBuilderRequestAuth,
+    PageBuilderServiceError, PageBuilderServiceResult,
 };
 #[cfg(feature = "ssr")]
 use std::time::Duration;
@@ -158,6 +160,7 @@ async fn execute_preview(
     input: PreviewPageBuilderInput,
 ) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
     let requested_page_id = input.page_id.clone();
+    let requested_runtime_scenario_id = input.runtime.scenario_id.clone();
     let response = dispatch_pages_page_builder_capability(
         snapshot,
         noop_saved_handler(),
@@ -165,13 +168,22 @@ async fn execute_preview(
     )
     .await?;
     match response {
-        PageBuilderCapabilityResponse::Preview(result) if result.page_id == requested_page_id => {
+        PageBuilderCapabilityResponse::Preview(result)
+            if result.page_id == requested_page_id
+                && result.runtime_scenario_id == requested_runtime_scenario_id =>
+        {
             Ok(PageBuilderCapabilityResponse::Preview(result))
+        }
+        PageBuilderCapabilityResponse::Preview(result) if result.page_id != requested_page_id => {
+            Err(PageBuilderAdminFacadeError::new(format!(
+                "Page Builder preview returned page `{}`, but Pages requested `{requested_page_id}`",
+                result.page_id
+            )))
         }
         PageBuilderCapabilityResponse::Preview(result) => Err(PageBuilderAdminFacadeError::new(
             format!(
-                "Page Builder preview returned page `{}`, but Pages requested `{requested_page_id}`",
-                result.page_id
+                "Page Builder preview returned runtime scenario `{:?}`, but Pages requested `{:?}`",
+                result.runtime_scenario_id, requested_runtime_scenario_id
             ),
         )),
         response => Err(PageBuilderAdminFacadeError::new(format!(
@@ -508,13 +520,19 @@ struct PagesPageBuilderRenderer {
 
 #[cfg(feature = "ssr")]
 #[async_trait]
-impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer {
+impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
     async fn render_preview(
         &self,
         context: &PortContext,
-        project_data: &Value,
+        input: &PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<String> {
         ensure_port_context(context, &self.tenant_slug, &self.actor_id, "renderer")?;
+        if input.page_id != self.page_id {
+            return Err(PageBuilderServiceError::Validation(format!(
+                "Page Builder preview requested page `{}`, but Pages renderer owns `{}`",
+                input.page_id, self.page_id
+            )));
+        }
         transport::fetch_page(
             Some(self.token.clone()),
             Some(self.tenant_slug.clone()),
@@ -524,10 +542,11 @@ impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer {
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
         .ok_or_else(|| PageBuilderServiceError::Runtime("Pages document no longer exists".into()))?;
         PageBuilderRenderer
-            .render_document_html(
-                project_data.clone(),
+            .render_runtime_document_html(
+                input.project_data.clone(),
                 PageSelection::First,
                 RenderPolicy::default(),
+                input.runtime.context.clone(),
             )
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))
     }
