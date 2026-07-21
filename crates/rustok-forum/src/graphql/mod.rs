@@ -1,4 +1,5 @@
 mod category_command_mutation;
+mod category_policy;
 mod category_tree_query;
 mod connection;
 mod mutation;
@@ -11,6 +12,9 @@ pub use category_command_mutation::{
     GqlForumCategoryMove, GqlForumCategoryPlacement, GqlForumCategorySiblingOrder,
     MoveForumCategoryInput, ReorderForumCategorySiblingsInput,
 };
+pub use category_policy::{
+    GqlForumCategoryTopicPolicy, UpdateForumCategoryTopicPolicyInput,
+};
 pub use category_tree_query::{
     GqlForumCategoryBreadcrumb, GqlForumCategoryTree, GqlForumCategoryTreeNode,
 };
@@ -21,10 +25,12 @@ pub use types::*;
 pub struct ForumQuery(
     query::ForumQuery,
     category_tree_query::ForumCategoryTreeQuery,
+    category_policy::ForumCategoryTopicPolicyQuery,
 );
 
 #[derive(MergedObject, Default)]
 pub struct ForumMutation(
     mutation::ForumMutation,
     category_command_mutation::ForumCategoryCommandMutation,
+    category_policy::ForumCategoryTopicPolicyMutation,
 );
