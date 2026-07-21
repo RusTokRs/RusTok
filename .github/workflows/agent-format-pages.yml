@@ -1,0 +1,37 @@
+name: Agent Format Pages
+
+on:
+  push:
+    branches:
+      - agent/pages-current-only
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/pages-current-only
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt
+      - name: Format Pages admin
+        run: cargo fmt -p rustok-pages-admin
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-pages/admin
+          git commit -m "style(pages): apply rustfmt"
+          git push origin HEAD:agent/pages-current-only
