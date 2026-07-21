@@ -38,6 +38,8 @@ use crate::services::field_definition_registry_bootstrap::build_field_def_regist
 use crate::services::flex_standalone_service::FlexStandaloneSeaOrmService;
 use flex::graphql::FlexGraphqlRuntime;
 use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
+#[cfg(feature = "mod-blog")]
+use rustok_blog::graphql::{BlogGraphqlRateLimitPolicy, BlogGraphqlRateLimiterHandle};
 #[cfg(feature = "mod-content")]
 use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
 use rustok_mcp::graphql::{McpMutation, McpQuery};
@@ -108,6 +110,8 @@ pub struct GraphqlSchemaDependencies {
     pub runtime_extensions: Arc<ModuleRuntimeExtensions>,
     pub rbac_role_writer: RbacGraphqlRoleWriterHandle,
     pub search_rate_limiter: Option<SearchGraphqlRateLimiterHandle>,
+    #[cfg(feature = "mod-blog")]
+    pub blog_rate_limiter: Option<BlogGraphqlRateLimiterHandle>,
     #[cfg(feature = "mod-alloy")]
     pub alloy_runtime: alloy::SharedAlloyRuntime,
     #[cfg(feature = "mod-alloy")]
@@ -134,6 +138,8 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         runtime_extensions,
         rbac_role_writer,
         search_rate_limiter,
+        #[cfg(feature = "mod-blog")]
+        blog_rate_limiter,
         #[cfg(feature = "mod-alloy")]
         alloy_runtime,
         #[cfg(feature = "mod-alloy")]
@@ -176,6 +182,9 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         TenantNameLoader::new(db.clone()),
         tokio::spawn,
     ));
+
+    #[cfg(feature = "mod-blog")]
+    let builder = builder.extension(BlogGraphqlRateLimitPolicy::new(blog_rate_limiter));
 
     #[cfg(feature = "mod-content")]
     let builder = builder
