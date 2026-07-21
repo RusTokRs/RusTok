@@ -46,14 +46,21 @@ const __flyWriteDraftRoute = (token) => {
   }
 };
 const __flyBrowserConfig = globalThis.__FLY_BROWSER_CONFIG__ || {};
-const __flyAdapters = __flyBrowserConfig.autoMount === false
-  ? []
-  : globalThis.FlyBrowser?.mountAll(__flyBrowserConfig) || [];
-for (const adapter of __flyAdapters) {
+const __flySsrControlStateKey = Symbol.for("fly.browser.ssr.controls");
+const __flySsrControlState = globalThis[__flySsrControlStateKey] || {
+  adapters: new WeakSet(),
+  bind: null,
+  listening: false,
+};
+globalThis[__flySsrControlStateKey] = __flySsrControlState;
+const __flyBindSsrAdapter = (adapter) => {
+  if (!adapter || __flySsrControlState.adapters.has(adapter)) return adapter;
+  if (!(adapter.root instanceof Element)) return null;
   const __flyLifecycleSignal = adapter.abortController?.signal;
-  const __flyLifecycleOptions = __flyLifecycleSignal
-    ? { signal: __flyLifecycleSignal }
-    : undefined;
+  if (!(__flyLifecycleSignal instanceof AbortSignal) || __flyLifecycleSignal.aborted) {
+    return null;
+  }
+  const __flyLifecycleOptions = { signal: __flyLifecycleSignal };
   const routeDraft = __flyDraftFromRoute();
   if (routeDraft && adapter.draftSession?.token !== routeDraft) {
     adapter.draftSession = { token: routeDraft, generation: null };
@@ -99,7 +106,18 @@ for (const adapter of __flyAdapters) {
     const token = detail.result.draft_token;
     if (typeof token === "string" && token) __flyWriteDraftRoute(token);
   }, __flyLifecycleOptions);
+  __flySsrControlState.adapters.add(adapter);
+  return adapter;
+};
+__flySsrControlState.bind = __flyBindSsrAdapter;
+if (!__flySsrControlState.listening) {
+  document.addEventListener("fly:browser-ready", (event) => {
+    __flySsrControlState.bind?.(event.detail?.adapter);
+  });
+  __flySsrControlState.listening = true;
 }
+const __flyAdapters = globalThis.FlyBrowser?.bootstrap?.(__flyBrowserConfig) || [];
+for (const adapter of __flyAdapters) __flyBindSsrAdapter(adapter);
 "#;
 
 fn browser_adapter_config_json(
@@ -224,7 +242,9 @@ mod tests {
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("fly_draft"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("history.replaceState"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("data-fly-component-picker"));
-        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("autoMount === false"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS
+            .contains("FlyBrowser?.bootstrap?.(__flyBrowserConfig)"));
+        assert!(!SSR_CONTROL_BOOTSTRAP_JS.contains("autoMount === false"));
     }
 
     #[test]
@@ -233,5 +253,21 @@ mod tests {
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("__flyLifecycleOptions"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("signal: __flyLifecycleSignal"));
         assert_eq!(SSR_CONTROL_BOOTSTRAP_JS.matches("__flyLifecycleOptions").count(), 5);
+    }
+
+    #[test]
+    fn late_manual_mounts_receive_ssr_bindings_once() {
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("Symbol.for(\"fly.browser.ssr.controls\")"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("adapters: new WeakSet()"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("fly:browser-ready"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS
+            .contains("__flySsrControlState.adapters.has(adapter)"));
+        let ready_listener = SSR_CONTROL_BOOTSTRAP_JS
+            .find("document.addEventListener(\"fly:browser-ready\"")
+            .expect("ready listener");
+        let bootstrap = SSR_CONTROL_BOOTSTRAP_JS
+            .find("FlyBrowser?.bootstrap?.(__flyBrowserConfig)")
+            .expect("browser bootstrap");
+        assert!(ready_listener < bootstrap);
     }
 }
