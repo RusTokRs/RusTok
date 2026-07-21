@@ -7,7 +7,11 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
+    #[sea_orm(ignore)]
+    pub name: String,
     pub slug: String,
+    #[sea_orm(ignore)]
+    pub description: Option<String>,
     pub app_type: String,
     pub icon_url: Option<String>,
     pub client_id: Uuid,
