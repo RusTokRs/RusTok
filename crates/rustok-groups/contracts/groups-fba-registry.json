@@ -76,12 +76,15 @@
     {
       "name": "embedded_native",
       "provider": "GroupsService",
-      "status": "implemented"
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"]
     },
     {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
-      "status": "implemented_without_public_transport"
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "implicit_fallback": false
     },
     {
       "name": "remote_adapter_placeholder",
@@ -94,6 +97,7 @@
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
+    "governance_transport_parity": null,
     "governance_concurrency": null
   }
 }
