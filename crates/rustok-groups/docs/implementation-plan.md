@@ -46,7 +46,8 @@ The current owner foundation provides:
 - multilingual `groups + group_translations` storage contract;
 - PostgreSQL CHECK constraints and SQLite validation triggers for normalized
   `VARCHAR(32)` locale tags, localized presentation shape, and language-agnostic
-  base metadata;
+  `groups.metadata`, `group_memberships.metadata`, and
+  `group_feature_bindings.configuration` base JSON;
 - exact host-effective-locale reads and locale-scoped catalog/search without a
   module-owned English or arbitrary-row fallback;
 - Unicode-scalar title and summary limits rather than UTF-8 byte limits;
@@ -87,10 +88,11 @@ audit history, accessibility, and executable parity evidence remain.
 - Storefront evidence: framework-neutral core, selected native/GraphQL transport,
   host locale, and thin Leptos binding are present.
 - Backend evidence: typed read/write ports, request context, stable errors, owner
-  services, language-agnostic DB constraints/triggers, exact effective-locale
-  selection, locale-scoped catalog/search, closed-shell/private-content action
-  separation, governance audit/receipt persistence, merged GraphQL root, native
-  server functions, and machine-readable registries are present.
+  services, language-agnostic DB constraints/triggers for translations and all
+  Groups-owned base JSON, exact effective-locale selection, locale-scoped
+  catalog/search, closed-shell/private-content action separation, governance
+  audit/receipt persistence, merged GraphQL root, native server functions, and
+  machine-readable registries are present.
 - Remaining FBA evidence: runtime provider/consumer order, fallback execution,
   PostgreSQL/SQLite multilingual migration execution, missing-translation behavior,
   closed/secret leakage evidence, native/GraphQL governance parity execution,
@@ -134,8 +136,10 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     Groups requires the exact normalized effective-locale row and never privileges
     English or an arbitrary first stored translation.
 20. Catalog/search matching and returned presentation use the same effective locale.
-21. `groups.metadata` remains language-agnostic and cannot carry localized
-    presentation copies that belong to `group_translations` or another owner.
+21. `groups.metadata`, `group_memberships.metadata`, and
+    `group_feature_bindings.configuration` remain language-agnostic. Reserved
+    top-level presentation fields cannot become shadow translation storage, while
+    nested technical provider-schema fields remain valid non-copy configuration.
 
 ## Program ledger
 
@@ -143,7 +147,7 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | --- | --- | --- |
 | `GROUPS-00` | `done` | Ownership, naming, FFA/FBA, multilingual, privacy, and integration contracts are documented. |
 | `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central navigation are connected. |
-| `GROUPS-02` | `in_progress` | Base schema/service, language-agnostic DB constraints/triggers, exact effective-locale selection, governance audit, and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, executed PostgreSQL/SQLite evidence, and missing-translation fixtures remain. |
+| `GROUPS-02` | `in_progress` | Base schema/service, language-agnostic DB constraints/triggers across translations and all Groups-owned base JSON, exact effective-locale selection, governance audit, and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, executed PostgreSQL/SQLite evidence, and missing-translation fixtures remain. |
 | `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed shells are discoverable while body/features remain membership-gated, and the complete granular action matrix plus leakage evidence remain. |
 | `GROUPS-04` | `in_progress` | Role delegation and atomic ownership transfer have typed Rust, GraphQL, native server-function, and localized admin form surfaces with audit/receipts; confirmation UX, concurrent-owner proof, parity execution, and recovery remain. |
 | `GROUPS-05` | `planned` | Invitations, invitation links, expiry, token hashing, revocation, and bounded delivery. |
@@ -227,8 +231,9 @@ PostgreSQL and SQLite verification must eventually cover:
 - exact host-effective-locale reads and explicit missing-translation behavior;
 - locale-scoped catalog/search without cross-language matching;
 - Unicode-equivalent title/summary length limits for Latin, Cyrillic, and CJK;
-- rejection of localized presentation copies in `groups.metadata`, including direct
-  SQL writes;
+- rejection of top-level localized presentation copies in `groups.metadata`,
+  `group_memberships.metadata`, and `group_feature_bindings.configuration`,
+  including direct SQL writes, while nested non-copy provider schema remains valid;
 - tenant-composite identity and relation integrity;
 - locale uniqueness and host-owned fallback behavior;
 - concurrent handle creation;
