@@ -47,6 +47,10 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   or arbitrary first-row fallback.
 - **Product catalog** — the product-owned schema verifier remains the delegated
   guard for translation ownership and locale widening.
+- **Search locale attribution** — clean query-log storage uses `VARCHAR(32)` and
+  a registered forward migration widens PostgreSQL/MySQL schemas. SQLite keeps
+  TEXT affinity and therefore requires no destructive table rebuild merely to
+  change the declared length.
 - **Content, blog, taxonomy, comments, and profiles locale widths** — registered
   forward-only owner migrations widen their localized/preference columns to
   `VARCHAR(32)` without narrowing rollback. These owner slices currently express
