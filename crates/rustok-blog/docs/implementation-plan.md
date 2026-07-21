@@ -2,234 +2,158 @@
 
 ## Current state
 
-`rustok-blog` owns localized posts, categories, blog-specific tag relations,
+`rustok-blog` owns localized posts, module-owned categories, Blog tag relations,
 channel-aware publication visibility, GraphQL/HTTP adapters, and admin/storefront
-packages. It consumes `rustok-comments` through `CommentsThreadPort` and uses
-shared taxonomy without sharing blog storage. Native `#[server]` and GraphQL
-remain parallel transports; the owner packages have core/transport/UI splits.
+packages. It consumes `rustok-comments` through `CommentsThreadPort` and shared
+taxonomy through its public boundary. Native `#[server]` and GraphQL remain
+parallel transports; the owner packages have core/transport/UI splits.
 
-The host-level path limiter protects every `/api/*` HTTP request, including Blog
-REST routes and `/api/graphql`. Blog adds a field-aware GraphQL policy through a
-Blog-owned rate-limit port backed by the host `SharedApiRateLimiter`. Anonymous
-actor keys consume only the host-resolved trusted client IP; raw forwarded
-headers are not interpreted inside the Blog module. The policy now puts the same
-retry value into the GraphQL `retryAfter` extension and HTTP `Retry-After`
-header. The host GraphQL controller preserves async-graphql response headers
-while retaining JSON content type, so the header is no longer lost at the Axum
-boundary. Executable module-policy, host-memory-adapter, and controller-handoff
-test code is present; mounted Redis execution remains user-owned.
+The host path limiter protects `/api/*`, including Blog REST and GraphQL. Blog
+adds a field-aware GraphQL policy backed by the host `SharedApiRateLimiter`.
+Anonymous keys use only the host-resolved trusted client IP. Exceeded responses
+carry the same value in GraphQL `retryAfter` and HTTP `Retry-After`; the Axum
+GraphQL controller preserves async-graphql response headers. Backend-unavailable
+and unauthorized-write responses remain headerless. Source harnesses are
+present, while mounted Redis execution remains user-owned.
 
-The search lifecycle is implemented in `rustok-search`: Blog events upsert or
-delete `blog_post` search documents, and `ReindexRequested` supports both one
-post and the complete Blog scope. Search owns the SQL projection and does not
-depend on the Blog crate. Routing and env-gated PostgreSQL harnesses cover Blog
-lifecycle projection, payload replacement, stale-document cleanup, targeted
-missing-post cleanup, module disable/enable cleanup, and cross-tenant rebuild
-isolation. Table discovery follows the same active PostgreSQL `search_path` as
-the projector SQL rather than hard-coding `public`.
+Search consumes Blog lifecycle and `ReindexRequested` events without importing
+the Blog crate. The projector denormalizes `category_name` and `category_slug`
+into Blog documents, so category update/delete publish tenant Blog-scope reindex
+requests. Search table discovery follows the active PostgreSQL `search_path`.
+Routing and env-gated PostgreSQL harnesses cover lifecycle, stale cleanup,
+module toggles, missing-post cleanup, and tenant isolation.
 
-Blog category writes now use one owner transaction for the category row,
-localized translation, and outbox publication. Category update/delete publish a
-Blog-scope `ReindexRequested` because Search denormalizes `category_name` and
-`category_slug` into each related Blog document. The mounted HTTP CRUD path uses
-the event-aware service constructor from `HostRuntimeContext`, applies explicit
-`categories:*` RBAC, tenant-scopes translation queries, and bounds list requests
-to 1..100 items. The compatibility `CategoryService::new(db)` remains available
-for read-only and legacy in-process callers, while production writes use
-`new_with_event_bus`.
+Blog category create/update/delete now use owner transactions. Update/delete
+publish `ReindexRequested { target_type: "blog", target_id: None }` through the
+same outbox transaction. Production HTTP CRUD constructs the event-aware
+service from `HostRuntimeContext`; a compatibility constructor remains for old
+in-process callers. Translation and parent lookups are tenant-scoped. Category
+names that normalize to no route characters require an explicit non-empty ASCII slug.
+Both service and HTTP pagination clamp `per_page` to 1..100. HTTP errors preserve
+404/403/400 semantics and return a safe 500 for unexpected infrastructure
+failures.
 
-Canonical Blog-result navigation is Search-owned.
-`canonical_search_result_url` requires `source_module=blog` and
-`entity_type=blog_post`, reads the owner-projected slug, validates it with a
-bounded fail-closed policy, and emits `/modules/blog?slug=...` before GraphQL or
-storefront-native serialization. The Rust Search storefront still provides the
-same derivation only as an idempotent compatibility fallback and never
-overwrites a backend URL. The admin native Search mapper is the final
-transport-local URL switch and is forbidden from defining another Blog route.
+The category permission boundary is migration-safe. `blog_posts:*` is the
+primary Blog capability namespace because categories are part of the Blog
+aggregate. Legacy `categories:*` claims are temporarily accepted by owner and
+HTTP preflight so existing tokens keep working, but `BlogModule::permissions()`
+no longer advertises or seeds catalog category permissions. Categories do not
+have a user owner, so update/delete use resource scope rather than comparing a
+user UUID with a category UUID. A future dedicated `blog_categories:*` resource
+must be introduced only together with permission parsing, OAuth scope groups,
+default-role snapshots, persistence migration, and compatibility evidence.
 
-Public comment listing uses a Comments-owned approved-only projection. Pending,
-spam, trash, and deleted comments cannot leave the owner boundary. The selected
-storefront post renders and paginates the same public payload through native
-`#[server]` and GraphQL transports. `commentsPage` is route-owned, bounded before
-GraphQL serialization, and canonically removed for page one. Admin moderation is
-a separate GraphQL slice: a current-tenant actor with `blog_posts:manage` can
-inspect the non-deleted owner queue and apply approve/spam/trash transitions
-without coupling the CRUD editor to that permission. The admin queue is also
-paginated through bounded GraphQL variables and resets page state when the
-selected post changes.
+Canonical result navigation belongs to Search.
+`canonical_search_result_url` derives product, content, and Blog URLs before
+GraphQL and storefront-native serialization. Blog URLs require the canonical
+Blog source/entity pair and a bounded safe owner-projected slug. Storefront
+post-processing remains only as an idempotent rolling-compatibility fallback.
+The admin native mapper is the final transport-local URL switch.
+
+Public comments use the Comments-owned approved-only projection. Pending, spam,
+trash, and deleted comments cannot cross the public boundary. Storefront native
+and GraphQL paths share pagination and payloads. Admin moderation is separately
+permission-gated and paginated. Comment counter projection uses a durable
+ledger, optimistic version locking, retryable missing-post behavior, and
+transactional outbox publication.
 
 ## FFA/FBA status
 
-- FFA status: `in_progress`.
-- FBA status: `boundary_ready` (`core_transport_ui`).
-- Structural shape: `core_transport_ui`.
-- Load-protection status: `implementation_ready`, mounted Redis evidence pending.
-- Rate-limit harness status: `executable_no_compile`; the user owns execution.
-- HTTP handoff status: implemented in source; `async_graphql::Response` headers
-  are propagated into the Axum response and covered by executable test code.
-- Search Blog projection harness status: `executable_no_run`; PostgreSQL execution
-  remains user-owned.
-- Category search-reindex status: `source_verified_no_compile`; transactional
-  owner writes, mounted HTTP CRUD, RBAC, bounded pagination, evidence, and source
-  guardrails are implemented. Runtime outbox rollback and Search refresh evidence
-  remain user-owned.
-- Search canonical URL status: `source_verified_no_compile`; core, GraphQL, and
-  storefront-native ownership are implemented. Admin-native cutover and final
+- FFA: `in_progress`.
+- FBA: `boundary_ready` (`core_transport_ui`).
+- Load protection: `implementation_ready`; mounted Redis evidence pending.
+- Rate-limit harness: `executable_no_compile`; execution is user-owned.
+- Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
+  user-owned.
+- Category search reindex: `source_verified_no_compile`.
+- Canonical Search URL: `source_verified_no_compile`; admin native cutover and
   compatibility-fallback removal remain.
-- REST protection is host-owned; Blog does not instantiate a second limiter or
-  duplicate the `/api/*` middleware counter.
-- GraphQL protection is split into a Blog-owned policy/port and a host adapter
-  over the configured memory/Redis API limiter.
-- The integration harness covers allowed reads, exceeded reads, backend failure,
-  authenticated write identity, unauthorized-write bypass, trusted client IP,
-  structured GraphQL extensions, matching `Retry-After`, document-wide
-  fail-closed accounting, and the `moderate_comment` manage surface.
-- Backend-unavailable and unauthorized-write responses do not advertise
-  `Retry-After`; only a concrete exceeded outcome does.
-- Mutation gates are aligned: update uses `blog_posts:update`; publish,
-  unpublish, and archive use `blog_posts:publish`; comment moderation uses
-  `blog_posts:manage`.
-- Blog category HTTP CRUD declares and enforces generic `categories:create/read/
-  update/delete/list` permissions because the existing category domain service
-  already owns that resource contract.
-- Category update/delete emit `ReindexRequested { target_type: "blog",
-  target_id: None }` through the same transaction as the owner mutation. Search
-  consumes that event by rebuilding only the tenant Blog scope.
-- Category translation lookups and mutations are constrained by both tenant and
-  category; the HTTP list adapter normalizes page and clamps `per_page` to 1..100.
-- The comments consumer contract is `CommentsThreadPort` /
-  `comments.thread.v1`. Public list reads use
-  `list_public_comments_for_target`; writes carry operation-scoped idempotency
-  keys, deadline, locale, actor claims, and typed port-error mapping.
-- `GqlPost.publicComments` and native `BlogPostDetail.publicComments` consume the
-  same owner-approved projection and fixed page size. The storefront route query
-  controls the requested page for both transport paths.
-- `GqlPost.moderationComments` is tenant-bound and permission-gated. After the
-  Blog manage decision, it performs the trusted owner read used by the existing
-  REST moderation adapter; `moderateComment` uses the same domain service and is
-  represented as a dedicated field-aware rate-limit surface.
-- Admin and storefront comment pagination share bounded inputs, total-page
-  calculation, disabled invalid navigation, and isolated transport failures.
-- Search Blog-result navigation is owned by the normalized Search result policy,
-  requires the Blog source/entity pair, validates the projected slug, and fails
-  closed for malformed or spoofed data.
-- GraphQL and storefront-native Search projections delegate to the shared URL
-  policy. Storefront post-processing is compatibility-only and preserves backend
-  URLs.
-- Search projection table discovery, source reads, and destination writes share
-  one connection `search_path`; a focused verifier rejects a return to
-  `public.blog_*` table probes.
-- `BlogCommentProjectionHandler` consumes `comment.created` and
-  `comment.deleted`, records a durable event-id delivery ledger, updates the
-  Blog-owned reply count with optimistic version locking, and publishes
-  `BlogPostUpdated` in the same transaction. Missing posts fail delivery so the
-  event runtime can retry instead of acknowledging an out-of-order event.
-- Evidence: `crates/rustok-blog/contracts/blog-fba-registry.json`,
-  `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`,
-  `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
-  `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`,
-  `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`,
-  `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`,
-  `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
-  `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`,
-  `crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs`,
-  `crates/rustok-search/tests/blog_ingestion_contract_test.rs`,
-  `crates/rustok-search/tests/blog_projection_postgres_test.rs`,
-  `scripts/verify/verify-blog-graphql-rate-limit.mjs`,
-  `scripts/verify/verify-blog-category-search-reindex.mjs`,
-  `scripts/verify/verify-blog-fba.mjs`,
-  `scripts/verify/verify-blog-admin-boundary.mjs`,
-  `scripts/verify/verify-blog-storefront-boundary.mjs`,
-  `scripts/verify/verify-search-blog-navigation.mjs`,
-  `scripts/verify/verify-search-blog-projection.mjs`, and
-  `scripts/verify/verify-search-canonical-url-contract.mjs`.
+- Category production writes use `CategoryService::new_with_event_bus`.
+- Category update/delete and Blog reindex outbox publication share one
+  transaction.
+- `blog_posts:*` is primary for Blog categories; `categories:*` is legacy-only.
+- `BlogModule` does not register generic catalog category permissions.
+- Owner and HTTP list boundaries both cap `per_page` at 100.
+- Translation reads/writes and parent validation are tenant-scoped.
+- Empty normalized category slugs fail before database writes.
+- Category HTTP errors retain typed status semantics.
+- GraphQL rate-limit exceeded responses preserve HTTP `Retry-After`.
+- Search GraphQL/storefront-native projections use the shared URL policy.
+- Comment public/admin projections remain isolated by owner contracts.
+
+## Evidence and guardrails
+
+- `crates/rustok-blog/contracts/blog-fba-registry.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
+- `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
+- `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
+- `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
+- `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
+- `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`
+- `scripts/verify/verify-blog-graphql-rate-limit.mjs`
+- `scripts/verify/verify-blog-category-search-reindex.mjs`
+- `scripts/verify/verify-blog-fba.mjs`
+- `scripts/verify/verify-blog-admin-boundary.mjs`
+- `scripts/verify/verify-blog-storefront-boundary.mjs`
+- `scripts/verify/verify-search-blog-navigation.mjs`
+- `scripts/verify/verify-search-blog-projection.mjs`
+- `scripts/verify/verify-search-canonical-url-contract.mjs`
 
 ## Completed implementation slices
 
-1. Reconciled load protection with host composition and avoided a duplicate
-   Blog REST limiter.
-2. Added Blog GraphQL document classification and rate-limit enforcement for
-   public reads and post mutations, including fragments and multi-operation
-   documents.
-3. Added the host adapter, schema injection, structured GraphQL errors, metrics,
-   and host-trusted client-IP propagation.
-4. Aligned REST, GraphQL, domain, and rate-limit mutation permission gates.
-5. Added Blog post search projection for create, update, publish, unpublish,
-   archive, delete, targeted reindex, and full Blog-scope rebuild.
-6. Hardened comment projection delivery with a durable ledger, optimistic
-   locking, retryable missing-post behavior, and transactional outbox
-   publication.
-7. Isolated comment write idempotency keys by operation and command.
-8. Added a Comments-owned approved-only public thread projection, bounded public
-   pagination, a fail-closed remote-adapter default, and matching provider /
-   consumer FBA registry evidence.
-9. Added selected-post public comments parity: a nested GraphQL complex field,
-   native owner read, shared storefront DTO, Leptos rendering, English/Russian
-   copy, and a guardrail that requires approved-only parity in both transports.
-10. Added admin moderation parity: tenant-bound `moderationComments`, typed
-    `moderateComment`, manage permission and rate-limit gates, a separate admin
-    transport adapter, selected-post approve/spam/trash UI, localized copy, and
-    canonical/negative boundary fixtures.
-11. Added admin moderation pagination: bounded GraphQL variables, page reset on
-    post selection, total-page calculation, disabled invalid navigation, and
-    localized previous/next/page controls.
-12. Added Rust Search storefront Blog navigation: transport-neutral payload
-    enrichment, canonical module route, backend-URL precedence, strict slug
-    validation, unit tests, and focused verifier fixtures.
-13. Added storefront comment pagination: framework-free `commentsPage` policy,
-    bounded route parsing, shared native/GraphQL page arguments, canonical page
-    one URL behavior, localized controls, and pagination boundary fixtures.
-14. Added executable GraphQL rate-limit policy and host-memory-adapter harnesses
-    with machine-readable evidence for allowed, exceeded, backend-unavailable,
-    identity, RBAC bypass, trusted-IP, moderation, and document-wide behavior.
-15. Added Search Blog ingestion routing and isolated-schema PostgreSQL lifecycle
-    harnesses, removed the hard-coded `public` source-table probe, and locked the
-    schema contract with focused verifier fixtures.
-16. Added Search-owned canonical result URL derivation with Blog ownership,
-    bounded slug validation, content-kind injection protection, and product /
-    content compatibility behavior.
-17. Migrated GraphQL and storefront-native Search result projection to the
-    shared URL policy and added machine-readable evidence plus negative
-    guardrail fixtures.
-18. Added `Retry-After` to Blog GraphQL exceeded responses, preserved GraphQL
-    response headers through the Axum controller, and added policy/controller
-    test code plus focused source guardrails.
-19. Added transactional Blog category create/update/delete, event-aware HTTP CRUD,
-    explicit category permissions, tenant-scoped translations, bounded list DTOs,
-    OpenAPI coverage, Blog-scope Search reindex publication, machine-readable
-    evidence, and negative source-verifier fixtures.
+1. Reconciled Blog load protection with host composition and avoided a duplicate
+   REST limiter.
+2. Added field-aware GraphQL classification, structured rate-limit errors,
+   metrics, host adapter wiring, trusted-IP identity, and matching
+   `Retry-After` HTTP handoff.
+3. Aligned post mutation permissions across REST, GraphQL, domain, and limiter.
+4. Added Blog lifecycle Search projection, targeted/full reindex, module-toggle
+   handling, missing-post cleanup, isolated PostgreSQL harnesses, and schema
+   discovery through the active `search_path`.
+5. Hardened comment projection delivery with a durable ledger, optimistic
+   locking, retryable ordering, and transactional outbox publication.
+6. Added Comments-owned approved public reads, fail-closed provider defaults,
+   transport parity, moderation parity, and bounded storefront/admin pagination.
+7. Added Search-owned canonical result URLs and migrated GraphQL plus
+   storefront-native mappings while retaining an idempotent compatibility
+   fallback.
+8. Added Blog category HTTP CRUD, list DTOs, OpenAPI wiring, module routes,
+   transactional owner writes, Search reindex publication, tenant-scoped
+   translations, and machine-readable evidence.
+9. Hardened category owner invariants: tenant-safe parents, non-empty slugs,
+   service and HTTP pagination caps, typed HTTP errors, primary Blog permission
+   scope, legacy permission fallback, and removal of catalog permission
+   advertisement from `BlogModule`.
 
 ## Next results
 
-1. **Execute mounted category reindex evidence.** Run category HTTP CRUD with real
-   RBAC/outbox composition, verify mutation rollback when outbox publication
-   fails, then consume the event and retain changed `category_name` /
-   `category_slug` Search documents for related posts.
-2. **Execute mounted rate-limit evidence.** Run the policy, host-memory-adapter,
-   controller-handoff, and focused verifier targets, then exercise Redis-backed
-   host composition and retain a real HTTP `Retry-After` response with matching
-   GraphQL `retryAfter`.
-3. **Finish admin native URL cutover.** Migrate the final Search admin mapper to
-   the shared policy; afterward all backend Search result surfaces share one URL
-   owner.
-4. **Close canonical URL runtime evidence.** Execute Search URL-policy tests,
-   GraphQL Blog results, native backend URL behavior, compatibility idempotence,
-   and click-href analytics.
-5. **Close search runtime evidence.** Execute the routing/PostgreSQL/verifier
-   targets and retain targeted missing-post, module-toggle, and tenant-isolation
-   evidence.
-6. **Close comments owner/projection runtime evidence.** Exercise approved-only
-   public reads, public/admin pagination, moderation queue/status changes,
-   independent create commands on one post, duplicate delivery, concurrent
-   count updates, missing-post retry, delivery-ledger rollback, and outbox
-   publication.
+1. **Execute category runtime evidence.** Exercise HTTP CRUD using primary
+   `blog_posts:*` and legacy `categories:*` claims; verify tenant isolation,
+   parent validation, slug rejection, typed statuses, service/HTTP caps,
+   outbox rollback, and one committed reindex event for update/delete.
+2. **Execute Search refresh evidence.** Consume category-triggered Blog reindex
+   and retain changed `category_name` / `category_slug` documents for related
+   posts.
+3. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
+   controller handoff, focused verifier, then Redis-backed host requests with a
+   real HTTP `Retry-After` matching GraphQL `retryAfter`.
+4. **Finish admin native URL cutover.** Migrate the final Search admin mapper to
+   `canonical_search_result_url`; remove storefront compatibility enrichment
+   only after all consumers prove backend URL adoption.
+5. **Close comments runtime evidence.** Cover approved-only reads, moderation,
+   pagination, independent create commands, duplicate delivery, concurrent
+   counters, missing-post retry, rollback, and outbox publication.
+6. **Plan dedicated category permission resource.** Introduce
+   `blog_categories:*` only as a platform-wide migration covering parser,
+   OAuth groups, role snapshots, persistence, seeded grants, and compatibility.
 
 ## Verification
 
 - `node scripts/verify/verify-blog-category-search-reindex.mjs`
 - `node scripts/verify/verify-blog-category-search-reindex.test.mjs`
-- Category HTTP CRUD, RBAC, outbox rollback, tenant isolation, and Search refresh
-  integration tests.
+- Category HTTP CRUD, primary/legacy RBAC, outbox rollback, tenant isolation,
+  typed errors, pagination, slug, parent, and Search refresh integration tests.
 - `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
@@ -249,8 +173,6 @@ selected post changes.
 - `node scripts/verify/verify-search-canonical-url-contract.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
 - `cargo xtask module validate blog`
-- Targeted PostgreSQL lifecycle, channel visibility, comments, indexing,
-  navigation, pagination, Redis, and rate-limit integration tests.
 
 ## References
 
