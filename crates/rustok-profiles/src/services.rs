@@ -18,7 +18,7 @@ const PROFILE_SCOPE_VALUE: &str = "profiles";
 const MIN_HANDLE_LENGTH: usize = 3;
 const MAX_HANDLE_LENGTH: usize = 32;
 const MAX_DISPLAY_NAME_LENGTH: usize = 255;
-const MAX_LOCALE_LENGTH: usize = 16;
+const MAX_LOCALE_LENGTH: usize = 32;
 const MAX_HANDLE_SUFFIX_ATTEMPTS: usize = 100;
 const RESERVED_HANDLES: &[&str] = &["admin", "api", "me", "root", "support", "system"];
 
@@ -130,7 +130,6 @@ impl ProfileService {
             Some(profile) => {
                 let mut active: entities::profile::ActiveModel = profile.into();
                 active.handle = Set(handle.clone());
-                active.display_name = Set(display_name.clone());
                 active.avatar_media_id = Set(input.avatar_media_id);
                 active.banner_media_id = Set(input.banner_media_id);
                 active.preferred_locale = Set(preferred_locale.clone());
@@ -144,7 +143,6 @@ impl ProfileService {
                     user_id: Set(user_id),
                     tenant_id: Set(tenant_id),
                     handle: Set(handle.clone()),
-                    display_name: Set(display_name.clone()),
                     avatar_media_id: Set(input.avatar_media_id),
                     banner_media_id: Set(input.banner_media_id),
                     preferred_locale: Set(preferred_locale.clone()),
@@ -208,13 +206,19 @@ impl ProfileService {
         let translation_locale =
             resolve_profile_translation_locale(&profile, tenant_default_locale)?;
 
-        let mut active: entities::profile::ActiveModel = profile.clone().into();
-        active.display_name = Set(display_name.clone());
+        let txn = self.db.begin().await?;
+        let mut active: entities::profile::ActiveModel = profile.into();
         active.updated_at = Set(Utc::now().into());
-        active.update(&self.db).await?;
-
-        self.upsert_translation(user_id, &translation_locale, &display_name, bio)
-            .await?;
+        active.update(&txn).await?;
+        self.upsert_translation_in_conn(
+            &txn,
+            user_id,
+            &translation_locale,
+            &display_name,
+            bio,
+        )
+        .await?;
+        txn.commit().await?;
 
         self.get_profile(
             tenant_id,
@@ -421,14 +425,14 @@ impl ProfileService {
             )
             .await?;
 
-        Ok(map_profile(
+        map_profile(
             profile.clone(),
             translation,
             profile_tags
                 .get(&profile.user_id)
                 .cloned()
                 .unwrap_or_default(),
-        ))
+        )
     }
 
     pub async fn get_profile_summary(
@@ -699,14 +703,12 @@ impl ProfileService {
                     requested_locale,
                     tenant_default_locale,
                 )?;
-                Ok((
-                    user_id,
-                    map_profile(
-                        profile,
-                        translation,
-                        tags.get(&user_id).cloned().unwrap_or_default(),
-                    ),
-                ))
+                let profile = map_profile(
+                    profile,
+                    translation,
+                    tags.get(&user_id).cloned().unwrap_or_default(),
+                )?;
+                Ok((user_id, profile))
             })
             .collect()
     }
@@ -1067,25 +1069,22 @@ fn map_profile(
     profile: entities::profile::Model,
     translation: Option<entities::profile_translation::Model>,
     tags: Vec<String>,
-) -> ProfileRecord {
-    let (display_name, bio) = match translation {
-        Some(translation) => (translation.display_name, translation.bio),
-        None => (profile.display_name.clone(), None),
-    };
+) -> ProfileResult<ProfileRecord> {
+    let translation = translation.ok_or(ProfileError::LocalizedCopyNotFound(profile.user_id))?;
 
-    ProfileRecord {
+    Ok(ProfileRecord {
         tenant_id: profile.tenant_id,
         user_id: profile.user_id,
         handle: profile.handle,
-        display_name,
-        bio,
+        display_name: translation.display_name,
+        bio: translation.bio,
         tags,
         avatar_media_id: profile.avatar_media_id,
         banner_media_id: profile.banner_media_id,
         preferred_locale: profile.preferred_locale,
         visibility: profile.visibility,
         status: profile.status,
-    }
+    })
 }
 
 fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
