@@ -9,6 +9,9 @@ mod checkout_inventory_reservation_journal;
 mod checkout_marketplace_allocation;
 mod checkout_marketplace_commission;
 mod checkout_marketplace_economics;
+#[path = "checkout_marketplace_financial.rs"]
+mod checkout_marketplace_financial_legacy;
+#[path = "checkout_marketplace_financial_hardened.rs"]
 mod checkout_marketplace_financial;
 mod checkout_operation;
 mod checkout_order_confirmation;
@@ -87,10 +90,13 @@ pub use checkout_marketplace_economics::{
     validate_marketplace_economics_checkpoint,
 };
 pub use checkout_marketplace_financial::{
-    BeginMarketplaceFinancialOperation, CheckoutMarketplaceFinancialError,
-    CheckoutMarketplaceFinancialResult, CheckoutMarketplaceFinancialStage,
-    MarketplaceFinancialOperationError, MarketplaceFinancialOperationJournal,
-    MarketplaceFinancialOperationResult, MarketplaceFinancialOperationStatus,
+    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialResult,
+    CheckoutMarketplaceFinancialStage,
+};
+pub use checkout_marketplace_financial_legacy::{
+    BeginMarketplaceFinancialOperation, MarketplaceFinancialOperationError,
+    MarketplaceFinancialOperationJournal, MarketplaceFinancialOperationResult,
+    MarketplaceFinancialOperationStatus,
 };
 pub use checkout_operation::{
     BeginCheckoutOperation, CheckoutOperationCheckpoint, CheckoutOperationError,
