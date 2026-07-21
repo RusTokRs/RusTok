@@ -26,3 +26,27 @@ pub struct GroupsStorefrontDirectory {
     pub page: u64,
     pub per_page: u64,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceptGroupInvitationCommand {
+    pub idempotency_key: String,
+    pub token: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontMembership {
+    pub id: String,
+    pub group_id: String,
+    pub user_id: String,
+    pub role: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontAcceptInvitationResult {
+    pub invitation_id: String,
+    pub group_id: String,
+    pub membership: GroupsStorefrontMembership,
+    pub group_version: u64,
+    pub replayed: bool,
+}
