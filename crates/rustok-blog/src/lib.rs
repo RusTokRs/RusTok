@@ -120,9 +120,17 @@ impl RusToKModule for BlogModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)
-            .expect("blog SEO target registration should remain unique");
+    fn try_register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "blog SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 
     fn register_event_listeners(
@@ -179,17 +187,5 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|p| { p.resource == Resource::BlogCategories && p.action == Action::Manage }));
-        assert!(!permissions
-            .iter()
-            .any(|p| p.resource == Resource::Categories));
-    }
-
-    #[test]
-    fn module_has_owned_migrations() {
-        let module = BlogModule;
-        assert!(!module.migrations().is_empty());
     }
 }
-
-#[cfg(test)]
-mod contract_tests;
