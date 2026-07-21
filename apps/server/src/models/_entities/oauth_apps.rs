@@ -7,9 +7,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tenant_id: Uuid,
-    pub name: String,
     pub slug: String,
-    pub description: Option<String>,
     pub app_type: String,
     pub icon_url: Option<String>,
     pub client_id: Uuid,
@@ -36,6 +34,8 @@ pub enum Relation {
         to = "super::tenants::Column::Id"
     )]
     Tenant,
+    #[sea_orm(has_many = "super::oauth_app_translations::Entity")]
+    Translations,
     #[sea_orm(has_many = "super::oauth_tokens::Entity")]
     OAuthTokens,
 }
@@ -43,6 +43,12 @@ pub enum Relation {
 impl Related<super::tenants::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Tenant.def()
+    }
+}
+
+impl Related<super::oauth_app_translations::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Translations.def()
     }
 }
 
