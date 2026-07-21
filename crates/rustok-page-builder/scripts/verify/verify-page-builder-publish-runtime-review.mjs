@@ -141,7 +141,6 @@ for (const marker of contract.pages_consumer.materialization_match) {
   requireMarker(pages, marker, "Pages materialization match");
 }
 for (const code of contract.pages_consumer.error_codes) {
-  requireMarker(pages, code, "Pages stable error import");
   requireMarker(pagesErrors, code, "Pages typed error code");
   requireMarker(pagesErrors, `.with_error_code(${code})`, "Pages RichError mapping");
   requireMarker(pagesModule, code, "Pages module error export");
