@@ -36,6 +36,10 @@
       "function": "sanitize_static_landing_project",
       "envelope": "PageBuilderSanitizedStaticLandingProject",
       "hash_algorithm": "sha256",
+      "hash_payload": [
+        "format",
+        "sanitized_project"
+      ],
       "stable_component_ids": true,
       "secure_public_resources": true,
       "raw_context_persisted": false
