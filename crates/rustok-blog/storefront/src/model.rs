@@ -25,6 +25,27 @@ pub struct BlogPostListItem {
     pub published_at: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BlogCommentList {
+    pub items: Vec<BlogCommentListItem>,
+    pub total: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct BlogCommentListItem {
+    pub id: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    #[serde(rename = "authorId")]
+    pub author_id: Option<String>,
+    #[serde(rename = "contentPreview")]
+    pub content_preview: String,
+    #[serde(rename = "parentCommentId")]
+    pub parent_comment_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostDetail {
     pub id: String,
@@ -42,4 +63,6 @@ pub struct BlogPostDetail {
     pub tags: Vec<String>,
     #[serde(rename = "featuredImageUrl")]
     pub featured_image_url: Option<String>,
+    #[serde(default, rename = "publicComments")]
+    pub public_comments: BlogCommentList,
 }
