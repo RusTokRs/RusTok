@@ -38,6 +38,14 @@
         "authorization": "active_owner_or_admin_or_platform_manage"
       },
       {
+        "name": "GroupInvitationReadPort",
+        "operations": ["list_group_invitations"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_admin_moderator_or_platform_manage"
+      },
+      {
         "name": "GroupCommandPort",
         "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
         "policy": "write",
@@ -55,6 +63,23 @@
         "last_translation_delete": "deny",
         "transactional_group_version": true,
         "serialized_group_row": "exclusive_lock_where_supported"
+      },
+      {
+        "name": "GroupInvitationCommandPort",
+        "operations": [
+          "create_group_invitation",
+          "revoke_group_invitation",
+          "accept_group_invitation"
+        ],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "management_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "acceptance_authorization": "authenticated_target_or_authenticated_link_holder",
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "serialized_invitation_row": "exclusive_lock_where_supported"
       },
       {
         "name": "GroupGovernanceCommandPort",
@@ -88,6 +113,20 @@
     "version_bump": "same_transaction",
     "mutation_serialization": "base_group_row"
   },
+  "invitations": {
+    "plaintext_token_storage": "never",
+    "token_digest": "sha256_hex",
+    "token_delivery": "create_response_once",
+    "create_replay_token": "null",
+    "targeted_max_uses": 1,
+    "shareable_max_uses": 100,
+    "minimum_expiry_seconds": 300,
+    "maximum_expiry_seconds": 2592000,
+    "revocation": "owner_state",
+    "acceptance_serialization": "invitation_row_plus_unique_redemption",
+    "membership_activation": "same_transaction",
+    "synchronous_notification_delivery": false
+  },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
     "examples": [
@@ -115,6 +154,13 @@
       "implicit_fallback": false
     },
     {
+      "name": "embedded_invitations_native",
+      "provider": "GroupInvitationService",
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
       "status": "implemented",
@@ -130,11 +176,15 @@
   "evidence": {
     "static_boundary": "scripts/verify/verify-groups-boundary.mjs",
     "localization_static_boundary": "scripts/verify/verify-groups-localization-boundary.mjs",
+    "invitation_static_boundary": "scripts/verify/verify-groups-invitations-boundary.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
     "localization_transport_parity": null,
     "localization_concurrency": null,
+    "invitation_transport_parity": null,
+    "invitation_concurrency": null,
+    "invitation_delivery": null,
     "governance_transport_parity": null,
     "governance_concurrency": null
   }
