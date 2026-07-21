@@ -17,9 +17,10 @@ headers are not interpreted inside the Blog module.
 The search lifecycle is implemented in `rustok-search`: Blog events upsert or
 delete `blog_post` search documents, and `ReindexRequested` supports both one
 post and the complete Blog scope. Search owns the SQL projection and does not
-depend on the Blog crate. The projector stores the post slug in payload, but the
-shared search GraphQL URL derivation still handles only `product` and `node`, so
-`blog_post` result navigation remains the next cross-module parity gap.
+depend on the Blog crate. The projector stores the post slug in payload. The
+Rust Search storefront now applies one post-transport navigation policy after
+native or GraphQL selection, preserving backend URLs and deriving
+`/modules/blog?slug=...` only from a bounded safe Blog slug.
 
 Public comment listing uses a Comments-owned approved-only projection. Pending,
 spam, trash, and deleted comments cannot leave the owner boundary. The selected
@@ -57,6 +58,9 @@ resets page state when the selected post changes.
 - The admin moderation transport passes explicit `page/perPage`, clamps the page
   size, exposes previous/next controls, and keeps moderation contract failures
   isolated from post CRUD.
+- Search Blog-result navigation runs after Rust storefront transport selection,
+  requires `source_module=blog` and `entity_type=blog_post`, validates the
+  projected slug, preserves backend URLs, and fails closed for malformed data.
 - `BlogCommentProjectionHandler` consumes `comment.created` and
   `comment.deleted`, records a durable event-id delivery ledger, updates the
   Blog-owned reply count with optimistic version locking, and publishes
@@ -67,8 +71,9 @@ resets page state when the selected post changes.
   `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`,
   `scripts/verify/verify-blog-fba.mjs`,
-  `scripts/verify/verify-blog-admin-boundary.mjs`, and
-  `scripts/verify/verify-blog-storefront-boundary.mjs`.
+  `scripts/verify/verify-blog-admin-boundary.mjs`,
+  `scripts/verify/verify-blog-storefront-boundary.mjs`, and
+  `scripts/verify/verify-search-blog-navigation.mjs`.
 
 ## Completed implementation slices
 
@@ -99,6 +104,9 @@ resets page state when the selected post changes.
 11. Added admin moderation pagination: bounded GraphQL variables, page reset on
     post selection, total-page calculation, disabled invalid navigation, and
     localized previous/next/page controls.
+12. Added Rust Search storefront Blog navigation: transport-neutral payload
+    enrichment, canonical module route, backend-URL precedence, strict slug
+    validation, unit tests, and focused verifier fixtures.
 
 ## Next results
 
@@ -113,13 +121,13 @@ resets page state when the selected post changes.
    public reads, moderation queue/status changes and pagination, independent
    create commands on one post, duplicate delivery, concurrent count updates,
    missing-post retry, delivery-ledger rollback, and outbox publication.
-4. **Complete search-result navigation.** Extend the shared search URL derivation
-   for `blog_post` by reading the projected slug and producing the canonical
-   `/modules/blog?slug=...` route, with an empty/invalid slug remaining
-   non-navigable. Then lock GraphQL/native storefront parity in search guardrails.
-5. **Add storefront comment pagination.** Preserve native `#[server]` plus
+4. **Add storefront comment pagination.** Preserve native `#[server]` plus
    GraphQL transport paths while moving the current fixed first-page public
    comments payload to route-owned page state.
+5. **Promote canonical Search URL ownership.** Move the Blog route fallback from
+   Rust storefront post-processing into the shared Search result contract when
+   the large GraphQL projection can be changed atomically; keep compatibility
+   post-processing until all consumers use the backend URL.
 
 ## Verification
 
@@ -130,9 +138,10 @@ resets page state when the selected post changes.
 - `npm run verify:blog:fba`
 - `npm run verify:comments:fba`
 - `npm run verify:consumer:fba-runtime-order`
+- `node scripts/verify/verify-search-blog-navigation.mjs`
 - `cargo xtask module validate blog`
-- Targeted PostgreSQL lifecycle, channel visibility, comments, indexing, and
-  rate-limit integration tests.
+- Targeted PostgreSQL lifecycle, channel visibility, comments, indexing,
+  navigation, and rate-limit integration tests.
 
 ## References
 
