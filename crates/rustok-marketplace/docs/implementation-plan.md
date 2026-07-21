@@ -7,15 +7,15 @@ Last reviewed: 2026-07-21
 - Family source status: `in_progress`.
 - FBA status: `in_progress`.
 - FFA status: `in_progress`.
-- Runtime integration status: `partial`.
-- Migration composition status: `partial`.
+- Runtime integration status: `module_graph_wired_ports_pending`.
+- Migration composition status: `source_wired_unvalidated`.
 - Retained validation evidence: `not_current`.
 - Production promotion gate: `closed`.
 
 The maintainer explicitly chose to merge the current source slices before running a
 consolidated test pass. A checked source item means that its implementation is present
-on `main`; it does not imply that locked compilation, composed migrations, PostgreSQL
-contention, mounted transports, or remote-provider evidence are current.
+on `main`; it does not imply that locked compilation, composed migration execution,
+PostgreSQL contention, mounted transports, or remote-provider evidence are current.
 
 ## Source slices merged to `main`
 
@@ -27,6 +27,8 @@ contention, mounted transports, or remote-provider evidence are current.
 - [x] Payout scheduling owner.
 - [x] Checkout marketplace allocation stage source.
 - [x] Isolated cross-domain moderation owner and replay-safe case service.
+- [x] Workspace aliases, module catalog, distribution/server feature graph, and composed
+  migration source wiring for the Marketplace Family and moderation.
 
 ## Architecture contract
 
@@ -112,6 +114,8 @@ contention, mounted transports, or remote-provider evidence are current.
 - [x] Add `CheckoutMarketplaceAllocationStage` with deterministic child key
   `checkout:{operation_id}:marketplace-allocation:v1`.
 - [x] Keep ordinary non-marketplace orders as a no-op at the allocation stage.
+- [x] Register seller, listing, and allocation `MigrationSource` implementations in the
+  composed migrator source list.
 
 ### Remaining critical path
 
@@ -124,8 +128,8 @@ contention, mounted transports, or remote-provider evidence are current.
 - [ ] Add allocation cancellation for payment failure, checkout compensation, order
   cancellation, and line cancellation.
 - [ ] Publish allocation created/cancelled events transactionally.
-- [ ] Register allocation migrations in the composed migrator.
-- [ ] Retain concurrent one-allocation-per-line PostgreSQL evidence.
+- [ ] Retain clean/upgraded migration and concurrent one-allocation-per-line PostgreSQL
+  evidence.
 
 ## Commission
 
@@ -140,6 +144,7 @@ contention, mounted transports, or remote-provider evidence are current.
 - [x] Replay completed receipts before allocation provider reads.
 - [x] Reject cancelled allocations before receipt admission.
 - [x] Publish typed commission read and command ports.
+- [x] Register commission `MigrationSource` in the composed migrator source list.
 
 ### Remaining
 
@@ -150,8 +155,8 @@ contention, mounted transports, or remote-provider evidence are current.
 - [ ] Add commission assessment cancellation and reversal lifecycle.
 - [ ] Publish commission events with state, receipt, and outbox in one transaction.
 - [ ] Add commission rule management admin surfaces.
-- [ ] Register commission migrations in the composed migrator.
-- [ ] Retain rule selection, replay, and contention evidence on PostgreSQL.
+- [ ] Retain clean/upgraded migrations, rule selection, replay, and contention evidence on
+  PostgreSQL.
 
 ## Ledger and financial orchestration
 
@@ -166,6 +171,7 @@ contention, mounted transports, or remote-provider evidence are current.
 - [x] Publish order-ledger and seller-payable read projections.
 - [x] Add root orchestration that derives stable commission and ledger child keys.
 - [x] Validate commission aggregates against ledger totals.
+- [x] Register ledger `MigrationSource` in the composed migrator source list.
 
 ### Remaining critical path
 
@@ -180,8 +186,8 @@ contention, mounted transports, or remote-provider evidence are current.
   negative amounts, rebuildable from ledger entries.
 - [ ] Hold fulfillment when financial posting is incomplete and release it after
   successful posting according to policy.
-- [ ] Register ledger migrations in the composed migrator.
-- [ ] Retain duplicate-paid-event, balancing, recovery, and concurrent posting evidence.
+- [ ] Retain clean/upgraded migrations, duplicate-paid-event, balancing, recovery, and
+  concurrent posting evidence.
 
 ## Payout
 
@@ -193,6 +199,7 @@ contention, mounted transports, or remote-provider evidence are current.
 - [x] Commit payout header, items, totals, and completed receipt atomically.
 - [x] Publish payout reads by payout and seller.
 - [x] Register payout in distribution and marketplace family composition.
+- [x] Register payout `MigrationSource` in the composed migrator source list.
 
 ### Remaining production lifecycle
 
@@ -208,8 +215,8 @@ contention, mounted transports, or remote-provider evidence are current.
 - [ ] Add payout eligibility policy for delivery, return window, disputes, reserves,
   minimum amount, and seller risk.
 - [ ] Add finance reconciliation and seller payout UI.
-- [ ] Register payout migrations in the composed migrator.
-- [ ] Retain provider crash/retry and concurrent ledger-entry assignment evidence.
+- [ ] Retain clean/upgraded migrations, provider crash/retry, and concurrent ledger-entry
+  assignment evidence.
 
 ## Moderation integration
 
@@ -223,13 +230,15 @@ contention, mounted transports, or remote-provider evidence are current.
 - [x] Add receipt-first report, case, assignment, and decision services.
 - [x] Add deterministic active-case deduplication and revision compare-and-set.
 - [x] Keep moderation from writing foreign owner tables directly.
+- [x] Register moderation as a workspace dependency alias and optional module in
+  `modules.toml`, `rustok-distribution`, and the server feature graph.
+- [x] Register moderation `MigrationSource` and dependency descriptors in the composed
+  migrator source list.
 
 ### Remaining
 
-- [ ] Reconcile `Cargo.lock` after the isolated owner merge.
-- [ ] Register moderation in workspace dependency aliases, module catalog, and composed
-  migrator without replacing newer global files.
-- [ ] Add moderation RBAC resources and runtime composition.
+- [ ] Reconcile `Cargo.lock` after manifest composition changes.
+- [ ] Add moderation RBAC resources and request-scoped runtime port composition.
 - [ ] Publish moderation lifecycle events through the transactional outbox.
 - [ ] Add durable decision-application journal and crash/retry recovery.
 - [ ] Add seller and listing `ModerationSubjectCommandPort` adapters.
@@ -262,25 +271,26 @@ contention, mounted transports, or remote-provider evidence are current.
 
 ## Migration and runtime composition queue
 
-- [ ] Register allocation, commission, ledger, payout, and moderation owner migrations
-  in the current composed migrator.
-- [ ] Add workspace dependency aliases where required without reverting concurrent root
-  manifest changes.
+- [x] Register seller, listing, allocation, commission, ledger, payout, and moderation
+  owner migrations in the current composed migrator source list.
+- [x] Add workspace dependency aliases without reverting concurrent root manifest
+  changes.
+- [x] Register the complete Marketplace Family and moderation in the module catalog,
+  distribution registry, and server opt-in feature graph.
 - [ ] Reconcile the workspace lock after all owner crates are registered.
-- [ ] Register runtime providers for allocation, commission, ledger, payout, and
-  moderation.
+- [ ] Register request-scoped runtime providers for allocation, commission, ledger,
+  payout, and moderation; compile-time module registration is not sufficient.
 - [ ] Register checkout and paid-event consumers in host composition.
-- [ ] Update module implementation-plan and backfill registries with the final composed
-  migration order.
+- [ ] Update backfill registries with the validated final composed migration order.
 
 ## Consolidated maintainer validation queue
 
-No new tests were run for the 2026-07-21 source merge batch.
+No new tests were run for the 2026-07-21 source composition batch.
 
 - [ ] Reconcile `Cargo.lock`.
 - [ ] Run formatting for changed marketplace and moderation crates.
-- [ ] Run `cargo check` for marketplace owners, commerce, distribution, moderation, and
-  the composed migrator.
+- [ ] Run `cargo check` for marketplace owners, commerce, distribution, moderation, the
+  server feature graph, and the composed migrator.
 - [ ] Run owner unit and SQLite service tests.
 - [ ] Export and inspect the composed migration plan.
 - [ ] Apply clean and upgraded SQLite migrations.
@@ -295,8 +305,8 @@ No new tests were run for the 2026-07-21 source merge batch.
 
 ## Immediate execution order
 
-1. [ ] Register all newly merged owner migrations in the current composed migrator and
-   reconcile the workspace lock.
+1. [x] Register owner workspace aliases, module feature graph, and composed migration
+   sources.
 2. [ ] Add typed marketplace checkout snapshots and remove metadata-based identity.
 3. [ ] Wire allocation and pre-capture commission stages into the real checkout pipeline.
 4. [ ] Add durable post-capture financial operation and paid-event inbox.
