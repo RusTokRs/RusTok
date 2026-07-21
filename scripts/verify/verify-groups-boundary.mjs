@@ -139,6 +139,21 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/rustok-module.toml"))) {
   }
 }
 
+if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/core.rs"))) {
+  const core = read("crates/rustok-groups/admin/src/core.rs");
+  for (const marker of [
+    "prepare_change_group_role",
+    "prepare_transfer_group_ownership",
+    "Uuid::parse_str",
+    "Uuid::new_v4",
+    "GroupsAdminGovernanceInputError",
+  ]) {
+    if (!core.includes(marker)) {
+      failures.push(`Groups admin governance core is missing marker: ${marker}`);
+    }
+  }
+}
+
 if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/transport.rs"))) {
   const facade = read("crates/rustok-groups/admin/src/transport.rs");
   for (const marker of [
@@ -181,6 +196,23 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/transport/grap
   }
 }
 
+if (fs.existsSync(path.join(root, "crates/rustok-groups/admin/src/ui/leptos.rs"))) {
+  const adminUi = read("crates/rustok-groups/admin/src/ui/leptos.rs");
+  for (const marker of [
+    "prepare_change_group_role",
+    "prepare_transfer_group_ownership",
+    "change_group_admin_role",
+    "transfer_group_admin_ownership",
+    "governance_success_message",
+    "on_role_submit",
+    "on_ownership_submit",
+  ]) {
+    if (!adminUi.includes(marker)) {
+      failures.push(`Groups admin governance UI is missing marker: ${marker}`);
+    }
+  }
+}
+
 if (fs.existsSync(path.join(root, "crates/rustok-groups/contracts/groups-fba-registry.json"))) {
   const registry = JSON.parse(read("crates/rustok-groups/contracts/groups-fba-registry.json"));
   if (registry?.privacy?.default_on_provider_unavailable !== "deny_private_content") {
@@ -217,9 +249,36 @@ if (fs.existsSync(path.join(root, "crates/rustok-groups/contracts/groups-fba-reg
   }
 }
 
+const governanceLocaleKeys = [
+  "groups.admin.governance.title",
+  "groups.admin.governance.body",
+  "groups.admin.governance.groupId",
+  "groups.admin.governance.targetUserId",
+  "groups.admin.governance.newOwnerUserId",
+  "groups.admin.governance.role",
+  "groups.admin.governance.changeRole",
+  "groups.admin.governance.transferOwnership",
+  "groups.admin.governance.invalidGroupId",
+  "groups.admin.governance.invalidTargetUserId",
+  "groups.admin.governance.invalidNewOwnerUserId",
+  "groups.admin.governance.roleChanged",
+  "groups.admin.governance.ownershipTransferred",
+];
 for (const relative of [
   "crates/rustok-groups/admin/locales/en.json",
   "crates/rustok-groups/admin/locales/ru.json",
+]) {
+  if (fs.existsSync(path.join(root, relative))) {
+    const messages = JSON.parse(read(relative));
+    for (const key of governanceLocaleKeys) {
+      if (typeof messages[key] !== "string" || messages[key].trim().length === 0) {
+        failures.push(`Groups governance locale is missing key ${key}: ${relative}`);
+      }
+    }
+  }
+}
+
+for (const relative of [
   "crates/rustok-groups/storefront/locales/en.json",
   "crates/rustok-groups/storefront/locales/ru.json",
 ]) {
@@ -234,4 +293,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups FFA/FBA, privacy, governance transport, multilingual, and ownership boundary checks passed.");
+console.log("Groups FFA/FBA, privacy, governance transport/UI, multilingual, and ownership boundary checks passed.");
