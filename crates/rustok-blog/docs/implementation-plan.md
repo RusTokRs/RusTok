@@ -21,9 +21,11 @@ depend on the Blog crate.
 
 Public comment listing uses a Comments-owned approved-only projection. Pending,
 spam, trash, and deleted comments cannot leave the owner boundary. The selected
-storefront post now renders the same public comments payload through native
-`#[server]` and GraphQL transports; authenticated management reads continue
-through the normal RBAC-aware Comments service path.
+storefront post renders the same public payload through native `#[server]` and
+GraphQL transports. Admin moderation is a separate GraphQL slice: a current-
+tenant actor with `blog_posts:manage` can inspect the non-deleted owner queue and
+apply approve/spam/trash transitions without coupling the CRUD editor to that
+permission.
 
 ## FFA/FBA status
 
@@ -36,7 +38,8 @@ through the normal RBAC-aware Comments service path.
 - GraphQL protection is split into a Blog-owned policy/port and a host adapter
   over the configured memory/Redis API limiter.
 - Mutation gates are aligned: update uses `blog_posts:update`; publish,
-  unpublish, and archive use `blog_posts:publish`.
+  unpublish, and archive use `blog_posts:publish`; comment moderation uses
+  `blog_posts:manage`.
 - The comments consumer contract is `CommentsThreadPort` /
   `comments.thread.v1`. Public list reads use
   `list_public_comments_for_target`; writes carry operation-scoped idempotency
@@ -44,6 +47,10 @@ through the normal RBAC-aware Comments service path.
 - `GqlPost.publicComments` and native `BlogPostDetail.publicComments` both consume
   the owner-approved projection, use bounded pagination, and share the same
   storefront DTO and localized presentation.
+- `GqlPost.moderationComments` is tenant-bound and permission-gated. After the
+  Blog manage decision, it performs the trusted owner read used by the existing
+  REST moderation adapter; `moderateComment` uses the same domain service and is
+  represented as a dedicated field-aware rate-limit surface.
 - `BlogCommentProjectionHandler` consumes `comment.created` and
   `comment.deleted`, records a durable event-id delivery ledger, updates the
   Blog-owned reply count with optimistic version locking, and publishes
@@ -79,22 +86,26 @@ through the normal RBAC-aware Comments service path.
 9. Added selected-post public comments parity: a nested GraphQL complex field,
    native owner read, shared storefront DTO, Leptos rendering, English/Russian
    copy, and a guardrail that requires approved-only parity in both transports.
+10. Added admin moderation parity: tenant-bound `moderationComments`, typed
+    `moderateComment`, manage permission and rate-limit gates, a separate admin
+    transport adapter, selected-post approve/spam/trash UI, localized copy, and
+    canonical/negative boundary fixtures.
 
 ## Next results
 
 1. **Close rate-limit runtime evidence.** Exercise memory and Redis
    allowed/exceeded/backend-unavailable outcomes, GraphQL extensions, HTTP
-   `Retry-After`, and publication/channel/RBAC non-regression.
+   `Retry-After`, and publication/channel/RBAC non-regression, including the new
+   `moderate_comment` surface.
 2. **Close search runtime evidence.** Exercise create/update/publication/archive/
    delete event-to-document behavior, targeted recovery, full Blog recovery, and
    module-disabled cleanup against PostgreSQL.
 3. **Close comments owner/projection runtime evidence.** Exercise approved-only
-   public reads, independent create commands on one post, duplicate delivery,
-   concurrent count updates, missing-post retry, delivery-ledger rollback, and
-   outbox publication.
-4. **Continue admin/storefront parity.** Preserve native `#[server]` and GraphQL
-   paths while aligning moderation queues/actions, comment pagination, and search
-   result navigation across hosts.
+   public reads, moderation queue/status changes, independent create commands on
+   one post, duplicate delivery, concurrent count updates, missing-post retry,
+   delivery-ledger rollback, and outbox publication.
+4. **Continue admin/storefront parity.** Add comment pagination and search-result
+   navigation while preserving native `#[server]` plus GraphQL transport paths.
 
 ## Verification
 
