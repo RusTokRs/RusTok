@@ -8,14 +8,21 @@ packages. It consumes `rustok-comments` through `CommentsThreadPort` and uses
 shared taxonomy without sharing blog storage. Native `#[server]` and GraphQL
 remain parallel transports; the owner packages have core/transport/UI splits.
 
-The host-level path limiter already protects every `/api/*` HTTP request,
-including Blog REST routes and the `/api/graphql` transport. Blog now adds a
-field-aware GraphQL policy on top of that transport boundary. The policy uses
-the host-owned `SharedApiRateLimiter` through a Blog-owned trait, protects
-`post`, `postBySlug`, `posts` and all Blog post mutations, scopes keys by tenant
-plus actor/IP, preserves resolver authentication/RBAC errors for unauthorized
-writes, and returns observable structured GraphQL errors when a limit or backend
-failure is encountered.
+The host-level path limiter protects every `/api/*` HTTP request, including Blog
+REST routes and `/api/graphql`. Blog adds a field-aware GraphQL policy through a
+Blog-owned rate-limit port backed by the host `SharedApiRateLimiter`. Anonymous
+actor keys consume only the host-resolved trusted client IP; raw forwarded
+headers are not interpreted inside the Blog module.
+
+The search lifecycle is implemented in `rustok-search`: Blog events upsert or
+delete `blog_post` search documents, and `ReindexRequested` supports both one
+post and the complete Blog scope. Search owns the SQL projection and does not
+depend on the Blog crate.
+
+Public comment listing now uses a Comments-owned approved-only projection.
+Pending, spam, trash, and deleted comments cannot leave the owner boundary on
+the storefront path. Authenticated management reads continue through the normal
+RBAC-aware Comments service path.
 
 ## FFA/FBA status
 
@@ -27,17 +34,17 @@ failure is encountered.
   duplicate the `/api/*` middleware counter.
 - GraphQL protection is split into a Blog-owned policy/port and a host adapter
   over the configured memory/Redis API limiter.
+- Mutation gates are aligned: update uses `blog_posts:update`; publish,
+  unpublish, and archive use `blog_posts:publish`.
 - The comments consumer contract is `CommentsThreadPort` /
-  `comments.thread.v1`. Its declared degraded behavior remains source-locked,
-  not live-runtime proven.
-- All Blog comment lifecycle operations invoke `CommentsThreadPort` with
-  authenticated actor claims, locale, deadline, idempotency where required,
-  and typed port-error mapping. Blog has no direct `CommentsService` calls.
+  `comments.thread.v1`. Public list reads use
+  `list_public_comments_for_target`; writes carry operation-scoped idempotency
+  keys, deadline, locale, actor claims, and typed port-error mapping.
 - `BlogCommentProjectionHandler` consumes `comment.created` and
   `comment.deleted`, records a durable event-id delivery ledger, updates the
-  Blog-owned reply count, and publishes `BlogPostUpdated` in one transaction.
-  The replacement is governed by
-  `DECISIONS/2026-07-16-comments-blog-event-projection.md`.
+  Blog-owned reply count with optimistic version locking, and publishes
+  `BlogPostUpdated` in the same transaction. Missing posts fail delivery so the
+  event runtime can retry instead of acknowledging an out-of-order event.
 - Evidence: `crates/rustok-blog/contracts/blog-fba-registry.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
@@ -46,40 +53,41 @@ failure is encountered.
   `scripts/verify/verify-blog-admin-boundary.mjs`, and
   `scripts/verify/verify-blog-storefront-boundary.mjs`.
 
-## Completed in the current slice
+## Completed implementation slices
 
-1. Reconciled the plan with the actual host composition: Blog REST was already
-   covered by the global `/api/*` limiter, so no module-local duplicate limiter
-   was introduced.
-2. Added a Blog-owned GraphQL rate-limit contract and document policy covering
-   public reads and authenticated post mutations, including fragment/batched
-   document classification.
-3. Added the server adapter from `SharedApiRateLimiter` to the Blog contract and
-   injected the policy into schema composition only when `mod-blog` is compiled.
-4. Added tenant/actor/IP key tests, field-classification tests, permission-gate
-   tests, generic rate-limit metrics, and structured `BLOG_RATE_LIMITED` /
-   `BLOG_RATE_LIMIT_BACKEND_UNAVAILABLE` errors.
+1. Reconciled load protection with host composition and avoided a duplicate
+   Blog REST limiter.
+2. Added Blog GraphQL document classification and rate-limit enforcement for
+   public reads and post mutations, including fragments and multi-operation
+   documents.
+3. Added the host adapter, schema injection, structured GraphQL errors, metrics,
+   and host-trusted client-IP propagation.
+4. Aligned REST, GraphQL, domain, and rate-limit mutation permission gates.
+5. Added Blog post search projection for create, update, publish, unpublish,
+   archive, delete, targeted reindex, and full Blog-scope rebuild.
+6. Hardened comment projection delivery with a durable ledger, optimistic
+   locking, retryable missing-post behavior, and transactional outbox
+   publication.
+7. Isolated comment write idempotency keys by operation and command.
+8. Added a Comments-owned approved-only public thread projection, bounded public
+   pagination, a fail-closed remote-adapter default, and matching provider /
+   consumer FBA registry evidence.
 
 ## Next results
 
-1. **Close rate-limit runtime evidence.** Add memory and Redis integration tests
-   for allowed/exceeded/backend-unavailable outcomes, verify GraphQL error
-   extensions and HTTP `Retry-After`, and record publication/channel/RBAC
-   non-regression evidence. Reuse the host's trusted client-IP resolution rather
-   than allowing module code to become a second proxy-trust authority.
-2. **Align Blog mutation permissions.** `updatePost` currently asks for
-   `blog_posts:publish` while REST update and the domain responsibility require
-   `blog_posts:update`. Correct the resolver and lock equivalent REST/GraphQL
-   authorization behavior in tests.
-3. **Verify the blog search projection.** Prove every published, updated,
-   unpublished, archived, and deleted post event maps to the intended
-   `rustok-index` document lifecycle without moving index logic into Blog. Done
-   when an event-to-index integration test and recovery behavior are recorded.
-4. **Execute owner-boundary and event-projection evidence end to end.** Run the
-   comments consumer and Blog projection against an available runtime, including
-   duplicate delivery, missing-post behavior, outbox publication, retry, and the
-   next admin/storefront host parity slice. Preserve native `#[server]` plus
-   GraphQL paths.
+1. **Close rate-limit runtime evidence.** Exercise memory and Redis
+   allowed/exceeded/backend-unavailable outcomes, GraphQL extensions, HTTP
+   `Retry-After`, and publication/channel/RBAC non-regression.
+2. **Close search runtime evidence.** Exercise create/update/publication/archive/
+   delete event-to-document behavior, targeted recovery, full Blog recovery, and
+   module-disabled cleanup against PostgreSQL.
+3. **Close comments owner/projection runtime evidence.** Exercise approved-only
+   public reads, independent create commands on one post, duplicate delivery,
+   concurrent count updates, missing-post retry, delivery-ledger rollback, and
+   outbox publication.
+4. **Continue admin/storefront parity.** Preserve native `#[server]` and GraphQL
+   paths while aligning comment moderation, public thread rendering, and search
+   result navigation across hosts.
 
 ## Verification
 
@@ -88,10 +96,11 @@ failure is encountered.
 - `npm run verify:blog:admin-boundary`
 - `npm run verify:blog:storefront-boundary`
 - `npm run verify:blog:fba`
+- `npm run verify:comments:fba`
 - `npm run verify:consumer:fba-runtime-order`
 - `cargo xtask module validate blog`
-- Targeted lifecycle, channel visibility, comments, indexing, and rate-limit
-  integration tests.
+- Targeted PostgreSQL lifecycle, channel visibility, comments, indexing, and
+  rate-limit integration tests.
 
 ## References
 
