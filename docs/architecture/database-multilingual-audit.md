@@ -77,6 +77,17 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
   events in the same transaction. Reads project prose only from the event log;
   the preceding migration preserves legacy snapshots and the final migration
   drops `onboarding_note` and `suspension_reason` from the base table.
+- **OAuth applications** — `oauth_apps` now owns protocol identity, credentials,
+  grants, redirect URIs, status, and configuration only. Human-facing name and
+  description live in `oauth_app_translations` under
+  `(tenant_id, app_id, locale)`. Legacy copy is retained as `und` before base
+  columns are dropped. Admin GraphQL propagates the host effective locale and
+  requires an exact translation; `und` is deleted once a command supplies known
+  locale provenance.
+- **Registry publish/release copy** — runtime default locale remains `en`, while
+  historical copy with unknown provenance is stored as `und`. The migration no
+  longer asserts that legacy text was English merely because English is the
+  runtime fallback.
 - **Commerce collections/categories** — a forward-only PostgreSQL/MySQL/SQLite
   migration widens collection and product-category translation locales to
   `VARCHAR(32)` and is registered after both owner tables.
@@ -92,14 +103,9 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
 
 ## Open owner cutovers
 
-These are not accepted exceptions. They remain explicit migration targets:
-
-- `auth-oauth-app-copy`: `oauth_apps.name` and `oauth_apps.description` still
-  store display copy inline. `rustok-auth` owns the atomic translation-table and
-  transport cutover.
-- `registry-legacy-locale-provenance`: the registry split migration still assigns
-  `en` as both runtime default and historical copy provenance. The owner must
-  separate those concerns before the cutover is treated as compliant.
+No known multilingual write-side storage exceptions remain in the executable
+registry. Newly discovered exceptions must be added back as explicit owner-owned
+migration targets rather than hidden behind runtime fallback.
 
 ## Interpretation rules
 
