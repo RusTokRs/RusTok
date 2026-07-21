@@ -13,11 +13,11 @@ use sea_orm::DatabaseConnection;
 
 use crate::entities::page_translation;
 
-pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
-pub use reviewed_publish::{
+pub use crate::error::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID,
 };
+pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
 pub(crate) use helpers::is_page_visible_for_channel;
 
 pub(super) const PAGE_KIND: &str = "page";
