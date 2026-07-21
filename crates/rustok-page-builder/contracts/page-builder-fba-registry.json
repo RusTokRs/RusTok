@@ -20,6 +20,21 @@
       "scenario_id_max_bytes": 128,
       "response_identity": "runtime_scenario_id"
     },
+    "reviewed_publish_runtime_contract": {
+      "format": "page_builder_publish_runtime_review_v1",
+      "input": "PageBuilderReviewedPublishRuntime",
+      "scenario_required": true,
+      "review_hash_algorithm": "sha256",
+      "raw_context_persisted": false
+    },
+    "static_sanitization_contract": {
+      "format": "page_builder_static_publish_sanitization_v1",
+      "function": "sanitize_static_landing_project",
+      "envelope": "PageBuilderSanitizedStaticLandingProject",
+      "hash_algorithm": "sha256",
+      "stable_component_ids": true,
+      "secure_public_resources": true
+    },
     "static_materialization_contract": {
       "format": "page_builder_static_runtime_materialization_v1",
       "envelope": "PageBuilderMaterializedStaticLandingArtifact",
@@ -107,6 +122,32 @@
         "storefront_integrity": "PageBuilderMaterializedStaticLandingArtifact::verify_integrity",
         "raw_context_persisted": false
       },
+      "atomic_publish": {
+        "state": "service_integrated",
+        "input": "PublishPageInput",
+        "result": "PublishPageResult",
+        "service": "PageService::publish_reviewed",
+        "sanitizer": "sanitize_static_landing_project",
+        "receipt_entity": "page_publish_operation",
+        "idempotency_unique_key": [
+          "tenant_id",
+          "page_id",
+          "idempotency_key"
+        ],
+        "request_identity": [
+          "expected_version",
+          "expected_body_revisions",
+          "review_hash"
+        ],
+        "transactional_outbox": [
+          "NodeUpdated",
+          "NodePublished"
+        ],
+        "replay": "stored_receipt_without_rebuild_or_duplicate_events",
+        "public_transport": "pending_cutover",
+        "legacy_default_publish": "pending_removal",
+        "raw_context_persisted": false
+      },
       "error_catalog": {
         "validation": "validation",
         "sanitize": "sanitize",
@@ -114,7 +155,12 @@
         "feature_disabled": "feature-disabled"
       },
       "error_codes": {
-        "feature_disabled": "FEATURE_DISABLED"
+        "feature_disabled": "FEATURE_DISABLED",
+        "review_invalid": "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID",
+        "sanitize_failed": "PAGE_BUILDER_PUBLISH_SANITIZE_FAILED",
+        "materialization_mismatch": "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH",
+        "idempotency_conflict": "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT",
+        "receipt_integrity": "PAGE_PUBLISH_OPERATION_INTEGRITY"
       },
       "degraded_mode_errors": {
         "builder_disabled": "FEATURE_DISABLED",
@@ -149,6 +195,7 @@
     "local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-page-builder-fba-baseline.mjs",
+    "reviewed_publish_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
     "runtime_order_smoke": "crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   }
