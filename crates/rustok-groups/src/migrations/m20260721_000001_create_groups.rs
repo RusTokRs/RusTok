@@ -1,0 +1,458 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(Groups::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(Groups::Id).uuid().not_null().primary_key())
+                    .col(ColumnDef::new(Groups::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(Groups::OwnerUserId).uuid().not_null())
+                    .col(ColumnDef::new(Groups::Handle).string_len(80).not_null())
+                    .col(
+                        ColumnDef::new(Groups::Visibility)
+                            .string_len(32)
+                            .not_null()
+                            .default("public"),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::JoinPolicy)
+                            .string_len(32)
+                            .not_null()
+                            .default("open"),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("active"),
+                    )
+                    .col(ColumnDef::new(Groups::CategoryId).uuid())
+                    .col(ColumnDef::new(Groups::AvatarMediaId).uuid())
+                    .col(ColumnDef::new(Groups::CoverMediaId).uuid())
+                    .col(
+                        ColumnDef::new(Groups::MemberCount)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::Version)
+                            .big_integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(Groups::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(Groups::ArchivedAt).timestamp_with_time_zone())
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_groups_tenant_handle")
+                .table(Groups::Table)
+                .col(Groups::TenantId)
+                .col(Groups::Handle)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("ux_groups_tenant_id")
+                .table(Groups::Table)
+                .col(Groups::TenantId)
+                .col(Groups::Id)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_groups_tenant_visibility_status")
+                .table(Groups::Table)
+                .col(Groups::TenantId)
+                .col(Groups::Visibility)
+                .col(Groups::Status)
+                .col(Groups::UpdatedAt)
+                .to_owned(),
+            Index::create()
+                .name("idx_groups_tenant_owner")
+                .table(Groups::Table)
+                .col(Groups::TenantId)
+                .col(Groups::OwnerUserId)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(GroupTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GroupTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(GroupTranslations::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(GroupTranslations::GroupId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupTranslations::Locale)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupTranslations::Title)
+                            .string_len(240)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(GroupTranslations::Summary).string_len(500))
+                    .col(ColumnDef::new(GroupTranslations::Body).text())
+                    .col(
+                        ColumnDef::new(GroupTranslations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupTranslations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_translations_tenant_group")
+                            .from(GroupTranslations::Table, GroupTranslations::TenantId)
+                            .from_col(GroupTranslations::GroupId)
+                            .to(Groups::Table, Groups::TenantId)
+                            .to_col(Groups::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_group_translations_tenant_group_locale")
+                .table(GroupTranslations::Table)
+                .col(GroupTranslations::TenantId)
+                .col(GroupTranslations::GroupId)
+                .col(GroupTranslations::Locale)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_group_translations_tenant_locale_title")
+                .table(GroupTranslations::Table)
+                .col(GroupTranslations::TenantId)
+                .col(GroupTranslations::Locale)
+                .col(GroupTranslations::Title)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(GroupMemberships::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GroupMemberships::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(GroupMemberships::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(GroupMemberships::GroupId).uuid().not_null())
+                    .col(ColumnDef::new(GroupMemberships::UserId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupMemberships::Role)
+                            .string_len(32)
+                            .not_null()
+                            .default("member"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMemberships::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("pending"),
+                    )
+                    .col(ColumnDef::new(GroupMemberships::InvitedByUserId).uuid())
+                    .col(ColumnDef::new(GroupMemberships::JoinedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(GroupMemberships::LeftAt).timestamp_with_time_zone())
+                    .col(
+                        ColumnDef::new(GroupMemberships::Metadata)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMemberships::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMemberships::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_memberships_tenant_group")
+                            .from(GroupMemberships::Table, GroupMemberships::TenantId)
+                            .from_col(GroupMemberships::GroupId)
+                            .to(Groups::Table, Groups::TenantId)
+                            .to_col(Groups::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_group_memberships_tenant_group_user")
+                .table(GroupMemberships::Table)
+                .col(GroupMemberships::TenantId)
+                .col(GroupMemberships::GroupId)
+                .col(GroupMemberships::UserId)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_group_memberships_tenant_user_status")
+                .table(GroupMemberships::Table)
+                .col(GroupMemberships::TenantId)
+                .col(GroupMemberships::UserId)
+                .col(GroupMemberships::Status)
+                .to_owned(),
+            Index::create()
+                .name("idx_group_memberships_tenant_group_role")
+                .table(GroupMemberships::Table)
+                .col(GroupMemberships::TenantId)
+                .col(GroupMemberships::GroupId)
+                .col(GroupMemberships::Role)
+                .col(GroupMemberships::Status)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(GroupFeatureBindings::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(GroupFeatureBindings::TenantId).uuid().not_null())
+                    .col(ColumnDef::new(GroupFeatureBindings::GroupId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::FeatureKey)
+                            .string_len(160)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::OwnerModule)
+                            .string_len(80)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::ContractVersion)
+                            .string_len(80)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::Status)
+                            .string_len(32)
+                            .not_null()
+                            .default("enabled"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::SortOrder)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::Configuration)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_feature_bindings_tenant_group")
+                            .from(GroupFeatureBindings::Table, GroupFeatureBindings::TenantId)
+                            .from_col(GroupFeatureBindings::GroupId)
+                            .to(Groups::Table, Groups::TenantId)
+                            .to_col(Groups::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_group_feature_bindings_tenant_group_key")
+                .table(GroupFeatureBindings::Table)
+                .col(GroupFeatureBindings::TenantId)
+                .col(GroupFeatureBindings::GroupId)
+                .col(GroupFeatureBindings::FeatureKey)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_group_feature_bindings_owner_status")
+                .table(GroupFeatureBindings::Table)
+                .col(GroupFeatureBindings::OwnerModule)
+                .col(GroupFeatureBindings::Status)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(GroupFeatureBindings::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(GroupMemberships::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(GroupTranslations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Groups::Table).if_exists().to_owned())
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Groups {
+    Table,
+    Id,
+    TenantId,
+    OwnerUserId,
+    Handle,
+    Visibility,
+    JoinPolicy,
+    Status,
+    CategoryId,
+    AvatarMediaId,
+    CoverMediaId,
+    MemberCount,
+    Version,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+    ArchivedAt,
+}
+
+#[derive(DeriveIden)]
+enum GroupTranslations {
+    Table,
+    Id,
+    TenantId,
+    GroupId,
+    Locale,
+    Title,
+    Summary,
+    Body,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum GroupMemberships {
+    Table,
+    Id,
+    TenantId,
+    GroupId,
+    UserId,
+    Role,
+    Status,
+    InvitedByUserId,
+    JoinedAt,
+    LeftAt,
+    Metadata,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum GroupFeatureBindings {
+    Table,
+    Id,
+    TenantId,
+    GroupId,
+    FeatureKey,
+    OwnerModule,
+    ContractVersion,
+    Status,
+    SortOrder,
+    Configuration,
+    CreatedAt,
+    UpdatedAt,
+}
