@@ -59,6 +59,16 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 }
 
+function requireOrderedMarkers(source, markers, label) {
+  let previousIndex = -1;
+  for (const marker of markers) {
+    const index = source.indexOf(marker);
+    if (index < 0) fail(`${label} is missing ${marker}`);
+    if (index <= previousIndex) fail(`${label} is out of order at ${marker}`);
+    previousIndex = index;
+  }
+}
+
 if (contract.domain_owner !== "fly")
   fail("Fly must remain the Page Builder domain owner");
 requireMarker(flyService, `pub struct ${contract.service}`, "Fly service");
@@ -92,15 +102,11 @@ requireMarker(
   "configured composition entrypoint",
 );
 requireMarker(composition, "flags.validate()?", "composition rollout validation");
-let previousCompositionIndex = -1;
-for (const marker of compositionRoot.invocation_order ?? []) {
-  const index = composition.indexOf(marker);
-  if (index < 0) fail(`composition root is missing ${marker}`);
-  if (index <= previousCompositionIndex) {
-    fail(`composition root invocation is out of order: ${marker}`);
-  }
-  previousCompositionIndex = index;
-}
+requireOrderedMarkers(
+  composition,
+  compositionRoot.invocation_order ?? [],
+  "composition root invocation",
+);
 
 for (const entrypoint of contract.transport_entrypoints ?? []) {
   requireMarker(adapters, entrypoint, "transport entrypoints");
@@ -151,19 +157,39 @@ for (const marker of [
   ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
   ".with_idempotency_key",
   ".handle(",
+  "context.tenant_id.as_str()",
+  "context.actor.id.as_str()",
+  "ensure_context(context)?;",
+  "persisted_revision(&saved_page)",
 ]) {
   requireMarker(pagesBuilder, marker, "Pages production consumer");
 }
-requireMarker(
-  pagesBuilder,
-  '#[cfg(feature = "ssr")]\nasync fn execute_publish',
-  "Pages SSR composition path",
+
+const ssrPublishMarker = '#[cfg(feature = "ssr")]\nasync fn execute_publish';
+const clientPublishMarker =
+  '#[cfg(not(feature = "ssr"))]\nasync fn execute_publish';
+requireMarker(pagesBuilder, ssrPublishMarker, "Pages SSR composition path");
+requireMarker(pagesBuilder, clientPublishMarker, "Pages client transport path");
+const ssrPublishStart = pagesBuilder.indexOf(ssrPublishMarker);
+const clientPublishStart = pagesBuilder.indexOf(clientPublishMarker);
+if (clientPublishStart <= ssrPublishStart) {
+  fail("Pages SSR composition path must precede the client transport path");
+}
+const pagesSsrPublish = pagesBuilder.slice(ssrPublishStart, clientPublishStart);
+requireOrderedMarkers(
+  pagesSsrPublish,
+  [
+    "fetch_current_user",
+    "PageBuilderRequestAuth::new",
+    "compose_fly_page_builder_handlers",
+    ".handle(",
+  ],
+  "Pages SSR authorization and composition",
 );
-requireMarker(
-  pagesBuilder,
-  '#[cfg(not(feature = "ssr"))]\nasync fn execute_publish',
-  "Pages client transport path",
-);
+if (pagesSsrPublish.includes("transport::fetch_page(")) {
+  fail("Pages SSR facade must not read persistence before canonical authorization");
+}
+
 requireMarker(
   pagesAdminManifest,
   '"rustok-page-builder/server"',
