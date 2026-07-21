@@ -23,6 +23,7 @@ use crate::error::{BlogError, BlogResult};
 use crate::services::rbac::enforce_scope;
 
 const TARGET_TYPE_BLOG_POST: &str = "blog_post";
+const PUBLIC_COMMENTS_PORT_ACTOR: &str = "rustok-blog.public-comments";
 
 pub struct CommentService {
     db: DatabaseConnection,
@@ -304,22 +305,35 @@ impl CommentService {
             .locale
             .clone()
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-        let (items, total) = self
-            .comments_thread_port
-            .list_comments_for_target(
-                comments_read_port_context(tenant_id, &security, locale.as_str(), post_id)?,
-                TARGET_TYPE_BLOG_POST.to_string(),
-                post_id,
-                DomainListCommentsFilter {
-                    locale: locale.clone(),
-                    page: filter.page,
-                    per_page: filter.per_page,
-                },
-                fallback_locale.map(str::to_owned),
-            )
-            .await
-            .map_err(comments_port_error_to_blog_error)?;
+        let domain_filter = DomainListCommentsFilter {
+            locale: locale.clone(),
+            page: filter.page,
+            per_page: filter.per_page,
+        };
 
+        let result = if security.is_public_read() {
+            self.comments_thread_port
+                .list_public_comments_for_target(
+                    comments_public_read_port_context(tenant_id, locale.as_str(), post_id),
+                    TARGET_TYPE_BLOG_POST.to_string(),
+                    post_id,
+                    domain_filter,
+                    fallback_locale.map(str::to_owned),
+                )
+                .await
+        } else {
+            self.comments_thread_port
+                .list_comments_for_target(
+                    comments_read_port_context(tenant_id, &security, locale.as_str(), post_id)?,
+                    TARGET_TYPE_BLOG_POST.to_string(),
+                    post_id,
+                    domain_filter,
+                    fallback_locale.map(str::to_owned),
+                )
+                .await
+        };
+
+        let (items, total) = result.map_err(comments_port_error_to_blog_error)?;
         Ok((
             items
                 .into_iter()
@@ -436,6 +450,20 @@ fn comments_read_port_context(
     )
 }
 
+fn comments_public_read_port_context(
+    tenant_id: Uuid,
+    locale: &str,
+    post_id: Uuid,
+) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR),
+        locale,
+        format!("blog-comment:public-list:{post_id}"),
+    )
+    .with_deadline(std::time::Duration::from_secs(2))
+}
+
 fn comments_port_context(
     tenant_id: Uuid,
     security: &SecurityContext,
@@ -450,6 +478,12 @@ fn comments_port_context(
             security
                 .user_id
                 .ok_or(BlogError::AuthorRequired)?
+                .to_string(),
+        ),
+        SecurityActorKind::Service if command_id.is_none() => PortActor::service(
+            security
+                .user_id
+                .ok_or_else(|| BlogError::forbidden("service comment reads require an actor id"))?
                 .to_string(),
         ),
         SecurityActorKind::Service | SecurityActorKind::Public => {
