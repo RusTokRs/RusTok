@@ -1,9 +1,8 @@
-use sea_orm::{ConnectionTrait, Statement};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
 use super::m20260308_000001_create_oauth_apps::OAuthApps;
-use super::shared::Tenants;
 
 const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 
@@ -13,6 +12,20 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // A composite parent identity is required so a translation cannot pair a
+        // tenant with an OAuth application owned by another tenant.
+        manager
+            .create_index(
+                Index::create()
+                    .name("uq_oauth_apps_tenant_id_translation_parent")
+                    .table(OAuthApps::Table)
+                    .col(OAuthApps::TenantId)
+                    .col(OAuthApps::Id)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
         manager
             .create_table(
                 Table::create()
@@ -59,20 +72,13 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_oauth_app_translations_tenant")
-                            .from(
-                                OAuthAppTranslations::Table,
-                                OAuthAppTranslations::TenantId,
-                            )
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_oauth_app_translations_app")
-                            .from(OAuthAppTranslations::Table, OAuthAppTranslations::AppId)
-                            .to(OAuthApps::Table, OAuthApps::Id)
+                            .name("fk_oauth_app_translations_tenant_app")
+                            .from_tbl(OAuthAppTranslations::Table)
+                            .from_col(OAuthAppTranslations::TenantId)
+                            .from_col(OAuthAppTranslations::AppId)
+                            .to_tbl(OAuthApps::Table)
+                            .to_col(OAuthApps::TenantId)
+                            .to_col(OAuthApps::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -108,12 +114,9 @@ impl MigrationTrait for Migration {
             let name: String = app.try_get("", "name")?;
             let description: Option<String> = app.try_get("", "description")?;
 
-            db.execute(Statement::from_sql_and_values(
-                backend,
-                "INSERT INTO oauth_app_translations \
-                 (id, tenant_id, app_id, locale, name, description, created_at, updated_at) \
-                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-                    .to_string(),
+            execute_statement(
+                db,
+                "INSERT INTO oauth_app_translations (id, tenant_id, app_id, locale, name, description, created_at, updated_at) VALUES ({v1}, {v2}, {v3}, {v4}, {v5}, {v6}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 vec![
                     Uuid::new_v4().into(),
                     tenant_id.into(),
@@ -122,7 +125,7 @@ impl MigrationTrait for Migration {
                     name.into(),
                     description.into(),
                 ],
-            ))
+            )
             .await?;
         }
 
@@ -167,35 +170,35 @@ impl MigrationTrait for Migration {
         let apps = db
             .query_all(Statement::from_string(
                 backend,
-                "SELECT id FROM oauth_apps".to_string(),
+                "SELECT id, tenant_id FROM oauth_apps".to_string(),
             ))
             .await?;
 
         for app in apps {
             let app_id: Uuid = app.try_get("", "id")?;
-            let translation = db
-                .query_one(Statement::from_sql_and_values(
-                    backend,
-                    "SELECT name, description FROM oauth_app_translations \
-                     WHERE app_id = ? \
-                     ORDER BY CASE WHEN locale = 'und' THEN 0 ELSE 1 END, locale \
-                     LIMIT 1"
-                        .to_string(),
-                    vec![app_id.into()],
+            let tenant_id: Uuid = app.try_get("", "tenant_id")?;
+            let translation = query_one(
+                db,
+                "SELECT name, description FROM oauth_app_translations WHERE tenant_id = {v1} AND app_id = {v2} ORDER BY CASE WHEN locale = {v3} THEN 0 ELSE 1 END, locale LIMIT 1",
+                vec![
+                    tenant_id.into(),
+                    app_id.into(),
+                    LEGACY_UNDETERMINED_LOCALE.into(),
+                ],
+            )
+            .await?
+            .ok_or_else(|| {
+                DbErr::Custom(format!(
+                    "cannot restore oauth_apps display copy for tenant {tenant_id}, app {app_id}: no translation exists"
                 ))
-                .await?
-                .ok_or_else(|| {
-                    DbErr::Custom(format!(
-                        "cannot restore oauth_apps display copy for {app_id}: no translation exists"
-                    ))
-                })?;
+            })?;
             let name: String = translation.try_get("", "name")?;
             let description: Option<String> = translation.try_get("", "description")?;
-            db.execute(Statement::from_sql_and_values(
-                backend,
-                "UPDATE oauth_apps SET name = ?, description = ? WHERE id = ?".to_string(),
-                vec![name.into(), description.into(), app_id.into()],
-            ))
+            execute_statement(
+                db,
+                "UPDATE oauth_apps SET name = {v1}, description = {v2} WHERE tenant_id = {v3} AND id = {v4}",
+                vec![name.into(), description.into(), tenant_id.into(), app_id.into()],
+            )
             .await?;
         }
 
@@ -206,8 +209,52 @@ impl MigrationTrait for Migration {
                     .if_exists()
                     .to_owned(),
             )
+            .await?;
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("uq_oauth_apps_tenant_id_translation_parent")
+                    .table(OAuthApps::Table)
+                    .to_owned(),
+            )
             .await
     }
+}
+
+async fn execute_statement(
+    db: &SchemaManagerConnection<'_>,
+    template: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<(), DbErr> {
+    let backend = db.get_database_backend();
+    let sql = placeholder_sql(backend, template, values.len());
+    db.execute(Statement::from_sql_and_values(backend, sql, values))
+        .await?;
+    Ok(())
+}
+
+async fn query_one(
+    db: &SchemaManagerConnection<'_>,
+    template: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<Option<sea_orm::QueryResult>, DbErr> {
+    let backend = db.get_database_backend();
+    let sql = placeholder_sql(backend, template, values.len());
+    db.query_one(Statement::from_sql_and_values(backend, sql, values))
+        .await
+}
+
+fn placeholder_sql(backend: DbBackend, template: &str, value_count: usize) -> String {
+    let mut sql = template.to_string();
+    for index in 0..value_count {
+        let placeholder = match backend {
+            DbBackend::Postgres => format!("${}", index + 1),
+            DbBackend::MySql => "?".to_string(),
+            DbBackend::Sqlite => format!("?{}", index + 1),
+        };
+        sql = sql.replace(&format!("{{v{}}}", index + 1), &placeholder);
+    }
+    sql
 }
 
 #[derive(DeriveIden)]
