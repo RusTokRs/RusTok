@@ -82,7 +82,7 @@ pub fn GroupsMembershipApplication(
 
     let submit_transport = transport.clone();
     let submit_copy = copy.clone();
-    let on_submit = move |event: SubmitEvent| {
+    let on_submit = Callback::new(move |event: SubmitEvent| {
         event.prevent_default();
         let Some(loaded_policy) = policy.get().and_then(Result::ok).flatten() else {
             set_error.set(Some(submit_copy.unavailable.clone()));
@@ -123,7 +123,7 @@ pub fn GroupsMembershipApplication(
             }
             set_busy.set(false);
         });
-    };
+    });
 
     if application_group_id.trim().is_empty() {
         return view! { <></> }.into_any();
@@ -198,17 +198,20 @@ fn render_policy_form(
     set_answers: WriteSignal<BTreeMap<String, String>>,
     acknowledged_rules: ReadSignal<BTreeSet<String>>,
     set_acknowledged_rules: WriteSignal<BTreeSet<String>>,
-    on_submit: impl Fn(SubmitEvent) + 'static,
+    on_submit: Callback<SubmitEvent>,
     required: &str,
     optional: &str,
     rules_label: &str,
     acknowledge: &str,
     submit: &str,
 ) -> impl IntoView {
+    let questions = policy.questions;
+    let rules = policy.rules;
+    let has_rules = !rules.is_empty();
     view! {
-        <form class="mt-6 space-y-6" on:submit=on_submit>
+        <form class="mt-6 space-y-6" on:submit=move |event| on_submit.run(event)>
             <div class="space-y-4">
-                {policy.questions.into_iter().map(|question| {
+                {questions.into_iter().map(|question| {
                     let answer_key = question.key.clone();
                     let value_key = question.key.clone();
                     let requirement = if question.required { required.to_string() } else { optional.to_string() };
@@ -235,10 +238,10 @@ fn render_policy_form(
                 }).collect_view()}
             </div>
 
-            <Show when=move || !policy.rules.is_empty()>
+            <Show when=move || has_rules>
                 <fieldset class="space-y-3 rounded-2xl border border-border p-4">
                     <legend class="px-2 text-sm font-semibold text-card-foreground">{rules_label.to_string()}</legend>
-                    {policy.rules.into_iter().map(|rule| {
+                    {rules.into_iter().map(|rule| {
                         let rule_key = rule.key.clone();
                         let checked_key = rule.key.clone();
                         view! {
