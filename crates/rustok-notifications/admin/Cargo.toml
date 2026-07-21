@@ -1,0 +1,18 @@
+[package]
+name = "rustok-notifications-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Module-owned Leptos admin package for notifications"
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr"]
+
+[dependencies]
+leptos.workspace = true
+serde = { workspace = true, features = ["derive"] }

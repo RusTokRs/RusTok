@@ -35,6 +35,8 @@ members = [
     "crates/rustok-auth/cli",
     "crates/rustok-rbac/cli",
     "crates/rustok-outbox/admin",
+    "crates/rustok-notifications/admin",
+    "crates/rustok-notifications/storefront",
     "crates/rustok-forum/admin",
     "crates/rustok-forum/storefront",
     "crates/rustok-pages/admin",
@@ -279,6 +281,8 @@ rustok-cache = { path = "crates/rustok-cache" }
 rustok-channel = { path = "crates/rustok-channel" }
 rustok-email = { path = "crates/rustok-email" }
 rustok-outbox = { path = "crates/rustok-outbox" }
+rustok-notifications-api = { path = "crates/rustok-notifications-api" }
+rustok-notifications = { path = "crates/rustok-notifications" }
 rustok-iggy = { path = "crates/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/rustok-iggy-connector" }
 rustok-forum = { path = "crates/rustok-forum" }

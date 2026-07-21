@@ -194,16 +194,16 @@ at the end of this file remain authoritative.
 | `FORUM-01` | `done` | Tenant-composite forum relation integrity and platform locale width. |
 | `FORUM-02` | `done` | Typed topic/reply lifecycle, tombstone and revision fields. |
 | `FORUM-03` | `done` | Atomic category owner writes and translation persistence. |
-| `FORUM-04` | `in_progress` | FORUM-04A-G implement the bounded tree, atomic placement, write guards, topic policy, subtree lifecycle and canonical-tree admin drag-and-drop. Maintainer-run verification remains. |
+| `FORUM-04` | `done` | FORUM-04A-G provide the bounded tree, atomic placement, write guards, topic policy, subtree lifecycle and canonical-tree admin drag-and-drop; maintainer verification passed. |
 | `FORUM-05` | `done` | Publication-aware serialized counters with database safety guards. |
 | `FORUM-06` | `done` | Locked-topic and pending/publication semantics are explicit owner workflows. |
 | `FORUM-07` | `done` | Monotonic per-topic reply positions and uniqueness constraints. |
-| `FORUM-08` | `done` | Revisions, tombstones and explicit owner soft-delete workflows. |
+| `FORUM-08` | `done` | Revisions, tombstones, owner soft-delete workflows and raw lifecycle service retirement; PR #1867 and maintainer verification complete. |
 | `FORUM-09` | `done` | Forum-owned versioned event catalog and journal, merged through PR #1732. |
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
 | `FORUM-12` | `planned` | Mentions, quote relations and recipient projection. |
-| `FORUM-13` | `in_progress` | FORUM-13A adds bounded icon/color and transport-neutral cover candidate policy; Media quarantine/deletion state, persistence and UI remain. |
+| `FORUM-13` | `in_progress` | Verified FORUM-13A adds bounded icon/color and transport-neutral cover candidate policy; Media quarantine/deletion state, persistence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
 | `FORUM-16` | `planned` | Durable read tracking and unread projections. |
@@ -225,7 +225,7 @@ at the end of this file remain authoritative.
 | `FORUM-32` | `in_progress` | Widget contract exists; richer widgets and observed Page Builder evidence remain. |
 | `FORUM-33` | `planned` | Analytics, observability and reconciliation operations. |
 | `FORUM-34` | `planned` | Import/export and resumable NodeBB migration toolkit. |
-| `NOTIFY-00` | `planned` | Create the shared notifications owner module and neutral contracts. |
+| `NOTIFY-00` | `in_progress` | NOTIFY-00A adds the neutral source API, bounded runtime registry, owner module and explicit admin/storefront foundation states; runtime composition and executable provider evidence remain. |
 | `NOTIFY-01` | `planned` | Inbox, delivery, fan-out, preference and digest persistence. |
 | `NOTIFY-02` | `planned` | Preferences, quiet hours and digest scheduling. |
 | `NOTIFY-03` | `planned` | Durable source-event consumption and bounded recipient fan-out. |
@@ -269,6 +269,7 @@ The completed foundation must not be reimplemented under new names.
 - Forum event catalog: PR #1732.
 - Cursor read models: PRs #1734/#1735.
 - Subscription levels: PR #1736; follow-up verification/format repairs: PR #1737.
+- Raw lifecycle service retirement: PR #1867.
 
 These references are audit history only. The current code and this plan define
 the present contract.
@@ -277,18 +278,19 @@ the present contract.
 
 ### Wave A — close remaining foundation gaps
 
-1. finish `FORUM-04`;
-2. retire raw lifecycle compatibility imports left by `FORUM-08`;
-3. keep `FORUM-32` static contracts green while observed evidence is blocked on
+1. keep `FORUM-32` static contracts green while observed evidence is blocked on
    Page Builder/pages readiness.
+
+`FORUM-04` and the residual `FORUM-08` cleanup are complete and maintainer
+verified; they are no longer active execution items.
 
 ### Wave B — notifications foundation and identity/media integration
 
-1. `NOTIFY-00`;
+1. finish `NOTIFY-00` runtime composition and executable provider evidence;
 2. `NOTIFY-01`;
 3. `NOTIFY-03`;
 4. `NOTIFY-07`;
-5. `FORUM-13`;
+5. finish `FORUM-13` after the Media lifecycle-state contract is available;
 6. `FORUM-14`;
 7. `FORUM-15`;
 8. `LINK-FORUM-02`.
@@ -342,7 +344,7 @@ consume are stable.
 
 ## `FORUM-04` — complete the category tree
 
-**Status:** `in_progress`  
+**Status:** `done`  
 **Priority:** P0  
 **Dependencies:** completed FORUM-01/03/10
 
@@ -407,9 +409,10 @@ consume are stable.
 - every accepted drop calls the existing owner `move_category` command and refreshes the canonical tree; generic category update is never used;
 - the forum-admin boundary verifier and fixtures reject flat hierarchy reads and DnD placement bypasses.
 
-### Remaining scope
+### Verification result
 
-- run the maintainer verification commands below and promote `FORUM-04` to `done` when they pass.
+Maintainer verification of the commands below passed on 2026-07-21. No
+remaining `FORUM-04` implementation scope is open.
 
 ### Definition of done
 
@@ -435,17 +438,17 @@ npm run verify:forum:admin-boundary
 
 ## `FORUM-08` compatibility cleanup — retire raw lifecycle services
 
-**Status:** residual cleanup under completed `FORUM-08`  
+**Status:** `done` under completed `FORUM-08`  
 **Priority:** P1  
 **Dependencies:** all downstream call sites use root owner services
 
-### Scope
+### Delivered
 
-- find and migrate direct imports of `services::topic::TopicService` and
-  `services::reply::ReplyService`;
-- make raw persistence modules crate-private;
-- retain database triggers as invariant protection;
-- add an architecture verifier rejecting new direct imports.
+- direct workspace consumers use root `TopicService` and `ReplyService` facades;
+- raw topic/reply persistence and owner implementation modules are crate-private;
+- database triggers remain invariant protection;
+- `scripts/verify/verify-forum-owner-boundary.mjs` rejects new direct imports;
+- implementation was merged through PR #1867 and maintainer verification passed.
 
 ### Definition of done
 
@@ -516,7 +519,8 @@ typed capability-unavailable error.
 - cover candidate policy rejects foreign tenants, unsupported MIME, size or
   dimension violations, descriptor mismatch and non-direct-public delivery;
 - a verifier rejects Media persistence/storage access and arbitrary category
-  image URL/path fields.
+  image URL/path fields;
+- maintainer verification of the `FORUM-13A` commands passed on 2026-07-21.
 
 ### Remaining scope
 
@@ -980,14 +984,14 @@ not load complete exports into memory.
 
 # Shared notifications task cards
 
-Until `rustok-notifications` exists, this section is the canonical approved
-scope for that module. When the crate is created, its README may describe
-stable ownership and contracts, but task status remains here until a deliberate
-plan-ownership migration is approved in the same pull request.
+`rustok-notifications` and `rustok-notifications-api` now exist. This section
+remains the canonical cross-module task/status source until a deliberate
+plan-ownership migration is approved. Module-local documentation records stable
+owner contracts and execution gates without duplicating this backlog.
 
 ## `NOTIFY-00` — create the notifications owner module
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P0 platform  
 **Dependencies:** durable outbox/inbox foundation
 
@@ -1005,10 +1009,48 @@ Define source-provider registration for semantic event descriptors, bounded
 audience resolution and target-open authorization. Producer modules declare an
 optional capability and continue to work when notifications is absent.
 
+### Delivered in `NOTIFY-00A`
+
+- `rustok-notifications-api` publishes validated source/type/template/target
+  keys, bounded template data, revisioned source-event identity and safe
+  root-relative target routes;
+- audience pages are capped at 256 unique recipients and all construction and
+  deserialization paths enforce the same bounds;
+- `NotificationSourceProvider` owns semantic description, cursor-based audience
+  resolution and per-recipient target-open authorization with typed retryability;
+- `NotificationSourceRegistry` is unique by source slug and is composed through
+  `ModuleRuntimeExtensions` without producer dependencies on the owner crate;
+- `rustok-notifications` initializes a healthy empty registry and exposes only
+  source discovery until owner persistence exists;
+- module-owned admin/storefront packages expose explicit foundation/unavailable
+  states and never synthesize unread counts or shadow inbox state;
+- static verifier fixtures reject direct producer imports of the owner crate,
+  arbitrary JSON/persistence in the neutral contract and synthetic unread state.
+
+### Remaining scope
+
+- compose the optional module into `modules.toml`, distribution/server/migration
+  registries and host-owned package dependencies;
+- register the first real producer source and execute notifications-off/on
+  provider, fallback, target-open and retry evidence;
+- keep inbox/preferences/fan-out persistence in `NOTIFY-01` rather than adding
+  unowned storage to this foundation slice.
+
 ### Definition of done
 
 Forum works in notifications-off and notifications-on profiles without a
 synchronous notification call in forum transactions.
+
+### Verification
+
+```bash
+cargo test -p rustok-notifications-api
+cargo test -p rustok-notifications
+cargo check -p rustok-notifications-admin --all-targets
+cargo check -p rustok-notifications-storefront --all-targets
+node scripts/verify/verify-notifications-foundation.mjs
+node scripts/verify/verify-notifications-foundation.test.mjs
+```
 
 ## `NOTIFY-01` — notification persistence
 
@@ -1256,11 +1298,18 @@ npm run verify:outbox:fba
 npm run verify:rbac:fba
 npm run verify:index:fba
 
+cargo test -p rustok-notifications-api
+cargo test -p rustok-notifications
+cargo check -p rustok-notifications-admin --all-targets
+cargo check -p rustok-notifications-storefront --all-targets
+node scripts/verify/verify-notifications-foundation.mjs
+node scripts/verify/verify-notifications-foundation.test.mjs
+
 git diff --check
 ```
 
-When `rustok-notifications` is created, add its targeted tests, module
-validation, fallback smoke and provider tests to this list.
+Add notification module validation, runtime fallback smoke and provider tests
+when the owner is composed into the executable runtime.
 
 # PR slicing
 
@@ -1270,22 +1319,20 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `FORUM-04`: topic-creation policy and subtree archive/restore owner workflows;
-2. `FORUM-08`: raw lifecycle compatibility-import retirement;
-3. `NOTIFY-00`: module/API skeleton and ownership contracts;
-4. `NOTIFY-01`: inbox/preferences schema;
-5. `NOTIFY-03`: durable consumer and bounded fan-out;
-6. `NOTIFY-07`: privacy/open authorization;
-7. `FORUM-13`: category media references;
-8. `FORUM-14`: attachment relations and upload sessions;
-9. `FORUM-15`: batched member/avatar projection;
-10. `LINK-FORUM-02`: profiles/media runtime proof;
-11. `FORUM-12`: mention/quote persistence and events;
-12. `FORUM-16`: read/unread state;
-13. `FORUM-19`: reports/moderation/restrictions;
-14. `FORUM-20`: ACL and visibility policy;
-15. `FORUM-23`: index projections;
-16. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
+1. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
+2. `NOTIFY-01`: inbox/preferences schema;
+3. `NOTIFY-03`: durable consumer and bounded fan-out;
+4. `NOTIFY-07`: privacy/open authorization;
+5. `FORUM-13`: category media references after Media lifecycle state exists;
+6. `FORUM-14`: attachment relations and upload sessions;
+7. `FORUM-15`: batched member/avatar projection;
+8. `LINK-FORUM-02`: profiles/media runtime proof;
+9. `FORUM-12`: mention/quote persistence and events;
+10. `FORUM-16`: read/unread state;
+11. `FORUM-19`: reports/moderation/restrictions;
+12. `FORUM-20`: ACL and visibility policy;
+13. `FORUM-23`: index projections;
+14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.
 
 # Decisions that must not be reopened without an ADR
@@ -1320,8 +1367,7 @@ possible.
 
 # Immediate next action
 
-The next Forum implementation slice is the remaining `FORUM-13` media-reference
-workflow after Media publishes quarantine/deletion lifecycle state. Until that
-owner contract is available, proceed with `NOTIFY-00` or maintainer verification
-for implemented `FORUM-04` and `FORUM-13A` slices without adding synchronous
-notification dependencies to forum commands.
+Finish `NOTIFY-00` by composing the optional module into the executable runtime
+and registering the first real source provider with notifications-off/on,
+fallback, authorization and retry evidence. Keep persistence under `NOTIFY-01`
+and do not add synchronous notification dependencies to producer commands.

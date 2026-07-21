@@ -1,0 +1,20 @@
+[package]
+name = "rustok-notifications-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Neutral notification source, audience, and target authorization contracts"
+
+[features]
+default = ["server"]
+server = ["dep:async-trait", "dep:rustok-core"]
+
+[dependencies]
+async-trait = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

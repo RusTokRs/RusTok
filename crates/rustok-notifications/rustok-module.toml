@@ -1,0 +1,32 @@
+[module]
+slug = "notifications"
+name = "Notifications"
+version = "0.1.0"
+description = "Notification inbox, preferences, bounded fan-out, grouping, digests, and delivery orchestration"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "dual_surface"
+recommended_admin_surfaces = ["leptos-admin"]
+
+[marketplace]
+category = "communication"
+tags = ["notifications", "inbox", "delivery"]
+
+[dependencies]
+outbox = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "NotificationsModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-notifications-admin"
+route_segment = "notifications"
+nav_label = "Notifications"
+nav_group = "operations"
+nav_order = 70
+
+[provides.storefront_ui]
+leptos_crate = "rustok-notifications-storefront"
+slot = "home_before_footer"
+route_segment = "notifications"
+page_title = "Notifications"
