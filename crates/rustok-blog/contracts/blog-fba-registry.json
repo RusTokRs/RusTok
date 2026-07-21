@@ -14,6 +14,7 @@
         "create_comment",
         "get_comment",
         "list_comments_for_target",
+        "list_public_comments_for_target",
         "update_comment",
         "set_comment_status",
         "delete_comment"
@@ -84,6 +85,16 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
+          "degraded_cached_thread_snapshot_on_unavailable"
+        ]
+      },
+      {
+        "provider": "comments",
+        "operation": "list_public_comments_for_target",
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "approved_only_projection",
           "degraded_cached_thread_snapshot_on_unavailable"
         ]
       },
