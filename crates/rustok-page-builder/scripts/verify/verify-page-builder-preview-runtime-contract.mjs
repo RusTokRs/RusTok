@@ -20,6 +20,7 @@ const wavePackets = [
     read("crates", "rustok-page-builder", "contracts", "evidence", filename),
   ),
 }));
+const manifest = read("crates", "rustok-page-builder", "Cargo.toml");
 const dto = read("crates", "rustok-page-builder", "src", "dto.rs");
 const previewPort = read("crates", "rustok-page-builder", "src", "preview_port.rs");
 const flyService = read(
@@ -122,6 +123,7 @@ requireMarker(
   "provider health evidence version",
 );
 
+requireMarker(manifest, "sha2.workspace = true", "materialization SHA-256 dependency");
 requireMarker(
   staticMaterialization,
   "pub const PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT: &str",
@@ -144,13 +146,14 @@ requireMarker(
   "static runtime snapshots",
 );
 for (const marker of [
-  "runtime\n        .validate()",
+  "runtime.validate()",
   "RuntimeScenarioRenderSnapshot::capture",
   "materialize_project_with_runtime_context",
   "stable_hash(&runtime.context)",
   "stable_hash(&runtime_snapshots)",
+  "Sha256::digest(bytes)",
+  "ProjectHash::from_bytes(page.document_html.as_bytes()).hex()",
   "case.document_hash.as_deref()",
-  "Some(page.content_hash.as_str())",
 ]) {
   requireMarker(staticMaterialization, marker, "static runtime materialization");
 }
@@ -168,6 +171,7 @@ for (const marker of [
   "pub(crate) fn prepare_document",
   "pub(crate) fn compile_prepared_document",
   "pub(crate) fn render_policy",
+  "Re-run the public artifact security policy on the exact document being built",
 ]) {
   requireMarker(staticLanding, marker, "prepared static landing seam");
 }
