@@ -22,7 +22,7 @@ const DELETE_CATEGORY_MUTATION: &str =
 const TOPICS_QUERY: &str = "query ForumAdminTopics($categoryId: UUID, $locale: String, $pagination: PaginationInput) { forumTopics(categoryId: $categoryId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale category_id: categoryId author_id: authorId title slug status is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt } } }";
 const TOPIC_QUERY: &str = "query ForumAdminTopic($id: UUID!, $locale: String) { forumTopic(id: $id, locale: $locale) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const CREATE_TOPIC_MUTATION: &str = "mutation ForumAdminCreateTopic($input: CreateForumTopicInput!) { createForumTopic(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
-const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, $input: UpdateForumTopicInput!) { updateForumTopic(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned is_locked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
+const UPDATE_TOPIC_MUTATION: &str = "mutation ForumAdminUpdateTopic($id: UUID!, $input: UpdateForumTopicInput!) { updateForumTopic(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales category_id: categoryId author_id: authorId title slug body body_format: bodyFormat content_json: contentJson status tags is_pinned: isPinned isLocked: isLocked reply_count: replyCount created_at: createdAt updated_at: updatedAt } }";
 const DELETE_TOPIC_MUTATION: &str =
     "mutation ForumAdminDeleteTopic($id: UUID!) { deleteForumTopic(id: $id) }";
 const REPLIES_QUERY: &str = "query ForumAdminReplies($topicId: UUID!, $locale: String, $pagination: PaginationInput) { forumReplies(topicId: $topicId, locale: $locale, pagination: $pagination) { total items { id locale effective_locale: effectiveLocale topic_id: topicId author_id: authorId content_preview: content status parent_reply_id: parentReplyId created_at: createdAt } } }";
@@ -348,27 +348,16 @@ pub async fn create_category(
     tenant_slug: Option<String>,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
-    let locale = draft.locale.clone();
-    let requested_position = placement_position(draft.position)?;
     let response: CreateCategoryResponse = request(
         CREATE_CATEGORY_MUTATION,
         CategoryMutationVariables {
             input: create_category_input(draft),
         },
-        token.clone(),
-        tenant_slug.clone(),
+        token,
+        tenant_slug,
     )
     .await?;
-    let category = response.create_forum_category;
-    move_category(
-        token.clone(),
-        tenant_slug.clone(),
-        category.id.clone(),
-        category.parent_id.clone(),
-        requested_position,
-    )
-    .await?;
-    fetch_category(token, tenant_slug, category.id, locale).await
+    Ok(response.create_forum_category)
 }
 
 pub async fn update_category(
@@ -377,31 +366,17 @@ pub async fn update_category(
     id: String,
     draft: CategoryDraft,
 ) -> Result<CategoryDetail, ApiError> {
-    let locale = draft.locale.clone();
-    let requested_position = placement_position(draft.position)?;
     let response: UpdateCategoryResponse = request(
         UPDATE_CATEGORY_MUTATION,
         CategoryUpdateVariables {
-            id: id.clone(),
-            input: update_category_input(draft.clone()),
+            id,
+            input: update_category_input(draft),
         },
-        token.clone(),
-        tenant_slug.clone(),
+        token,
+        tenant_slug,
     )
     .await?;
-    let category = response.update_forum_category;
-    if category.position != draft.position {
-        move_category(
-            token.clone(),
-            tenant_slug.clone(),
-            id.clone(),
-            category.parent_id,
-            requested_position,
-        )
-        .await?;
-        return fetch_category(token, tenant_slug, id, locale).await;
-    }
-    Ok(category)
+    Ok(response.update_forum_category)
 }
 
 pub async fn move_category(
@@ -643,10 +618,6 @@ fn update_topic_input(draft: TopicDraft) -> UpdateTopicInput {
         tags: Some(draft.tags),
         channel_slugs: None,
     }
-}
-
-fn placement_position(position: i32) -> Result<u32, ApiError> {
-    u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
 
 fn optional_text(value: String) -> Option<String> {
