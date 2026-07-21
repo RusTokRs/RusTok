@@ -7,6 +7,8 @@
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
 - `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
+- `CategoryService::move_category(tenant_id, category_id, security, MoveCategoryInput) -> MoveCategoryResponse`
+- `CategoryService::reorder_siblings(tenant_id, security, ReorderCategorySiblingsInput) -> ReorderCategorySiblingsResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -32,6 +34,11 @@
 - GraphQL entry point: `forumCategoryTree(tenantId, locale, fallbackLocale)` on the merged `ForumQuery`.
 - Categories without any localized translation fail closed instead of returning empty `name`/`slug` fields.
 - The legacy flat category list remains a bounded compatibility projection and is not the canonical hierarchy contract.
+### Category placement commands
+- Added: `MoveCategoryInput`, `ReorderCategorySiblingsInput`, `CategoryPlacementResponse`, `MoveCategoryResponse`, `ReorderCategorySiblingsResponse`.
+- `move_category` serializes hierarchy mutations per tenant, rejects cycles, foreign parents and depth overflow, and normalizes source and destination sibling positions in one transaction.
+- `reorder_siblings` requires the complete direct-child set exactly once and persists contiguous zero-based positions atomically.
+- REST entry points: `PUT /api/forum/categories/{id}/move` and `PUT /api/forum/categories/reorder`.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -86,6 +93,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Ignores tenant-boundary in service filters.
 - Confuses `locale` (requested) and `effective_locale` (actually used).
 - Uses the flat category list to reconstruct hierarchy instead of `CategoryService::tree`.
+- Writes `parent_id` or sibling positions directly instead of using category owner commands.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -98,6 +106,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
 - Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
 - Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies.
+- Category move/reorder commands use a per-tenant transaction order and never persist a partial sibling normalization.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
