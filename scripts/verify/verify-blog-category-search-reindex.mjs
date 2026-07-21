@@ -25,6 +25,21 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
+function requireBeforeWithin(source, startMarker, endMarker, before, after, label) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (start < 0 || end < 0) {
+    failures.push(`${label}: unable to locate bounded source section`);
+    return;
+  }
+  const section = source.slice(start, end);
+  const beforeIndex = section.indexOf(before);
+  const afterIndex = section.indexOf(after);
+  if (beforeIndex < 0 || afterIndex < 0 || beforeIndex >= afterIndex) {
+    failures.push(`${label}: expected ${before} before ${after}`);
+  }
+}
+
 const servicePath = "crates/rustok-blog/src/services/category.rs";
 const rbacPath = "crates/rustok-blog/src/services/rbac.rs";
 const modulePath = "crates/rustok-blog/src/lib.rs";
@@ -75,6 +90,22 @@ for (const marker of [
   requireMarker(service, marker, servicePath);
 }
 rejectMarker(service, "enforce_owned_scope", servicePath);
+requireBeforeWithin(
+  service,
+  "pub async fn update(",
+  "pub async fn delete(",
+  "enforce_any_scope(",
+  "let txn = self.db.begin().await",
+  `${servicePath}: update authorization order`,
+);
+requireBeforeWithin(
+  service,
+  "pub async fn delete(",
+  "pub async fn list(",
+  "enforce_any_scope(",
+  "let txn = self.db.begin().await",
+  `${servicePath}: delete authorization order`,
+);
 
 for (const marker of [
   "pub(crate) fn enforce_any_scope",
@@ -182,6 +213,7 @@ if (evidence) {
     "non_empty_slug",
     "bounded_permission_namespace",
     "category_has_no_owner_scope",
+    "authorization_precedes_lookup",
     "bounded_category_list",
     "typed_http_errors",
     "search_payload_dependency",
