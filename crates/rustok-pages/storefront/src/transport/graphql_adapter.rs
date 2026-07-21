@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use super::{configured_tenant_slug, ApiError};
 use crate::model::{PageDetail, PageList, StorefrontPagesData};
 
-const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } blocks { id blockType position } } pages(filter: $filter) { total items { id title slug status template } } }";
+const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } } pages(filter: $filter) { total items { id title slug status template } } }";
 
 #[derive(Debug, Deserialize)]
 struct StorefrontPagesResponse {
