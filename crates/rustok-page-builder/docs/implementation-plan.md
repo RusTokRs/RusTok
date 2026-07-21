@@ -19,11 +19,23 @@ The service:
 
 `PreviewPageBuilderInput` owns `PageBuilderPreviewRuntime`, which carries a JSON object context and
 an optional normalized scenario id. Runtime context is limited to 256 KiB and scenario identity to
-128 bytes before the renderer port is called. `FlyAdapterBackedPageBuilderService` passes the complete
-input to `PageBuilderPreviewRenderingPort` only after Fly structural validation and runtime-contract
-validation. `PreviewPageBuilderResult` returns the selected scenario identity, allowing hosts to
-reject responses that no longer match their current context or scenario. Consumer renderers do not
-add provider-local runtime arguments.
+128 bytes. The validator is owned by the canonical DTO and is reused by both capability preview and
+static runtime materialization. `FlyAdapterBackedPageBuilderService` passes the complete input to
+`PageBuilderPreviewRenderingPort` only after Fly structural validation and DTO validation.
+`PreviewPageBuilderResult` returns the selected scenario identity, allowing hosts to reject responses
+that no longer match their current context or scenario. Consumer renderers do not add provider-local
+runtime arguments.
+
+`compile_materialized_static_landing` provides the matching deterministic publish-side contract. It
+uses `StaticLandingCompiler::prepare_document`, captures one Fly `RuntimeScenarioRenderSnapshot` per
+page with the same runtime context and render policy, materializes the project through
+`materialize_project_with_runtime_context`, and compiles the resulting document through the existing
+static landing compiler. `PageBuilderMaterializedStaticLandingArtifact` wraps the verified
+`StaticLandingArtifact` with `PageBuilderStaticLandingMaterializationIdentity`: runtime context hash,
+optional scenario identity, combined snapshot hash, Fly static build/artifact hashes and a final
+materialization hash. Raw runtime context is deliberately absent from the persisted evidence. Each
+snapshot case must have `document_hash` equal to the corresponding static page `content_hash`, which
+proves preview/static output parity without introducing another renderer pipeline.
 
 The capability contract is `1.1`; `consumer_min_version` remains `1.0`. The compatibility guard
 accepts consumers in the inclusive range `1.0..=1.1`. Pages adopts `1.1` because it supplies the new
@@ -68,12 +80,13 @@ is not a second server renderer pipeline.
 
 The current machine-readable service contract is
 `contracts/page-builder-service-boundary.json`. It records the preview runtime DTO, contextual port,
-resource limits, Fly validation/port order, the single Pages capability endpoint and SSR dispatch
+DTO-owned resource limits and validation order, the single Pages capability endpoint and SSR dispatch
 helper, composition and authorization order, tenant/page-context guards, client write-path
 prohibition and admin preview request identity. `contracts/page-builder-fba-registry.json` records
-contract 1.1, the 1.0 minimum and the runtime-context registry fields. The guards also forbid
-reference services, the removed legacy preview port, migration decorators, manual JSON preview
-rendering, capability-specific SSR wrappers and the removed Pages mutex save-result side channel.
+contract 1.1, the 1.0 minimum, runtime-context fields and the static materialization envelope/hash
+contract. The guards also forbid reference services, the removed legacy preview port, migration
+decorators, manual JSON preview rendering, capability-specific SSR wrappers and the removed Pages
+mutex save-result side channel.
 
 ## FFA/FBA status
 
@@ -83,8 +96,8 @@ rendering, capability-specific SSR wrappers and the removed Pages mutex save-res
   same descriptor, DTO and nonce contract.
 - FBA status: `boundary_ready` with the first production contextual read/write consumer integrated.
   Fly is the domain owner; Page Builder owns capability/port/transport boundaries, preview runtime
-  contracts and server composition order; consumer modules own persistence, publication lifecycle
-  and concrete tenant-scoped ports.
+  contracts, preview/static materialization identity and server composition order; consumer modules
+  own persistence, publication lifecycle and concrete tenant-scoped ports.
 - Structural shape: `core_transport_ui` for browser host and `core_transport` for capability service.
 - Evidence:
   - `contracts/page-builder-service-boundary.json`;
@@ -94,6 +107,8 @@ rendering, capability-specific SSR wrappers and the removed Pages mutex save-res
   - `src/adapters/fly_service.rs`;
   - `src/composition.rs`;
   - `src/health.rs`;
+  - `src/static_landing.rs`;
+  - `src/static_landing_materialization.rs`;
   - `crates/rustok-pages/admin/src/builder.rs`;
   - `crates/rustok-pages/admin/Cargo.toml`;
   - `admin/src/editor/runtime.rs`;
@@ -108,19 +123,23 @@ rendering, capability-specific SSR wrappers and the removed Pages mutex save-res
 
 ## Open results
 
-1. Connect the next production consumer's concrete tenant-scoped store and contextual preview
+1. Integrate `PageBuilderMaterializedStaticLandingArtifact` into `rustok-pages` staging and publish
+   persistence. Pages must store the materialization identity and runtime snapshots alongside the
+   existing Fly artifact in a backward-compatible record/migration, verify them on storefront reads,
+   and never introduce a Pages-local runtime renderer or raw-context persistence column.
+2. Connect the next production consumer's concrete tenant-scoped store and contextual preview
    renderer to `compose_fly_page_builder_handlers` (or its configured variant). It must return
    `PageBuilderProjectSaveResult`, consume the complete `PreviewPageBuilderInput`, and follow the
    Pages reference order: verify backend identity, construct canonical auth/context, dispatch
    handlers, then access tenant ports. Consumer-local service/guard pipelines, preview context
    parameters, pre-authorization persistence reads and save-result side channels are forbidden.
-2. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
+3. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
    the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
    its optional CSP nonce, and use the canonical preview runtime DTO without copying lifecycle, form,
    selection, scenario or draft-route policy.
-3. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
-   correlate builder preview context, Pages publish and storefront read across the required rollout
-   profiles.
+4. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
+   correlate builder preview context, materialized artifact identity, Pages publish and storefront
+   read across the required rollout profiles.
 
 ## Verification
 
@@ -133,8 +152,8 @@ rendering, capability-specific SSR wrappers and the removed Pages mutex save-res
 ## Boundaries
 
 - Fly owns the project domain, runtime materialization and validation/rendering semantics.
-- Page Builder owns capability delivery, preview runtime DTOs, ports, authorization, transport
-  envelopes, feature profiles, runtime evidence, server composition order and the framework-neutral
-  browser module descriptor/host source.
+- Page Builder owns capability delivery, preview runtime DTOs, preview/static materialization
+  evidence, ports, authorization, transport envelopes, feature profiles, runtime evidence, server
+  composition order and the framework-neutral browser module descriptor/host source.
 - Consumer modules own persistence, publish lifecycle and concrete tenant-scoped ports.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
