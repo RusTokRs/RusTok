@@ -46,7 +46,9 @@ type ClassificationScope = typeof globalThis & {
   };
 };
 
-test("expected aborts stay separate from network failures", async ({ page }) => {
+test("expected aborts stay separate from network failures", async ({
+  page,
+}) => {
   const [adapterSource, hardeningSource] = await Promise.all([
     readFile(adapterPath, "utf8"),
     readFile(hardeningPath, "utf8"),
@@ -101,9 +103,7 @@ test("expected aborts stay separate from network failures", async ({ page }) => 
       for (const name of ["timeout", "stop", "network"] as const) {
         const root = roots[name];
         root.addEventListener("fly:browser-intent-aborted", (event) => {
-          events[name].aborts.push(
-            (event as CustomEvent<IntentAbort>).detail,
-          );
+          events[name].aborts.push((event as CustomEvent<IntentAbort>).detail);
         });
         root.addEventListener("fly:browser-error", (event) => {
           events[name].errors.push(
@@ -194,9 +194,9 @@ test("expected aborts stay separate from network failures", async ({ page }) => 
   expect(state.timeout.problems.map((problem) => problem.code)).toEqual([
     "INTENT_REQUEST_TIMEOUT",
   ]);
-  expect(state.timeout.problems.some((problem) => problem.code === "NETWORK_ERROR")).toBe(
-    false,
-  );
+  expect(
+    state.timeout.problems.some((problem) => problem.code === "NETWORK_ERROR"),
+  ).toBe(false);
 
   expect(state.stop.aborts).toHaveLength(1);
   expect(state.stop.aborts[0]).toMatchObject({
