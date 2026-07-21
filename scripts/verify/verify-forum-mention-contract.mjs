@@ -44,6 +44,7 @@ const crateApi = read(crateApiPath);
 for (const marker of [
   "FORUM_MAX_MENTION_TARGETS_PER_REVISION: usize = 32",
   "FORUM_MAX_QUOTE_REFERENCES_PER_REVISION: usize = 32",
+  "use serde::Serialize;",
   "normalize_content_format",
   "validate_and_sanitize_rt_json",
   "ProfileService::normalize_handle",
@@ -51,9 +52,12 @@ for (const marker of [
   "ProfileVisibility::Public | ProfileVisibility::Authenticated",
   "ForumRevisionIdentity",
   "ForumQuoteReference",
+  "resolved: ForumResolvedMentions",
   "diff_forum_mentions",
   "Forum mention replay changed an existing revision projection",
-  "event_candidates",
+  "source: current.source().clone()",
+  "pub fn event_candidates(&self)",
+  "pub fn added_users(&self)",
 ]) {
   requireText(contract, marker, `${contractPath}: missing required contract marker ${marker}`);
 }
@@ -75,7 +79,9 @@ for (const marker of [
   "markdown_extraction_ignores_code_escaping_and_email_addresses",
   "rt_json_extraction_ignores_code_blocks_and_code_marks",
   "profile_resolution_is_tenant_scoped_and_fail_closed",
+  "manual candidate construction must enforce audience permission",
   "revision_diff_emits_only_new_targets_and_replay_is_immutable",
+  "identical revision replay must be idempotent",
   "quote_references_are_revision_bound_deduplicated_and_non_recursive",
 ]) {
   requireText(tests, marker, `${testPath}: missing contract coverage ${marker}`);
@@ -95,6 +101,16 @@ reject(
   contract,
   /sea_orm|ActiveModel|Entity::|\.insert\(|\.update\(|\.delete\(/,
   `${contractPath}: FORUM-12A must not add persistence before the owner migration slice`,
+);
+reject(
+  contract,
+  /\bDeserialize\b/,
+  `${contractPath}: bounded mention contracts must not bypass constructors through Deserialize`,
+);
+reject(
+  contract,
+  /\bpub\s+(?:added|removed|unchanged)_(?:users|audiences)\s*:/,
+  `${contractPath}: mention diff collections must remain immutable`,
 );
 
 requireText(plan, "Delivered in `FORUM-12A`", `${planPath}: FORUM-12A is not recorded`);
