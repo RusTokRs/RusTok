@@ -55,6 +55,45 @@ pub struct BlogPostDetail {
     pub seo_description: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BlogModerationCommentList {
+    pub items: Vec<BlogModerationComment>,
+    pub total: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BlogModerationComment {
+    pub id: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    #[serde(rename = "authorId")]
+    pub author_id: Option<String>,
+    #[serde(rename = "contentPreview")]
+    pub content_preview: String,
+    pub status: String,
+    #[serde(rename = "parentCommentId")]
+    pub parent_comment_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlogModerationStatus {
+    Approved,
+    Spam,
+    Trash,
+}
+
+impl BlogModerationStatus {
+    pub const fn graphql_value(self) -> &'static str {
+        match self {
+            Self::Approved => "APPROVED",
+            Self::Spam => "SPAM",
+            Self::Trash => "TRASH",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct BlogPostDraft {
     pub locale: String,
