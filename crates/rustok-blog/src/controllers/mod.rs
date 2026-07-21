@@ -5,6 +5,7 @@ use rustok_api::HostRuntimeContext;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
+pub mod categories;
 pub mod comments;
 pub mod posts;
 
@@ -53,6 +54,16 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route(
             "/api/blog/posts/{id}/unpublish",
             post(posts::unpublish_post),
+        )
+        .route(
+            "/api/blog/categories",
+            get(categories::list_categories).post(categories::create_category),
+        )
+        .route(
+            "/api/blog/categories/{id}",
+            get(categories::get_category)
+                .put(categories::update_category)
+                .delete(categories::delete_category),
         )
         .route(
             "/api/blog/comments/{id}/moderate",
