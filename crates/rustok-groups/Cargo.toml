@@ -11,17 +11,12 @@ async-trait.workspace = true
 chrono.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
-rustok-events.workspace = true
-rustok-fba.workspace = true
-rustok-outbox.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 uuid.workspace = true
-validator.workspace = true
 
 [features]
 default = []
