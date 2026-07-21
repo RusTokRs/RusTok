@@ -1,4 +1,12 @@
 {
   "schema_version": 1,
-  "contracts": []
+  "contracts": [
+    {
+      "id": "pages-locale-width-32",
+      "migration": "m20260721_000003_expand_pages_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "DDL-only widening from VARCHAR(16) to VARCHAR(32); existing locale values require no backfill"
+    }
+  ]
 }
