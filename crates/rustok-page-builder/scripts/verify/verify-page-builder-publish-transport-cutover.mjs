@@ -138,13 +138,10 @@ for (const marker of [
 ]) {
   requireMarker(modularCanvas, marker, "Page Builder live baseline selector composition");
 }
-for (const forbidden of [
-  "runtime_context",
-  "scenario.context",
-  "serde_json",
-]) {
+const publishSelectionRuntime = publishSelection.split("#[cfg(test)]", 1)[0];
+for (const forbidden of ["runtime_context", "scenario.context", "serde_json"]) {
   forbidMarker(
-    publishSelection,
+    publishSelectionRuntime,
     forbidden,
     "ephemeral publish scenario selection storage",
   );
