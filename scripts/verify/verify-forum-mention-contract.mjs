@@ -51,7 +51,7 @@ for (const marker of [
   "ProfilesReader",
   "ProfileVisibility::Public | ProfileVisibility::Authenticated",
   "ForumRevisionIdentity",
-  "ForumQuoteReference",
+  "ForumQuoteReference::new",
   "resolved: ForumResolvedMentions",
   "diff_forum_mentions",
   "Forum mention replay changed an existing revision projection",
@@ -64,13 +64,18 @@ for (const marker of [
 
 requireText(
   error,
-  "MentionTargetUnavailable",
-  `${errorPath}: safe mention target error is missing`,
+  "MentionTargetUnavailable,",
+  `${errorPath}: field-free mention target error is missing`,
 );
 requireText(
   error,
   '"FORUM_MENTION_TARGET_UNAVAILABLE"',
   `${errorPath}: stable mention target code is missing`,
+);
+reject(
+  error,
+  /MentionTargetUnavailable\s*\{/,
+  `${errorPath}: safe mention target error must not retain requested identifiers`,
 );
 requireText(lib, "pub mod mentions;", `${libPath}: mention module is not public`);
 requireText(lib, "pub use mentions::*;", `${libPath}: mention contracts are not exported`);
@@ -111,6 +116,11 @@ reject(
   contract,
   /\bpub\s+(?:added|removed|unchanged)_(?:users|audiences)\s*:/,
   `${contractPath}: mention diff collections must remain immutable`,
+);
+reject(
+  contract,
+  /\bpub\s+(?:tenant_id|revision_id|kind|id|user_id|handle|source|target)\s*:/,
+  `${contractPath}: validated mention DTO fields must remain constructor-only`,
 );
 
 requireText(plan, "Delivered in `FORUM-12A`", `${planPath}: FORUM-12A is not recorded`);
