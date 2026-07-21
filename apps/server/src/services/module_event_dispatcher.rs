@@ -70,8 +70,21 @@ fn enrich_runtime_extensions_after_event_start(
             });
         let event_bus = transactional_event_bus_from_context(ctx);
         ctx.shared_insert(event_bus.clone());
-        enriched.insert(financial_runtime);
+        enriched.insert(financial_runtime.clone());
         enriched.insert(event_bus);
+
+        #[cfg(feature = "mod-payment")]
+        {
+            let observers = ctx
+                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+                .unwrap_or_else(|| {
+                    let observers =
+                        financial_runtime.payment_provider_event_observers(ctx.db_clone());
+                    ctx.shared_insert(observers.clone());
+                    observers
+                });
+            enriched.insert(observers);
+        }
     }
 
     let enriched = Arc::new(enriched);
@@ -227,7 +240,20 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                 runtime_ctx.shared_insert(runtime.clone());
                 runtime
             });
-        extensions.insert(financial_runtime);
+        extensions.insert(financial_runtime.clone());
+
+        #[cfg(feature = "mod-payment")]
+        {
+            let observers = runtime_ctx
+                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+                .unwrap_or_else(|| {
+                    let observers =
+                        financial_runtime.payment_provider_event_observers(db.clone());
+                    runtime_ctx.shared_insert(observers.clone());
+                    observers
+                });
+            extensions.insert(observers);
+        }
     }
 
     let auth_admin_provider = Arc::new(
@@ -383,5 +409,7 @@ mod tests {
         }
         #[cfg(feature = "mod-commerce")]
         assert!(extensions.contains::<rustok_commerce::MarketplaceFinancialRuntime>());
+        #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+        assert!(extensions.contains::<rustok_payment::PaymentProviderEventObservers>());
     }
 }
