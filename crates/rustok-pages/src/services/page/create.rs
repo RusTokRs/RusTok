@@ -5,13 +5,12 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext};
+use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 
 use crate::dto::{CreatePageInput, PageResponse};
 use crate::entities::page;
 use crate::error::{PagesError, PagesResult};
-use crate::services::PageBuilderArtifactService;
 use crate::services::rbac::enforce_scope;
 
 use super::helpers::{
@@ -30,7 +29,9 @@ impl PageService {
     ) -> PagesResult<PageResponse> {
         enforce_scope(&security, Resource::Pages, Action::Create)?;
         if input.publish {
-            enforce_scope(&security, Resource::Pages, Action::Publish)?;
+            return Err(PagesError::validation(
+                "Page creation cannot publish a Page Builder document; create the draft, review a runtime scenario, then use the atomic publish command",
+            ));
         }
         validate_page_translations(&input.translations)?;
         let response_locale = normalize_locale(
@@ -59,21 +60,10 @@ impl PageService {
                 )));
             }
         }
-        let builder_body = body_uses_builder_capability(body.as_ref());
-        if builder_body {
+        if body_uses_builder_capability(body.as_ref()) {
             self.ensure_builder_enabled(tenant_id).await?;
-            if input.publish {
-                self.ensure_builder_publish_enabled(tenant_id).await?;
-            }
         }
-        let compiled = if input.publish {
-            body.as_ref()
-                .filter(|body| body.format == CONTENT_FORMAT_GRAPESJS)
-                .map(|body| PageBuilderArtifactService::compile_source(&body.locale, &body.content))
-                .transpose()?
-        } else {
-            None
-        };
+
         let now = Utc::now();
         let page_id = Uuid::new_v4();
         let txn = self.db.begin().await?;
@@ -89,21 +79,16 @@ impl PageService {
                 .await?;
         }
 
-        let initial_status = if input.publish {
-            ContentStatus::Published
-        } else {
-            ContentStatus::Draft
-        };
         page::ActiveModel {
             id: Set(page_id),
             tenant_id: Set(tenant_id),
             author_id: Set(security.user_id),
-            status: Set(status_to_storage(&initial_status).to_string()),
+            status: Set(status_to_storage(&ContentStatus::Draft).to_string()),
             template: Set(template),
             metadata: Set(metadata),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
-            published_at: Set(input.publish.then(|| now.into())),
+            published_at: Set(None),
             archived_at: Set(None),
             version: Set(1),
         }
@@ -116,20 +101,6 @@ impl PageService {
             .await?;
         self.upsert_body_in_tx(&txn, tenant_id, page_id, body, now)
             .await?;
-        if let Some(compiled) = compiled.as_ref() {
-            let artifact_id = PageBuilderArtifactService::stage_compiled_in_tx(
-                &txn, tenant_id, page_id, compiled,
-            )
-            .await?;
-            PageBuilderArtifactService::bind_existing_body_in_tx(
-                &txn,
-                tenant_id,
-                page_id,
-                &compiled.locale,
-                artifact_id,
-            )
-            .await?;
-        }
 
         self.event_bus
             .publish_in_tx(
@@ -143,19 +114,6 @@ impl PageService {
                 },
             )
             .await?;
-        if input.publish {
-            self.event_bus
-                .publish_in_tx(
-                    &txn,
-                    tenant_id,
-                    security.user_id,
-                    DomainEvent::NodePublished {
-                        node_id: page_id,
-                        kind: PAGE_KIND.to_string(),
-                    },
-                )
-                .await?;
-        }
 
         txn.commit().await?;
         self.get_with_locale_fallback(tenant_id, security, page_id, &response_locale, None)
