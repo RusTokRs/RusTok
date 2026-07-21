@@ -15,7 +15,7 @@ use crate::error::{MarketplaceLedgerError, MarketplaceLedgerResult};
 const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STATUS_PENDING: &str = "pending";
 const STATUS_COMPLETED: &str = "completed";
-const COMMAND_KIND: &str = "post_order_commissions";
+const COMMAND_KIND_POST_ORDER_COMMISSIONS: &str = "post_order_commissions";
 
 pub(crate) struct NewLedgerReceipt {
     pub transaction: DatabaseTransaction,
@@ -44,21 +44,28 @@ pub(crate) fn posting_request_hash<T: Serialize>(
     actor_id: Uuid,
     request: &T,
 ) -> MarketplaceLedgerResult<String> {
+    command_request_hash(COMMAND_KIND_POST_ORDER_COMMISSIONS, actor_id, request)
+}
+
+pub(crate) fn command_request_hash<T: Serialize>(
+    command_kind: &str,
+    actor_id: Uuid,
+    request: &T,
+) -> MarketplaceLedgerResult<String> {
+    let command_kind = normalize_command_kind(command_kind)?;
     let request = serde_json::to_value(request).map_err(|_| {
         MarketplaceLedgerError::Validation(
-            "ledger posting request could not be normalized".to_string(),
+            "ledger command request could not be normalized".to_string(),
         )
     })?;
     let payload = serde_json::json!({
         "version": 1,
-        "command_kind": COMMAND_KIND,
+        "command_kind": command_kind,
         "actor_id": actor_id,
         "request": canonical_json(&request),
     });
     let encoded = serde_json::to_vec(&payload).map_err(|_| {
-        MarketplaceLedgerError::Validation(
-            "ledger posting request could not be hashed".to_string(),
-        )
+        MarketplaceLedgerError::Validation("ledger command request could not be hashed".to_string())
     })?;
     Ok(hex::encode(Sha256::digest(encoded)))
 }
@@ -69,8 +76,25 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
     idempotency_key: &str,
     request_hash: &str,
 ) -> MarketplaceLedgerResult<Option<R>> {
+    replay_existing_command(
+        db,
+        tenant_id,
+        idempotency_key,
+        COMMAND_KIND_POST_ORDER_COMMISSIONS,
+        request_hash,
+    )
+    .await
+}
+
+pub(crate) async fn replay_existing_command<R: DeserializeOwned>(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    idempotency_key: &str,
+    command_kind: &str,
+    request_hash: &str,
+) -> MarketplaceLedgerResult<Option<R>> {
     match find_receipt(db, tenant_id, idempotency_key).await? {
-        Some(receipt) => replay_receipt(receipt, request_hash).map(Some),
+        Some(receipt) => replay_command_receipt(receipt, command_kind, request_hash).map(Some),
         None => Ok(None),
     }
 }
@@ -82,6 +106,26 @@ pub(crate) async fn admit_receipt(
     idempotency_key: String,
     request_hash: &str,
 ) -> MarketplaceLedgerResult<LedgerReceiptAdmission> {
+    admit_command_receipt(
+        db,
+        tenant_id,
+        actor_id,
+        idempotency_key,
+        COMMAND_KIND_POST_ORDER_COMMISSIONS,
+        request_hash,
+    )
+    .await
+}
+
+pub(crate) async fn admit_command_receipt(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    idempotency_key: String,
+    command_kind: &str,
+    request_hash: &str,
+) -> MarketplaceLedgerResult<LedgerReceiptAdmission> {
+    let command_kind = normalize_command_kind(command_kind)?;
     if let Some(existing) = find_receipt(db, tenant_id, idempotency_key.as_str()).await? {
         return Ok(LedgerReceiptAdmission::Replay(existing));
     }
@@ -93,7 +137,7 @@ pub(crate) async fn admit_receipt(
         tenant_id: Set(tenant_id),
         actor_id: Set(actor_id),
         idempotency_key: Set(idempotency_key.clone()),
-        command_kind: Set(COMMAND_KIND.to_string()),
+        command_kind: Set(command_kind.to_string()),
         request_hash: Set(request_hash.to_string()),
         status: Set(STATUS_PENDING.to_string()),
         response_json: Set(None),
@@ -127,7 +171,20 @@ pub(crate) fn replay_receipt<R: DeserializeOwned>(
     receipt: receipt::Model,
     expected_request_hash: &str,
 ) -> MarketplaceLedgerResult<R> {
-    if receipt.command_kind != COMMAND_KIND || receipt.request_hash != expected_request_hash {
+    replay_command_receipt(
+        receipt,
+        COMMAND_KIND_POST_ORDER_COMMISSIONS,
+        expected_request_hash,
+    )
+}
+
+pub(crate) fn replay_command_receipt<R: DeserializeOwned>(
+    receipt: receipt::Model,
+    expected_command_kind: &str,
+    expected_request_hash: &str,
+) -> MarketplaceLedgerResult<R> {
+    if receipt.command_kind != expected_command_kind || receipt.request_hash != expected_request_hash
+    {
         return Err(MarketplaceLedgerError::IdempotencyConflict);
     }
     if receipt.status != STATUS_COMPLETED || receipt.completed_at.is_none() {
@@ -145,7 +202,7 @@ pub(crate) async fn complete_receipt<R: Serialize + Clone>(
 ) -> MarketplaceLedgerResult<R> {
     let response_json = serde_json::to_value(response).map_err(|_| {
         MarketplaceLedgerError::Validation(
-            "ledger posting response could not be serialized".to_string(),
+            "ledger command response could not be serialized".to_string(),
         )
     })?;
     let result = receipt::Entity::update_many()
@@ -193,6 +250,16 @@ async fn find_receipt(
         .one(db)
         .await
         .map_err(Into::into)
+}
+
+fn normalize_command_kind(value: &str) -> MarketplaceLedgerResult<&str> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 80 {
+        return Err(MarketplaceLedgerError::Validation(
+            "ledger command kind must contain 1 to 80 bytes".to_string(),
+        ));
+    }
+    Ok(value)
 }
 
 fn canonical_json(value: &Value) -> Value {
