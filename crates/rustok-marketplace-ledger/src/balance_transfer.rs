@@ -115,17 +115,36 @@ async fn post_in_transaction(
         ));
     }
 
-    let mut query = entry::Entity::find()
+    if receipt.transaction.get_database_backend() != DatabaseBackend::Sqlite {
+        entry::Entity::find()
+            .filter(entry::Column::TenantId.eq(tenant_id))
+            .filter(entry::Column::SellerId.eq(input.seller_id))
+            .filter(
+                entry::Column::AccountCode
+                    .eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
+            )
+            .filter(entry::Column::CurrencyCode.eq(currency_code.clone()))
+            .order_by_asc(entry::Column::CreatedAt)
+            .order_by_asc(entry::Column::Id)
+            .lock_exclusive()
+            .all(&receipt.transaction)
+            .await?;
+    }
+    // The locking statement can wait on a concurrent transfer while retaining an older
+    // statement snapshot. Reread after the locks are acquired so newly committed transfer
+    // entries participate in the immutable capacity calculation.
+    let seller_entries = entry::Entity::find()
         .filter(entry::Column::TenantId.eq(tenant_id))
         .filter(entry::Column::SellerId.eq(input.seller_id))
-        .filter(entry::Column::AccountCode.eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()))
+        .filter(
+            entry::Column::AccountCode
+                .eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
+        )
         .filter(entry::Column::CurrencyCode.eq(currency_code.clone()))
         .order_by_asc(entry::Column::CreatedAt)
-        .order_by_asc(entry::Column::Id);
-    if receipt.transaction.get_database_backend() != DatabaseBackend::Sqlite {
-        query = query.lock_exclusive();
-    }
-    let seller_entries = query.all(&receipt.transaction).await?;
+        .order_by_asc(entry::Column::Id)
+        .all(&receipt.transaction)
+        .await?;
     if seller_entries.is_empty() {
         return Err(MarketplaceLedgerError::SellerBalanceNotFound {
             seller_id: input.seller_id,
@@ -187,6 +206,12 @@ async fn post_in_transaction(
                 line.reference_entry_id
             ))
         })?;
+        if reference.amount <= 0 {
+            return Err(MarketplaceLedgerError::Validation(format!(
+                "reference seller payable entry {} must have a positive amount",
+                reference.id
+            )));
+        }
         if MarketplaceLedgerEntryDirection::parse(reference.direction.as_str())
             != Some(MarketplaceLedgerEntryDirection::Credit)
         {
@@ -254,7 +279,7 @@ async fn post_in_transaction(
         debit_total_amount: Set(total_amount),
         credit_total_amount: Set(total_amount),
         status: Set(MarketplaceLedgerTransactionStatus::Posted.as_str().to_string()),
-        posted_at: Set(input.transferred_at),
+        posted_at: Set(input.transferred_at.clone()),
         metadata: Set(serde_json::json!({
             "transfer_id": transfer_id,
             "transfer_kind": input.kind.as_str(),
@@ -264,7 +289,7 @@ async fn post_in_transaction(
             "to_bucket": to_bucket.as_str(),
             "line_count": input.lines.len(),
         })),
-        created_at: Set(created_at),
+        created_at: Set(created_at.clone()),
     }
     .insert(&receipt.transaction)
     .await
@@ -280,9 +305,9 @@ async fn post_in_transaction(
         from_bucket: Set(from_bucket.as_str().to_string()),
         to_bucket: Set(to_bucket.as_str().to_string()),
         total_amount: Set(total_amount),
-        transferred_at: Set(input.transferred_at),
+        transferred_at: Set(input.transferred_at.clone()),
         metadata: Set(input.metadata.clone()),
-        created_at: Set(created_at),
+        created_at: Set(created_at.clone()),
     }
     .insert(&receipt.transaction)
     .await
@@ -303,7 +328,7 @@ async fn post_in_transaction(
             MarketplaceLedgerEntryDirection::Debit,
             line.amount,
             currency_code.as_str(),
-            created_at,
+            created_at.clone(),
         )
         .await?;
         let credit = insert_transfer_entry(
@@ -318,7 +343,7 @@ async fn post_in_transaction(
             MarketplaceLedgerEntryDirection::Credit,
             line.amount,
             currency_code.as_str(),
-            created_at,
+            created_at.clone(),
         )
         .await?;
         balance_transfer_line::ActiveModel {
@@ -329,7 +354,7 @@ async fn post_in_transaction(
             debit_entry_id: Set(debit.id),
             credit_entry_id: Set(credit.id),
             amount: Set(line.amount),
-            created_at: Set(created_at),
+            created_at: Set(created_at.clone()),
         }
         .insert(&receipt.transaction)
         .await?;
@@ -404,7 +429,7 @@ async fn insert_transfer_entry(
             "reference_entry_id": reference.id,
             "balance_bucket": bucket.as_str(),
         })),
-        created_at: Set(created_at),
+        created_at: Set(created_at.clone()),
     }
     .insert(&receipt.transaction)
     .await?;
