@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-21
 
 ## Source of truth
 
@@ -38,6 +38,7 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - Marketplace seller FBA: `in_progress`.
 - Marketplace listing FFA: `in_progress`.
 - Marketplace listing FBA: `in_progress`.
+- Marketplace financial source: `reversal_recovery_and_seller_balance_transfer_v3_source_ready_unvalidated`.
 - Marketplace production gate: `closed` until compiled contracts, clean/upgraded
   migrations, tenant isolation, contention, restart, mounted transports, remote
   profiles, and financial reconciliation evidence are retained.
@@ -79,6 +80,12 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Resume persisted stages and adopt already committed owner outcomes.
 - [x] Prevent a second active checkout for the same cart.
 - [x] Provide safe compensation and block provider execution during reconciliation.
+- [x] Persist typed marketplace cart/checkout snapshots and fail closed when marketplace
+  identity or economics are missing.
+- [x] Run marketplace allocation and commission assessment before payment capture.
+- [x] Persist a lease-bound allocation/commission economics checkpoint and adopt it on replay.
+- [x] Post marketplace ledger after capture through a durable financial operation and gate
+  fulfillment on saved ledger evidence.
 - [ ] Retain admission parity, kill-point, restart, and PostgreSQL contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
@@ -104,19 +111,23 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Use mandatory `rustok-marketplace-*` crate names and `marketplace_*` slugs.
 - [x] Publish `rustok-marketplace` as a composition/orchestration root with no owner
   tables.
-- [x] Publish `rustok-marketplace-seller` and `rustok-marketplace-listing` as owner
-  modules.
+- [x] Publish seller, listing, allocation, commission, ledger, and payout as separate
+  owner modules.
 - [x] Keep Marketplace modules opt-in and outside default module/server sets.
 - [x] Keep catalog, prices, stock, orders, payments, and generic orchestration in their
   existing owner modules.
-- [ ] Create future owners as `rustok-marketplace-commission`,
-  `rustok-marketplace-ledger`, and `rustok-marketplace-payout`.
+- [x] Register owner migrations through the composed `MigrationSource` graph without
+  cross-owner foreign keys.
 
 ### Marketplace root
 
 - [x] Compose seller directory over `MarketplaceSellerReadPort`.
 - [x] Compose listing directory and eligibility over `MarketplaceListingReadPort`.
 - [x] Keep root consumers free of SeaORM, owner entities, and owner DB access.
+- [x] Compose order commission posting and financial reversals over typed commission and
+  ledger ports with deterministic child idempotency keys.
+- [x] Advertise ledger v3 seller balance transfer capability without adding root persistence.
+- [ ] Add deterministic multi-order payout orchestration over per-order ledger transfers.
 - [ ] Compile/execute root consumers and retain remote timeout/degraded/fallback
   evidence.
 - [ ] Keep root FFA absent until an aggregate control room can compose owner view
@@ -227,18 +238,26 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 
 ### Marketplace order allocation and finance
 
-- [ ] Introduce durable seller order groups/allocations without duplicating customer
-  order aggregates.
-- [ ] Snapshot seller, listing, commission policy/result, fulfillment ownership, and
-  monetary allocation at checkout.
-- [ ] Prevent one seller lifecycle operation from mutating another seller allocation.
-- [ ] Create versioned deterministic commission policy owner.
-- [ ] Create immutable double-entry ledger before balances or payouts.
-- [ ] Derive all seller balances from ledger entries.
-- [ ] Create payout owner with idempotent journals, provider SPI, retries,
-  reconciliation, reversals, and operator audit.
-- [ ] Keep PSP split-payment optional; internal allocation/ledger correctness must not
+- [x] Own immutable order-line allocations without duplicating customer order aggregates.
+- [x] Snapshot seller, listing, commission result, fulfillment ownership, and monetary
+  allocation at checkout.
+- [x] Prevent one seller lifecycle operation from mutating another seller allocation.
+- [x] Create versioned deterministic commission policy owner.
+- [x] Create immutable double-entry ledger before balances or payouts.
+- [x] Derive pending, available, reserved, paid, and negative seller balances from immutable
+  seller-payable entries.
+- [x] Add append-only refund/chargeback reversals with exact original-entry links and
+  cumulative capacity.
+- [x] Add payment-owner processed-event observers, durable reversal inbox/recovery, safe
+  operator transports, and a durable historical adaptation-failure journal.
+- [x] Add append-only pending release, reserve hold/release, payout settlement/reversal
+  ledger transfers with exact reference-entry lineage and cumulative capacity.
+- [x] Keep PSP split-payment optional; internal allocation/ledger correctness does not
   depend on a PSP.
+- [x] Add payout scheduling owner and exclusive ledger-entry assignment.
+- [ ] Add payout provider accounts, operation journal, verified webhook inbox, transfer
+  execution, lookup recovery, and deterministic multi-order settlement orchestration.
+- [ ] Add accounting/vendor surfaces and retained contention/reconciliation evidence.
 
 ## Payment workstream
 
@@ -254,8 +273,14 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [x] Mount verified webhook ingress and persist only normalized immutable facts.
 - [x] Recover received/failed/expired events; isolate dead letters and require
   operator-only replay.
+- [x] Normalize `refund.completed` and `chargeback.completed`, run host-composed observers
+  only after payment owner application, and mark provider events processed only after observers
+  succeed.
+- [x] Keep marketplace reversal consumers free of raw provider payloads and signatures.
+- [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
+  and route them to durable operator review.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
-  degraded, reconciliation, and operator evidence.
+  degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
 
 ## Verification and promotion checklist
@@ -275,12 +300,15 @@ Source inspection is not execution evidence.
 - [ ] `cargo xtask module validate marketplace`
 - [ ] `cargo xtask module validate marketplace_seller`
 - [ ] `cargo xtask module validate marketplace_listing`
+- [ ] Inspect marketplace ledger v3 and seller-balance-transfer v1 source guards.
 
 ### Compile/tests
 
 - [ ] `cargo check -p rustok-commerce --lib`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
+- [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
+- [ ] `cargo test -p rustok-marketplace-ledger`
 - [x] `cargo check -p rustok-marketplace-seller --all-targets`
 - [x] `cargo test -p rustok-marketplace-seller`
 - [ ] `cargo check -p rustok-marketplace-seller-admin --all-features`
@@ -288,15 +316,19 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-marketplace-listing`
 - [ ] `cargo check -p rustok-marketplace-listing-admin --all-features`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
-- [ ] Targeted checkout, return-completion, payment, remaining seller/listing lifecycle,
-  localization, outbox replay/rollback, recovery, and tenant-isolation tests.
+- [ ] Targeted checkout, return-completion, payment, marketplace financial recovery,
+  seller balance transfer, remaining seller/listing lifecycle, localization, outbox
+  replay/rollback, and tenant-isolation tests.
 
 ### Database/runtime
 
-- [ ] Apply clean/upgraded SQLite/PostgreSQL and rollback/reapply paths, respecting the
+- [ ] Apply clean/upgraded SQLite/PostgreSQL/MySQL and rollback/reapply paths, respecting the
   intentionally irreversible listing provenance cutover.
 - [ ] Execute receipt/event/outbox/provider-operation contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
+- [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
+- [ ] Execute seller balance transfer replay, duplicate source, cumulative reference capacity,
+  concurrent admission, projection rebuild, and append-only trigger scenarios.
 - [ ] Prove declared routers and module-owned UI packages are mounted.
 - [ ] Exercise authenticated checkout, recovery, seller admin, listing admin,
   reconciliation, and replay.
@@ -316,19 +348,21 @@ Source inspection is not execution evidence.
 10. [x] Add immutable seller lifecycle/moderation event storage and bounded timeline reads.
 11. [x] Route onboarding review, suspension, and reactivation through atomic seller
     state + event + receipt completion.
-12. [ ] Extend seller event production to create/profile/onboarding-submit/member commands.
-13. [ ] Add seller event history to native and GraphQL FFA transports.
-14. [ ] Mount authenticated request-scoped listing native composition.
-15. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-16. [ ] Run static verifiers and fix remaining source drift.
-17. [ ] Compile remaining commerce/payment/Marketplace packages and server features.
-18. [ ] Apply clean/upgraded migrations and targeted regression tests.
-19. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, and
-    mounted transport scenarios.
-20. [ ] Introduce seller allocations, commission snapshots, double-entry ledger, and
-    payout journals in that order.
-21. [ ] Execute production-like payment provider and mounted worker evidence.
-22. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+12. [x] Add typed marketplace allocation, commission, post-capture ledger, reversal recovery,
+    adaptation-failure recovery, seller balance projections, and bucket-transfer primitives.
+13. [ ] Extend seller event production to create/profile/onboarding-submit/member commands.
+14. [ ] Add seller event history to native and GraphQL FFA transports.
+15. [ ] Mount authenticated request-scoped listing native composition.
+16. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+17. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
+    reconciliation surfaces.
+18. [ ] Run static verifiers and fix remaining source drift.
+19. [ ] Compile remaining commerce/payment/Marketplace packages and server features.
+20. [ ] Apply clean/upgraded migrations and targeted regression tests.
+21. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
+    transfer, and mounted transport scenarios.
+22. [ ] Execute production-like payment and payout provider evidence.
+23. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
 
 ## Change rules
 
@@ -346,5 +380,8 @@ Source inspection is not execution evidence.
 - [Commerce FBA registry](../contracts/commerce-fba-registry.json)
 - [Payment FBA registry](../../rustok-payment/contracts/payment-fba-registry.json)
 - [Marketplace root plan](../../rustok-marketplace/docs/implementation-plan.md)
+- [Marketplace root FBA registry](../../rustok-marketplace/contracts/marketplace-fba-registry.json)
+- [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json)
+- [Seller balance transfer contract](../../rustok-marketplace-ledger/contracts/seller-balance-transfer-v1.json)
 - [Marketplace seller plan](../../rustok-marketplace-seller/docs/implementation-plan.md)
 - [Marketplace listing plan](../../rustok-marketplace-listing/docs/implementation-plan.md)
