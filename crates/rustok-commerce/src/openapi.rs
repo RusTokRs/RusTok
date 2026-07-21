@@ -67,6 +67,13 @@ use utoipa::openapi::{Content, Ref};
         crate::controllers::return_completion_operations::list_return_completion_operations,
         crate::controllers::return_completion_operations::show_return_completion_operation,
         crate::controllers::return_completion_operations::retry_return_completion_operation,
+        crate::controllers::marketplace_financial::list_financial_operator_review,
+        crate::controllers::marketplace_financial::show_financial_operation,
+        crate::controllers::marketplace_financial::retry_financial_operation,
+        crate::controllers::marketplace_financial::list_paid_event_operator_review,
+        crate::controllers::marketplace_financial::show_paid_event,
+        crate::controllers::marketplace_financial::retry_paid_event,
+        crate::controllers::marketplace_financial::run_recovery_sweep,
     ),
     components(
         schemas(
@@ -140,13 +147,19 @@ use utoipa::openapi::{Content, Ref};
             crate::controllers::checkout_operations::AdminCheckoutCompensationSweepResponse,
             crate::controllers::return_completion_operations::AdminListReturnCompletionOperationsParams,
             crate::services::ReturnCompletionOperationResponse,
+            crate::controllers::marketplace_financial::MarketplaceFinancialSweepInput,
+            crate::controllers::marketplace_financial::MarketplaceFinancialOperationResponse,
+            crate::controllers::marketplace_financial::MarketplacePaidEventResponse,
+            crate::controllers::marketplace_financial::MarketplaceFinancialSweepFailureResponse,
+            crate::controllers::marketplace_financial::MarketplaceFinancialSweepResponse,
         )
     ),
     modifiers(&CommerceOpenApiAddon),
     tags(
         (name = "commerce", description = "Ecommerce endpoints"),
         (name = "store", description = "Storefront ecommerce endpoints"),
-        (name = "admin", description = "Administrative ecommerce endpoints")
+        (name = "admin", description = "Administrative ecommerce endpoints"),
+        (name = "admin-marketplace-financial", description = "Marketplace financial recovery and reconciliation endpoints")
     )
 )]
 pub struct CommerceApiDoc;
