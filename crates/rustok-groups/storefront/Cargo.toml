@@ -23,7 +23,7 @@ leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }
 rustok-graphql.workspace = true
-rustok-groups = { workspace = true, optional = true }
+rustok-groups = { path = "..", optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-i18n-leptos.workspace = true
 rustok-ui-transport.workspace = true
