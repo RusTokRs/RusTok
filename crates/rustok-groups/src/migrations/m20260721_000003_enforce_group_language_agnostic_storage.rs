@@ -52,7 +52,10 @@ BEGIN
         SELECT 1
         FROM groups
         WHERE jsonb_typeof(metadata) <> 'object'
-           OR metadata::text ~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+           OR metadata ?| ARRAY[
+                'title', 'summary', 'body', 'name', 'description',
+                'translations', 'localized', 'locales', 'i18n', 'seo'
+           ]
     ) THEN
         RAISE EXCEPTION 'groups language-agnostic migration blocked: group metadata contains localized presentation copy';
     END IF;
@@ -61,7 +64,10 @@ BEGIN
         SELECT 1
         FROM group_memberships
         WHERE jsonb_typeof(metadata) <> 'object'
-           OR metadata::text ~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+           OR metadata ?| ARRAY[
+                'title', 'summary', 'body', 'name', 'description',
+                'translations', 'localized', 'locales', 'i18n', 'seo'
+           ]
     ) THEN
         RAISE EXCEPTION 'groups language-agnostic migration blocked: membership metadata contains localized presentation copy';
     END IF;
@@ -70,7 +76,10 @@ BEGIN
         SELECT 1
         FROM group_feature_bindings
         WHERE jsonb_typeof(configuration) <> 'object'
-           OR configuration::text ~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+           OR configuration ?| ARRAY[
+                'title', 'summary', 'body', 'name', 'description',
+                'translations', 'localized', 'locales', 'i18n', 'seo'
+           ]
     ) THEN
         RAISE EXCEPTION 'groups language-agnostic migration blocked: feature configuration contains localized presentation copy';
     END IF;
@@ -110,7 +119,10 @@ BEGIN
             ADD CONSTRAINT ck_groups_metadata_language_agnostic
             CHECK (
                 jsonb_typeof(metadata) = 'object'
-                AND metadata::text !~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+                AND NOT metadata ?| ARRAY[
+                    'title', 'summary', 'body', 'name', 'description',
+                    'translations', 'localized', 'locales', 'i18n', 'seo'
+                ]
             );
     END IF;
 
@@ -122,7 +134,10 @@ BEGIN
             ADD CONSTRAINT ck_group_memberships_metadata_language_agnostic
             CHECK (
                 jsonb_typeof(metadata) = 'object'
-                AND metadata::text !~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+                AND NOT metadata ?| ARRAY[
+                    'title', 'summary', 'body', 'name', 'description',
+                    'translations', 'localized', 'locales', 'i18n', 'seo'
+                ]
             );
     END IF;
 
@@ -134,7 +149,10 @@ BEGIN
             ADD CONSTRAINT ck_group_feature_bindings_configuration_language_agnostic
             CHECK (
                 jsonb_typeof(configuration) = 'object'
-                AND configuration::text !~* '"(title|summary|body|name|description|translations|localized|locales|i18n|seo)"[[:space:]]*:'
+                AND NOT configuration ?| ARRAY[
+                    'title', 'summary', 'body', 'name', 'description',
+                    'translations', 'localized', 'locales', 'i18n', 'seo'
+                ]
             );
     END IF;
 END $$;
@@ -288,22 +306,26 @@ OR EXISTS (
 }
 
 fn sqlite_language_agnostic_json_violation(json_expression: &str) -> String {
+    const LOCALIZED_COPY_PATHS: &[&str] = &[
+        "title",
+        "summary",
+        "body",
+        "name",
+        "description",
+        "translations",
+        "localized",
+        "locales",
+        "i18n",
+        "seo",
+    ];
+
+    let reserved_paths = LOCALIZED_COPY_PATHS
+        .iter()
+        .map(|key| format!("json_type({json_expression}, '$.{key}') IS NOT NULL"))
+        .collect::<Vec<_>>()
+        .join(" OR ");
     format!(
-        r#"
-CASE
-    WHEN json_valid({json_expression}) = 0 THEN 1
-    WHEN json_type({json_expression}) <> 'object' THEN 1
-    ELSE EXISTS (
-        SELECT 1
-        FROM json_tree({json_expression})
-        WHERE key IS NOT NULL
-          AND lower(key) IN (
-              'title', 'summary', 'body', 'name', 'description',
-              'translations', 'localized', 'locales', 'i18n', 'seo'
-          )
-    )
-END
-"#
+        "json_valid({json_expression}) = 0 OR json_type({json_expression}) <> 'object' OR {reserved_paths}"
     )
 }
 
