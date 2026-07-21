@@ -125,3 +125,64 @@ pub struct GroupsAdminDeleteTranslationResult {
     pub locale: String,
     pub group_version: u64,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminInvitation {
+    pub id: String,
+    pub group_id: String,
+    pub invited_by_user_id: String,
+    pub target_user_id: Option<String>,
+    pub max_uses: u32,
+    pub use_count: u32,
+    pub expires_at: String,
+    pub revoked_at: Option<String>,
+    pub revoked_by_user_id: Option<String>,
+    pub created_at: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminInvitationConnection {
+    pub items: Vec<GroupsAdminInvitation>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminInvitationQuery {
+    pub group_id: String,
+    pub page: u64,
+    pub per_page: u64,
+    pub include_inactive: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateGroupInvitationCommand {
+    pub idempotency_key: String,
+    pub group_id: String,
+    pub target_user_id: Option<String>,
+    pub expires_in_seconds: u64,
+    pub max_uses: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminCreateInvitationResult {
+    pub invitation: GroupsAdminInvitation,
+    pub token: Option<String>,
+    pub group_version: u64,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevokeGroupInvitationCommand {
+    pub idempotency_key: String,
+    pub invitation_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminRevokeInvitationResult {
+    pub invitation: GroupsAdminInvitation,
+    pub group_version: u64,
+    pub replayed: bool,
+}
