@@ -31,6 +31,29 @@ transaction.
 - shared taxonomy dictionary reuse via `blog_post_tags`, without transferring attachment ownership;
 - observability via `rustok-telemetry` read-path metrics and instrumented service methods.
 
+## Multilingual storage contract
+
+Blog follows the platform language-agnostic storage model:
+
+- `blog_posts` owns identity, lifecycle, relations, counters, publication state,
+  and the canonical route key;
+- `blog_posts.slug` is an explicitly locale-neutral canonical route identifier.
+  It is stable across requested locales and must not contain translated display
+  copy;
+- localized post title, excerpt, body, and SEO copy belong to
+  `blog_post_translations`;
+- localized category name, slug, and description belong to
+  `blog_category_translations`;
+- post and category translation locale columns use the platform-safe
+  `VARCHAR(32)` contract after
+  `m20260721_000005_expand_blog_locale_storage_columns`;
+- tenant default/effective locale controls resolution only and does not own any
+  localized Blog field.
+
+Changing the canonical post route key is a language-agnostic identity operation.
+A localized alternative URL must be modeled as an explicit alias/projection; it
+must not silently redefine ownership of `blog_posts.slug`.
+
 ## Permission boundary
 
 `Resource::BlogCategories` serializes as `blog_categories`. Built-in roles,
