@@ -58,6 +58,7 @@
   "in_process_provider_impl": {
     "service": "InProcessCommentsThreadProvider",
     "source": "crates/rustok-comments/src/ports.rs",
+    "marker": "impl CommentsThreadPort for InProcessCommentsThreadProvider",
     "status": "implemented"
   },
   "events": [
