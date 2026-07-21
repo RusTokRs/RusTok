@@ -46,6 +46,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod http;
 pub mod migrations;
 pub mod openapi;
 mod seo_targets;
