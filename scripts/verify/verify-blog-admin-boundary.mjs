@@ -41,8 +41,13 @@ function assertNotContains(text, pattern, description) {
 const libPath = "crates/rustok-blog/admin/src/lib.rs";
 const corePath = "crates/rustok-blog/admin/src/core.rs";
 const uiPath = "crates/rustok-blog/admin/src/ui/leptos.rs";
+const moderationPath = "crates/rustok-blog/admin/src/moderation.rs";
 const transportPath = "crates/rustok-blog/admin/src/transport/mod.rs";
 const graphqlAdapterPath = "crates/rustok-blog/admin/src/transport/graphql_adapter.rs";
+const moderationAdapterPath = "crates/rustok-blog/admin/src/transport/moderation_adapter.rs";
+const graphqlTypesPath = "crates/rustok-blog/src/graphql/types.rs";
+const graphqlMutationPath = "crates/rustok-blog/src/graphql/mutation.rs";
+const graphqlRateLimitPath = "crates/rustok-blog/src/graphql/rate_limit.rs";
 const legacyApiPath = "crates/rustok-blog/admin/src/api.rs";
 const implementationPlanPath = "crates/rustok-blog/docs/implementation-plan.md";
 const registryPath = "docs/modules/registry.md";
@@ -55,8 +60,13 @@ for (const filePath of [
   libPath,
   corePath,
   uiPath,
+  moderationPath,
   transportPath,
   graphqlAdapterPath,
+  moderationAdapterPath,
+  graphqlTypesPath,
+  graphqlMutationPath,
+  graphqlRateLimitPath,
   implementationPlanPath,
   registryPath,
 ]) {
@@ -66,17 +76,25 @@ for (const filePath of [
 const lib = readRepo(libPath);
 const core = readRepo(corePath);
 const ui = readRepo(uiPath);
+const moderation = readRepo(moderationPath);
 const transport = readRepo(transportPath);
 const graphqlAdapter = readRepo(graphqlAdapterPath);
+const moderationAdapter = readRepo(moderationAdapterPath);
+const graphqlTypes = readRepo(graphqlTypesPath);
+const graphqlMutation = readRepo(graphqlMutationPath);
+const graphqlRateLimit = readRepo(graphqlRateLimitPath);
 const implementationPlan = readRepo(implementationPlanPath);
 const registry = readRepo(registryPath);
 
 assertNotContains(lib, "mod api;", `${libPath}: crate root must not wire legacy api.rs after GraphQL adapter moved under transport/`);
 assertContains(lib, "mod core;", `${libPath}: crate root must wire core`);
+assertContains(lib, "mod moderation;", `${libPath}: crate root must wire the moderation UI slice`);
 assertContains(lib, "mod transport;", `${libPath}: crate root must wire transport facade`);
 assertContains(lib, "mod ui;", `${libPath}: crate root must wire UI adapters`);
-assertContains(lib, "pub use ui::BlogAdmin;", `${libPath}: crate root must re-export BlogAdmin`);
-for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn archive_/, /pub async fn delete_/]) {
+assertContains(lib, "pub fn BlogAdmin()", `${libPath}: crate root must expose the composed BlogAdmin root`);
+assertContains(lib, "<BlogEditor />", `${libPath}: composed root must preserve the existing CRUD editor`);
+assertContains(lib, "<BlogModerationPanel />", `${libPath}: composed root must include moderation`);
+for (const marker of [/pub async fn fetch_/, /pub async fn create_/, /pub async fn update_/, /pub async fn publish_/, /pub async fn archive_/, /pub async fn delete_/, /pub async fn moderate_/]) {
   assertNotContains(lib, marker, `${libPath}: crate root must not expose public transport passthroughs (${marker})`);
 }
 
@@ -179,8 +197,23 @@ assertContains(ui, "core::prepare_blog_post_status_command", `${uiPath}: UI must
 assertContains(ui, "core::prepare_blog_post_archive_command", `${uiPath}: UI must use core-owned archive command preparation`);
 assertContains(ui, "core::prepare_blog_post_delete_command", `${uiPath}: UI must use core-owned delete command preparation`);
 assertContains(ui, "transport::fetch_posts", `${uiPath}: UI must call the module-owned transport facade`);
-for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PostService", "CategoryService", "TagService"]) {
-  assertNotContains(ui, marker, `${uiPath}: UI adapter must not call raw transport or services (${marker})`);
+for (const marker of ["crate::api", /(^|[^A-Za-z0-9_])api::/, "#[server", "PostService", "CategoryService", "TagService", "CommentService"]) {
+  assertNotContains(ui, marker, `${uiPath}: CRUD UI adapter must not call raw transport or services (${marker})`);
+}
+
+for (const marker of [
+  "use_route_query_value(AdminQueryKey::PostId.as_str())",
+  "transport::fetch_moderation_comments",
+  "transport::moderate_comment",
+  "transport::is_moderation_contract_unavailable",
+  "BlogModerationStatus::Approved",
+  "BlogModerationStatus::Spam",
+  "BlogModerationStatus::Trash",
+]) {
+  assertContains(moderation, marker, `${moderationPath}: missing moderation UI boundary marker ${marker}`);
+}
+for (const marker of ["crate::api", "#[server", "PostService", "CommentService", "DatabaseConnection"]) {
+  assertNotContains(moderation, marker, `${moderationPath}: moderation UI must use only the transport facade (${marker})`);
 }
 
 for (const marker of [
@@ -193,17 +226,54 @@ for (const marker of [
   "unpublish_post",
   "archive_post",
   "delete_post",
+  "fetch_moderation_comments",
+  "moderate_comment",
+  "is_moderation_contract_unavailable",
 ]) {
   assertContains(transport, marker, `${transportPath}: transport facade must expose ${marker}`);
 }
-assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must own the GraphQL adapter module`);
-assertContains(transport, "graphql_adapter::", `${transportPath}: transport facade must delegate through transport/graphql_adapter.rs`);
+assertContains(transport, "mod graphql_adapter;", `${transportPath}: transport facade must own the CRUD GraphQL adapter module`);
+assertContains(transport, "mod moderation_adapter;", `${transportPath}: transport facade must own the moderation adapter module`);
+assertContains(transport, "graphql_adapter::", `${transportPath}: transport facade must delegate CRUD through transport/graphql_adapter.rs`);
+assertContains(transport, "moderation_adapter::", `${transportPath}: transport facade must delegate moderation through transport/moderation_adapter.rs`);
 assertNotContains(transport, "#[server", `${transportPath}: server/native endpoints must not live in the blog admin transport facade`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${graphqlAdapterPath}: blog admin GraphQL adapter must keep the GraphQL transport contract`);
 assertContains(graphqlAdapter, "BLOG_POSTS_QUERY", `${graphqlAdapterPath}: GraphQL adapter must own blog posts query text`);
 assertNotContains(graphqlAdapter, "Err(error) if is_posts_contract_unavailable", `${graphqlAdapterPath}: GraphQL adapter must not swallow posts contract-unavailable errors before the UI parity branch can classify them`);
+for (const marker of [
+  "BLOG_MODERATION_COMMENTS_QUERY",
+  "MODERATE_BLOG_COMMENT_MUTATION",
+  "moderationComments",
+  "moderateComment",
+  "BlogCommentModerationStatus!",
+]) {
+  assertContains(moderationAdapter, marker, `${moderationAdapterPath}: missing moderation GraphQL marker ${marker}`);
+}
+
+for (const marker of [
+  "async fn moderation_comments(",
+  "Permission::BLOG_POSTS_MANAGE",
+  "GqlModerationCommentList",
+]) {
+  assertContains(graphqlTypes, marker, `${graphqlTypesPath}: missing authenticated moderation queue marker ${marker}`);
+}
+for (const marker of [
+  "async fn moderate_comment(",
+  "Permission::BLOG_POSTS_MANAGE",
+  "ModerateCommentInput",
+]) {
+  assertContains(graphqlMutation, marker, `${graphqlMutationPath}: missing comment moderation mutation marker ${marker}`);
+}
+for (const marker of [
+  "ModerateComment",
+  "moderateComment",
+  "Permission::BLOG_POSTS_MANAGE",
+]) {
+  assertContains(graphqlRateLimit, marker, `${graphqlRateLimitPath}: missing moderation rate-limit marker ${marker}`);
+}
 
 assertContains(implementationPlan, "verify-blog-admin-boundary.mjs", `${implementationPlanPath}: local plan must mention the blog fast boundary guardrail`);
+assertContains(implementationPlan, "moderation", `${implementationPlanPath}: local plan must record moderation parity`);
 assertContains(registry, "verify-blog-admin-boundary.mjs", `${registryPath}: central readiness board must mention the blog fast boundary guardrail`);
 
 if (failures.length > 0) {
