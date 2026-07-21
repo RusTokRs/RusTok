@@ -1,0 +1,8 @@
+{
+  "groups.storefront.title": "Сообщества",
+  "groups.storefront.body": "Находите открытые группы и присоединяйтесь к сообществам по интересам.",
+  "groups.storefront.loading": "Загрузка сообществ...",
+  "groups.storefront.loadError": "Не удалось загрузить сообщества",
+  "groups.storefront.empty": "Открытых групп пока нет.",
+  "groups.storefront.members": "участников"
+}
