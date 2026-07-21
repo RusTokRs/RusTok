@@ -130,10 +130,10 @@ async fn post_in_transaction(
             .all(&receipt.transaction)
             .await?;
     }
-    // The locking statement can wait on a concurrent transfer while retaining an older
-    // statement snapshot. Reread after the locks are acquired so newly committed transfer
-    // entries participate in the immutable capacity calculation.
-    let seller_entries = entry::Entity::find()
+    // The first locking statement can wait on a concurrent transfer while retaining an
+    // older statement snapshot. Use a second current/locking read after acquisition so
+    // newly committed transfer entries participate in capacity calculation on every DB.
+    let mut seller_entry_query = entry::Entity::find()
         .filter(entry::Column::TenantId.eq(tenant_id))
         .filter(entry::Column::SellerId.eq(input.seller_id))
         .filter(
@@ -142,9 +142,11 @@ async fn post_in_transaction(
         )
         .filter(entry::Column::CurrencyCode.eq(currency_code.clone()))
         .order_by_asc(entry::Column::CreatedAt)
-        .order_by_asc(entry::Column::Id)
-        .all(&receipt.transaction)
-        .await?;
+        .order_by_asc(entry::Column::Id);
+    if receipt.transaction.get_database_backend() != DatabaseBackend::Sqlite {
+        seller_entry_query = seller_entry_query.lock_exclusive();
+    }
+    let seller_entries = seller_entry_query.all(&receipt.transaction).await?;
     if seller_entries.is_empty() {
         return Err(MarketplaceLedgerError::SellerBalanceNotFound {
             seller_id: input.seller_id,
@@ -173,6 +175,33 @@ async fn post_in_transaction(
                 .map(|bucket| (model.entry_id, bucket))
         })
         .collect::<HashMap<_, _>>();
+
+    let input_reference_ids = input
+        .lines
+        .iter()
+        .map(|line| line.reference_entry_id)
+        .collect::<Vec<_>>();
+    let mut prior_line_query = balance_transfer_line::Entity::find()
+        .filter(balance_transfer_line::Column::TenantId.eq(tenant_id))
+        .filter(balance_transfer_line::Column::ReferenceEntryId.is_in(input_reference_ids));
+    if receipt.transaction.get_database_backend() != DatabaseBackend::Sqlite {
+        prior_line_query = prior_line_query.lock_exclusive();
+    }
+    let prior_reference_amounts = prior_line_query
+        .all(&receipt.transaction)
+        .await?
+        .into_iter()
+        .try_fold(HashMap::<Uuid, i64>::new(), |mut totals, model| {
+            let current = totals.get(&model.reference_entry_id).copied().unwrap_or(0);
+            let next = current.checked_add(model.amount).ok_or_else(|| {
+                MarketplaceLedgerError::Validation(format!(
+                    "reference entry {} transfer capacity overflow",
+                    model.reference_entry_id
+                ))
+            })?;
+            totals.insert(model.reference_entry_id, next);
+            Ok::<_, MarketplaceLedgerError>(totals)
+        })?;
 
     let indexed = seller_entries
         .iter()
@@ -229,10 +258,20 @@ async fn post_in_transaction(
                 from_bucket.as_str()
             )));
         }
-        if line.amount > reference.amount {
+        let already_transferred = prior_reference_amounts
+            .get(&reference.id)
+            .copied()
+            .unwrap_or(0);
+        let cumulative = already_transferred.checked_add(line.amount).ok_or_else(|| {
+            MarketplaceLedgerError::Validation(format!(
+                "reference entry {} cumulative transfer amount overflow",
+                reference.id
+            ))
+        })?;
+        if cumulative > reference.amount {
             return Err(MarketplaceLedgerError::Validation(format!(
-                "transfer line amount {} exceeds reference entry {} amount {}",
-                line.amount, reference.id, reference.amount
+                "reference entry {} cumulative transfer amount {} exceeds credit amount {}",
+                reference.id, cumulative, reference.amount
             )));
         }
         if input.transferred_at < reference.created_at {
