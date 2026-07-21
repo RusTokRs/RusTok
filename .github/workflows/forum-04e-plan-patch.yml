@@ -1,0 +1,54 @@
+name: Apply FORUM-04E plan patch
+
+on:
+  push:
+    branches:
+      - agent/forum-04e-category-policy-archive
+
+permissions:
+  contents: write
+
+jobs:
+  patch-plan:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/forum-04e-category-policy-archive
+          fetch-depth: 1
+      - name: Patch canonical forum plan
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-forum/docs/implementation-plan.md")
+          text = path.read_text()
+
+          replacements = {
+              "| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B adds atomic move/reorder; FORUM-04C enforces write depth and owner-only placement. Topic policy and subtree archive/restore remain. |": "| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B/C add atomic placement and write guards; FORUM-04D routes admin placement through owner commands; FORUM-04E adds tenant-scoped topic policy. Subtree archive/restore and interactive drag-and-drop remain. |",
+              "### Remaining scope\n\n- define container/category topic-creation policy;\n- make archive/restore behavior explicit for subtrees;\n- provide admin drag-and-drop integration through owner commands, never direct\n  row writes.": "### Delivered in `FORUM-04D` and `FORUM-04E`\n\n- forum-admin GraphQL/REST adapters route category placement through owner\n  commands, and the admin boundary verifier rejects generic `position` bypasses;\n- tenant-scoped category topic policy defaults to `allows_topics = true` for\n  existing categories without a stored policy row;\n- REST, GraphQL, OpenAPI and the canonical tree expose the policy;\n- PostgreSQL and SQLite serialize policy changes with topic writes and reject\n  topic inserts or category reassignment when topic creation is disabled;\n- disabling policy preserves existing topics and controls only new placement;\n- shared PostgreSQL/SQLite scenarios cover default allow, disable, blocked\n  writes, tenant isolation and re-enable.\n\n### Remaining scope\n\n- make archive/restore behavior explicit for subtrees;\n- wire interactive admin drag-and-drop UI to the existing owner-command\n  transport facade, never direct row writes.",
+              "- PostgreSQL and SQLite tests cover move, reorder, max depth, archive/restore\n  and two tenants with colliding identity fixtures;": "- PostgreSQL and SQLite tests cover move, reorder, max depth, topic policy,\n  archive/restore and two tenants with colliding identity fixtures;",
+              "cargo test -p rustok-forum --test category_commands_postgres -- --nocapture --test-threads=1\ncargo test -p rustok-forum --test runtime_regression_baseline": "cargo test -p rustok-forum --test category_commands_postgres -- --nocapture --test-threads=1\ncargo test -p rustok-forum --test category_policy_sqlite -- --nocapture\ncargo test -p rustok-forum --test category_policy_postgres -- --nocapture --test-threads=1\ncargo test -p rustok-forum --test runtime_regression_baseline",
+              "The next implementation task is the remaining `FORUM-04` policy slice: category\ntopic-creation policy, subtree archive/restore owner workflows and admin\ndrag-and-drop consumption of the existing placement commands.": "The next implementation task is the remaining `FORUM-04` lifecycle slice:\nsubtree archive/restore owner workflows and interactive admin drag-and-drop\nconsumption of the existing placement transport facade.",
+          }
+
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"missing expected plan anchor: {old[:120]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit plan synchronization
+        shell: bash
+        run: |
+          if git diff --quiet -- crates/rustok-forum/docs/implementation-plan.md; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-forum/docs/implementation-plan.md
+          git commit -m "docs(forum): synchronize FORUM-04E progress [plan-patched]"
+          git push origin HEAD:agent/forum-04e-category-policy-archive
