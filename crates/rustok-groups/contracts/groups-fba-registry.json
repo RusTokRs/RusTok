@@ -50,7 +50,15 @@
   "privacy": {
     "default_on_provider_unavailable": "deny_private_content",
     "public_summary_degraded_mode": "minimal_safe_summary_or_unavailable",
-    "secret_group_discovery": "never_disclose"
+    "closed_group_discovery": "summary_shell",
+    "closed_group_private_content": "active_membership_or_platform_manage",
+    "closed_group_redaction": ["translation_body", "feature_bindings"],
+    "secret_group_discovery": "never_disclose",
+    "secret_group_direct_read": "not_found_without_membership_or_platform_manage",
+    "action_split": {
+      "view_summary": "discoverable_shell",
+      "view": "private_content"
+    }
   },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
