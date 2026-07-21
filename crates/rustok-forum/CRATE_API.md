@@ -102,6 +102,13 @@ Publishes forum domain events through the outbox pipeline:
 
 All new forum events are defined in `rustok-core::events::DomainEvent`.
 
+## Owner Service Boundary
+- Public topic and reply workflows use the root `TopicService` and `ReplyService` facade exports.
+- Raw `services::topic`, `services::reply`, `topic_owner` and `reply_owner` implementations are crate-private.
+- Public facades expose explicit create/read/update/list methods and never implement `Deref` to an implementation service.
+- Topic/reply deletion must use facade `delete` methods so tombstones, counters and semantic events remain atomic.
+- Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
+
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
@@ -116,6 +123,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Writes `parent_id` or sibling positions directly instead of using category owner commands.
 - Writes lifecycle rows parent-first or restores a child beneath an archived ancestor.
 - Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
+- Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
@@ -132,6 +140,7 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
+- Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
