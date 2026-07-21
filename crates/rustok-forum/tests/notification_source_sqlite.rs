@@ -137,7 +137,8 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         .expect("open public topic should be notifiable");
     assert_eq!(descriptor.notification_type.as_str(), "forum.topic.created");
     assert_eq!(descriptor.target.id, topic.id);
-    assert_eq!(descriptor.template_data.get("topic_id"), Some(topic.id.to_string().as_str()));
+    let topic_id = topic.id.to_string();
+    assert_eq!(descriptor.template_data.get("topic_id"), Some(topic_id.as_str()));
 
     let first_page = provider
         .resolve_audience(ResolveNotificationAudienceRequest {
