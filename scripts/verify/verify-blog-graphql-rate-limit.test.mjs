@@ -38,10 +38,20 @@ function fixture({
     root,
     "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
     `
-      retry_after(&response) Some("9") Some("30")
-      backend_unavailable_returns_fail_closed_graphql_error_without_retry_after
-      selected_operation_keeps_document_wide_fail_closed_accounting
-      ${backendFailureAdvertisesRetry ? 'assert_eq!(retry_after(&response), Some("60"));' : ""}
+      fn retry_after(_: &Response) -> Option<&str> { None }
+      Some("9")
+      Some("30")
+
+      async fn backend_unavailable_returns_fail_closed_graphql_error_without_retry_after() {
+        ${
+          backendFailureAdvertisesRetry
+            ? 'assert_eq!(retry_after(&response), Some("60"));'
+            : "assert_eq!(retry_after(&response), None);"
+        }
+      }
+
+      #[tokio::test]
+      async fn selected_operation_keeps_document_wide_fail_closed_accounting() {}
     `,
   );
   write(
@@ -138,30 +148,16 @@ test("Blog GraphQL rate-limit verifier rejects a controller that drops headers",
   }
 });
 
-test("Blog GraphQL rate-limit fixture keeps backend failures headerless", () => {
+test("Blog GraphQL rate-limit verifier rejects Retry-After on backend failure", () => {
   const root = fixture({ backendFailureAdvertisesRetry: true });
   try {
-    const source = readFile(path.join(
-      root,
-      "crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs",
-    ));
-    assert.match(source, /backend_unavailable_returns_fail_closed/);
-    assert.match(source, /Some\("60"\)/);
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /missing assert_eq!\(retry_after\(&response\), None\)|forbidden Some\(\"/,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
-
-function readFile(target) {
-  return new TextDecoder().decode(
-    // Avoid introducing another fs import solely for the negative documentation fixture.
-    requireBytes(target),
-  );
-}
-
-function requireBytes(target) {
-  return new Uint8Array(
-    // eslint-disable-next-line no-sync
-    process.getBuiltinModule("node:fs").readFileSync(target),
-  );
-}
