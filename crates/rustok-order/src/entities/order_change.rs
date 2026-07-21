@@ -12,7 +12,6 @@ pub struct Model {
     pub change_type: String,
     pub status: String,
     pub description: Option<String>,
-    pub source_locale: Option<String>,
     pub preview: Json,
     pub metadata: Json,
     pub created_at: DateTimeWithTimeZone,
