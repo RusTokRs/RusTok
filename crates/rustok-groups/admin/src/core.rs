@@ -1,4 +1,9 @@
-use crate::model::GroupsAdminFilters;
+use uuid::Uuid;
+
+use crate::model::{
+    ChangeGroupRoleCommand, GroupsAdminAssignableRole, GroupsAdminFilters,
+    TransferGroupOwnershipCommand,
+};
 
 pub const DEFAULT_GROUPS_PAGE: u64 = 1;
 pub const DEFAULT_GROUPS_PER_PAGE: u64 = 24;
@@ -59,6 +64,49 @@ pub fn groups_admin_error(prefix: &str, details: &str) -> String {
     } else {
         format!("{prefix}: {details}")
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GroupsAdminGovernanceInputError {
+    InvalidGroupId,
+    InvalidTargetUserId,
+    InvalidNewOwnerUserId,
+}
+
+pub fn prepare_change_group_role(
+    group_id: &str,
+    target_user_id: &str,
+    role: GroupsAdminAssignableRole,
+) -> Result<ChangeGroupRoleCommand, GroupsAdminGovernanceInputError> {
+    let group_id = normalize_uuid(group_id)
+        .map_err(|_| GroupsAdminGovernanceInputError::InvalidGroupId)?;
+    let target_user_id = normalize_uuid(target_user_id)
+        .map_err(|_| GroupsAdminGovernanceInputError::InvalidTargetUserId)?;
+    Ok(ChangeGroupRoleCommand {
+        idempotency_key: format!("groups-admin-change-role-{}", Uuid::new_v4()),
+        group_id,
+        target_user_id,
+        role,
+    })
+}
+
+pub fn prepare_transfer_group_ownership(
+    group_id: &str,
+    new_owner_user_id: &str,
+) -> Result<TransferGroupOwnershipCommand, GroupsAdminGovernanceInputError> {
+    let group_id = normalize_uuid(group_id)
+        .map_err(|_| GroupsAdminGovernanceInputError::InvalidGroupId)?;
+    let new_owner_user_id = normalize_uuid(new_owner_user_id)
+        .map_err(|_| GroupsAdminGovernanceInputError::InvalidNewOwnerUserId)?;
+    Ok(TransferGroupOwnershipCommand {
+        idempotency_key: format!("groups-admin-transfer-owner-{}", Uuid::new_v4()),
+        group_id,
+        new_owner_user_id,
+    })
+}
+
+fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {
+    Uuid::parse_str(value.trim()).map(|value| value.to_string())
 }
 
 #[cfg(test)]
