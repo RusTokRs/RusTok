@@ -13,7 +13,11 @@ use rustok_payment::{
     PROVIDER_EVENT_PROCESSED, PaymentProviderEventApplyError, PaymentProviderEventContext,
     PaymentProviderProcessedEventObserver, PaymentProviderWebhookResult, PaymentService,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
+    sea_query::{Expr, SimpleExpr},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use thiserror::Error;
@@ -169,10 +173,8 @@ impl MarketplaceProviderReversalEventAdapter {
                 provider_event::Column::EventType
                     .is_in([REFUND_COMPLETED_EVENT, CHARGEBACK_COMPLETED_EVENT]),
             )
-            .filter(sea_orm::sea_query::Expr::cust(
-                "CAST(event_metadata AS TEXT) LIKE '%marketplace_reversal%'",
-            ))
-            .filter(sea_orm::sea_query::Expr::cust(
+            .filter(marketplace_extension_filter(self.db.get_database_backend()))
+            .filter(Expr::cust(
                 "NOT EXISTS (SELECT 1 FROM marketplace_reversal_event_inbox mre WHERE mre.tenant_id = payment_provider_events.tenant_id AND mre.provider_event_id = payment_provider_events.id)",
             ))
             .order_by_asc(provider_event::Column::ProcessedAt)
@@ -370,15 +372,13 @@ struct NormalizedMarketplaceReversalFacts {
 }
 
 fn has_marketplace_reversal(metadata: &Value) -> bool {
-    metadata
-        .as_object()
-        .is_some_and(|object| {
-            object.contains_key("marketplace_reversal")
-                || object
-                    .get("metadata")
-                    .and_then(Value::as_object)
-                    .is_some_and(|domain| domain.contains_key("marketplace_reversal"))
-        })
+    metadata.as_object().is_some_and(|object| {
+        object.contains_key("marketplace_reversal")
+            || object
+                .get("metadata")
+                .and_then(Value::as_object)
+                .is_some_and(|domain| domain.contains_key("marketplace_reversal"))
+    })
 }
 
 fn parse_reversal_facts(
@@ -445,6 +445,20 @@ fn is_supported_event(event_type: &str) -> bool {
         event_type,
         REFUND_COMPLETED_EVENT | CHARGEBACK_COMPLETED_EVENT
     )
+}
+
+fn marketplace_extension_filter(backend: DatabaseBackend) -> SimpleExpr {
+    match backend {
+        DatabaseBackend::Postgres => {
+            Expr::cust("event_metadata::text LIKE '%marketplace_reversal%'")
+        }
+        DatabaseBackend::Sqlite => {
+            Expr::cust("CAST(event_metadata AS TEXT) LIKE '%marketplace_reversal%'")
+        }
+        DatabaseBackend::MySql => {
+            Expr::cust("CAST(event_metadata AS CHAR) LIKE '%marketplace_reversal%'")
+        }
+    }
 }
 
 fn reversal_line_total(
