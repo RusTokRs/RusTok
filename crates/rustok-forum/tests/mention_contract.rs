@@ -207,7 +207,7 @@ async fn profile_resolution_is_tenant_scoped_and_fail_closed() {
     )
     .await
     .expect("public active profile should resolve");
-    assert_eq!(resolved.users()[0].user_id, public.user_id);
+    assert_eq!(resolved.users()[0].user_id(), public.user_id);
 
     let error = resolve_forum_mentions(
         &reader,
@@ -297,14 +297,17 @@ async fn revision_diff_emits_only_new_targets_and_replay_is_immutable() {
 
     let diff = diff_forum_mentions(Some(&previous), &current).expect("valid diff");
     assert_eq!(diff.added_users().len(), 1);
-    assert_eq!(diff.added_users()[0].user_id, bob.user_id);
+    assert_eq!(diff.added_users()[0].user_id(), bob.user_id);
     assert_eq!(diff.unchanged_users().len(), 1);
-    assert_eq!(diff.unchanged_users()[0].user_id, alice.user_id);
+    assert_eq!(diff.unchanged_users()[0].user_id(), alice.user_id);
     assert_eq!(diff.removed_audiences(), &[ForumMentionAudience::Moderators]);
     let candidates = diff.event_candidates();
     assert_eq!(candidates.len(), 1);
-    assert_eq!(&candidates[0].source, current.source());
-    assert_eq!(candidates[0].target, ForumMentionEventTarget::User(bob.user_id));
+    assert_eq!(candidates[0].source(), current.source());
+    assert_eq!(
+        candidates[0].target(),
+        &ForumMentionEventTarget::User(bob.user_id)
+    );
 
     let identical_replay = diff_forum_mentions(Some(&current), &current)
         .expect("identical revision replay must be idempotent");
@@ -340,17 +343,16 @@ fn quote_references_are_revision_bound_deduplicated_and_non_recursive() {
         ForumContentTarget::reply(Uuid::new_v4()),
         20,
     );
-    let quoted = ForumQuoteReference {
-        target: ForumContentTarget::reply(Uuid::new_v4()),
-        revision_id: 4,
-    };
+    let quoted = ForumQuoteReference::new(
+        ForumContentTarget::reply(Uuid::new_v4()),
+        4,
+    )
+    .expect("valid quote reference");
     let result = validate_forum_quote_references(&source, [quoted.clone(), quoted.clone()])
         .expect("duplicate quote input should normalize");
     assert_eq!(result, vec![quoted]);
 
-    let self_reference = ForumQuoteReference {
-        target: source.target,
-        revision_id: source.revision_id,
-    };
+    let self_reference = ForumQuoteReference::new(source.target(), source.revision_id())
+        .expect("valid self target shape");
     assert!(validate_forum_quote_references(&source, [self_reference]).is_err());
 }
