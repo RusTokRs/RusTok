@@ -6,18 +6,19 @@ use uuid::Uuid;
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    bounded_forum_read_limit, CategoryListItem, CategoryResponse, CategoryTreeQuery,
-    CategoryTreeResponse, MoveCategoryInput, MoveCategoryResponse,
+    bounded_forum_read_limit, CategoryListItem, CategoryResponse, CategoryTopicPolicyResponse,
+    CategoryTreeQuery, CategoryTreeResponse, MoveCategoryInput, MoveCategoryResponse,
     ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse, UpdateCategoryInput,
-    MAX_FORUM_READ_LIMIT,
+    UpdateCategoryTopicPolicyInput, MAX_FORUM_READ_LIMIT,
 };
 use crate::error::{ForumError, ForumResult};
 
-use super::{category, category_command, category_tree};
+use super::{category, category_command, category_policy, category_tree};
 
 pub struct CategoryService {
     inner: category::CategoryService,
     commands: category_command::CategoryCommandService,
+    policy: category_policy::CategoryTopicPolicyService,
     tree: category_tree::CategoryTreeService,
 }
 
@@ -26,6 +27,7 @@ impl CategoryService {
         Self {
             inner: category::CategoryService::new(db.clone()),
             commands: category_command::CategoryCommandService::new(db.clone()),
+            policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
             tree: category_tree::CategoryTreeService::new(db),
         }
     }
@@ -37,6 +39,27 @@ impl CategoryService {
         query: CategoryTreeQuery,
     ) -> ForumResult<CategoryTreeResponse> {
         self.tree.read(tenant_id, security, query).await
+    }
+
+    pub async fn topic_policy(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<CategoryTopicPolicyResponse> {
+        self.policy.get(tenant_id, category_id, security).await
+    }
+
+    pub async fn set_topic_policy(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: SecurityContext,
+        input: UpdateCategoryTopicPolicyInput,
+    ) -> ForumResult<CategoryTopicPolicyResponse> {
+        self.policy
+            .set(tenant_id, category_id, security, input)
+            .await
     }
 
     pub async fn move_category(

@@ -15,6 +15,7 @@ use crate::dto::{
 };
 use crate::entities::{forum_category, forum_category_translation};
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 
@@ -87,6 +88,9 @@ impl CategoryTreeService {
         let subscriptions = SubscriptionService::new(self.db.clone())
             .category_subscription_flags(tenant_id, &category_ids, security.user_id)
             .await?;
+        let topic_policy_flags = CategoryTopicPolicyService::new(self.db.clone())
+            .flags_for_categories(tenant_id, &category_ids)
+            .await?;
 
         let total_nodes = categories.len() as u32;
         let mut nodes = HashMap::<Uuid, CategoryTreeNode>::with_capacity(categories.len());
@@ -124,6 +128,10 @@ impl CategoryTreeService {
                 icon: category.icon,
                 color: category.color,
                 moderated: category.moderated,
+                allows_topics: topic_policy_flags
+                    .get(&category.id)
+                    .copied()
+                    .unwrap_or(true),
                 topic_count: category.topic_count,
                 reply_count: category.reply_count,
                 is_subscribed: subscriptions.get(&category.id).copied().unwrap_or(false),

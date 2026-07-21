@@ -4,7 +4,7 @@ use uuid::Uuid;
 #[derive(Debug, Error)]
 pub enum ForumError {
     #[error("Database error: {0}")]
-    Database(#[from] sea_orm::DbErr),
+    Database(sea_orm::DbErr),
 
     #[error("Content error: {0}")]
     Content(#[from] rustok_content::ContentError),
@@ -60,10 +60,22 @@ impl ForumError {
     }
 }
 
+impl From<sea_orm::DbErr> for ForumError {
+    fn from(error: sea_orm::DbErr) -> Self {
+        let message = error.to_string();
+        if message.contains("forum category does not allow topic creation") {
+            return Self::Validation(
+                "Forum category does not allow topic creation".to_string(),
+            );
+        }
+        Self::Database(error)
+    }
+}
+
 impl From<rustok_taxonomy::TaxonomyError> for ForumError {
     fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
         match value {
-            rustok_taxonomy::TaxonomyError::Database(err) => Self::Database(err),
+            rustok_taxonomy::TaxonomyError::Database(err) => Self::from(err),
             rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
             rustok_taxonomy::TaxonomyError::Validation(message)
             | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)

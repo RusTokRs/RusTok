@@ -194,7 +194,7 @@ at the end of this file remain authoritative.
 | `FORUM-01` | `done` | Tenant-composite forum relation integrity and platform locale width. |
 | `FORUM-02` | `done` | Typed topic/reply lifecycle, tombstone and revision fields. |
 | `FORUM-03` | `done` | Atomic category owner writes and translation persistence. |
-| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B adds atomic move/reorder; FORUM-04C enforces write depth and owner-only placement. Topic policy and subtree archive/restore remain. |
+| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B/C add atomic placement and write guards; FORUM-04D routes admin placement through owner commands; FORUM-04E adds tenant-scoped topic policy. Subtree archive/restore and interactive drag-and-drop remain. |
 | `FORUM-05` | `done` | Publication-aware serialized counters with database safety guards. |
 | `FORUM-06` | `done` | Locked-topic and pending/publication semantics are explicit owner workflows. |
 | `FORUM-07` | `done` | Monotonic per-topic reply positions and uniqueness constraints. |
@@ -376,18 +376,30 @@ consume are stable.
   normalization, cycle/foreign-parent rejection, write-depth rejection and
   tenant isolation.
 
+### Delivered in `FORUM-04D` and `FORUM-04E`
+
+- forum-admin GraphQL/REST adapters route category placement through owner
+  commands, and the admin boundary verifier rejects generic `position` bypasses;
+- tenant-scoped category topic policy defaults to `allows_topics = true` for
+  existing categories without a stored policy row;
+- REST, GraphQL, OpenAPI and the canonical tree expose the policy;
+- PostgreSQL and SQLite serialize policy changes with topic writes and reject
+  topic inserts or category reassignment when topic creation is disabled;
+- disabling policy preserves existing topics and controls only new placement;
+- shared PostgreSQL/SQLite scenarios cover default allow, disable, blocked
+  writes, tenant isolation and re-enable.
+
 ### Remaining scope
 
-- define container/category topic-creation policy;
 - make archive/restore behavior explicit for subtrees;
-- provide admin drag-and-drop integration through owner commands, never direct
-  row writes.
+- wire interactive admin drag-and-drop UI to the existing owner-command
+  transport facade, never direct row writes.
 
 ### Definition of done
 
 - concurrent moves cannot create cycles or duplicate sibling order;
-- PostgreSQL and SQLite tests cover move, reorder, max depth, archive/restore
-  and two tenants with colliding identity fixtures;
+- PostgreSQL and SQLite tests cover move, reorder, max depth, topic policy,
+  archive/restore and two tenants with colliding identity fixtures;
 - category deletion still fails closed for non-empty trees.
 
 ### Verification
@@ -396,6 +408,8 @@ consume are stable.
 cargo test -p rustok-forum category_tree
 cargo test -p rustok-forum --test category_commands_sqlite -- --nocapture
 cargo test -p rustok-forum --test category_commands_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test category_policy_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_policy_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test runtime_regression_baseline
 cargo xtask module validate forum
 npm run verify:forum:admin-boundary
@@ -1258,8 +1272,8 @@ possible.
 
 # Immediate next action
 
-The next implementation task is the remaining `FORUM-04` policy slice: category
-topic-creation policy, subtree archive/restore owner workflows and admin
-drag-and-drop consumption of the existing placement commands.
+The next implementation task is the remaining `FORUM-04` lifecycle slice:
+subtree archive/restore owner workflows and interactive admin drag-and-drop
+consumption of the existing placement transport facade.
 In parallel, architecture work may start `NOTIFY-00`, provided it does not
 change forum commands into synchronous notification calls.
