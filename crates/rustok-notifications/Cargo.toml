@@ -7,6 +7,17 @@ description = "Notification inbox, preference, fan-out, and delivery orchestrati
 
 [dependencies]
 async-trait.workspace = true
+chrono.workspace = true
 rustok-core.workspace = true
 rustok-notifications-api.workspace = true
+sea-orm.workspace = true
 sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+rustok-migrations.workspace = true
+rustok-test-utils.workspace = true
+tokio.workspace = true
