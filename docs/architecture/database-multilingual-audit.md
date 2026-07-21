@@ -83,6 +83,12 @@ are checked by `scripts/verify/verify-db-multilingual-contract.mjs`.
 - **Commerce collections/categories and transaction line copy** — collection and
   category locale columns finish at `VARCHAR(32)`; cart/order line titles live in
   parallel translation rows and are removed from base lines.
+- **Order change source storage** — `order_changes.source_locale VARCHAR(32)` is
+  forward-only, normalized by backend-specific constraints/triggers, and defaults
+  to storage-only `und`. Existing immutable descriptions and writes that still
+  lack request context therefore have explicit unknown provenance instead of an
+  unlabelled string or fabricated tenant/default language. The migration has a
+  fixture-backed backfill contract.
 - **Customer locale policy** — clean and upgraded schemas use `VARCHAR(32)`;
   PostgreSQL and SQLite validation enforce the same limit, and MySQL widening is
   declared.
@@ -118,10 +124,12 @@ runtime cutover target:
   session titles remain inline. Profile slugs can remain identity; profile copy
   needs translations, while session titles need source-locale attribution or
   locale-aware rows. Provider errors remain technical facts, not translations.
-- `order-change-prose-locale`: `order_changes.description` is immutable human
-  prose without source-locale attribution. The Order owner must store normalized
-  command locale or move prose into locale-attributed change bodies while
-  preserving replay identity and historical snapshots.
+- `order-change-prose-locale`: the storage layer now records explicit `und`
+  provenance when no locale is supplied, so prose is no longer unlabelled. The
+  remaining gap is propagation: REST, GraphQL, native and post-order orchestration
+  must pass the normalized effective request locale into Order writes instead of
+  relying on the compatibility default, and read contracts must expose attribution
+  where operators need it.
 
 ## Interpretation rules
 
