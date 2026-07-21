@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::Utc;
 use rustok_api::{Action, Resource};
@@ -34,8 +34,8 @@ use crate::services::PageBuilderArtifactService;
 
 use super::document::document_revision_conflict;
 use super::helpers::{
-    apply_transition, collect_builder_project_values, collect_builder_sources,
-    enforce_expected_version, is_builder_enabled, is_builder_publish_enabled, normalize_locale,
+    apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
+    is_builder_publish_enabled, normalize_locale,
 };
 use super::{PAGE_KIND, PageService, PageTransition};
 
@@ -46,6 +46,7 @@ const MAX_BODY_HTML_BYTES: usize = 1536 * 1024;
 const MAX_CSS_BYTES: usize = 512 * 1024;
 
 type BodyRevisionSnapshot = Vec<(String, String)>;
+type BuilderSourceSet = BTreeMap<String, String>;
 
 struct ReviewedCompiledLanding {
     compiled: CompiledLandingArtifact,
@@ -53,12 +54,12 @@ struct ReviewedCompiledLanding {
 }
 
 impl PageService {
-    /// Publishes the exact reviewed page/runtime snapshot as one idempotent transaction.
+    /// Publishes the exact reviewed Page Builder/runtime snapshot as one idempotent transaction.
     ///
-    /// The transaction owns the page/body locks, sanitization evidence, runtime materialization,
-    /// immutable artifact staging, binding switch, page state, transactional outbox events and the
-    /// durable operation receipt. A successful replay returns the stored receipt without rebuilding
-    /// artifacts or emitting duplicate events.
+    /// The transaction owns page/body locks, feature and promoted-scenario gates, sanitization,
+    /// runtime materialization, immutable artifact staging, binding switch, page state,
+    /// transactional outbox events and the durable operation receipt. An exact replay returns the
+    /// stored receipt without rebuilding artifacts or emitting duplicate events.
     pub async fn publish_reviewed(
         &self,
         tenant_id: Uuid,
@@ -89,13 +90,8 @@ impl PageService {
             existing_page.author_id,
         )?;
 
-        if let Some(operation) = find_publish_operation_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            &idempotency_key,
-        )
-        .await?
+        if let Some(operation) =
+            find_publish_operation_in_tx(&txn, tenant_id, page_id, &idempotency_key).await?
         {
             ensure_same_publish_request(
                 &operation,
@@ -120,20 +116,24 @@ impl PageService {
             ));
         }
 
-        let project_values = collect_builder_project_values(&current_bodies, None, true)?;
-        if !project_values.is_empty() {
-            ensure_builder_publish_enabled_in_tx(&txn, tenant_id).await?;
-            ensure_candidates_allowed_in_tx(
-                &txn,
-                tenant_id,
-                page_id,
-                &reviewed,
-                project_values,
-            )
-            .await?;
-        }
+        let builder_sources = require_builder_sources(collect_builder_sources(
+            &current_bodies,
+            None,
+            true,
+        ))?;
+        let project_values = parse_builder_project_values(&builder_sources)?;
+        ensure_builder_publish_enabled_in_tx(&txn, tenant_id).await?;
+        ensure_candidates_allowed_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            &reviewed,
+            project_values,
+        )
+        .await?;
 
-        let compiled = compile_builder_sources_with_reviewed_runtime(&current_bodies, &reviewed)?;
+        let compiled =
+            compile_builder_sources_with_reviewed_runtime(builder_sources, &reviewed)?;
         let sanitized_set_hash = sanitized_set_hash(&compiled)?;
         let artifact_set_hash = artifact_set_hash(&compiled)?;
         for item in &compiled {
@@ -203,8 +203,32 @@ impl PageService {
     }
 }
 
+fn require_builder_sources(sources: BuilderSourceSet) -> PagesResult<BuilderSourceSet> {
+    if sources.is_empty() {
+        return Err(PagesError::validation(
+            "atomic reviewed publish requires at least one Page Builder body",
+        ));
+    }
+    Ok(sources)
+}
+
+fn parse_builder_project_values(
+    sources: &BuilderSourceSet,
+) -> PagesResult<Vec<serde_json::Value>> {
+    sources
+        .iter()
+        .map(|(locale, content)| {
+            serde_json::from_str(content).map_err(|error| {
+                PagesError::validation(format!(
+                    "Page Builder project for locale `{locale}` is not valid JSON: {error}"
+                ))
+            })
+        })
+        .collect()
+}
+
 fn compile_builder_sources_with_reviewed_runtime(
-    bodies: &[page_body::Model],
+    sources: BuilderSourceSet,
     reviewed: &PageBuilderReviewedPublishRuntime,
 ) -> PagesResult<Vec<ReviewedCompiledLanding>> {
     reviewed.validate().map_err(review_contract_error)?;
@@ -213,7 +237,7 @@ fn compile_builder_sources_with_reviewed_runtime(
         .runtime_context_hash()
         .map_err(review_contract_error)?;
 
-    collect_builder_sources(bodies, None, true)
+    sources
         .into_iter()
         .map(|(locale, content)| {
             let project_data = serde_json::from_str(&content).map_err(|error| {
@@ -287,10 +311,10 @@ async fn ensure_builder_publish_enabled_in_tx(
         .filter(tenant_module::Column::ModuleSlug.eq("pages"))
         .one(txn)
         .await?;
-    let settings = module.as_ref().map(|module| &module.settings);
-    if !settings.is_none_or(|settings| {
-        is_builder_enabled(settings) && is_builder_publish_enabled(settings)
-    }) {
+    let enabled = module.as_ref().is_none_or(|module| {
+        is_builder_enabled(&module.settings) && is_builder_publish_enabled(&module.settings)
+    });
+    if !enabled {
         return Err(PagesError::feature_disabled("builder.publish.enabled"));
     }
     Ok(())
@@ -311,8 +335,8 @@ async fn ensure_candidates_allowed_in_tx(
     else {
         return Ok(());
     };
-    let baseline: RuntimeScenarioReleaseBaseline = serde_json::from_value(model.baseline)
-        .map_err(|error| {
+    let baseline: RuntimeScenarioReleaseBaseline =
+        serde_json::from_value(model.baseline.clone()).map_err(|error| {
             PagesError::validation(format!(
                 "Stored Page Builder scenario baseline is invalid: {error}"
             ))
@@ -336,7 +360,7 @@ async fn ensure_candidates_allowed_in_tx(
             reviewed.scenario_id
         )));
     };
-    if selected.context != reviewed.context {
+    if &selected.context != &reviewed.context {
         return Err(PagesError::publish_runtime_review_invalid(format!(
             "reviewed scenario `{}` context does not match the promoted runtime baseline",
             reviewed.scenario_id
@@ -435,7 +459,7 @@ async fn insert_publish_operation_in_tx(
         sanitized_set_hash: Set(sanitized_set_hash),
         artifact_set_hash: Set(artifact_set_hash),
         result_version: Set(result_version),
-        published_at: Set(timestamp),
+        published_at: Set(timestamp.clone()),
         created_at: Set(timestamp),
     }
     .insert(txn)
@@ -660,7 +684,14 @@ mod tests {
         .expect("reviewed runtime");
         reviewed.context = json!({ "page": { "title": "Changed" } });
 
-        assert!(compile_builder_sources_with_reviewed_runtime(&[], &reviewed).is_err());
+        assert!(
+            compile_builder_sources_with_reviewed_runtime(BTreeMap::new(), &reviewed).is_err()
+        );
+    }
+
+    #[test]
+    fn reviewed_publish_requires_builder_sources() {
+        assert!(require_builder_sources(BTreeMap::new()).is_err());
     }
 
     #[test]
