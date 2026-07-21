@@ -1,5 +1,9 @@
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, normalize_locale_tag};
-use rustok_cart::{CartResponse, PreparedCartCheckoutSnapshot};
+use rustok_cart::{
+    CartMarketplaceLineSnapshot, CartResponse, ListMarketplaceCartLineSnapshotsRequest,
+    MarketplaceCartSnapshotReadPort, PreparedCartCheckoutSnapshot,
+    in_process_marketplace_cart_snapshot_read_port,
+};
 use rustok_commerce_foundation::entities::product::ProductStatus;
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
@@ -8,7 +12,7 @@ use rustok_product::{
 };
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{collections::{BTreeSet, HashMap}, sync::Arc, time::Duration};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -24,14 +28,15 @@ use crate::storefront_shipping::{
 };
 
 use super::{
-    CheckoutError, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem, CheckoutOrderPlanPayload,
-    CheckoutResult, StoreContextService,
+    CheckoutError, CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem,
+    CheckoutMarketplaceLineSnapshot, CheckoutOrderPlanPayload, CheckoutResult, StoreContextService,
 };
 
 pub struct CheckoutPlanBuilder {
     db: DatabaseConnection,
     inventory_availability_port: Arc<dyn InventoryReservationPort>,
     product_catalog_read_port: Arc<dyn ProductCatalogReadPort>,
+    marketplace_snapshot_read_port: Arc<dyn MarketplaceCartSnapshotReadPort>,
     fulfillment_service: FulfillmentService,
     context_service: StoreContextService,
 }
@@ -47,9 +52,20 @@ impl CheckoutPlanBuilder {
             db: db.clone(),
             inventory_availability_port,
             product_catalog_read_port,
+            marketplace_snapshot_read_port: in_process_marketplace_cart_snapshot_read_port(
+                db.clone(),
+            ),
             fulfillment_service: FulfillmentService::new(db.clone()),
             context_service: StoreContextService::new(db, region_read_port),
         }
+    }
+
+    pub fn with_marketplace_snapshot_read_port(
+        mut self,
+        marketplace_snapshot_read_port: Arc<dyn MarketplaceCartSnapshotReadPort>,
+    ) -> Self {
+        self.marketplace_snapshot_read_port = marketplace_snapshot_read_port;
+        self
     }
 
     pub async fn build(
@@ -75,6 +91,26 @@ impl CheckoutPlanBuilder {
         if cart.line_items.is_empty() {
             return Err(CheckoutError::EmptyCart(cart.id));
         }
+
+        let marketplace_snapshots = self
+            .marketplace_snapshot_read_port
+            .list_marketplace_line_snapshots(
+                port_context(
+                    tenant_id,
+                    actor_id,
+                    cart,
+                    normalize_public_channel_slug(cart.channel_slug.as_deref()).as_deref(),
+                    "marketplace-snapshot",
+                ),
+                ListMarketplaceCartLineSnapshotsRequest { cart_id: cart.id },
+            )
+            .await
+            .map_err(|error| boundary_error("read_marketplace_cart_snapshots", error))?;
+        let marketplace_lines = build_marketplace_plan_lines(cart, marketplace_snapshots)?;
+        let marketplace_sellers = marketplace_lines
+            .iter()
+            .map(|line| (line.order_line_index, line.snapshot.seller_id.to_string()))
+            .collect::<HashMap<_, _>>();
 
         self.validate_cart_inventory(tenant_id, actor_id, cart)
             .await?;
@@ -135,17 +171,21 @@ impl CheckoutPlanBuilder {
                 line_items: cart
                     .line_items
                     .iter()
-                    .map(|item| CreateOrderLineItemInput {
+                    .enumerate()
+                    .map(|(index, item)| CreateOrderLineItemInput {
                         product_id: item.product_id,
                         variant_id: item.variant_id,
                         shipping_profile_slug: item.shipping_profile_slug.clone(),
-                        seller_id: item.seller_id.clone(),
+                        seller_id: marketplace_sellers
+                            .get(&index)
+                            .cloned()
+                            .or_else(|| item.seller_id.clone()),
                         sku: item.sku.clone(),
                         title: item.title.clone(),
                         quantity: item.quantity,
                         unit_price: item.unit_price,
                         metadata: merge_metadata(
-                            item.metadata.clone(),
+                            strip_marketplace_identity(item.metadata.clone()),
                             json!({
                                 "checkout": {
                                     "cart_line_item_id": item.id,
@@ -163,6 +203,7 @@ impl CheckoutPlanBuilder {
             context,
             create_fulfillment: input.create_fulfillment,
             fulfillment_plans,
+            marketplace_lines,
             checkout_metadata,
         })
     }
@@ -326,6 +367,65 @@ impl CheckoutPlanBuilder {
     pub fn db(&self) -> &DatabaseConnection {
         &self.db
     }
+}
+
+fn build_marketplace_plan_lines(
+    cart: &CartResponse,
+    snapshots: Vec<CartMarketplaceLineSnapshot>,
+) -> CheckoutResult<Vec<CheckoutMarketplaceLineSnapshot>> {
+    let mut snapshots = snapshots
+        .into_iter()
+        .map(|snapshot| (snapshot.cart_line_item_id, snapshot))
+        .collect::<HashMap<_, _>>();
+    let mut result = Vec::new();
+
+    for (order_line_index, line) in cart.line_items.iter().enumerate() {
+        let snapshot = snapshots.remove(&line.id);
+        let has_legacy_marketplace_identity = line.seller_id.is_some()
+            || line.metadata.get("marketplace").is_some()
+            || line.metadata.get("seller_id").is_some()
+            || line.metadata.get("seller").is_some();
+        let Some(snapshot) = snapshot else {
+            if has_legacy_marketplace_identity {
+                return Err(CheckoutError::Validation(format!(
+                    "Cart line {} has marketplace identity but no typed marketplace snapshot",
+                    line.id
+                )));
+            }
+            continue;
+        };
+        if line.product_id != Some(snapshot.master_product_id)
+            || line.variant_id != Some(snapshot.master_variant_id)
+            || i64::from(line.quantity) * snapshot.unit_amount != snapshot.subtotal_amount
+        {
+            return Err(CheckoutError::Validation(format!(
+                "Cart line {} no longer matches its typed marketplace snapshot",
+                line.id
+            )));
+        }
+        result.push(CheckoutMarketplaceLineSnapshot {
+            order_line_index,
+            snapshot,
+        });
+    }
+
+    if let Some(orphan) = snapshots.values().next() {
+        return Err(CheckoutError::Validation(format!(
+            "Typed marketplace snapshot references missing cart line {}",
+            orphan.cart_line_item_id
+        )));
+    }
+    Ok(result)
+}
+
+fn strip_marketplace_identity(metadata: Value) -> Value {
+    let Value::Object(mut metadata) = metadata else {
+        return metadata;
+    };
+    metadata.remove("marketplace");
+    metadata.remove("seller");
+    metadata.remove("seller_id");
+    Value::Object(metadata)
 }
 
 fn build_fulfillment_plans(
