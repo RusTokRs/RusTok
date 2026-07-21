@@ -36,6 +36,17 @@ pub trait CommentsThreadPort: Send + Sync {
         fallback_locale: Option<String>,
     ) -> Result<(Vec<CommentListItem>, u64), PortError>;
 
+    /// Public read projection owned by Comments. Implementations must return only
+    /// comments that are safe for unauthenticated storefront consumption.
+    async fn list_public_comments_for_target(
+        &self,
+        context: PortContext,
+        target_type: String,
+        target_id: Uuid,
+        filter: ListCommentsFilter,
+        fallback_locale: Option<String>,
+    ) -> Result<(Vec<CommentListItem>, u64), PortError>;
+
     async fn update_comment(
         &self,
         context: PortContext,
@@ -118,6 +129,28 @@ impl CommentsThreadPort for CommentsService {
         self.list_comments_for_target(
             tenant_id,
             SecurityContext::try_from_port_context(&context)?,
+            &target_type,
+            target_id,
+            filter,
+            fallback_locale.as_deref(),
+        )
+        .await
+        .map_err(comments_error_to_port_error)
+    }
+
+    async fn list_public_comments_for_target(
+        &self,
+        context: PortContext,
+        target_type: String,
+        target_id: Uuid,
+        filter: ListCommentsFilter,
+        fallback_locale: Option<String>,
+    ) -> Result<(Vec<CommentListItem>, u64), PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_tenant_id(&context)?;
+        crate::public_read::list_public_comments_for_target(
+            &self.database,
+            tenant_id,
             &target_type,
             target_id,
             filter,
