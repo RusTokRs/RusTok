@@ -8,8 +8,8 @@ use sea_orm::DatabaseConnection;
 
 use super::{
     MarketplaceFinancialOperatorService, MarketplacePaidEventInboxService,
-    MarketplaceProviderReversalEventAdapter, MarketplaceReversalEventInboxService,
-    MarketplaceReversalOperatorService,
+    MarketplaceProviderReversalBackfillService, MarketplaceProviderReversalEventAdapter,
+    MarketplaceReversalEventInboxService, MarketplaceReversalOperatorService,
 };
 
 /// Host-composed marketplace financial capability shared by HTTP, GraphQL,
@@ -87,6 +87,13 @@ impl MarketplaceFinancialRuntime {
         db: DatabaseConnection,
     ) -> MarketplaceProviderReversalEventAdapter {
         MarketplaceProviderReversalEventAdapter::new(db, self.financial_port())
+    }
+
+    pub fn provider_reversal_backfill(
+        &self,
+        db: DatabaseConnection,
+    ) -> MarketplaceProviderReversalBackfillService {
+        MarketplaceProviderReversalBackfillService::new(db, self.financial_port())
     }
 
     pub fn payment_provider_event_observers(
