@@ -11,8 +11,11 @@ pub mod error;
 pub mod graphql;
 #[cfg(feature = "graphql")]
 pub mod graphql_governance;
+#[cfg(feature = "graphql")]
+pub mod graphql_localization;
 pub mod governance;
 pub mod governance_entities;
+pub mod localization;
 pub mod migrations;
 pub mod ports;
 pub mod service;
@@ -21,6 +24,7 @@ pub use domain::*;
 pub use dto::*;
 pub use error::{GroupsError, GroupsResult};
 pub use governance::*;
+pub use localization::GroupLocalizationService;
 pub use ports::*;
 pub use service::GroupsService;
 
