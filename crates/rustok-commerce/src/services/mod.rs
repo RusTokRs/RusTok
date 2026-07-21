@@ -85,9 +85,9 @@ pub use checkout_order_creation::{
     CheckoutOrderCreationError, CheckoutOrderCreationExecutor, CheckoutOrderCreationResult,
 };
 pub use checkout_order_plan::{
-    CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem, CheckoutOrderPlanError,
-    CheckoutOrderPlanJournal, CheckoutOrderPlanPayload, CheckoutOrderPlanRecord,
-    CheckoutOrderPlanResult,
+    CheckoutFulfillmentPlan, CheckoutFulfillmentPlanItem, CheckoutMarketplaceLineSnapshot,
+    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutOrderPlanPayload,
+    CheckoutOrderPlanRecord, CheckoutOrderPlanResult,
 };
 pub use checkout_order_stages::{
     CheckoutOrderStageError, CheckoutOrderStageExecutor, CheckoutOrderStageResult,
