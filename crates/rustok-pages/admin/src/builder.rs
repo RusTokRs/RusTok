@@ -3,7 +3,7 @@ use crate::transport;
 use leptos::prelude::*;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PreviewPageBuilderInput,
-    PublishPageBuilderInput, PublishPageBuilderResult,
+    PublishPageBuilderInput,
 };
 use rustok_page_builder_admin::{
     AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
@@ -73,19 +73,33 @@ impl PageBuilderAdminFacade for PagesBuilderFacade {
         Box::pin(async move {
             match request {
                 PageBuilderCapabilityRequest::Preview(input) => {
-                    ensure_requested_page(&snapshot, &input.page_id)?;
                     execute_preview(snapshot, input).await
                 }
                 PageBuilderCapabilityRequest::Publish(input) => {
-                    ensure_requested_page(&snapshot, &input.page_id)?;
                     execute_publish(snapshot, on_saved, input).await
                 }
-                request => Err(PageBuilderAdminFacadeError::new(format!(
-                    "Pages consumer facade does not support Page Builder `{}` requests",
-                    request.capability()
-                ))),
+                request => Err(unsupported_request_error(&request)),
             }
         })
+    }
+}
+
+fn unsupported_request_error(
+    request: &PageBuilderCapabilityRequest,
+) -> PageBuilderAdminFacadeError {
+    PageBuilderAdminFacadeError::new(format!(
+        "Pages consumer facade does not support Page Builder `{}` requests",
+        request.capability()
+    ))
+}
+
+fn pages_request_page_id(
+    request: &PageBuilderCapabilityRequest,
+) -> Result<&str, PageBuilderAdminFacadeError> {
+    match request {
+        PageBuilderCapabilityRequest::Preview(input) => Ok(&input.page_id),
+        PageBuilderCapabilityRequest::Publish(input) => Ok(&input.page_id),
+        request => Err(unsupported_request_error(request)),
     }
 }
 
@@ -103,100 +117,53 @@ fn ensure_requested_page(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "pages/page-builder-preview")]
-async fn pages_page_builder_preview(
+fn noop_saved_handler() -> SavedHandler {
+    Arc::new(|_, _| {})
+}
+
+#[server(prefix = "/api/fn", endpoint = "pages/page-builder-capability")]
+async fn pages_page_builder_capability(
     token: Option<String>,
     tenant_slug: Option<String>,
     page_id: String,
     default_locale: String,
-    project_data: Value,
+    request: PageBuilderCapabilityRequest,
 ) -> Result<PageBuilderCapabilityResponse, ServerFnError> {
-    execute_preview(
-        PagesBuilderSaveSnapshot {
-            token,
-            tenant_slug,
-            page_id: page_id.clone(),
-            default_locale,
-        },
-        PreviewPageBuilderInput::new(page_id, project_data),
-    )
-    .await
-    .map_err(|error| ServerFnError::ServerError(error.to_string()))
-}
-
-#[cfg(feature = "ssr")]
-async fn execute_preview(
-    snapshot: PagesBuilderSaveSnapshot,
-    input: PreviewPageBuilderInput,
-) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
-    let token = required_snapshot_value(snapshot.token, "access token")?;
-    let tenant_slug = required_snapshot_value(snapshot.tenant_slug, "tenant")?;
-    let verified_user = leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
-        .await
-        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
-        .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
-    let permissions = page_builder_permissions_for_role(&verified_user.role);
-    let actor_id = verified_user.id;
-    let auth = PageBuilderRequestAuth::new(permissions);
-    let context = PortContext::new(
-        tenant_slug.clone(),
-        PortActor::user(actor_id.clone()),
-        snapshot.default_locale.clone(),
-        format!("page-builder-preview:{}", input.page_id),
-    )
-    .with_deadline(PAGE_BUILDER_PORT_DEADLINE);
-
-    let renderer = PagesPageBuilderRenderer {
-        token: token.clone(),
-        tenant_slug: tenant_slug.clone(),
-        actor_id: actor_id.clone(),
-        page_id: snapshot.page_id.clone(),
-    };
-    let store = PagesPageBuilderProjectStore {
-        token,
-        tenant_slug,
-        actor_id,
-        page_id: snapshot.page_id,
-        default_locale: snapshot.default_locale,
-        on_saved: Arc::new(|_, _| {}),
-    };
-    let handlers = compose_fly_page_builder_handlers(
-        store,
-        renderer,
-        BuilderCapabilityFlags::default(),
-    )
-    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-    match handlers
-        .handle(
-            &context,
-            &auth,
-            PageBuilderCapabilityRequest::Preview(input),
+    #[cfg(feature = "ssr")]
+    {
+        dispatch_pages_page_builder_capability(
+            PagesBuilderSaveSnapshot {
+                token,
+                tenant_slug,
+                page_id,
+                default_locale,
+            },
+            noop_saved_handler(),
+            request,
         )
         .await
-        .map_err(facade_service_error)?
+        .map_err(|error| ServerFnError::ServerError(error.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
     {
-        response @ PageBuilderCapabilityResponse::Preview(_) => Ok(response),
-        _ => Err(PageBuilderAdminFacadeError::new(
-            "Page Builder composition returned an unexpected preview response",
-        )),
+        let _ = (token, tenant_slug, page_id, default_locale, request);
+        Err(ServerFnError::new(
+            "pages/page-builder-capability requires the `ssr` feature",
+        ))
     }
 }
 
-#[cfg(not(feature = "ssr"))]
 async fn execute_preview(
     snapshot: PagesBuilderSaveSnapshot,
     input: PreviewPageBuilderInput,
 ) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
     let requested_page_id = input.page_id.clone();
-    let response = pages_page_builder_preview(
-        snapshot.token,
-        snapshot.tenant_slug,
-        snapshot.page_id,
-        snapshot.default_locale,
-        input.project_data,
+    let response = dispatch_pages_page_builder_capability(
+        snapshot,
+        noop_saved_handler(),
+        PageBuilderCapabilityRequest::Preview(input),
     )
-    .await
-    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    .await?;
     match response {
         PageBuilderCapabilityResponse::Preview(result) if result.page_id == requested_page_id => {
             Ok(PageBuilderCapabilityResponse::Preview(result))
@@ -208,18 +175,50 @@ async fn execute_preview(
             ),
         )),
         response => Err(PageBuilderAdminFacadeError::new(format!(
-            "Page Builder preview transport returned `{}`",
+            "Page Builder capability transport returned `{}` for a preview request",
+            response.capability()
+        ))),
+    }
+}
+
+async fn execute_publish(
+    snapshot: PagesBuilderSaveSnapshot,
+    on_saved: SavedHandler,
+    input: PublishPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    let requested_page_id = input.page_id.clone();
+    let response = dispatch_pages_page_builder_capability(
+        snapshot,
+        on_saved,
+        PageBuilderCapabilityRequest::Publish(input),
+    )
+    .await?;
+    match response {
+        PageBuilderCapabilityResponse::Publish(result) if result.page_id == requested_page_id => {
+            Ok(PageBuilderCapabilityResponse::Publish(result))
+        }
+        PageBuilderCapabilityResponse::Publish(result) => Err(PageBuilderAdminFacadeError::new(
+            format!(
+                "Page Builder publish returned page `{}`, but Pages requested `{requested_page_id}`",
+                result.page_id
+            ),
+        )),
+        response => Err(PageBuilderAdminFacadeError::new(format!(
+            "Page Builder capability transport returned `{}` for a publish request",
             response.capability()
         ))),
     }
 }
 
 #[cfg(feature = "ssr")]
-async fn execute_publish(
+async fn dispatch_pages_page_builder_capability(
     snapshot: PagesBuilderSaveSnapshot,
     on_saved: SavedHandler,
-    input: PublishPageBuilderInput,
+    request: PageBuilderCapabilityRequest,
 ) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    let requested_page_id = pages_request_page_id(&request)?.to_string();
+    ensure_requested_page(&snapshot, &requested_page_id)?;
+
     let token = required_snapshot_value(snapshot.token, "access token")?;
     let tenant_slug = required_snapshot_value(snapshot.tenant_slug, "tenant")?;
     let verified_user = leptos_auth::api::fetch_current_user(token.clone(), tenant_slug.clone())
@@ -229,17 +228,27 @@ async fn execute_publish(
     let permissions = page_builder_permissions_for_role(&verified_user.role);
     let actor_id = verified_user.id;
     let auth = PageBuilderRequestAuth::new(permissions);
-    let context = PortContext::new(
-        tenant_slug.clone(),
-        PortActor::user(actor_id.clone()),
-        snapshot.default_locale.clone(),
-        format!("page-builder:{}:{}", input.page_id, input.revision_id),
-    )
-    .with_deadline(PAGE_BUILDER_PORT_DEADLINE)
-    .with_idempotency_key(format!(
-        "page-builder-save:{}:{}",
-        input.page_id, input.revision_id
-    ));
+    let context = match &request {
+        PageBuilderCapabilityRequest::Preview(input) => PortContext::new(
+            tenant_slug.clone(),
+            PortActor::user(actor_id.clone()),
+            snapshot.default_locale.clone(),
+            format!("page-builder-preview:{}", input.page_id),
+        )
+        .with_deadline(PAGE_BUILDER_PORT_DEADLINE),
+        PageBuilderCapabilityRequest::Publish(input) => PortContext::new(
+            tenant_slug.clone(),
+            PortActor::user(actor_id.clone()),
+            snapshot.default_locale.clone(),
+            format!("page-builder:{}:{}", input.page_id, input.revision_id),
+        )
+        .with_deadline(PAGE_BUILDER_PORT_DEADLINE)
+        .with_idempotency_key(format!(
+            "page-builder-save:{}:{}",
+            input.page_id, input.revision_id
+        )),
+        request => return Err(unsupported_request_error(request)),
+    };
 
     let renderer = PagesPageBuilderRenderer {
         token: token.clone(),
@@ -255,88 +264,69 @@ async fn execute_publish(
         default_locale: snapshot.default_locale,
         on_saved,
     };
+    let expected_capability = request.capability();
     let handlers = compose_fly_page_builder_handlers(
         store,
         renderer,
         BuilderCapabilityFlags::default(),
     )
     .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
-    match handlers
-        .handle(
-            &context,
-            &auth,
-            PageBuilderCapabilityRequest::Publish(input),
-        )
+    let response = handlers
+        .handle(&context, &auth, request)
         .await
-        .map_err(facade_service_error)?
-    {
-        response @ PageBuilderCapabilityResponse::Publish(_) => Ok(response),
-        _ => Err(PageBuilderAdminFacadeError::new(
-            "Page Builder composition returned an unexpected capability response",
-        )),
+        .map_err(facade_service_error)?;
+    if response.capability() != expected_capability {
+        return Err(PageBuilderAdminFacadeError::new(format!(
+            "Page Builder composition returned `{}` for a `{expected_capability}` request",
+            response.capability()
+        )));
     }
+    Ok(response)
 }
 
 #[cfg(not(feature = "ssr"))]
-async fn execute_publish(
+async fn dispatch_pages_page_builder_capability(
     snapshot: PagesBuilderSaveSnapshot,
     on_saved: SavedHandler,
-    input: PublishPageBuilderInput,
+    request: PageBuilderCapabilityRequest,
 ) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
-    let current_page = transport::fetch_page(
-        snapshot.token.clone(),
-        snapshot.tenant_slug.clone(),
+    let requested_page_id = pages_request_page_id(&request)?.to_string();
+    ensure_requested_page(&snapshot, &requested_page_id)?;
+    let expected_capability = request.capability();
+    let published_project = match &request {
+        PageBuilderCapabilityRequest::Publish(input) => Some(input.project_data.clone()),
+        PageBuilderCapabilityRequest::Preview(_) => None,
+        request => return Err(unsupported_request_error(request)),
+    };
+    let token = snapshot.token.clone();
+    let tenant_slug = snapshot.tenant_slug.clone();
+    let response = pages_page_builder_capability(
+        token.clone(),
+        tenant_slug.clone(),
         snapshot.page_id.clone(),
+        snapshot.default_locale,
+        request,
     )
     .await
-    .map_err(facade_transport_error)?
-    .ok_or_else(|| PageBuilderAdminFacadeError::new("Pages document no longer exists"))?;
-    ensure_page_is_editable(&current_page, &input.revision_id)?;
-
-    let current_revision = page_revision(&current_page);
-    let project_data = canonicalize_builder_project(input.project_data)?;
-    let locale = page_locale(&current_page, snapshot.default_locale);
-    let saved_page = transport::save_page_document(
-        snapshot.token,
-        snapshot.tenant_slug,
-        snapshot.page_id,
-        current_revision,
-        locale,
-        project_data.clone(),
-    )
-    .await
-    .map_err(facade_transport_error)?;
-    let persisted_revision = persisted_revision(&saved_page)?;
-    on_saved(PageMutationResult::from(&saved_page), project_data);
-    Ok(PageBuilderCapabilityResponse::Publish(
-        PublishPageBuilderResult {
-            page_id: saved_page.id.clone(),
-            revision_id: persisted_revision,
-            published: saved_page.status.eq_ignore_ascii_case("published"),
-        },
-    ))
-}
-
-fn ensure_page_is_editable(
-    page: &PageDetail,
-    requested_revision: &str,
-) -> Result<(), PageBuilderAdminFacadeError> {
-    if page.status.eq_ignore_ascii_case("published") {
-        return Err(PageBuilderAdminFacadeError::with_stable_code(
-            "Published page documents are immutable. Unpublish the page before editing, then publish the new revision explicitly.",
-            PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
-        ));
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    if response.capability() != expected_capability {
+        return Err(PageBuilderAdminFacadeError::new(format!(
+            "Page Builder capability endpoint returned `{}` for a `{expected_capability}` request",
+            response.capability()
+        )));
     }
-    let current_revision = page_revision(page);
-    if requested_revision != current_revision {
-        return Err(PageBuilderAdminFacadeError::with_stable_code(
-            format!(
-                "Page Builder revision conflict: expected `{requested_revision}`, current `{current_revision}`"
-            ),
-            REVISION_CONFLICT,
-        ));
+    if let Some(project_data) = published_project {
+        let saved_page = transport::fetch_page(token, tenant_slug, requested_page_id)
+            .await
+            .map_err(facade_transport_error)?
+            .ok_or_else(|| {
+                PageBuilderAdminFacadeError::new(
+                    "Pages document was not found after Page Builder publish",
+                )
+            })?;
+        on_saved(PageMutationResult::from(&saved_page), project_data);
     }
-    Ok(())
+    Ok(response)
 }
 
 fn page_locale(page: &PageDetail, default_locale: String) -> String {
