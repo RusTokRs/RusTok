@@ -13,6 +13,10 @@ pub struct MarketplaceCartLineSnapshotInput {
     pub master_variant_id: Uuid,
     #[validate(range(min = 1))]
     pub listing_terms_version: i32,
+    #[validate(length(equal = 3))]
+    pub currency_code: String,
+    #[validate(range(min = 0, max = 9))]
+    pub currency_exponent: i16,
     #[validate(range(min = 0))]
     pub unit_amount: i64,
     #[validate(range(min = 0))]
@@ -47,6 +51,8 @@ pub struct CartMarketplaceLineSnapshot {
     pub master_product_id: Uuid,
     pub master_variant_id: Uuid,
     pub listing_terms_version: i32,
+    pub currency_code: String,
+    pub currency_exponent: i16,
     pub unit_amount: i64,
     pub subtotal_amount: i64,
     pub discount_amount: i64,
