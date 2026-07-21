@@ -59,7 +59,8 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(backfill.contains("record_failure"));
     assert!(backfill.contains("mark_resolved"));
     assert!(backfill.contains("let safe_message = error.safe_message()"));
-    assert!(!backfill.contains("safe_reversal_adapter_message"));
+    assert!(backfill.contains("safe_reversal_adapter_message"));
+    assert!(backfill.contains("error.safe_message()"));
     assert!(!backfill.contains("raw_payload"));
 
     assert!(adaptation_failures.contains("RetryableError"));
