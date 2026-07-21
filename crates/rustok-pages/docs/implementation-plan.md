@@ -45,6 +45,8 @@ capability contracts, not Pages persistence or tenant policy.
 - [x] `page_publish_operations` stores one durable result per
   `(tenant_id, page_id, idempotency_key)` with request, sanitization and artifact
   set hashes; it never stores the reviewed runtime context.
+- [x] `PageService::create` always creates a draft. Create-time compilation,
+  default-runtime publication and `NodePublished` emission are removed.
 
 ### Admin FFA
 
@@ -52,7 +54,13 @@ capability contracts, not Pages persistence or tenant policy.
 - [x] Fly saves reload current page metadata and reject stale body revisions.
 - [x] Pages contributes current Fly landing blocks through provider/capability
   policy.
-- [ ] Public admin publish transport still needs atomic reviewed-runtime cutover.
+- [x] Admin publication calls the reviewed GraphQL command, gathers every current
+  localized body revision, creates a deterministic retry key and consumes the
+  durable publish receipt.
+- [x] A single promoted runtime scenario can be published automatically; missing
+  or ambiguous scenario sets fail closed.
+- [ ] The workspace still needs an explicit scenario selector for promoted
+  baselines containing more than one runtime scenario.
 - [ ] Metadata editing still needs a typed metadata-only property contribution.
 
 ### Storefront FFA
@@ -88,21 +96,28 @@ capability contracts, not Pages persistence or tenant policy.
 - [x] A replay with the same request hash returns the stored receipt without
   rebuilding artifacts or emitting duplicate events; key reuse with another
   request fails with a typed conflict.
-- [ ] GraphQL, HTTP and admin publish transports must be cut over from the legacy
-  default-runtime path to `PublishPageInput`.
+- [x] GraphQL publish requires `PublishGqlPageInput` and returns
+  `GqlPublishPageResult`; it no longer invokes `publish_if_current`.
+- [x] HTTP exposes `POST /api/admin/pages/{id}/publish` with
+  `PublishPageInput -> PublishPageResult`, and the module manifest routes through
+  the atomic publish wrapper.
+- [x] Admin GraphQL transport sends reviewed runtime, exact localized body
+  revisions and deterministic idempotency evidence and returns a receipt.
+- [x] Create-and-publish is rejected in the domain, so no public transport can
+  revive default-runtime builder publication.
 - [ ] Dedicated cache-consumer invalidation evidence remains open even though the
   publish transaction emits its durable `NodePublished` outbox signal.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
 
 ## FFA/FBA status
 
-- **FFA:** `in_progress` — current-only runtime/storefront boundaries are ready;
-  atomic publish transport cutover, typed metadata properties and inline edit mode
-  remain open.
+- **FFA:** `in_progress` — reviewed publish transport is connected for the
+  single-scenario path; explicit multi-scenario selection, typed metadata
+  properties and inline edit mode remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
-  materialization evidence and idempotent atomic Pages service are integrated;
-  public transport cutover, rollback, cache-consumer proof and observed rollout
-  evidence remain open.
+  materialization evidence, idempotent atomic service and GraphQL/HTTP/admin
+  transport cutover are integrated at source level; rollback, cache-consumer
+  proof, executed verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
@@ -124,7 +139,8 @@ capability contracts, not Pages persistence or tenant policy.
 ## Current document/publication model
 
 ```text
-Page metadata version
+GraphQL / HTTP / admin reviewed command
+  + page metadata version
   + exact localized body revisions
   + idempotency key
   + reviewed runtime scenario/context hash
@@ -158,10 +174,11 @@ Invariants:
    different input fails closed.
 10. Page state, artifact bindings, outbox events and publish receipt commit or roll
     back together.
-11. Missing providers fail visibly and never cause silent deletion.
-12. Dynamic widgets persist versioned configuration, not privileged snapshots.
-13. Anonymous storefront bundles contain no editor code.
-14. No block or shadow-editor fallback exists.
+11. Create never publishes; every publication crosses the reviewed command.
+12. Missing providers fail visibly and never cause silent deletion.
+13. Dynamic widgets persist versioned configuration, not privileged snapshots.
+14. Anonymous storefront bundles contain no editor code.
+15. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -185,8 +202,12 @@ Invariants:
   receipt in one transaction.
 - Added typed errors for review, sanitization, materialization mismatch,
   idempotency collision and receipt integrity.
-- Expanded the machine-readable contract and source guardrail. Raw runtime context
-  remains forbidden in both artifacts and publish receipts.
+- Cut GraphQL, HTTP and admin publication over to the reviewed command and receipt.
+- Removed create-time default-runtime compilation/publication from the domain.
+- Added a dedicated transport source guard and integrated it into the Page Builder
+  FBA baseline. The guard has not yet been executed in this slice.
+- Expanded the machine-readable contract. Raw runtime context remains forbidden in
+  both artifacts and publish receipts.
 
 ## Next implementation order
 
@@ -207,8 +228,10 @@ Invariants:
 - [x] Authoritative sanitizer before materialization.
 - [x] Idempotent atomic reviewed service: lock -> validate -> sanitize -> materialize
   -> compile -> persist -> bind -> state -> outbox -> receipt.
-- [ ] Cut GraphQL, HTTP and admin transports over to `PublishPageInput`; remove
-  builder publication through the default runtime and disable create-and-publish.
+- [x] Cut GraphQL, HTTP and admin transports over to `PublishPageInput`; remove
+  public builder publication through the default runtime and disable
+  create-and-publish.
+- [ ] Add explicit admin scenario selection for multi-scenario baselines.
 - [ ] Add rollback to a previous immutable artifact.
 - [ ] Correlate receipt, editor save, page/body revisions, runtime review,
   materialization, artifact and storefront read in operational telemetry.
@@ -252,6 +275,7 @@ Invariants:
 - `cargo clippy -p rustok-pages-storefront --lib -- -D warnings`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`
+- `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`
 - `node scripts/verify/verify-pages-current-only.mjs`
 - `node scripts/verify/verify-pages-ui-boundary.mjs`
 - `npm run verify:page-builder:consumer:pages`
