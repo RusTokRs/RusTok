@@ -7,9 +7,16 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    CartError, CartMarketplaceLineSnapshot, CartMarketplaceSnapshotService,
+    AddMarketplaceCartLineItemInput, AddMarketplaceCartLineItemResponse, CartError,
+    CartMarketplaceLineSnapshot, CartMarketplaceSnapshotService,
     MarketplaceCartLineSnapshotInput,
 };
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AddMarketplaceCartLineRequest {
+    pub cart_id: Uuid,
+    pub input: AddMarketplaceCartLineItemInput,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BindMarketplaceCartLineSnapshotRequest {
@@ -34,6 +41,12 @@ pub trait MarketplaceCartSnapshotReadPort: Send + Sync {
 
 #[async_trait]
 pub trait MarketplaceCartSnapshotCommandPort: Send + Sync {
+    async fn add_marketplace_line_item(
+        &self,
+        context: PortContext,
+        request: AddMarketplaceCartLineRequest,
+    ) -> Result<AddMarketplaceCartLineItemResponse, PortError>;
+
     async fn bind_marketplace_line_snapshot(
         &self,
         context: PortContext,
@@ -69,6 +82,21 @@ impl MarketplaceCartSnapshotReadPort for CartMarketplaceSnapshotService {
 
 #[async_trait]
 impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
+    async fn add_marketplace_line_item(
+        &self,
+        context: PortContext,
+        request: AddMarketplaceCartLineRequest,
+    ) -> Result<AddMarketplaceCartLineItemResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        self.add_marketplace_line_item(
+            parse_tenant_id(&context)?,
+            request.cart_id,
+            request.input,
+        )
+        .await
+        .map_err(map_cart_error)
+    }
+
     async fn bind_marketplace_line_snapshot(
         &self,
         context: PortContext,
