@@ -44,6 +44,12 @@ The current owner foundation provides:
 
 - module manifest and build-composition metadata;
 - multilingual `groups + group_translations` storage contract;
+- PostgreSQL CHECK constraints and SQLite validation triggers for normalized
+  `VARCHAR(32)` locale tags, localized presentation shape, and language-agnostic
+  base metadata;
+- exact host-effective-locale reads and locale-scoped catalog/search without a
+  module-owned English or arbitrary-row fallback;
+- Unicode-scalar title and summary limits rather than UTF-8 byte limits;
 - group membership and feature-binding storage;
 - typed domain enums and DTOs;
 - `GroupSummaryReadPort`, `GroupMembershipReadPort`, and
@@ -81,10 +87,12 @@ audit history, accessibility, and executable parity evidence remain.
 - Storefront evidence: framework-neutral core, selected native/GraphQL transport,
   host locale, and thin Leptos binding are present.
 - Backend evidence: typed read/write ports, request context, stable errors, owner
-  services, closed-shell/private-content action separation, governance
-  audit/receipt persistence, merged GraphQL root, native server functions, and
-  machine-readable registry are present.
+  services, language-agnostic DB constraints/triggers, exact effective-locale
+  selection, locale-scoped catalog/search, closed-shell/private-content action
+  separation, governance audit/receipt persistence, merged GraphQL root, native
+  server functions, and machine-readable registries are present.
 - Remaining FBA evidence: runtime provider/consumer order, fallback execution,
+  PostgreSQL/SQLite multilingual migration execution, missing-translation behavior,
   closed/secret leakage evidence, native/GraphQL governance parity execution,
   governance concurrency/replay races, retry/recovery, and remote-adapter smoke.
 - Last verified at (UTC): not executed in these changes.
@@ -122,6 +130,12 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
     transport after an owner command error.
 18. Governance UI prepares transport-neutral commands in `core` and never
     reimplements local-role authorization or ownership policy.
+19. The host/runtime resolves locale preference and fallback before invoking Groups;
+    Groups requires the exact normalized effective-locale row and never privileges
+    English or an arbitrary first stored translation.
+20. Catalog/search matching and returned presentation use the same effective locale.
+21. `groups.metadata` remains language-agnostic and cannot carry localized
+    presentation copies that belong to `group_translations` or another owner.
 
 ## Program ledger
 
@@ -129,7 +143,7 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | --- | --- | --- |
 | `GROUPS-00` | `done` | Ownership, naming, FFA/FBA, multilingual, privacy, and integration contracts are documented. |
 | `GROUPS-01` | `done` | Module package, manifest, workspace/server/distribution composition, permissions, and central navigation are connected. |
-| `GROUPS-02` | `in_progress` | Base schema/service plus governance audit and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, and PostgreSQL evidence remain. |
+| `GROUPS-02` | `in_progress` | Base schema/service, language-agnostic DB constraints/triggers, exact effective-locale selection, governance audit, and replay receipts exist; semantic events/outbox, archive lifecycle, receipt-race recovery, executed PostgreSQL/SQLite evidence, and missing-translation fixtures remain. |
 | `GROUPS-03` | `in_progress` | Public/closed/secret and open/request/invite-only policies exist; closed shells are discoverable while body/features remain membership-gated, and the complete granular action matrix plus leakage evidence remain. |
 | `GROUPS-04` | `in_progress` | Role delegation and atomic ownership transfer have typed Rust, GraphQL, native server-function, and localized admin form surfaces with audit/receipts; confirmation UX, concurrent-owner proof, parity execution, and recovery remain. |
 | `GROUPS-05` | `planned` | Invitations, invitation links, expiry, token hashing, revocation, and bounded delivery. |
@@ -138,10 +152,10 @@ No status is promoted to `phase_b_ready`, `parity_verified`, `boundary_ready`, o
 | `GROUPS-08` | `in_progress` | Versioned namespaced feature bindings exist; provider registry, health, settings schemas, and UI contributions remain. |
 | `GROUPS-09` | `planned` | Media-owned avatar/cover/gallery references and quarantine/deletion reconciliation. |
 | `GROUPS-10` | `planned` | SEO targets, canonical localized routes, aliases, redirects, and secret-group exclusions. |
-| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature/governance surface exists and read/list inherit closed-shell redaction; REST remains deferred until explicit integration demand. |
+| `GROUPS-11` | `in_progress` | GraphQL list/read/create/join/leave/feature/governance surface exists; localized reads and catalog/search use the host-effective locale and retain closed-shell redaction; REST remains deferred until explicit integration demand. |
 | `GROUPS-12` | `in_progress` | Admin FFA has native/GraphQL directory and governance facades plus localized UUID-based role/ownership forms; group/member pickers, confirmation, categories, moderation, settings, and audit history remain. |
-| `GROUPS-13` | `in_progress` | Storefront FFA catalog exposes public and closed shells without private body/features; detail routing, role-aware management, and accessibility remain. |
-| `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist across Rust/GraphQL/native surfaces; executable provider/consumer, parity, and degraded-mode evidence remain. |
+| `GROUPS-13` | `in_progress` | Storefront FFA catalog exposes public and closed shells only when an exact host-effective-locale translation exists and never exposes private body/features; detail routing, role-aware management, and accessibility remain. |
+| `GROUPS-14` | `in_progress` | Typed FBA ports and registry exist across Rust/GraphQL/native surfaces; executable provider/consumer, locale/fallback, parity, and degraded-mode evidence remain. |
 | `GROUPS-15` | `planned` | Forum group-context provider, ACL inheritance, local category binding, and leakage tests. |
 | `GROUPS-16` | `planned` | Blog group-context binding and author/publish policy. |
 | `GROUPS-17` | `planned` | Pages/Wiki binding without shadow documents or group-owned blocks. |
@@ -198,17 +212,25 @@ cargo check -p rustok-server --features mod-groups
 cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:i18n:contract
 npm run verify:frontend:host-ffa-contract
 npm run verify:storefront:routes
 ```
 
-PostgreSQL verification must eventually cover:
+PostgreSQL and SQLite verification must eventually cover:
 
 - apply from zero and incremental migration;
+- normalized locale acceptance/rejection across language, region, script, numeric,
+  and variant subtags;
+- exact host-effective-locale reads and explicit missing-translation behavior;
+- locale-scoped catalog/search without cross-language matching;
+- Unicode-equivalent title/summary length limits for Latin, Cyrillic, and CJK;
+- rejection of localized presentation copies in `groups.metadata`, including direct
+  SQL writes;
 - tenant-composite identity and relation integrity;
-- locale uniqueness and fallback;
+- locale uniqueness and host-owned fallback behavior;
 - concurrent handle creation;
 - concurrent join/leave and member counts;
 - owner transfer and last-owner protection;
