@@ -6,15 +6,12 @@ use rustok_marketplace_allocation::{
     AllocateMarketplaceOrderLinesResponse, MarketplaceAllocationCommandPort,
 };
 use rustok_order::OrderResponse;
-use serde::Deserialize;
-use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
 use super::CheckoutOrderPlanPayload;
 
 const ALLOCATION_DEADLINE: Duration = Duration::from_secs(5);
-const MARKETPLACE_METADATA_KEY: &str = "marketplace";
 
 #[derive(Debug, Error)]
 pub enum CheckoutMarketplaceAllocationError {
@@ -48,7 +45,7 @@ impl CheckoutMarketplaceAllocationStage {
         plan: &CheckoutOrderPlanPayload,
         order: &OrderResponse,
     ) -> CheckoutMarketplaceAllocationResult<Option<AllocateMarketplaceOrderLinesResponse>> {
-        let request = build_request(order, operation_id)?;
+        let request = build_request(plan, order, operation_id)?;
         let Some(request) = request else {
             return Ok(None);
         };
@@ -74,94 +71,92 @@ impl CheckoutMarketplaceAllocationStage {
 }
 
 pub fn order_contains_marketplace_lines(order: &OrderResponse) -> bool {
-    order
-        .line_items
-        .iter()
-        .any(|line| line.metadata.get(MARKETPLACE_METADATA_KEY).is_some())
+    order.line_items.iter().any(|line| line.seller_id.is_some())
 }
 
 fn build_request(
+    plan: &CheckoutOrderPlanPayload,
     order: &OrderResponse,
     operation_id: Uuid,
 ) -> CheckoutMarketplaceAllocationResult<Option<AllocateMarketplaceOrderLinesInput>> {
-    let mut lines = Vec::new();
-    for line in &order.line_items {
-        let Some(raw) = line.metadata.get(MARKETPLACE_METADATA_KEY) else {
-            continue;
-        };
-        let snapshot: MarketplaceCheckoutLineSnapshot = serde_json::from_value(raw.clone())
-            .map_err(|error| {
+    if plan.marketplace_lines.is_empty() {
+        return Ok(None);
+    }
+    if order.line_items.len() != plan.order_input.line_items.len() {
+        return Err(CheckoutMarketplaceAllocationError::Validation(format!(
+            "created order {} line count does not match immutable checkout plan",
+            order.id
+        )));
+    }
+
+    let mut lines = Vec::with_capacity(plan.marketplace_lines.len());
+    for planned in &plan.marketplace_lines {
+        let order_line = order.line_items.get(planned.order_line_index).ok_or_else(|| {
+            CheckoutMarketplaceAllocationError::Validation(format!(
+                "marketplace snapshot references missing created order line index {}",
+                planned.order_line_index
+            ))
+        })?;
+        let snapshot = &planned.snapshot;
+        if order_line.product_id != Some(snapshot.master_product_id)
+            || order_line.variant_id != Some(snapshot.master_variant_id)
+            || i64::from(order_line.quantity) * snapshot.unit_amount != snapshot.subtotal_amount
+        {
+            return Err(CheckoutMarketplaceAllocationError::Validation(format!(
+                "created order line {} does not match typed marketplace snapshot for cart line {}",
+                order_line.id, snapshot.cart_line_item_id
+            )));
+        }
+        let seller_id = order_line
+            .seller_id
+            .as_deref()
+            .and_then(|value| Uuid::parse_str(value.trim()).ok())
+            .ok_or_else(|| {
                 CheckoutMarketplaceAllocationError::Validation(format!(
-                    "order line {} has malformed marketplace metadata: {error}",
-                    line.id
+                    "created marketplace order line {} is missing a UUID seller identity",
+                    order_line.id
                 ))
             })?;
-        let product_id = line.product_id.ok_or_else(|| {
-            CheckoutMarketplaceAllocationError::Validation(format!(
-                "marketplace order line {} is missing product_id",
-                line.id
-            ))
-        })?;
-        let variant_id = line.variant_id.ok_or_else(|| {
-            CheckoutMarketplaceAllocationError::Validation(format!(
-                "marketplace order line {} is missing variant_id",
-                line.id
-            ))
-        })?;
+        if seller_id != snapshot.seller_id {
+            return Err(CheckoutMarketplaceAllocationError::Validation(format!(
+                "created order line {} seller does not match typed marketplace snapshot",
+                order_line.id
+            )));
+        }
+
         lines.push(AllocateMarketplaceOrderLineInput {
-            order_line_item_id: line.id,
+            order_line_item_id: order_line.id,
             seller_id: snapshot.seller_id,
             listing_id: snapshot.listing_id,
-            master_product_id: product_id,
-            master_variant_id: variant_id,
-            quantity: i64::from(line.quantity),
+            master_product_id: snapshot.master_product_id,
+            master_variant_id: snapshot.master_variant_id,
+            quantity: i64::from(order_line.quantity),
             unit_amount: snapshot.unit_amount,
             subtotal_amount: snapshot.subtotal_amount,
             discount_amount: snapshot.discount_amount,
             tax_amount: snapshot.tax_amount,
             total_amount: snapshot.total_amount,
             listing_terms_version: snapshot.listing_terms_version,
-            pricing_reference: snapshot.pricing_reference,
-            inventory_reference: snapshot.inventory_reference,
+            pricing_reference: snapshot.pricing_reference.clone(),
+            inventory_reference: snapshot.inventory_reference.clone(),
             fulfillment_profile_slug: snapshot
                 .fulfillment_profile_slug
-                .or_else(|| Some(line.shipping_profile_slug.clone())),
+                .clone()
+                .or_else(|| Some(order_line.shipping_profile_slug.clone())),
             metadata: serde_json::json!({
                 "source": "checkout",
                 "checkout_operation_id": operation_id,
-                "cart_line_item_id": line
-                    .metadata
-                    .pointer("/checkout/cart_line_item_id")
-                    .cloned()
-                    .unwrap_or(Value::Null),
+                "cart_line_item_id": snapshot.cart_line_item_id,
+                "order_line_index": planned.order_line_index,
             }),
         });
     }
-    if lines.is_empty() {
-        return Ok(None);
-    }
+
     Ok(Some(AllocateMarketplaceOrderLinesInput {
         order_id: order.id,
         currency_code: order.currency_code.clone(),
         lines,
     }))
-}
-
-#[derive(Debug, Deserialize)]
-struct MarketplaceCheckoutLineSnapshot {
-    seller_id: Uuid,
-    listing_id: Uuid,
-    listing_terms_version: i32,
-    unit_amount: i64,
-    subtotal_amount: i64,
-    #[serde(default)]
-    discount_amount: i64,
-    #[serde(default)]
-    tax_amount: i64,
-    total_amount: i64,
-    pricing_reference: Option<String>,
-    inventory_reference: Option<String>,
-    fulfillment_profile_slug: Option<String>,
 }
 
 fn map_port_error(error: PortError) -> CheckoutMarketplaceAllocationError {
