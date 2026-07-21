@@ -81,6 +81,15 @@ if (!Number.isInteger(contract.scenario_id_max_bytes) || contract.scenario_id_ma
 if (staticContract.raw_context_persisted !== false) {
   fail("static materialization must not persist raw runtime context");
 }
+if (staticContract.evidence_hash_algorithm !== "sha256") {
+  fail("static materialization evidence_hash_algorithm must be sha256");
+}
+if (staticContract.snapshot_document_hash_algorithm !== "fly_project_hash_fnv1a64") {
+  fail("static materialization snapshot_document_hash_algorithm must be fly_project_hash_fnv1a64");
+}
+if (staticContract.preview_static_parity !== "document_html") {
+  fail("static materialization preview_static_parity must be document_html");
+}
 
 for (const { filename, packet } of wavePackets) {
   if (packet.metadata?.provider?.builder_contract_version !== providerVersion) {
