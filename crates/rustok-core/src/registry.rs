@@ -94,12 +94,29 @@ impl ModuleRegistry {
             .collect()
     }
 
-    pub fn build_runtime_extensions(&self) -> ModuleRuntimeExtensions {
+    /// Builds all module-owned runtime capabilities and returns a contextual
+    /// startup error instead of allowing module registration failures to panic.
+    pub fn try_build_runtime_extensions(&self) -> crate::Result<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
         for module in self.list() {
-            module.register_runtime_extensions(&mut extensions);
+            module
+                .try_register_runtime_extensions(&mut extensions)
+                .map_err(|error| {
+                    crate::Error::Validation(format!(
+                        "module `{}` runtime extension registration failed: {error}",
+                        module.slug()
+                    ))
+                })?;
         }
-        extensions
+        Ok(extensions)
+    }
+
+    /// Backward-compatible infallible builder for tests and legacy callers.
+    /// Production bootstrap must use `try_build_runtime_extensions`.
+    pub fn build_runtime_extensions(&self) -> ModuleRuntimeExtensions {
+        self.try_build_runtime_extensions().unwrap_or_else(|error| {
+            panic!("module runtime extension registration failed: {error}")
+        })
     }
 
     pub fn build_event_listeners(
@@ -221,6 +238,40 @@ mod tests {
         }
     }
 
+    struct FailingModule;
+
+    impl MigrationSource for FailingModule {
+        fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+            Vec::new()
+        }
+    }
+
+    #[async_trait]
+    impl RusToKModule for FailingModule {
+        fn slug(&self) -> &'static str {
+            "failing"
+        }
+
+        fn name(&self) -> &'static str {
+            "Failing"
+        }
+
+        fn description(&self) -> &'static str {
+            "module with a controlled registration failure"
+        }
+
+        fn version(&self) -> &'static str {
+            "0.1.0"
+        }
+
+        fn try_register_runtime_extensions(
+            &self,
+            _extensions: &mut ModuleRuntimeExtensions,
+        ) -> crate::Result<()> {
+            Err(crate::Error::Validation("duplicate demo provider".to_string()))
+        }
+    }
+
     #[test]
     fn build_runtime_extensions_collects_module_owned_capabilities() {
         let registry = ModuleRegistry::new()
@@ -235,6 +286,19 @@ mod tests {
                 .expect("runtime extension vector should be present"),
             &vec!["one", "two"]
         );
+    }
+
+    #[test]
+    fn fallible_runtime_extension_builder_preserves_module_context() {
+        let error = ModuleRegistry::new()
+            .register(FailingModule)
+            .try_build_runtime_extensions()
+            .expect_err("registration must fail");
+
+        assert!(error
+            .to_string()
+            .contains("module `failing` runtime extension registration failed"));
+        assert!(error.to_string().contains("duplicate demo provider"));
     }
 
     #[test]
