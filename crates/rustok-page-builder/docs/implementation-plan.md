@@ -30,15 +30,19 @@ GraphQL and Leptos server-function endpoints delegate through the composed handl
 transport envelopes.
 
 `rustok-pages` is the first production consumer of both server write and server preview delivery.
-Its SSR publish path verifies the backend actor, builds a tenant-scoped `PortContext` with deadline
-and idempotency, and dispatches through `AuthorizedPageBuilderHandlers` before the Pages store can
-read or write tenant persistence. `PagesPageBuilderProjectStore` revalidates tenant and actor
-identity at the port boundary and returns the actual persisted `PageBuilderProjectSaveResult`. The
-Fly service validates and maps that result into the canonical publish response.
+`PagesBuilderFacade` reduces `Preview` and `Publish` to one consumer-owned
+`dispatch_pages_page_builder_capability` seam. The SSR implementation verifies the backend actor,
+builds a tenant-scoped `PortContext` with capability-specific deadline and idempotency, creates the
+Pages store and renderer ports, and calls `compose_fly_page_builder_handlers` exactly once. Fly
+validation, rollout policy, authorization and port dispatch therefore remain in the module-owned
+composition root rather than in capability-specific Pages pipelines.
 
-The Pages preview path uses the same module-owned composition root. CSR and hydrate call the Pages
-Leptos server-function transport; the server verifies the backend actor, constructs canonical read
-authorization and a deadline-bound `PortContext`, then dispatches `Preview` through the handlers.
+CSR and hydrate use the single `pages_page_builder_capability` Leptos server function with the
+canonical `PageBuilderCapabilityRequest`. The client implementation never calls
+`save_page_document`; after a successful publish it performs only a read-back so the existing Pages
+UI callback can refresh metadata and revision state. `PagesPageBuilderProjectStore` remains the only
+Pages document write port and returns the actual persisted `PageBuilderProjectSaveResult`.
+
 `PagesPageBuilderRenderer` revalidates tenant and actor identity and confirms that the requested Pages
 document exists in the tenant before rendering. The Page Builder admin runtime projects only the
 active internal Fly page into the preview request, consumes `PreviewPageBuilderResult`, and exposes
@@ -48,10 +52,11 @@ the current preview with stale HTML. The local instrumented canvas remains the a
 is not a second server renderer pipeline.
 
 The current machine-readable service contract is
-`contracts/page-builder-service-boundary.json`. It records the composition root, persisted save
-result and validation order, the Pages publish and server preview order, tenant/page-context guards
-and admin preview request identity, and forbids reference services, migration decorators, manual JSON
-preview rendering and the removed Pages mutex save-result side channel.
+`contracts/page-builder-service-boundary.json`. It records the single Pages capability endpoint and
+SSR dispatch helper, composition and authorization order, tenant/page-context guards, client
+write-path prohibition and admin preview request identity. It also forbids reference services,
+migration decorators, manual JSON preview rendering, capability-specific SSR wrappers and the
+removed Pages mutex save-result side channel.
 
 ## FFA/FBA status
 
@@ -88,13 +93,10 @@ preview rendering and the removed Pages mutex save-result side channel.
 2. Extend server preview with the selected runtime context and scenario contract. Context must flow
    through a canonical Page Builder DTO/port contract rather than through Pages-local renderer
    arguments, and the same request must be usable by future host frameworks.
-3. Consolidate the Pages preview and publish server-function wrappers around one consumer-owned
-   capability dispatch helper without moving authorization, port policy or Fly validation out of the
-   module-owned composition root.
-4. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
+3. Add the first Dioxus host renderer after Dioxus is introduced into the workspace. It must render
    the `PageBuilderBrowserModuleDescriptor` returned by `page_builder_browser_module`, including
    its optional CSP nonce, and must not copy lifecycle, form, selection or draft-route policy.
-5. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
+4. Replace synthetic Wave evidence with observed tenant control-plane packets. Wave evidence must
    correlate builder write, Pages publish and storefront read across the required rollout profiles.
 
 ## Verification
