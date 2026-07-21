@@ -50,6 +50,10 @@ const __flyAdapters = __flyBrowserConfig.autoMount === false
   ? []
   : globalThis.FlyBrowser?.mountAll(__flyBrowserConfig) || [];
 for (const adapter of __flyAdapters) {
+  const __flyLifecycleSignal = adapter.abortController?.signal;
+  const __flyLifecycleOptions = __flyLifecycleSignal
+    ? { signal: __flyLifecycleSignal }
+    : undefined;
   const routeDraft = __flyDraftFromRoute();
   if (routeDraft && adapter.draftSession?.token !== routeDraft) {
     adapter.draftSession = { token: routeDraft, generation: null };
@@ -60,7 +64,11 @@ for (const adapter of __flyAdapters) {
     }
   };
   updateSelectedInputs();
-  adapter.root.addEventListener("fly:select", () => queueMicrotask(updateSelectedInputs));
+  adapter.root.addEventListener(
+    "fly:select",
+    () => queueMicrotask(updateSelectedInputs),
+    __flyLifecycleOptions,
+  );
   adapter.root.addEventListener("change", (event) => {
     const picker = event.target instanceof Element
       ? event.target.closest("[data-fly-component-picker]")
@@ -72,7 +80,7 @@ for (const adapter of __flyAdapters) {
       bubbles: true,
       detail: { componentId: adapter.selectedId, source: "ssr-inspector" },
     }));
-  });
+  }, __flyLifecycleOptions);
   adapter.root.addEventListener("submit", (event) => {
     const form = event.target instanceof Element
       ? event.target.closest("form[data-fly-intent-form]")
@@ -84,13 +92,13 @@ for (const adapter of __flyAdapters) {
     const payload = __flyFormPayload(form);
     if (!payload.component_id && adapter.selectedId) payload.component_id = adapter.selectedId;
     void adapter.emitIntent(intent, payload);
-  });
+  }, __flyLifecycleOptions);
   adapter.root.addEventListener("fly:browser-intent-response", (event) => {
     const detail = event.detail;
     if (!detail?.ok || !__flyObject(detail.result)) return;
     const token = detail.result.draft_token;
     if (typeof token === "string" && token) __flyWriteDraftRoute(token);
-  });
+  }, __flyLifecycleOptions);
 }
 "#;
 
@@ -217,5 +225,13 @@ mod tests {
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("history.replaceState"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("data-fly-component-picker"));
         assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("autoMount === false"));
+    }
+
+    #[test]
+    fn ssr_bootstrap_listeners_follow_adapter_lifecycle() {
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("adapter.abortController?.signal"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("__flyLifecycleOptions"));
+        assert!(SSR_CONTROL_BOOTSTRAP_JS.contains("signal: __flyLifecycleSignal"));
+        assert_eq!(SSR_CONTROL_BOOTSTRAP_JS.matches("__flyLifecycleOptions").count(), 5);
     }
 }
