@@ -13,6 +13,7 @@ const [
   serviceMod,
   service,
   lifecycle,
+  reviewedPublish,
   document,
   graphqlMod,
   graphqlBaseline,
@@ -34,6 +35,7 @@ const [
   read('crates/rustok-pages/src/services/mod.rs'),
   read('crates/rustok-pages/src/services/scenario_baseline.rs'),
   read('crates/rustok-pages/src/services/page/lifecycle.rs'),
+  read('crates/rustok-pages/src/services/page/reviewed_publish.rs'),
   read('crates/rustok-pages/src/services/page/document.rs'),
   read('crates/rustok-pages/src/graphql/mod.rs'),
   read('crates/rustok-pages/src/graphql/scenario_baseline.rs'),
@@ -66,9 +68,12 @@ const required = [
   [service, 'PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE', 'stable baseline conflict code is missing'],
   [service, 'save_if_current', 'baseline compare-and-swap save is missing'],
   [service, 'delete_if_current', 'baseline compare-and-swap delete is missing'],
-  [lifecycle, 'ensure_candidates_allowed', 'explicit publish does not evaluate scenario candidates'],
-  [lifecycle, 'compile_builder_sources', 'explicit publish does not compile the current document'],
-  [lifecycle, 'bind_existing_body_in_tx', 'explicit publish does not bind the compiled artifact atomically'],
+  [reviewedPublish, 'ensure_candidates_allowed_in_tx', 'reviewed publish does not evaluate promoted scenario candidates'],
+  [reviewedPublish, 'compile_builder_sources_with_reviewed_runtime', 'reviewed publish does not compile the exact reviewed runtime'],
+  [reviewedPublish, 'bind_existing_body_in_tx', 'reviewed publish does not bind the compiled artifact atomically'],
+  [reviewedPublish, 'insert_publish_operation_in_tx', 'reviewed publish does not persist the durable receipt'],
+  [lifecycle, 'publish_non_builder_if_current', 'non-builder lifecycle command is missing'],
+  [lifecycle, 'PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED', 'non-builder lifecycle does not reject Page Builder documents with a stable code'],
   [document, 'PAGE_DOCUMENT_REVISION_CONFLICT', 'document save has no independent revision conflict'],
   [document, 'page_active.updated_at', 'document save does not record draft activity'],
   [graphqlMod, '#[derive(MergedObject, Default)]', 'baseline GraphQL objects are not merged into Pages schema'],
@@ -78,9 +83,10 @@ const required = [
   [graphqlBaseline, 'delete_page_builder_scenario_baseline', 'baseline GraphQL delete mutation is missing'],
   [graphqlBaseline, 'expected_baseline_hash', 'baseline GraphQL mutations do not accept an expected hash'],
   [mutation, 'save_page_document', 'savePageDocument mutation is missing'],
-  [mutation, 'publish_if_current', 'publishPage does not use the explicit lifecycle command'],
+  [mutation, 'publish_reviewed', 'publishPage does not use the reviewed atomic command'],
   [adminModel, 'pub struct PageBuilderScenarioReleaseStatus', 'Pages admin release status model is missing'],
   [adminAdapter, 'SAVE_PAGE_DOCUMENT_MUTATION', 'Pages admin does not use the document-only mutation'],
+  [adminAdapter, 'resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())', 'Pages admin does not resolve the explicit selected promoted scenario'],
   [adminCasAdapter, 'expectedBaselineHash', 'Pages admin CAS mutation does not send the expected hash'],
   [adminStatusAdapter, 'PAGE_BUILDER_SCENARIO_RELEASE_STATUS_QUERY', 'Pages admin server release status query is missing'],
   [adminTransport, 'scenario_baseline_cas_adapter::save', 'Pages admin transport does not use CAS save'],
@@ -96,11 +102,31 @@ const failures = required
   .filter(([source, marker]) => !source.includes(marker))
   .map(([, , message]) => message);
 
-const candidateGate = lifecycle.indexOf('ensure_candidates_allowed');
-const artifactBind = lifecycle.indexOf('bind_existing_body_in_tx');
-const transition = lifecycle.indexOf('PageTransition::Publish');
-if (candidateGate < 0 || artifactBind < 0 || transition < 0 || candidateGate > artifactBind) {
-  failures.push('publish lifecycle must evaluate scenarios before binding the artifact');
+const candidateGate = reviewedPublish.indexOf('ensure_candidates_allowed_in_tx');
+const reviewedCompile = reviewedPublish.indexOf('compile_builder_sources_with_reviewed_runtime');
+const artifactBind = reviewedPublish.indexOf('bind_existing_body_in_tx');
+const transition = reviewedPublish.indexOf('PageTransition::Publish');
+const receipt = reviewedPublish.indexOf('insert_publish_operation_in_tx');
+if (
+  candidateGate < 0 ||
+  reviewedCompile < 0 ||
+  artifactBind < 0 ||
+  transition < 0 ||
+  receipt < 0 ||
+  candidateGate > reviewedCompile ||
+  reviewedCompile > artifactBind ||
+  artifactBind > transition ||
+  transition > receipt
+) {
+  failures.push('reviewed publish must gate, compile, bind, transition and persist receipt in order');
+}
+if (
+  lifecycle.includes('pub async fn publish(') ||
+  lifecycle.includes('pub async fn publish_if_current(') ||
+  lifecycle.includes('compile_builder_sources') ||
+  lifecycle.includes('bind_existing_body_in_tx')
+) {
+  failures.push('non-builder lifecycle must not expose or implement legacy Page Builder publication');
 }
 if (document.includes('bind_existing_body_in_tx') || document.includes('PageTransition::Publish')) {
   failures.push('document save must not publish or replace the published artifact binding');
