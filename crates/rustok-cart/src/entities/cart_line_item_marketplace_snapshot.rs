@@ -11,6 +11,8 @@ pub struct Model {
     pub master_product_id: Uuid,
     pub master_variant_id: Uuid,
     pub listing_terms_version: i32,
+    pub currency_code: String,
+    pub currency_exponent: i16,
     pub unit_amount: i64,
     pub subtotal_amount: i64,
     pub discount_amount: i64,
