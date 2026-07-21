@@ -4,14 +4,15 @@
 
 `rustok-groups` owns social-group identity, multilingual presentation, privacy,
 membership, local roles, invitations, feature bindings, and group access policy for
-RusToK. Exact-locale translation management, bounded invitation tokens, role
-delegation, ownership transfer, command receipts, immutable audit, and native/
-GraphQL administration transports are implemented. Questions, rules, bans, event
-publication, and full runtime evidence remain subsequent plan-led slices.
+RusToK. Exact-locale translation management, bounded invitation tokens, targeted
+invitation source events, role delegation, ownership transfer, command receipts,
+immutable audit, and native/GraphQL administration transports are implemented.
+Questions, rules, bans, consumer-side notification fan-out, and full runtime evidence
+remain subsequent plan-led slices.
 
 A group is a social container and policy owner. It is not the persistence owner
 for forum topics, blog posts, Pages documents, marketplace listings, products,
-media assets, comments, notification delivery, or search documents.
+media assets, comments, notification inbox/delivery, or search documents.
 
 ## Responsibilities
 
@@ -33,19 +34,29 @@ media assets, comments, notification delivery, or search documents.
   unique redemptions. Targeted invitations are single-use; shareable links are
   limited to 100 uses and 30 days.
 - Return invitation plaintext only from the first create response. Invitation,
-  audit, and receipt storage contains no plaintext token.
+  audit, receipt, and semantic-event storage contains no plaintext token.
 - Activate an accepted invitation, redemption, membership, member count, group
   version, audit entry, and command receipt in one owner transaction.
 - Persist successful governance and invitation state with idempotency receipts and
   immutable audit evidence. Localization commands require idempotency keys, but
   durable localization receipts and replay evidence remain pending.
+- Append `groups.invitation.targeted_created` to the owner-owned, append-only
+  `group_domain_events` table in the same database transaction as targeted invite
+  creation. The event contains invitation/group/recipient identifiers only.
+- Register a neutral `NotificationSourceProvider` factory for targeted invitations.
+  It resolves at most one exact recipient and authorizes an internal
+  `/modules/groups?invitation=<uuid>` route only while the invitation and group remain
+  active.
+- Accept targeted invitations by authenticated invitation ID through
+  `GroupTargetedInvitationCommandPort`; wrong-recipient and unavailable state use
+  not-found semantics. Shareable invitations continue to require the opaque token.
 - Own versioned group feature bindings such as `forum.discussions`, `blog.posts`,
   `pages.wiki`, and `marketplace.store` without importing those modules' tables.
 - Publish typed FBA ports for summary, membership, access, localization,
-  invitations, commands, and governance.
-- Introduce transactional semantic events only with the planned owner event/outbox
-  slice. Notifications may consume those events later but never become a
-  synchronous invitation dependency.
+  invitations, targeted invitation acceptance, commands, and governance.
+- Keep Notifications optional. Invitation creation commits even when Notifications
+  is not compiled or tenant-enabled; inbox, preferences, fan-out, retry, and delivery
+  remain owned by `rustok-notifications`.
 - Publish module-owned Leptos admin and storefront FFA packages with
   framework-neutral `core`, transport facade, native `#[server]`, GraphQL, and thin
   Leptos bindings.
@@ -57,6 +68,7 @@ media assets, comments, notification delivery, or search documents.
 - `GroupsService`
 - `GroupLocalizationService`
 - `GroupInvitationService`
+- `GroupTargetedInvitationService`
 - `GroupGovernanceService`
 - `GroupSummaryReadPort`
 - `GroupMembershipReadPort`
@@ -66,9 +78,11 @@ media assets, comments, notification delivery, or search documents.
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
+- `GroupTargetedInvitationCommandPort`
 - `GroupGovernanceCommandPort`
 - `graphql_invitations::GroupsQueryRoot` with the `graphql` feature
-- `graphql_invitations::GroupsMutationRoot` with the `graphql` feature
+- `graphql_invitations::GroupsMutationRoot` with the `graphql` feature, including
+  `acceptTargetedGroupInvitation`
 - `rustok_groups_admin::GroupsAdmin`
 - `rustok_groups_admin::load_group_admin_translations`
 - `rustok_groups_admin::upsert_group_admin_translation`
@@ -79,6 +93,7 @@ media assets, comments, notification delivery, or search documents.
 - `rustok_groups_admin::change_group_admin_role`
 - `rustok_groups_admin::transfer_group_admin_ownership`
 - `rustok_groups_storefront::GroupsView`
+- `rustok_groups_storefront::accept_groups_storefront_targeted_invitation`
 
 ## Interactions
 
@@ -89,13 +104,15 @@ media assets, comments, notification delivery, or search documents.
   references only.
 - Forum, Blog, Pages, Marketplace, Media Social, Events, and future modules keep
   their own persistence and consume Groups access decisions through typed ports.
-- `rustok-notifications` may consume a future committed invitation event; Groups
-  does not synchronously send email, push, or notification messages.
+- `rustok-notifications-api` supplies the neutral source-provider contract. Groups
+  registers a deferred factory without depending on Notifications persistence.
+- `rustok-notifications` may materialize the Groups source and consume committed
+  targeted-invitation events. Groups does not synchronously send email, push, or
+  notification messages.
 - `rustok-moderation` may issue validated decisions through a future moderation
   command adapter; it must never update Groups tables directly.
-- `rustok-index`, `rustok-search`, and notifications will consume committed
-  semantic events after that owner event slice exists and must preserve
-  secret/closed visibility.
+- `rustok-index` and `rustok-search` will consume committed semantic events in later
+  slices and must preserve secret/closed visibility.
 - Host applications provide tenant, auth, locale, channel, route, and transport
   context only. They do not own Groups business policy or UI workflows.
 
