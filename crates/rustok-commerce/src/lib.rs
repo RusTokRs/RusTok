@@ -75,19 +75,22 @@ pub use services::{
     FulfillmentReconciliationService, IngestMarketplacePaidEvent, JournaledCheckoutError,
     JournaledCheckoutResult, JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS,
     MAX_RETURN_COMPLETION_LEASE_SECONDS, MarketplaceFinancialOperationError,
-    MarketplaceFinancialOperationJournal, MarketplaceFinancialOperationResult,
-    MarketplaceFinancialOperationStatus, MarketplaceFinancialOperatorError,
-    MarketplaceFinancialOperatorResult, MarketplaceFinancialOperatorService,
+    MarketplaceFinancialOperationJournal, MarketplaceFinancialOperationOperatorView,
+    MarketplaceFinancialOperationResult, MarketplaceFinancialOperationStatus,
+    MarketplaceFinancialOperatorError, MarketplaceFinancialOperatorResult,
+    MarketplaceFinancialOperatorService, MarketplaceFinancialRuntime,
     MarketplacePaidEventInboxError, MarketplacePaidEventInboxJournal,
     MarketplacePaidEventInboxResult, MarketplacePaidEventInboxService,
-    MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
-    MarketplacePaidEventSweepReport, MarketplaceProviderPaidEventAdapter,
-    MarketplaceProviderPaidEventAdapterError, MarketplaceProviderPaidEventAdapterResult,
-    OrderChangeOrchestrationService, PaidOrderCreateLabelSweepReport,
-    PaidOrderCreateLabelSweepService, PaymentOrchestrationError, PaymentOrchestrationResult,
-    PaymentOrchestrationService, PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult,
-    RecoveringStagedCheckoutService, RefundReconciliationService, ReturnClaimDecisionInput,
+    MarketplacePaidEventOperatorView, MarketplacePaidEventStatus,
+    MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
+    MarketplaceProviderPaidEventAdapter, MarketplaceProviderPaidEventAdapterError,
+    MarketplaceProviderPaidEventAdapterResult, OrderChangeOrchestrationService,
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
+    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
+    PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
+    PostOrderOrchestrationService, RecoveringStagedCheckoutError,
+    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
+    RefundReconciliationService, ReturnClaimDecisionInput,
     ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
     ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
@@ -150,28 +153,22 @@ impl RusToKModule for CommerceModule {
             fulfillment_registry,
         ));
 
-        let allocation_service = Arc::new(
-            rustok_marketplace_allocation::MarketplaceAllocationService::new(ctx.db.clone()),
-        );
-        let commission_service = Arc::new(
-            rustok_marketplace_commission::MarketplaceCommissionService::new(
-                ctx.db.clone(),
-                allocation_service,
-            ),
-        );
-        let ledger_service = Arc::new(
-            rustok_marketplace_ledger::MarketplaceLedgerService::new(
-                ctx.db.clone(),
-                commission_service,
-            ),
-        );
-        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(
-            ctx.db.clone(),
-        )));
+        let financial_runtime = ctx
+            .extensions
+            .get::<MarketplaceFinancialRuntime>()
+            .cloned()
+            .unwrap_or_else(|| MarketplaceFinancialRuntime::in_process(ctx.db.clone()));
+        let event_bus = ctx
+            .extensions
+            .get::<TransactionalEventBus>()
+            .cloned()
+            .unwrap_or_else(|| {
+                TransactionalEventBus::new(Arc::new(OutboxTransport::new(ctx.db.clone())))
+            });
         registry.register(services::MarketplacePaidOrderFinancialHandler::new(
             ctx.db.clone(),
             event_bus,
-            ledger_service,
+            financial_runtime.ledger_port(),
         ));
     }
 
