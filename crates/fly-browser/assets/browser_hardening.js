@@ -9,6 +9,12 @@
   const DEFAULT_INTENT_REQUEST_TIMEOUT_MS = 30_000;
   const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
   const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
+  const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
+  const INTENT_ABORT_KIND = Object.freeze({
+    EXTERNAL: "external",
+    TIMEOUT: "timeout",
+    ADAPTER_STOP: "adapter_stop",
+  });
   const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
   const PROBLEM_REPORTER_KEY = Symbol.for("fly.browser.problem.reporter");
   const PENDING_INTENT_CONTROLLERS_KEY = Symbol.for(
@@ -19,8 +25,24 @@
   const PROBLEM_STATUS_SELECTOR = '[data-fly-browser-status="problem"]';
   const ROOT_SELECTOR = "[data-fly-browser-root]";
 
+  /**
+   * @typedef {"external" | "timeout" | "adapter_stop"} IntentAbortKind
+   * @typedef {{ signal?: AbortSignal }} IntentTransportOptions
+   */
+
   const isObject = (value) =>
     value !== null && typeof value === "object" && !Array.isArray(value);
+
+  const isAbortSignal = (value) =>
+    typeof AbortSignal === "function" && value instanceof AbortSignal;
+
+  const normalizedTransportOptions = (value) => {
+    const transport = isObject(value) ? value : {};
+    return {
+      ...transport,
+      signal: isAbortSignal(transport.signal) ? transport.signal : undefined,
+    };
+  };
 
   const boundedPositiveInteger = (value, fallback) => {
     const parsed = Number(value);
@@ -140,9 +162,19 @@
     return controllers;
   };
 
-  const forwardAbortSignal = (signal, controller) => {
-    if (!signal || typeof signal.addEventListener !== "function") return null;
-    const abort = () => controller.abort();
+  const forwardedAbortError = (signal) =>
+    signal.reason === undefined
+      ? "Editor action cancelled."
+      : String(signal.reason);
+
+  const forwardAbortSignal = (signal, controller, record) => {
+    if (!isAbortSignal(signal)) return null;
+    const abort = () => {
+      record.abortCode = INTENT_REQUEST_ABORTED_CODE;
+      record.abortKind = INTENT_ABORT_KIND.EXTERNAL;
+      record.error = forwardedAbortError(signal);
+      controller.abort(signal.reason);
+    };
     if (signal.aborted) {
       abort();
       return null;
@@ -168,6 +200,34 @@
       if (record?.requestGeneration === requestGeneration) return record;
     }
     return null;
+  };
+
+  const reportIntentAborted = (adapter, record, detail = {}) => {
+    const current = detail.current !== false;
+    const aborted = {
+      code: record.abortCode || INTENT_REQUEST_ABORTED_CODE,
+      kind: record.abortKind || INTENT_ABORT_KIND.EXTERNAL,
+      error:
+        record.error ||
+        (typeof detail.error === "string" && detail.error
+          ? detail.error
+          : "Editor action cancelled."),
+      intent: record.intent,
+      request: isObject(detail.request) ? detail.request : record.request,
+      requestGeneration: Number.isSafeInteger(detail.requestGeneration)
+        ? detail.requestGeneration
+        : record.requestGeneration,
+      current,
+      instanceId: adapter.instanceId,
+      pageId: adapter.pageId,
+    };
+    adapter.root.dispatchEvent(
+      new CustomEvent("fly:browser-intent-aborted", {
+        bubbles: true,
+        detail: aborted,
+      }),
+    );
+    return aborted;
   };
 
   const rejectPendingIntent = (adapter, input, limit, observed) => {
@@ -227,6 +287,8 @@
       instanceId: adapter.instanceId,
       pageId: adapter.pageId,
     };
+    record.abortCode = INTENT_REQUEST_TIMEOUT_CODE;
+    record.abortKind = INTENT_ABORT_KIND.TIMEOUT;
     record.timedOut = true;
     record.error = error;
     adapter.root.dispatchEvent(
@@ -258,27 +320,33 @@
     adapter.root.addEventListener(
       "fly:browser-error",
       (event) => {
-        if (event.detail?.current === false) return;
         const record = pendingIntentRecordForGeneration(
           adapter,
           event.detail?.requestGeneration,
         );
-        if (record?.timedOut) {
-          reportBrowserProblem(
-            adapter,
-            {
-              status: 0,
-              result: {
-                code: INTENT_REQUEST_TIMEOUT_CODE,
-                error: record.error,
-                intent: record.intent,
+        if (record?.controller?.signal.aborted) {
+          const aborted = reportIntentAborted(adapter, record, event.detail);
+          if (
+            aborted.current &&
+            aborted.kind === INTENT_ABORT_KIND.TIMEOUT
+          ) {
+            reportBrowserProblem(
+              adapter,
+              {
+                status: 0,
+                result: {
+                  code: aborted.code,
+                  error: aborted.error,
+                  intent: aborted.intent,
+                },
+                request: aborted.request,
               },
-              request: event.detail?.request,
-            },
-            INTENT_REQUEST_TIMEOUT_CODE,
-          );
+              INTENT_REQUEST_TIMEOUT_CODE,
+            );
+          }
           return;
         }
+        if (event.detail?.current === false) return;
         reportBrowserProblem(
           adapter,
           {
@@ -335,15 +403,20 @@
   };
 
   const originalPostIntent = Adapter.prototype.postIntent;
+  /**
+   * @param {unknown} input
+   * @param {IntentTransportOptions} requestOptions
+   */
   Adapter.prototype.postIntent = function postIntentWithPendingLimit(
     input,
     requestOptions = {},
   ) {
+    const transport = normalizedTransportOptions(requestOptions);
     if (!this.intentEndpoint) {
-      return originalPostIntent.call(this, input, requestOptions);
+      return originalPostIntent.call(this, input, transport);
     }
     const intent = intentName(input);
-    if (!intent) return originalPostIntent.call(this, input, requestOptions);
+    if (!intent) return originalPostIntent.call(this, input, transport);
     const controllers = pendingIntentControllers(this);
     const limit = limitFor(
       this,
@@ -362,22 +435,25 @@
       "flyIntentRequestTimeoutMs",
       DEFAULT_INTENT_REQUEST_TIMEOUT_MS,
     );
-    const transport = isObject(requestOptions) ? requestOptions : {};
     const controller = new AbortController();
-    const releaseForwardedAbort = forwardAbortSignal(
-      transport.signal,
-      controller,
-    );
     const requestKey = Symbol("fly.browser.intent.request");
     const record = {
+      abortCode: null,
+      abortKind: null,
       controller,
       error: null,
       intent,
+      request: isObject(input) ? input : {},
       requestGeneration: null,
       timedOut: false,
       timeoutId: null,
       timeoutMs,
     };
+    const releaseForwardedAbort = forwardAbortSignal(
+      transport.signal,
+      controller,
+      record,
+    );
     controllers.set(requestKey, record);
     let pending;
     try {
@@ -394,7 +470,7 @@
         record.timeoutId = globalThis.setTimeout(() => {
           if (!controllers.has(requestKey) || controller.signal.aborted) return;
           reportIntentTimeout(this, input, record);
-          controller.abort();
+          controller.abort(record.error);
         }, timeoutMs);
       }
     } catch (error) {
@@ -482,15 +558,25 @@
 
   const originalStop = Adapter.prototype.stop;
   Adapter.prototype.stop = function stopWithBrowserHardeningCleanup() {
-    const result = originalStop.call(this);
     const controllers = this[PENDING_INTENT_CONTROLLERS_KEY];
     if (controllers instanceof Map) {
       for (const record of controllers.values()) {
         if (record?.timeoutId !== null) globalThis.clearTimeout(record.timeoutId);
-        record?.controller?.abort();
+        if (record?.controller && !record.controller.signal.aborted) {
+          record.abortCode = INTENT_REQUEST_ABORTED_CODE;
+          record.abortKind = INTENT_ABORT_KIND.ADAPTER_STOP;
+          record.error = "Editor action cancelled because the adapter stopped.";
+          reportIntentAborted(this, record, {
+            current: false,
+            request: record.request,
+            requestGeneration: record.requestGeneration,
+          });
+          record.controller.abort(record.error);
+        }
       }
       controllers.clear();
     }
+    const result = originalStop.call(this);
     delete this[PENDING_INTENT_CONTROLLERS_KEY];
     delete this.root.dataset.flyResourceLimited;
     this.root.querySelector(RESOURCE_STATUS_SELECTOR)?.remove();
