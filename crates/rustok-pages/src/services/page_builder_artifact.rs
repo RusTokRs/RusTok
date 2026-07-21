@@ -1,9 +1,10 @@
 use chrono::Utc;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates};
+use rustok_page_builder::dto::PageBuilderPreviewRuntime;
 use rustok_page_builder::{
-    ComponentRegistryManifest, LandingSectionSnapshot, PageBuilderMaterializedStaticLandingArtifact,
-    PageBuilderPreviewRuntime, PageBuilderStaticLandingMaterializationIdentity, PageHead,
-    StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
+    ComponentRegistryManifest, LandingSectionSnapshot,
+    PageBuilderMaterializedStaticLandingArtifact, PageBuilderStaticLandingMaterializationIdentity,
+    PageHead, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
     compile_materialized_static_landing,
 };
 use sea_orm::{
@@ -477,10 +478,8 @@ fn verify_record(record: &page_static_landing_artifact::Model) -> PagesResult<()
                 materialization_identity,
                 "Page Builder landing materialization identity",
             )?;
-            let runtime_snapshots = from_json(
-                runtime_snapshots,
-                "Page Builder landing runtime snapshots",
-            )?;
+            let runtime_snapshots =
+                from_json(runtime_snapshots, "Page Builder landing runtime snapshots")?;
             let materialized = PageBuilderMaterializedStaticLandingArtifact {
                 identity,
                 runtime_snapshots,
@@ -529,8 +528,7 @@ fn ensure_same_artifact(
         || record.document_html != compiled.page.document_html
         || record.body_html != compiled.page.body_html
         || record.css != compiled.page.css
-        || record.materialization_hash.as_deref()
-            != Some(compiled.materialization_hash.as_str())
+        || record.materialization_hash.as_deref() != Some(compiled.materialization_hash.as_str())
         || record.materialization_identity.as_ref() != Some(&compiled.materialization_identity)
         || record.runtime_snapshots.as_ref() != Some(&compiled.runtime_snapshots)
     {

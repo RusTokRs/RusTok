@@ -371,12 +371,22 @@ fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot {
             let digest = Sha256::digest(format!("{}\0{}", body.format, body.content).as_bytes());
             (
                 body.locale.clone(),
-                format!("{}:{digest:x}", body.updated_at),
+                format!("{}:{}", body.updated_at, encode_digest(&digest)),
             )
         })
         .collect::<Vec<_>>();
     revisions.sort();
     revisions
+}
+
+fn encode_digest(digest: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
 }
 
 fn format_body_revisions(revisions: &BodyRevisionSnapshot) -> String {
