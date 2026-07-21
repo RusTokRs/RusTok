@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-14
+last_reviewed: 2026-07-15
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -194,7 +194,7 @@ at the end of this file remain authoritative.
 | `FORUM-01` | `done` | Tenant-composite forum relation integrity and platform locale width. |
 | `FORUM-02` | `done` | Typed topic/reply lifecycle, tombstone and revision fields. |
 | `FORUM-03` | `done` | Atomic category owner writes and translation persistence. |
-| `FORUM-04` | `in_progress` | Parent/cycle guards exist; canonical nested tree, move/reorder and subtree policies remain. |
+| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded canonical nested tree read; atomic move/reorder, topic policy and subtree archive/restore remain. |
 | `FORUM-05` | `done` | Publication-aware serialized counters with database safety guards. |
 | `FORUM-06` | `done` | Locked-topic and pending/publication semantics are explicit owner workflows. |
 | `FORUM-07` | `done` | Monotonic per-topic reply positions and uniqueness constraints. |
@@ -346,25 +346,35 @@ consume are stable.
 **Priority:** P0  
 **Dependencies:** completed FORUM-01/03/10
 
+### Delivered in `FORUM-04A`
+
+- `CategoryService::tree` reconstructs the complete tenant hierarchy through one
+  owner call bounded to 512 nodes and depth 16;
+- `GET /api/forum/categories/tree` and the OpenAPI contract expose nested nodes
+  with `parent_id`, `depth`, direct child metadata, stable `(position, id)`
+  sibling order and localized breadcrumbs;
+- the read fails closed for an oversized, over-depth, disconnected, cyclic or
+  foreign-parent hierarchy instead of returning a partial tree;
+- PostgreSQL and SQLite integration tests cover nesting, deterministic order,
+  locale fallback, breadcrumbs, tenant isolation and the read bounds;
+- the flat cursor projection remains a separate bounded compatibility/read use
+  case.
+
 ### Remaining scope
 
-- expose a canonical nested category tree read model with `parent_id`, `depth`,
-  `has_children`, `children_count`, stable sibling order and breadcrumbs;
 - add atomic move and sibling-reorder owner commands;
 - reject self-parenting, descendant cycles, cross-tenant parents and excessive
-  depth;
+  depth at every category write boundary, not only when reading the tree;
 - define container/category topic-creation policy;
 - make archive/restore behavior explicit for subtrees;
-- keep the flat cursor projection only as a bounded compatibility/read use case;
 - provide admin drag-and-drop integration through owner commands, never direct
   row writes.
 
 ### Definition of done
 
-- the public tree can be reconstructed with one bounded owner read;
 - concurrent moves cannot create cycles or duplicate sibling order;
 - PostgreSQL and SQLite tests cover move, reorder, max depth, archive/restore
-  and two tenants with colliding UUID fixtures;
+  and two tenants with colliding identity fixtures;
 - category deletion still fails closed for non-empty trees.
 
 ### Verification
@@ -1182,23 +1192,22 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `FORUM-04`: tree read projection;
-2. `FORUM-04`: atomic move/reorder commands and tests;
-3. `FORUM-08`: raw lifecycle compatibility-import retirement;
-4. `NOTIFY-00`: module/API skeleton and ownership contracts;
-5. `NOTIFY-01`: inbox/preferences schema;
-6. `NOTIFY-03`: durable consumer and bounded fan-out;
-7. `NOTIFY-07`: privacy/open authorization;
-8. `FORUM-13`: category media references;
-9. `FORUM-14`: attachment relations and upload sessions;
-10. `FORUM-15`: batched member/avatar projection;
-11. `LINK-FORUM-02`: profiles/media runtime proof;
-12. `FORUM-12`: mention/quote persistence and events;
-13. `FORUM-16`: read/unread state;
-14. `FORUM-19`: reports/moderation/restrictions;
-15. `FORUM-20`: ACL and visibility policy;
-16. `FORUM-23`: index projections;
-17. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
+1. `FORUM-04`: atomic move/reorder commands and tests;
+2. `FORUM-08`: raw lifecycle compatibility-import retirement;
+3. `NOTIFY-00`: module/API skeleton and ownership contracts;
+4. `NOTIFY-01`: inbox/preferences schema;
+5. `NOTIFY-03`: durable consumer and bounded fan-out;
+6. `NOTIFY-07`: privacy/open authorization;
+7. `FORUM-13`: category media references;
+8. `FORUM-14`: attachment relations and upload sessions;
+9. `FORUM-15`: batched member/avatar projection;
+10. `LINK-FORUM-02`: profiles/media runtime proof;
+11. `FORUM-12`: mention/quote persistence and events;
+12. `FORUM-16`: read/unread state;
+13. `FORUM-19`: reports/moderation/restrictions;
+14. `FORUM-20`: ACL and visibility policy;
+15. `FORUM-23`: index projections;
+16. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.
 
 # Decisions that must not be reopened without an ADR
@@ -1233,7 +1242,7 @@ possible.
 
 # Immediate next action
 
-The next implementation task is `FORUM-04`: finish the canonical category tree
-read model and atomic move/reorder commands. In parallel, architecture work may
-start `NOTIFY-00`, provided it does not change forum commands into synchronous
-notification calls.
+The next implementation task is the second `FORUM-04` slice: atomic category
+move/reorder commands, write-time depth/cycle enforcement and concurrency tests.
+In parallel, architecture work may start `NOTIFY-00`, provided it does not
+change forum commands into synchronous notification calls.
