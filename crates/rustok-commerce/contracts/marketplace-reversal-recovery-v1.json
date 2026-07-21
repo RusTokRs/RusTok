@@ -4,7 +4,7 @@
   "owner_module": "commerce",
   "status": "source_ready_unvalidated",
   "input": {
-    "source": "processed signature-verified payment provider normalized event",
+    "source": "signature-verified payment provider normalized event after payment owner apply",
     "event_types": ["refund.completed", "chargeback.completed"],
     "marketplace_extension": "marketplace_reversal or metadata.marketplace_reversal",
     "ordinary_non_marketplace_event": "ignore",
@@ -32,6 +32,23 @@
       "ledger owner enforces original-entry capacity and balance"
     ]
   },
+  "delivery": {
+    "observer_contract": "PaymentProviderProcessedEventObserver",
+    "observer_registry": "PaymentProviderEventObservers",
+    "observed_applier": "PaymentObservedDomainEventApplier",
+    "mounted_surfaces": [
+      "payment webhook ingress",
+      "payment manual recovery API",
+      "payment scheduled recovery worker"
+    ],
+    "payment_event_processed_after_observers": true,
+    "scheduled_processed_event_polling": "bounded backfill and fallback",
+    "duplicate_delivery_safe_through": [
+      "payment owner idempotency",
+      "marketplace reversal inbox deduplication",
+      "marketplace root and ledger receipts"
+    ]
+  },
   "inbox": {
     "table": "marketplace_reversal_event_inbox",
     "normalized_facts_immutable": true,
@@ -53,19 +70,24 @@
     "completed_evidence": ["reversal_id", "ledger_transaction_id"]
   },
   "recovery": {
-    "worker": "marketplace_financial_recovery",
-    "interval_seconds": 10,
-    "missed_tick_behavior": "delay",
-    "batch_size": 100,
-    "order": [
-      "adapt_processed_provider_events",
-      "recover_marketplace_reversal_inbox",
-      "recover_marketplace_paid_event_inbox"
-    ],
+    "payment_worker": {
+      "interval_seconds": 10,
+      "batch_size": 50,
+      "applies_host_composed_observers": true
+    },
+    "marketplace_worker": {
+      "name": "marketplace_financial_recovery",
+      "interval_seconds": 10,
+      "missed_tick_behavior": "delay",
+      "batch_size": 100,
+      "order": [
+        "adapt_historical_processed_provider_events",
+        "recover_marketplace_reversal_inbox",
+        "recover_marketplace_paid_event_inbox"
+      ]
+    },
     "eligible": ["received", "retryable_error", "expired_processing"],
-    "operator_review_automatic_retry": false,
-    "direct_payment_observer_contract": "published_unmounted",
-    "mounted_delivery_path": "scheduled_processed_event_adapter"
+    "operator_review_automatic_retry": false
   },
   "operator": {
     "permissions": {
