@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
-    body::Body,
     extract::{Request, State},
     http::{HeaderMap, HeaderValue},
     middleware::Next,
@@ -38,7 +37,7 @@ pub const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
 pub async fn rate_limit_for_paths(
     State(state): State<PathRateLimitMiddlewareState>,
     headers: HeaderMap,
-    mut request: Request<Body>,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, impl IntoResponse> {
     request.headers_mut().remove(TRUSTED_CLIENT_IP_HEADER);
