@@ -1,6 +1,10 @@
-use async_graphql::{ComplexObject, Context, Enum, InputObject, Result, SimpleObject};
-use rustok_api::TenantContext;
-use rustok_core::SecurityContext;
+use async_graphql::{
+    ComplexObject, Context, Enum, FieldError, InputObject, Result, SimpleObject,
+};
+use rustok_api::{
+    graphql::GraphQLError, has_any_effective_permission, AuthContext, Permission, TenantContext,
+};
+use rustok_core::{security_context_from_access_token, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::graphql::GqlProfileSummary;
 use sea_orm::DatabaseConnection;
@@ -9,7 +13,8 @@ use uuid::Uuid;
 
 use crate::{
     BlogPostStatus, CommentListItem as DomainCommentListItem, CommentService,
-    CreatePostInput as DomainCreatePostInput, ListCommentsFilter, PostResponse, PostSummary,
+    CreatePostInput as DomainCreatePostInput, ListCommentsFilter,
+    ModerateCommentStatus as DomainModerateCommentStatus, PostResponse, PostSummary,
 };
 
 #[derive(Enum, Copy, Clone, Eq, PartialEq)]
@@ -36,6 +41,27 @@ impl From<GqlContentStatus> for BlogPostStatus {
             GqlContentStatus::Draft => BlogPostStatus::Draft,
             GqlContentStatus::Published => BlogPostStatus::Published,
             GqlContentStatus::Archived => BlogPostStatus::Archived,
+        }
+    }
+}
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+#[graphql(
+    name = "BlogCommentModerationStatus",
+    rename_items = "SCREAMING_SNAKE_CASE"
+)]
+pub enum GqlModerateCommentStatus {
+    Approved,
+    Spam,
+    Trash,
+}
+
+impl From<GqlModerateCommentStatus> for DomainModerateCommentStatus {
+    fn from(status: GqlModerateCommentStatus) -> Self {
+        match status {
+            GqlModerateCommentStatus::Approved => Self::Approved,
+            GqlModerateCommentStatus::Spam => Self::Spam,
+            GqlModerateCommentStatus::Trash => Self::Trash,
         }
     }
 }
@@ -84,6 +110,23 @@ pub struct GqlPublicCommentList {
     pub total: u64,
 }
 
+#[derive(SimpleObject)]
+pub struct GqlModerationCommentListItem {
+    pub id: Uuid,
+    pub effective_locale: String,
+    pub author_id: Option<Uuid>,
+    pub content_preview: String,
+    pub status: String,
+    pub parent_comment_id: Option<Uuid>,
+    pub created_at: String,
+}
+
+#[derive(SimpleObject)]
+pub struct GqlModerationCommentList {
+    pub items: Vec<GqlModerationCommentListItem>,
+    pub total: u64,
+}
+
 #[ComplexObject]
 impl GqlPost {
     /// Comments safe for public storefront rendering. The Comments owner applies
@@ -98,17 +141,8 @@ impl GqlPost {
         let db = ctx.data::<DatabaseConnection>()?;
         let event_bus = ctx.data::<TransactionalEventBus>()?;
         let request_tenant = ctx.data::<TenantContext>()?;
-        let requested_locale = locale
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .unwrap_or_else(|| self.effective_locale.clone());
-        let fallback_locale = if request_tenant.id == self.tenant_id {
-            request_tenant.default_locale.as_str()
-        } else {
-            self.effective_locale.as_str()
-        };
+        let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
+        let fallback_locale = post_comment_fallback_locale(request_tenant, self);
 
         let (items, total) = CommentService::new(db.clone(), event_bus.clone())
             .list_for_post_with_locale_fallback(
@@ -130,6 +164,76 @@ impl GqlPost {
             total,
         })
     }
+
+    /// Full non-deleted comment queue for Blog moderators. Access is checked on
+    /// the nested field so ordinary post readers cannot inspect pending/spam data.
+    async fn moderation_comments(
+        &self,
+        ctx: &Context<'_>,
+        locale: Option<String>,
+        page: Option<u64>,
+        per_page: Option<u64>,
+    ) -> Result<GqlModerationCommentList> {
+        let auth = require_comment_moderator(ctx)?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let request_tenant = ctx.data::<TenantContext>()?;
+        let requested_locale = comment_locale(locale.as_deref(), &self.effective_locale);
+        let fallback_locale = post_comment_fallback_locale(request_tenant, self);
+
+        let (items, total) = CommentService::new(db.clone(), event_bus.clone())
+            .list_for_post_with_locale_fallback(
+                self.tenant_id,
+                security_context_from_access_token(
+                    auth.user_id,
+                    &auth.grant_type,
+                    &auth.permissions,
+                ),
+                self.id,
+                ListCommentsFilter {
+                    locale: Some(requested_locale),
+                    page: page.unwrap_or(1).max(1),
+                    per_page: per_page.unwrap_or(50).clamp(1, 100),
+                },
+                Some(fallback_locale),
+            )
+            .await
+            .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+
+        Ok(GqlModerationCommentList {
+            items: items.into_iter().map(Into::into).collect(),
+            total,
+        })
+    }
+}
+
+fn comment_locale(requested: Option<&str>, effective_locale: &str) -> String {
+    requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| effective_locale.to_string())
+}
+
+fn post_comment_fallback_locale<'a>(tenant: &'a TenantContext, post: &'a GqlPost) -> &'a str {
+    if tenant.id == post.tenant_id {
+        tenant.default_locale.as_str()
+    } else {
+        post.effective_locale.as_str()
+    }
+}
+
+fn require_comment_moderator(ctx: &Context<'_>) -> Result<AuthContext> {
+    let auth = ctx
+        .data::<AuthContext>()
+        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
+        .clone();
+    if !has_any_effective_permission(&auth.permissions, &[Permission::BLOG_POSTS_MANAGE]) {
+        return Err(<FieldError as GraphQLError>::permission_denied(
+            "Permission denied: blog_posts:manage required",
+        ));
+    }
+    Ok(auth)
 }
 
 #[derive(SimpleObject)]
@@ -238,6 +342,20 @@ impl From<DomainCommentListItem> for GqlPublicCommentListItem {
             effective_locale: comment.effective_locale,
             author_id: comment.author_id,
             content_preview: comment.content_preview,
+            parent_comment_id: comment.parent_comment_id,
+            created_at: comment.created_at,
+        }
+    }
+}
+
+impl From<DomainCommentListItem> for GqlModerationCommentListItem {
+    fn from(comment: DomainCommentListItem) -> Self {
+        Self {
+            id: comment.id,
+            effective_locale: comment.effective_locale,
+            author_id: comment.author_id,
+            content_preview: comment.content_preview,
+            status: comment.status,
             parent_comment_id: comment.parent_comment_id,
             created_at: comment.created_at,
         }
