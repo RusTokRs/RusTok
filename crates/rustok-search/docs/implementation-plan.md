@@ -22,7 +22,8 @@ PostgreSQL target creates an isolated schema, runs Search migrations, projects
 real Blog source rows through `SearchIngestionHandler`, verifies lifecycle and
 payload replacement, and checks tenant-scoped full rebuild behavior. Source-table
 availability now resolves through the active PostgreSQL `search_path` instead of
-hard-coding `public`, matching the projector's unqualified SQL.
+hard-coding `public`, matching the projector's unqualified SQL. A focused source
+guardrail and negative fixtures lock this schema contract and both harnesses.
 
 ## FFA/FBA status
 
@@ -40,8 +41,9 @@ hard-coding `public`, matching the projector's unqualified SQL.
   the user and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL
   `DATABASE_URL`.
 - Guardrails: `scripts/verify/verify-search-fba.mjs`,
-  `scripts/verify/verify-search-ui-boundary.mjs`, and
-  `scripts/verify/verify-search-blog-navigation.mjs`.
+  `scripts/verify/verify-search-ui-boundary.mjs`,
+  `scripts/verify/verify-search-blog-navigation.mjs`, and
+  `scripts/verify/verify-search-blog-projection.mjs`.
 - Blog result navigation parity is transport-neutral in the Rust storefront:
   the same post-processing runs after native or GraphQL selection, preserves
   owner/backend URLs, and fails closed on malformed indexed payloads.
@@ -49,6 +51,8 @@ hard-coding `public`, matching the projector's unqualified SQL.
   resolution policy through the connection `search_path`; schema-isolated tests
   and deployments no longer silently check `public` while querying another
   schema.
+- The PostgreSQL fixture places its unique schema before `public`, keeping test
+  tables isolated while retaining access to shared extensions such as `pg_trgm`.
 
 ## Deployment and connector boundary
 
@@ -92,12 +96,14 @@ only normalized Search ports are exposed remotely.
    cross-tenant rebuild isolation.
 5. Removed the Blog projector's `public` schema assumption so table discovery
    follows the same active `search_path` as its source and destination SQL.
+6. Added a focused Blog projection verifier with canonical, hard-coded-public,
+   and missing-PostgreSQL-harness fixtures.
 
 ## Next results
 
-1. **Execute live Blog projection evidence.** Run the new routing and PostgreSQL
-   targets, retain migration/`pg_trgm` capability evidence, and add targeted
-   reindex missing-post plus module-disabled cleanup cases.
+1. **Execute live Blog projection evidence.** Run the new routing, PostgreSQL,
+   and source-verifier targets; retain migration/`pg_trgm` capability evidence;
+   then add targeted reindex missing-post plus module-disabled cleanup cases.
 2. **Execute live provider contract evidence.** Run queries and suggestions
    against a real PostgreSQL provider under deadline, fallback, error, locale,
    tenant, channel, and catalog-filter conditions. Done when invocation traces
@@ -122,6 +128,8 @@ only normalized Search ports are exposed remotely.
 
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
+- `node scripts/verify/verify-search-blog-projection.mjs`
+- `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `npm run verify:search:fba`
 - `npm run verify:search:ui-boundary`
 - `node scripts/verify/verify-search-blog-navigation.mjs`
