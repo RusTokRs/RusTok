@@ -273,22 +273,23 @@ pub async fn retry_paid_event(
     tag = "admin-marketplace-financial",
     request_body = MarketplaceFinancialSweepInput,
     responses(
-        (status = 200, description = "Bounded marketplace financial recovery sweep", body = MarketplaceFinancialSweepResponse),
+        (status = 200, description = "Bounded tenant-scoped marketplace financial recovery sweep", body = MarketplaceFinancialSweepResponse),
         (status = 401, description = "Unauthorized"),
         (status = 503, description = "Recovery storage unavailable")
     )
 )]
 pub async fn run_recovery_sweep(
     State(runtime): State<CommerceHttpRuntime>,
+    tenant: TenantContext,
     auth: AuthContext,
     Json(input): Json<MarketplaceFinancialSweepInput>,
 ) -> HttpResult<Json<MarketplaceFinancialSweepResponse>> {
     ensure_manage_permission(&auth)?;
     let report = runtime
-        .marketplace_paid_event_inbox_service()
-        .sweep(input.limit.unwrap_or(100))
+        .marketplace_financial_operator_service()
+        .sweep_tenant(tenant.id, input.limit.unwrap_or(100))
         .await
-        .map_err(map_inbox_error)?;
+        .map_err(map_operator_error)?;
     Ok(Json(MarketplaceFinancialSweepResponse {
         selected: report.selected,
         processed: report.processed,
