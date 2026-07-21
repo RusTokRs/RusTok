@@ -51,7 +51,7 @@ pub use services::permission_evaluator::{
     PermissionEvaluation,
 };
 pub use services::permission_policy::{
-    check_all_permissions, check_any_permissions, check_permission, denied_reason_for_denial,
+    check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
     has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
 };
 
