@@ -12,7 +12,9 @@ The host-level path limiter protects every `/api/*` HTTP request, including Blog
 REST routes and `/api/graphql`. Blog adds a field-aware GraphQL policy through a
 Blog-owned rate-limit port backed by the host `SharedApiRateLimiter`. Anonymous
 actor keys consume only the host-resolved trusted client IP; raw forwarded
-headers are not interpreted inside the Blog module.
+headers are not interpreted inside the Blog module. An executable async-graphql
+integration harness now exercises the module policy and structured errors without
+claiming mounted memory/Redis or HTTP `Retry-After` evidence.
 
 The search lifecycle is implemented in `rustok-search`: Blog events upsert or
 delete `blog_post` search documents, and `ReindexRequested` supports both one
@@ -38,11 +40,15 @@ selected post changes.
 - FFA status: `in_progress`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
 - Structural shape: `core_transport_ui`.
-- Load-protection status: `implementation_ready`, runtime evidence pending.
+- Load-protection status: `implementation_ready`, mounted runtime evidence pending.
+- Rate-limit harness status: `executable_no_compile`; the user owns execution.
 - REST protection is host-owned; Blog does not instantiate a second limiter or
   duplicate the `/api/*` middleware counter.
 - GraphQL protection is split into a Blog-owned policy/port and a host adapter
   over the configured memory/Redis API limiter.
+- The integration harness covers allowed reads, exceeded reads, backend failure,
+  authenticated write identity, unauthorized-write bypass, trusted client IP,
+  structured GraphQL extensions, and the `moderate_comment` manage surface.
 - Mutation gates are aligned: update uses `blog_posts:update`; publish,
   unpublish, and archive use `blog_posts:publish`; comment moderation uses
   `blog_posts:manage`.
@@ -71,6 +77,8 @@ selected post changes.
   `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`,
   `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`,
+  `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`,
+  `crates/rustok-blog/tests/graphql_rate_limit_policy_test.rs`,
   `scripts/verify/verify-blog-fba.mjs`,
   `scripts/verify/verify-blog-admin-boundary.mjs`,
   `scripts/verify/verify-blog-storefront-boundary.mjs`, and
@@ -111,13 +119,15 @@ selected post changes.
 13. Added storefront comment pagination: framework-free `commentsPage` policy,
     bounded route parsing, shared native/GraphQL page arguments, canonical page
     one URL behavior, localized controls, and pagination boundary fixtures.
+14. Added an executable GraphQL rate-limit integration harness and machine-readable
+    evidence for allowed, exceeded, backend-unavailable, identity, RBAC bypass,
+    trusted-IP, and moderation-surface behavior.
 
 ## Next results
 
-1. **Close rate-limit runtime evidence.** Exercise memory and Redis
-   allowed/exceeded/backend-unavailable outcomes, GraphQL extensions, HTTP
-   `Retry-After`, and publication/channel/RBAC non-regression, including the new
-   `moderate_comment` surface.
+1. **Close mounted rate-limit runtime evidence.** Execute the new integration
+   harness, then exercise the host-composed memory and Redis limiters, GraphQL
+   extensions, HTTP `Retry-After`, and publication/channel/RBAC non-regression.
 2. **Close search runtime evidence.** Exercise create/update/publication/archive/
    delete event-to-document behavior, targeted recovery, full Blog recovery, and
    module-disabled cleanup against PostgreSQL.
@@ -133,6 +143,7 @@ selected post changes.
 
 ## Verification
 
+- `cargo test -p rustok-blog --test graphql_rate_limit_policy_test`
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo check -p rustok-server --features mod-blog`
 - `npm run verify:blog:admin-boundary`
