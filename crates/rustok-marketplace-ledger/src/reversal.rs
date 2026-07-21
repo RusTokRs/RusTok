@@ -261,6 +261,7 @@ async fn post_in_transaction(
     Ok(MarketplaceLedgerReversalResponse {
         id: reversal_model.id,
         tenant_id: reversal_model.tenant_id,
+        transaction_id: reversal_model.transaction_id,
         kind: input.kind,
         source_id: reversal_model.source_id,
         order_id: reversal_model.order_id,
