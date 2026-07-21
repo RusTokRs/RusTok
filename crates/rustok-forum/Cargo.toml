@@ -24,6 +24,7 @@ uuid.workspace = true
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-notifications-api.workspace = true
 rustok-outbox.workspace = true
 rustok-profiles.workspace = true
 rustok-seo-targets.workspace = true
