@@ -109,6 +109,11 @@ for (const marker of [
 ]) {
   requireMarker(oauth, marker, oauthPath);
 }
+rejectMarker(
+  oauth,
+  '"catalog" => matches!(resource, Resource::BlogCategories)',
+  oauthPath,
+);
 
 for (const marker of [
   "pub fn new_with_event_bus",
