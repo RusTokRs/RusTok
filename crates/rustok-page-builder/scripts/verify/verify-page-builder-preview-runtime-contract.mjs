@@ -29,6 +29,13 @@ const flyService = read(
   "adapters",
   "fly_service.rs",
 );
+const staticLanding = read("crates", "rustok-page-builder", "src", "static_landing.rs");
+const staticMaterialization = read(
+  "crates",
+  "rustok-page-builder",
+  "src",
+  "static_landing_materialization.rs",
+);
 const health = read("crates", "rustok-page-builder", "src", "health.rs");
 const pagesBuilder = read("crates", "rustok-pages", "admin", "src", "builder.rs");
 const adminRuntime = read(
@@ -59,6 +66,8 @@ if (typeof consumerMinVersion !== "string" || consumerMinVersion.length === 0) {
 }
 const contract = registry.provider?.preview_runtime_contract;
 if (!contract) fail("provider.preview_runtime_contract is missing");
+const staticContract = registry.provider?.static_materialization_contract;
+if (!staticContract) fail("provider.static_materialization_contract is missing");
 if (contract.context_shape !== "json_object") {
   fail(`unsupported context shape: ${contract.context_shape}`);
 }
@@ -67,6 +76,9 @@ if (!Number.isInteger(contract.context_max_bytes) || contract.context_max_bytes 
 }
 if (!Number.isInteger(contract.scenario_id_max_bytes) || contract.scenario_id_max_bytes <= 0) {
   fail("scenario_id_max_bytes must be a positive integer");
+}
+if (staticContract.raw_context_persisted !== false) {
+  fail("static materialization must not persist raw runtime context");
 }
 
 for (const { filename, packet } of wavePackets) {
@@ -82,24 +94,22 @@ requireMarker(dto, `pub struct ${contract.input}`, "preview runtime DTO");
 requireMarker(dto, "pub context: serde_json::Value", "preview runtime DTO");
 requireMarker(dto, "pub scenario_id: Option<String>", "preview runtime DTO");
 requireMarker(dto, `pub ${contract.response_identity}: Option<String>`, "preview response identity");
-requireMarker(previewPort, `pub trait ${contract.port}`, "preview rendering port");
-requireMarker(previewPort, "input: &PreviewPageBuilderInput", "preview rendering port");
-
 requireMarker(
-  flyService,
-  "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024",
+  dto,
+  `MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = ${contract.context_max_bytes / 1024} * 1024`,
   "preview context limit",
 );
-if (contract.context_max_bytes !== 256 * 1024) {
-  fail(`registry context_max_bytes must be ${256 * 1024}`);
-}
 requireMarker(
-  flyService,
+  dto,
   `MAX_PREVIEW_SCENARIO_ID_BYTES: usize = ${contract.scenario_id_max_bytes}`,
   "preview scenario limit",
 );
-requireMarker(flyService, "runtime.context.is_object()", "preview context shape validation");
-requireMarker(flyService, "serde_json::to_vec(&runtime.context)", "preview context size validation");
+requireMarker(dto, "pub fn validate(&self)", "canonical preview runtime validator");
+requireMarker(dto, "self.context.is_object()", "preview context shape validation");
+requireMarker(dto, "serde_json::to_vec(&self.context)", "preview context size validation");
+requireMarker(previewPort, `pub trait ${contract.port}`, "preview rendering port");
+requireMarker(previewPort, "input: &PreviewPageBuilderInput", "preview rendering port");
+requireMarker(flyService, ".runtime\n            .validate()", "service runtime validation");
 requireMarker(flyService, "render_preview(context, &input)", "canonical preview port dispatch");
 requireMarker(
   flyService,
@@ -113,20 +123,62 @@ requireMarker(
 );
 
 requireMarker(
+  staticMaterialization,
+  `pub const PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT: &str`,
+  "static materialization format",
+);
+requireMarker(staticMaterialization, staticContract.format, "static materialization format");
+requireMarker(
+  staticMaterialization,
+  `pub struct ${staticContract.envelope}`,
+  "static materialization envelope",
+);
+requireMarker(
+  staticMaterialization,
+  `pub struct ${staticContract.identity}`,
+  "static materialization identity",
+);
+requireMarker(
+  staticMaterialization,
+  `Vec<${staticContract.snapshot}>`,
+  "static runtime snapshots",
+);
+for (const marker of [
+  "runtime.validate()",
+  "RuntimeScenarioRenderSnapshot::capture",
+  "materialize_project_with_runtime_context",
+  "stable_hash(&runtime.context)",
+  "stable_hash(&runtime_snapshots)",
+  "case.document_hash.as_deref()",
+  "Some(page.content_hash.as_str())",
+]) {
+  requireMarker(staticMaterialization, marker, "static runtime materialization");
+}
+for (const field of [
+  staticContract.context_evidence,
+  staticContract.scenario_evidence,
+  staticContract.snapshot_evidence,
+]) {
+  requireMarker(staticMaterialization, `pub ${field}`, "static materialization evidence");
+}
+if (staticMaterialization.includes("pub context: Value")) {
+  fail("static materialization identity must not persist raw runtime context");
+}
+for (const marker of [
+  "pub(crate) fn prepare_document",
+  "pub(crate) fn compile_prepared_document",
+  "pub(crate) fn render_policy",
+]) {
+  requireMarker(staticLanding, marker, "prepared static landing seam");
+}
+
+requireMarker(
   pagesBuilder,
   `impl ${contract.port} for PagesPageBuilderRenderer`,
   "Pages preview port",
 );
-requireMarker(
-  pagesBuilder,
-  "render_runtime_document_html(",
-  "Pages runtime materialization",
-);
-requireMarker(
-  pagesBuilder,
-  "input.runtime.context.clone()",
-  "Pages runtime context binding",
-);
+requireMarker(pagesBuilder, "render_runtime_document_html(", "Pages runtime materialization");
+requireMarker(pagesBuilder, "input.runtime.context.clone()", "Pages runtime context binding");
 requireMarker(adminRuntime, `${contract.input}::new`, "admin preview runtime request");
 requireMarker(adminRuntime, "response.runtime_scenario_id", "admin preview response identity");
 requireMarker(adminRuntime, "current_runtime_context", "admin preview stale-context guard");
