@@ -25,9 +25,12 @@ function fixture({
   lookupBeforeAuthorization = false,
   wrongServiceResource = false,
   wrongHttpResource = false,
-  legacyHelperRegression = false,
+  multiResourceHelperRegression = false,
   advertisesCatalogPermissions = false,
   catalogOauthLeak = false,
+  optionalEventBus = false,
+  alternateConstructor = false,
+  dbOnlyControllerConstruction = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-blog-category-reindex-"));
   const permissionPath = "crates/rustok-api/src/permissions.rs";
@@ -98,15 +101,22 @@ function fixture({
   const deleteOrdered = lookupBeforeAuthorization
     ? `${transaction}\n${deletePermission}`
     : `${deletePermission}\n${transaction}`;
+  const eventBusField = optionalEventBus
+    ? "event_bus: Option<TransactionalEventBus>"
+    : "event_bus: TransactionalEventBus";
+  const constructor = alternateConstructor
+    ? "pub fn new_with_event_bus(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {}"
+    : "pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {}";
 
   write(
     root,
     servicePath,
     `
-      event_bus: Option<TransactionalEventBus>
-      pub fn new_with_event_bus() {}
+      ${eventBusField}
+      ${constructor}
       self.db.begin().await
       publish_blog_reindex_in_tx
+      self.event_bus
       ${missingOutbox ? "" : "DomainEvent::ReindexRequested"}
       target_type: "blog".to_string()
       target_id: None
@@ -118,7 +128,7 @@ function fixture({
       enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
       enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
       ${ownedScopeRegression ? "enforce_owned_scope" : ""}
-      ${legacyHelperRegression ? "enforce_any_scope" : ""}
+      ${multiResourceHelperRegression ? "enforce_any_scope" : ""}
 
       pub async fn update() {
         ${updateOrdered}
@@ -141,7 +151,7 @@ function fixture({
     rbacPath,
     `
       pub(crate) fn enforce_scope() {}
-      ${legacyHelperRegression ? "pub(crate) fn enforce_any_scope() {} primary_or_legacy" : ""}
+      ${multiResourceHelperRegression ? "pub(crate) fn enforce_any_scope() {} primary_or_legacy" : ""}
     `,
   );
 
@@ -165,12 +175,14 @@ function fixture({
   const httpPermission = wrongHttpResource
     ? "Permission::new(Resource::Categories, action)"
     : "Permission::new(Resource::BlogCategories, action)";
+  const serviceConstruction = dbOnlyControllerConstruction
+    ? "CategoryService::new(runtime.db_clone())"
+    : "CategoryService::new(runtime.db_clone(), runtime.event_bus())";
   write(
     root,
     controllerPath,
     `
-      CategoryService::new_with_event_bus
-      runtime.event_bus()
+      ${serviceConstruction}
       filter.page = filter.page.max(1)
       ${unboundedHttpPagination ? "filter.per_page = filter.per_page.max(1)" : "filter.per_page = filter.per_page.clamp(1, 100)"}
       ensure_category_permission
@@ -231,6 +243,8 @@ function fixture({
       compile_policy: "not_run_by_request",
       production_contract: {
         permission_resource: "blog_categories",
+        category_service_constructor:
+          "CategoryService::new(DatabaseConnection, TransactionalEventBus)",
         owner_service: servicePath,
         owner_rbac: rbacPath,
         platform_permissions: permissionPath,
@@ -249,6 +263,7 @@ function fixture({
         "tenant_scoped_parent",
         "non_empty_slug",
         "dedicated_permission_namespace",
+        "mandatory_transactional_event_bus",
         "category_has_no_owner_scope",
         "authorization_precedes_lookup",
         "bounded_category_list",
@@ -260,7 +275,7 @@ function fixture({
   write(
     root,
     "crates/rustok-blog/docs/implementation-plan.md",
-    "blog-category-search-reindex-contract.json verify-blog-category-search-reindex.mjs category_name category_slug non-empty ASCII slug service and HTTP pagination blog_categories:*",
+    "blog-category-search-reindex-contract.json verify-blog-category-search-reindex.mjs category_name category_slug non-empty ASCII slug service and HTTP pagination blog_categories:* CategoryService::new(db, event_bus)",
   );
 
   return root;
@@ -285,7 +300,7 @@ function expectRejected(options, pattern) {
   }
 }
 
-test("Blog category verifier accepts the dedicated permission contract", () => {
+test("Blog category verifier accepts the current-only contract", () => {
   const root = fixture();
   try {
     const result = run(root);
@@ -298,6 +313,24 @@ test("Blog category verifier accepts the dedicated permission contract", () => {
 
 test("rejects missing transactional event", () => {
   expectRejected({ missingOutbox: true }, /missing DomainEvent::ReindexRequested/);
+});
+
+test("rejects optional category event bus", () => {
+  expectRejected(
+    { optionalEventBus: true },
+    /forbidden Option<TransactionalEventBus>/,
+  );
+});
+
+test("rejects alternate category constructor", () => {
+  expectRejected({ alternateConstructor: true }, /forbidden new_with_event_bus/);
+});
+
+test("rejects DB-only controller construction", () => {
+  expectRejected(
+    { dbOnlyControllerConstruction: true },
+    /missing CategoryService::new\(runtime\.db_clone\(\), runtime\.event_bus\(\)\)/,
+  );
 });
 
 test("rejects empty-slug regression", () => {
@@ -344,8 +377,11 @@ test("rejects catalog authorization for Blog categories", () => {
   expectRejected({ wrongHttpResource: true }, /forbidden Resource::Categories/);
 });
 
-test("rejects legacy multi-resource helpers", () => {
-  expectRejected({ legacyHelperRegression: true }, /forbidden enforce_any_scope/);
+test("rejects multi-resource permission helpers", () => {
+  expectRejected(
+    { multiResourceHelperRegression: true },
+    /forbidden enforce_any_scope/,
+  );
 });
 
 test("rejects catalog permission advertisement", () => {
@@ -356,5 +392,5 @@ test("rejects catalog permission advertisement", () => {
 });
 
 test("rejects OAuth catalog leakage", () => {
-  expectRejected({ catalogOauthLeak: true }, /verification failed/);
+  expectRejected({ catalogOauthLeak: true }, /forbidden "catalog"/);
 });
