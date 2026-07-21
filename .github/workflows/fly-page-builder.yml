@@ -46,6 +46,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-active-menu-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: active-menu-binding
+      - name: Run focused Pages tests and capture log
+        shell: bash
+        run: |
+          set +e
+          cargo test -p rustok-pages --test menu_binding_service --test menu_transport_contract -- --nocapture 2>&1 | tee /tmp/active-menu-binding-tests.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > /tmp/active-menu-binding-tests.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: active-menu-binding-tests
+          path: |
+            /tmp/active-menu-binding-tests.log
+            /tmp/active-menu-binding-tests.status
+          if-no-files-found: error
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
