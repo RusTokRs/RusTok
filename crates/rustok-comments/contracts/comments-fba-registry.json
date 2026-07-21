@@ -12,6 +12,7 @@
         "create_comment",
         "get_comment",
         "list_comments_for_target",
+        "list_public_comments_for_target",
         "update_comment",
         "set_comment_status",
         "delete_comment"
@@ -28,7 +29,8 @@
       ],
       "read_operations": [
         "get_comment",
-        "list_comments_for_target"
+        "list_comments_for_target",
+        "list_public_comments_for_target"
       ]
     }
   ],
@@ -54,7 +56,7 @@
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
   },
   "in_process_provider_impl": {
-    "service": "CommentsService",
+    "service": "InProcessCommentsThreadProvider",
     "source": "crates/rustok-comments/src/ports.rs",
     "status": "implemented"
   },
@@ -97,6 +99,11 @@
         "operation": "list_comments_for_target",
         "profiles": ["in_process", "remote_adapter_placeholder"],
         "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+      },
+      {
+        "operation": "list_public_comments_for_target",
+        "profiles": ["in_process", "remote_adapter_placeholder"],
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"]
       },
       {
         "operation": "update_comment",
