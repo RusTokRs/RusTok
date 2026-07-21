@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use rustok_marketplace::MarketplaceFinancialCommandPort;
+use rustok_payment::entities::provider_event;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
     sea_query::Expr,
@@ -10,12 +11,16 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::entities::marketplace_reversal_event_inbox;
+use crate::entities::{
+    marketplace_reversal_adaptation_failure, marketplace_reversal_event_inbox,
+};
 
 use super::{
-    MarketplaceReversalEventInboxError, MarketplaceReversalEventInboxService,
-    MarketplaceReversalEventStatus, MarketplaceReversalEventSweepFailure,
-    MarketplaceReversalEventSweepReport,
+    MarketplaceProviderReversalEventAdapter, MarketplaceProviderReversalEventAdapterError,
+    MarketplaceReversalAdaptationFailureError, MarketplaceReversalAdaptationFailureJournal,
+    MarketplaceReversalAdaptationFailureStatus, MarketplaceReversalEventInboxError,
+    MarketplaceReversalEventInboxService, MarketplaceReversalEventStatus,
+    MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
 };
 
 const MAX_OPERATOR_ITEMS: u64 = 100;
@@ -47,6 +52,25 @@ pub struct MarketplaceReversalEventOperatorView {
     pub processed_at: Option<DateTime<FixedOffset>>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MarketplaceReversalAdaptationFailureOperatorView {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub provider_event_id: Uuid,
+    pub event_source: String,
+    pub event_id: String,
+    pub event_type: String,
+    pub status: String,
+    pub retryable: bool,
+    pub attempt_count: i32,
+    pub last_error_code: String,
+    pub last_error_message: String,
+    pub next_retry_at: Option<DateTime<FixedOffset>>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub resolved_at: Option<DateTime<FixedOffset>>,
+}
+
 #[derive(Debug, Error)]
 pub enum MarketplaceReversalOperatorError {
     #[error("marketplace reversal operator request is invalid: {0}")]
@@ -57,6 +81,10 @@ pub enum MarketplaceReversalOperatorError {
     Database(#[from] sea_orm::DbErr),
     #[error(transparent)]
     Inbox(#[from] MarketplaceReversalEventInboxError),
+    #[error(transparent)]
+    AdaptationFailure(#[from] MarketplaceReversalAdaptationFailureError),
+    #[error(transparent)]
+    Adapter(#[from] MarketplaceProviderReversalEventAdapterError),
 }
 
 pub type MarketplaceReversalOperatorResult<T> = Result<T, MarketplaceReversalOperatorError>;
@@ -64,6 +92,8 @@ pub type MarketplaceReversalOperatorResult<T> = Result<T, MarketplaceReversalOpe
 pub struct MarketplaceReversalOperatorService {
     db: DatabaseConnection,
     inbox: MarketplaceReversalEventInboxService,
+    failures: MarketplaceReversalAdaptationFailureJournal,
+    adapter: MarketplaceProviderReversalEventAdapter,
 }
 
 impl MarketplaceReversalOperatorService {
@@ -72,7 +102,12 @@ impl MarketplaceReversalOperatorService {
         financial_port: Arc<dyn MarketplaceFinancialCommandPort>,
     ) -> Self {
         Self {
-            inbox: MarketplaceReversalEventInboxService::new(db.clone(), financial_port),
+            inbox: MarketplaceReversalEventInboxService::new(
+                db.clone(),
+                financial_port.clone(),
+            ),
+            failures: MarketplaceReversalAdaptationFailureJournal::new(db.clone()),
+            adapter: MarketplaceProviderReversalEventAdapter::new(db.clone(), financial_port),
             db,
         }
     }
@@ -153,6 +188,64 @@ impl MarketplaceReversalOperatorService {
         }
         self.inbox.process(tenant_id, inbox_id).await?;
         self.get_event(tenant_id, inbox_id).await
+    }
+
+    pub async fn get_adaptation_failure(
+        &self,
+        tenant_id: Uuid,
+        failure_id: Uuid,
+    ) -> MarketplaceReversalOperatorResult<MarketplaceReversalAdaptationFailureOperatorView> {
+        self.failures
+            .get(tenant_id, failure_id)
+            .await
+            .map(map_adaptation_failure)
+            .map_err(Into::into)
+    }
+
+    pub async fn list_adaptation_failures_operator_review(
+        &self,
+        tenant_id: Uuid,
+        limit: u64,
+    ) -> MarketplaceReversalOperatorResult<
+        Vec<MarketplaceReversalAdaptationFailureOperatorView>,
+    > {
+        self.failures
+            .list_operator_review(tenant_id, limit)
+            .await
+            .map(|items| items.into_iter().map(map_adaptation_failure).collect())
+            .map_err(Into::into)
+    }
+
+    pub async fn retry_adaptation_failure(
+        &self,
+        tenant_id: Uuid,
+        failure_id: Uuid,
+    ) -> MarketplaceReversalOperatorResult<MarketplaceReversalAdaptationFailureOperatorView> {
+        let failure = self.failures.reset_for_retry(tenant_id, failure_id).await?;
+        let event = provider_event::Entity::find_by_id(failure.provider_event_id)
+            .filter(provider_event::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| {
+                MarketplaceReversalOperatorError::Conflict(format!(
+                    "payment provider event {} was not found",
+                    failure.provider_event_id
+                ))
+            })?;
+        match self.adapter.ingest_provider_event(&event).await {
+            Ok(_) => {
+                self.failures
+                    .mark_resolved(tenant_id, failure.provider_event_id)
+                    .await?;
+                self.get_adaptation_failure(tenant_id, failure_id).await
+            }
+            Err(error) => {
+                self.failures
+                    .record_failure(&event, error.code(), error.to_string(), error.retryable())
+                    .await?;
+                Err(error.into())
+            }
+        }
     }
 
     pub async fn sweep_tenant(
@@ -281,4 +374,26 @@ fn map_event(
         updated_at: model.updated_at,
         processed_at: model.processed_at,
     })
+}
+
+fn map_adaptation_failure(
+    model: marketplace_reversal_adaptation_failure::Model,
+) -> MarketplaceReversalAdaptationFailureOperatorView {
+    MarketplaceReversalAdaptationFailureOperatorView {
+        id: model.id,
+        tenant_id: model.tenant_id,
+        provider_event_id: model.provider_event_id,
+        event_source: model.event_source,
+        event_id: model.event_id,
+        event_type: model.event_type,
+        status: model.status,
+        retryable: model.retryable,
+        attempt_count: model.attempt_count,
+        last_error_code: model.last_error_code,
+        last_error_message: model.last_error_message,
+        next_retry_at: model.next_retry_at,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+        resolved_at: model.resolved_at,
+    }
 }
