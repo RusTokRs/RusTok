@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -39,6 +39,10 @@ pub struct PageTranslation {
     pub locale: String,
     pub title: Option<String>,
     pub slug: Option<String>,
+    #[serde(rename = "metaTitle")]
+    pub meta_title: Option<String>,
+    #[serde(rename = "metaDescription")]
+    pub meta_description: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

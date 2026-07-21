@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
 use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -10,10 +10,10 @@ use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult};
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!) { page(id: $id) { id version status template updatedAt channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
-const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
+const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
 const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
 const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!) { publishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
@@ -291,6 +291,8 @@ pub async fn patch_page_metadata(
     locale: String,
     title: String,
     slug: String,
+    meta_title: Option<String>,
+    meta_description: Option<String>,
     template: Option<String>,
     channel_slugs: Vec<String>,
 ) -> Result<PageDetail, ApiError> {
@@ -304,8 +306,8 @@ pub async fn patch_page_metadata(
                     locale,
                     title,
                     slug: Some(slug),
-                    meta_title: None,
-                    meta_description: None,
+                    meta_title,
+                    meta_description,
                 }]),
                 template,
                 channel_slugs: Some(channel_slugs),

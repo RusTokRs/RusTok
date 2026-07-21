@@ -85,6 +85,8 @@ pub async fn patch_page_metadata(
     locale: String,
     title: String,
     slug: String,
+    meta_title: Option<String>,
+    meta_description: Option<String>,
     template: Option<String>,
     channel_slugs: Vec<String>,
 ) -> Result<PageDetail, TransportError> {
@@ -96,6 +98,8 @@ pub async fn patch_page_metadata(
         locale,
         title,
         slug,
+        meta_title,
+        meta_description,
         template,
         channel_slugs,
     )

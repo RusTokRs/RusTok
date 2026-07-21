@@ -485,6 +485,7 @@ fn PageWorkspace(
         });
     };
 
+    let page_for_metadata = page.clone();
     let page_for_builder = page.clone();
     view! {
         <div class="space-y-4">
@@ -538,6 +539,14 @@ fn PageWorkspace(
                 })}
             </section>
 
+            <PageMetadataEditor
+                page=page_for_metadata
+                token
+                tenant
+                default_locale=default_locale.clone()
+                refresh_generation
+            />
+
             {if is_published {
                 view! { <PublishedDocumentLocked /> }.into_any()
             } else {
@@ -557,6 +566,233 @@ fn PageWorkspace(
                 }.into_any()
             }}
         </div>
+    }
+}
+
+#[component]
+fn PageMetadataEditor(
+    page: PageDetail,
+    token: Signal<Option<String>>,
+    tenant: Signal<Option<String>>,
+    default_locale: String,
+    refresh_generation: RwSignal<u64>,
+) -> impl IntoView {
+    let translation = page.translation.as_ref();
+    let locale = translation
+        .map(|translation| translation.locale.clone())
+        .or_else(|| page.body.as_ref().map(|body| body.locale.clone()))
+        .unwrap_or(default_locale);
+    let title = RwSignal::new(
+        translation
+            .and_then(|translation| translation.title.clone())
+            .unwrap_or_default(),
+    );
+    let slug = RwSignal::new(
+        translation
+            .and_then(|translation| translation.slug.clone())
+            .unwrap_or_default(),
+    );
+    let meta_title = RwSignal::new(
+        translation
+            .and_then(|translation| translation.meta_title.clone())
+            .unwrap_or_default(),
+    );
+    let meta_description = RwSignal::new(
+        translation
+            .and_then(|translation| translation.meta_description.clone())
+            .unwrap_or_default(),
+    );
+    let template = RwSignal::new(page.template.clone());
+    let channel_slugs = RwSignal::new(page.channel_slugs.join(", "));
+    let busy = RwSignal::new(false);
+    let saved = RwSignal::new(false);
+    let error = RwSignal::new(None::<String>);
+    let submit_page_id = page.id.clone();
+    let submit_locale = locale.clone();
+    let expected_version = page.version;
+    let is_published = page.status.eq_ignore_ascii_case("published");
+
+    let submit = move |event: SubmitEvent| {
+        event.prevent_default();
+        if busy.get_untracked() {
+            return;
+        }
+
+        let title_value = core::ui_text_or_default(&title.get_untracked());
+        let slug_value = core::ui_text_or_default(&slug.get_untracked());
+        if title_value.is_empty() {
+            error.set(Some("Title is required".to_string()));
+            return;
+        }
+        if slug_value.is_empty() {
+            error.set(Some("Slug is required".to_string()));
+            return;
+        }
+
+        let page_id = submit_page_id.clone();
+        let locale = submit_locale.clone();
+        let meta_title_value = core::optional_ui_text(&meta_title.get_untracked());
+        let meta_description_value = core::optional_ui_text(&meta_description.get_untracked());
+        let template_value = core::optional_ui_text(&template.get_untracked());
+        let channel_slugs_value = core::parse_channel_slugs(&channel_slugs.get_untracked());
+        let token = token.get_untracked();
+        let tenant = tenant.get_untracked();
+        busy.set(true);
+        saved.set(false);
+        error.set(None);
+
+        spawn_local(async move {
+            match transport::patch_page_metadata(
+                token,
+                tenant,
+                page_id,
+                expected_version,
+                locale,
+                title_value,
+                slug_value,
+                meta_title_value,
+                meta_description_value,
+                template_value,
+                channel_slugs_value,
+            )
+            .await
+            {
+                Ok(_) => {
+                    saved.set(true);
+                    refresh_generation
+                        .update(|generation| *generation = generation.wrapping_add(1));
+                }
+                Err(update_error) => error.set(Some(update_error.to_string())),
+            }
+            busy.set(false);
+        });
+    };
+
+    view! {
+        <section class="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h3 class="font-semibold text-card-foreground">"Page metadata"</h3>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        "Metadata uses its own versioned command and never writes the Fly document."
+                    </p>
+                </div>
+                <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                    {format!("locale {locale}")}
+                </span>
+            </div>
+
+            <form class="mt-4 space-y-4" on:submit=submit>
+                <div class="grid gap-3 md:grid-cols-2">
+                    <label class="block text-sm font-medium text-card-foreground">
+                        "Title"
+                        <input
+                            class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                            prop:value=move || title.get()
+                            on:input=move |event| {
+                                saved.set(false);
+                                title.set(event_target_value(&event));
+                            }
+                            required
+                        />
+                    </label>
+                    <label class="block text-sm font-medium text-card-foreground">
+                        "Slug"
+                        <input
+                            class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                            prop:value=move || slug.get()
+                            on:input=move |event| {
+                                saved.set(false);
+                                slug.set(event_target_value(&event));
+                            }
+                            required
+                        />
+                    </label>
+                    <label class="block text-sm font-medium text-card-foreground">
+                        "SEO title"
+                        <input
+                            class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                            prop:value=move || meta_title.get()
+                            on:input=move |event| {
+                                saved.set(false);
+                                meta_title.set(event_target_value(&event));
+                            }
+                        />
+                    </label>
+                    <label class="block text-sm font-medium text-card-foreground">
+                        "Template"
+                        <input
+                            class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                            prop:value=move || template.get()
+                            on:input=move |event| {
+                                saved.set(false);
+                                template.set(event_target_value(&event));
+                            }
+                        />
+                    </label>
+                </div>
+
+                <label class="block text-sm font-medium text-card-foreground">
+                    "SEO description"
+                    <textarea
+                        class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        prop:value=move || meta_description.get()
+                        on:input=move |event| {
+                            saved.set(false);
+                            meta_description.set(event_target_value(&event));
+                        }
+                        rows=3
+                    ></textarea>
+                </label>
+
+                <label class="block text-sm font-medium text-card-foreground">
+                    "Channels"
+                    <input
+                        class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        prop:value=move || channel_slugs.get()
+                        on:input=move |event| {
+                            saved.set(false);
+                            channel_slugs.set(event_target_value(&event));
+                        }
+                        placeholder="web, mobile"
+                    />
+                    <span class="mt-1 block text-xs text-muted-foreground">
+                        "Leave empty to make the page available to every channel."
+                    </span>
+                </label>
+
+                {if is_published {
+                    view! {
+                        <p class="rounded-lg border border-amber-300/50 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            "Published metadata changes require publish permission. The published Fly document remains locked."
+                        </p>
+                    }.into_any()
+                } else {
+                    ().into_any()
+                }}
+
+                {move || error.get().map(|message| view! {
+                    <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+                        {message}
+                    </div>
+                })}
+                {move || saved.get().then(|| view! {
+                    <div class="rounded-lg border border-emerald-300/40 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+                        "Metadata saved"
+                    </div>
+                })}
+
+                <div class="flex justify-end">
+                    <button
+                        type="submit"
+                        class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                        disabled=move || busy.get()
+                    >
+                        {move || if busy.get() { "Saving metadata..." } else { "Save metadata" }}
+                    </button>
+                </div>
+            </form>
+        </section>
     }
 }
 
