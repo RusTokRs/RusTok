@@ -20,6 +20,7 @@ const flyService = read(
   "adapters",
   "fly_service.rs",
 );
+const health = read("crates", "rustok-page-builder", "src", "health.rs");
 const pagesBuilder = read("crates", "rustok-pages", "admin", "src", "builder.rs");
 const adminRuntime = read(
   "crates",
@@ -39,6 +40,10 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 }
 
+const providerVersion = registry.provider?.builder_contract_version;
+if (typeof providerVersion !== "string" || providerVersion.length === 0) {
+  fail("provider.builder_contract_version is missing");
+}
 const contract = registry.provider?.preview_runtime_contract;
 if (!contract) fail("provider.preview_runtime_contract is missing");
 if (contract.context_shape !== "json_object") {
@@ -60,7 +65,7 @@ requireMarker(previewPort, "input: &PreviewPageBuilderInput", "preview rendering
 
 requireMarker(
   flyService,
-  `MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024`,
+  "MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024",
   "preview context limit",
 );
 if (contract.context_max_bytes !== 256 * 1024) {
@@ -78,6 +83,11 @@ requireMarker(
   flyService,
   `${contract.response_identity}: input.runtime.scenario_id`,
   "preview response identity",
+);
+requireMarker(
+  health,
+  `builder_contract_version: "${providerVersion}"`,
+  "provider health evidence version",
 );
 
 requireMarker(
