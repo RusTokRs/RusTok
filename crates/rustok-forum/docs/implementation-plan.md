@@ -6,7 +6,7 @@ status: active
 owners:
   - rustok-forum
   - rustok-notifications-program
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-21
 ---
 
 # `rustok-forum` canonical implementation plan
@@ -194,7 +194,7 @@ at the end of this file remain authoritative.
 | `FORUM-01` | `done` | Tenant-composite forum relation integrity and platform locale width. |
 | `FORUM-02` | `done` | Typed topic/reply lifecycle, tombstone and revision fields. |
 | `FORUM-03` | `done` | Atomic category owner writes and translation persistence. |
-| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded canonical nested tree read; atomic move/reorder, topic policy and subtree archive/restore remain. |
+| `FORUM-04` | `in_progress` | FORUM-04A adds the bounded tree read; FORUM-04B adds atomic move/reorder; FORUM-04C enforces write depth and owner-only placement. Topic policy and subtree archive/restore remain. |
 | `FORUM-05` | `done` | Publication-aware serialized counters with database safety guards. |
 | `FORUM-06` | `done` | Locked-topic and pending/publication semantics are explicit owner workflows. |
 | `FORUM-07` | `done` | Monotonic per-topic reply positions and uniqueness constraints. |
@@ -360,11 +360,24 @@ consume are stable.
 - the flat cursor projection remains a separate bounded compatibility/read use
   case.
 
+### Delivered in `FORUM-04B` and `FORUM-04C`
+
+- tenant-serialized `CategoryService::move_category` and `reorder_siblings`
+  normalize complete source/destination sibling groups atomically;
+- REST, GraphQL and OpenAPI expose owner commands guarded by
+  `forum_categories:manage`;
+- move/reorder rejects self/descendant cycles, missing or cross-tenant parents,
+  incomplete sibling sets, duplicate IDs, oversized trees and depth overflow;
+- PostgreSQL and SQLite enforce zero-based depth 16 at the database write
+  boundary, including internal direct writes;
+- generic category metadata updates reject `position`, so transports cannot
+  bypass owner placement commands;
+- shared PostgreSQL/SQLite scenarios cover reorder, cross-parent move, sibling
+  normalization, cycle/foreign-parent rejection, write-depth rejection and
+  tenant isolation.
+
 ### Remaining scope
 
-- add atomic move and sibling-reorder owner commands;
-- reject self-parenting, descendant cycles, cross-tenant parents and excessive
-  depth at every category write boundary, not only when reading the tree;
 - define container/category topic-creation policy;
 - make archive/restore behavior explicit for subtrees;
 - provide admin drag-and-drop integration through owner commands, never direct
@@ -381,7 +394,10 @@ consume are stable.
 
 ```bash
 cargo test -p rustok-forum category_tree
+cargo test -p rustok-forum --test category_commands_sqlite -- --nocapture
+cargo test -p rustok-forum --test category_commands_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test runtime_regression_baseline
+cargo xtask module validate forum
 npm run verify:forum:admin-boundary
 ```
 
@@ -1192,7 +1208,7 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `FORUM-04`: atomic move/reorder commands and tests;
+1. `FORUM-04`: topic-creation policy and subtree archive/restore owner workflows;
 2. `FORUM-08`: raw lifecycle compatibility-import retirement;
 3. `NOTIFY-00`: module/API skeleton and ownership contracts;
 4. `NOTIFY-01`: inbox/preferences schema;
@@ -1242,7 +1258,8 @@ possible.
 
 # Immediate next action
 
-The next implementation task is the second `FORUM-04` slice: atomic category
-move/reorder commands, write-time depth/cycle enforcement and concurrency tests.
+The next implementation task is the remaining `FORUM-04` policy slice: category
+topic-creation policy, subtree archive/restore owner workflows and admin
+drag-and-drop consumption of the existing placement commands.
 In parallel, architecture work may start `NOTIFY-00`, provided it does not
 change forum commands into synchronous notification calls.
