@@ -203,13 +203,27 @@ export function collectDbMultilingualContractFailures(root = repoRoot) {
       failures.push(`${backfillPath}: invalid JSON: ${error.message}`);
       register = null;
     }
-    const pagesContract = register?.contracts?.find(
-      (entry) => entry.migration === "m20260721_000003_expand_pages_locale_storage_columns",
-    );
-    if (!pagesContract) {
-      failures.push(`${backfillPath}: Pages locale widening migration is undeclared`);
-    } else if (pagesContract.mode !== "none" || pagesContract.owner !== "rustok-pages") {
-      failures.push(`${backfillPath}: Pages locale widening must be DDL-only and owned by rustok-pages`);
+
+    const expectedBackfillContracts = new Map([
+      ["m20260721_000003_expand_pages_locale_storage_columns", "rustok-pages"],
+      ["m20260721_000004_expand_content_locale_storage_columns", "rustok-content"],
+      ["m20260721_000005_expand_blog_locale_storage_columns", "rustok-blog"],
+      ["m20260721_000006_expand_taxonomy_locale_storage_columns", "rustok-taxonomy"],
+      ["m20260721_000007_expand_comment_locale_storage_columns", "rustok-comments"],
+      ["m20260721_000009_expand_profile_locale_storage_columns", "rustok-profiles"],
+      ["m20260721_000007_align_language_agnostic_locale_contract", "rustok-commerce"],
+      ["m20260721_000105_expand_customer_locale_contract", "rustok-customer"],
+    ]);
+
+    for (const [migration, owner] of expectedBackfillContracts) {
+      const entry = register?.contracts?.find((candidate) => candidate.migration === migration);
+      if (!entry) {
+        failures.push(`${backfillPath}: locale widening migration ${migration} is undeclared`);
+      } else if (entry.mode !== "none" || entry.owner !== owner) {
+        failures.push(
+          `${backfillPath}: ${migration} must be DDL-only and owned by ${owner}`,
+        );
+      }
     }
   }
 
