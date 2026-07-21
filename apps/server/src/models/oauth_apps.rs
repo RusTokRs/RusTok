@@ -1,18 +1,24 @@
 //! Business logic wrapper for OAuth apps
 
-use rustok_api::Permission;
+use rustok_api::{normalize_locale_tag, Permission};
+use sea_orm::sea_query::{Alias, OnConflict, Query};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection, DbErr,
     EntityTrait, QueryFilter, Set, TransactionTrait, entity::prelude::*,
 };
-use std::str::FromStr;
+use std::{future::Future, str::FromStr};
 use uuid::Uuid;
 
-use super::_entities::oauth_app_translations;
 use super::_entities::oauth_apps::ActiveModel as DatabaseActiveModel;
+use super::_entities::{oauth_app_translations, tenants};
 pub use super::_entities::oauth_apps::{Column, Entity, Model, Relation};
 
 const LEGACY_UNDETERMINED_LOCALE: &str = "und";
+const MANIFEST_GENERATED_COPY_LOCALE: &str = "en";
+
+tokio::task_local! {
+    static OAUTH_RUNTIME_COPY_LOCALE: String;
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct ActiveModel {
@@ -76,25 +82,34 @@ impl ActiveModel {
             .ok_or_else(|| DbErr::Custom("OAuth app tenant_id is required".to_string()))?;
         let app_id = active_value(&self.id)
             .ok_or_else(|| DbErr::Custom("OAuth app id is required".to_string()))?;
+        let auto_created = active_value(&self.auto_created).unwrap_or(false);
+        let locale = copy_write_locale(auto_created)?;
 
-        let txn = db.begin().await?;
-        let mut model = database_active(self).insert(&txn).await?;
+        let transaction = db.begin().await?;
+        let mut model = database_active(self).insert(&transaction).await?;
         upsert_translation(
-            &txn,
+            &transaction,
             tenant_id,
             app_id,
-            LEGACY_UNDETERMINED_LOCALE,
+            locale.as_str(),
             name.clone(),
             description.clone(),
         )
         .await?;
-        txn.commit().await?;
+        transaction.commit().await?;
         model.name = name;
         model.description = description;
         Ok(model)
     }
 
-    pub async fn update<C>(self, db: &C) -> Result<Model, DbErr>
+    pub async fn update(self, db: &DatabaseConnection) -> Result<Model, DbErr> {
+        let transaction = db.begin().await?;
+        let model = self.update_in_transaction(&transaction).await?;
+        transaction.commit().await?;
+        Ok(model)
+    }
+
+    pub async fn update_in_transaction<C>(self, db: &C) -> Result<Model, DbErr>
     where
         C: ConnectionTrait,
     {
@@ -105,29 +120,36 @@ impl ActiveModel {
             .ok_or_else(|| DbErr::Custom("OAuth app tenant_id is required".to_string()))?;
         let app_id = active_value(&self.id)
             .ok_or_else(|| DbErr::Custom("OAuth app id is required".to_string()))?;
+        let auto_created = active_value(&self.auto_created).unwrap_or(false);
 
-        let mut model = database_active(self).update(db).await?;
-        if name.is_some() || description_changed {
-            let existing = oauth_app_translations::Entity::find()
-                .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
-                .filter(oauth_app_translations::Column::AppId.eq(app_id))
-                .filter(oauth_app_translations::Column::Locale.eq(LEGACY_UNDETERMINED_LOCALE))
-                .one(db)
-                .await?;
+        let localized_update = if name.is_some() || description_changed {
+            let locale = copy_write_locale(auto_created)?;
+            let existing = resolve_translation(db, tenant_id, app_id, locale.as_str()).await?;
             let resolved_name = name
                 .clone()
                 .or_else(|| existing.as_ref().map(|row| row.name.clone()))
-                .ok_or_else(|| DbErr::Custom("OAuth app translation name is required".to_string()))?;
+                .ok_or_else(|| {
+                    DbErr::Custom(format!(
+                        "OAuth app translation name is required for locale `{locale}`"
+                    ))
+                })?;
             let resolved_description = if description_changed {
                 description.clone()
             } else {
                 existing.and_then(|row| row.description)
             };
+            Some((locale, resolved_name, resolved_description))
+        } else {
+            None
+        };
+
+        let mut model = database_active(self).update(db).await?;
+        if let Some((locale, resolved_name, resolved_description)) = localized_update {
             upsert_translation(
                 db,
                 tenant_id,
                 app_id,
-                LEGACY_UNDETERMINED_LOCALE,
+                locale.as_str(),
                 resolved_name.clone(),
                 resolved_description.clone(),
             )
@@ -170,6 +192,42 @@ fn active_value<T: Clone>(value: &ActiveValue<T>) -> Option<T> {
     }
 }
 
+pub fn normalize_runtime_copy_locale(value: &str) -> Result<String, DbErr> {
+    let locale = normalize_locale_tag(value).ok_or_else(|| {
+        DbErr::Custom(
+            "OAuth app locale must be a normalized BCP47-like tag with at most 32 bytes"
+                .to_string(),
+        )
+    })?;
+    if locale == LEGACY_UNDETERMINED_LOCALE {
+        return Err(DbErr::Custom(
+            "OAuth runtime copy cannot use storage-only locale `und`".to_string(),
+        ));
+    }
+    Ok(locale)
+}
+
+pub async fn scope_runtime_copy_locale<F>(locale: String, future: F) -> F::Output
+where
+    F: Future,
+{
+    OAUTH_RUNTIME_COPY_LOCALE.scope(locale, future).await
+}
+
+fn copy_write_locale(auto_created: bool) -> Result<String, DbErr> {
+    if auto_created {
+        return Ok(MANIFEST_GENERATED_COPY_LOCALE.to_string());
+    }
+    OAUTH_RUNTIME_COPY_LOCALE
+        .try_with(Clone::clone)
+        .map_err(|_| {
+            DbErr::Custom(
+                "manual OAuth app display writes require a request-scoped effective locale"
+                    .to_string(),
+            )
+        })
+}
+
 pub async fn upsert_translation<C>(
     db: &C,
     tenant_id: Uuid,
@@ -181,36 +239,51 @@ pub async fn upsert_translation<C>(
 where
     C: ConnectionTrait,
 {
-    let existing = oauth_app_translations::Entity::find()
-        .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
-        .filter(oauth_app_translations::Column::AppId.eq(app_id))
-        .filter(oauth_app_translations::Column::Locale.eq(locale))
-        .one(db)
-        .await?;
-    let now = chrono::Utc::now().into();
-    match existing {
-        Some(row) => {
-            let mut active: oauth_app_translations::ActiveModel = row.into();
-            active.name = Set(name);
-            active.description = Set(description);
-            active.updated_at = Set(now);
-            active.update(db).await
-        }
-        None => {
-            oauth_app_translations::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                app_id: Set(app_id),
-                locale: Set(locale.to_string()),
-                name: Set(name),
-                description: Set(description),
-                created_at: Set(now),
-                updated_at: Set(now),
-            }
-            .insert(db)
-            .await
-        }
-    }
+    let locale = normalize_runtime_copy_locale(locale)?;
+    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+    let mut insert = Query::insert();
+    insert
+        .into_table(Alias::new("oauth_app_translations"))
+        .columns([
+            Alias::new("id"),
+            Alias::new("tenant_id"),
+            Alias::new("app_id"),
+            Alias::new("locale"),
+            Alias::new("name"),
+            Alias::new("description"),
+            Alias::new("created_at"),
+            Alias::new("updated_at"),
+        ])
+        .values_panic([
+            Uuid::new_v4().into(),
+            tenant_id.into(),
+            app_id.into(),
+            locale.clone().into(),
+            name.into(),
+            description.into(),
+            now.into(),
+            now.into(),
+        ])
+        .on_conflict(
+            OnConflict::columns([
+                Alias::new("tenant_id"),
+                Alias::new("app_id"),
+                Alias::new("locale"),
+            ])
+            .update_column(Alias::new("name"))
+            .update_column(Alias::new("description"))
+            .update_column(Alias::new("updated_at"))
+            .to_owned(),
+        );
+    db.execute(db.get_database_backend().build(&insert)).await?;
+
+    resolve_translation(db, tenant_id, app_id, locale.as_str())
+        .await?
+        .ok_or_else(|| {
+            DbErr::Custom(format!(
+                "OAuth app translation missing after upsert: app {app_id}, locale `{locale}`"
+            ))
+        })
 }
 
 pub async fn resolve_translation<C>(
@@ -222,6 +295,7 @@ pub async fn resolve_translation<C>(
 where
     C: ConnectionTrait,
 {
+    let locale = normalize_runtime_copy_locale(locale)?;
     oauth_app_translations::Entity::find()
         .filter(oauth_app_translations::Column::TenantId.eq(tenant_id))
         .filter(oauth_app_translations::Column::AppId.eq(app_id))
@@ -230,12 +304,60 @@ where
         .await
 }
 
+pub async fn hydrate_exact_translation<C>(
+    db: &C,
+    mut model: Model,
+    locale: &str,
+) -> Result<Model, DbErr>
+where
+    C: ConnectionTrait,
+{
+    let locale = normalize_runtime_copy_locale(locale)?;
+    let translation = resolve_translation(db, model.tenant_id, model.id, locale.as_str())
+        .await?
+        .ok_or_else(|| {
+            DbErr::Custom(format!(
+                "OAuth app translation missing: app {}, locale `{locale}`",
+                model.id
+            ))
+        })?;
+    model.name = translation.name;
+    model.description = translation.description;
+    Ok(model)
+}
+
+async fn hydrate_tenant_default_or_identifier(
+    db: &DatabaseConnection,
+    mut model: Model,
+) -> Result<Model, DbErr> {
+    let tenant = tenants::Entity::find_by_id(model.tenant_id).one(db).await?;
+    if let Some(locale) = tenant
+        .as_ref()
+        .and_then(|tenant| normalize_locale_tag(tenant.default_locale.as_str()))
+        .filter(|locale| locale != LEGACY_UNDETERMINED_LOCALE)
+    {
+        if let Some(translation) = resolve_translation(db, model.tenant_id, model.id, &locale).await?
+        {
+            model.name = translation.name;
+            model.description = translation.description;
+            return Ok(model);
+        }
+    }
+
+    // OAuth security identity must remain usable even when presentation copy for the
+    // tenant policy locale is missing. The stable slug is an identifier, not a
+    // localized fallback row, and `und` is never returned at runtime.
+    model.name = model.slug.clone();
+    model.description = None;
+    Ok(model)
+}
+
 impl Entity {
     pub async fn find_active_by_client_id(
         db: &DatabaseConnection,
         client_id: Uuid,
     ) -> Result<Option<Model>, DbErr> {
-        Entity::find()
+        let model = Entity::find()
             .filter(
                 Condition::all()
                     .add(Column::ClientId.eq(client_id))
@@ -243,7 +365,11 @@ impl Entity {
                     .add(Column::RevokedAt.is_null()),
             )
             .one(db)
-            .await
+            .await?;
+        match model {
+            Some(model) => Ok(Some(hydrate_tenant_default_or_identifier(db, model).await?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn find_by_tenant(
