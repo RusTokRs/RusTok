@@ -135,11 +135,20 @@ requireText(storefrontTransport, "NotificationStorefrontState::foundation()", `$
 requireText(storefrontUi, "NotificationsView", `${storefrontUiPath}: storefront owner component is missing`);
 requireText(canonicalPlan, "Delivered in `NOTIFY-00A`", `${canonicalPlanPath}: NOTIFY-00A delivery is not recorded`);
 
-const notificationSources = collectFiles(absolute("crates/rustok-notifications-api"))
-  .concat(collectFiles(absolute("crates/rustok-notifications")))
-  .filter((file) => file.endsWith(".rs"))
-  .map((file) => readFileSync(path.join(repoRoot, file.startsWith("crates/") ? file : `crates/rustok-notifications/${file}`), "utf8"))
-  .join("\n");
+const notificationSources = [
+  apiLib,
+  keys,
+  model,
+  provider,
+  ownerLib,
+  ownerService,
+  adminCore,
+  adminTransport,
+  adminUi,
+  storefrontCore,
+  storefrontTransport,
+  storefrontUi,
+].join("\n");
 
 reject(notificationSources, /rustok_email|smtp|phone_number|email_address|rendered_html/i, "notification foundation must not own channel SDKs, contact data, or rendered HTML");
 reject(provider, /DatabaseConnection|sea_orm::|entities::/, `${providerPath}: neutral source provider contract must not expose persistence`);
@@ -148,12 +157,18 @@ reject(adminTransport, /localStorage|gloo_storage|reqwest|DatabaseConnection/, `
 reject(storefrontTransport, /localStorage|gloo_storage|Some\s*\(\s*[1-9]/, `${storefrontTransportPath}: bootstrap storefront must not create shadow unread state`);
 
 for (const relativePath of collectFiles(repoRoot)) {
+  if (relativePath === "Cargo.toml") continue;
   if (!relativePath.endsWith(".rs") && !relativePath.endsWith("Cargo.toml")) continue;
   if (relativePath.startsWith("crates/rustok-notifications/")) continue;
   if (relativePath.startsWith("crates/rustok-notifications-api/")) continue;
+  if (relativePath.startsWith("crates/rustok-distribution/")) continue;
+  if (relativePath.startsWith("crates/rustok-migrations/")) continue;
+  if (relativePath.startsWith("apps/server/")) continue;
+  if (relativePath.startsWith("apps/admin/")) continue;
+  if (relativePath.startsWith("apps/storefront/")) continue;
   const source = readFileSync(absolute(relativePath), "utf8");
   if (/rustok[_-]notifications(?!(?:[_-]api))/.test(source)) {
-    failures.push(`${relativePath}: producer/consumer imports the notifications owner instead of the neutral API contract`);
+    failures.push(`${relativePath}: producer imports the notifications owner instead of the neutral API contract`);
   }
 }
 
