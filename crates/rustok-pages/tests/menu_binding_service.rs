@@ -1,4 +1,3 @@
-use rustok_channel::{ChannelService, CreateChannelInput, migrations as channel_migrations};
 use rustok_core::MigrationSource;
 use rustok_pages::PagesModule;
 use rustok_pages::dto::{
@@ -28,19 +27,36 @@ async fn setup() -> (DatabaseConnection, Uuid, Uuid, Uuid) {
             is_active BOOLEAN NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE channels (
+            id TEXT PRIMARY KEY NOT NULL,
+            tenant_id TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            name TEXT NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            is_default BOOLEAN NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'experimental',
+            settings TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (tenant_id, slug),
+            FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
         )
         "#,
     ))
     .await
-    .expect("tenants table should exist for channel foreign keys");
+    .expect("tenant and channel tables should exist for Pages migrations");
+
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let channel_id = Uuid::new_v4();
+    let other_channel_id = Uuid::new_v4();
+    seed_tenant(&db, tenant_id, "tenant-menu").await;
+    seed_tenant(&db, other_tenant_id, "tenant-other").await;
+    seed_channel(&db, channel_id, tenant_id, "web").await;
+    seed_channel(&db, other_channel_id, other_tenant_id, "other-web").await;
 
     let manager = SchemaManager::new(&db);
-    for migration in channel_migrations::migrations() {
-        migration
-            .up(&manager)
-            .await
-            .expect("channel migration should apply");
-    }
     for migration in PagesModule.migrations() {
         migration
             .up(&manager)
@@ -48,32 +64,7 @@ async fn setup() -> (DatabaseConnection, Uuid, Uuid, Uuid) {
             .expect("pages migration should apply");
     }
 
-    let tenant_id = Uuid::new_v4();
-    let other_tenant_id = Uuid::new_v4();
-    seed_tenant(&db, tenant_id, "tenant-menu").await;
-    seed_tenant(&db, other_tenant_id, "tenant-other").await;
-
-    let channel_service = ChannelService::new(db.clone());
-    let channel = channel_service
-        .create_channel(CreateChannelInput {
-            tenant_id,
-            slug: "web".to_string(),
-            name: "Web".to_string(),
-            settings: None,
-        })
-        .await
-        .expect("tenant channel should be created");
-    let other_channel = channel_service
-        .create_channel(CreateChannelInput {
-            tenant_id: other_tenant_id,
-            slug: "other-web".to_string(),
-            name: "Other Web".to_string(),
-            settings: None,
-        })
-        .await
-        .expect("other tenant channel should be created");
-
-    (db, tenant_id, channel.id, other_channel.id)
+    (db, tenant_id, channel_id, other_channel_id)
 }
 
 async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
@@ -91,6 +82,30 @@ async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
     ))
     .await
     .expect("tenant should be inserted");
+}
+
+async fn seed_channel(
+    db: &DatabaseConnection,
+    channel_id: Uuid,
+    tenant_id: Uuid,
+    slug: &str,
+) {
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        "INSERT INTO channels (id, tenant_id, slug, name, is_active, is_default, status, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        [
+            channel_id.into(),
+            tenant_id.into(),
+            slug.to_string().into(),
+            format!("{slug} channel").into(),
+            true.into(),
+            false.into(),
+            "experimental".to_string().into(),
+            "{}".to_string().into(),
+        ],
+    ))
+    .await
+    .expect("channel should be inserted");
 }
 
 fn menu(name: &str, title: &str, location: MenuLocation) -> CreateMenuInput {
