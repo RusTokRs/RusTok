@@ -1,0 +1,15 @@
+[package]
+name = "rustok-notifications"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Notification inbox, preference, fan-out, and delivery orchestration owner"
+
+[dependencies]
+async-trait.workspace = true
+rustok-core.workspace = true
+rustok-notifications-api.workspace = true
+sea-orm-migration.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
