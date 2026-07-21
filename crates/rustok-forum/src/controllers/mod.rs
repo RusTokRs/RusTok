@@ -7,6 +7,7 @@ use sea_orm::DatabaseConnection;
 
 pub mod categories;
 pub mod category_commands;
+pub mod category_policy;
 pub mod category_tree;
 pub mod replies;
 pub mod subscriptions;
@@ -60,6 +61,11 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
         .route(
             "/api/forum/categories/{id}/move",
             axum::routing::put(category_commands::move_category),
+        )
+        .route(
+            "/api/forum/categories/{id}/topic-policy",
+            get(category_policy::get_category_topic_policy)
+                .put(category_policy::update_category_topic_policy),
         )
         .route(
             "/api/forum/categories/{id}",
