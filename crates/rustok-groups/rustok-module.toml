@@ -16,8 +16,8 @@ tags = ["social", "groups", "community", "memberships", "phpfox"]
 entry_type = "GroupsModule"
 
 [provides.graphql]
-query = "graphql_invitations::GroupsQueryRoot"
-mutation = "graphql_invitations::GroupsMutationRoot"
+query = "graphql_applications::GroupsQueryRoot"
+mutation = "graphql_applications::GroupsMutationRoot"
 
 [provides.admin_ui]
 leptos_crate = "rustok-groups-admin"
@@ -35,6 +35,11 @@ leptos_locales_path = "admin/locales"
 subpath = "memberships"
 title = "Group Memberships"
 nav_label = "Memberships"
+
+[[provides.admin_ui.child_pages]]
+subpath = "applications"
+title = "Membership Applications"
+nav_label = "Applications"
 
 [[provides.admin_ui.child_pages]]
 subpath = "invitations"
