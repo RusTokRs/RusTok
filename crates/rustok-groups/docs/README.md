@@ -53,9 +53,11 @@ explicit unavailable/not-found presentation, not permission to select another
 stored language.
 
 Catalog and search queries are scoped to that effective locale before group
-pagination. A title match in one language therefore cannot return a shell rendered
-from another language. `requested_locale` preserves the caller evidence while
-`effective_locale` reports the normalized row that was actually selected.
+pagination. For the executable contract, catalog and search queries are scoped to
+that effective locale as one selection boundary. A title match in one language
+therefore cannot return a shell rendered from another language. `requested_locale`
+preserves the caller evidence while `effective_locale` reports the normalized row
+that was actually selected.
 
 Localized presentation limits count Unicode scalar values rather than UTF-8 bytes,
 so Cyrillic, CJK, and Latin text receive the same 240-character title and
