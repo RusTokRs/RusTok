@@ -47,6 +47,13 @@ capability contracts, not Pages persistence or tenant policy.
   set hashes; it never stores the reviewed runtime context.
 - [x] `PageService::create` always creates a draft. Create-time compilation,
   default-runtime publication and `NodePublished` emission are removed.
+- [x] The mixed `publish` / `publish_if_current` lifecycle is removed.
+  `publish_non_builder` and `publish_non_builder_if_current` are explicitly limited
+  to pages without GrapesJS/Fly bodies and recheck that invariant inside the
+  transaction.
+- [x] A Page Builder document sent to the non-builder lifecycle fails with
+  `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED`; it cannot compile artifacts or reach a
+  raw publish transition.
 
 ### Admin FFA
 
@@ -101,7 +108,7 @@ capability contracts, not Pages persistence or tenant policy.
   rebuilding artifacts or emitting duplicate events; key reuse with another
   request fails with a typed conflict.
 - [x] GraphQL publish requires `PublishGqlPageInput` and returns
-  `GqlPublishPageResult`; it no longer invokes `publish_if_current`.
+  `GqlPublishPageResult`; it no longer invokes a lifecycle publish method.
 - [x] HTTP exposes `POST /api/admin/pages/{id}/publish` with
   `PublishPageInput -> PublishPageResult`, and the module manifest routes through
   the atomic publish wrapper.
@@ -111,6 +118,8 @@ capability contracts, not Pages persistence or tenant policy.
   exact current promoted baseline; baseline changes invalidate the selection key.
 - [x] Create-and-publish is rejected in the domain, so no public transport can
   revive default-runtime builder publication.
+- [x] Non-builder publication is isolated from Page Builder persistence and rejects
+  every GrapesJS/Fly body with a stable typed code.
 - [ ] Dedicated cache-consumer invalidation evidence remains open even though the
   publish transaction emits its durable `NodePublished` outbox signal.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
@@ -122,16 +131,16 @@ capability contracts, not Pages persistence or tenant policy.
   open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent atomic service, GraphQL/HTTP/admin transport
-  cutover and scenario selection are integrated at source level; rollback,
-  cache-consumer proof, executed verification and observed rollout evidence remain
-  open.
+  cutover, scenario selection and removal of the default-runtime lifecycle are
+  integrated at source level; rollback, cache-consumer proof, executed verification
+  and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
 ## Ownership boundaries
 
 - **Pages domain/backend:** identity, translations, slugs, channels, templates,
-  menus, revisions, publish transaction, receipts, artifact selection, redirects,
-  deletion and audit.
+  menus, revisions, reviewed publish transaction, non-builder lifecycle, receipts,
+  artifact selection, redirects, deletion and audit.
 - **Pages admin FFA:** list/create/select workspace, metadata property
   contributions, Pages persistence facade, promoted-scenario selection and
   permissions.
@@ -166,6 +175,12 @@ GraphQL / HTTP / admin reviewed command
   -> transactional NodeUpdated/NodePublished outbox
   -> durable publish receipt
   -> verified route/cache/storefront read
+
+Non-builder command
+  -> page metadata version
+  -> verify no GrapesJS/Fly body before and inside transaction
+  -> metadata/body revision concurrency check
+  -> published page state + transactional outbox
 ```
 
 Invariants:
@@ -187,11 +202,14 @@ Invariants:
     different input fails closed.
 11. Page state, artifact bindings, outbox events and publish receipt commit or roll
     back together.
-12. Create never publishes; every publication crosses the reviewed command.
-13. Missing providers fail visibly and never cause silent deletion.
-14. Dynamic widgets persist versioned configuration, not privileged snapshots.
-15. Anonymous storefront bundles contain no editor code.
-16. No block or shadow-editor fallback exists.
+12. Create never publishes; every Page Builder publication crosses the reviewed
+    command.
+13. Non-builder publication cannot see, compile, bind or publish a GrapesJS/Fly
+    document.
+14. Missing providers fail visibly and never cause silent deletion.
+15. Dynamic widgets persist versioned configuration, not privileged snapshots.
+16. Anonymous storefront bundles contain no editor code.
+17. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -220,10 +238,14 @@ Invariants:
 - Added explicit ephemeral promoted-scenario selection, live baseline wiring and
   transport validation against the exact current baseline.
 - Unified publish and unpublish UI transport outcomes through
-  `PagePublicationResult`.
-- Expanded the transport source guard and machine-readable contract. The guard has
-  not yet been executed in this slice, and raw runtime context remains forbidden in
-  selection storage, artifacts and publish receipts.
+  `PagePublicationResult` and validate returned page identity/version.
+- Removed `publish` / `publish_if_current`, introduced an explicit non-builder-only
+  lifecycle and added `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` for bypass attempts.
+- Updated RBAC, locale, lifecycle and language-agnostic integration contracts to
+  create drafts and publish through the correct explicit boundary.
+- Expanded the transport source guard and both machine-readable Page Builder
+  contracts. The guards have not yet been executed in this slice, and raw runtime
+  context remains forbidden in selection storage, artifacts and publish receipts.
 
 ## Next implementation order
 
@@ -248,8 +270,8 @@ Invariants:
   public builder publication through the default runtime and disable
   create-and-publish.
 - [x] Add explicit admin scenario selection for multi-scenario baselines.
-- [ ] Remove or split the now-publicly-unreachable builder publication branch in
-  `PageService::publish_if_current`.
+- [x] Remove the mixed builder lifecycle and split an explicit non-builder-only
+  publication command with a stable reviewed-publish-required error.
 - [ ] Add rollback to a previous immutable artifact.
 - [ ] Correlate receipt, editor save, page/body revisions, runtime review,
   materialization, artifact and storefront read in operational telemetry.
