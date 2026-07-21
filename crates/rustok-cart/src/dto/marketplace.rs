@@ -3,7 +3,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
-use super::AddCartLineItemInput;
+use super::{AddCartLineItemInput, CartResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema, PartialEq, Eq)]
 pub struct MarketplaceCartLineSnapshotInput {
@@ -61,6 +61,12 @@ pub struct CartMarketplaceLineSnapshot {
     pub pricing_reference: Option<String>,
     pub inventory_reference: Option<String>,
     pub fulfillment_profile_slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AddMarketplaceCartLineItemResponse {
+    pub cart: CartResponse,
+    pub snapshot: CartMarketplaceLineSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
