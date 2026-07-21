@@ -46,6 +46,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  format-pages-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt
+      - name: Format Pages package
+        run: cargo fmt -p rustok-pages
+      - name: Package formatted binding files
+        run: >-
+          tar -czf /tmp/pages-active-menu-binding-rustfmt.tar.gz
+          crates/rustok-pages/src/dto/menu.rs
+          crates/rustok-pages/src/entities/menu_binding.rs
+          crates/rustok-pages/src/entities/mod.rs
+          crates/rustok-pages/src/lib.rs
+          crates/rustok-pages/src/migrations/m20260721_000007_create_active_menu_bindings.rs
+          crates/rustok-pages/src/migrations/mod.rs
+          crates/rustok-pages/src/services/menu_binding.rs
+          crates/rustok-pages/src/services/mod.rs
+          crates/rustok-pages/tests/menu_binding_service.rs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pages-active-menu-binding-rustfmt
+          path: /tmp/pages-active-menu-binding-rustfmt.tar.gz
+          if-no-files-found: error
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
