@@ -3,6 +3,7 @@ use crate::{
     load_publish_scenario_selection, resolve_publish_scenario, save_publish_scenario_selection,
 };
 use fly::RuntimeScenarioReleaseBaseline;
+use leptos::ev::Event;
 use leptos::prelude::*;
 
 #[component]
@@ -53,7 +54,7 @@ pub fn PublishScenarioSelectorPanel(
     let select_runtime = runtime.clone();
     let select_page_id = page_id.clone();
     let select_baseline = baseline;
-    let on_change = move |event| {
+    let on_change = Callback::new(move |event: Event| {
         let scenario_id = event_target_value(&event);
         let scenario_id = scenario_id.trim();
         let Some(baseline) = select_baseline.get_untracked() else {
@@ -93,7 +94,7 @@ pub fn PublishScenarioSelectorPanel(
             },
             Err(error) => select_runtime.fail(error.to_string()),
         }
-    };
+    });
 
     view! {
         <section class="space-y-3 rounded-xl border border-border bg-card p-3">
@@ -122,13 +123,14 @@ pub fn PublishScenarioSelectorPanel(
                         let label = format!("{} · {}", scenario.label, scenario.id);
                         view! { <option value=value>{label}</option> }
                     }).collect_view();
+                    let change = on_change;
                     view! {
                         <label class="block text-xs font-medium text-card-foreground">
                             "Reviewed scenario"
                             <select
                                 class="mt-1 w-full rounded border border-input bg-background px-2 py-2 text-xs"
                                 prop:value=move || selected_scenario.get().unwrap_or_default()
-                                on:change=on_change
+                                on:change=move |event| change.run(event)
                                 disabled=scenario_count == 1
                             >
                                 {if scenario_count > 1 {
