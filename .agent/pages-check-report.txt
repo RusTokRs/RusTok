@@ -1,0 +1,247 @@
+check_status=101
+clippy_status=99
+
+=== cargo check tail ===
+   Compiling const_format_proc_macros v0.2.34
+    Checking idna_adapter v1.2.2
+    Checking rand_core v0.9.5
+    Checking crypto-common v0.1.7
+    Checking block-buffer v0.10.4
+    Checking http-body-util v0.1.3
+    Checking throw_error v0.3.1
+   Compiling slotmap v1.1.1
+    Checking atomic-waker v1.1.2
+    Checking hashbrown v0.17.1
+   Compiling konst_macro_rules v0.2.19
+    Checking equivalent v1.0.2
+    Checking base64 v0.22.1
+   Compiling konst v0.2.20
+    Checking indexmap v2.14.0
+    Checking hyper v1.10.1
+    Checking digest v0.10.7
+    Checking tower v0.5.3
+    Checking rand_chacha v0.9.0
+    Checking idna v1.1.0
+    Checking event-listener-strategy v0.5.4
+   Compiling derive-where v1.6.1
+   Compiling server_fn_macro v0.8.10
+   Compiling reactive_graph v0.2.14
+    Checking send_wrapper v0.6.0
+    Checking ipnet v2.12.0
+    Checking cpufeatures v0.2.17
+   Compiling camino v1.2.4
+   Compiling anyhow v1.0.103
+    Checking hyper-util v0.1.20
+    Checking sha1 v0.10.7
+    Checking async-lock v3.4.2
+    Checking url v2.5.8
+    Checking rand v0.9.5
+   Compiling const_format v0.2.36
+   Compiling syn_derive v0.2.0
+   Compiling multer v3.1.0
+   Compiling thiserror v1.0.69
+    Checking rustc-hash v2.1.3
+    Checking either v1.16.0
+    Checking guardian v1.3.0
+    Checking data-encoding v2.11.0
+    Checking wasm-bindgen-futures v0.4.76
+    Checking web-sys v0.3.103
+    Checking any_spawner v0.3.0
+    Checking hydration_context v0.3.1
+   Compiling xxhash-rust v0.8.16
+    Checking tungstenite v0.29.0
+    Checking itertools v0.14.0
+   Compiling quote-use-macros v0.8.4
+   Compiling manyhow-macros v0.11.4
+   Compiling async-trait v0.1.89
+   Compiling thiserror-impl v1.0.69
+   Compiling reactive_stores_macro v0.4.3
+   Compiling pin-project-internal v1.1.13
+   Compiling tachys v0.2.18
+    Checking encoding_rs v0.8.35
+   Compiling getrandom v0.4.3
+   Compiling yansi v1.0.1
+    Checking winnow v1.0.3
+    Checking ryu v1.0.23
+    Checking spin v0.9.8
+   Compiling prettyplease v0.2.37
+    Checking serde_urlencoded v0.7.1
+    Checking pin-project v1.1.13
+    Checking reactive_stores v0.4.3
+   Compiling manyhow v0.11.4
+    Checking toml_parser v1.1.2+spec-1.1.0
+   Compiling quote-use v0.8.4
+    Checking tokio-tungstenite v0.29.0
+    Checking either_of v0.1.9
+    Checking axum-core v0.5.6
+    Checking oco_ref v0.2.1
+   Compiling server_fn v0.8.13
+    Checking toml_datetime v1.1.1+spec-1.1.0
+    Checking serde_spanned v1.1.1
+    Checking serde_path_to_error v0.1.20
+    Checking aho-corasick v1.1.4
+   Compiling interpolator v0.5.0
+    Checking regex-syntax v0.8.11
+    Checking erased v0.1.2
+    Checking drain_filter_polyfill v0.1.3
+   Compiling collection_literals v1.0.3
+    Checking next_tuple v0.1.0
+    Checking const_str_slice_concat v0.1.0
+    Checking matchit v0.8.4
+   Compiling same-file v1.0.6
+    Checking html-escape v0.2.14
+    Checking convert_case v0.6.0
+   Compiling walkdir v2.5.0
+    Checking axum v0.8.9
+    Checking regex-automata v0.4.15
+   Compiling sha2 v0.10.9
+   Compiling attribute-derive-macro v0.10.5
+    Checking toml v1.1.2+spec-1.1.0
+   Compiling rstml v0.12.1
+   Compiling server_fn_macro_default v0.8.5
+    Checking serde_qs v0.15.0
+   Compiling typed-builder-macro v0.23.2
+   Compiling leptos_macro v0.8.17
+    Checking pathdiff v0.2.3
+    Checking const-str v1.1.0
+    Checking inventory v0.3.24
+   Compiling base16 v0.2.1
+   Compiling leptos_hot_reload v0.8.6
+   Compiling wasm_split_macros v0.2.2
+    Checking config v0.15.25
+    Checking gloo-utils v0.2.0
+    Checking gloo-net v0.6.0
+    Checking wasm-streams v0.5.0
+    Checking typed-builder v0.23.2
+   Compiling uuid v1.23.5
+   Compiling attribute-derive v0.10.5
+    Checking regex v1.13.0
+    Checking codee v0.3.5
+   Compiling convert_case_extras v0.2.0
+    Checking hybrid-array v0.4.13
+   Compiling leptos v0.8.20
+    Checking async-once-cell v0.5.4
+    Checking wasm_split_helpers v0.2.3
+    Checking leptos_config v0.8.10
+    Checking block-buffer v0.12.1
+    Checking crypto-common v0.2.2
+    Checking const-oid v0.10.2
+    Checking cpufeatures v0.3.0
+   Compiling unicase v2.9.0
+   Compiling mime_guess v2.0.5
+    Checking digest v0.11.3
+   Compiling leptos_router v0.8.14
+    Checking sha2 v0.11.0
+   Compiling strsim v0.11.1
+   Compiling fnv v1.0.7
+   Compiling autocfg v1.5.1
+   Compiling ident_case v1.0.1
+   Compiling darling_core v0.20.11
+   Compiling num-traits v0.2.19
+    Checking tokio-util v0.7.18
+   Compiling leptos_router_macro v0.8.6
+   Compiling time-core v0.1.9
+    Checking http-range-header v0.4.2
+   Compiling num-conv v0.2.2
+    Checking bitflags v2.13.0
+   Compiling time-macros v0.2.31
+    Checking tower-http v0.6.11
+    Checking fly v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly)
+   Compiling darling_macro v0.20.11
+   Compiling cookie v0.18.1
+    Checking hex v0.4.3
+    Checking deranged v0.5.8
+    Checking powerfmt v0.2.0
+    Checking rustok-api v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-api)
+    Checking time v0.3.53
+   Compiling darling v0.20.11
+    Checking unic-langid-impl v0.9.6
+    Checking rustok-ui-core v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-core)
+    Checking iana-time-zone v0.1.65
+   Compiling leptos-use v0.19.0
+    Checking chrono v0.4.45
+    Checking unic-langid v0.9.6
+   Compiling default-struct-builder v0.5.1
+    Checking reqwest v0.13.4
+    Checking gloo-timers v0.4.0
+    Checking rustok-ui-i18n v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-i18n)
+    Checking lazy_static v1.5.0
+    Checking rustok-graphql v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-graphql)
+    Checking fly-browser v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-browser)
+    Checking rustok-ui-transport v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-transport)
+    Checking leptos_server v0.8.7
+    Checking leptos_dom v0.8.8
+    Checking fly-ui v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-ui)
+    Checking rustok-page-builder v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder)
+    Checking leptos_meta v0.8.6
+    Checking rustok-ui-i18n-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-ui-i18n-leptos)
+    Checking fly-leptos v0.1.0 (/home/runner/work/RusTok/RusTok/crates/fly-leptos)
+    Checking rustok-page-builder-admin v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-page-builder/admin)
+warning: unused import: `FLY_BROWSER_ADAPTER_JS`
+ --> crates/rustok-page-builder/admin/src/ui/browser_adapter.rs:1:41
+  |
+1 | use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
+  |                                         ^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+    Checking leptos_integration_utils v0.8.8
+    Checking leptos-ui-routing v0.1.0 (/home/runner/work/RusTok/RusTok/crates/leptos-ui-routing)
+    Checking leptos_axum v0.8.10
+    Checking leptos-auth v0.1.0 (/home/runner/work/RusTok/RusTok/crates/leptos-auth)
+warning: constant `SSR_CONTROL_BOOTSTRAP_JS` is never used
+ --> crates/rustok-page-builder/admin/src/ui/browser_adapter.rs:4:7
+  |
+4 | const SSR_CONTROL_BOOTSTRAP_JS: &str = r#"
+  |       ^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `browser_adapter_config_json` is never used
+  --> crates/rustok-page-builder/admin/src/ui/browser_adapter.rs:97:4
+   |
+97 | fn browser_adapter_config_json(
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `escape_json_for_script` is never used
+   --> crates/rustok-page-builder/admin/src/ui/browser_adapter.rs:148:4
+    |
+148 | fn escape_json_for_script(json: &str) -> String {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `rustok-page-builder-admin` (lib) generated 4 warnings (run `cargo fix --lib -p rustok-page-builder-admin` to apply 1 suggestion)
+    Checking rustok-pages-admin v0.1.0 (/home/runner/work/RusTok/RusTok/crates/rustok-pages/admin)
+error[E0382]: borrow of moved value: `status`
+   --> crates/rustok-pages/admin/src/composition.rs:372:58
+    |
+353 |                   let status = page.status.clone();
+    |                       ------ move occurs because `status` has type `std::string::String`, which does not implement the `Copy` trait
+354 |                   let select = on_select;
+355 | /                 view! {
+356 | |                     <button
+357 | |                         type="button"
+358 | |                         class=if selected {
+...   |
+372 | |                                 core::status_badge_class(&status)
+    | |                                                          ^^^^^^^ value borrowed here after move
+...   |
+375 | |                     </button>
+376 | |                 }
+    | |_________________- `status` moved due to this method call
+    |
+note: `into_render` takes ownership of the receiver `self`, which moves `status`
+   --> /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tachys-0.2.18/src/view/mod.rs:524:20
+    |
+524 |     fn into_render(self) -> Self::Output;
+    |                    ^^^^
+    = note: borrow occurs due to deref coercion to `str`
+help: you can `clone` the value and consume it, but this might not be your desired behavior
+    |
+373 |                             )>{status.clone()}</span>
+    |                                      ++++++++
+
+For more information about this error, try `rustc --explain E0382`.
+error: could not compile `rustok-pages-admin` (lib) due to 1 previous error
+
+=== cargo clippy tail ===
+clippy skipped because cargo check failed

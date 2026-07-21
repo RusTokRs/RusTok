@@ -406,7 +406,6 @@ fn PageWorkspace(
     let query_writer = use_route_query_writer();
     let action_busy = RwSignal::new(None::<String>);
     let action_error = RwSignal::new(None::<String>);
-    let page_id = page.id.clone();
     let title = page
         .translation
         .as_ref()
