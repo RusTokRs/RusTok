@@ -61,7 +61,7 @@ function requireMarker(source, marker, label) {
 
 function requireOrderedMarkers(source, markers, label) {
   let previousIndex = -1;
-  for (const marker of markers) {
+  for (const marker of markers ?? []) {
     const index = source.indexOf(marker);
     if (index < 0) fail(`${label} is missing ${marker}`);
     if (index <= previousIndex) fail(`${label} is out of order at ${marker}`);
@@ -104,7 +104,7 @@ requireMarker(
 requireMarker(composition, "flags.validate()?", "composition rollout validation");
 requireOrderedMarkers(
   composition,
-  compositionRoot.invocation_order ?? [],
+  compositionRoot.invocation_order,
   "composition root invocation",
 );
 
@@ -149,50 +149,52 @@ for (const marker of [
   requireMarker(flyService, marker, "Fly-backed service lifecycle");
 }
 
-for (const marker of [
-  "compose_fly_page_builder_handlers",
-  "PagesPageBuilderProjectStore",
-  "PagesPageBuilderRenderer",
-  "PageBuilderRequestAuth::new",
-  ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
-  ".with_idempotency_key",
-  ".handle(",
-  "context.tenant_id.as_str()",
-  "context.actor.id.as_str()",
-  "ensure_context(context)?;",
-  "persisted_revision(&saved_page)",
-]) {
-  requireMarker(pagesBuilder, marker, "Pages production consumer");
+const pagesConsumer = contract.production_consumers?.pages;
+if (!pagesConsumer) fail("service contract is missing the Pages production consumer");
+for (const marker of pagesConsumer.tenant_ports ?? []) {
+  requireMarker(pagesBuilder, marker, "Pages tenant-scoped ports");
 }
-
-const ssrPublishMarker = '#[cfg(feature = "ssr")]\nasync fn execute_publish';
-const clientPublishMarker =
-  '#[cfg(not(feature = "ssr"))]\nasync fn execute_publish';
-requireMarker(pagesBuilder, ssrPublishMarker, "Pages SSR composition path");
-requireMarker(pagesBuilder, clientPublishMarker, "Pages client transport path");
-const ssrPublishStart = pagesBuilder.indexOf(ssrPublishMarker);
-const clientPublishStart = pagesBuilder.indexOf(clientPublishMarker);
-if (clientPublishStart <= ssrPublishStart) {
-  fail("Pages SSR composition path must precede the client transport path");
+for (const marker of pagesConsumer.tenant_context_guards ?? []) {
+  requireMarker(pagesBuilder, marker, "Pages tenant context guard");
 }
-const pagesSsrPublish = pagesBuilder.slice(ssrPublishStart, clientPublishStart);
-requireOrderedMarkers(
-  pagesSsrPublish,
-  [
-    "fetch_current_user",
-    "PageBuilderRequestAuth::new",
-    "compose_fly_page_builder_handlers",
-    ".handle(",
-  ],
-  "Pages SSR authorization and composition",
+requireMarker(
+  pagesBuilder,
+  pagesConsumer.persisted_result_marker,
+  "Pages persisted capability result",
 );
-if (pagesSsrPublish.includes("transport::fetch_page(")) {
-  fail("Pages SSR facade must not read persistence before canonical authorization");
-}
 
+const pagesServerMarker = `#[cfg(feature = "ssr")]\nasync fn ${pagesConsumer.server_entrypoint}`;
+requireMarker(pagesBuilder, pagesServerMarker, "Pages SSR composition path");
+requireMarker(
+  pagesBuilder,
+  pagesConsumer.client_entrypoint_marker,
+  "Pages client transport path",
+);
+const pagesServerStart = pagesBuilder.indexOf(pagesServerMarker);
+const pagesClientStart = pagesBuilder.indexOf(
+  pagesConsumer.client_entrypoint_marker,
+  pagesServerStart,
+);
+if (pagesServerStart < 0 || pagesClientStart <= pagesServerStart) {
+  fail("Pages SSR composition path cannot be isolated from the client transport path");
+}
+const pagesServerSource = pagesBuilder.slice(pagesServerStart, pagesClientStart);
+requireOrderedMarkers(
+  pagesServerSource,
+  pagesConsumer.required_server_order,
+  "Pages SSR authorization/composition order",
+);
+const dispatchIndex = pagesServerSource.indexOf(pagesConsumer.dispatch_marker);
+if (dispatchIndex < 0) fail("Pages SSR composition path is missing handler dispatch");
+const pagesPreDispatchSource = pagesServerSource.slice(0, dispatchIndex);
+for (const forbidden of pagesConsumer.forbidden_before_dispatch ?? []) {
+  if (pagesPreDispatchSource.includes(forbidden)) {
+    fail(`Pages SSR path accesses tenant persistence before authorization: ${forbidden}`);
+  }
+}
 requireMarker(
   pagesAdminManifest,
-  '"rustok-page-builder/server"',
+  pagesConsumer.server_feature_marker,
   "Pages SSR feature composition",
 );
 
@@ -211,6 +213,11 @@ requireMarker(
   implementationPlan,
   "compose_fly_page_builder_handlers",
   "implementation plan",
+);
+requireMarker(
+  implementationPlan,
+  "rustok-pages",
+  "production consumer rollout plan",
 );
 
 console.log("[verify-page-builder-adapter-seams] PASS");
