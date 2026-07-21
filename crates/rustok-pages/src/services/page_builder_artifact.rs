@@ -1,8 +1,10 @@
 use chrono::Utc;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates};
 use rustok_page_builder::{
-    ComponentRegistryManifest, LandingSectionSnapshot, PageHead, StaticLandingArtifact,
-    StaticLandingBuildIdentity, StaticLandingPage, static_landing::StaticLandingCompiler,
+    ComponentRegistryManifest, LandingSectionSnapshot, PageBuilderMaterializedStaticLandingArtifact,
+    PageBuilderPreviewRuntime, PageBuilderStaticLandingMaterializationIdentity, PageHead,
+    StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
+    compile_materialized_static_landing,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -27,6 +29,9 @@ pub(crate) struct CompiledLandingArtifact {
     pub locale: String,
     pub artifact: StaticLandingArtifact,
     pub page: StaticLandingPage,
+    pub materialization_hash: String,
+    pub materialization_identity: Value,
+    pub runtime_snapshots: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +40,7 @@ pub struct PublishedLandingArtifact {
     pub locale: String,
     pub build_hash: String,
     pub artifact_hash: String,
+    pub materialization_hash: Option<String>,
     pub document_html: String,
     pub css: String,
     pub content_hash: String,
@@ -59,24 +65,38 @@ impl PageBuilderArtifactService {
                 "Page Builder project for locale `{locale}` is not valid JSON: {error}"
             ))
         })?;
-        let artifact = StaticLandingCompiler::default()
-            .compile_publish(&project_data)
-            .map_err(artifact_compile_error)?;
-        artifact
+        let materialized = compile_materialized_static_landing(
+            &project_data,
+            PageBuilderPreviewRuntime::default(),
+        )
+        .map_err(artifact_compile_error)?;
+        materialized
             .verify_integrity()
             .map_err(artifact_integrity_error)?;
-        if artifact.pages.len() != 1 {
+        if materialized.artifact.pages.len() != 1 {
             return Err(PagesError::validation(format!(
                 "A Pages Page Builder body must contain exactly one Fly page; found {}",
-                artifact.pages.len()
+                materialized.artifact.pages.len()
             )));
         }
-        let page = artifact.pages[0].clone();
+        let page = materialized.artifact.pages[0].clone();
         enforce_size_limits(&page)?;
+        let materialization_hash = materialized.identity.materialization_hash.clone();
+        let materialization_identity = to_json(
+            &materialized.identity,
+            "Page Builder landing materialization identity",
+        )?;
+        let runtime_snapshots = to_json(
+            &materialized.runtime_snapshots,
+            "Page Builder landing runtime snapshots",
+        )?;
         Ok(CompiledLandingArtifact {
             locale: locale.to_string(),
-            artifact,
+            artifact: materialized.artifact,
             page,
+            materialization_hash,
+            materialization_identity,
+            runtime_snapshots,
         })
     }
 
@@ -86,8 +106,7 @@ impl PageBuilderArtifactService {
         page_id: Uuid,
         compiled: &CompiledLandingArtifact,
     ) -> PagesResult<Uuid> {
-        compiled
-            .artifact
+        compiled_materialization(compiled)?
             .verify_integrity()
             .map_err(artifact_integrity_error)?;
         enforce_size_limits(&compiled.page)?;
@@ -98,6 +117,7 @@ impl PageBuilderArtifactService {
             page_id,
             &compiled.locale,
             &identity.build_hash,
+            &compiled.materialization_hash,
         )
         .await?
         {
@@ -115,6 +135,9 @@ impl PageBuilderArtifactService {
             source_hash: Set(identity.source_hash.clone()),
             build_hash: Set(identity.build_hash.clone()),
             artifact_hash: Set(compiled.artifact.artifact_hash.clone()),
+            materialization_hash: Set(Some(compiled.materialization_hash.clone())),
+            materialization_identity: Set(Some(compiled.materialization_identity.clone())),
+            runtime_snapshots: Set(Some(compiled.runtime_snapshots.clone())),
             renderer_id: Set(identity.renderer.id.clone()),
             renderer_release: Set(identity.renderer.release.clone()),
             identity: Set(to_json(identity, "landing build identity")?),
@@ -142,6 +165,7 @@ impl PageBuilderArtifactService {
                     page_static_landing_artifact::Column::PageId,
                     page_static_landing_artifact::Column::Locale,
                     page_static_landing_artifact::Column::BuildHash,
+                    page_static_landing_artifact::Column::MaterializationHash,
                 ])
                 .do_nothing()
                 .to_owned(),
@@ -155,6 +179,7 @@ impl PageBuilderArtifactService {
             page_id,
             &compiled.locale,
             &identity.build_hash,
+            &compiled.materialization_hash,
         )
         .await?
         .ok_or_else(|| {
@@ -375,12 +400,14 @@ async fn find_artifact_in_tx(
     page_id: Uuid,
     locale: &str,
     build_hash: &str,
+    materialization_hash: &str,
 ) -> PagesResult<Option<page_static_landing_artifact::Model>> {
     Ok(page_static_landing_artifact::Entity::find()
         .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
         .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
         .filter(page_static_landing_artifact::Column::Locale.eq(locale))
         .filter(page_static_landing_artifact::Column::BuildHash.eq(build_hash))
+        .filter(page_static_landing_artifact::Column::MaterializationHash.eq(materialization_hash))
         .one(txn)
         .await?)
 }
@@ -394,6 +421,7 @@ fn published_record(
         locale: record.locale,
         build_hash: record.build_hash,
         artifact_hash: record.artifact_hash,
+        materialization_hash: record.materialization_hash,
         document_html: record.document_html,
         css: record.css,
         content_hash: record.content_hash,
@@ -437,7 +465,59 @@ fn verify_record(record: &page_static_landing_artifact::Model) -> PagesResult<()
             "stored static landing artifact metadata does not match its payload",
         ));
     }
-    Ok(())
+
+    match (
+        record.materialization_hash.as_ref(),
+        record.materialization_identity.as_ref(),
+        record.runtime_snapshots.as_ref(),
+    ) {
+        (None, None, None) => Ok(()),
+        (Some(materialization_hash), Some(materialization_identity), Some(runtime_snapshots)) => {
+            let identity: PageBuilderStaticLandingMaterializationIdentity = from_json(
+                materialization_identity,
+                "Page Builder landing materialization identity",
+            )?;
+            let runtime_snapshots = from_json(
+                runtime_snapshots,
+                "Page Builder landing runtime snapshots",
+            )?;
+            let materialized = PageBuilderMaterializedStaticLandingArtifact {
+                identity,
+                runtime_snapshots,
+                artifact,
+            };
+            materialized
+                .verify_integrity()
+                .map_err(artifact_integrity_error)?;
+            if materialization_hash != &materialized.identity.materialization_hash {
+                return Err(PagesError::artifact_integrity(
+                    "stored landing materialization hash does not match its identity",
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(PagesError::artifact_integrity(
+            "stored landing materialization evidence is partial",
+        )),
+    }
+}
+
+fn compiled_materialization(
+    compiled: &CompiledLandingArtifact,
+) -> PagesResult<PageBuilderMaterializedStaticLandingArtifact> {
+    let identity: PageBuilderStaticLandingMaterializationIdentity = from_json(
+        &compiled.materialization_identity,
+        "Page Builder landing materialization identity",
+    )?;
+    let runtime_snapshots = from_json(
+        &compiled.runtime_snapshots,
+        "Page Builder landing runtime snapshots",
+    )?;
+    Ok(PageBuilderMaterializedStaticLandingArtifact {
+        identity,
+        runtime_snapshots,
+        artifact: compiled.artifact.clone(),
+    })
 }
 
 fn ensure_same_artifact(
@@ -449,10 +529,14 @@ fn ensure_same_artifact(
         || record.document_html != compiled.page.document_html
         || record.body_html != compiled.page.body_html
         || record.css != compiled.page.css
+        || record.materialization_hash.as_deref()
+            != Some(compiled.materialization_hash.as_str())
+        || record.materialization_identity.as_ref() != Some(&compiled.materialization_identity)
+        || record.runtime_snapshots.as_ref() != Some(&compiled.runtime_snapshots)
     {
         return Err(PagesError::artifact_integrity(format!(
-            "static landing artifact collision for build hash `{}`",
-            compiled.artifact.identity.build_hash
+            "static landing artifact collision for materialization hash `{}`",
+            compiled.materialization_hash
         )));
     }
     Ok(())
@@ -507,7 +591,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compiler_produces_a_verified_single_page_artifact() {
+    fn compiler_produces_a_verified_single_page_materialization() {
         let content = serde_json::json!({
             "pages": [{
                 "id": "home",
@@ -534,10 +618,13 @@ mod tests {
         assert_eq!(compiled.locale, "en");
         assert_eq!(compiled.artifact.pages.len(), 1);
         assert_eq!(compiled.page, compiled.artifact.pages[0]);
-        compiled
-            .artifact
+        assert_eq!(compiled.materialization_hash.len(), 64);
+        let materialized = compiled_materialization(&compiled).expect("materialized artifact");
+        assert_eq!(materialized.identity.runtime_scenario_id, None);
+        assert_eq!(materialized.runtime_snapshots.len(), 1);
+        materialized
             .verify_integrity()
-            .expect("artifact integrity");
+            .expect("materialization integrity");
     }
 
     #[test]
