@@ -124,10 +124,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS groups_membership_policy_revision_capture
+DROP TRIGGER IF EXISTS groups_membership_policy_revision_capture_insert
     ON group_membership_policy_translations;
-CREATE TRIGGER groups_membership_policy_revision_capture
-AFTER INSERT OR UPDATE OF questions, rules ON group_membership_policy_translations
+CREATE TRIGGER groups_membership_policy_revision_capture_insert
+AFTER INSERT ON group_membership_policy_translations
+FOR EACH ROW EXECUTE FUNCTION groups_capture_membership_policy_revision();
+
+DROP TRIGGER IF EXISTS groups_membership_policy_revision_capture_update
+    ON group_membership_policy_translations;
+CREATE TRIGGER groups_membership_policy_revision_capture_update
+AFTER UPDATE OF questions, rules ON group_membership_policy_translations
 FOR EACH ROW EXECUTE FUNCTION groups_capture_membership_policy_revision();
 
 CREATE OR REPLACE FUNCTION groups_reject_membership_policy_revision_mutation()
@@ -267,7 +273,9 @@ async fn postgres_down(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
-DROP TRIGGER IF EXISTS groups_membership_policy_revision_capture
+DROP TRIGGER IF EXISTS groups_membership_policy_revision_capture_insert
+    ON group_membership_policy_translations;
+DROP TRIGGER IF EXISTS groups_membership_policy_revision_capture_update
     ON group_membership_policy_translations;
 DROP FUNCTION IF EXISTS groups_capture_membership_policy_revision();
 DROP TRIGGER IF EXISTS group_membership_policy_revisions_immutable_update
