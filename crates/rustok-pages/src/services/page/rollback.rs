@@ -16,8 +16,8 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::enforce_owned_scope;
 
 use super::artifact_set::{
-    artifact_set_hash, load_current_published_set_in_tx, load_publish_manifest_in_tx,
-    replace_current_published_set_in_tx,
+    ArtifactSetMember, artifact_set_hash, load_current_published_set_in_tx,
+    load_publish_manifest_in_tx, replace_current_published_set_in_tx,
 };
 use super::helpers::{apply_transition, enforce_expected_version};
 use super::{PAGE_KIND, PageService, PageTransition};
@@ -152,10 +152,7 @@ async fn find_previous_publish_target_in_tx(
     tenant_id: Uuid,
     page_id: Uuid,
     current_artifact_set_hash: &str,
-) -> PagesResult<(
-    page_publish_operation::Model,
-    Vec<super::artifact_set::ArtifactSetMember>,
-)> {
+) -> PagesResult<(page_publish_operation::Model, Vec<ArtifactSetMember>)> {
     let query = || {
         page_publish_operation::Entity::find()
             .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
@@ -222,7 +219,7 @@ async fn insert_rollback_operation_in_tx(
         source_artifact_set_hash: Set(source_artifact_set_hash),
         target_artifact_set_hash: Set(target_artifact_set_hash),
         result_version: Set(result_version),
-        rolled_back_at: Set(timestamp),
+        rolled_back_at: Set(timestamp.clone()),
         created_at: Set(timestamp),
     }
     .insert(txn)
