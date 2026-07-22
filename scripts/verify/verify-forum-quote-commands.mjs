@@ -66,6 +66,17 @@ const graphqlRoot = read("crates/rustok-forum/src/graphql/mod.rs");
 const openapi = read("crates/rustok-forum/src/openapi.rs");
 const record = read("crates/rustok-forum/docs/forum-12d1-quote-commands.md");
 
+for (const [field, expected] of [
+  ["quotes_field_required", true],
+  ["empty_set_clears", true],
+  ["reject_deleted_source", true],
+  ["response_before_commit", true],
+]) {
+  if (contract.quote_command?.[field] !== expected) {
+    failures.push(`machine boundary must set quote_command.${field}=${expected}`);
+  }
+}
+
 for (const marker of [
   "ForumQuoteTargetKindInput",
   "ForumQuoteReferenceInput",
@@ -88,6 +99,9 @@ for (const marker of [
   "BTreeSet",
   "MentionRelationService::new",
   "load_snapshot_in_tx",
+  "deleted_at IS NULL",
+  "ForumError::TopicDeleted",
+  "ForumError::ReplyDeleted",
 ]) {
   requireText(service, marker, `quote owner service is missing ${marker}`);
 }
@@ -159,6 +173,8 @@ for (const marker of [
   "full replacement",
   "exact locale",
   "empty list clears",
+  "omitting the list is rejected",
+  "soft-deleted sources reject",
   "Maintainer verification was not executed",
 ]) {
   requireText(record, marker, `FORUM-12D1 implementation record is missing ${marker}`);
