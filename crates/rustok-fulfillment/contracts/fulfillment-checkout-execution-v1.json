@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "contract_version": "fulfillment.checkout_execution.v1",
+  "owner": "fulfillment",
+  "consumer": "commerce",
+  "status": "source_ready_unvalidated",
+  "port": "CheckoutFulfillmentExecutionPort",
+  "operations": [
+    "ensure_checkout_fulfillments",
+    "read_checkout_fulfillments"
+  ],
+  "context": "rustok_api::ports::PortContext",
+  "deadline_required": true,
+  "write_idempotency_required": true,
+  "causation_identity": "checkout_operation_id",
+  "request_identity": [
+    "checkout_operation_id",
+    "order_id",
+    "customer_id",
+    "order_plan_hash",
+    "fulfillment_index",
+    "order_line_item_id",
+    "cart_line_item_id"
+  ],
+  "owner_rules": [
+    "fulfillment persistence and lifecycle remain inside fulfillment owner",
+    "commerce sends typed order-line commands derived from the immutable checkout plan",
+    "owner creates or adopts each stable checkout fulfillment key",
+    "owner reads fulfillment recovery state through FulfillmentService rather than consumer SQL",
+    "duplicate checkout fulfillment identity fails closed",
+    "raw storage errors never cross the port"
+  ],
+  "compatibility": {
+    "metadata_identity": "owner_local_temporary",
+    "consumer_fulfillment_sql": false,
+    "typed_identity_migration_required": true
+  },
+  "source": "crates/rustok-fulfillment/src/checkout_execution.rs",
+  "verification": {
+    "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
+    "runtime_evidence": "not_executed"
+  }
+}
