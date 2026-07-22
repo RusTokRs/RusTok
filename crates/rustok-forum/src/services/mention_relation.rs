@@ -4,6 +4,8 @@ use std::sync::Arc;
 use chrono::Utc;
 use rustok_api::{normalize_locale_tag, Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
+use rustok_events::ForumMentionEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::{ProfileService, ProfilesReader};
 use sea_orm::{
     ActiveModelTrait,
@@ -15,8 +17,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::entities::{
-    forum_audience_mention, forum_quote, forum_relation_revision, forum_reply, forum_reply_body,
-    forum_topic, forum_topic_translation, forum_user_mention,
+    forum_audience_mention, forum_domain_event, forum_quote, forum_relation_revision, forum_reply,
+    forum_reply_body, forum_topic, forum_topic_translation, forum_user_mention,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
@@ -28,10 +30,12 @@ use crate::mentions::{
 
 pub(crate) struct MentionRelationService {
     profiles: Arc<dyn ProfilesReader>,
+    event_bus: Option<TransactionalEventBus>,
 }
 
 pub(crate) struct PreparedMentionRelations {
     tenant_id: Uuid,
+    actor_id: Option<Uuid>,
     target: ForumContentTarget,
     locale: String,
     projection_fingerprint: String,
@@ -77,11 +81,19 @@ impl MentionRelationSyncResult {
 
 impl MentionRelationService {
     pub(crate) fn new(db: DatabaseConnection) -> Self {
-        Self::with_profiles(Arc::new(ProfileService::new(db)))
+        let profiles = Arc::new(ProfileService::new(db.clone()));
+        let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db)));
+        Self {
+            profiles,
+            event_bus: Some(event_bus),
+        }
     }
 
     pub(crate) fn with_profiles(profiles: Arc<dyn ProfilesReader>) -> Self {
-        Self { profiles }
+        Self {
+            profiles,
+            event_bus: None,
+        }
     }
 
     pub(crate) async fn prepare(
@@ -135,6 +147,7 @@ impl MentionRelationService {
 
         Ok(PreparedMentionRelations {
             tenant_id,
+            actor_id: security.user_id,
             target,
             locale,
             projection_fingerprint,
@@ -275,14 +288,127 @@ impl MentionRelationService {
             .copied()
             .collect();
 
-        Ok(MentionRelationSyncResult {
+        let result = MentionRelationSyncResult {
             source,
             replayed: false,
             added_user_ids,
             added_audiences,
             mention_count: current_snapshot.users.len() + current_snapshot.audiences.len(),
             quote_count: current_snapshot.quotes.len(),
-        })
+        };
+        if let Some(event_bus) = self.event_bus.as_ref() {
+            publish_added_target_events_in_tx(event_bus, txn, prepared.actor_id, &result).await?;
+        }
+        Ok(result)
+    }
+}
+
+async fn publish_added_target_events_in_tx(
+    event_bus: &TransactionalEventBus,
+    txn: &DatabaseTransaction,
+    actor_id: Option<Uuid>,
+    result: &MentionRelationSyncResult,
+) -> ForumResult<()> {
+    let source = result.source();
+    let source_kind = target_kind_value(source.target().kind());
+
+    for mentioned_user_id in result.added_user_ids() {
+        let event = ForumMentionEvent::UserMentionAdded {
+            source_kind: source_kind.to_string(),
+            source_id: source.target().id(),
+            source_revision_id: source.revision_id(),
+            source_locale: source.locale().to_string(),
+            mentioned_user_id: *mentioned_user_id,
+        };
+        publish_forum_mention_event_in_tx(event_bus, txn, source.tenant_id(), actor_id, event)
+            .await?;
+    }
+
+    for audience in result.added_audiences() {
+        let event = ForumMentionEvent::AudienceMentionAdded {
+            source_kind: source_kind.to_string(),
+            source_id: source.target().id(),
+            source_revision_id: source.revision_id(),
+            source_locale: source.locale().to_string(),
+            audience: audience_value(*audience).to_string(),
+        };
+        publish_forum_mention_event_in_tx(event_bus, txn, source.tenant_id(), actor_id, event)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn publish_forum_mention_event_in_tx(
+    event_bus: &TransactionalEventBus,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_id: Option<Uuid>,
+    event: ForumMentionEvent,
+) -> ForumResult<()> {
+    let event_id = event_bus
+        .publish_contract_in_tx_with_envelope_id(txn, tenant_id, actor_id, event.clone())
+        .await?;
+    let (aggregate_type, aggregate_id, event_type, payload) = match event {
+        ForumMentionEvent::UserMentionAdded {
+            source_kind,
+            source_id,
+            source_revision_id,
+            source_locale,
+            mentioned_user_id,
+        } => (
+            source_kind,
+            source_id,
+            "forum.mention.user_added".to_string(),
+            serde_json::json!({
+                "source_kind": target_kind_value_from_str(&source_kind),
+                "source_id": source_id,
+                "source_revision_id": source_revision_id,
+                "source_locale": source_locale,
+                "mentioned_user_id": mentioned_user_id,
+            }),
+        ),
+        ForumMentionEvent::AudienceMentionAdded {
+            source_kind,
+            source_id,
+            source_revision_id,
+            source_locale,
+            audience,
+        } => (
+            source_kind,
+            source_id,
+            "forum.mention.audience_added".to_string(),
+            serde_json::json!({
+                "source_kind": target_kind_value_from_str(&source_kind),
+                "source_id": source_id,
+                "source_revision_id": source_revision_id,
+                "source_locale": source_locale,
+                "audience": audience,
+            }),
+        ),
+    };
+
+    forum_domain_event::ActiveModel {
+        sequence_no: NotSet,
+        event_id: Set(event_id),
+        tenant_id: Set(tenant_id),
+        aggregate_type: Set(aggregate_type),
+        aggregate_id: Set(aggregate_id),
+        event_type: Set(event_type),
+        schema_version: Set(1),
+        actor_id: Set(actor_id),
+        payload: Set(payload),
+        created_at: Set(Utc::now().into()),
+    }
+    .insert(txn)
+    .await?;
+    Ok(())
+}
+
+fn target_kind_value_from_str(value: &str) -> &str {
+    match value {
+        "topic" => "topic",
+        "reply" => "reply",
+        _ => value,
     }
 }
 
@@ -370,8 +496,7 @@ async fn latest_revision_in_tx(
     Ok(forum_relation_revision::Entity::find()
         .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
         .filter(
-            forum_relation_revision::Column::TargetKind
-                .eq(target_kind_value(target.kind())),
+            forum_relation_revision::Column::TargetKind.eq(target_kind_value(target.kind())),
         )
         .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
         .filter(forum_relation_revision::Column::Locale.eq(locale))
@@ -431,8 +556,7 @@ async fn validate_quote_targets_in_tx(
         let exists = forum_relation_revision::Entity::find_by_id(quote.revision_id())
             .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
             .filter(
-                forum_relation_revision::Column::TargetKind
-                    .eq(target_kind_value(target.kind())),
+                forum_relation_revision::Column::TargetKind.eq(target_kind_value(target.kind())),
             )
             .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
             .one(txn)
