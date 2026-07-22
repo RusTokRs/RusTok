@@ -110,6 +110,10 @@ for (const marker of [
   "added_user_ids",
   "replayed: true",
   "ForumError::quote_target_unavailable()",
+  "ForumMentionEvent",
+  "TransactionalEventBus",
+  "publish_contract_in_tx_with_envelope_id",
+  "forum_domain_event::ActiveModel",
 ]) {
   requireText(service, marker, `${servicePath}: missing owner marker ${marker}`);
 }
@@ -119,11 +123,17 @@ requireOrder(
   "let revision = forum_relation_revision::ActiveModel",
   `${servicePath}: quote targets must be validated before the first relation write`,
 );
+requireOrder(
+  service,
+  "let result = MentionRelationSyncResult",
+  "publish_added_target_events_in_tx",
+  `${servicePath}: semantic events must use the exact persisted added-target diff`,
+);
 
 reject(
   service,
-  /TransactionalEventBus|DomainEvent|rustok_notifications|notification_source|publish_in_tx/,
-  `${servicePath}: FORUM-12B1 must not publish events or call Notifications`,
+  /rustok_notifications|notification_source|NotificationService/,
+  `${servicePath}: Forum must publish owner events instead of calling Notifications`,
 );
 reject(
   service,
@@ -150,6 +160,7 @@ for (const marker of [
 for (const marker of [
   "m20260722_000004_add_forum_mention_quote_relations",
   "m20260722_000005_seed_forum_relation_revisions",
+  "m20260722_000006_add_forum_mention_events",
 ]) {
   requireText(migrationRegistry, marker, `${migrationRegistryPath}: migration is not registered: ${marker}`);
 }
@@ -158,6 +169,12 @@ requireOrder(
   "Box::new(m20260722_000004_add_forum_mention_quote_relations::Migration)",
   "Box::new(m20260722_000005_seed_forum_relation_revisions::Migration)",
   `${migrationRegistryPath}: rollout seed migration must follow relation schema creation`,
+);
+requireOrder(
+  migrationRegistry,
+  "Box::new(m20260722_000005_seed_forum_relation_revisions::Migration)",
+  "Box::new(m20260722_000006_add_forum_mention_events::Migration)",
+  `${migrationRegistryPath}: mention event journal migration must follow active relation rollout`,
 );
 requireText(
   serviceRegistry,
@@ -172,22 +189,22 @@ for (const marker of [
 ]) {
   requireText(entityRegistry, marker, `${entityRegistryPath}: missing entity ${marker}`);
 }
-requireText(
-  error,
+for (const marker of [
   '"FORUM_QUOTE_TARGET_UNAVAILABLE"',
-  `${errorPath}: safe quote target code is missing`,
-);
-requireText(plan, "Delivered in `FORUM-12B1`", `${planPath}: FORUM-12B1 is not recorded`);
-requireText(
-  plan,
-  "FORUM-12B2",
-  `${planPath}: active write-path integration must remain explicit`,
-);
+  '"FORUM_RELATION_REVISION_UNAVAILABLE"',
+]) {
+  requireText(error, marker, `${errorPath}: safe relation failure code is missing: ${marker}`);
+}
+for (const marker of ["Delivered in `FORUM-12B1`", "Delivered in `FORUM-12B2`", "Delivered in `FORUM-12C`"]) {
+  requireText(plan, marker, `${planPath}: Forum mention rollout status is missing ${marker}`);
+}
 for (const marker of [
   "forum_relation_revisions",
   "MentionRelationService",
   "FORUM_QUOTE_TARGET_UNAVAILABLE",
   "source INSERT seed triggers",
+  "forum.mention.user_added",
+  "ForumRelationReadService",
 ]) {
   requireText(crateApi, marker, `${crateApiPath}: missing contract marker ${marker}`);
 }
