@@ -30,6 +30,7 @@ impl MigrationTrait for Migration {
             .execute_unprepared(
                 r#"
                 DROP TABLE IF EXISTS notification_source_inbox;
+                DROP INDEX IF EXISTS ux_notification_fanout_job_source_event;
                 "#,
             )
             .await
@@ -38,6 +39,9 @@ impl MigrationTrait for Migration {
 }
 
 const POSTGRES_UP: &str = r#"
+CREATE UNIQUE INDEX IF NOT EXISTS ux_notification_fanout_job_source_event
+    ON notification_fanout_jobs (tenant_id, source_slug, source_event_id);
+
 CREATE TABLE IF NOT EXISTS notification_source_inbox (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
@@ -88,6 +92,9 @@ CREATE INDEX IF NOT EXISTS idx_notification_source_inbox_job
 "#;
 
 const SQLITE_UP: &str = r#"
+CREATE UNIQUE INDEX IF NOT EXISTS ux_notification_fanout_job_source_event
+    ON notification_fanout_jobs (tenant_id, source_slug, source_event_id);
+
 CREATE TABLE IF NOT EXISTS notification_source_inbox (
     id TEXT PRIMARY KEY NOT NULL,
     tenant_id TEXT NOT NULL,
