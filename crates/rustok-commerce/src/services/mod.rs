@@ -21,6 +21,7 @@ mod checkout_order_plan;
 mod checkout_order_stages;
 mod checkout_payment_stages;
 mod checkout_plan_builder;
+#[path = "checkout_stage_pipeline_owner_ports.rs"]
 mod checkout_stage_pipeline;
 pub mod context;
 mod fulfillment_create_label_recovery;
