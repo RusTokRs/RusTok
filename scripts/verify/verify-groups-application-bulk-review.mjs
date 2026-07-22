@@ -11,6 +11,15 @@ const files = {
   graphqlRoot: "crates/rustok-groups/src/graphql_application_cas.rs",
   graphql: "crates/rustok-groups/src/graphql_application_bulk_review.rs",
   ports: "crates/rustok-groups/src/ports.rs",
+  adminCore: "crates/rustok-groups/admin/src/application_bulk_core.rs",
+  adminModel: "crates/rustok-groups/admin/src/application_bulk_model.rs",
+  adminTransport: "crates/rustok-groups/admin/src/application_bulk_transport.rs",
+  nativeAdapter: "crates/rustok-groups/admin/src/transport/native_application_bulk_review_adapter.rs",
+  graphqlAdapter: "crates/rustok-groups/admin/src/transport/graphql_application_bulk_review_adapter.rs",
+  adminUi: "crates/rustok-groups/admin/src/ui/application_bulk_review.rs",
+  adminRoot: "crates/rustok-groups/admin/src/ui/root.rs",
+  localeEn: "crates/rustok-groups/admin/locales/en.json",
+  localeRu: "crates/rustok-groups/admin/locales/ru.json",
   contract: "crates/rustok-groups/docs/bulk-review-contract.md",
 };
 
@@ -82,11 +91,63 @@ if (failures.length === 0) {
     "retryable",
   ]);
   requireMarkers(files.ports, ['"GroupApplicationBulkReviewCommandPort"']);
+
+  requireMarkers(files.adminCore, [
+    "MAX_BULK_REVIEW_ITEMS: usize = 50",
+    "ConfirmationRequired",
+    "prepare_bulk_review_group_membership_applications",
+    "groups-admin-bulk-review-",
+  ]);
+  requireMarkers(files.adminModel, [
+    "BulkReviewGroupMembershipApplicationsCommand",
+    "GroupsAdminBulkReviewApplicationItemResult",
+    "GroupsAdminBulkReviewApplicationsResult",
+  ]);
+  requireMarkers(files.adminTransport, [
+    '"groups.admin.applications.bulk_review"',
+    "execute_selected_transport",
+    "UiTransportPath::NativeServer",
+    "UiTransportPath::Graphql",
+  ]);
+  requireMarkers(files.nativeAdapter, [
+    'endpoint = "groups/admin/applications/bulk-review"',
+    "GroupApplicationBulkReviewCommandPort",
+    "with_idempotency_key",
+    "Duration::from_secs(30)",
+  ]);
+  requireMarkers(files.graphqlAdapter, [
+    "bulkReviewGroupMembershipApplications",
+    "BulkReviewGroupMembershipApplicationsInputGql",
+    "applicationIds",
+    "retryable",
+  ]);
+  requireMarkers(files.adminUi, [
+    "GroupsApplicationsBulkReviewAdmin",
+    "MAX_BULK_REVIEW_ITEMS: usize = 50",
+    "event_target_checked",
+    "confirmed",
+    "selected_ids.get().is_empty()",
+    "aria-live=\"polite\"",
+    "GroupsAdminBulkReviewApplicationItemResult",
+    "groups.admin.applications.bulk.selectApplication",
+  ]);
+  requireMarkers(files.adminRoot, ["<GroupsApplicationsBulkReviewAdmin />"]);
+  for (const locale of [files.localeEn, files.localeRu]) {
+    requireMarkers(locale, [
+      '"groups.admin.applications.bulk.title"',
+      '"groups.admin.applications.bulk.selectApplication"',
+      '"groups.admin.applications.bulk.confirm"',
+      '"groups.admin.applications.bulk.succeeded"',
+      '"groups.admin.applications.bulk.failed"',
+    ]);
+  }
+
   requireMarkers(files.contract, [
     "partial-result batch",
     "between 1 and 50 unique application IDs",
     "independent of request order",
-    "admin FFA confirmation/results UI remains open",
+    "The module-owned admin package provides",
+    "runtime, parity, replay, concurrency, accessibility, and recovery evidence remains open",
   ]);
 }
 
@@ -96,4 +157,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups bounded partial-result bulk review and authorization-order source checks passed.");
+console.log("Groups bounded partial-result bulk review, FFA composition, localization, and authorization-order source checks passed.");
