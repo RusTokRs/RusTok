@@ -2,15 +2,46 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
-use crate::model::{PageDetail, PageList, StorefrontPagesData};
+use crate::model::{PageDetail, PageList, StorefrontMenu, StorefrontPagesData};
 
-const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } } pages(filter: $filter) { total items { id title slug status template } } }";
+const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) {
+  selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) {
+    effectiveLocale
+    translation { locale title slug metaTitle metaDescription }
+    body { locale content format }
+  }
+  pages(filter: $filter) { total items { id title slug status template } }
+  activeHeaderMenu: activeMenu(location: HEADER, locale: $locale) {
+    id effectiveLocale name location
+    items {
+      id title url icon
+      children {
+        id title url icon
+        children { id title url icon }
+      }
+    }
+  }
+  activeFooterMenu: activeMenu(location: FOOTER, locale: $locale) {
+    id effectiveLocale name location
+    items {
+      id title url icon
+      children {
+        id title url icon
+        children { id title url icon }
+      }
+    }
+  }
+}"#;
 
 #[derive(Debug, Deserialize)]
 struct StorefrontPagesResponse {
     #[serde(rename = "selectedPage")]
     selected_page: Option<PageDetail>,
     pages: PageList,
+    #[serde(rename = "activeHeaderMenu")]
+    active_header_menu: Option<StorefrontMenu>,
+    #[serde(rename = "activeFooterMenu")]
+    active_footer_menu: Option<StorefrontMenu>,
 }
 
 #[derive(Debug, Serialize)]
@@ -48,6 +79,8 @@ pub async fn fetch_storefront_pages(
     Ok(StorefrontPagesData {
         selected_page: response.selected_page,
         pages: response.pages,
+        active_header_menu: response.active_header_menu,
+        active_footer_menu: response.active_footer_menu,
     })
 }
 

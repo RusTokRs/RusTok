@@ -4,7 +4,10 @@ use super::ApiError;
 use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
-use crate::model::{PageBody, PageDetail, PageList, PageListItem, PageTranslation};
+use crate::model::{
+    PageBody, PageDetail, PageList, PageListItem, PageTranslation, StorefrontMenu,
+    StorefrontMenuItem, StorefrontMenuLocation,
+};
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
@@ -36,8 +39,9 @@ async fn storefront_pages_native(
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
         use rustok_pages::{
-            ListPagesFilter as RuntimeListPagesFilter, PageBuilderArtifactService, PageService,
-            PagesCacheReadRuntime, storefront_pages_cache_key,
+            ListPagesFilter as RuntimeListPagesFilter, MENU_LOCALE_NOT_FOUND_ERROR_CODE,
+            MenuBindingService, MenuLocation, PageBuilderArtifactService, PageService,
+            PagesCacheReadRuntime, PagesError, storefront_pages_cache_key,
         };
         use rustok_tenant::TenantService;
 
@@ -106,6 +110,44 @@ async fn storefront_pages_native(
             .as_ref()
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
 
+        let (active_header_menu, active_footer_menu) =
+            if let Some(channel_id) = request_context.as_ref().and_then(|ctx| ctx.channel_id) {
+                let binding_service =
+                    MenuBindingService::new(runtime_ctx.db_clone(), event_bus.clone());
+                let load = |location| {
+                    let binding_service = &binding_service;
+                    let requested_locale = &requested_locale;
+                    async move {
+                        match binding_service
+                            .get_active(
+                                tenant_id,
+                                SecurityContext::public_read(),
+                                channel_id,
+                                location,
+                                requested_locale.as_str(),
+                            )
+                            .await
+                        {
+                            Ok(menu) => Ok(menu.map(map_storefront_menu)),
+                            Err(PagesError::MenuNotFound(_)) => Ok(None),
+                            Err(PagesError::Rich(rich))
+                                if rich.error_code.as_deref()
+                                    == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
+                            {
+                                Ok(None)
+                            }
+                            Err(error) => Err(ServerFnError::new(error)),
+                        }
+                    }
+                };
+                (
+                    load(MenuLocation::Header).await?,
+                    load(MenuLocation::Footer).await?,
+                )
+            } else {
+                (None, None)
+            };
+
         let cache_runtime = runtime_ctx.shared_get::<PagesCacheReadRuntime>();
         let cache_variant = storefront_cache_variant(
             page_slug.as_str(),
@@ -141,8 +183,10 @@ async fn storefront_pages_native(
                 .get_json::<StorefrontPagesData>(cache_key)
                 .await
             {
-                Ok(Some(cached)) => {
+                Ok(Some(mut cached)) => {
                     tracing::debug!(%tenant_id, "Pages storefront cache hit");
+                    cached.active_header_menu = active_header_menu.clone();
+                    cached.active_footer_menu = active_footer_menu.clone();
                     return Ok(cached);
                 }
                 Ok(None) => {}
@@ -232,11 +276,16 @@ async fn storefront_pages_native(
                 items: items.into_iter().map(map_page_list_item).collect(),
                 total,
             },
+            active_header_menu,
+            active_footer_menu,
         };
         if let (Some(cache_runtime), Some(cache_key)) =
             (cache_runtime.as_ref(), cache_key)
         {
-            if let Err(error) = cache_runtime.put_json(cache_key, &data).await {
+            let mut cached_data = data.clone();
+            cached_data.active_header_menu = None;
+            cached_data.active_footer_menu = None;
+            if let Err(error) = cache_runtime.put_json(cache_key, &cached_data).await {
                 tracing::warn!(%error, %tenant_id, "Pages storefront cache fill failed");
             }
         }
@@ -265,6 +314,37 @@ fn storefront_cache_variant(
         channel_slug.unwrap_or_default(),
     ))
     .expect("serializing a tuple of strings cannot fail")
+}
+
+#[cfg(feature = "ssr")]
+fn map_storefront_menu(menu: rustok_pages::MenuResponse) -> StorefrontMenu {
+    StorefrontMenu {
+        id: menu.id.to_string(),
+        effective_locale: menu.effective_locale,
+        name: menu.name,
+        location: match menu.location {
+            rustok_pages::MenuLocation::Header => StorefrontMenuLocation::Header,
+            rustok_pages::MenuLocation::Footer => StorefrontMenuLocation::Footer,
+            rustok_pages::MenuLocation::Sidebar => StorefrontMenuLocation::Sidebar,
+            rustok_pages::MenuLocation::Mobile => StorefrontMenuLocation::Mobile,
+        },
+        items: menu.items.into_iter().map(map_storefront_menu_item).collect(),
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_storefront_menu_item(item: rustok_pages::MenuItemResponse) -> StorefrontMenuItem {
+    StorefrontMenuItem {
+        id: item.id.to_string(),
+        title: item.title,
+        url: item.url,
+        icon: item.icon,
+        children: item
+            .children
+            .into_iter()
+            .map(map_storefront_menu_item)
+            .collect(),
+    }
 }
 
 #[cfg(feature = "ssr")]
