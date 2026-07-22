@@ -15,6 +15,7 @@
     "changed_event_type_or_revision_conflicts": true,
     "provider_absence_retryable_after_enqueue": true,
     "lease_seconds": 60,
+    "expired_lease_cannot_finish": true,
     "terminal_states": [
       "completed",
       "suppressed",
@@ -24,9 +25,13 @@
   "fanout_job": {
     "existing_table": "notification_fanout_jobs",
     "descriptor_max_bytes": 16384,
+    "one_descriptor_job_per_source_event": true,
     "audience_page_max": 256,
+    "provider_page_must_not_exceed_requested_limit": true,
+    "empty_page_cannot_continue": true,
     "cursor_must_advance": true,
     "lease_recovery": true,
+    "expired_lease_cannot_finish": true,
     "descriptor_replay_must_match": true
   },
   "candidate_items": {
