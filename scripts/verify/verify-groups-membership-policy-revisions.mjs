@@ -35,7 +35,9 @@ const required = [
   "crates/rustok-groups/src/migrations/mod.rs",
   "crates/rustok-groups/src/application_entities.rs",
   "crates/rustok-groups/src/policy_history.rs",
+  "crates/rustok-groups/src/applications_cas.rs",
   "crates/rustok-groups/src/graphql_policy_history.rs",
+  "crates/rustok-groups/src/graphql_application_cas.rs",
   "crates/rustok-groups/src/lib.rs",
   "crates/rustok-groups/rustok-module.toml",
   "crates/rustok-groups/admin/src/application_core.rs",
@@ -88,6 +90,11 @@ requireMarkers("crates/rustok-groups/src/policy_history.rs", [
   "PortCallPolicy::read()",
   "order_by_desc(membership_policy_revision::Column::Revision)",
 ]);
+requireMarkers("crates/rustok-groups/src/applications_cas.rs", [
+  "GroupApplicationCasCommandPort",
+  "GROUP_APPLICATION_POLICY_CHANGED_CODE",
+  "ensure_policy_update_precondition",
+]);
 requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
   "MergedObject",
   "GroupsQueryRoot",
@@ -95,12 +102,18 @@ requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
   "GroupApplicationPolicyHistoryReadPort",
   "GroupApplicationPolicyRevisionConnectionGql",
 ]);
+requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+  "GroupsBaseQueryRoot",
+  "GroupsBaseMutationRoot",
+  "GroupsApplicationCasMutation",
+]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  'query = "graphql_policy_history::GroupsQueryRoot"',
-  'mutation = "graphql_policy_history::GroupsMutationRoot"',
+  'query = "graphql_application_cas::GroupsQueryRoot"',
+  'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
 requireMarkers("crates/rustok-groups/src/lib.rs", [
   "pub mod graphql_policy_history;",
+  "pub mod graphql_application_cas;",
   "pub mod policy_history;",
   "pub use policy_history::*;",
   "assert_eq!(module.migrations().len(), 7)",
@@ -109,9 +122,11 @@ requireMarkers("crates/rustok-groups/src/lib.rs", [
 requireMarkers("crates/rustok-groups/admin/src/application_core.rs", [
   "prepare_group_application_policy_query",
   "normalize_locale_tag(locale)",
+  "InvalidExpectedPolicy",
 ]);
 requireMarkers("crates/rustok-groups/admin/src/application_model.rs", [
   "pub struct GroupsAdminApplicationPolicyQuery",
+  "pub struct GroupsAdminApplicationPolicyPrecondition",
   "pub locale: String",
 ]);
 requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
@@ -121,6 +136,7 @@ requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
   "native_policy_locale_adapter",
   "load_group_admin_application_policy_revisions",
   '"groups.admin.applications.policy.history"',
+  '"groups.admin.applications.policy.upsert_if_current"',
   'GROUPS_ADMIN_TRANSPORT_FALLBACK_POLICY: &str = "never falls back"',
 ]);
 requireMarkers(
@@ -146,6 +162,7 @@ requireMarkers(
     "groups/admin/applications/policy-locale",
     "query.locale",
     "GroupApplicationReadPort",
+    "GroupApplicationCasCommandPort",
   ],
 );
 requireMarkers(
@@ -154,6 +171,7 @@ requireMarkers(
     "GroupsAdminApplicationPolicyLocale",
     "Some(query.locale.clone())",
     "Some(command.locale.clone())",
+    "upsertGroupApplicationPolicyIfCurrent",
     "execute_graphql",
   ],
 );
@@ -163,7 +181,9 @@ requireMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
   "prepare_upsert_group_application_policy",
   "load_group_admin_application_policy_revisions",
   "move_item",
-  "loaded_revision",
+  "loaded_policy",
+  "GroupsAdminApplicationPolicyPrecondition::from",
+  "GROUP_APPLICATION_POLICY_CHANGED_CODE",
   "copy.stale",
   "readonly",
   "unwrap_or_default",
@@ -177,6 +197,8 @@ forbidMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
   "native_policy_locale_adapter",
   "membership_policy_revision::Entity",
   'unwrap_or_else(|| "en"',
+  "preflight_context",
+  "current.revision != expected",
 ]);
 requireMarkers("crates/rustok-groups/admin/src/ui/root.rs", [
   "GroupsPolicyEditorAdmin",
@@ -234,11 +256,11 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
     if (applications?.policy_revision_history !== "implemented_source") {
       failures.push("Groups policy revision history must remain source-only before execution");
     }
-    if (applications?.admin_policy_stale_preflight !== "implemented_source_non_atomic") {
-      failures.push("Groups stale policy preflight must disclose its non-atomic scope");
+    if (applications?.admin_policy_stale_preflight !== "replaced_by_owner_cas") {
+      failures.push("Groups stale preflight must be replaced by owner CAS");
     }
-    if (applications?.atomic_expected_revision_guard !== "planned") {
-      failures.push("Groups atomic expected-revision guard must remain planned");
+    if (applications?.atomic_expected_revision_guard !== "implemented_source") {
+      failures.push("Groups atomic expected-revision guard must be source-complete");
     }
     if (
       registry?.evidence?.membership_policy_revision_static_boundary !==
@@ -249,14 +271,18 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
     if (registry?.evidence?.membership_application_policy_revision !== null) {
       failures.push("Groups policy revision runtime evidence must remain null before execution");
     }
+    if (registry?.evidence?.membership_application_policy_cas !== null) {
+      failures.push("Groups policy CAS runtime evidence must remain null before execution");
+    }
   }
 }
 
 requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
   "group_membership_policy_revisions",
   "visual policy editor",
-  "non-atomic stale preflight",
-  "atomic expected-revision",
+  "GroupApplicationCasCommandPort",
+  "groups.application_policy_changed",
+  "legacy unconditional",
   "verify-groups-membership-policy-revisions.mjs",
 ]);
 
@@ -266,4 +292,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups membership policy revision, exact-locale transport, editor, and append-only boundary checks passed.");
+console.log("Groups membership policy revision, exact-locale CAS transport, editor, and append-only boundary checks passed.");
