@@ -88,8 +88,11 @@ for (const marker of [
   "PAGE_ROLLBACK_OPERATION_INTEGRITY",
   "PAGE_ROLLBACK_TARGET_UNAVAILABLE",
   "PAGE_ROLLBACK_REQUIRES_PUBLISHED",
+  "PUBLISH_MANIFEST_DB_ERROR_PREFIX",
+  "impl From<DbErr> for PagesError",
+  "Self::PublishOperationIntegrity(detail.trim().to_string())",
 ]) {
-  requireMarker(errors, marker, "typed rollback errors");
+  requireMarker(errors, marker, "typed rollback and manifest errors");
 }
 
 for (const marker of [
@@ -134,6 +137,7 @@ for (const marker of [
   "impl ActiveModelBehavior for ActiveModel",
   "async fn after_save<C>(model: Model, db: &C, insert: bool)",
   "persist_publish_manifest_after_save(db, &model)",
+  "crate::error::PUBLISH_MANIFEST_DB_ERROR_PREFIX",
 ]) {
   requireMarker(publishEntity, marker, "publish receipt manifest invariant");
 }
@@ -165,9 +169,11 @@ for (const marker of [
   'existing_page.status != "published"',
   "load_current_published_set_in_tx",
   "find_previous_publish_target_in_tx",
-  "let mut current_index = None",
-  "load_publish_manifest_in_tx(txn, operation).await?",
-  ".skip(current_index + 1)",
+  "find_current_publish_cursor_in_tx",
+  "TargetArtifactSetHash",
+  "target_publish_operation_id",
+  "ResultVersion.lt(cursor.result_version)",
+  "load_publish_manifest_in_tx(txn, &cursor).await?",
   "replace_current_published_set_in_tx",
   "DomainEvent::NodeUpdated",
   "DomainEvent::NodePublished",
@@ -258,8 +264,10 @@ for (const marker of [
   "attempt.expected_version",
   "attempt.idempotency_key.clone()",
   "is_definitive_rejection(&error)",
+  "message.contains(marker)",
   "GraphqlHttpError::Network => false",
   ".session_storage()",
+  "storage.remove_item(&key)",
 ]) {
   requireMarker(adminRollbackRetry, marker, "admin browser rollback retry identity");
 }
@@ -277,10 +285,12 @@ for (const marker of [
   "pub(crate) fn PagesRollbackControl",
   "use_route_query_value(AdminQueryKey::PageId.as_str())",
   'page.status.eq_ignore_ascii_case("published")',
+  "armed_page_id",
+  '"Prepare rollback"',
+  '"Confirm rollback"',
   "transport::rollback_page(token, tenant, page_id)",
   "result.version()",
   "on_rolled_back.run(())",
-  '"Rollback"',
 ]) {
   requireMarker(adminRollbackControl, marker, "Pages admin rollback control");
 }
