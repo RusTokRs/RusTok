@@ -3,6 +3,10 @@ const GRAPHQL_QUERY: &str = include_str!("../src/graphql/query.rs");
 const GRAPHQL_MUTATION: &str = include_str!("../src/graphql/mutation.rs");
 const HTTP: &str = include_str!("../src/controllers/mod.rs");
 const OPENAPI: &str = include_str!("../src/openapi.rs");
+const MENU_BINDING_SERVICE: &str = include_str!("../src/services/menu_binding.rs");
+const MENU_BINDING_MIGRATION: &str =
+    include_str!("../src/migrations/m20260721_000008_create_active_menu_bindings.rs");
+const MENU_MIGRATIONS: &str = include_str!("../src/migrations/mod.rs");
 
 #[test]
 fn menu_graphql_transport_uses_exact_effective_locale() {
@@ -81,4 +85,49 @@ fn menu_http_and_openapi_surfaces_stay_synchronized() {
             "OpenAPI menu contract must contain `{marker}`"
         );
     }
+}
+
+#[test]
+fn active_menu_binding_is_deterministic_and_tenant_safe() {
+    for marker in [
+        "uq_menu_bindings_tenant_channel_location",
+        "fk_menu_bindings_tenant_menu",
+        ".from_col(MenuBindings::MenuId)",
+        ".to_col(Menus::Id)",
+        "fk_menu_bindings_channel",
+        ".to(Channels::Table, Channels::Id)",
+    ] {
+        assert!(
+            MENU_BINDING_MIGRATION.contains(marker),
+            "active menu binding migration must contain `{marker}`"
+        );
+    }
+
+    for marker in [
+        ".filter(menu_binding::Column::TenantId.eq(tenant_id))",
+        ".filter(menu_binding::Column::ChannelId.eq(channel_id))",
+        ".filter(menu_binding::Column::Location.eq(",
+        "ChannelService::new",
+        "channel.tenant_id != tenant_id",
+        "!channel.is_active",
+        "MenuService::new",
+    ] {
+        assert!(
+            MENU_BINDING_SERVICE.contains(marker),
+            "active menu binding service must contain `{marker}`"
+        );
+    }
+
+    for marker in [
+        "m20260721_000008_create_active_menu_bindings",
+        "m20260325_000001_create_channels",
+    ] {
+        assert!(
+            MENU_MIGRATIONS.contains(marker),
+            "menu migration ordering must contain `{marker}`"
+        );
+    }
+
+    assert!(!MENU_BINDING_SERVICE.contains(".first()"));
+    assert!(!MENU_BINDING_SERVICE.contains("menu::Column::Location"));
 }

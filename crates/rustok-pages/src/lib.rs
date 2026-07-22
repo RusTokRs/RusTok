@@ -54,19 +54,19 @@ pub mod services;
 
 pub use dto::*;
 pub use entities::{
-    Menu, Page, PageBuilderScenarioBaseline, PagePublishOperation,
+    Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
     PagePublishedLandingArtifact, PageStaticLandingArtifact,
 };
-pub use error::{PagesError, PagesResult, CANNOT_DELETE_PUBLISHED_ERROR_CODE};
+pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
-    PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
-    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    MenuBindingService, MenuService, PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
-    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService,
+    PageBuilderScenarioBaselineService, PageService, PublishedLandingArtifact,
+    SaveIfCurrentScenarioBaselineRequest,
 };
 
 use async_trait::async_trait;
