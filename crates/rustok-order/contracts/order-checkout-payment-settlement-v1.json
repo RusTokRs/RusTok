@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "contract_version": "order.checkout_payment_settlement.v1",
+  "owner": "order",
+  "consumer": "commerce",
+  "status": "source_ready_unvalidated",
+  "port": "CheckoutOrderPaymentSettlementPort",
+  "operation": "settle_checkout_payment",
+  "context": "rustok_api::ports::PortContext",
+  "deadline_required": true,
+  "idempotency_required": true,
+  "causation_identity": "checkout_operation_id",
+  "request": {
+    "type": "SettleCheckoutOrderPaymentRequest",
+    "fields": [
+      "checkout_operation_id",
+      "cart_id",
+      "order_id",
+      "payment_collection_id",
+      "payment_reference",
+      "payment_method",
+      "locale",
+      "fallback_locale"
+    ]
+  },
+  "response": "OrderResponse",
+  "owner_rules": [
+    "checkout order identity is resolved inside order owner",
+    "legacy identity adoption remains owner-local and temporary",
+    "confirmed order transitions to paid through OrderService",
+    "paid shipped or delivered order is adopted only when payment identity matches",
+    "conflicting payment identity fails closed",
+    "raw storage and invariant errors never cross the port"
+  ],
+  "source": "crates/rustok-order/src/checkout_payment_settlement.rs",
+  "verification": {
+    "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
+    "runtime_evidence": "not_executed"
+  }
+}
