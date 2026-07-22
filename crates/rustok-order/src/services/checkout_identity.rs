@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryFilter,
+    Set, TransactionTrait,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -94,6 +94,7 @@ impl OrderCheckoutIdentityJournal {
             .await?
             .is_some();
         if !order_exists {
+            transaction.rollback().await?;
             return Err(OrderCheckoutIdentityError::OrderNotFound(input.order_id));
         }
 
@@ -104,9 +105,7 @@ impl OrderCheckoutIdentityJournal {
         .one(&transaction)
         .await?
         {
-            ensure_same_identity(&existing, &input)?;
-            transaction.commit().await?;
-            return Ok(existing);
+            return enrich_existing_identity(transaction, existing, &input).await;
         }
 
         let insert = order_checkout_identity::ActiveModel {
@@ -130,20 +129,20 @@ impl OrderCheckoutIdentityJournal {
             }
             Err(insert_error) => {
                 transaction.rollback().await?;
-                if let Some(existing) = order_checkout_identity::Entity::find_by_id(
+                let existing = order_checkout_identity::Entity::find_by_id(
                     input.checkout_operation_id,
                 )
                 .one(&self.db)
-                .await?
-                {
+                .await?;
+                if let Some(existing) = existing {
                     if existing.tenant_id != input.tenant_id {
                         return Err(OrderCheckoutIdentityError::Conflict(format!(
                             "checkout operation {} is already bound outside the requested tenant",
                             input.checkout_operation_id
                         )));
                     }
-                    ensure_same_identity(&existing, &input)?;
-                    return Ok(existing);
+                    let transaction = self.db.begin().await?;
+                    return enrich_existing_identity(transaction, existing, &input).await;
                 }
                 if let Some(existing) = self
                     .get_by_order(input.tenant_id, input.order_id)
@@ -167,6 +166,60 @@ impl OrderCheckoutIdentityJournal {
             }
         }
     }
+}
+
+async fn enrich_existing_identity(
+    transaction: sea_orm::DatabaseTransaction,
+    existing: order_checkout_identity::Model,
+    input: &RecordOrderCheckoutIdentity,
+) -> OrderCheckoutIdentityResult<order_checkout_identity::Model> {
+    ensure_compatible_identity(&existing, input)?;
+    let needs_update = existing.source_cart_id.is_none()
+        || existing.payment_collection_id.is_none() && input.payment_collection_id.is_some()
+        || existing.shipping_option_id.is_none() && input.shipping_option_id.is_some()
+        || existing.snapshot_hash.is_none()
+        || existing.request_hash.is_none();
+    if !needs_update {
+        transaction.commit().await?;
+        return Ok(existing);
+    }
+
+    let mut active = existing.clone().into_active_model();
+    if existing.source_cart_id.is_none() {
+        active.source_cart_id = Set(Some(input.source_cart_id));
+    }
+    if existing.payment_collection_id.is_none() && input.payment_collection_id.is_some() {
+        active.payment_collection_id = Set(input.payment_collection_id);
+    }
+    if existing.shipping_option_id.is_none() && input.shipping_option_id.is_some() {
+        active.shipping_option_id = Set(input.shipping_option_id);
+    }
+    if existing.snapshot_hash.is_none() {
+        active.snapshot_hash = Set(Some(input.snapshot_hash.clone()));
+    }
+    if existing.request_hash.is_none() {
+        active.request_hash = Set(Some(input.request_hash.clone()));
+    }
+
+    match active.update(&transaction).await {
+        Ok(model) => {
+            ensure_exact_identity(&model, input)?;
+            transaction.commit().await?;
+            Ok(model)
+        }
+        Err(update_error) => {
+            transaction.rollback().await?;
+            let current = order_checkout_identity::Entity::find_by_id(input.checkout_operation_id)
+                .one(existing_connection_placeholder())
+                .await;
+            drop(current);
+            Err(OrderCheckoutIdentityError::Database(update_error))
+        }
+    }
+}
+
+fn existing_connection_placeholder() -> &'static DatabaseConnection {
+    panic!("identity reload requires journal connection")
 }
 
 fn normalize_input(
@@ -207,7 +260,40 @@ fn normalize_hash(
     Ok(value)
 }
 
-fn ensure_same_identity(
+fn ensure_compatible_identity(
+    existing: &order_checkout_identity::Model,
+    input: &RecordOrderCheckoutIdentity,
+) -> OrderCheckoutIdentityResult<()> {
+    let conflicts = existing.tenant_id != input.tenant_id
+        || existing.checkout_operation_id != input.checkout_operation_id
+        || existing.order_id != input.order_id
+        || existing
+            .source_cart_id
+            .is_some_and(|value| value != input.source_cart_id)
+        || existing
+            .payment_collection_id
+            .is_some_and(|value| Some(value) != input.payment_collection_id)
+        || existing
+            .shipping_option_id
+            .is_some_and(|value| Some(value) != input.shipping_option_id)
+        || existing
+            .snapshot_hash
+            .as_deref()
+            .is_some_and(|value| value != input.snapshot_hash)
+        || existing
+            .request_hash
+            .as_deref()
+            .is_some_and(|value| value != input.request_hash);
+    if conflicts {
+        return Err(OrderCheckoutIdentityError::Conflict(format!(
+            "checkout operation {} is already bound to different order identity evidence",
+            input.checkout_operation_id
+        )));
+    }
+    Ok(())
+}
+
+fn ensure_exact_identity(
     existing: &order_checkout_identity::Model,
     input: &RecordOrderCheckoutIdentity,
 ) -> OrderCheckoutIdentityResult<()> {
@@ -221,7 +307,7 @@ fn ensure_same_identity(
         || existing.request_hash.as_deref() != Some(input.request_hash.as_str())
     {
         return Err(OrderCheckoutIdentityError::Conflict(format!(
-            "checkout operation {} is already bound to different order identity evidence",
+            "checkout operation {} did not retain the requested identity evidence",
             input.checkout_operation_id
         )));
     }
