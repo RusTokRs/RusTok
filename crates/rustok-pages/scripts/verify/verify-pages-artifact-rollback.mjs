@@ -33,6 +33,9 @@ const adminModel = read("crates/rustok-pages/admin/src/model.rs");
 const adminTransport = read(
   "crates/rustok-pages/admin/src/transport/graphql_adapter.rs",
 );
+const adminRollbackRetry = read(
+  "crates/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
+);
 const adminTransportModule = read(
   "crates/rustok-pages/admin/src/transport/mod.rs",
 );
@@ -162,7 +165,9 @@ for (const marker of [
   'existing_page.status != "published"',
   "load_current_published_set_in_tx",
   "find_previous_publish_target_in_tx",
-  "load_publish_manifest_in_tx",
+  "let mut current_index = None",
+  "load_publish_manifest_in_tx(txn, operation).await?",
+  ".skip(current_index + 1)",
   "replace_current_published_set_in_tx",
   "DomainEvent::NodeUpdated",
   "DomainEvent::NodePublished",
@@ -243,11 +248,26 @@ for (const marker of [
   "pub async fn rollback_page",
   "RollbackPageReceipt",
 ]) {
-  requireMarker(adminTransport, marker, "admin rollback GraphQL transport");
+  requireMarker(adminTransport, marker, "admin non-browser rollback GraphQL transport");
 }
 for (const marker of [
-  "pub async fn rollback_page",
-  ".map(PagePublicationResult::RolledBack)",
+  "ROLLBACK_RETRY_STORAGE_PREFIX",
+  "struct PendingRollbackAttempt",
+  "load_pending_attempt(&page_id)?",
+  "store_pending_attempt(&page_id, &attempt)?",
+  "attempt.expected_version",
+  "attempt.idempotency_key.clone()",
+  "is_definitive_rejection(&error)",
+  "GraphqlHttpError::Network => false",
+  ".session_storage()",
+]) {
+  requireMarker(adminRollbackRetry, marker, "admin browser rollback retry identity");
+}
+for (const marker of [
+  '#[cfg(target_arch = "wasm32")]\nmod rollback_retry_adapter;',
+  "rollback_retry_adapter::rollback_page(token, tenant_slug, id).await?",
+  "graphql_adapter::rollback_page(token, tenant_slug, id).await?",
+  "PagePublicationResult::RolledBack(receipt)",
   "validate_publication_result",
 ]) {
   requireMarker(adminTransportModule, marker, "admin rollback transport facade");
