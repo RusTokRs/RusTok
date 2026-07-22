@@ -13,6 +13,7 @@ use utoipa::OpenApi;
         crate::controllers::patch_page_metadata,
         crate::controllers::save_page_document,
         crate::http::publish_page,
+        crate::http::rollback_page,
         crate::controllers::delete_page,
     ),
     components(
@@ -22,6 +23,8 @@ use utoipa::OpenApi;
             crate::SavePageDocumentInput,
             crate::PublishPageInput,
             crate::PublishPageResult,
+            crate::RollbackPageInput,
+            crate::RollbackPageResult,
             crate::PageBodyRevisionInput,
             crate::ReviewedPagePublishRuntimeInput,
             crate::PageBodyInput,
