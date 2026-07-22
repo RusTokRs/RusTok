@@ -14,15 +14,59 @@
       "purpose": "bind reviewed runtime selection to publish materialization"
     },
     "sanitization": {
-      "format": "page_builder_static_publish_sanitization_v1",
+      "format": "page_builder_static_publish_sanitization_v2",
       "source": "crates/rustok-page-builder/src/publish_sanitization.rs",
       "function": "sanitize_static_landing_project",
       "envelope": "PageBuilderSanitizedStaticLandingProject",
       "hash_algorithm": "sha256",
-      "hash_payload": ["format", "sanitized_project"],
+      "hash_payload": ["format", "policy_format", "policy_hash", "sanitized_project"],
+      "policy": {
+        "format": "page_builder_static_publish_policy_v1",
+        "source": "crates/rustok-page-builder/src/static_publish_policy.rs",
+        "dto": "PageBuilderStaticPublishPolicy",
+        "evidence": "PageBuilderStaticPublishPolicyEvidence",
+        "diagnostic": "PageBuilderStaticPublishPolicyDiagnostic",
+        "error": "PageBuilderStaticPublishPolicyError",
+        "validator": "validate_static_publish_document",
+        "hash_algorithm": "sha256",
+        "failure_mode": "reject_not_drop",
+        "domains": [
+          "tags_component_types_and_markup_content",
+          "attributes_and_url_schemes",
+          "component_and_project_css",
+          "assets_and_page_metadata_urls"
+        ],
+        "url_policy": {
+          "https": true,
+          "relative": true,
+          "navigation_mailto_tel_and_fragments": true,
+          "form_action_relative_only": true,
+          "safe_data_images": ["avif", "gif", "jpeg", "png", "webp"],
+          "http": false,
+          "protocol_relative": false,
+          "unknown_scheme": false
+        },
+        "css_policy": {
+          "url": false,
+          "import": false,
+          "expression": false,
+          "behavior": false,
+          "moz_binding": false,
+          "data": false,
+          "custom_properties": false,
+          "unbound_or_unknown_rules": false
+        },
+        "enforcement": {
+          "pre_materialization": true,
+          "exact_materialized_document": true
+        }
+      },
+      "exact_materialized_recheck_source": "crates/rustok-page-builder/src/static_landing.rs",
       "stable_component_ids": true,
       "secure_public_resources": true,
-      "raw_context_persisted": false
+      "integrity_revalidates_project": true,
+      "raw_context_persisted": false,
+      "executed_evidence": "pending"
     }
   },
   "pages_consumer": {
