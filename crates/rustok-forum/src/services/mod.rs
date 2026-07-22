@@ -8,7 +8,10 @@ mod category_tree;
 pub mod event;
 mod mention_relation;
 #[cfg(test)]
-mod mention_relation_tests;
+mod mention_relation_tests {
+    include!("mention_relation_tests.rs");
+    include!("relation_quote_input_tests.rs");
+}
 mod quote_command;
 mod relation_quote_input;
 mod relation_read;
