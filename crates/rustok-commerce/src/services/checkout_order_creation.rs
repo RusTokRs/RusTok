@@ -1,9 +1,18 @@
-use rustok_order::{CreateOrderInput, OrderError, OrderResponse, OrderService};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
+use rustok_order::{
+    AdoptLegacyCheckoutOrderIdentityRequest, BindCheckoutOrderIdentityRequest,
+    CheckoutOrderIdentityPort, CheckoutOrderIdentitySnapshot, CreateOrderInput, OrderError,
+    OrderResponse, OrderService, ReadCheckoutOrderIdentityByOperationRequest,
+    in_process_checkout_order_identity_port,
+};
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+    time::Duration,
+};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -13,6 +22,8 @@ use super::{
     CheckoutOperationStatus,
 };
 
+const ORDER_IDENTITY_PORT_DEADLINE_SECONDS: u64 = 3;
+
 #[derive(Debug, Error)]
 pub enum CheckoutOrderCreationError {
     #[error(transparent)]
@@ -21,38 +32,53 @@ pub enum CheckoutOrderCreationError {
     Operation(#[from] CheckoutOperationError),
     #[error(transparent)]
     Adoption(#[from] CheckoutInventoryOrderAdoptionError),
+    #[error(
+        "checkout order identity boundary failed with `{code}` (retryable={retryable}): {message}"
+    )]
+    IdentityBoundary {
+        code: String,
+        message: String,
+        retryable: bool,
+    },
     #[error("checkout order creation conflict: {0}")]
     Conflict(String),
-    #[error(transparent)]
-    Database(#[from] sea_orm::DbErr),
 }
 
 pub type CheckoutOrderCreationResult<T> = Result<T, CheckoutOrderCreationError>;
 
 pub struct CheckoutOrderCreationExecutor {
-    db: DatabaseConnection,
     order_service: OrderService,
+    order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
     operation_journal: CheckoutOperationJournal,
     adoption_service: CheckoutInventoryOrderAdoptionService,
+    port_deadline: Duration,
 }
 
 impl CheckoutOrderCreationExecutor {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+    pub fn new(db: sea_orm::DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             order_service: OrderService::new(db.clone(), event_bus),
+            order_identity_port: in_process_checkout_order_identity_port(db.clone()),
             operation_journal: CheckoutOperationJournal::new(db.clone()),
-            adoption_service: CheckoutInventoryOrderAdoptionService::new(db.clone()),
-            db,
+            adoption_service: CheckoutInventoryOrderAdoptionService::new(db),
+            port_deadline: Duration::from_secs(ORDER_IDENTITY_PORT_DEADLINE_SECONDS),
         }
     }
 
-    /// Creates one pending order for a durable checkout operation, adopts the
-    /// already reserved inventory rows into its order lines, and checkpoints
-    /// `order_created`.
+    pub fn with_order_identity_port(
+        mut self,
+        order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
+    ) -> Self {
+        self.order_identity_port = order_identity_port;
+        self
+    }
+
+    /// Creates one pending order for a durable checkout operation, binds it to
+    /// typed order-owner checkout identity, adopts already reserved inventory
+    /// rows into its order lines, and checkpoints `order_created`.
     ///
-    /// The order identity is stored in metadata and protected by an owner-owned
-    /// unique expression index. A concurrent or crash replay loads the existing
-    /// order and continues adoption instead of creating a second aggregate.
+    /// Metadata identity remains only as a temporary owner-side legacy adoption
+    /// bridge. Commerce never queries order storage or metadata directly.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_pending_and_adopt(
         &self,
@@ -96,46 +122,156 @@ impl CheckoutOrderCreationExecutor {
         let request_hash = order_request_hash(&input, channel_id, channel_slug.as_deref())?;
         attach_order_request_hash(&mut input.metadata, request_hash.as_str())?;
 
-        let existing_id = find_order_id_by_operation(&self.db, tenant_id, operation_id).await?;
-        let order = match existing_id {
-            Some(order_id) => {
-                self.order_service
-                    .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
-                    .await?
+        let mut identity = self
+            .order_identity_port
+            .read_by_operation(
+                identity_context(
+                    tenant_id,
+                    actor_id,
+                    operation_id,
+                    self.port_deadline,
+                    "read",
+                    false,
+                ),
+                ReadCheckoutOrderIdentityByOperationRequest {
+                    checkout_operation_id: operation_id,
+                },
+            )
+            .await
+            .map_err(identity_boundary_error)?;
+        if identity.is_none() {
+            identity = self
+                .order_identity_port
+                .adopt_legacy(
+                    identity_context(
+                        tenant_id,
+                        actor_id,
+                        operation_id,
+                        self.port_deadline,
+                        "adopt",
+                        true,
+                    ),
+                    AdoptLegacyCheckoutOrderIdentityRequest {
+                        checkout_operation_id: operation_id,
+                        cart_id: operation.cart_id,
+                    },
+                )
+                .await
+                .map_err(identity_boundary_error)?;
+        }
+
+        let (order, identity) = match identity {
+            Some(identity) => {
+                validate_identity(
+                    &identity,
+                    tenant_id,
+                    operation_id,
+                    operation.cart_id,
+                    None,
+                    snapshot_hash,
+                    request_hash.as_str(),
+                )?;
+                let order = self
+                    .order_service
+                    .get_order_with_locale_fallback(
+                        tenant_id,
+                        identity.order_id,
+                        locale,
+                        fallback_locale,
+                    )
+                    .await?;
+                (order, identity)
             }
             None => {
                 let create_result = self
                     .order_service
-                    .create_order_with_channel(tenant_id, actor_id, input, channel_id, channel_slug)
+                    .create_order_with_channel(
+                        tenant_id,
+                        actor_id,
+                        input,
+                        channel_id,
+                        channel_slug,
+                    )
                     .await;
                 match create_result {
-                    Ok(order) => order,
-                    Err(error) => {
-                        let Some(order_id) =
-                            find_order_id_by_operation(&self.db, tenant_id, operation_id).await?
+                    Ok(order) => {
+                        let identity = self
+                            .order_identity_port
+                            .bind(
+                                identity_context(
+                                    tenant_id,
+                                    actor_id,
+                                    operation_id,
+                                    self.port_deadline,
+                                    "bind",
+                                    true,
+                                ),
+                                BindCheckoutOrderIdentityRequest {
+                                    checkout_operation_id: operation_id,
+                                    order_id: order.id,
+                                    cart_id: operation.cart_id,
+                                    payment_collection_id: None,
+                                    shipping_option_id: None,
+                                    snapshot_hash: snapshot_hash.to_string(),
+                                    request_hash: request_hash.clone(),
+                                },
+                            )
+                            .await
+                            .map_err(identity_boundary_error)?;
+                        (order, identity)
+                    }
+                    Err(create_error) => {
+                        let Some(identity) = self
+                            .order_identity_port
+                            .adopt_legacy(
+                                identity_context(
+                                    tenant_id,
+                                    actor_id,
+                                    operation_id,
+                                    self.port_deadline,
+                                    "adopt-after-create-race",
+                                    true,
+                                ),
+                                AdoptLegacyCheckoutOrderIdentityRequest {
+                                    checkout_operation_id: operation_id,
+                                    cart_id: operation.cart_id,
+                                },
+                            )
+                            .await
+                            .map_err(identity_boundary_error)?
                         else {
-                            return Err(error.into());
+                            return Err(create_error.into());
                         };
-                        self.order_service
+                        let order = self
+                            .order_service
                             .get_order_with_locale_fallback(
                                 tenant_id,
-                                order_id,
+                                identity.order_id,
                                 locale,
                                 fallback_locale,
                             )
-                            .await?
+                            .await?;
+                        (order, identity)
                     }
                 }
             }
         };
 
-        validate_existing_order(
-            &order,
+        validate_identity(
+            &identity,
             tenant_id,
             operation_id,
+            operation.cart_id,
+            Some(order.id),
             snapshot_hash,
             request_hash.as_str(),
         )?;
+        if order.tenant_id != tenant_id {
+            return Err(CheckoutOrderCreationError::Conflict(format!(
+                "order {} belongs to another tenant",
+                order.id
+            )));
+        }
         if operation.stage == CheckoutOperationStage::InventoryReserved.as_str()
             && order.status != "pending"
         {
@@ -150,43 +286,6 @@ impl CheckoutOrderCreationExecutor {
             .await?;
         Ok(order)
     }
-}
-
-async fn find_order_id_by_operation<C>(
-    conn: &C,
-    tenant_id: Uuid,
-    operation_id: Uuid,
-) -> Result<Option<Uuid>, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    let sql = match conn.get_database_backend() {
-        DbBackend::Postgres => {
-            "SELECT id FROM orders WHERE tenant_id = ? AND metadata #>> '{checkout,operation_id}' = ? LIMIT 2"
-        }
-        DbBackend::Sqlite => {
-            "SELECT id FROM orders WHERE tenant_id = ? AND json_extract(metadata, '$.checkout.operation_id') = ? LIMIT 2"
-        }
-        DbBackend::MySql => {
-            "SELECT id FROM orders WHERE tenant_id = ? AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id')) = ? LIMIT 2"
-        }
-    };
-    let rows = conn
-        .query_all(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            sql,
-            vec![tenant_id.into(), operation_id.to_string().into()],
-        ))
-        .await?;
-    if rows.len() > 1 {
-        return Err(sea_orm::DbErr::Custom(format!(
-            "multiple orders are bound to checkout operation {operation_id}"
-        )));
-    }
-    rows.into_iter()
-        .next()
-        .map(|row| row.try_get("", "id"))
-        .transpose()
 }
 
 fn attach_checkout_identity(
@@ -262,40 +361,61 @@ fn validate_line_item_provenance(input: &CreateOrderInput) -> CheckoutOrderCreat
     Ok(())
 }
 
-fn validate_existing_order(
-    order: &OrderResponse,
+#[allow(clippy::too_many_arguments)]
+fn validate_identity(
+    identity: &CheckoutOrderIdentitySnapshot,
     tenant_id: Uuid,
     operation_id: Uuid,
+    cart_id: Uuid,
+    order_id: Option<Uuid>,
     snapshot_hash: &str,
     request_hash: &str,
 ) -> CheckoutOrderCreationResult<()> {
-    if order.tenant_id != tenant_id {
-        return Err(CheckoutOrderCreationError::Conflict(format!(
-            "order {} belongs to another tenant",
-            order.id
-        )));
-    }
-    let checkout = order
-        .metadata
-        .get("checkout")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            CheckoutOrderCreationError::Conflict(format!(
-                "order {} has no checkout identity metadata",
-                order.id
-            ))
-        })?;
-    let operation_id = operation_id.to_string();
-    if checkout.get("operation_id").and_then(Value::as_str) != Some(operation_id.as_str())
-        || checkout.get("snapshot_hash").and_then(Value::as_str) != Some(snapshot_hash)
-        || checkout.get("order_request_hash").and_then(Value::as_str) != Some(request_hash)
+    if identity.tenant_id != tenant_id
+        || identity.checkout_operation_id != operation_id
+        || identity.source_cart_id.is_some() && identity.source_cart_id != Some(cart_id)
+        || order_id.is_some() && Some(identity.order_id) != order_id
+        || identity.snapshot_hash.as_deref() != Some(snapshot_hash)
+        || identity.request_hash.as_deref() != Some(request_hash)
     {
         return Err(CheckoutOrderCreationError::Conflict(format!(
-            "order {} is bound to another checkout request",
-            order.id
+            "checkout operation {operation_id} is bound to different typed order identity evidence"
         )));
     }
     Ok(())
+}
+
+fn identity_context(
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    operation_id: Uuid,
+    deadline: Duration,
+    action: &str,
+    write: bool,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        PLATFORM_FALLBACK_LOCALE,
+        format!("checkout:{operation_id}:order-identity:{action}"),
+    )
+    .with_causation_id(operation_id.to_string())
+    .with_deadline(deadline);
+    if write {
+        context.with_idempotency_key(format!(
+            "checkout:{operation_id}:order-identity:{action}"
+        ))
+    } else {
+        context
+    }
+}
+
+fn identity_boundary_error(error: PortError) -> CheckoutOrderCreationError {
+    CheckoutOrderCreationError::IdentityBoundary {
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+    }
 }
 
 fn order_request_hash(

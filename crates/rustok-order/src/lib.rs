@@ -14,6 +14,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod analytics;
+pub mod checkout_order_recovery;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -22,12 +23,16 @@ pub mod ports;
 pub mod services;
 
 pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
+pub use checkout_order_recovery::*;
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
 
 pub use error::{OrderError, OrderResult};
-pub use services::OrderService;
+pub use services::{
+    OrderCheckoutIdentityError, OrderCheckoutIdentityJournal, OrderCheckoutIdentityResult,
+    OrderService, RecordOrderCheckoutIdentity,
+};
 
 pub struct OrderModule;
 
