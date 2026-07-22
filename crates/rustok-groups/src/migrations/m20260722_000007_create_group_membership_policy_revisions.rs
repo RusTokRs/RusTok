@@ -92,7 +92,34 @@ ON CONFLICT DO NOTHING;
 
 CREATE OR REPLACE FUNCTION groups_capture_membership_policy_revision()
 RETURNS trigger AS $$
+DECLARE
+    current_policy group_membership_policies%ROWTYPE;
 BEGIN
+    SELECT * INTO current_policy
+    FROM group_membership_policies
+    WHERE tenant_id = NEW.tenant_id
+      AND id = NEW.policy_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'group membership policy revision parent is missing';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM group_membership_policy_revisions revision_row
+        WHERE revision_row.tenant_id = current_policy.tenant_id
+          AND revision_row.policy_id = current_policy.id
+          AND revision_row.revision = current_policy.revision
+          AND revision_row.locale = NEW.locale
+          AND (
+              revision_row.enabled IS DISTINCT FROM current_policy.enabled
+              OR revision_row.questions IS DISTINCT FROM NEW.questions
+              OR revision_row.rules IS DISTINCT FROM NEW.rules
+          )
+    ) THEN
+        RAISE EXCEPTION 'policy revision must advance before changing localized policy';
+    END IF;
+
     INSERT INTO group_membership_policy_revisions (
         tenant_id,
         group_id,
@@ -104,21 +131,18 @@ BEGIN
         rules,
         created_by_user_id,
         created_at
-    )
-    SELECT
-        policy.tenant_id,
-        policy.group_id,
-        policy.id,
-        policy.revision,
+    ) VALUES (
+        current_policy.tenant_id,
+        current_policy.group_id,
+        current_policy.id,
+        current_policy.revision,
         NEW.locale,
-        policy.enabled,
+        current_policy.enabled,
         NEW.questions,
         NEW.rules,
-        policy.updated_by_user_id,
-        policy.updated_at
-    FROM group_membership_policies policy
-    WHERE policy.tenant_id = NEW.tenant_id
-      AND policy.id = NEW.policy_id
+        current_policy.updated_by_user_id,
+        current_policy.updated_at
+    )
     ON CONFLICT DO NOTHING;
     RETURN NEW;
 END;
@@ -220,6 +244,23 @@ JOIN group_membership_policy_translations translation
 AFTER INSERT ON group_membership_policy_translations
 FOR EACH ROW
 BEGIN
+    SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM group_membership_policy_revisions revision_row
+        JOIN group_membership_policies policy
+          ON policy.tenant_id = NEW.tenant_id
+         AND policy.id = NEW.policy_id
+        WHERE revision_row.tenant_id = policy.tenant_id
+          AND revision_row.policy_id = policy.id
+          AND revision_row.revision = policy.revision
+          AND revision_row.locale = NEW.locale
+          AND (
+              revision_row.enabled != policy.enabled
+              OR revision_row.questions != NEW.questions
+              OR revision_row.rules != NEW.rules
+          )
+    ) THEN RAISE(ABORT, 'policy revision must advance before changing localized policy') END;
+
     INSERT OR IGNORE INTO group_membership_policy_revisions (
         tenant_id, group_id, policy_id, revision, locale, enabled,
         questions, rules, created_by_user_id, created_at
@@ -236,6 +277,23 @@ END"#,
 AFTER UPDATE OF questions, rules ON group_membership_policy_translations
 FOR EACH ROW
 BEGIN
+    SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM group_membership_policy_revisions revision_row
+        JOIN group_membership_policies policy
+          ON policy.tenant_id = NEW.tenant_id
+         AND policy.id = NEW.policy_id
+        WHERE revision_row.tenant_id = policy.tenant_id
+          AND revision_row.policy_id = policy.id
+          AND revision_row.revision = policy.revision
+          AND revision_row.locale = NEW.locale
+          AND (
+              revision_row.enabled != policy.enabled
+              OR revision_row.questions != NEW.questions
+              OR revision_row.rules != NEW.rules
+          )
+    ) THEN RAISE(ABORT, 'policy revision must advance before changing localized policy') END;
+
     INSERT OR IGNORE INTO group_membership_policy_revisions (
         tenant_id, group_id, policy_id, revision, locale, enabled,
         questions, rules, created_by_user_id, created_at
