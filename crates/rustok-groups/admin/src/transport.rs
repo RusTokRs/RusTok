@@ -1,5 +1,7 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/graphql_application_lifecycle_adapter.rs"]
+mod graphql_application_lifecycle_adapter;
 #[path = "transport/graphql_applications_adapter.rs"]
 mod graphql_applications_adapter;
 #[path = "transport/graphql_invitations_adapter.rs"]
@@ -8,6 +10,8 @@ mod graphql_invitations_adapter;
 mod graphql_policy_history_adapter;
 #[path = "transport/graphql_policy_locale_adapter.rs"]
 mod graphql_policy_locale_adapter;
+#[path = "transport/native_application_lifecycle_adapter.rs"]
+mod native_application_lifecycle_adapter;
 #[path = "transport/native_applications_adapter.rs"]
 mod native_applications_adapter;
 #[path = "transport/native_invitations_adapter.rs"]
@@ -28,7 +32,8 @@ use crate::application_model::{
     GroupsAdminApplicationPolicyRevisionConnection, GroupsAdminApplicationPolicyRevisionQuery,
     GroupsAdminMembershipApplicationConnection, GroupsAdminMembershipApplicationQuery,
     GroupsAdminReviewApplicationResult, GroupsAdminUpsertApplicationPolicyResult,
-    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
+    ReopenGroupMembershipApplicationCommand, ReviewGroupMembershipApplicationCommand,
+    UpsertGroupApplicationPolicyCommand,
 };
 use crate::core::GroupsAdminTransportProfile;
 use crate::model::{
@@ -292,6 +297,30 @@ pub async fn review_group_admin_membership_application(
         context.path(),
         move || native_applications_adapter::review_group_membership_application(native_command),
         move || graphql_applications_adapter::review_group_membership_application(token, tenant, command),
+    )
+    .await
+}
+
+pub async fn reopen_group_admin_membership_application(
+    context: GroupsAdminTransportContext,
+    command: ReopenGroupMembershipApplicationCommand,
+) -> UiTransportResult<GroupsAdminReviewApplicationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.applications.reopen",
+        context.path(),
+        move || {
+            native_application_lifecycle_adapter::reopen_group_membership_application(
+                native_command,
+            )
+        },
+        move || {
+            graphql_application_lifecycle_adapter::reopen_group_membership_application(
+                token, tenant, command,
+            )
+        },
     )
     .await
 }
