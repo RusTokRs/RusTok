@@ -188,17 +188,23 @@ fn map_channel_error(error: crate::ChannelError) -> PortError {
             message,
             false,
         ),
-        crate::ChannelError::Database(error) => PortError::new(
-            PortErrorKind::Unavailable,
-            "channel.read_failed",
-            error.to_string(),
-            true,
-        ),
-        crate::ChannelError::Serialization(error) => PortError::new(
-            PortErrorKind::Unavailable,
-            "channel.serialization_failed",
-            error.to_string(),
-            true,
-        ),
+        crate::ChannelError::Database(error) => {
+            tracing::error!(error = ?error, "channel port storage operation failed");
+            PortError::new(
+                PortErrorKind::Unavailable,
+                "channel.read_failed",
+                "channel storage is temporarily unavailable",
+                true,
+            )
+        }
+        crate::ChannelError::Serialization(error) => {
+            tracing::error!(error = ?error, "channel port projection encoding failed");
+            PortError::new(
+                PortErrorKind::InvariantViolation,
+                "channel.serialization_failed",
+                "channel projection could not be encoded",
+                false,
+            )
+        }
     }
 }
