@@ -58,7 +58,7 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   returns `order.checkout_result_projection_unavailable` for recovery reads.
 - [x] Confirm that staged checkout and compensation still construct foreign
   `OrderService`, `PaymentService`, and `FulfillmentService` instances directly.
-- [x] Confirm that checkout order creation and compensation query the owner-owned
+- [x] Confirm that checkout order creation and compensation queried the owner-owned
   `orders` table directly through JSON metadata instead of a typed order owner port.
 - [x] Confirm that multiple ecommerce port mappers still place raw database/internal
   error text into public `PortError.message`.
@@ -83,12 +83,22 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   journal with typed reads by checkout operation, order, and known source cart.
 - [x] Backfill only valid checkout operation and hash facts from legacy order metadata;
   keep an unknown historical cart or missing hashes as `NULL`.
+- [x] Publish `CheckoutOrderIdentityPort` with typed read, bind, and explicit
+  owner-local legacy adoption operations.
+- [x] Cut staged checkout order creation and compensation identity recovery over to
+  the order-owner port.
+- [x] Remove direct `orders` SQL, local order-identity lookup helpers, and
+  `order.metadata` identity validation from commerce creation and compensation.
+- [x] Add focused owner-port source tests and a static commerce/order identity
+  boundary verifier.
+- [ ] Execute order identity journal/port tests and the static boundary verifier.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
-  and restart evidence on SQLite, PostgreSQL, and MySQL.
-- [ ] Cut staged checkout creation/recovery over to the order-owned identity and remove
-  direct JSON metadata/SQL lookup from commerce.
+  legacy adoption, restart, and remote-profile evidence on SQLite, PostgreSQL, and
+  MySQL.
 - [ ] Complete `CheckoutCompletionPort` idempotency and recovery semantics, including
   lookup by checkout operation and cart.
+- [ ] Remove the temporary order-owner metadata adoption bridge after all completion
+  and recovery consumers use typed identity.
 - [ ] Replace direct foreign owner service construction in staged checkout and
   compensation with typed owner ports or explicit owner-provided local adapters.
 - [ ] Remove raw DB/provider/internal text from all public ecommerce port errors and
@@ -126,7 +136,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Require stable checkout idempotency across REST, GraphQL, native, and UI.
 - [x] Route production checkout through staged recovery orchestration.
 - [ ] Resolve cart, product, pricing, inventory, order, payment, and fulfillment only
-  through typed owner boundaries; remove the remaining direct service and SQL paths.
+  through typed owner boundaries; direct order identity SQL is removed, while direct
+  foreign owner service construction remains open.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
 - [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
@@ -148,14 +159,19 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   coverage without promoting runtime evidence.
 - [x] Add order-owned typed checkout operation identity storage, truthful legacy
   backfill, immutable guards, and owner-local reads/journal source.
-- [ ] Populate and adopt the order-owned identity from staged checkout before removing
-  the temporary JSON metadata bridge.
+- [x] Populate, read, bind, and adopt order identity through
+  `CheckoutOrderIdentityPort` from staged creation and compensation.
+- [x] Remove direct `orders` table reads and order metadata identity validation from
+  checkout creation and compensation.
+- [x] Add a static boundary guard for the order identity consumer cutover.
 - [ ] Make order creation plus placement one idempotent owner command and expose durable
   checkout-result reads by operation/cart.
-- [ ] Remove direct `orders` table reads from checkout creation and compensation.
+- [ ] Remove the temporary metadata write/adoption bridge after the completed owner
+  command and all recovery transports use typed identity.
 - [ ] Remove direct `OrderService`, `PaymentService`, and `FulfillmentService`
   construction from commerce orchestration.
-- [ ] Retain admission parity, kill-point, restart, and PostgreSQL contention evidence.
+- [ ] Retain order-identity port, admission parity, kill-point, restart, and PostgreSQL
+  contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
 ### Return completion
@@ -368,6 +384,8 @@ Source inspection is not execution evidence.
 - [x] `node scripts/verify/verify-marketplace-seller-events.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
+- [ ] `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
+- [ ] `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -375,9 +393,10 @@ Source inspection is not execution evidence.
 - [ ] `cargo xtask module validate marketplace_seller`
 - [ ] `cargo xtask module validate marketplace_listing`
 - [ ] Inspect marketplace ledger v3 and seller-balance-transfer v1 source guards.
-- [ ] Add a static guard that forbids `FROM orders`, `OrderService::new`,
-  `PaymentService::new`, and `FulfillmentService::new` in commerce orchestration after
-  the owner-port cutover.
+- [x] Add a static guard that forbids direct `orders` SQL, local identity lookup helpers,
+  and `order.metadata` identity reads in commerce creation/compensation source.
+- [ ] Extend static guards to forbid direct `OrderService::new`, `PaymentService::new`,
+  and `FulfillmentService::new` after those owner-port cutovers.
 - [ ] Add a static guard for public `PortError` construction from raw `DbErr`/SDK errors.
 
 ### Compile/tests
@@ -386,6 +405,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-commerce --test checkout_marketplace_economics_checkpoint`
 - [ ] `cargo check -p rustok-order --all-features`
 - [ ] `cargo test -p rustok-order --test order_checkout_identity`
+- [ ] `cargo test -p rustok-order --test checkout_order_identity_port`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
@@ -397,9 +417,9 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-marketplace-listing`
 - [ ] `cargo check -p rustok-marketplace-listing-admin --all-features`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
-- [ ] Targeted checkout, order completion, compensation, return-completion, payment,
-  marketplace financial recovery, seller balance transfer, remaining seller/listing
-  lifecycle, localization, outbox replay/rollback, and tenant-isolation tests.
+- [ ] Targeted checkout, order identity/completion, compensation, return-completion,
+  payment, marketplace financial recovery, seller balance transfer, remaining
+  seller/listing lifecycle, localization, outbox replay/rollback, and tenant-isolation tests.
 
 ### Database/runtime
 
@@ -408,7 +428,8 @@ Source inspection is not execution evidence.
 - [ ] Specifically prove marketplace economics checkpoint identity, amount,
   immutability, tenant/order linkage, and cleanup on all supported backends.
 - [ ] Prove order checkout identity backfill truthfulness, tenant/order integrity,
-  operation/order/cart uniqueness, immutability, and rollback on all supported backends.
+  operation/order/cart uniqueness, immutability, rollback, legacy adoption, and
+  owner-port replay on all supported backends.
 - [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
@@ -425,7 +446,8 @@ Source inspection is not execution evidence.
 2. [x] Harden marketplace economics checkpoint migration source for backend parity and rollback.
 3. [x] Add economics checkpoint concurrent insert adoption and exact conflict classification source.
 4. [x] Add order-owned checkout operation identity storage, migration, journal, and typed reads.
-5. [ ] Populate/adopt typed order identity from staged checkout and replace JSON metadata/direct SQL reads.
+5. [x] Publish the typed order identity port, populate/adopt it from staged checkout,
+   and remove direct commerce JSON metadata/SQL identity reads.
 6. [ ] Complete idempotent `CheckoutCompletionPort` create/place/read semantics.
 7. [ ] Cut staged checkout order creation/confirmation over to the completed owner port.
 8. [ ] Cut compensation over to typed order/payment owner ports and remove foreign services.
