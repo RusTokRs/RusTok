@@ -7,8 +7,9 @@ use leptos_ui_routing::use_route_query_writer;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
-    prepare_group_application_policy_query, prepare_submit_group_membership_application,
-    GroupsStorefrontApplicationInputError, GROUP_APPLICATION_QUERY_KEY,
+    is_application_policy_changed, prepare_group_application_policy_query,
+    prepare_submit_group_membership_application, GroupsStorefrontApplicationInputError,
+    GROUP_APPLICATION_QUERY_KEY,
 };
 use crate::application_model::{
     GroupsStorefrontApplicationPolicy, GroupsStorefrontSubmitApplicationResult,
@@ -35,7 +36,12 @@ struct ApplicationCopy {
     error: String,
     success: String,
     pending: String,
+    policy_changed: String,
+    policy_changed_hint: String,
+    reload_policy: String,
     invalid_group_id: String,
+    invalid_locale: String,
+    invalid_policy: String,
     unknown_question: String,
     missing_answer: String,
     answer_too_long: String,
@@ -48,8 +54,9 @@ pub fn GroupsMembershipApplication(
     transport: GroupsStorefrontTransportContext,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
-    let locale = route_context.locale.clone();
-    let copy = application_copy(locale.as_deref());
+    let route_locale = route_context.locale.clone();
+    let copy = application_copy(route_locale.as_deref());
+    let application_locale = route_locale.unwrap_or_default();
     let application_group_id = route_context
         .query_value(GROUP_APPLICATION_QUERY_KEY)
         .unwrap_or_default()
@@ -60,19 +67,22 @@ pub fn GroupsMembershipApplication(
     let (acknowledged_rules, set_acknowledged_rules) = signal(BTreeSet::<String>::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (policy_changed, set_policy_changed) = signal(false);
     let (result, set_result) = signal(Option::<GroupsStorefrontSubmitApplicationResult>::None);
 
     let load_transport = transport.clone();
     let group_id_for_load = application_group_id.clone();
+    let locale_for_load = application_locale.clone();
     let policy = LocalResource::new(move || {
         let context = load_transport.clone();
         let group_id = group_id_for_load.clone();
+        let locale = locale_for_load.clone();
         async move {
             if group_id.trim().is_empty() {
                 return Ok(None);
             }
-            let query = prepare_group_application_policy_query(&group_id)
-                .map_err(|_| "invalid application group UUID".to_string())?;
+            let query = prepare_group_application_policy_query(&group_id, &locale)
+                .map_err(|_| "invalid application group UUID or locale".to_string())?;
             load_groups_storefront_application_policy(context, query)
                 .await
                 .map(Some)
@@ -84,6 +94,9 @@ pub fn GroupsMembershipApplication(
     let submit_copy = copy.clone();
     let on_submit = Callback::new(move |event: SubmitEvent| {
         event.prevent_default();
+        if policy_changed.get_untracked() {
+            return;
+        }
         let Some(loaded_policy) = policy.get().and_then(Result::ok).flatten() else {
             set_error.set(Some(submit_copy.unavailable.clone()));
             set_result.set(None);
@@ -109,6 +122,7 @@ pub fn GroupsMembershipApplication(
         let query_writer = query_writer.clone();
         set_busy.set(true);
         set_error.set(None);
+        set_policy_changed.set(false);
         set_result.set(None);
         spawn_local(async move {
             match submit_groups_storefront_membership_application(context, command).await {
@@ -116,13 +130,27 @@ pub fn GroupsMembershipApplication(
                     set_result.set(Some(submitted));
                     query_writer.clear_key(GROUP_APPLICATION_QUERY_KEY);
                 }
-                Err(submit_error) => set_error.set(Some(groups_storefront_error(
-                    &copy.error,
-                    &submit_error.to_string(),
-                ))),
+                Err(submit_error) => {
+                    let details = submit_error.to_string();
+                    if is_application_policy_changed(&details) {
+                        set_policy_changed.set(true);
+                        set_error.set(None);
+                    } else {
+                        set_error.set(Some(groups_storefront_error(&copy.error, &details)));
+                    }
+                }
             }
             set_busy.set(false);
         });
+    });
+
+    let reload_policy = Callback::new(move |_: ()| {
+        set_answers.set(BTreeMap::new());
+        set_acknowledged_rules.set(BTreeSet::new());
+        set_error.set(None);
+        set_result.set(None);
+        set_policy_changed.set(false);
+        policy.refetch();
     });
 
     if application_group_id.trim().is_empty() {
@@ -142,6 +170,9 @@ pub fn GroupsMembershipApplication(
         busy: busy_label,
         success,
         pending,
+        policy_changed: policy_changed_label,
+        policy_changed_hint,
+        reload_policy: reload_policy_label,
         ..
     } = copy;
 
@@ -158,6 +189,7 @@ pub fn GroupsMembershipApplication(
                         set_answers,
                         acknowledged_rules,
                         set_acknowledged_rules,
+                        policy_changed,
                         on_submit,
                         &required,
                         &optional,
@@ -174,6 +206,13 @@ pub fn GroupsMembershipApplication(
 
             <Show when=move || busy.get()>
                 <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">{busy_label.clone()}</p>
+            </Show>
+            <Show when=move || policy_changed.get()>
+                <div class="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3" role="alert">
+                    <p class="font-medium text-foreground">{policy_changed_label.clone()}</p>
+                    <p class="mt-1 text-sm text-muted-foreground">{policy_changed_hint.clone()}</p>
+                    <button class="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium" type="button" on:click=move |_| reload_policy.run(())>{reload_policy_label.clone()}</button>
+                </div>
             </Show>
             <Show when=move || error.get().is_some()>
                 <p class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">{move || error.get().unwrap_or_default()}</p>
@@ -198,6 +237,7 @@ fn render_policy_form(
     set_answers: WriteSignal<BTreeMap<String, String>>,
     acknowledged_rules: ReadSignal<BTreeSet<String>>,
     set_acknowledged_rules: WriteSignal<BTreeSet<String>>,
+    policy_changed: ReadSignal<bool>,
     on_submit: Callback<SubmitEvent>,
     required: &str,
     optional: &str,
@@ -272,7 +312,7 @@ fn render_policy_form(
                 </fieldset>
             </Show>
 
-            <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" type="submit">{submit.to_string()}</button>
+            <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled=move || policy_changed.get()>{submit.to_string()}</button>
         </form>
     }
 }
@@ -283,6 +323,8 @@ fn application_input_error_message(
 ) -> String {
     match error {
         GroupsStorefrontApplicationInputError::InvalidGroupId => copy.invalid_group_id.clone(),
+        GroupsStorefrontApplicationInputError::InvalidLocale => copy.invalid_locale.clone(),
+        GroupsStorefrontApplicationInputError::InvalidPolicy => copy.invalid_policy.clone(),
         GroupsStorefrontApplicationInputError::UnknownQuestion => copy.unknown_question.clone(),
         GroupsStorefrontApplicationInputError::MissingRequiredAnswer => copy.missing_answer.clone(),
         GroupsStorefrontApplicationInputError::AnswerTooLong => copy.answer_too_long.clone(),
@@ -306,7 +348,12 @@ fn application_copy(locale: Option<&str>) -> ApplicationCopy {
         error: t(locale, "groups.storefront.application.error", "Membership application could not be submitted"),
         success: t(locale, "groups.storefront.application.success", "Application submitted for review."),
         pending: t(locale, "groups.storefront.application.pending", "Pending"),
+        policy_changed: t(locale, "groups.storefront.application.policyChanged", "The membership policy changed before your application was submitted."),
+        policy_changed_hint: t(locale, "groups.storefront.application.policyChangedHint", "Reload the current questions and rules, review them, and submit a new application."),
+        reload_policy: t(locale, "groups.storefront.application.reloadPolicy", "Reload current policy"),
         invalid_group_id: t(locale, "groups.storefront.application.invalidGroupId", "The application link contains an invalid group UUID."),
+        invalid_locale: t(locale, "groups.storefront.application.invalidLocale", "The application locale is unavailable."),
+        invalid_policy: t(locale, "groups.storefront.application.invalidPolicy", "The loaded membership policy is invalid. Reload the current policy."),
         unknown_question: t(locale, "groups.storefront.application.unknownQuestion", "The application contains an unknown question."),
         missing_answer: t(locale, "groups.storefront.application.missingAnswer", "Answer every required question."),
         answer_too_long: t(locale, "groups.storefront.application.answerTooLong", "One or more answers exceed their character limit."),
