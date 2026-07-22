@@ -69,6 +69,7 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
                 ));
             }
         }
+        let normalized_note = normalize_optional_note(request.note).map_err(PortError::from)?;
 
         let base_idempotency_key = context
             .idempotency_key
@@ -95,7 +96,7 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
             let item_request = ReviewGroupMembershipApplicationRequest {
                 application_id,
                 decision: request.decision,
-                note: request.note.clone(),
+                note: normalized_note.clone(),
             };
             match self.review_application_owned(&item_context, item_request).await {
                 Ok(result) => {
