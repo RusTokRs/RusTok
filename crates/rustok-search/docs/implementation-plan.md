@@ -42,6 +42,14 @@ hard-coding `public`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
 - Provider contracts: `SearchQueryPort` and `SearchSuggestionPort` in
   `crates/rustok-search/contracts/search-fba-registry.json`.
+- Static provider evidence:
+  `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`.
+- Executable provider fallback evidence:
+  `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json`.
+- Executable provider contract evidence:
+  `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json`.
+- Provider invocation evidence:
+  `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json`.
 - Canonical URL status: `source_verified_no_compile`.
 - Canonical URL evidence:
   `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
@@ -64,10 +72,12 @@ hard-coding `public`.
 
 ## Deployment and connector boundary
 
-Search is a whole-module extraction boundary. Remote deployment contains the
-complete `rustok-search` owner, including `SearchEngine`, ranking, dictionaries,
-query rules, analytics, URL policy, and PostgreSQL baseline. Storefront and admin
+Search is a whole-module extraction pilot. Remote deployment contains the complete
+`rustok-search` owner, including `SearchEngine`, ranking, dictionaries, query
+rules, analytics, URL policy, and PostgreSQL baseline. Storefront and admin
 consumers call normalized Search contracts and never construct application routes.
+The extraction boundary follows
+[Media and Search Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
 
 Meilisearch, Typesense, and Algolia remain connector implementations inside the
 Search service. They receive canonical `SearchQuery` and document inputs and
@@ -98,6 +108,8 @@ rebuild behavior through replayable event transport.
    its public transport API.
 10. Added current-only machine-readable evidence and negative fixtures that reject
     every transport-local URL implementation and require no transport fallback.
+11. Added canonical URL ownership to the standard Search FBA gate alongside the
+    provider port, fallback, runtime contract, and invocation evidence.
 
 ## Next results
 
