@@ -87,6 +87,9 @@ if (failures.length === 0) {
     "bulk_review_group_membership_applications",
     "GroupApplicationBulkReviewCommandPort",
     "BulkReviewGroupMembershipApplicationsInputGql",
+    "BULK_REVIEW_PORT_DEADLINE",
+    "Duration::from_secs(30)",
+    "bulk_review_port_context",
     "confirmed",
     "retryable",
   ]);
@@ -114,11 +117,15 @@ if (failures.length === 0) {
     "GroupApplicationBulkReviewCommandPort",
     "with_idempotency_key",
     "Duration::from_secs(30)",
+    "let succeeded = result.succeeded",
+    "let failed = result.failed",
+    "let items = result.items",
   ]);
   requireMarkers(files.graphqlAdapter, [
     "bulkReviewGroupMembershipApplications",
     "BulkReviewGroupMembershipApplicationsInputGql",
     "applicationIds",
+    "let BulkReviewWire",
     "retryable",
   ]);
   requireMarkers(files.adminUi, [
@@ -157,4 +164,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups bounded partial-result bulk review, FFA composition, localization, and authorization-order source checks passed.");
+console.log("Groups bounded partial-result bulk review, deadline parity, FFA composition, localization, and authorization-order source checks passed.");
