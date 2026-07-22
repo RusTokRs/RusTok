@@ -11,6 +11,7 @@ mod-cart = ["dep:rustok-cart"]
 mod-customer = ["dep:rustok-customer"]
 mod-product = ["dep:rustok-product", "mod-taxonomy"]
 mod-profiles = ["dep:rustok-profiles", "mod-taxonomy"]
+mod-groups = ["dep:rustok-groups"]
 mod-region = ["dep:rustok-region"]
 mod-pricing = ["dep:rustok-pricing", "mod-product"]
 mod-inventory = ["dep:rustok-inventory", "mod-product"]
@@ -29,6 +30,7 @@ mod-moderation = ["dep:rustok-moderation"]
 mod-content = ["dep:rustok-content", "rustok-content/graphql", "rustok-content-orchestration/mod-content"]
 mod-blog = ["dep:rustok-blog", "dep:rustok-content", "mod-comments", "mod-content", "mod-taxonomy", "rustok-content-orchestration/mod-blog"]
 mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builder", "rustok-content-orchestration/mod-forum"]
+mod-notifications = ["dep:rustok-notifications"]
 mod-comments = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments"]
 mod-pages = ["dep:rustok-pages", "mod-content", "mod-page_builder"]
 mod-page_builder = ["dep:rustok-page-builder"]
@@ -56,6 +58,7 @@ rustok-cart = { workspace = true, optional = true }
 rustok-customer = { workspace = true, optional = true }
 rustok-product = { workspace = true, optional = true }
 rustok-profiles = { workspace = true, optional = true }
+rustok-groups = { path = "../rustok-groups", optional = true }
 rustok-region = { workspace = true, optional = true }
 rustok-pricing = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
@@ -75,6 +78,7 @@ rustok-content = { workspace = true, optional = true }
 rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }
 rustok-forum = { workspace = true, optional = true }
+rustok-notifications = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
