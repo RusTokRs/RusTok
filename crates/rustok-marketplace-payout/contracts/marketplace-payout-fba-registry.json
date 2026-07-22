@@ -9,17 +9,25 @@
     "payout_table": "marketplace_payouts",
     "item_table": "marketplace_payout_items",
     "receipt_table": "marketplace_payout_receipts",
+    "operation_table": "marketplace_payout_operations",
+    "operation_transfer_table": "marketplace_payout_operation_transfers",
     "cross_module_foreign_keys": false,
+    "owner_internal_tenant_foreign_keys": true,
     "one_payout_per_ledger_entry": true,
-    "amount_representation": "signed_64_bit_minor_units"
+    "amount_representation": "signed_64_bit_minor_units",
+    "legacy_table_name_repair": "migration_owned_and_down_reversible"
   },
   "dependency": {
     "module": "marketplace_ledger",
-    "port": "MarketplaceLedgerReadPort",
-    "operation": "list_seller_entries",
+    "read_port": "MarketplaceLedgerReadPort",
+    "future_command_port": "MarketplaceLedgerCommandPort",
+    "read_operation": "list_seller_entries",
+    "reserve_operation": "post_seller_balance_transfer.reserve_hold",
+    "release_operation": "post_seller_balance_transfer.reserve_release",
     "completed_receipt_replay_before_provider_read": true,
     "required_account": "seller_payable",
-    "required_direction": "credit"
+    "required_direction": "credit",
+    "single_order_per_balance_transfer": true
   },
   "ports": {
     "read": ["read_payout", "list_seller_payouts"],
@@ -42,6 +50,18 @@
     "conflicting_payload": "marketplace_payout.idempotency_conflict",
     "entry_reuse": "marketplace_payout.ledger_entry_already_assigned"
   },
+  "reservation_operation": {
+    "source_schema_ready": true,
+    "runtime_execution_ready": false,
+    "typed_status_and_stage": true,
+    "immutable_request_snapshot": true,
+    "optimistic_revision": true,
+    "lease_and_attempt_state": true,
+    "safe_error_code_only": true,
+    "per_order_child_operations": true,
+    "deterministic_compensation_order": "reverse_sequence",
+    "ledger_transfer_identity_persisted": true
+  },
   "execution": {
     "included_in_this_slice": false,
     "external_reference_initially_null": true,
@@ -53,11 +73,16 @@
     "marketplace_root_read_projection": true
   },
   "known_gaps": [
-    "execution lifecycle",
-    "status transitions",
+    "reserve_hold runtime orchestration",
+    "durable reserve_release compensation",
+    "operation transition and lease service",
+    "provider account and execution lifecycle",
+    "verified provider webhook inbox",
+    "lookup recovery",
     "ledger settlement posting",
     "external events",
     "postgres contention evidence",
+    "clean and upgraded multi-backend migration evidence",
     "admin and seller surfaces"
   ]
 }
