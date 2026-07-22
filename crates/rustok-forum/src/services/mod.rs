@@ -9,6 +9,7 @@ pub mod event;
 mod mention_relation;
 #[cfg(test)]
 mod mention_relation_tests;
+mod quote_command;
 mod relation_read;
 pub mod moderation;
 mod rbac;
@@ -31,6 +32,7 @@ pub(crate) use mention_relation::{
     MentionRelationService, MentionRelationSyncResult, PreparedMentionRelations,
 };
 pub use moderation::ModerationService;
+pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
 pub use relation_read::ForumRelationReadService;
 pub use reply_facade::ReplyService;
