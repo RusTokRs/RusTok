@@ -195,12 +195,14 @@ async fn rejects_rebinding_adopted_operation_to_another_cart() {
     let tenant_id = Uuid::new_v4();
     let operation_id = Uuid::new_v4();
     let first_cart_id = Uuid::new_v4();
+    let snapshot_hash = "c".repeat(64);
+    let request_hash = "d".repeat(64);
     database
         .seed_legacy_order(
             tenant_id,
             operation_id,
-            "c".repeat(64).as_str(),
-            "d".repeat(64).as_str(),
+            snapshot_hash.as_str(),
+            request_hash.as_str(),
         )
         .await;
     let port = in_process_checkout_order_identity_port(database.db.clone());
