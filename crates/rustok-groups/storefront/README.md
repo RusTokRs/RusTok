@@ -1,58 +1,95 @@
 # rustok-groups-storefront
 
-Module-owned Leptos storefront FFA for public group discovery, authenticated membership
-applications, the group shell, and invitation acceptance.
+Module-owned Leptos storefront FFA package for public group discovery,
+authenticated membership applications, the group shell, and invitation acceptance.
 
-The package uses framework-neutral cores, an explicit native/GraphQL facade,
-host-provided exact locale/auth context, and thin Leptos bindings. Secret groups are
-not listed publicly. Provider feature screens remain host-composed.
+The package uses framework-neutral cores, an explicit native/GraphQL transport
+facade, host-provided exact locale, host-provided auth session, and thin Leptos
+adapters. Secret groups are never listed by the public transport. Provider-owned
+feature screens are composed by the host and are not embedded in this package.
 
 ## Membership applications
 
-Request-policy groups expose `apply=<group_uuid>`. Before rendering submit controls,
-the storefront reads the authenticated candidate's current application through
-`GroupApplicationLifecycleReadPort`.
+Request-policy groups expose an `apply=<group_uuid>` route from their directory card.
+Before exposing application controls, the storefront loads the authenticated
+candidate's exact tenant/group application through
+`GroupApplicationLifecycleReadPort::read_my_group_membership_application`.
 
-- no current application: render the current exact-locale CAS form;
-- `pending`: show status and permit candidate cancellation; hide duplicate submit;
-- `approved`: show approved status and block duplicate submit;
-- `rejected` or `cancelled`: show prior status and render a fresh current-policy CAS
-  form.
+Current status controls the surface:
 
-Candidate cancellation calls
-`GroupApplicationLifecycleCommandPort::cancel_group_membership_application` through
-the selected transport. The owner accepts only the exact candidate's pending
-application, moves membership to `left`, marks the application `cancelled`, preserves
-the submitted snapshot, and commits group version, audit, and receipt atomically.
+- no current application: load the exact-locale policy and render a fresh CAS form;
+- `pending`: render status and candidate cancellation; hide duplicate submit;
+- `approved`: render approved status and block duplicate submit;
+- `rejected` or `cancelled`: render prior status and a fresh current-policy CAS form.
 
-Cancellation does not clear `apply`; current state is reloaded and a fresh application
-can be submitted immediately. Fresh resubmit is separate from reopen: it carries the
-currently rendered `(policy_id, revision, locale)` through
-`GroupApplicationCasCommandPort` and replaces the old snapshot only after success.
-Successful submit clears `apply`.
+`application_core` validates policy identity, required answers, answer bounds, rule
+acknowledgements, candidate application IDs, and fresh idempotency keys before
+transport. `ui/application.rs` calls only the selected facade.
 
-Stale submit remains a distinct recovery state: route and old answers remain until the
-candidate explicitly reloads; reload clears answers/acknowledgements and fetches the
-current exact-locale policy. `groups.application_policy_changed` writes no stale owner
-state.
+The loaded policy ID, revision, and exact locale are captured in the submit command.
+Native and GraphQL adapters call
+`GroupApplicationCasCommandPort::submit_group_membership_application_if_current`.
+For an existing rejected/cancelled application, the owner locks the application before
+the group. For a first submission, it repeats the application lookup after the group
+lock. The current policy identity is compared before membership, application, group
+version, audit, or receipt state changes. A mismatch returns
+`groups.application_policy_changed` and writes no stale application state.
 
-Native and GraphQL lifecycle/CAS adapters call the same owner ports through
-`execute_selected_transport`. They never fall back to one another. The older
-unconditional candidate-submit Rust method remains backend compatibility only and is
-not called here.
+The UI handles a stale policy as a distinct recovery state:
+
+- the `apply` query key remains in the URL;
+- repeated submit is disabled;
+- old answers and acknowledgements remain visible until the candidate chooses reload;
+- explicit reload clears those old values and loads the current exact-locale policy;
+- the candidate must review and submit the new form.
+
+Candidate cancellation is a separate lifecycle command. Native and GraphQL adapters
+call `GroupApplicationLifecycleCommandPort::cancel_group_membership_application`.
+The owner permits only the exact candidate's pending application, moves membership to
+`left`, records `left_at`, marks the application `cancelled`, clears review metadata,
+and preserves the submitted policy identity, snapshot, answers, and acknowledgements.
+Application, membership, group version, audit, and receipt commit atomically.
+
+Cancellation never clears `apply`. The current state is refetched and the candidate
+may immediately prepare a fresh current-policy CAS submission. Fresh resubmit replaces
+the old snapshot only after success. A manager reopen is different: it restores the
+preserved submitted snapshot to pending review.
+
+Successful fresh submission creates or updates pending membership/application,
+increments group version, and commits the new immutable policy snapshot, audit, and
+idempotency receipt in one transaction. The `apply` query key is removed only after
+success. An identical already-committed idempotent command may replay before the
+policy precondition is checked again.
+
+The older unconditional candidate-submit backend method remains for source
+compatibility, but this package does not call it. Native and GraphQL transports never
+fall back to one another.
 
 ## Invitations
 
-Invitation acceptance remains explicit:
+Invitation acceptance is prepared in `core`, executed through the selected transport
+without implicit fallback, and bound in `ui/invitation_acceptance.rs`.
 
-- `invite=<opaque>` uses token acceptance;
-- `invitation=<uuid>` uses authenticated exact-recipient targeted acceptance.
+Two explicit flows are supported:
 
-The UI never renders a plaintext token after acceptance and never owns notification
-recipient resolution, inbox, preference, email, push, retry, or delivery state.
+- `invite=<opaque>` or password-style manual input uses token acceptance for shareable
+  and directly delivered tokens;
+- `invitation=<uuid>` uses authenticated exact-recipient acceptance for a targeted
+  invitation opened through an authorized Notifications source route.
+
+The UI removes the active invitation query value when submission begins, preserves
+in-memory input for a failed retry, clears it after success, and never renders a
+plaintext token as result text. Native and GraphQL adapters call the same owner ports
+for validation, target authorization, redemption, membership, group version, audit,
+and receipt rules.
+
+The package does not resolve notification recipients, publish notification events, or
+own inbox, preference, email, push, retry, or delivery state. Those responsibilities
+remain in the Groups backend source provider and the Notifications owner.
 
 ## Readiness
 
-Build, runtime, GraphQL schema, native/GraphQL parity, idempotent replay, cancel/review/
-resubmit races, lock ordering, accessibility, security, retry, and recovery evidence
-remain unexecuted. Storefront FFA and GROUPS-06 remain `in_progress`.
+Build, runtime, native/GraphQL stable-code and lifecycle parity, idempotent replay,
+stale-submit and cancel/review/resubmit races, lock ordering, accessibility, security,
+retry, and recovery evidence remain unexecuted. Storefront FFA and GROUPS-06 remain
+`in_progress`.
