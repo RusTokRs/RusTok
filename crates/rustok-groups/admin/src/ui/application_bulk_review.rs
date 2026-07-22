@@ -6,10 +6,10 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_bulk_core::{
+    prepare_bulk_review_group_membership_application_query,
     prepare_bulk_review_group_membership_applications, GroupsAdminBulkReviewInputError,
 };
 use crate::application_bulk_transport::bulk_review_group_admin_membership_applications;
-use crate::application_core::prepare_group_membership_application_query;
 use crate::application_model::{
     GroupsAdminApplicationReviewDecision, GroupsAdminBulkReviewApplicationItemResult,
     GroupsAdminMembershipApplication,
@@ -79,9 +79,8 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
     let load_copy = copy.clone();
     let on_load = move |event: SubmitEvent| {
         event.prevent_default();
-        let query = match prepare_group_membership_application_query(
+        let query = match prepare_bulk_review_group_membership_application_query(
             &group_id.get_untracked(),
-            Some("pending"),
         ) {
             Ok(query) => query,
             Err(_) => {
@@ -354,6 +353,7 @@ fn bulk_input_error_message(
         GroupsAdminBulkReviewInputError::EmptySelection => copy.empty_selection.clone(),
         GroupsAdminBulkReviewInputError::TooManyApplications => copy.too_many.clone(),
         GroupsAdminBulkReviewInputError::DuplicateApplication => copy.duplicate.clone(),
+        GroupsAdminBulkReviewInputError::InvalidGroupId => copy.invalid_group_id.clone(),
         GroupsAdminBulkReviewInputError::InvalidApplicationId => {
             copy.invalid_application_id.clone()
         }
