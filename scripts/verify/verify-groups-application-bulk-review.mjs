@@ -97,6 +97,9 @@ if (failures.length === 0) {
 
   requireMarkers(files.adminCore, [
     "MAX_BULK_REVIEW_ITEMS: usize = 50",
+    "prepare_bulk_review_group_membership_application_query",
+    'status: Some("pending".to_string())',
+    "per_page: MAX_BULK_REVIEW_ITEMS as u64",
     "ConfirmationRequired",
     "prepare_bulk_review_group_membership_applications",
     "groups-admin-bulk-review-",
@@ -130,6 +133,7 @@ if (failures.length === 0) {
   ]);
   requireMarkers(files.adminUi, [
     "GroupsApplicationsBulkReviewAdmin",
+    "prepare_bulk_review_group_membership_application_query",
     "MAX_BULK_REVIEW_ITEMS: usize = 50",
     "event_target_checked",
     "confirmed",
@@ -164,4 +168,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups bounded partial-result bulk review, deadline parity, FFA composition, localization, and authorization-order source checks passed.");
+console.log("Groups bounded partial-result bulk review, 50-row FFA query, deadline parity, localization, and authorization-order source checks passed.");
