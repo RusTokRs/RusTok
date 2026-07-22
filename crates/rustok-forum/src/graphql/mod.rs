@@ -3,6 +3,7 @@ mod category_lifecycle_mutation;
 mod category_policy;
 mod category_tree_query;
 mod connection;
+mod content_commands;
 mod mutation;
 mod query;
 mod quote_commands;
@@ -20,6 +21,10 @@ pub use category_tree_query::{
     GqlForumCategoryBreadcrumb, GqlForumCategoryTree, GqlForumCategoryTreeNode,
 };
 pub use connection::*;
+pub use content_commands::{
+    CreateForumReplyWithQuotesInput, CreateForumTopicWithQuotesInput,
+    UpdateForumReplyWithQuotesInput, UpdateForumTopicWithQuotesInput,
+};
 pub use quote_commands::{
     GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumRelationQuote,
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
@@ -40,4 +45,5 @@ pub struct ForumMutation(
     category_lifecycle_mutation::ForumCategoryLifecycleMutation,
     category_policy::ForumCategoryTopicPolicyMutation,
     quote_commands::ForumQuoteCommandMutation,
+    content_commands::ForumContentCommandMutation,
 );
