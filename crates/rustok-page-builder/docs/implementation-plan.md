@@ -101,6 +101,13 @@ that no GrapesJS/Fly body exists. A builder document receives
 `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` and cannot reach artifact compilation or a raw lifecycle
 transition.
 
+Pages now owns the post-commit cache invalidation contract. `PageCacheInvalidationEventHandler`
+consumes page `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` events. It asks a
+typed port to rotate bounded tenant-wide `route`, `page` and `artifact` namespace generations and
+validates an event/correlation-bound receipt before acknowledging success. The server adapter supplies
+only the shared `CacheNamespaceGenerationStore`; it does not define scopes or concrete key policy.
+Generation-aware storefront readers and accepted runtime miss/refill evidence remain open.
+
 ## Machine-readable contracts
 
 - `contracts/page-builder-service-boundary.json` records capability/preview ports and composition.
@@ -108,21 +115,24 @@ transition.
   persistence.
 - `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, sanitizer, Pages
   atomic service, body revision identity, receipt schema, replay semantics, public transport cutover,
-  explicit ephemeral scenario selection and the isolated non-builder lifecycle.
+  explicit ephemeral scenario selection, isolated non-builder lifecycle and cache generation
+  invalidation state.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks core atomic invariants.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
   non-builder lifecycle boundaries.
+- `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs` source-locks Pages ownership
+  of cache scopes/keys, event-driven invalidation and the neutral server generation adapter.
 
 ## FFA/FBA status
 
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection is
-  connected for both single- and multi-scenario baselines; typed metadata properties and inline edit
-  mode remain open.
+  connected for both single- and multi-scenario baselines; typed metadata properties,
+  generation-aware storefront readers and inline edit mode remain open.
 - **FBA:** `boundary_ready` for preview/materialization and
   `service_and_public_transport_integrated` for Pages reviewed publication. The default-runtime
-  lifecycle is removed; rollback, cache-consumer proof, executed verification and observed rollout
-  evidence remain open.
+  lifecycle is removed and source-level cache generation invalidation is connected; rollback,
+  cache-reader execution proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability and
   publish contracts.
 - **Evidence:**
@@ -135,18 +145,23 @@ transition.
   - `crates/rustok-pages/src/dto/page.rs`;
   - `crates/rustok-pages/src/services/page/reviewed_publish.rs`;
   - `crates/rustok-pages/src/services/page/lifecycle.rs`;
+  - `crates/rustok-pages/src/cache_invalidation.rs`;
+  - `apps/server/src/services/pages_cache_invalidation.rs`;
+  - `apps/server/src/services/module_event_dispatcher.rs`;
   - `crates/rustok-pages/src/graphql/mutation.rs`;
   - `crates/rustok-pages/src/http.rs`;
   - `crates/rustok-pages/admin/src/transport/graphql_adapter.rs`;
   - `crates/rustok-pages/src/entities/page_publish_operation.rs`;
   - `crates/rustok-pages/src/migrations/m20260721_000007_create_page_publish_operations.rs`;
   - `scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
-  - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs`.
+  - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
+  - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`.
 
 ## Open results
 
-1. Prove the transactional `NodePublished` outbox consumer invalidates all artifact, route and page
-   cache keys, and correlate receipt through storefront read telemetry.
+1. Adopt the owner `page_cache_key` contract in every route/page/artifact cache reader and retain an
+   accepted packet correlating `NodePublished`, handler receipt, generation rotation and storefront
+   miss/refill.
 2. Add rollback to a previous immutable artifact set with its own idempotent receipt and outbox
    semantics.
 3. Connect the next production consumer's concrete tenant-scoped store and contextual preview
@@ -155,13 +170,14 @@ transition.
 4. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
 5. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
-   sanitizer identity, materialization, Pages receipt and storefront read.
+   sanitizer identity, materialization, Pages receipt, cache generation and storefront read.
 
 ## Verification
 
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
 - `cargo test -p rustok-page-builder --all-targets --all-features`;
@@ -173,6 +189,7 @@ transition.
 - Fly owns the project domain, runtime materialization and validation/rendering semantics.
 - Page Builder owns capability delivery, preview/review/sanitization/materialization contracts,
   ports, authorization, transport envelopes, feature profiles and server composition order.
-- Consumer modules own persistence, publication lifecycle, receipts and concrete tenant-scoped
-  ports.
+- Consumer modules own persistence, publication lifecycle, receipts, cache scope/key policy and
+  concrete tenant-scoped ports.
+- Cache/server infrastructure owns shared connection and generation primitives only.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.

@@ -59,6 +59,17 @@ fn enrich_runtime_extensions_after_event_start(
 ) -> Arc<ModuleRuntimeExtensions> {
     let mut enriched = extensions.as_ref().clone();
 
+    #[cfg(feature = "mod-pages")]
+    {
+        let cache = crate::services::cache_runtime::ensure_cache_service(ctx);
+        let provider = Arc::new(
+            crate::services::pages_cache_invalidation::ServerPagesCacheInvalidationPort::new(
+                &cache,
+            ),
+        );
+        enriched.insert(rustok_pages::PagesCacheInvalidationRuntime::new(provider));
+    }
+
     #[cfg(feature = "mod-commerce")]
     {
         let financial_runtime = ctx

@@ -39,6 +39,8 @@ pub mod oauth_admin_guard;
 pub mod oauth_app;
 pub mod oauth_consent_service;
 pub mod oauth_token_service;
+#[cfg(feature = "mod-pages")]
+pub mod pages_cache_invalidation;
 #[cfg(feature = "mod-commerce")]
 pub mod paid_order_label_worker;
 #[cfg(feature = "mod-payment")]
