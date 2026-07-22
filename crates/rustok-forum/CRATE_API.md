@@ -29,160 +29,227 @@
 - `ForumQuoteTargetKindInput`, `ForumQuoteReferenceInput`, `SetForumQuotesInput`
 - `ForumRelationSnapshotQuery`, `ForumRelationSnapshotResponse`, `ForumRelationQuoteResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
-- `pub mod controllers` -> `axum_router()`
+- `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
 - `pub enum ForumError`, `pub type ForumResult<T>`
 - `pub mod locale` — helpers `resolve_translation`, `resolve_body`, `available_locales`
 
 ## DTO changes (current)
 ### TopicResponse
-- Added: `requested_locale`, `effective_locale`, `available_locales`, `slug`, `author_id`, vote fields, subscription state and `solution_reply_id`.
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### TopicListItem
-- Added: requested/effective locale, available locales, stable slug, author, vote, subscription and solution fields.
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `slug: String`, `author_id: Option<Uuid>`, `vote_score: i32`, `current_user_vote: Option<i32>`, `is_subscribed: bool`, `solution_reply_id: Option<Uuid>`
 ### ReplyResponse / ReplyListItem
-- Added: effective locale, author, parent relation, vote fields and solution state.
-### CategoryResponse / CategoryListItem
-- Added: requested/effective locale, available locales and subscription state.
-
+- Added: `effective_locale: String`, `author_id: Option<Uuid>`, `parent_reply_id: Option<Uuid>` (in ListItem), `vote_score: i32`, `current_user_vote: Option<i32>`, `is_solution: bool`
+### CategoryResponse
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
+### CategoryListItem
+- Added: `requested_locale: String`, `effective_locale: String`, `available_locales: Vec<String>`, `is_subscribed: bool`
 ### Category tree
-- `CategoryTreeQuery`, `CategoryBreadcrumb`, `CategoryTreeNode`, `CategoryTreeResponse` expose the complete tenant hierarchy in deterministic `(position, id)` sibling order.
-- One owner call is bounded to 512 nodes and zero-based depth 16.
-- Nodes include parent/depth/child metadata, localized breadcrumbs, topic policy, archive state and nested children.
-- REST: `GET /api/forum/categories/tree`.
-- GraphQL: `forumCategoryTree(tenantId, locale, fallbackLocale)`.
-- Oversized, excessive-depth, untranslated, cyclic, disconnected or foreign-parent hierarchies fail closed.
-
+- Added: `CategoryTreeQuery`, `CategoryBreadcrumb`, `CategoryTreeNode`, `CategoryTreeResponse`.
+- The canonical tree returns the complete tenant hierarchy in deterministic `(position, id)` sibling order through one owner call bounded to 512 nodes and zero-based depth 16.
+- Each node includes `parent_id`, `depth`, direct `children_count`, `has_children`, localized breadcrumbs, `allows_topics`, `archived_at`, `is_archived` and nested children.
+- REST entry point: `GET /api/forum/categories/tree`.
+- GraphQL entry point: `forumCategoryTree(tenantId, locale, fallbackLocale)` on the merged `ForumQuery`.
+- Categories without any localized translation fail closed instead of returning empty `name`/`slug` fields.
+- The legacy flat category list remains a bounded compatibility projection and is not the canonical hierarchy contract.
 ### Category placement commands
-- `MoveCategoryInput` and `ReorderCategorySiblingsInput` route all placement through tenant-serialized owner commands.
-- Moves reject cycles, foreign parents and depth overflow; reorder requires the complete sibling set exactly once.
-- REST: `PUT /api/forum/categories/{id}/move`, `PUT /api/forum/categories/reorder`.
-- Generic category update rejects `position`.
-
-### Category subtree lifecycle and topic policy
-- `archive_subtree` writes descendants before ancestors; `restore_subtree` removes ancestor lifecycle rows before descendants.
-- REST: `POST /api/forum/categories/{id}/archive-subtree`, `POST /api/forum/categories/{id}/restore-subtree`.
-- GraphQL: `archiveForumCategorySubtree`, `restoreForumCategorySubtree`.
-- Topic policy defaults to `allows_topics = true`; PostgreSQL and SQLite reject new topic placement where policy or archive state forbids it.
-- REST: `GET/PUT /api/forum/categories/{id}/topic-policy`.
-- GraphQL: `forumCategoryTopicPolicy`, `setForumCategoryTopicPolicy`.
-
+- Added: `MoveCategoryInput`, `ReorderCategorySiblingsInput`, `CategoryPlacementResponse`, `MoveCategoryResponse`, `ReorderCategorySiblingsResponse`.
+- `move_category` serializes hierarchy mutations per tenant, rejects cycles, foreign parents and depth overflow, and normalizes source and destination sibling positions in one transaction.
+- `reorder_siblings` requires the complete direct-child set exactly once and persists contiguous zero-based positions atomically.
+- REST entry points: `PUT /api/forum/categories/{id}/move` and `PUT /api/forum/categories/reorder`.
+- PostgreSQL and SQLite reject category writes whose resulting zero-based depth would exceed 16, including internal direct writes that bypass owner services.
+- Generic `CategoryService::update` rejects `position`; placement changes must use `move_category` or `reorder_siblings`.
+### Category subtree lifecycle
+- Added: `CategorySubtreeLifecycleResponse`.
+- Absence of a lifecycle row means active, preserving existing categories without backfill.
+- `archive_subtree` writes descendants before ancestors; `restore_subtree` removes ancestor lifecycle rows before descendants under the same tenant category-tree lock.
+- REST entry points: `POST /api/forum/categories/{id}/archive-subtree` and `POST /api/forum/categories/{id}/restore-subtree`.
+- GraphQL entry points: `archiveForumCategorySubtree` and `restoreForumCategorySubtree`.
+- Existing topics are preserved. Archived categories reject new topic placement and active children; a subtree cannot be partially restored beneath an archived ancestor.
+### Category topic policy
+- Added: `UpdateCategoryTopicPolicyInput` and `CategoryTopicPolicyResponse`.
+- Absence of a stored row means `allows_topics = true`, preserving behavior for existing categories.
+- REST entry point: `GET/PUT /api/forum/categories/{id}/topic-policy`.
+- GraphQL entry points: `forumCategoryTopicPolicy` and `setForumCategoryTopicPolicy`.
+- PostgreSQL and SQLite reject direct `forum_topics` inserts or category moves into a category whose policy disables topic creation.
+- Existing topics remain unchanged when a category policy is disabled; the policy controls new topic placement only.
 ### Category presentation contract
-- Category `icon` is a bounded lowercase kebab-case semantic key and color is a bounded hexadecimal value.
-- `CategoryCoverMediaCandidate` is transport-neutral and carries media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor` only.
-- Cover writes fail with `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed.
-- Reads degrade only for an explicitly absent optional Media owner; provider failures stay typed and retryability-aware.
-- Forum never stores cover URLs, storage paths, credentials or blobs.
+- Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
+- Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
+- `CategoryCoverMediaCandidate` is a transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
+- `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
+- `resolve_category_cover_for_write` calls the Media owner port and fails with stable code `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed; it never treats a missing capability as a clear-cover command.
+- `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
+- Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
+- Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
 - Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
-
 ### Mention and quote revision contract
 - Markdown extraction ignores fenced code, inline code, escaped text and email-address `@` tokens.
-- `rt_json_v1` extraction uses the canonical sanitizer and ignores code nodes/marks.
-- Ordinary handles use the Profiles-owned grammar; `moderators` is a typed permission-gated audience.
-- Every relation revision is capped at 32 unique mention targets and 32 unique quote references.
-- Missing, hidden, blocked, private, followers-only, foreign-tenant or mismatched mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE`.
-- Quote references retain target identity and quoted relation revision identity.
-- Only added mention targets become event candidates; replay with changed targets fails closed and identical replay emits nothing.
-
+- `rt_json_v1` extraction first uses the canonical `rustok-core` sanitizer and ignores `code_block` nodes and text with a `code` mark.
+- Ordinary handles use `ProfileService::normalize_handle`; the `moderators` audience is a separate typed target and requires explicit moderation policy.
+- Every revision is capped at 32 unique mention targets and 32 unique quote references.
+- `resolve_forum_mentions` uses the tenant-scoped `ProfilesReader` contract. Missing, hidden, blocked, private, followers-only, foreign-tenant or mismatched targets all fail with the same safe `FORUM_MENTION_TARGET_UNAVAILABLE` class.
+- `ForumQuoteReference` stores target identity plus quoted revision identity; the renderer never infers historical identity from display text.
+- `diff_forum_mentions` is deterministic by resolved user identity. Only added targets produce `ForumMentionEventCandidate`; unchanged and removed targets never become delivery candidates.
+- Replaying the same source revision with changed targets fails closed. A byte-identical replay produces no added candidates.
+- FORUM-12A contains no persistence, event publication, notification call or transport surface.
+- Run `node scripts/verify/verify-forum-mention-contract.mjs` after changing this boundary.
 ### Mention and quote persistence contract
-- `forum_relation_revisions`, `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only and tenant/source/locale/revision bound.
-- Existing source locales receive a `legacy` relation revision without parsing historical content or reading Profiles tables.
-- `MentionRelationService::prepare` resolves profiles outside the owner transaction and computes a replay fingerprint.
-- `persist_in_tx` locks and re-reads the source body, validates quotes and atomically appends the revision and children.
-- Topic/reply create/edit owner commands persist the projection immediately after the canonical body write and before counters/events/commit.
-- Missing or mismatched quote revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE`.
+- `forum_relation_revisions` assigns one globally unique immutable identity to each persisted mention/quote projection for a tenant, source target and locale.
+- `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only child rows keyed by the complete source identity and relation revision.
+- Quote rows retain the quoted target and globally unique quoted relation revision; PostgreSQL and SQLite reject tenant, kind or target mismatches.
+- Existing topic translations and reply bodies receive one `legacy` relation revision during migration, without parsing historical content or reading Profiles-owned tables.
+- PostgreSQL and SQLite source INSERT seed triggers give topic translations and reply bodies created after B1 rollout exactly one empty `legacy` identity until active projection persistence; the triggers do not infer mentions or read Profiles.
+- The crate-private `MentionRelationService` separates profile-dependent `prepare` from transaction-only `persist_in_tx`; it is an owner implementation seam, not public persistence API.
+- `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over canonical body, format, resolved targets and quote identities.
+- `persist_in_tx` locks the source stream, re-reads the persisted body in the same transaction, rejects prepared/body mismatch and writes the revision plus all child rows atomically.
+- Topic and reply create/edit owner commands prepare before opening the transaction and call `persist_in_tx` immediately after the canonical body write and before counters, semantic events and commit.
+- An identical latest fingerprint must also match the persisted target snapshot; only then does replay return the existing relation revision with no added targets.
+- `FORUM_QUOTE_TARGET_UNAVAILABLE` safely covers missing, foreign-tenant or mismatched quoted revision identity without exposing target existence.
 - Run `node scripts/verify/verify-forum-mention-persistence.mjs` and `node scripts/verify/verify-forum-mention-integration.mjs` after changing this boundary.
-
 ### Mention events and relation owner read
-- `ForumMentionEvent` is a sealed `rustok-events` family with v1 `forum.mention.user_added` and `forum.mention.audience_added`.
-- Payloads contain source identity/revision/locale and resolved user or typed audience identity only.
-- The exact persisted added-target diff is published; replay, removed and unchanged targets emit nothing.
-- One event UUID is stored in the transactional outbox and append-only Forum journal inside the owner transaction.
-- `ForumRelationReadService` returns latest or exact tenant/source/locale snapshots bounded to 32 mention targets and 32 quotes.
-- Reads expose user IDs, audiences and revision-bound quotes, never handle snapshots or replay fingerprints.
-- Invalid relation identity uses `FORUM_RELATION_REVISION_UNAVAILABLE`.
-
+- `ForumMentionEvent` is a sealed `rustok-events` family with v1 `forum.mention.user_added` and `forum.mention.audience_added` contracts.
+- Event payloads contain the source kind/ID/relation revision/locale plus resolved user ID or typed audience; they contain no contact data, profile handle snapshot or rendered body.
+- Only `MentionRelationSyncResult.added_user_ids` and `added_audiences` are published. Identical replay, removed targets and unchanged targets emit nothing.
+- Each event is written through `TransactionalEventBus` to the canonical outbox and to `forum_domain_events` with the same event UUID inside the source owner transaction.
+- PostgreSQL and SQLite journal constraints accept both event types and keep the journal append-only.
+- `ForumRelationReadService` returns latest or exact tenant/source/locale revision snapshots, bounded to 32 mention targets and 32 quotes.
+- Relation owner reads expose user IDs, audiences and revision-bound quotes, but not `handle_snapshot` or `projection_fingerprint`.
+- Invalid or unavailable relation identity returns `FORUM_RELATION_REVISION_UNAVAILABLE` without disclosing cross-tenant existence.
+- No REST or GraphQL relation endpoint is added in FORUM-12C.
+- Run `node scripts/verify/verify-forum-mention-events.mjs` after changing this boundary.
 ### Quote owner commands
 - `SetForumQuotesInput` contains an exact source locale and a full replacement list of typed `ForumQuoteReferenceInput` values.
-- `ForumQuoteCommandService` supports existing topic translations and reply bodies; the caller needs the corresponding update owner scope.
-- Exact duplicates are normalized deterministically and the unique set is capped at 32.
-- An empty list explicitly clears quote relations while retaining mentions extracted from the unchanged canonical body.
-- Preparation occurs before opening the transaction; persistence and bounded response materialization occur before commit.
-- Identical replacement replays the current immutable relation revision.
-- REST: `PUT /api/forum/topics/{id}/quotes`, `PUT /api/forum/replies/{id}/quotes`.
-- GraphQL: `setForumTopicQuotes`, `setForumReplyQuotes`.
-- Inline quote input on topic/reply create or body-edit remains a later compatible command slice.
+- Exact duplicates are normalized deterministically and the submitted set is capped at 32 references.
+- An empty list explicitly clears quotes while retaining mentions extracted from the unchanged canonical body.
+- `ForumQuoteCommandService` requires the corresponding topic/reply update owner scope, prepares outside the transaction, persists the immutable relation revision and materializes the bounded response before commit.
+- Identical replacement replays the current relation revision; missing, cross-tenant or mismatched quote targets use `FORUM_QUOTE_TARGET_UNAVAILABLE`.
+- REST entry points: `PUT /api/forum/topics/{id}/quotes` and `PUT /api/forum/replies/{id}/quotes`.
+- GraphQL entry points: `setForumTopicQuotes` and `setForumReplyQuotes`.
+- Inline quote input for source create/body edit remains a later compatibility slice.
 - Run `node scripts/verify/verify-forum-quote-commands.mjs` after changing this boundary.
+### CreateTopicInput
+- Added: `slug: Option<String>`
+### ListRepliesFilter (new)
+- Reply pagination: `page`, `per_page`, `locale`
+### ModerationService
+- Signatures `approve_reply`, `reject_reply`, `hide_reply`, `pin_topic`, `unpin_topic` now accept `tenant_id: Uuid`
+- `close_topic`, `archive_topic` now accept `tenant_id: Uuid`
+- Added `mark_solution(tenant_id, topic_id, reply_id, security)` and `clear_solution(tenant_id, topic_id, security)`
+### VoteService
+- Added `set_topic_vote(tenant_id, topic_id, security, value)` and `clear_topic_vote(tenant_id, topic_id, security)`
+- Added `set_reply_vote(tenant_id, reply_id, security, value)` and `clear_reply_vote(tenant_id, reply_id, security)`
+### SubscriptionService
+- Added `set_category_subscription(tenant_id, category_id, security)` and `clear_category_subscription(tenant_id, category_id, security)`
+- Added `set_topic_subscription(tenant_id, topic_id, security)` and `clear_topic_subscription(tenant_id, topic_id, security)`
+### UserStatsService
+- Added `get(tenant_id, security, user_id)` for tenant-scoped forum statistics read-path
+- Internal write-path helpers synchronize `topic_count`, `reply_count`, `solution_count`
 
 ## Locale fallback chain
-Translation lookup order is `requested → explicit fallback → en → first available`. The effective locale is returned explicitly. Quote owner commands intentionally require an exact existing locale and do not use fallback.
+Translation lookup order: `requested → explicit fallback → "en" → first available`.
+The `effective_locale` field indicates which locale was actually returned.
+Quote owner commands intentionally require an exact existing source locale and do not use fallback.
 
 ## Slug contract
-- Category slugs follow the resolved localized translation.
-- Topic slugs remain stable when a new locale copies its seed translation.
-- Public Forum lookup remains ID-based until a localized route owner contract is introduced.
+- `CategoryResponse` / `CategoryListItem` return locale-aware slug at the `forum_category_translation` level; the slug follows the same resolved translation as `name` / `description`.
+- `TopicResponse` / `TopicListItem` return a stable topic slug. When creating a new topic translation, the slug is copied from the seed-translation, unless a separate topic-level slug workflow is explicitly introduced.
+- The current forum public contract remains ID-based: the forum API does not promise lookup by slug. If such a read-path is added later, it must use the same locale fallback contract as the rest of the forum read-path.
 
 ## Events
-Forum publishes lifecycle root events plus sealed mention events through the transactional outbox. Forum never invokes Notifications synchronously.
+Publishes forum domain events through the outbox pipeline:
+- `ForumTopicCreated` — when a topic is created
+- `ForumTopicReplied` — when a reply is added
+- `ForumTopicStatusChanged` — when topic status changes (close/archive)
+- `ForumTopicPinned` — when topic is pinned/unpinned
+- `ForumReplyStatusChanged` — when a reply is moderated (approve/reject/hide)
+- `forum.mention.user_added` — once for each newly added resolved user target
+- `forum.mention.audience_added` — once for each newly added typed audience target
+
+Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events use the sealed `ForumMentionEvent` typed family in `rustok-events`. Forum publishes to the transactional outbox and never invokes Notifications synchronously.
 
 ## Owner Service Boundary
-- Public topic/reply workflows use root `TopicService` and `ReplyService` facades.
-- Raw `services::topic`, `services::reply`, `topic_owner`, `reply_owner` and `mention_relation` remain crate-private.
-- Topic/reply deletion uses facade owner methods so tombstones, counters and events stay atomic.
-- Mention/quote persistence and added-target event publication are composed inside owner transactions.
-- Quote replacement is exposed only through `ForumQuoteCommandService`; REST and GraphQL never import `MentionRelationService` or `persist_in_tx`.
-- Relation snapshots are read through `ForumRelationReadService` or materialized in the active quote owner transaction.
-- Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing service visibility or workspace consumers.
+- Public topic and reply workflows use the root `TopicService` and `ReplyService` facade exports.
+- Raw `services::topic`, `services::reply`, `topic_owner`, `reply_owner` and `mention_relation` implementations are crate-private.
+- Public facades expose explicit create/read/update/list methods and never implement `Deref` to an implementation service.
+- Topic/reply deletion must use facade `delete` methods so tombstones, counters and semantic events remain atomic.
+- Active mention/quote persistence and added-target event publication are composed by the same owner write transaction; transports must never invoke `MentionRelationService` or event publishing directly.
+- Quote replacement is exposed only through `ForumQuoteCommandService`; REST and GraphQL do not access the persistence seam.
+- Relation snapshots are read only through `ForumRelationReadService` or materialized inside the active quote owner transaction.
+- Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
-- `rustok-media`
-- `rustok-events`
+- `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
+- `rustok-events` for the sealed Forum mention event family
 - `rustok-outbox`
-- `rustok-profiles`
+- `rustok-profiles` for tenant-scoped mention handle resolution through `ProfilesReader`
 
 ## Common AI Mistakes
-- Reconstructs category hierarchy from the flat compatibility list.
-- Writes category placement/lifecycle/policy directly instead of owner commands.
-- Stores category image URLs or reads Media tables.
-- Parses mentions from code or unsanitized content.
-- Resolves profiles by querying Profiles persistence directly.
-- Emits mention delivery for unchanged targets or calls Notifications synchronously.
-- Uses different identities for one outbox/journal event.
-- Exposes handle snapshots, replay fingerprints or source body through relation reads.
-- Updates immutable mention/quote rows instead of appending a relation revision.
-- Accepts quote display text instead of typed target and quoted revision identity.
-- Treats an omitted/empty quote set ambiguously; the D1 command is an explicit full replacement and empty clears.
-- Lets REST/GraphQL import `MentionRelationService`, `PreparedMentionRelations` or `persist_in_tx`.
-- Returns a quote command response through a post-commit read that can fail after the write has committed.
-- Imports raw topic/reply implementation modules instead of root owner facades.
+- Incorrectly uses moderation limits/constants from `constants`.
+- Confuses the category/topic/reply hierarchy in entity imports.
+- Ignores tenant-boundary in service filters.
+- Confuses `locale` (requested) and `effective_locale` (actually used).
+- Uses the flat category list to reconstruct hierarchy instead of `CategoryService::tree`.
+- Writes `parent_id` or sibling positions directly instead of using category owner commands.
+- Writes lifecycle rows parent-first or restores a child beneath an archived ancestor.
+- Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
+- Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
+- Stores a category image URL/path or reads Media tables instead of using the Media owner port.
+- Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
+- Parses mentions from code blocks, escaped text or unsanitized `rt_json_v1`.
+- Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
+- Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
+- Calls Notifications from the Forum transaction instead of publishing a typed owner event.
+- Uses separate identities for the outbox and Forum journal copies of one mention event.
+- Exposes `handle_snapshot`, projection fingerprint or source body through the relation owner read.
+- Updates a persisted mention/quote row instead of appending a new relation revision.
+- Removes the source INSERT seed triggers before active owner writes are composed.
+- Persists a prepared relation projection without revalidating the source body inside the owner transaction.
+- Lets quote transports import `MentionRelationService`, `PreparedMentionRelations` or `persist_in_tx`.
+- Returns a quote command response through a post-commit read that can fail after the write committed.
+- Imports raw topic/reply implementation modules instead of the root owner facades.
+- Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- Public DTOs and commands exported from `src/lib.rs` define the input contract.
-- Changes to existing create/update DTO fields are breaking and require synchronized callers; D1 therefore uses a separate quote replacement DTO.
+- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
+- All changes to existing create/update DTO fields are considered breaking changes; FORUM-12D1 therefore uses a separate quote replacement DTO.
 
 ### Domain Invariants
-- All owner relations are tenant scoped and permission checked.
-- Category hierarchy, policy and lifecycle remain bounded and database guarded.
-- Mention extraction and profile resolution are bounded, format-aware and privacy fail-closed.
-- Relation revisions and children are append-only and atomically matched to the persisted source body.
-- Mention events share one identity across outbox and Forum journal.
-- Relation reads and quote command responses are bounded and never expose private persistence fields.
-- Quote replacement requires an exact existing source locale, deduplicates to at most 32 references and commits response materialization before commit.
-- Quote targets retain target revision identity and cross-tenant/kind/target mismatches fail closed.
-- Persistence modules and transaction seams are not transport API.
+- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
+- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
+- Category tree reads fail closed for oversized, excessive-depth, untranslated, cyclic, disconnected, foreign-parent or invalid archive hierarchies.
+- Category move/reorder commands use a per-tenant transaction order and never persist a partial sibling normalization.
+- Category write paths enforce depth 16 at the database boundary; metadata updates cannot change sibling placement.
+- Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
+- Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
+- Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
+- Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
+- Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
+- Mention revision diffs are immutable on replay and only added resolved targets become owner events.
+- Relation revisions and mention/quote children are append-only, tenant-bound and atomically matched to the persisted source body.
+- Source INSERT seeding preserves one relation identity for every persisted topic/reply locale during the B1-to-B2 rollout window.
+- Mention events and their relation revision are committed atomically with one identity shared between outbox and Forum journal.
+- Bounded relation reads are tenant/source/locale scoped and never expose handle snapshots or replay fingerprints.
+- Quote replacement is exact-locale, owner-scoped, bounded to 32 references and materializes its response before commit.
+- Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
+- Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
-- Event publication uses the transactional outbox contract only.
-- Event types and payload versions remain backward compatible.
-- Mention events are emitted only for targets added by a newly persisted relation revision.
-- Quote-only replacement does not synchronously call Notifications and does not emit events for unchanged mentions.
+- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
+- Event payload and event-type format must remain backward-compatible for cross-module consumers.
+- `forum.mention.user_added` and `forum.mention.audience_added` are emitted only for targets added by a newly persisted relation revision.
+- Quote-only replacement emits nothing for unchanged mentions and never calls Notifications synchronously.
+- Forum records the same event UUID in the canonical outbox and append-only owner journal.
 
 ### Errors / Failure Codes
-- Public `ForumError`/`ForumResult` preserve stable semantics across transports.
-- Optional capability absence and provider failure remain distinct.
-- Mention target failures use `FORUM_MENTION_TARGET_UNAVAILABLE`.
-- Quote target failures use `FORUM_QUOTE_TARGET_UNAVAILABLE`.
-- Invalid or foreign relation revision identities use `FORUM_RELATION_REVISION_UNAVAILABLE`.
+- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
+- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+- Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.
+- Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
+- Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
+- Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
