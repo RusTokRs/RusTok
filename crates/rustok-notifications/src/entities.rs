@@ -132,7 +132,7 @@ pub mod source_inbox {
         pub last_error_message: Option<String>,
         pub completed_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
-        pub updated_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -156,10 +156,6 @@ pub mod fanout_item {
         pub notification_id: Option<Uuid>,
         pub idempotency_key: String,
         pub last_error_code: Option<String>,
-        pub attempt_count: i32,
-        pub next_attempt_at: Option<DateTimeWithTimeZone>,
-        pub lease_owner: Option<String>,
-        pub lease_expires_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
         pub processed_at: Option<DateTimeWithTimeZone>,
