@@ -18,9 +18,9 @@ not expose relation persistence to REST or GraphQL.
 ## Compatibility contract
 
 The existing Rust `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput` and
-`UpdateReplyInput` structs remain unchanged. In other words, legacy Rust DTOs remain unchanged.
-Separate command DTOs carry inline quote input, while the existing facade methods
-convert legacy inputs into those commands.
+`UpdateReplyInput` structs remain unchanged. Separate command DTOs carry inline
+quote input, while the existing facade methods convert legacy inputs into those
+commands.
 
 Create commands treat an omitted quote list as an empty initial set. Update
 commands use three distinct states:
@@ -76,13 +76,19 @@ or transaction persistence helpers.
 
 ```bash
 node scripts/verify/verify-forum-quote-commands.mjs
+node scripts/verify/verify-forum-mention-runtime-proof.mjs
 cargo test -p rustok-forum inline_quote
 cargo test -p rustok-forum mention_relation
+cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture --test-threads=1
 cargo xtask module validate forum
 ```
 
 The SQLite source scenario covers preserved snapshot loading, a concurrent D1
-replacement, typed CAS conflict and explicit clear semantics. PostgreSQL
-concurrency and notifications-off/on runtime evidence remain open.
+replacement, typed CAS conflict and explicit clear semantics. The source-ready
+PostgreSQL scenario is documented in
+`docs/forum-12-postgres-runtime-proof.md`; it covers deterministic D1/D2 lock
+ordering, soft deletion and the notifications-off producer profile.
+Notifications-on consumption, NOTIFY-03/07 privacy/open authorization, retention
+purge evidence and successful maintainer execution remain open.
 
-Maintainer verification was not executed while publishing this slice.
+Maintainer verification was not executed while publishing either source slice.

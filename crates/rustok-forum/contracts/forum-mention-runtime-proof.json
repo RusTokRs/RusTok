@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scope": "FORUM-12 PostgreSQL owner runtime proof",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "test_file": "crates/rustok-forum/tests/mention_quote_runtime_postgres.rs",
+  "test_environment": {
+    "database": "PostgreSQL",
+    "url_env": "RUSTOK_FORUM_TEST_DATABASE_URL",
+    "isolated_schema": true,
+    "required_modules": [
+      "rustok-outbox",
+      "rustok-taxonomy",
+      "rustok-forum"
+    ],
+    "notifications_composed": false
+  },
+  "scenarios": {
+    "concurrent_d1_d2": {
+      "serialization_source": "forum_replies root row lock",
+      "ordering_observer": "pg_stat_activity application_name and wait_event_type=Lock",
+      "winner": "D1 explicit clear",
+      "loser": "D2 omitted preserve",
+      "loser_code": "FORUM_RELATION_REVISION_CONFLICT",
+      "loser_retryable": true,
+      "stale_body_rolls_back": true,
+      "stale_quotes_do_not_return": true,
+      "only_winner_appends_revision": true
+    },
+    "soft_delete": {
+      "d1_code": "FORUM_REPLY_DELETED",
+      "d2_code": "FORUM_REPLY_DELETED",
+      "relation_history_preserved": true,
+      "no_new_revision": true
+    },
+    "notifications_off": {
+      "source_body": "@moderators please review",
+      "persisted_audience": "moderators",
+      "event_type": "forum.mention.audience_added",
+      "event_schema_version": 1,
+      "same_event_id_in_outbox_and_forum_journal": true,
+      "synchronous_notifications_call": false
+    }
+  },
+  "execution": {
+    "command": "cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture --test-threads=1",
+    "status": "not_run_by_implementation_agent",
+    "maintainer_execution_required": true
+  },
+  "still_open": [
+    "successful maintainer PostgreSQL execution evidence",
+    "notifications-on consumer execution under NOTIFY-03",
+    "privacy and target-open authorization under NOTIFY-07",
+    "retention purge execution evidence"
+  ]
+}
