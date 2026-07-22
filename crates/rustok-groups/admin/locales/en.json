@@ -118,6 +118,7 @@
   "groups.admin.applications.bulk.load": "Load pending applications",
   "groups.admin.applications.bulk.empty": "No pending applications loaded.",
   "groups.admin.applications.bulk.selectAll": "Select all loaded",
+  "groups.admin.applications.bulk.selectApplication": "Select application",
   "groups.admin.applications.bulk.clear": "Clear selection",
   "groups.admin.applications.bulk.selected": "Selected",
   "groups.admin.applications.bulk.confirm": "I confirm this bulk decision for the selected applications",
