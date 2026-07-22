@@ -79,22 +79,17 @@ fan-out, email/push, retry, and cleanup remain Notifications-owner responsibilit
 
 ## Membership-application contract
 
-### Current policy
+### Current policy and history
 
 `GroupApplicationReadPort::read_group_application_policy` exposes the current policy
 for the host-resolved exact locale.
-`GroupApplicationCommandPort::upsert_group_application_policy` manages it.
 
 - one current language-neutral policy exists per group;
 - each exact-locale row contains at most 20 questions and 20 rules;
 - ordered stable normalized keys identify questions and rules;
 - prompt/help/rule copy and answer limits are bounded;
 - management requires active owner/admin or platform `groups:manage`;
-- upsert increments policy revision and group version and writes receipt/audit in the
-  same owner transaction;
 - no module-local locale fallback exists.
-
-### Append-only policy history
 
 Every successful application-policy translation INSERT/UPDATE is captured into
 `group_membership_policy_revisions` by PostgreSQL or SQLite trigger. Capture occurs in
@@ -106,47 +101,70 @@ provides manager-only history ordered by revision descending and locale ascendin
 It reuses the application-review authorization boundary: active owner/admin/moderator
 or platform manage authority. Candidates cannot enumerate policy history.
 
-History is published through typed Rust, final merged GraphQL, native Leptos server
-function, GraphQL admin adapter, and the selected admin transport facade.
+### Atomic policy preconditions
+
+Interactive policy save and candidate submit use `GroupApplicationCasCommandPort`:
+
+- `upsert_group_application_policy_if_current`;
+- `submit_group_membership_application_if_current`.
+
+Both requests carry `GroupApplicationPolicyPrecondition` containing the policy ID,
+positive revision, and exact locale rendered by the client. The owner:
+
+1. validates deadline, idempotency, tenant, actor, locale, and request bounds;
+2. returns an identical committed receipt before checking the policy again;
+3. locks the group row where supported;
+4. repeats authorization and group-state checks;
+5. reloads current policy state and compares ID, revision, and locale;
+6. returns `groups.application_policy_changed` on mismatch before any owner-state
+   write;
+7. commits successful policy/application state, group version, audit, and receipt in
+   one transaction.
+
+For a new policy, `expected_policy = null` is accepted only while no current policy
+exists. Updating an existing policy requires a matching precondition.
+
+The older unconditional save and submit methods on `GroupApplicationCommandPort`
+remain public for source compatibility. Module-owned FFA does not use them. Their
+removal or versioned deprecation remains an API migration gate.
 
 ### Submission
 
-`GroupApplicationCommandPort::submit_group_membership_application` accepts an
-authenticated candidate submission.
+Only active `request` groups accept applications. Secret groups return not-found
+semantics; banned users and active members are rejected. Pending or approved
+applications cannot be resubmitted, while rejected applications may receive a fresh
+snapshot.
 
-- only active `request` groups accept applications;
-- secret groups return not-found semantics;
-- banned users and active members are rejected;
-- pending or approved applications cannot be resubmitted;
-- rejected applications may be resubmitted with a fresh snapshot;
-- unknown answer keys/rule acknowledgements are rejected;
-- every required question has a bounded non-empty answer;
-- every required rule is acknowledged;
-- pending membership, application snapshot, group version, audit, and receipt commit
-  together.
+Unknown answer keys and rule acknowledgements are rejected. Every required question
+must contain a bounded non-empty answer, and every required rule must be acknowledged.
+A stale form returns `groups.application_policy_changed` without changing membership,
+application, group version, audit, or receipt state.
+
+A successful submit stores pending membership, application snapshot, group version,
+audit, and receipt together.
 
 ### Review
 
 Listing/review through `GroupApplicationReadPort` and
-`GroupApplicationCommandPort` requires active owner/admin/moderator or platform
-manage authority. Only pending applications may be reviewed. Approve activates
-membership and increments member count; reject moves membership to `left`. Review
-note is optional and bounded to 2,000 characters. Application, membership, group
-version, audit, and receipt commit together.
+`GroupApplicationCommandPort::review_group_membership_application` requires active
+owner/admin/moderator or platform manage authority. Only pending applications may be
+reviewed. Approve activates membership and increments member count; reject moves
+membership to `left`. Review note is optional and bounded to 2,000 characters.
+Application, membership, group version, audit, and receipt commit together.
 
 ## FBA contract
 
 Published ports include summary, membership, access, localization, invitation,
-targeted invitation, application, application policy history, group command, and
-governance boundaries. All use `PortContext`, `PortCallPolicy`, and `PortError`.
-Reads require a deadline; writes require deadline plus idempotency key. Consumers
-never import Groups entities or query Groups tables directly.
+targeted invitation, application read, application policy history, application CAS,
+group command, and governance boundaries. All use `PortContext`, `PortCallPolicy`,
+and `PortError`. Reads require a deadline; writes require deadline plus idempotency
+key. Consumers never import Groups entities or query Groups tables directly.
 
 The final GraphQL composition is
-`graphql_policy_history::GroupsQueryRoot` / `GroupsMutationRoot`. It merges core,
+`graphql_application_cas::GroupsQueryRoot` / `GroupsMutationRoot`. It retains core,
 localization, governance, invitation, targeted invitation, application, and policy
-history fields. Native server functions and GraphQL adapters call the same owner
-ports.
+history fields and adds the two CAS mutations. Native server functions and GraphQL
+adapters call the same owner ports.
 
 ## FFA contract
 
@@ -154,33 +172,24 @@ Admin and storefront packages retain `core → transport → UI` separation. UI 
 only the transport facade, never raw adapters. Selected native or GraphQL transport
 never falls back implicitly.
 
-The admin package adds:
-
-```text
-admin/src/application_core.rs
-admin/src/application_model.rs
-admin/src/transport/native_applications_adapter.rs
-admin/src/transport/graphql_applications_adapter.rs
-admin/src/transport/native_policy_history_adapter.rs
-admin/src/transport/graphql_policy_history_adapter.rs
-admin/src/ui/policy_editor.rs
-admin/src/ui/applications.rs
-```
-
-The visual policy editor adds/removes/reorders questions and rules, saves through the
-owner command, and lists immutable revisions. Its locale is read-only and comes from
-host route context. The editor performs a disclosed **non-atomic stale preflight**:
-it rereads the current revision before save and blocks the UI if it changed. Atomic
-expected-revision comparison inside the owner transaction remains planned.
+The admin policy editor captures the loaded policy identity and sends it directly to
+the CAS mutation. On `groups.application_policy_changed`, it keeps the stale identity
+and requires explicit reload before another save. The locale is read-only and comes
+from host route context. Revision history remains manager-only.
 
 The storefront uses `apply=<group_uuid>` to load the exact-locale policy and render
-dynamic questions/rules. It removes the query key only after successful submission.
+dynamic questions/rules. Submit carries the loaded policy identity. A stale conflict
+preserves the route, disables repeated submission, and exposes explicit reload that
+clears old answers and acknowledgements before loading the current policy. The query
+key is removed only after success.
 
 ## Degraded modes
 
 - Groups provider unavailable: deny private content.
 - Exact-locale policy unavailable: disable application/editor; never choose another
   locale.
+- Policy CAS conflict: write no owner state, preserve the selected transport error,
+  and require explicit reload before retry.
 - Policy history unavailable: current owner policy remains authoritative; hide
   history rather than synthesizing revisions.
 - Native or GraphQL transport failure: surface selected-path error; never retry
@@ -194,14 +203,14 @@ dynamic questions/rules. It removes the query key only after successful submissi
 
 The following remain source or evidence work:
 
-- atomic expected-revision for policy save and candidate submit;
+- remove or version-deprecate legacy unconditional application command methods;
 - explicit multi-locale policy management contract and picker;
 - candidate cancellation/reopen/resubmit policy;
 - bounded bulk review and per-item audit/result handling;
 - ProfilesReader summaries and application semantic events;
 - migration execution/backfill/immutability evidence;
-- native/GraphQL parity, replay, concurrency, lock ordering, accessibility, security,
-  retry, and recovery evidence.
+- native/GraphQL stable-code parity, replay, stale races, concurrency, lock ordering,
+  accessibility, security, retry, and recovery evidence.
 
 ## Verification
 
@@ -219,14 +228,16 @@ node scripts/verify/verify-groups-invitations-boundary.mjs
 node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
+node scripts/verify/verify-groups-application-policy-cas.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
 
-No build, test, migration, verifier, parity, concurrency, accessibility, security,
-retry, or recovery command was executed for this source slice. FFA, FBA, GROUPS-06,
-and GROUPS-19 remain `in_progress`; runtime evidence keys remain `null`.
+No build, test, migration, verifier, parity, replay, stale-race, concurrency,
+accessibility, security, retry, or recovery command was executed for this source
+slice. FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; runtime evidence keys
+remain `null`.
 
 ## Related documents
 
