@@ -1,6 +1,6 @@
 use fly::{
-    AssetDescriptor, AssetKind, ComponentObject, FLY_PAGE_METADATA_FIELD, ProjectDocument,
-    StyleRuleDescriptor, StyleRuleScope,
+    AssetDescriptor, AssetKind, ComponentChildren, ComponentNode, ComponentObject,
+    FLY_PAGE_METADATA_FIELD, ProjectDocument, StyleRuleDescriptor, StyleRuleScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -53,9 +53,9 @@ const ALLOWED_TAGS: &[&str] = &[
     "video",
 ];
 
+// Fly's built-in `link` component is intentionally not listed: it renders as a safe `<a>`.
 const DANGEROUS_COMPONENT_TYPES: &[&str] = &[
-    "applet", "base", "embed", "iframe", "link", "meta", "object", "script", "style",
-    "template",
+    "applet", "base", "embed", "iframe", "meta", "object", "script", "style", "template",
 ];
 
 const FORBIDDEN_ATTRIBUTES: &[&str] = &[
@@ -165,6 +165,13 @@ impl PageBuilderStaticPublishPolicy {
             "allowed_data_image_prefixes",
         )?;
         require_normalized_unique(&self.forbidden_css_tokens, "forbidden_css_tokens")?;
+        for attribute in &self.url_attributes {
+            if UrlKind::for_attribute(attribute).is_none() {
+                return Err(PageBuilderStaticPublishPolicyError::Integrity(format!(
+                    "static publish policy URL attribute `{attribute}` has no URL kind"
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -232,9 +239,16 @@ pub fn validate_static_publish_document(
     policy.verify_integrity()?;
 
     let mut diagnostics = Vec::new();
-    document.project.visit_components(|component, _, path| {
-        validate_component(component, path, &policy, &mut diagnostics);
-    });
+    for (page_index, page) in document.project.pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref() {
+            validate_component_node(
+                root,
+                &format!("pages[{page_index}].component"),
+                &policy,
+                &mut diagnostics,
+            );
+        }
+    }
     validate_style_rules(document, &policy, &mut diagnostics);
     validate_assets(document, &policy, &mut diagnostics);
     validate_page_metadata(document, &policy, &mut diagnostics);
@@ -247,6 +261,57 @@ pub fn validate_static_publish_document(
         format: policy.format.clone(),
         policy_hash: policy.policy_hash()?,
     })
+}
+
+fn validate_component_node(
+    node: &ComponentNode,
+    path: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    match node {
+        ComponentNode::Object(component) => {
+            validate_component(component, path, policy, diagnostics);
+            match &component.components {
+                ComponentChildren::Nodes(children) => {
+                    for (index, child) in children.iter().enumerate() {
+                        validate_component_node(
+                            child,
+                            &format!("{path}.components[{index}]"),
+                            policy,
+                            diagnostics,
+                        );
+                    }
+                }
+                ComponentChildren::Opaque(Value::Null) => {}
+                ComponentChildren::Opaque(_) => reject(
+                    diagnostics,
+                    "landing_component_children_opaque",
+                    format!("{path}.components"),
+                    "component children use an opaque shape that the static renderer would omit",
+                ),
+            }
+        }
+        ComponentNode::Opaque(value) => validate_opaque_node(value, path, policy, diagnostics),
+    }
+}
+
+fn validate_opaque_node(
+    value: &Value,
+    path: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    match value {
+        Value::String(content) => validate_text_content(content, path, policy, diagnostics),
+        Value::Number(_) | Value::Bool(_) => {}
+        Value::Null | Value::Array(_) | Value::Object(_) => reject(
+            diagnostics,
+            "landing_opaque_node_not_renderable",
+            path,
+            "opaque component node is not a renderer-supported scalar",
+        ),
+    }
 }
 
 fn validate_component(
@@ -283,35 +348,12 @@ fn validate_component(
 
     if let Some(content) = component.extensions.get("content") {
         match content.as_str() {
-            Some(content) => {
-                if content.len() > policy.max_content_bytes {
-                    reject(
-                        diagnostics,
-                        "landing_content_too_large",
-                        format!("{path}.content"),
-                        format!(
-                            "component content exceeds {} bytes",
-                            policy.max_content_bytes
-                        ),
-                    );
-                }
-                if contains_disallowed_control(content) {
-                    reject(
-                        diagnostics,
-                        "landing_content_control_character",
-                        format!("{path}.content"),
-                        "component content contains a disallowed control character",
-                    );
-                }
-                if contains_tag_like_markup(content) {
-                    reject(
-                        diagnostics,
-                        "landing_content_markup_forbidden",
-                        format!("{path}.content"),
-                        "component content contains markup that the static renderer would strip",
-                    );
-                }
-            }
+            Some(content) => validate_text_content(
+                content,
+                &format!("{path}.content"),
+                policy,
+                diagnostics,
+            ),
             None => reject(
                 diagnostics,
                 "landing_content_not_string",
@@ -351,6 +393,38 @@ fn validate_component(
     }
 }
 
+fn validate_text_content(
+    content: &str,
+    path: &str,
+    policy: &PageBuilderStaticPublishPolicy,
+    diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
+) {
+    if content.len() > policy.max_content_bytes {
+        reject(
+            diagnostics,
+            "landing_content_too_large",
+            path,
+            format!("component content exceeds {} bytes", policy.max_content_bytes),
+        );
+    }
+    if contains_disallowed_control(content) {
+        reject(
+            diagnostics,
+            "landing_content_control_character",
+            path,
+            "component content contains a disallowed control character",
+        );
+    }
+    if contains_tag_like_markup(content) {
+        reject(
+            diagnostics,
+            "landing_content_markup_forbidden",
+            path,
+            "component content contains markup that the static renderer would strip",
+        );
+    }
+}
+
 fn validate_attribute(
     raw_name: &str,
     value: &Value,
@@ -358,7 +432,16 @@ fn validate_attribute(
     policy: &PageBuilderStaticPublishPolicy,
     diagnostics: &mut Vec<PageBuilderStaticPublishPolicyDiagnostic>,
 ) {
-    let name = raw_name.trim().to_ascii_lowercase();
+    if raw_name != raw_name.trim() {
+        reject(
+            diagnostics,
+            "landing_attribute_name_invalid",
+            path,
+            format!("attribute name `{raw_name}` contains surrounding whitespace"),
+        );
+        return;
+    }
+    let name = raw_name.to_ascii_lowercase();
     if name.is_empty()
         || name.len() > policy.max_attribute_name_bytes
         || !name
@@ -392,6 +475,15 @@ fn validate_attribute(
             "landing_attribute_forbidden",
             path,
             format!("attribute `{raw_name}` is forbidden by static publish policy"),
+        );
+        return;
+    }
+    if matches!(value, Value::Bool(false)) {
+        reject(
+            diagnostics,
+            "landing_false_boolean_attribute_omitted",
+            path,
+            format!("false boolean attribute `{raw_name}` would be omitted by the renderer"),
         );
         return;
     }
@@ -438,7 +530,7 @@ fn validate_attribute(
             );
             return;
         }
-        let kind = UrlKind::for_attribute(&name).expect("policy URL attribute kind");
+        let kind = UrlKind::for_attribute(&name).expect("validated policy URL attribute kind");
         if let Err(reason) = validate_url(&scalar, kind, policy) {
             reject(
                 diagnostics,
@@ -466,12 +558,30 @@ fn validate_style_rules(
             );
             continue;
         };
-        if rule.component_id.as_deref().is_none_or(str::is_empty) {
-            reject(
+        match rule.component_id.as_deref() {
+            Some(component_id) if !component_id.is_empty() => {
+                if !document.contains_component(component_id) {
+                    reject(
+                        diagnostics,
+                        "landing_style_rule_orphaned",
+                        format!("{path}.selectors"),
+                        format!("style rule references missing component `{component_id}`"),
+                    );
+                }
+            }
+            _ => reject(
                 diagnostics,
                 "landing_style_rule_unbound",
                 format!("{path}.selectors"),
                 "style rule is not bound to a component and would be omitted by the renderer",
+            ),
+        }
+        if rule.declarations.is_empty() {
+            reject(
+                diagnostics,
+                "landing_style_rule_empty",
+                format!("{path}.style"),
+                "empty style rule would be omitted by the renderer",
             );
         }
         validate_css_declarations(
@@ -639,9 +749,8 @@ fn validate_page_metadata(
                 continue;
             };
             for (suffix, candidate) in localized_string_values(value) {
-                let path = format!(
-                    "pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}{suffix}"
-                );
+                let path =
+                    format!("pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}{suffix}");
                 match candidate {
                     Some(candidate) => {
                         if let Err(reason) = validate_url(candidate, kind, policy) {
@@ -805,6 +914,9 @@ fn localized_string_values(value: &Value) -> Vec<(String, Option<&str>)> {
     else {
         return vec![(String::new(), None)];
     };
+    if values.is_empty() {
+        return vec![(".$localized".to_string(), None)];
+    }
     let mut values = values
         .iter()
         .map(|(locale, value)| (format!(".$localized.{locale}"), value.as_str()))
@@ -865,7 +977,7 @@ fn require_normalized_unique(
                 "static publish policy `{field}` contains a non-normalized value"
             )));
         }
-        if !seen.insert(value) {
+        if !seen.insert(value.as_str()) {
             return Err(PageBuilderStaticPublishPolicyError::Integrity(format!(
                 "static publish policy `{field}` contains a duplicate value"
             )));
@@ -916,7 +1028,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_accepts_safe_static_content_and_has_stable_evidence() {
+    fn policy_accepts_fly_link_components_and_has_stable_evidence() {
         let document = document(json!({
             "id": "root",
             "type": "wrapper",
@@ -936,7 +1048,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_rejects_event_handlers_javascript_urls_and_css_urls() {
+    fn policy_rejects_event_handlers_javascript_urls_css_urls_and_false_attributes() {
         let document = document(json!({
             "id": "root",
             "type": "wrapper",
@@ -944,7 +1056,11 @@ mod tests {
                 "id": "link",
                 "type": "link",
                 "tagName": "a",
-                "attributes": { "onclick": "alert(1)", "href": "javascript:alert(1)" },
+                "attributes": {
+                    "onclick": "alert(1)",
+                    "href": "javascript:alert(1)",
+                    "hidden": false
+                },
                 "style": { "background-image": "url(https://evil.example/a.png)" },
                 "content": "Safe text"
             }]
@@ -958,16 +1074,33 @@ mod tests {
         assert!(codes.contains("landing_event_handler_forbidden"));
         assert!(codes.contains("landing_url_rejected"));
         assert!(codes.contains("landing_css_value_rejected"));
+        assert!(codes.contains("landing_false_boolean_attribute_omitted"));
     }
 
     #[test]
-    fn policy_rejects_renderer_fallback_tags_markup_and_insecure_metadata() {
-        let mut document = document(json!({
+    fn policy_rejects_opaque_markup_and_non_renderable_nodes() {
+        let document = document(json!({
             "id": "root",
-            "type": "script",
-            "tagName": "iframe",
-            "content": "Hello <strong>world</strong>"
+            "type": "wrapper",
+            "components": [
+                "Hello <strong>world</strong>",
+                { "unexpected": true },
+                null
+            ]
         }));
+        let error = validate_static_publish_document(&document).expect_err("opaque project");
+        let codes = error
+            .diagnostics()
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(codes.contains("landing_content_markup_forbidden"));
+        assert!(codes.contains("landing_opaque_node_not_renderable"));
+    }
+
+    #[test]
+    fn policy_rejects_empty_localized_metadata_urls() {
+        let mut document = document(json!({ "id": "root", "type": "wrapper" }));
         document.project.pages[0]
             .extensions
             .get_mut(FLY_PAGE_METADATA_FIELD)
@@ -975,17 +1108,12 @@ mod tests {
             .expect("metadata")
             .insert(
                 "canonical_url".to_string(),
-                Value::String("http://example.com/home".to_string()),
+                json!({ "$localized": {} }),
             );
-        let error = validate_static_publish_document(&document).expect_err("unsafe project");
-        let codes = error
+        let error = validate_static_publish_document(&document).expect_err("empty localized URL");
+        assert!(error
             .diagnostics()
             .iter()
-            .map(|diagnostic| diagnostic.code.as_str())
-            .collect::<BTreeSet<_>>();
-        assert!(codes.contains("landing_tag_not_allowed"));
-        assert!(codes.contains("landing_component_type_forbidden"));
-        assert!(codes.contains("landing_content_markup_forbidden"));
-        assert!(codes.contains("landing_metadata_url_rejected"));
+            .any(|diagnostic| diagnostic.code == "landing_metadata_url_invalid"));
     }
 }
