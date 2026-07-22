@@ -60,6 +60,11 @@ pub struct MenuItemResponse {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct BindActiveMenuInput {
+    pub menu_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ActiveMenuBindingResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,

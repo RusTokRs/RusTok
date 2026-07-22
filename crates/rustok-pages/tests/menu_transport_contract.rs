@@ -6,6 +6,7 @@ const OPENAPI: &str = include_str!("../src/openapi.rs");
 const MENU_BINDING_SERVICE: &str = include_str!("../src/services/menu_binding.rs");
 const MENU_BINDING_MIGRATION: &str =
     include_str!("../src/migrations/m20260721_000008_create_active_menu_bindings.rs");
+const MENU_DTO: &str = include_str!("../src/dto/menu.rs");
 const MENU_MIGRATIONS: &str = include_str!("../src/migrations/mod.rs");
 
 #[test]
@@ -85,6 +86,75 @@ fn menu_http_and_openapi_surfaces_stay_synchronized() {
             "OpenAPI menu contract must contain `{marker}`"
         );
     }
+}
+
+#[test]
+fn active_menu_transport_is_current_scope_only() {
+    for marker in [
+        "async fn active_menu(",
+        "MenuBindingService::new",
+        "request_context.channel_id",
+        "resolve_graphql_locale(ctx, locale.as_deref())",
+        "async fn bind_active_menu(",
+        "current_channel_id(ctx)?",
+        "pub struct BindGqlActiveMenuInput",
+        "pub location: GqlMenuLocation",
+        "pub menu_id: Uuid",
+    ] {
+        assert!(
+            GRAPHQL_QUERY.contains(marker)
+                || GRAPHQL_MUTATION.contains(marker)
+                || GRAPHQL_TYPES.contains(marker),
+            "GraphQL active-menu transport must contain `{marker}`"
+        );
+    }
+
+    let gql_bind_input = GRAPHQL_TYPES
+        .split("pub struct BindGqlActiveMenuInput {")
+        .nth(1)
+        .and_then(|tail| tail.split('}').next())
+        .expect("GraphQL active-menu bind input should exist");
+    assert!(!gql_bind_input.contains("channel_id"));
+    assert!(!gql_bind_input.contains("tenant_id"));
+
+    for marker in [
+        "path = \"/api/menus/active/{location}\"",
+        "path = \"/api/admin/menus/active/{location}\"",
+        ".route(\n            \"/api/menus/active/{location}\"",
+        ".route(\n            \"/api/admin/menus/active/{location}\"",
+        "current_public_channel_id(&request_context)?",
+        "current_admin_channel_id(&request_context)?",
+        "request_context.locale.clone()",
+    ] {
+        assert!(
+            HTTP.contains(marker),
+            "HTTP active-menu transport must contain `{marker}`"
+        );
+    }
+
+    let http_bind_input = MENU_DTO
+        .split("pub struct BindActiveMenuInput {")
+        .nth(1)
+        .and_then(|tail| tail.split('}').next())
+        .expect("HTTP active-menu bind input should exist");
+    assert!(http_bind_input.contains("pub menu_id: Uuid"));
+    assert!(!http_bind_input.contains("channel_id"));
+    assert!(!http_bind_input.contains("tenant_id"));
+
+    for marker in [
+        "crate::controllers::get_active_menu",
+        "crate::controllers::bind_active_menu",
+        "crate::BindActiveMenuInput",
+        "crate::ActiveMenuBindingResponse",
+    ] {
+        assert!(
+            OPENAPI.contains(marker),
+            "OpenAPI active-menu contract must contain `{marker}`"
+        );
+    }
+
+    assert!(!GRAPHQL_QUERY.contains("menu::Column::Location"));
+    assert!(!HTTP.contains("menu_by_location"));
 }
 
 #[test]

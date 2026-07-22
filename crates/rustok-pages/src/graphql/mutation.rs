@@ -1,6 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
-    Action, AuthContext, Permission, Resource, TenantContext,
+    Action, AuthContext, Permission, RequestContext, Resource, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
     has_any_effective_permission,
 };
@@ -9,8 +9,9 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuItemInput,
-    MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput, PageBodyInput,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuBindingService,
+    MenuItemInput, MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput,
+    PageBodyInput,
     PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
     PublishPageInput, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
@@ -24,6 +25,7 @@ const MODULE_SLUG: &str = "pages";
 const PAGE_METADATA_VERSION_CONFLICT: &str = "PAGE_METADATA_VERSION_CONFLICT";
 const PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND: &str =
     "PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND";
+const CHANNEL_CONTEXT_REQUIRED: &str = "CHANNEL_CONTEXT_REQUIRED";
 
 #[derive(Default)]
 pub struct PagesMutation;
@@ -98,6 +100,32 @@ impl PagesMutation {
                     location: menu_location_input(input.location),
                     items: input.items.into_iter().map(menu_item_input).collect(),
                 },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
+    async fn bind_active_menu(
+        &self,
+        ctx: &Context<'_>,
+        input: BindGqlActiveMenuInput,
+    ) -> Result<GqlActiveMenuBinding> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, None)?;
+        let channel_id = current_channel_id(ctx)?;
+
+        MenuBindingService::new(db.clone(), event_bus.clone())
+            .bind(
+                tenant_id,
+                page_security(&auth),
+                channel_id,
+                input.location.into(),
+                input.menu_id,
             )
             .await
             .map(Into::into)
@@ -314,6 +342,19 @@ fn menu_location_input(input: GqlMenuLocation) -> MenuLocation {
         GqlMenuLocation::Sidebar => MenuLocation::Sidebar,
         GqlMenuLocation::Mobile => MenuLocation::Mobile,
     }
+}
+
+fn current_channel_id(ctx: &Context<'_>) -> Result<Uuid> {
+    ctx.data_opt::<RequestContext>()
+        .and_then(|request_context| request_context.channel_id)
+        .ok_or_else(|| {
+            async_graphql::Error::new(
+                "Active menu binding requires a resolved current channel",
+            )
+            .extend_with(|_, extensions| {
+                extensions.set("code", CHANNEL_CONTEXT_REQUIRED);
+            })
+        })
 }
 
 fn create_publish_bypass_error() -> async_graphql::Error {

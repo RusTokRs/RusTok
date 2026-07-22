@@ -14,7 +14,8 @@ use uuid::Uuid;
 use crate::PageService;
 use crate::services::page::is_page_visible_for_channel;
 use crate::services::{
-    MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE, MenuService,
+    MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE,
+    MenuBindingService, MenuService,
 };
 
 use super::types::*;
@@ -91,6 +92,46 @@ impl PagesQuery {
             .await
         {
             Ok(menu) => Ok(Some(menu.into())),
+            Err(crate::PagesError::MenuNotFound(_)) => Ok(None),
+            Err(crate::PagesError::Rich(rich))
+                if rich.error_code.as_deref() == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(map_menu_query_error(error)),
+        }
+    }
+
+    async fn active_menu(
+        &self,
+        ctx: &Context<'_>,
+        location: GqlMenuLocation,
+        locale: Option<String>,
+    ) -> Result<Option<GqlMenu>> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        require_public_pages_channel_enabled(ctx).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let Some(channel_id) = ctx
+            .data_opt::<RequestContext>()
+            .and_then(|request_context| request_context.channel_id)
+        else {
+            return Ok(None);
+        };
+        let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
+
+        match MenuBindingService::new(db.clone(), event_bus.clone())
+            .get_active(
+                tenant.id,
+                request_security_context(ctx),
+                channel_id,
+                location.into(),
+                &effective_locale,
+            )
+            .await
+        {
+            Ok(menu) => Ok(menu.map(Into::into)),
             Err(crate::PagesError::MenuNotFound(_)) => Ok(None),
             Err(crate::PagesError::Rich(rich))
                 if rich.error_code.as_deref() == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
