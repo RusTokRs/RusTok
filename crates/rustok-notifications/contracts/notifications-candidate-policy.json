@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "slice": "NOTIFY-03B/07A",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner": "rustok-notifications",
+  "migration": "crates/rustok-notifications/src/migrations/m20260722_000012_add_candidate_processing.rs",
+  "service": "crates/rustok-notifications/src/candidate.rs",
+  "candidate_processing": {
+    "table": "notification_fanout_items",
+    "claimable_states": [
+      "pending",
+      "retryable_error",
+      "expired_processing"
+    ],
+    "terminal_states": [
+      "processed",
+      "skipped",
+      "failed"
+    ],
+    "lease_seconds": 60,
+    "expired_lease_cannot_finish": true,
+    "attempt_count_persisted": true,
+    "retry_schedule_persisted": true
+  },
+  "preference_policy": {
+    "precedence": [
+      "exact_source_exact_type",
+      "exact_source_any_type",
+      "any_source_exact_type",
+      "any_source_any_type"
+    ],
+    "no_matching_row_default_in_app": true,
+    "delivery_mode_off_suppresses": true,
+    "in_app_disabled_suppresses": true,
+    "rechecked_inside_final_transaction": true
+  },
+  "recipient_privacy_policy": {
+    "injected_trait_required": true,
+    "allow_all_default_forbidden": true,
+    "typed_suppressions": [
+      "recipient_unavailable",
+      "profile_restricted",
+      "blocked",
+      "muted",
+      "tenant_restricted"
+    ],
+    "retryable_failure_persisted": true,
+    "production_profile_block_adapter_deferred": true
+  },
+  "source_authorization": {
+    "authorize_target_open_before_creation": true,
+    "recipient_id_required": true,
+    "unavailable_target_suppressed": true,
+    "provider_absence_retryable": true,
+    "must_recheck_on_open_and_delayed_delivery": true
+  },
+  "final_notification": {
+    "table": "notifications",
+    "dedupe_identity": [
+      "tenant_id",
+      "recipient_id",
+      "source_slug",
+      "source_event_id",
+      "notification_type"
+    ],
+    "semantic_replay_equality_required": true,
+    "candidate_completion_same_transaction": true,
+    "creates_in_app_row": true,
+    "creates_delivery_attempts": false,
+    "grouping_deferred": true
+  },
+  "tests": [
+    "crates/rustok-notifications/tests/candidate_sqlite.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-candidate-policy.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "production profile and block privacy adapter",
+    "production outbox consumer runner",
+    "channel delivery enqueue",
+    "grouping policy",
+    "moderator audience expansion",
+    "PostgreSQL lease concurrency evidence",
+    "retention and reconciliation commands",
+    "recipient privacy recheck on inbox open and delayed delivery"
+  ]
+}

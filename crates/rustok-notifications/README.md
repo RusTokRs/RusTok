@@ -5,9 +5,9 @@
 `rustok-notifications` owns notification inbox state, recipient preferences,
 bounded fan-out, grouping, digests, retention, and channel delivery attempts.
 The current implementation provides the neutral source boundary, optional runtime
-composition, owner persistence, a durable source-event inbox, and bounded
-candidate fan-out. Final notification creation remains closed until preference
-and privacy policy are implemented.
+composition, durable source intake, bounded candidate fan-out, and a policy-gated
+command that can create one final in-app notification. Channel delivery remains a
+separate later workflow.
 
 ## Responsibilities
 
@@ -19,8 +19,8 @@ and privacy policy are implemented.
 - accept source events idempotently and retain them while a source provider is
   temporarily unavailable;
 - resolve candidate recipients in bounded cursor pages under recoverable leases;
-- apply notification preferences, privacy, visibility, blocks, and delivery
-  policy before creating inbox or channel work;
+- apply notification preferences, injected recipient privacy policy, and current
+  source authorization before creating an inbox row;
 - own retention, replay, reconciliation, and delivery-attempt lifecycle.
 
 ## Non-responsibilities
@@ -28,7 +28,7 @@ and privacy policy are implemented.
 - producer subscriptions and source lifecycle;
 - SMTP, push-vendor, or SMS SDK implementation;
 - authentication identity and contact data;
-- source authorization policy or source-private tables;
+- source-private tables or Profiles-owned block/profile persistence;
 - synchronous notification calls inside producer transactions.
 
 ## Entry points
@@ -36,8 +36,11 @@ and privacy policy are implemented.
 - `NotificationsModule`
 - `NotificationsService`
 - `NotificationFanoutService`
+- `NotificationCandidateService`
+- `NotificationRecipientPolicy`
 - `NotificationSourceInboxReceipt`
 - `NotificationFanoutPageResult`
+- `NotificationCandidateProcessResult`
 - `rustok_notifications::api` re-export of the neutral source contract
 - `rustok_notifications::entities`
 - `rustok_notifications::model`
@@ -50,10 +53,11 @@ storage for notifications, delivery attempts, fan-out jobs/items, preferences,
 digest jobs/items, and push subscriptions.
 
 `m20260722_000011_create_notification_source_inbox` adds a durable source-event
-inbox deduplicated by tenant, source slug, and source event ID. A replay with a
-changed event type or source revision conflicts. Processing, retry, suppression,
-rejection, completion, and expired-lease recovery are explicit persisted states.
-A completed source inbox row retains its linked fan-out job.
+inbox deduplicated by tenant, source slug, and source event ID.
+
+`m20260722_000012_add_candidate_processing` adds processing/retry leases to
+fan-out candidates, typed retryable/terminal states, and recovery indexes while
+preserving SQLite tenant-integrity triggers.
 
 The database enforces tenant-composite recipient integrity, source-event and
 idempotency dedupe, typed state/channel/mode values, read-implies-seen semantics,
@@ -64,23 +68,31 @@ payload, or plaintext push endpoint is persisted.
 The migrations are exposed through `NotificationsModule::migrations`. Global
 `rustok-migrations` server composition remains a verification-gated follow-up.
 
-## Durable candidate fan-out
+## Durable source and candidate processing
 
-`NotificationFanoutService` separates source processing into explicit phases:
+`NotificationFanoutService` separates source processing into durable event
+acceptance, descriptor materialization, and bounded cursor fan-out. Its output is
+an idempotent set of `pending` candidates, not inbox rows.
 
-1. `enqueue_source_event` durably accepts the typed source identity without
-   requiring the provider to be currently available;
-2. `materialize_source_event` leases the inbox row, invokes the registered source
-   provider, stores the bounded semantic descriptor, and creates or replays one
-   fan-out job;
-3. `process_fanout_page` leases that job, resolves one audience page capped at
-   256 recipients, persists idempotent `pending` candidate items, and advances the
-   cursor or completes the job.
+`NotificationCandidateService` requires an explicitly injected
+`NotificationRecipientPolicy`; there is no allow-all default. For one candidate it:
 
-Candidate items are not notifications. This slice deliberately creates no
-`notifications` rows and no delivery attempts. Preference, profile/block privacy,
-recipient-specific source authorization, and channel policy must process each
-candidate first.
+1. claims a recoverable candidate lease;
+2. resolves exact source/type preferences before wildcard preferences;
+3. evaluates the injected recipient/profile/block/mute policy;
+4. reauthorizes the current source target for that recipient;
+5. rechecks the preference in the final transaction;
+6. inserts or validates one deduplicated in-app notification and completes the
+   candidate under the same lease CAS.
+
+Disabled preferences, privacy suppression, and unavailable targets become stable
+`skipped` outcomes. Retryable policy/provider failures retain retry state.
+Changed semantic replay fails closed. No channel delivery attempt is created by
+this workflow.
+
+The production Profiles/block adapter remains deferred. Privacy and source
+visibility must be checked again when an inbox item is opened and before delayed
+delivery.
 
 ## Interactions
 
@@ -92,16 +104,15 @@ capabilities.
 
 Forum supports `forum.topic.created` and `forum.mention.user_added`. The user
 mention provider binds the event to the exact immutable `forum_user_mentions`
-row, rechecks current topic/reply visibility before describing and resolving the
-single recipient, defers pending replies, suppresses self-mentions, and fails
-closed for deleted, hidden, closed, or channel-restricted sources. Moderator
-audience expansion remains deferred until a bounded owner directory port exists.
+row, rechecks current topic/reply visibility, defers pending replies, suppresses
+self-mentions, and fails closed for deleted, hidden, closed, or channel-restricted
+sources. Moderator audience expansion remains deferred until a bounded owner
+directory port exists.
 
 Forum commands continue to succeed when the notifications owner is tenant-
-disabled or absent. The module is compiled into the selected distribution but is
-not in `settings.default_enabled`; tenant composition therefore remains
-notifications-off by default. Admin/storefront packages still expose only
-foundation or unavailable states until inbox APIs exist.
+disabled or absent. Notifications remains outside `settings.default_enabled`.
+Admin/storefront packages still expose only foundation or unavailable states
+until inbox APIs exist.
 
 ## Documentation
 

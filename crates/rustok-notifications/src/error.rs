@@ -15,6 +15,8 @@ pub enum NotificationError {
     ProviderRejected,
     #[error("notification source provider failed")]
     ProviderFailure { retryable: bool },
+    #[error("notification recipient policy is unavailable")]
+    RecipientPolicyFailure { retryable: bool },
     #[error("notification source event identity conflicts with an existing inbox record")]
     SourceIdentityConflict,
     #[error("notification fan-out lease is unavailable")]
@@ -39,6 +41,7 @@ impl NotificationError {
             Self::InvalidEvent => "NOTIFICATION_SOURCE_EVENT_INVALID",
             Self::ProviderRejected => "NOTIFICATION_SOURCE_EVENT_REJECTED",
             Self::ProviderFailure { .. } => "NOTIFICATION_SOURCE_PROVIDER_FAILURE",
+            Self::RecipientPolicyFailure { .. } => "NOTIFICATION_RECIPIENT_POLICY_FAILURE",
             Self::SourceIdentityConflict => "NOTIFICATION_SOURCE_IDENTITY_CONFLICT",
             Self::LeaseUnavailable => "NOTIFICATION_FANOUT_LEASE_UNAVAILABLE",
             Self::CursorDidNotAdvance => "NOTIFICATION_FANOUT_CURSOR_STALLED",
@@ -52,7 +55,9 @@ impl NotificationError {
     pub const fn is_retryable(&self) -> bool {
         match self {
             Self::SourceUnavailable | Self::LeaseUnavailable | Self::Database(_) => true,
-            Self::ProviderFailure { retryable } => *retryable,
+            Self::ProviderFailure { retryable } | Self::RecipientPolicyFailure { retryable } => {
+                *retryable
+            }
             Self::UnsupportedEvent
             | Self::InvalidEvent
             | Self::ProviderRejected

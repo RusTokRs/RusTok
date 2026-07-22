@@ -117,10 +117,14 @@ pub enum NotificationSourceInboxStatus {
 pub enum FanoutItemStatus {
     #[sea_orm(string_value = "pending")]
     Pending,
+    #[sea_orm(string_value = "processing")]
+    Processing,
     #[sea_orm(string_value = "processed")]
     Processed,
     #[sea_orm(string_value = "skipped")]
     Skipped,
+    #[sea_orm(string_value = "retryable_error")]
+    RetryableError,
     #[sea_orm(string_value = "failed")]
     Failed,
 }
