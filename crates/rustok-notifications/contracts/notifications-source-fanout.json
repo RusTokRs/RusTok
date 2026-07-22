@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "slice": "NOTIFY-01B/03A",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner": "rustok-notifications",
+  "migration": "crates/rustok-notifications/src/migrations/m20260722_000011_create_notification_source_inbox.rs",
+  "service": "crates/rustok-notifications/src/fanout.rs",
+  "source_inbox": {
+    "table": "notification_source_inbox",
+    "dedupe_identity": [
+      "tenant_id",
+      "source_slug",
+      "source_event_id"
+    ],
+    "changed_event_type_or_revision_conflicts": true,
+    "provider_absence_retryable_after_enqueue": true,
+    "lease_seconds": 60,
+    "terminal_states": [
+      "completed",
+      "suppressed",
+      "rejected"
+    ]
+  },
+  "fanout_job": {
+    "existing_table": "notification_fanout_jobs",
+    "descriptor_max_bytes": 16384,
+    "audience_page_max": 256,
+    "cursor_must_advance": true,
+    "lease_recovery": true,
+    "descriptor_replay_must_match": true
+  },
+  "candidate_items": {
+    "existing_table": "notification_fanout_items",
+    "dedupe_identity": [
+      "tenant_id",
+      "fanout_job_id",
+      "recipient_id"
+    ],
+    "initial_status": "pending",
+    "creates_notification_rows": false,
+    "creates_delivery_attempts": false,
+    "privacy_and_preferences_required_before_processing": true
+  },
+  "forum_user_mention_source": {
+    "provider": "crates/rustok-forum/src/notification_source.rs",
+    "event_type": "forum.mention.user_added",
+    "relation_table": "forum_user_mentions",
+    "exact_relation_identity_required": true,
+    "source_visibility_rechecked_on_describe": true,
+    "source_visibility_rechecked_on_audience": true,
+    "pending_reply_is_retryable": true,
+    "hidden_deleted_or_restricted_source_is_suppressed": true,
+    "self_mention_is_suppressed": true,
+    "audience_page_size": 1,
+    "audience_mention_event_deferred": true
+  },
+  "tests": [
+    "crates/rustok-notifications/tests/fanout_sqlite.rs",
+    "crates/rustok-forum/tests/notification_source_sqlite.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-source-fanout.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "preference resolution",
+    "block and profile privacy rechecks",
+    "recipient-specific channel and group authorization",
+    "final notification row creation",
+    "delivery-attempt enqueue",
+    "forum moderator audience expansion",
+    "retention and reconciliation commands",
+    "production outbox relay consumer wiring"
+  ]
+}
