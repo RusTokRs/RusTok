@@ -1,4 +1,11 @@
+use uuid::Uuid;
+
+use crate::application_model::{
+    BulkReviewGroupMembershipApplicationsCommand, GroupsAdminApplicationReviewDecision,
+};
+
 const MAX_BULK_REVIEW_ITEMS: usize = 50;
+const MAX_REVIEW_NOTE_CHARS: usize = 2_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupsAdminBulkReviewInputError {
@@ -15,10 +22,7 @@ pub fn prepare_bulk_review_group_membership_applications(
     decision: GroupsAdminApplicationReviewDecision,
     note: Option<String>,
     confirmed: bool,
-) -> Result<
-    crate::application_model::BulkReviewGroupMembershipApplicationsCommand,
-    GroupsAdminBulkReviewInputError,
-> {
+) -> Result<BulkReviewGroupMembershipApplicationsCommand, GroupsAdminBulkReviewInputError> {
     if !confirmed {
         return Err(GroupsAdminBulkReviewInputError::ConfirmationRequired);
     }
@@ -48,11 +52,22 @@ pub fn prepare_bulk_review_group_membership_applications(
         return Err(GroupsAdminBulkReviewInputError::ReviewNoteTooLong);
     }
 
-    Ok(crate::application_model::BulkReviewGroupMembershipApplicationsCommand {
+    Ok(BulkReviewGroupMembershipApplicationsCommand {
         idempotency_key: format!("groups-admin-bulk-review-{}", Uuid::new_v4()),
         application_ids: normalized_ids,
         decision,
         note,
         confirmed,
+    })
+}
+
+fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {
+    Uuid::parse_str(value.trim()).map(|value| value.to_string())
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_string())
     })
 }
