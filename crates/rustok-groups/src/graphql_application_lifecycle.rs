@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use async_graphql::{Context, FieldError, MergedObject, Object, Result, SimpleObject};
+use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
@@ -10,9 +10,6 @@ use rustok_api::{
 use uuid::Uuid;
 
 use crate::graphql::GroupMembershipGql;
-use crate::graphql_application_cas::{
-    GroupsMutationRoot as GroupsBaseMutationRoot, GroupsQueryRoot as GroupsBaseQueryRoot,
-};
 use crate::graphql_applications::GroupMembershipApplicationGql;
 use crate::{
     CancelGroupMembershipApplicationRequest, GroupApplicationLifecycleCommandPort,
@@ -21,12 +18,6 @@ use crate::{
 };
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
-
-#[derive(MergedObject, Default)]
-pub struct GroupsQueryRoot(GroupsBaseQueryRoot, GroupsApplicationLifecycleQuery);
-
-#[derive(MergedObject, Default)]
-pub struct GroupsMutationRoot(GroupsBaseMutationRoot, GroupsApplicationLifecycleMutation);
 
 #[derive(Default)]
 pub struct GroupsApplicationLifecycleQuery;
