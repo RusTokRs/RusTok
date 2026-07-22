@@ -245,16 +245,12 @@ fn map_compensation_error(error: crate::CheckoutCompensationError) -> HttpError 
         crate::CheckoutCompensationError::Boundary {
             retryable: true, ..
         }
-        | crate::CheckoutCompensationError::Payment(_)
-        | crate::CheckoutCompensationError::PaymentOrchestration(_)
-        | crate::CheckoutCompensationError::Order(_)
         | crate::CheckoutCompensationError::ReservationJournal(_) => HttpError::new(
             StatusCode::CONFLICT,
             "checkout_compensation_pending",
             "Checkout compensation will be retried",
         ),
         crate::CheckoutCompensationError::Boundary { .. }
-        | crate::CheckoutCompensationError::Database(_)
         | crate::CheckoutCompensationError::CompensationAndJournal { .. } => {
             HttpError::internal("Checkout compensation is unavailable")
         }
