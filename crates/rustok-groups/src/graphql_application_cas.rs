@@ -31,6 +31,8 @@ use crate::{
     UpsertGroupApplicationPolicyRequest, GROUP_APPLICATION_POLICY_CHANGED_CODE,
 };
 
+include!("graphql_application_bulk_review.rs");
+
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(MergedObject, Default)]
@@ -44,6 +46,7 @@ pub struct GroupsQueryRoot(
 pub struct GroupsMutationRoot(
     GroupsPreApplicationMutationRoot,
     GroupsApplicationCasMutation,
+    GroupsApplicationBulkReviewMutation,
     GroupsApplicationLifecycleMutation,
 );
 
