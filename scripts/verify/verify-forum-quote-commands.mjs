@@ -81,9 +81,10 @@ for (const marker of [
   "enforce_owned_scope",
   "normalize_locale_tag",
   "FORUM_MAX_QUOTE_REFERENCES_PER_REVISION",
+  "FORUM_MAX_MENTION_TARGETS_PER_REVISION",
   "BTreeSet",
   "MentionRelationService::new",
-  "ForumRelationReadService",
+  "load_snapshot_in_tx",
 ]) {
   requireText(service, marker, `quote owner service is missing ${marker}`);
 }
@@ -95,11 +96,13 @@ requireOrder(
     ".prepare(",
     "let txn = self.db.begin().await?;",
     ".persist_in_tx(&txn, prepared)",
+    "load_snapshot_in_tx(",
     "txn.commit().await?;",
   ],
-  "quote replacement must prepare before and persist inside one owner transaction",
+  "quote replacement and its response must stay inside one owner transaction",
 );
 requireText(service, "input.quotes", "an explicit empty quote list must reach owner replacement");
+requireText(service, "quote_inputs_are_deduplicated_and_bounded", "quote bounds need owner unit coverage");
 reject(service, /rustok_notifications|NotificationService/, "quote commands must not call Notifications");
 reject(service, /handle_snapshot|projection_fingerprint/, "quote command DTO/service must not expose private relation fields");
 
