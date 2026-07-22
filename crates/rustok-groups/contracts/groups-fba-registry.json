@@ -10,28 +10,39 @@
     "ports": [
       {
         "name": "GroupSummaryReadPort",
-        "operations": ["read_group", "list_groups"],
+        "operations": [
+          "read_group",
+          "list_groups"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false
       },
       {
         "name": "GroupMembershipReadPort",
-        "operations": ["read_membership", "list_memberships"],
+        "operations": [
+          "read_membership",
+          "list_memberships"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false
       },
       {
         "name": "GroupAccessReadPort",
-        "operations": ["decide_group_access", "enabled_group_features"],
+        "operations": [
+          "decide_group_access",
+          "enabled_group_features"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false
       },
       {
         "name": "GroupLocalizationReadPort",
-        "operations": ["list_group_translations"],
+        "operations": [
+          "list_group_translations"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false,
@@ -39,7 +50,9 @@
       },
       {
         "name": "GroupInvitationReadPort",
-        "operations": ["list_group_invitations"],
+        "operations": [
+          "list_group_invitations"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false,
@@ -60,7 +73,9 @@
       },
       {
         "name": "GroupApplicationPolicyHistoryReadPort",
-        "operations": ["list_group_application_policy_revisions"],
+        "operations": [
+          "list_group_application_policy_revisions"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false,
@@ -68,8 +83,27 @@
         "append_only_source": "group_membership_policy_revisions"
       },
       {
+        "name": "GroupApplicationPolicyManagementReadPort",
+        "operations": [
+          "list_group_application_policy_locales",
+          "read_group_application_policy_for_management"
+        ],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_admin_or_platform_manage",
+        "selected_locale_source": "typed_request",
+        "port_context_locale_owner": "host_runtime",
+        "exact_locale_only": true,
+        "missing_policy": "empty_management_view_without_precondition",
+        "missing_translation": "empty_management_view_with_current_policy_precondition",
+        "module_local_fallback": false
+      },
+      {
         "name": "GroupApplicationLifecycleReadPort",
-        "operations": ["read_my_group_membership_application"],
+        "operations": [
+          "read_my_group_membership_application"
+        ],
         "policy": "read",
         "deadline_required": true,
         "idempotency_key_required": false,
@@ -85,7 +119,11 @@
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true,
-        "policy_precondition": ["policy_id", "revision", "locale"],
+        "policy_precondition": [
+          "policy_id",
+          "revision",
+          "locale"
+        ],
         "conflict_code": "groups.application_policy_changed",
         "precondition_check": "inside_owner_transaction_after_group_lock_before_state_write",
         "idempotent_replay_order": "receipt_before_precondition_recheck",
@@ -111,8 +149,13 @@
         "idempotency_key_required": true,
         "cancel_authorization": "authenticated_exact_candidate_only",
         "reopen_authorization": "active_owner_admin_moderator_or_platform_manage",
-        "cancel_from": ["pending"],
-        "reopen_from": ["rejected", "cancelled"],
+        "cancel_from": [
+          "pending"
+        ],
+        "reopen_from": [
+          "rejected",
+          "cancelled"
+        ],
         "cancel_membership_state": "left",
         "reopen_membership_state": "pending",
         "reopen_snapshot": "preserve",
@@ -127,14 +170,22 @@
       },
       {
         "name": "GroupCommandPort",
-        "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
+        "operations": [
+          "create_group",
+          "join_group",
+          "leave_group",
+          "set_group_feature"
+        ],
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true
       },
       {
         "name": "GroupLocalizationCommandPort",
-        "operations": ["upsert_group_translation", "delete_group_translation"],
+        "operations": [
+          "upsert_group_translation",
+          "delete_group_translation"
+        ],
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true,
@@ -163,7 +214,9 @@
       },
       {
         "name": "GroupTargetedInvitationCommandPort",
-        "operations": ["accept_targeted_group_invitation"],
+        "operations": [
+          "accept_targeted_group_invitation"
+        ],
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true,
@@ -198,7 +251,10 @@
       },
       {
         "name": "GroupGovernanceCommandPort",
-        "operations": ["change_group_role", "transfer_group_ownership"],
+        "operations": [
+          "change_group_role",
+          "transfer_group_ownership"
+        ],
         "policy": "write",
         "deadline_required": true,
         "idempotency_key_required": true,
@@ -212,7 +268,10 @@
     "public_summary_degraded_mode": "minimal_safe_summary_or_unavailable",
     "closed_group_discovery": "summary_shell",
     "closed_group_private_content": "active_membership_or_platform_manage",
-    "closed_group_redaction": ["translation_body", "feature_bindings"],
+    "closed_group_redaction": [
+      "translation_body",
+      "feature_bindings"
+    ],
     "secret_group_discovery": "never_disclose",
     "secret_group_direct_read": "not_found_without_membership_or_platform_manage",
     "action_split": {
@@ -269,7 +328,11 @@
       "group_membership_policy_revisions"
     ],
     "application_owner_table": "group_membership_applications",
-    "policy_locale_selection": "exact_host_effective_locale",
+    "candidate_policy_locale_selection": "exact_host_effective_locale",
+    "management_policy_locale_selection": "exact_typed_request",
+    "management_policy_locale_catalog": "implemented_source",
+    "management_policy_locale_context_substitution": "forbidden",
+    "management_missing_translation": "empty_view_with_current_policy_precondition",
     "module_local_fallback": false,
     "policy_revision": "monotonic_per_group",
     "policy_revision_capture": "same_transaction_database_trigger",
@@ -283,22 +346,37 @@
     "unique_current_application": "tenant_group_user",
     "approve_membership_state": "active",
     "reject_membership_state": "left",
-    "candidate_cancel_from": ["pending"],
+    "candidate_cancel_from": [
+      "pending"
+    ],
     "candidate_cancel_membership_state": "left",
     "candidate_cancel_snapshot": "preserve",
     "candidate_cancel_query_clear": "never",
-    "manager_reopen_from": ["rejected", "cancelled"],
+    "manager_reopen_from": [
+      "rejected",
+      "cancelled"
+    ],
     "manager_reopen_snapshot": "preserve",
-    "fresh_resubmit_from": ["rejected", "cancelled"],
+    "fresh_resubmit_from": [
+      "rejected",
+      "cancelled"
+    ],
     "fresh_resubmit_snapshot": "replace_with_current_cas_policy",
     "approve_member_count": "increment_same_transaction",
     "review_note_max_chars": 2000,
     "admin_review_ui": "implemented",
     "admin_reopen_ui": "implemented_source",
     "admin_policy_editor": "implemented_source",
+    "admin_policy_locale_picker": "implemented_source",
+    "admin_policy_locale_picker_mode": "datalist_existing_or_new_exact_locale",
+    "admin_policy_save_requires_loaded_management_view": true,
     "admin_policy_stale_preflight": "replaced_by_owner_cas",
     "atomic_expected_revision_guard": "implemented_source",
-    "atomic_expected_revision_fields": ["policy_id", "revision", "locale"],
+    "atomic_expected_revision_fields": [
+      "policy_id",
+      "revision",
+      "locale"
+    ],
     "atomic_expected_revision_conflict_code": "groups.application_policy_changed",
     "final_graphql_legacy_application_mutations": "not_exposed",
     "storefront_application_ui": "implemented",
@@ -322,7 +400,11 @@
       "marketplace.store",
       "media.gallery"
     ],
-    "degraded_modes": ["hidden", "readonly", "unavailable"],
+    "degraded_modes": [
+      "hidden",
+      "readonly",
+      "unavailable"
+    ],
     "implicit_fallback": false
   },
   "transport_profiles": [
@@ -330,13 +412,21 @@
       "name": "embedded_native",
       "provider": "GroupsService",
       "status": "implemented",
-      "surfaces": ["rust_port", "graphql", "leptos_server_function"]
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function"
+      ]
     },
     {
       "name": "embedded_localization_native",
       "provider": "GroupLocalizationService",
       "status": "implemented",
-      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function"
+      ],
       "implicit_fallback": false
     },
     {
@@ -374,10 +464,11 @@
       "status": "implemented_source",
       "surfaces": [
         "rust_read_port",
+        "rust_policy_management_read_port",
         "rust_cas_command_port",
         "rust_lifecycle_read_port",
         "rust_lifecycle_command_port",
-        "graphql_cas_review_and_lifecycle",
+        "graphql_policy_management_cas_review_and_lifecycle",
         "leptos_server_function",
         "admin_core",
         "admin_graphql_adapter",
@@ -405,7 +496,11 @@
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
       "status": "implemented",
-      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function"
+      ],
       "implicit_fallback": false
     },
     {
@@ -424,6 +519,7 @@
     "membership_policy_revision_static_boundary": "scripts/verify/verify-groups-membership-policy-revisions.mjs",
     "membership_application_policy_cas_static_boundary": "scripts/verify/verify-groups-application-policy-cas.mjs",
     "membership_application_lifecycle_static_boundary": "scripts/verify/verify-groups-application-lifecycle.mjs",
+    "membership_application_policy_locale_management_static_boundary": "scripts/verify/verify-groups-application-policy-locales.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
@@ -438,6 +534,7 @@
     "membership_application_policy_revision": null,
     "membership_application_policy_cas": null,
     "membership_application_lifecycle": null,
+    "membership_application_policy_locale_management": null,
     "membership_application_bulk_review": null,
     "governance_transport_parity": null,
     "governance_concurrency": null

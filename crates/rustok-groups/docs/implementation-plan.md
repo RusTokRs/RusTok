@@ -66,26 +66,36 @@ Optional modules never receive database foreign keys from Groups. Cross-module
 composition uses typed identifiers, typed ports, semantic events, and host-owned UI
 composition.
 
-### Multilingual storage
+### Multilingual storage and locale ownership
 
 Language-neutral state belongs to base tables. Canonical localized business copy
-belongs to exact-locale translation tables. The host resolves the effective locale;
-Groups normalizes and selects only that row. There is no English, first-row, or
+belongs to exact-locale translation tables. There is no English, first-row, or
 module-local fallback.
 
-Membership-application policies follow the same rule:
+Membership-application policies use:
 
-- `group_membership_policies` stores language-neutral revision/enabled state;
-- `group_membership_policy_translations` stores ordered bounded questions and rules
-  by exact locale;
-- `group_membership_policy_revisions` stores append-only exact-locale snapshots of
+- `group_membership_policies` for language-neutral revision/enabled state;
+- `group_membership_policy_translations` for ordered bounded questions and rules by
+  exact locale;
+- `group_membership_policy_revisions` for append-only exact-locale snapshots of
   successful policy writes;
-- a submitted application stores the policy revision, locale, and immutable
+- the submitted application for the exact policy revision, locale, and immutable
   question/rule snapshot seen by the candidate.
 
-The current visual editor and storefront application form are bound to the
-host-resolved exact locale. An explicit multi-locale management picker requires a
-future manager read contract carrying the selected locale.
+Candidate policy reads remain bound to the host-resolved effective locale carried in
+`PortContext.locale`. Management selection is a separate boundary:
+
+- `PortContext.locale` remains the host UI/request locale and is never replaced by a
+  manager-selected policy locale;
+- `GroupApplicationPolicyManagementReadPort` carries the selected exact locale in a
+  typed request;
+- the owner normalizes that request locale and selects only the matching translation;
+- the locale catalog lists existing exact-locale translation rows in stable order;
+- a missing policy returns an empty management view without a CAS precondition;
+- a missing translation for an existing policy returns an empty management view with
+  the current policy ID/revision and selected locale, allowing CAS-safe translation
+  creation;
+- no management read substitutes another locale or mutates host locale context.
 
 ### Privacy
 
@@ -133,8 +143,8 @@ exposed or validated.
 The older unconditional methods on `GroupApplicationCommandPort` remain public only
 for Rust source compatibility. Module-owned admin and storefront FFA do not use them
 for policy save or candidate submit. The final GraphQL root does not expose the
-legacy unconditional policy-save or candidate-submit mutations; it composes the
-pre-application mutation root with CAS save/submit, review, and application lifecycle.
+legacy unconditional policy-save or candidate-submit mutations; it composes policy
+history, policy management reads, CAS save/submit, review, and application lifecycle.
 Removing or versioning those legacy Rust methods remains a separate API migration gate.
 
 ## Current implementation state
@@ -158,10 +168,17 @@ The following source exists:
   approve/reject review;
 - append-only membership policy revision storage, manager-only history port, native
   and GraphQL history adapters, and a localized visual policy editor;
+- `GroupApplicationPolicyManagementReadPort` with an authorized locale catalog and
+  selected-locale management view;
+- GraphQL and native management reads that preserve host `PortContext.locale` while
+  carrying the selected exact locale in a typed request;
+- an admin datalist picker for existing or new normalized locale tags;
+- empty-form creation for a missing translation using the current policy CAS
+  precondition, without fallback or context substitution;
 - atomic expected-policy CAS for admin policy save and candidate submit under owner
   locking, with a stable conflict code and idempotent replay semantics;
-- final GraphQL no-bypass composition exposing CAS save/submit and review while
-  omitting the legacy unconditional application mutations;
+- final GraphQL no-bypass composition exposing policy management reads, CAS
+  save/submit, review, and lifecycle while omitting legacy unconditional mutations;
 - exact-candidate current-application reads through
   `GroupApplicationLifecycleReadPort`;
 - candidate cancellation from pending to cancelled, with membership moved to left,
@@ -173,11 +190,12 @@ The following source exists:
 - admin application status filtering and reopen controls;
 - storefront current-status, pending cancellation, approved duplicate-submit blocking,
   and rejected/cancelled fresh-resubmit UX;
-- admin stale-save handling that requires an explicit reload after conflict;
+- admin stale-save handling that invalidates the loaded management view and requires
+  explicit selected-locale reload;
 - storefront stale-submit handling that preserves the `apply` route, blocks repeated
   submit, clears old answers on explicit reload, and reloads the exact-locale policy;
 - Rust ports, final merged GraphQL roots, native Leptos server functions, explicit
-  native/GraphQL transport selection, admin review/reopen UI, and storefront
+  native/GraphQL transport selection, admin policy/review/reopen UI, and storefront
   application lifecycle UI;
 - EN/RU copy, FBA registry, live README contracts, and focused static guards.
 
@@ -185,12 +203,15 @@ The following evidence remains open and must not be inferred:
 
 - compilation and executed unit/integration tests;
 - PostgreSQL and SQLite migration execution/rollback evidence;
-- native/GraphQL result, stable-code, and error parity;
+- native/GraphQL result, stable-code, locale-catalog, and error parity;
+- management authorization, locale normalization, missing-policy, and
+  missing-translation runtime evidence;
 - policy history backfill, trigger atomicity, append-only rejection, and pagination
   execution;
 - atomic stale policy save/submit race execution and lock-order evidence;
 - exact-candidate read isolation, lifecycle replay, transition-race, and lock-order
   execution;
+- concurrent locale writers and new-translation creation race evidence;
 - concurrent cancel/review/reopen/resubmit terminal-outcome evidence;
 - removal or versioned deprecation of the legacy unconditional Rust methods;
 - bulk-review limits, confirmation, partial-failure, and audit evidence;
@@ -206,9 +227,9 @@ The following evidence remains open and must not be inferred:
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
 | GROUPS-02 | in_progress | group identity, localized presentation, visibility, join policy, feature bindings, receipts/audit, targeted source events | lifecycle/runtime/concurrency evidence |
 | GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | request/bans/concurrency completion |
-| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, application-CAS, application-lifecycle, governance ports | provider/consumer/fallback runtime matrix |
+| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, policy-management, application-CAS, application-lifecycle, governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, storefront discovery, invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
-| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, candidate cancellation, manager reopen, stale/resubmit UX | legacy Rust-port migration, bulk safety, profiles/events, parity, concurrency, accessibility |
+| GROUPS-06 | in_progress | localized policy, selected-locale management, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, candidate cancellation, manager reopen, stale/resubmit UX | legacy Rust-port migration, bulk safety, profiles/events, parity, concurrency, accessibility |
 | GROUPS-07 | planned | bans, suspension, expiry, reason, bulk moderation, moderation adapter | all implementation/evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and group navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
@@ -216,7 +237,7 @@ The following evidence remains open and must not be inferred:
 | GROUPS-11 | planned | Marketplace/Store seller context and listing composition | seller/checkout boundary evidence |
 | GROUPS-12 | planned | Media gallery, avatar/cover, Events and Chat providers | provider lifecycle/degradation evidence |
 | GROUPS-13 | in_progress | notifications, search/SEO, moderation, profiles/media integration | consumer runtime and privacy evidence |
-| GROUPS-14 | in_progress | storefront/admin UX, localization, loading/error/success states | pickers, confirmation, accessibility, parity |
+| GROUPS-14 | in_progress | storefront/admin UX, localization, loading/error/success states | profile/group pickers, confirmation, accessibility, parity |
 | GROUPS-15 | planned | group feed/wall aggregation without ownership leakage | feed owner contract and ranking evidence |
 | GROUPS-16 | planned | analytics and operator observability | privacy-safe metrics/evidence |
 | GROUPS-17 | planned | import/export, retention, deletion, tenant lifecycle | compliance/recovery evidence |
@@ -242,6 +263,8 @@ The following evidence remains open and must not be inferred:
 - `GroupApplicationReadPort::read_group_application_policy`;
 - `GroupApplicationReadPort::list_group_membership_applications`;
 - `GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions`;
+- `GroupApplicationPolicyManagementReadPort::list_group_application_policy_locales`;
+- `GroupApplicationPolicyManagementReadPort::read_group_application_policy_for_management`;
 - `GroupApplicationLifecycleReadPort::read_my_group_membership_application`;
 - `GroupApplicationCasCommandPort::upsert_group_application_policy_if_current`;
 - `GroupApplicationCasCommandPort::submit_group_membership_application_if_current`;
@@ -249,31 +272,42 @@ The following evidence remains open and must not be inferred:
 - `GroupApplicationLifecycleCommandPort::reopen_group_membership_application`;
 - `GroupApplicationCommandPort::review_group_membership_application`.
 
-The history read port uses the same active owner/admin/moderator or platform-manage
-authorization boundary as application review. Candidates cannot enumerate policy
-history. The lifecycle read port returns only the authenticated actor's exact
-tenant/group application and never permits cross-candidate enumeration.
+The history read port uses active owner/admin/moderator or platform-manage
+authorization. The management read port uses active owner/admin or platform-manage
+authorization, matching policy writes. Candidates cannot enumerate policy history or
+management locale rows. The lifecycle read port returns only the authenticated
+actor's exact tenant/group application and never permits cross-candidate enumeration.
 
 `GroupApplicationCommandPort::upsert_group_application_policy` and
 `submit_group_membership_application` remain Rust compatibility methods. They are not
 used by module-owned FFA and are not exposed by the final GraphQL root.
 
-### Policy invariants
+### Policy and selected-locale management invariants
 
-- policy management requires active owner/admin or platform `groups:manage`;
+- candidate policy reads require the host-resolved exact locale and never select
+  another row;
+- manager catalog/read requires active owner/admin or platform `groups:manage`;
+- the selected exact locale is a normalized typed request field;
+- `PortContext.locale` remains host-owned request/UI context and is not overwritten;
+- locale catalog ordering is ascending and contains only existing translation rows;
+- a group with no policy returns an empty management view without policy ID/revision;
+- an existing policy with no selected translation returns an empty management view
+  with current policy ID/revision and `translation_exists=false`;
+- saving a new translation therefore carries the current policy CAS precondition and
+  cannot silently overwrite a concurrent policy revision;
+- no English, first-row, request-header, or module-local fallback is permitted;
 - questions and rules use stable normalized keys;
 - each policy contains at most 20 questions and 20 rules;
 - prompts, help text, rule titles/bodies, and answer limits are bounded by Unicode
   scalar count;
-- policy reads require the host-resolved exact locale and never select another row;
-- a CAS update requires either no expected policy when no policy exists, or a matching
-  policy ID, positive revision, and exact locale when a policy exists;
-- the comparison occurs after the group lock and before policy state mutation;
-- a mismatch returns `groups.application_policy_changed` and writes no owner state;
+- CAS update requires no expected policy only when no policy exists; an existing
+  policy always requires matching ID, positive revision, and selected locale;
+- comparison occurs after the group lock and before policy state mutation;
+- mismatch returns `groups.application_policy_changed` and writes no owner state;
 - successful policy upsert increments policy revision and group version atomically
   with receipt and audit;
-- policy revision capture occurs in the same database transaction through PostgreSQL
-  or SQLite triggers;
+- policy revision capture occurs in the same transaction through PostgreSQL or SQLite
+  triggers;
 - current policy rows remain mutable owner state while revision rows are append-only;
 - history ordering is revision descending and locale ascending within a tenant/group.
 
@@ -314,9 +348,9 @@ used by module-owned FFA and are not exposed by the final GraphQL root.
 ### Manager reopen invariants
 
 - reopen requires active owner/admin/moderator or platform authority;
-- authorization occurs before the current application status is disclosed or validated;
+- authorization occurs before current application status is disclosed or validated;
 - only rejected or cancelled applications may be reopened;
-- the group must remain active, non-secret, and use `request` join policy;
+- group must remain active, non-secret, and use `request` join policy;
 - membership must be `left`, non-banned, and non-active;
 - membership and application move to `pending`, and previous review metadata is cleared;
 - submitted timestamp, policy identity/revision/locale, snapshot, answers, and
@@ -332,51 +366,55 @@ used by module-owned FFA and are not exposed by the final GraphQL root.
 - only a pending application may be reviewed;
 - approve moves membership to `active`, records `joined_at`, increments member count,
   and marks the application approved;
-- reject moves membership to `left`, records `left_at`, and marks the application
-  rejected;
+- reject moves membership to `left`, records `left_at`, and marks application rejected;
 - review note is optional and bounded to 2,000 characters;
 - application, membership, group version, audit, and receipt commit together;
 - application and group rows use exclusive locks where supported.
 
 ### FFA surfaces
 
-- admin framework-neutral policy/history/review/reopen models and preparation core;
-- admin native and GraphQL CAS policy/history/list/review/reopen adapters through one
-  facade;
-- localized visual policy editor for adding/removing/reordering questions and rules;
-- editor history list with revision, locale, actor, timestamp, enabled state, and item
-  counts;
-- host-resolved locale rendered read-only in the current editor;
-- editor submits its loaded policy identity to owner CAS and requires explicit reload
-  after `groups.application_policy_changed`;
+- admin framework-neutral policy-locale/history/review/reopen models and preparation
+  core;
+- admin native and GraphQL locale-catalog, selected-locale management, CAS
+  save/history/list/review/reopen adapters through one facade;
+- localized visual policy editor with a datalist of existing locales and support for a
+  new exact locale;
+- locale change invalidates loaded CAS state and clears locale-specific questions and
+  rules until explicit load;
+- save remains disabled until the selected management view has loaded;
+- missing translations render as an explicit empty form, never fallback copy;
+- editor history list includes revision, locale, actor, timestamp, enabled state, and
+  item counts;
+- editor submits loaded policy identity to owner CAS and requires explicit selected
+  locale reload after `groups.application_policy_changed`;
 - admin status filtering covers pending, approved, rejected, and cancelled rows;
-- reopen controls are rendered only for rejected/cancelled applications;
+- reopen controls render only for rejected/cancelled applications;
 - localized application workspace displays candidate, policy revision/locale, answers,
   and acknowledged rules;
 - storefront request-group links use `apply=<group_uuid>`;
-- storefront loads the exact candidate's current application before exposing controls;
-- pending status exposes candidate cancel, approved status blocks duplicate submit, and
-  rejected/cancelled status exposes a fresh current-policy CAS form;
-- stale storefront forms block repeated submit, preserve the route, and expose explicit
+- storefront loads exact candidate status before exposing controls;
+- pending exposes cancel, approved blocks duplicate submit, and rejected/cancelled
+  exposes a fresh current-policy CAS form;
+- stale storefront forms block repeated submit, preserve route, and require explicit
   reload that clears old answers and acknowledgements;
-- `apply` query removal occurs only after successful submission, never cancellation;
+- `apply` removal occurs only after successful submission, never cancellation;
 - no implicit native/GraphQL fallback.
 
 ### GROUPS-06 remaining work
 
-- remove or version-deprecate the legacy unconditional Rust policy save/submit methods
+- remove or version-deprecate legacy unconditional Rust policy save/submit methods
   after all external Rust consumers migrate to `GroupApplicationCasCommandPort`;
-- explicit multi-locale admin picker backed by an owner manager read contract carrying
-  the selected exact locale;
-- bulk review with bounded selection, confirmation, per-item results, and audit;
+- bounded bulk review with confirmation, per-item results, and audit;
 - profile-backed candidate summaries through `ProfilesReader` without copying profile
   state;
-- application submitted/reviewed/cancelled/reopened semantic events and optional
-  Notifications consumer;
-- operator filtering, pagination controls, pickers, and audit/receipt history;
+- submitted/reviewed/cancelled/reopened semantic events and optional Notifications
+  consumer;
+- operator filtering, pagination controls, group/member pickers, and audit/receipt
+  history;
+- locale translation deletion/lifecycle policy if product requirements need it;
 - keyboard, focus, validation association, and screen-reader evidence;
-- executed parity, replay, stale-race, lifecycle-race, concurrency, lock-order,
-  migration, security, retry, and recovery evidence.
+- executed parity, replay, stale-race, locale-creation race, lifecycle-race,
+  concurrency, lock-order, migration, security, retry, and recovery evidence.
 
 ## Other open Groups contracts
 
@@ -407,24 +445,28 @@ ownership and Groups never embeds another module's business UI directly.
 ## Degraded modes
 
 - Groups access provider unavailable: deny private content.
-- Application exact-locale policy unavailable: application form/editor is unavailable;
-  do not select another locale.
-- Policy CAS conflict: write no owner state, preserve the selected transport error, and
-  require explicit reload before retry.
+- Candidate exact-locale policy unavailable: application form is unavailable; do not
+  select another locale.
+- Management locale catalog unavailable: disable locale selection/save; do not infer
+  locale rows from history or host locale.
+- Selected management translation missing: show explicit empty management form with
+  current CAS identity; never substitute another translation.
+- Policy CAS conflict: write no owner state, preserve selected transport error, and
+  require explicit selected-locale reload before retry.
 - Current-application lifecycle read unavailable: do not guess candidate status or
   expose submit/cancel controls.
-- Lifecycle command transport failure: preserve the selected-path error and `apply`
-  route; never retry through the other path.
+- Lifecycle command transport failure: preserve selected-path error and `apply` route;
+  never retry through the other path.
 - Policy history unavailable: current owner policy remains authoritative; hide history
   and do not synthesize revisions.
-- Native or GraphQL application transport failure: surface the selected-path error;
-  never retry through the other path.
+- Native or GraphQL application transport failure: surface selected-path error; never
+  retry through the other path.
 - Profiles unavailable: show stable UUID/placeholder, never copy canonical profile
   fields into Groups.
-- Notifications unavailable: Groups command succeeds and owner state remains the
-  source of truth.
-- Search/index unavailable: group/application owner writes succeed; projections may
-  catch up asynchronously once their owner integration exists.
+- Notifications unavailable: Groups command succeeds and owner state remains source
+  of truth.
+- Search/index unavailable: owner writes succeed; projections may catch up once their
+  owner integration exists.
 
 ## Verification matrix
 
@@ -445,6 +487,7 @@ node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
 node scripts/verify/verify-groups-application-lifecycle.mjs
+node scripts/verify/verify-groups-application-policy-locales.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
@@ -455,7 +498,11 @@ Additional executable evidence required for GROUPS-06 promotion:
 - PostgreSQL and SQLite migration up/down or documented irreversible-policy evidence;
 - policy revision backfill, capture trigger, append-only update/delete rejection, and
   manager authorization;
-- policy exact-locale read and missing-locale failure;
+- candidate exact-locale read and missing-locale failure;
+- manager locale catalog ordering, authorization, normalization, and no-fallback;
+- host `PortContext.locale` preservation across native/GraphQL management reads;
+- missing-policy view and missing-translation empty management view behavior;
+- CAS-safe concurrent creation of a new locale translation;
 - required/optional question and rule validation;
 - banned, active-member, secret-group, and non-request-group denial;
 - idempotent CAS policy save, CAS submit, review, cancel, and reopen replay;
@@ -467,7 +514,8 @@ Additional executable evidence required for GROUPS-06 promotion:
 - concurrent duplicate submit;
 - concurrent cancel/review/reopen/resubmit with one valid terminal outcome;
 - approve member-count correctness and no double increment;
-- native/GraphQL result, conflict-code, lifecycle, and error parity;
+- native/GraphQL locale-catalog, management-view, result, conflict-code, lifecycle, and
+  error parity;
 - selected-transport no-fallback behavior;
 - EN/RU editor/form/review/lifecycle rendering and accessibility execution.
 
@@ -485,6 +533,7 @@ security, retry, or recovery command was executed for this source slice. Therefo
 - `membership_application_policy_revision` remains `null`;
 - `membership_application_policy_cas` remains `null`;
 - `membership_application_lifecycle` remains `null`;
+- `membership_application_policy_locale_management` remains `null`;
 - `membership_application_bulk_review` remains `null`.
 
 ## Definition of release-ready Groups MVP
@@ -493,7 +542,7 @@ The Groups MVP is release-ready only when all of the following have executable
 evidence:
 
 - public/closed/secret privacy and tenant isolation;
-- localized identity and exact-locale management;
+- localized identity and exact-locale candidate/management behavior;
 - open join, application, invitation, leave, role, ownership, and ban workflows;
 - dynamic provider registry with Forum first and safe degraded modes;
 - public/admin storefront FFA with native/GraphQL parity and accessibility;

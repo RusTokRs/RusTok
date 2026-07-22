@@ -2,11 +2,11 @@ use rustok_api::normalize_locale_tag;
 use uuid::Uuid;
 
 use crate::application_model::{
-    GroupsAdminApplicationPolicyPrecondition, GroupsAdminApplicationPolicyQuery,
-    GroupsAdminApplicationQuestion, GroupsAdminApplicationReviewDecision,
-    GroupsAdminApplicationRule, GroupsAdminMembershipApplicationQuery,
-    ReopenGroupMembershipApplicationCommand, ReviewGroupMembershipApplicationCommand,
-    UpsertGroupApplicationPolicyCommand,
+    GroupsAdminApplicationPolicyLocaleCatalogQuery, GroupsAdminApplicationPolicyPrecondition,
+    GroupsAdminApplicationPolicyQuery, GroupsAdminApplicationQuestion,
+    GroupsAdminApplicationReviewDecision, GroupsAdminApplicationRule,
+    GroupsAdminMembershipApplicationQuery, ReopenGroupMembershipApplicationCommand,
+    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
 };
 
 const MAX_POLICY_QUESTIONS: usize = 20;
@@ -25,6 +25,15 @@ pub enum GroupsAdminApplicationInputError {
     InvalidRule,
     InvalidStatus,
     ReviewNoteTooLong,
+}
+
+pub fn prepare_group_application_policy_locale_catalog_query(
+    group_id: &str,
+) -> Result<GroupsAdminApplicationPolicyLocaleCatalogQuery, GroupsAdminApplicationInputError> {
+    Ok(GroupsAdminApplicationPolicyLocaleCatalogQuery {
+        group_id: normalize_uuid(group_id)
+            .map_err(|_| GroupsAdminApplicationInputError::InvalidGroupId)?,
+    })
 }
 
 pub fn prepare_group_application_policy_query(
