@@ -176,13 +176,14 @@
       "executed_evidence": "pending"
     },
     "rollback": {
-      "state": "service_and_public_transport_integrated",
+      "state": "service_public_transport_and_admin_control_integrated",
       "source": "crates/rustok-pages/src/services/page/rollback.rs",
       "artifact_set_source": "crates/rustok-pages/src/services/page/artifact_set.rs",
       "input": "RollbackPageInput",
       "result": "RollbackPageResult",
       "entrypoint": "rollback_to_previous",
-      "selection": "latest_distinct_publish_artifact_set",
+      "selection": "latest_matching_current_manifest_then_older_distinct_manifest",
+      "history_direction": "monotonic_older_only",
       "requires_current_status": "published",
       "concurrency": "expected_page_version",
       "idempotency_unique_key": [
@@ -217,13 +218,19 @@
         "materialize": false,
         "compile": false,
         "target_manifest_required": true,
+        "active_manifest_trace_required": true,
         "canonical_binding_integrity_verification": true,
         "complete_binding_replacement": true
       },
       "transport": {
         "graphql": "rollbackPage",
         "http": "/api/admin/pages/{id}/rollback",
-        "admin": "transport_connected_ui_action_pending"
+        "admin": "module_boundary_control_connected",
+        "admin_control_source": "crates/rustok-pages/admin/src/rollback_control.rs",
+        "browser_retry_source": "crates/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
+        "browser_retry_storage": "session_storage_expected_version_and_idempotency_key_only",
+        "ambiguous_network_or_5xx": "retain_and_replay_same_command_identity",
+        "definitive_graphql_or_4xx": "clear_pending_identity"
       },
       "cache_invalidation": "existing_NodePublished_generation_rotation",
       "error_codes": [
