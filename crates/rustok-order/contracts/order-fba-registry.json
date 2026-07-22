@@ -11,6 +11,7 @@
       "operations": [
         "complete_checkout",
         "read_checkout_result",
+        "read_checkout_result_by_operation",
         "read_order_status"
       ],
       "context": "rustok_api::ports::PortContext",
@@ -97,6 +98,17 @@
         ]
       },
       {
+        "operation": "read_checkout_result_by_operation",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
         "operation": "read_order_status",
         "profiles": [
           "in_process",
@@ -167,39 +179,43 @@
     }
   },
   "in_process_provider_impl": {
-    "service": "OrderService",
+    "service": "InProcessCheckoutCompletionPort",
+    "impl_type": "InProcessCheckoutCompletionPort",
     "source": "crates/rustok-order/src/ports.rs",
-    "status": "implemented",
+    "status": "source_ready_unvalidated",
     "notes": [
-      "complete_checkout enforces write semantics, delegates to OrderService create_order_with_channel, confirms the order, and reloads localized projection when locale context is provided",
-      "read_order_status delegates to owner OrderService read projection",
-      "read_checkout_result keeps typed unavailable until cart-id projection lands"
+      "complete_checkout requires write semantics and a UUID checkout operation in PortContext.causation_id",
+      "the adapter hashes immutable checkout facts and the complete request, adopts or binds one order-owner identity, and resumes pending or already placed orders",
+      "payment collection and shipping option facts are retained in the typed identity projection",
+      "read_checkout_result resolves by cart and read_checkout_result_by_operation resolves by checkout operation",
+      "public storage and invariant errors use stable safe PortError messages"
     ]
   },
   "checkout_identity_provider_impl": {
     "service": "InProcessCheckoutOrderIdentityPort",
+    "impl_type": "InProcessCheckoutOrderIdentityPort",
     "source": "crates/rustok-order/src/ports.rs",
     "status": "source_implemented_unvalidated",
     "notes": [
       "typed reads use order-owned order_checkout_identities persistence",
       "bind requires write idempotency and rejects conflicting operation/order/cart facts",
+      "nullable cart, hash, payment, and shipping facts may be populated once and never replaced or cleared",
       "adopt_legacy keeps temporary metadata lookup inside the owner compatibility adapter",
       "commerce consumers no longer query orders or inspect checkout identity metadata directly"
     ]
   },
   "runtime_evidence": {
     "checkout_completion_owner_path": {
-      "status": "runtime_verified",
+      "status": "source_ready_unvalidated",
       "source": "crates/rustok-order/src/ports.rs",
       "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
-      "verification_scope": "no_compile_source_locked_owner_path",
+      "verification_scope": "planned_cases_locked_no_runtime_promotion",
       "assertions": [
-        "complete_checkout_enforces_write_semantics",
-        "complete_checkout_delegates_to_order_service_create_order_with_channel",
-        "complete_checkout_confirms_order_before_snapshot",
-        "localized_snapshot_reload_uses_locale_context",
-        "read_order_status_enforces_read_policy",
-        "read_checkout_result_returns_typed_unavailable_until_cart_projection_lands"
+        "complete_checkout_requires_write_semantics_and_operation_identity",
+        "complete_checkout_uses_typed_identity_and_request_hashes",
+        "pending_order_replay_resumes_confirmation",
+        "cart_and_operation_result_reads_are_implemented",
+        "storage_errors_are_publicly_sanitized"
       ]
     },
     "checkout_identity_owner_path": {
