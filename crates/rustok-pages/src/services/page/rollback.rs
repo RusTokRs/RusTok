@@ -80,6 +80,7 @@ impl PageService {
             &txn,
             tenant_id,
             page_id,
+            existing_page.version,
             &source_artifact_set_hash,
         )
         .await?;
@@ -151,12 +152,23 @@ async fn find_previous_publish_target_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     page_id: Uuid,
+    current_page_version: i32,
     current_artifact_set_hash: &str,
 ) -> PagesResult<(page_publish_operation::Model, Vec<ArtifactSetMember>)> {
+    let cursor = find_current_publish_cursor_in_tx(
+        txn,
+        tenant_id,
+        page_id,
+        current_page_version,
+        current_artifact_set_hash,
+    )
+    .await?;
+
     let query = || {
         page_publish_operation::Entity::find()
             .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
             .filter(page_publish_operation::Column::PageId.eq(page_id))
+            .filter(page_publish_operation::Column::ResultVersion.lt(cursor.result_version))
             .order_by_desc(page_publish_operation::Column::ResultVersion)
             .order_by_desc(page_publish_operation::Column::PublishedAt)
     };
@@ -164,23 +176,7 @@ async fn find_previous_publish_target_in_tx(
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
     };
-
-    let mut current_index = None;
-    for (index, operation) in operations.iter().enumerate() {
-        verify_publish_operation_for_rollback(operation)?;
-        if operation.artifact_set_hash == current_artifact_set_hash {
-            load_publish_manifest_in_tx(txn, operation).await?;
-            current_index = Some(index);
-            break;
-        }
-    }
-    let current_index = current_index.ok_or_else(|| {
-        PagesError::rollback_target_unavailable(
-            "the active immutable artifact set is not traceable to a verified publish manifest",
-        )
-    })?;
-
-    for operation in operations.into_iter().skip(current_index + 1) {
+    for operation in operations {
         verify_publish_operation_for_rollback(&operation)?;
         if operation.artifact_set_hash == current_artifact_set_hash {
             continue;
@@ -191,6 +187,103 @@ async fn find_previous_publish_target_in_tx(
     Err(PagesError::rollback_target_unavailable(
         "no older distinct immutable publish artifact set is available",
     ))
+}
+
+async fn find_current_publish_cursor_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    current_page_version: i32,
+    current_artifact_set_hash: &str,
+) -> PagesResult<page_publish_operation::Model> {
+    let publish_query = || {
+        page_publish_operation::Entity::find()
+            .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_operation::Column::PageId.eq(page_id))
+            .filter(
+                page_publish_operation::Column::ArtifactSetHash.eq(current_artifact_set_hash),
+            )
+            .filter(page_publish_operation::Column::ResultVersion.lte(current_page_version))
+            .order_by_desc(page_publish_operation::Column::ResultVersion)
+    };
+    let rollback_query = || {
+        page_rollback_operation::Entity::find()
+            .filter(page_rollback_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_rollback_operation::Column::PageId.eq(page_id))
+            .filter(
+                page_rollback_operation::Column::TargetArtifactSetHash
+                    .eq(current_artifact_set_hash),
+            )
+            .filter(page_rollback_operation::Column::ResultVersion.lte(current_page_version))
+            .order_by_desc(page_rollback_operation::Column::ResultVersion)
+    };
+    let latest_publish = match txn.get_database_backend() {
+        DbBackend::Sqlite => publish_query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => publish_query().lock_shared().one(txn).await?,
+    };
+    let latest_rollback = match txn.get_database_backend() {
+        DbBackend::Sqlite => rollback_query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => rollback_query().lock_shared().one(txn).await?,
+    };
+
+    let cursor = match (latest_publish, latest_rollback) {
+        (Some(publish), Some(rollback)) if rollback.result_version > publish.result_version => {
+            verify_rollback_operation(&rollback)?;
+            find_publish_operation_by_id_in_tx(
+                txn,
+                tenant_id,
+                page_id,
+                rollback.target_publish_operation_id,
+            )
+            .await?
+        }
+        (Some(publish), _) => publish,
+        (None, Some(rollback)) => {
+            verify_rollback_operation(&rollback)?;
+            find_publish_operation_by_id_in_tx(
+                txn,
+                tenant_id,
+                page_id,
+                rollback.target_publish_operation_id,
+            )
+            .await?
+        }
+        (None, None) => {
+            return Err(PagesError::rollback_target_unavailable(
+                "the active immutable artifact set is not traceable to a publish or rollback receipt",
+            ));
+        }
+    };
+    verify_publish_operation_for_rollback(&cursor)?;
+    if cursor.artifact_set_hash != current_artifact_set_hash {
+        return Err(PagesError::rollback_target_unavailable(
+            "the active immutable artifact set does not match its activation receipt",
+        ));
+    }
+    load_publish_manifest_in_tx(txn, &cursor).await?;
+    Ok(cursor)
+}
+
+async fn find_publish_operation_by_id_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    operation_id: Uuid,
+) -> PagesResult<page_publish_operation::Model> {
+    let query = || {
+        page_publish_operation::Entity::find_by_id(operation_id)
+            .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_operation::Column::PageId.eq(page_id))
+    };
+    match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+    }
+    .ok_or_else(|| {
+        PagesError::rollback_target_unavailable(format!(
+            "rollback activation references unavailable publish operation `{operation_id}`"
+        ))
+    })
 }
 
 async fn find_rollback_operation_in_tx(
