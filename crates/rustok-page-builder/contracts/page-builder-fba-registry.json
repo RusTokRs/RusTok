@@ -158,12 +158,14 @@
         "raw_context_persisted": false
       },
       "artifact_rollback": {
-        "state": "service_and_public_transport_integrated_ui_action_pending",
+        "state": "service_public_transport_and_admin_control_integrated",
         "input": "RollbackPageInput",
         "result": "RollbackPageResult",
         "service": "PageService::rollback_to_previous",
-        "selection": "latest_distinct_publish_artifact_set",
+        "selection": "latest_matching_current_manifest_then_older_distinct_manifest",
+        "history_direction": "monotonic_older_only",
         "target_manifest_required": true,
+        "active_manifest_trace_required": true,
         "receipt_entity": "page_rollback_operation",
         "idempotency_unique_key": [
           "tenant_id",
@@ -183,7 +185,14 @@
           "NodePublished"
         ],
         "cache_invalidation": "existing_NodePublished_generation_rotation",
-        "public_transport": "graphql_http_admin_transport_connected",
+        "public_transport": "graphql_http_admin_control_connected",
+        "admin_control": "crates/rustok-pages/admin/src/rollback_control.rs",
+        "browser_retry": {
+          "source": "crates/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
+          "storage": "session_storage_expected_version_and_idempotency_key_only",
+          "network_or_5xx": "retain_same_command_identity",
+          "graphql_or_4xx": "clear_pending_identity"
+        },
         "executed_evidence": "pending"
       },
       "cache_consumer": {
