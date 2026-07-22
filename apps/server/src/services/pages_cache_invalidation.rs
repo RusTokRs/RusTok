@@ -48,8 +48,6 @@ impl PageCacheInvalidationPort for ServerPagesCacheInvalidationPort {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use rustok_pages::{
         PageCacheInvalidationCause, PageCacheInvalidationPort, PageCacheInvalidationRequest,
         PageCacheScope,
@@ -70,9 +68,13 @@ mod tests {
         .unwrap()
     }
 
+    fn local_only_cache() -> CacheService {
+        CacheService::from_url(Some("unsupported-cache-scheme://local-only"))
+    }
+
     #[tokio::test]
     async fn published_event_bumps_every_owner_declared_generation() {
-        let cache = CacheService::from_url(None);
+        let cache = local_only_cache();
         let port = ServerPagesCacheInvalidationPort::new(&cache);
         let receipt = port
             .invalidate(request(PageCacheInvalidationCause::Published))
@@ -85,8 +87,8 @@ mod tests {
 
     #[tokio::test]
     async fn updated_event_does_not_rotate_immutable_artifact_namespace() {
-        let cache = CacheService::from_url(None);
-        let port = Arc::new(ServerPagesCacheInvalidationPort::new(&cache));
+        let cache = local_only_cache();
+        let port = ServerPagesCacheInvalidationPort::new(&cache);
         let receipt = port
             .invalidate(request(PageCacheInvalidationCause::Updated))
             .await
