@@ -1,14 +1,9 @@
 #[test]
 fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts() {
-    let adapter = include_str!(
-        "../src/services/marketplace_provider_reversal_event_adapter.rs"
-    );
-    let backfill = include_str!(
-        "../src/services/marketplace_provider_reversal_backfill.rs"
-    );
-    let adaptation_failures = include_str!(
-        "../src/services/marketplace_reversal_adaptation_failure.rs"
-    );
+    let adapter = include_str!("../src/services/marketplace_provider_reversal_event_adapter.rs");
+    let backfill = include_str!("../src/services/marketplace_provider_reversal_backfill.rs");
+    let adaptation_failures =
+        include_str!("../src/services/marketplace_reversal_adaptation_failure.rs");
     let inbox = include_str!("../src/services/marketplace_reversal_event_inbox.rs");
     let operator = include_str!("../src/services/marketplace_reversal_operator.rs");
     let migration = include_str!(
@@ -23,19 +18,14 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     let migration_registry = include_str!("../src/migrations/mod.rs");
     let rest = include_str!("../src/controllers/marketplace_reversal_financial.rs");
     let graphql = include_str!("../src/graphql/marketplace_financial.rs");
-    let marketplace_worker = include_str!(
-        "../../../apps/server/src/services/marketplace_financial_worker.rs"
-    );
+    let marketplace_worker =
+        include_str!("../../../apps/server/src/services/marketplace_financial_worker.rs");
     let payment_controller = include_str!("../../rustok-payment/src/controllers.rs");
-    let payment_recovery = include_str!(
-        "../../rustok-payment/src/provider_event_recovery_controller.rs"
-    );
-    let payment_worker = include_str!(
-        "../../../apps/server/src/services/payment_provider_event_worker.rs"
-    );
-    let dispatcher = include_str!(
-        "../../../apps/server/src/services/module_event_dispatcher.rs"
-    );
+    let payment_recovery =
+        include_str!("../../rustok-payment/src/provider_event_recovery_controller.rs");
+    let payment_worker =
+        include_str!("../../../apps/server/src/services/payment_provider_event_worker.rs");
+    let dispatcher = include_str!("../../../apps/server/src/services/module_event_dispatcher.rs");
 
     assert!(adapter.contains("refund.completed"));
     assert!(adapter.contains("chargeback.completed"));
@@ -48,12 +38,19 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(adapter.contains("CAST(event_metadata AS TEXT)"));
     assert!(adapter.contains("DatabaseBackend::MySql"));
     assert!(adapter.contains("CAST(event_metadata AS CHAR)"));
+    assert!(adapter.contains("pub fn safe_message(&self) -> &'static str"));
+    assert!(adapter.contains("error.safe_message()"));
+    assert!(adapter.contains("marketplace reversal live observer failed"));
+    assert!(!adapter.contains("error.to_string(),\n                    error.retryable()"));
     assert!(!adapter.contains("raw_payload"));
 
     assert!(backfill.contains("marketplace_reversal_adaptation_failures"));
     assert!(backfill.contains("next_retry_at > CURRENT_TIMESTAMP"));
     assert!(backfill.contains("record_failure"));
     assert!(backfill.contains("mark_resolved"));
+    assert!(backfill.contains("let safe_message = error.safe_message()"));
+    assert!(backfill.contains("safe_reversal_adapter_message"));
+    assert!(backfill.contains("error.safe_message()"));
     assert!(!backfill.contains("raw_payload"));
 
     assert!(adaptation_failures.contains("RetryableError"));
@@ -76,8 +73,12 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(!migration.contains("foreign_key("));
 
     assert!(mysql_integrity.contains("DatabaseBackend::MySql"));
-    assert!(mysql_integrity.contains("CREATE TRIGGER marketplace_reversal_event_inbox_guard_insert"));
-    assert!(mysql_integrity.contains("CREATE TRIGGER marketplace_reversal_event_inbox_guard_update"));
+    assert!(
+        mysql_integrity.contains("CREATE TRIGGER marketplace_reversal_event_inbox_guard_insert")
+    );
+    assert!(
+        mysql_integrity.contains("CREATE TRIGGER marketplace_reversal_event_inbox_guard_update")
+    );
     assert!(mysql_integrity.contains("marketplace reversal normalized facts are immutable"));
     assert!(mysql_integrity.contains("processed marketplace reversal inbox row is immutable"));
 
@@ -89,8 +90,14 @@ fn marketplace_reversal_recovery_source_preserves_owner_and_transport_contracts(
     assert!(adaptation_migration.contains("DatabaseBackend::Sqlite"));
     assert!(adaptation_migration.contains("DatabaseBackend::MySql"));
     assert!(!adaptation_migration.contains("foreign_key("));
-    assert!(migration_registry.contains("m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity"));
-    assert!(migration_registry.contains("m20260721_000006_create_marketplace_reversal_adaptation_failures"));
+    assert!(
+        migration_registry
+            .contains("m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity")
+    );
+    assert!(
+        migration_registry
+            .contains("m20260721_000006_create_marketplace_reversal_adaptation_failures")
+    );
 
     assert!(operator.contains("ReversalId.is_null()"));
     assert!(operator.contains("LedgerTransactionId.is_null()"));

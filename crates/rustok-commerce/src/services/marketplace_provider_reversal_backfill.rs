@@ -44,10 +44,7 @@ impl MarketplaceProviderReversalBackfillService {
         financial_port: Arc<dyn rustok_marketplace::MarketplaceFinancialCommandPort>,
     ) -> Self {
         Self {
-            adapter: MarketplaceProviderReversalEventAdapter::new(
-                db.clone(),
-                financial_port,
-            ),
+            adapter: MarketplaceProviderReversalEventAdapter::new(db.clone(), financial_port),
             failures: MarketplaceReversalAdaptationFailureJournal::new(db.clone()),
             db,
         }
@@ -100,16 +97,18 @@ impl MarketplaceProviderReversalBackfillService {
                 }
                 Err(error) => {
                     let retryable = error.retryable();
-                    let safe_message = safe_reversal_adapter_message(&error);
+                    let safe_message = error.safe_message();
                     self.failures
                         .record_failure(&event, error.code(), safe_message, retryable)
                         .await?;
                     report.failed += 1;
-                    report.failures.push(MarketplaceProviderReversalAdaptFailure {
-                        provider_event_id: event.id,
-                        retryable,
-                        message: safe_message.to_string(),
-                    });
+                    report
+                        .failures
+                        .push(MarketplaceProviderReversalAdaptFailure {
+                            provider_event_id: event.id,
+                            retryable,
+                            message: safe_message.to_string(),
+                        });
                 }
             }
         }
@@ -120,23 +119,7 @@ impl MarketplaceProviderReversalBackfillService {
 pub(super) fn safe_reversal_adapter_message(
     error: &MarketplaceProviderReversalEventAdapterError,
 ) -> &'static str {
-    match error {
-        MarketplaceProviderReversalEventAdapterError::Ineligible(_) => {
-            "Payment provider event is not eligible for marketplace reversal adaptation"
-        }
-        MarketplaceProviderReversalEventAdapterError::Validation(_) => {
-            "Normalized marketplace reversal facts require operator review"
-        }
-        MarketplaceProviderReversalEventAdapterError::Payment(_) => {
-            "Payment owner could not confirm marketplace reversal facts"
-        }
-        MarketplaceProviderReversalEventAdapterError::Inbox(_) => {
-            "Marketplace reversal inbox could not accept the normalized event"
-        }
-        MarketplaceProviderReversalEventAdapterError::Database(_) => {
-            "Marketplace reversal adaptation storage is unavailable"
-        }
-    }
+    error.safe_message()
 }
 
 fn marketplace_extension_filter(backend: DatabaseBackend) -> SimpleExpr {

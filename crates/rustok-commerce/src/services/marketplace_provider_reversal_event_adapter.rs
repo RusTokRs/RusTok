@@ -85,6 +85,18 @@ impl MarketplaceProviderReversalEventAdapterError {
             Self::Inbox(error) => error.code(),
         }
     }
+
+    pub fn safe_message(&self) -> &'static str {
+        match self {
+            Self::Ineligible(_) => {
+                "Payment provider event is not eligible for marketplace reversal adaptation"
+            }
+            Self::Validation(_) => "Normalized marketplace reversal facts require operator review",
+            Self::Payment(_) => "Payment owner could not confirm marketplace reversal facts",
+            Self::Inbox(_) => "Marketplace reversal inbox could not process the normalized event",
+            Self::Database(_) => "Marketplace reversal adaptation storage is unavailable",
+        }
+    }
 }
 
 pub type MarketplaceProviderReversalEventAdapterResult<T> =
@@ -191,12 +203,22 @@ impl MarketplaceProviderReversalEventAdapter {
                 Ok(Some(_)) => report.adapted += 1,
                 Ok(None) => report.ignored += 1,
                 Err(error) => {
+                    tracing::error!(
+                        provider_event_id = %event.id,
+                        tenant_id = %event.tenant_id,
+                        provider_id = %event.provider_id,
+                        delivery_id = %event.delivery_id,
+                        error = ?error,
+                        "marketplace reversal backfill adaptation failed"
+                    );
                     report.failed += 1;
-                    report.failures.push(MarketplaceProviderReversalAdaptFailure {
-                        provider_event_id: event.id,
-                        retryable: error.retryable(),
-                        message: error.to_string(),
-                    });
+                    report
+                        .failures
+                        .push(MarketplaceProviderReversalAdaptFailure {
+                            provider_event_id: event.id,
+                            retryable: error.retryable(),
+                            message: error.safe_message().to_string(),
+                        });
                 }
             }
         }
@@ -238,10 +260,12 @@ impl MarketplaceProviderReversalEventAdapter {
                         .eq_ignore_ascii_case(normalized_currency.as_str())
                     || facts.source_id != refund.id
                 {
-                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                        "provider event {} does not match authoritative refunded owner state",
-                        context.event_id
-                    )));
+                    return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                        format!(
+                            "provider event {} does not match authoritative refunded owner state",
+                            context.event_id
+                        ),
+                    ));
                 }
                 (
                     MarketplaceLedgerReversalKind::Refund,
@@ -282,10 +306,12 @@ impl MarketplaceProviderReversalEventAdapter {
             .as_deref()
             .is_some_and(|provider| provider != context.provider_id.as_str())
         {
-            return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                "provider event {} belongs to another payment provider",
-                context.event_id
-            )));
+            return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                format!(
+                    "provider event {} belongs to another payment provider",
+                    context.event_id
+                ),
+            ));
         }
         if order_id != facts.order_id
             || !collection
@@ -295,25 +321,31 @@ impl MarketplaceProviderReversalEventAdapter {
                 .currency_code
                 .eq_ignore_ascii_case(normalized_currency.as_str())
         {
-            return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                "provider event {} does not match authoritative order/currency identity",
-                context.event_id
-            )));
+            return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                format!(
+                    "provider event {} does not match authoritative order/currency identity",
+                    context.event_id
+                ),
+            ));
         }
         if kind == MarketplaceLedgerReversalKind::Chargeback
             && (collection.status != "captured" || amount > collection.captured_amount)
         {
-            return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                "provider event {} does not match authoritative captured payment state",
-                context.event_id
-            )));
+            return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                format!(
+                    "provider event {} does not match authoritative captured payment state",
+                    context.event_id
+                ),
+            ));
         }
         let expected_minor = decimal_to_minor_exact(amount, facts.currency_exponent)?;
         let line_total = reversal_line_total(&facts.lines)?;
         if expected_minor != line_total {
-            return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-                "normalized provider amount {expected_minor} does not match marketplace reversal lines {line_total}"
-            )));
+            return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+                format!(
+                    "normalized provider amount {expected_minor} does not match marketplace reversal lines {line_total}"
+                ),
+            ));
         }
 
         self.inbox
@@ -348,16 +380,25 @@ impl PaymentProviderProcessedEventObserver for MarketplaceProviderReversalEventA
         {
             return Ok(());
         }
-        self.ingest_normalized(context, event)
-            .await
-            .map(|_| ())
-            .map_err(|error| {
-                PaymentProviderEventApplyError::new(
+
+        match self.ingest_normalized(context.clone(), event).await {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                tracing::error!(
+                    provider_event_id = %context.event_id,
+                    tenant_id = %context.tenant_id,
+                    provider_id = %context.provider_id,
+                    delivery_id = %context.delivery_id,
+                    error = ?error,
+                    "marketplace reversal live observer failed"
+                );
+                Err(PaymentProviderEventApplyError::new(
                     error.code(),
-                    error.to_string(),
+                    error.safe_message(),
                     error.retryable(),
-                )
-            })
+                ))
+            }
+        }
     }
 }
 
@@ -414,8 +455,7 @@ fn parse_reversal_facts(
         .filter(|value| (0..=9).contains(value))
         .ok_or_else(|| {
             MarketplaceProviderReversalEventAdapterError::Validation(
-                "marketplace_reversal.currency_exponent must be an integer from 0 to 9"
-                    .to_string(),
+                "marketplace_reversal.currency_exponent must be an integer from 0 to 9".to_string(),
             )
         })?;
     let lines = serde_json::from_value::<Vec<MarketplaceLedgerReversalLineInput>>(
@@ -541,9 +581,9 @@ fn parse_currency_map(
 ) -> MarketplaceProviderReversalEventAdapterResult<String> {
     let value = required_string(metadata, field)?.to_ascii_uppercase();
     if value.len() != 3 || !value.bytes().all(|byte| byte.is_ascii_alphabetic()) {
-        return Err(MarketplaceProviderReversalEventAdapterError::Validation(format!(
-            "normalized provider event field `{field}` must be a three-letter code"
-        )));
+        return Err(MarketplaceProviderReversalEventAdapterError::Validation(
+            format!("normalized provider event field `{field}` must be a three-letter code"),
+        ));
     }
     Ok(value)
 }
@@ -563,4 +603,47 @@ fn required_string(
                 "normalized provider event field `{field}` is required"
             ))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_messages_do_not_include_internal_error_details() {
+        let database_error = MarketplaceProviderReversalEventAdapterError::Database(
+            sea_orm::DbErr::Custom("secret SQL and driver details".to_string()),
+        );
+        let payment_database_error = MarketplaceProviderReversalEventAdapterError::Payment(
+            rustok_payment::PaymentError::Database(sea_orm::DbErr::Custom(
+                "secret payment storage details".to_string(),
+            )),
+        );
+        let validation_error = MarketplaceProviderReversalEventAdapterError::Validation(
+            "sensitive normalized payload detail".to_string(),
+        );
+
+        assert_eq!(
+            database_error.safe_message(),
+            "Marketplace reversal adaptation storage is unavailable"
+        );
+        assert_eq!(
+            payment_database_error.safe_message(),
+            "Payment owner could not confirm marketplace reversal facts"
+        );
+        assert_eq!(
+            validation_error.safe_message(),
+            "Normalized marketplace reversal facts require operator review"
+        );
+
+        for message in [
+            database_error.safe_message(),
+            payment_database_error.safe_message(),
+            validation_error.safe_message(),
+        ] {
+            assert!(!message.contains("secret"));
+            assert!(!message.contains("SQL"));
+            assert!(!message.contains("payload detail"));
+        }
+    }
 }
