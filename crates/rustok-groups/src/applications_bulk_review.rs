@@ -98,7 +98,10 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
                 decision: request.decision,
                 note: normalized_note.clone(),
             };
-            match self.review_application_owned(&item_context, item_request).await {
+            match self
+                .review_application_authorized_owned(&item_context, item_request)
+                .await
+            {
                 Ok(result) => {
                     succeeded = succeeded.saturating_add(1);
                     items.push(BulkReviewGroupMembershipApplicationItemResult {
