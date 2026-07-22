@@ -130,6 +130,14 @@ pub(super) async fn load_current_published_set_in_tx(
                     binding.page_body_id
                 ))
             })?;
+        PageBuilderArtifactService::bind_existing_body_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            &binding.locale,
+            binding.artifact_id,
+        )
+        .await?;
         members.push(ArtifactSetMember::new(
             record.locale,
             record.id,
