@@ -65,6 +65,22 @@ if (contract.candidate_items?.creates_delivery_attempts !== false) {
 if (contract.source_inbox?.changed_event_type_or_revision_conflicts !== true) {
   failures.push("source inbox must reject changed event identity replay");
 }
+if (contract.source_inbox?.expired_lease_cannot_finish !== true) {
+  failures.push("source inbox must reject completion under an expired lease");
+}
+for (const field of [
+  "one_descriptor_job_per_source_event",
+  "provider_page_must_not_exceed_requested_limit",
+  "empty_page_cannot_continue",
+  "cursor_must_advance",
+  "lease_recovery",
+  "expired_lease_cannot_finish",
+  "descriptor_replay_must_match",
+]) {
+  if (contract.fanout_job?.[field] !== true) {
+    failures.push(`fan-out contract must set fanout_job.${field}=true`);
+  }
+}
 if (contract.fanout_job?.audience_page_max !== 256) {
   failures.push("fan-out page bound must remain 256");
 }
@@ -119,6 +135,11 @@ for (const marker of [
   "FanoutItemStatus::Pending",
   "exec_without_returning",
   "MAX_FANOUT_PAGE_SIZE: u16 = 256",
+  "recipients.len() > usize::from(limit)",
+  "recipients.is_empty() && next_cursor.is_some()",
+  "LeaseExpiresAt.gt(timestamp)",
+  "lease_expires_at",
+  "job.notification_type != notification_type",
 ]) {
   requireText(service, marker, `fan-out owner service is missing ${marker}`);
 }
@@ -158,6 +179,7 @@ for (const marker of [
   "NotificationFanoutService",
   "NotificationFanoutPageResult",
   "NotificationSourceInboxReceipt",
+  "NotificationError",
   "module.migrations().len(), 2",
 ]) {
   requireText(library, marker, `notifications public owner facade is missing ${marker}`);
