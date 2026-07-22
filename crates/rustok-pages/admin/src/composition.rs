@@ -370,7 +370,7 @@ fn PagesNavigator(
                             <span class=format!(
                                 "rounded-full px-2 py-1 text-[10px] font-semibold uppercase {}",
                                 core::status_badge_class(&status)
-                            )>{status}</span>
+                            )>{status.clone()}</span>
                         </div>
                     </button>
                 }

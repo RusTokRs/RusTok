@@ -5,7 +5,7 @@ use rustok_commerce_foundation::dto::{
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
     ProductTranslationInput, ProductTranslationResponse,
 };
-use rustok_commerce_foundation::entities;
+use crate::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use sea_orm::{
@@ -782,8 +782,8 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
         return Ok(HashMap::new());
     }
 
-    let inventory_items = entities::inventory_item::Entity::find()
-        .filter(entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
+    let inventory_items = commerce_foundation::entities::inventory_item::Entity::find()
+        .filter(commerce_foundation::entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
         .all(db)
         .await?;
     if inventory_items.is_empty() {
@@ -794,9 +794,9 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
         .iter()
         .map(|item| (item.id, item.variant_id))
         .collect();
-    let levels = entities::inventory_level::Entity::find()
+    let levels = commerce_foundation::entities::inventory_level::Entity::find()
         .filter(
-            entities::inventory_level::Column::InventoryItemId
+            commerce_foundation::entities::inventory_level::Column::InventoryItemId
                 .is_in(item_to_variant.keys().copied()),
         )
         .all(db)
@@ -805,11 +805,11 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
         return Ok(HashMap::new());
     }
 
-    let locations = entities::stock_location::Entity::find()
-        .filter(entities::stock_location::Column::TenantId.eq(tenant_id))
-        .filter(entities::stock_location::Column::DeletedAt.is_null())
+    let locations = commerce_foundation::entities::stock_location::Entity::find()
+        .filter(commerce_foundation::entities::stock_location::Column::TenantId.eq(tenant_id))
+        .filter(commerce_foundation::entities::stock_location::Column::DeletedAt.is_null())
         .filter(
-            entities::stock_location::Column::Id
+            commerce_foundation::entities::stock_location::Column::Id
                 .is_in(levels.iter().map(|level| level.location_id)),
         )
         .all(db)

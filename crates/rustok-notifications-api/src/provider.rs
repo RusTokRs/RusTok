@@ -123,6 +123,7 @@ pub enum NotificationSourceRegistryError {
     #[error("notification source factory `{source}` failed: {error}")]
     FactoryBuild {
         source: NotificationSourceSlug,
+        #[source]
         error: NotificationProviderError,
     },
 }

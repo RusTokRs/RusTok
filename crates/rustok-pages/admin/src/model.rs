@@ -11,7 +11,7 @@ pub struct PageList {
 pub struct PageListItem {
     pub id: String,
     #[serde(deserialize_with = "deserialize_page_status")]
-    pub status: &'static str,
+    pub status: String,
     pub template: String,
     pub title: Option<String>,
     pub slug: Option<String>,
@@ -19,15 +19,13 @@ pub struct PageListItem {
     pub updated_at: String,
 }
 
-fn deserialize_page_status<'de, D>(deserializer: D) -> Result<&'static str, D::Error>
+fn deserialize_page_status<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
     let value = String::deserialize(deserializer)?;
     match value.as_str() {
-        "draft" => Ok("draft"),
-        "published" => Ok("published"),
-        "archived" => Ok("archived"),
+        "draft" | "published" | "archived" => Ok(value),
         _ => Err(D::Error::custom(format!(
             "unsupported Pages status `{value}`"
         ))),

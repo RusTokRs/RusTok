@@ -221,14 +221,14 @@ fn map_seller(
     }) {
         prose.onboarding_note
     } else {
-        model.onboarding_note
+        None
     };
     let suspension_reason = if prose.suspension_at.is_some_and(|event_at| {
         event_at > row_updated_at || (event_at == row_updated_at && suspension_event_matches)
     }) {
         prose.suspension_reason
     } else {
-        model.suspension_reason
+        None
     };
 
     Ok(MarketplaceSellerResponse {
