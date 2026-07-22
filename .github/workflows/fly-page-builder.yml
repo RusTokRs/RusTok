@@ -72,6 +72,120 @@ jobs:
             git add crates/rustok-pages/src/lib.rs
           fi
           test -z "$(git diff --name-only --diff-filter=U)"
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-pages/tests/menu_binding_service.rs")
+          text = path.read_text()
+          channel_end = '''    .await
+              .expect("channel table should exist for active menu bindings");
+          '''
+          replacement = channel_end + '''    create_current_menu_schema(&db).await;
+          '''
+          if text.count(channel_end) != 1:
+              raise SystemExit("expected one channel schema marker")
+          text = text.replace(channel_end, replacement, 1)
+
+          old_migrations = '''    let manager = SchemaManager::new(&db);
+              for migration in PagesModule.migrations() {
+                  migration
+                      .up(&manager)
+                      .await
+                      .expect("pages migration should apply");
+              }
+          '''
+          new_migrations = '''    let manager = SchemaManager::new(&db);
+              let active_menu_migration = PagesModule
+                  .migrations()
+                  .pop()
+                  .expect("active menu binding migration should be registered last");
+              active_menu_migration
+                  .up(&manager)
+                  .await
+                  .expect("active menu binding migration should apply");
+          '''
+          if text.count(old_migrations) != 1:
+              raise SystemExit("expected one full migration loop")
+          text = text.replace(old_migrations, new_migrations, 1)
+
+          marker = '''async fn seed_tenant(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) {
+          '''
+          helper = r'''async fn create_current_menu_schema(db: &DatabaseConnection) {
+              for statement in [
+                  r#"
+                  CREATE TABLE menus (
+                      id TEXT PRIMARY KEY NOT NULL,
+                      tenant_id TEXT NOT NULL,
+                      location TEXT NOT NULL,
+                      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE (tenant_id, id)
+                  )
+                  "#,
+                  r#"
+                  CREATE TABLE menu_translations (
+                      id TEXT PRIMARY KEY NOT NULL,
+                      tenant_id TEXT NOT NULL,
+                      menu_id TEXT NOT NULL,
+                      locale TEXT NOT NULL,
+                      name TEXT NOT NULL,
+                      UNIQUE (tenant_id, menu_id, locale),
+                      FOREIGN KEY (tenant_id, menu_id)
+                          REFERENCES menus (tenant_id, id)
+                          ON UPDATE CASCADE ON DELETE CASCADE
+                  )
+                  "#,
+                  r#"
+                  CREATE TABLE menu_items (
+                      id TEXT PRIMARY KEY NOT NULL,
+                      menu_id TEXT NOT NULL,
+                      tenant_id TEXT NOT NULL,
+                      parent_item_id TEXT NULL,
+                      page_id TEXT NULL,
+                      position INTEGER NOT NULL,
+                      url TEXT NOT NULL,
+                      icon TEXT NULL,
+                      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE (tenant_id, menu_id, id),
+                      FOREIGN KEY (tenant_id, menu_id)
+                          REFERENCES menus (tenant_id, id)
+                          ON UPDATE CASCADE ON DELETE CASCADE,
+                      FOREIGN KEY (tenant_id, menu_id, parent_item_id)
+                          REFERENCES menu_items (tenant_id, menu_id, id)
+                          ON UPDATE CASCADE ON DELETE CASCADE
+                  )
+                  "#,
+                  r#"
+                  CREATE TABLE menu_item_translations (
+                      id TEXT PRIMARY KEY NOT NULL,
+                      tenant_id TEXT NOT NULL,
+                      menu_id TEXT NOT NULL,
+                      menu_item_id TEXT NOT NULL,
+                      locale TEXT NOT NULL,
+                      title TEXT NOT NULL,
+                      UNIQUE (tenant_id, menu_id, menu_item_id, locale),
+                      FOREIGN KEY (tenant_id, menu_id, menu_item_id)
+                          REFERENCES menu_items (tenant_id, menu_id, id)
+                          ON UPDATE CASCADE ON DELETE CASCADE,
+                      FOREIGN KEY (tenant_id, menu_id, locale)
+                          REFERENCES menu_translations (tenant_id, menu_id, locale)
+                          ON UPDATE CASCADE ON DELETE CASCADE
+                  )
+                  "#,
+              ] {
+                  db.execute(Statement::from_string(db.get_database_backend(), statement))
+                      .await
+                      .expect("current menu schema statement should apply");
+              }
+          }
+
+          '''
+          if text.count(marker) != 1:
+              raise SystemExit("expected seed_tenant marker")
+          path.write_text(text.replace(marker, helper + marker, 1))
+          PY
       - name: Capture active-menu verification evidence
         shell: bash
         run: |
@@ -119,6 +233,7 @@ jobs:
           sort -o "$expected" "$expected"
           diff -u "$expected" "$actual" > /tmp/active-menu-files.diff 2>&1
           files_status=$?
+          git status --short > /tmp/active-menu-worktree.txt
           test -z "$(git diff --name-only)"
           worktree_status=$?
 
@@ -160,6 +275,7 @@ jobs:
             /tmp/active-menu-expected-files.txt
             /tmp/active-menu-files.diff
             /tmp/active-menu-files.status
+            /tmp/active-menu-worktree.txt
             /tmp/active-menu-worktree.status
             /tmp/active-menu-binding-v3-files.tar.gz
           if-no-files-found: error
