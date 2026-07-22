@@ -185,6 +185,9 @@ async fn load_snapshot_in_tx(
         .ok_or_else(ForumError::relation_revision_unavailable)?;
     let user_rows = forum_user_mention::Entity::find()
         .filter(forum_user_mention::Column::TenantId.eq(tenant_id))
+        .filter(forum_user_mention::Column::SourceKind.eq(target_kind))
+        .filter(forum_user_mention::Column::SourceId.eq(target.id()))
+        .filter(forum_user_mention::Column::SourceLocale.eq(locale))
         .filter(forum_user_mention::Column::SourceRevisionId.eq(revision_id))
         .order_by_asc(forum_user_mention::Column::MentionedUserId)
         .limit((FORUM_MAX_MENTION_TARGETS_PER_REVISION + 1) as u64)
@@ -192,6 +195,9 @@ async fn load_snapshot_in_tx(
         .await?;
     let audience_rows = forum_audience_mention::Entity::find()
         .filter(forum_audience_mention::Column::TenantId.eq(tenant_id))
+        .filter(forum_audience_mention::Column::SourceKind.eq(target_kind))
+        .filter(forum_audience_mention::Column::SourceId.eq(target.id()))
+        .filter(forum_audience_mention::Column::SourceLocale.eq(locale))
         .filter(forum_audience_mention::Column::SourceRevisionId.eq(revision_id))
         .order_by_asc(forum_audience_mention::Column::Audience)
         .limit((FORUM_MAX_MENTION_TARGETS_PER_REVISION + 1) as u64)
@@ -199,6 +205,9 @@ async fn load_snapshot_in_tx(
         .await?;
     let quote_rows = forum_quote::Entity::find()
         .filter(forum_quote::Column::TenantId.eq(tenant_id))
+        .filter(forum_quote::Column::SourceKind.eq(target_kind))
+        .filter(forum_quote::Column::SourceId.eq(target.id()))
+        .filter(forum_quote::Column::SourceLocale.eq(locale))
         .filter(forum_quote::Column::SourceRevisionId.eq(revision_id))
         .order_by_asc(forum_quote::Column::QuotedKind)
         .order_by_asc(forum_quote::Column::QuotedId)
@@ -235,12 +244,12 @@ async fn load_snapshot_in_tx(
 fn normalize_quote_references(
     inputs: Vec<ForumQuoteReferenceInput>,
 ) -> ForumResult<Vec<ForumQuoteReference>> {
-    let inputs = inputs.into_iter().collect::<BTreeSet<_>>();
     if inputs.len() > FORUM_MAX_QUOTE_REFERENCES_PER_REVISION {
         return Err(ForumError::Validation(format!(
             "Forum revision exceeds the {FORUM_MAX_QUOTE_REFERENCES_PER_REVISION}-quote limit"
         )));
     }
+    let inputs = inputs.into_iter().collect::<BTreeSet<_>>();
     inputs
         .into_iter()
         .map(|input| {
