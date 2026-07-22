@@ -3,8 +3,9 @@
 The canonical cross-module task order and status remain in
 `crates/rustok-forum/docs/implementation-plan.md`. This file does not duplicate
 that backlog; it records the owner-local gates that future notification slices
-must preserve. `NOTIFY-00`, `NOTIFY-01`, and `NOTIFY-03` remain `in_progress`
-until maintainer-run verification and canonical-plan promotion are recorded.
+must preserve. The notifications program remains `in_progress` until
+maintainer-run verification and canonical-plan promotion are recorded;
+`NOTIFY-00`, `NOTIFY-01`, and `NOTIFY-03` are the active partial tasks.
 
 ## Scope
 
@@ -100,7 +101,7 @@ inbox/delivery APIs remain open.
 - provider-independent event acceptance followed by leased descriptor
   materialization, so temporary source-factory absence is retryable rather than
   data loss;
-- one descriptor-bound fan-out job per source event and notification type with
+- one descriptor-bound fan-out job per source event with database uniqueness and
   replay equality checks;
 - bounded cursor pages capped at 256 and fail-closed non-advancing cursors;
 - idempotent pending candidate items deduplicated by tenant/job/recipient;
