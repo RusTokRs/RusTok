@@ -1,162 +1,275 @@
 # Groups module runtime contract
 
-## Purpose and ownership
+## Purpose
 
-`rustok-groups` is the tenant-scoped social-container boundary. It owns group identity,
-exact-locale presentation, visibility, join policy, memberships, local roles,
-invitations, membership applications, policy history, feature bindings, receipts,
-audit, and Groups semantic source events.
+`rustok-groups` provides the social-container boundary for communities inside a
+RusToK tenant. It combines phpFox-style modular groups with RusToK owner-module,
+FFA, FBA, multilingual storage, tenant isolation, and headless transport rules.
 
-It does not own auth/session state, profiles, media binaries, Forum/Blog/Pages/
-Marketplace content, comments, notification inbox/delivery, search projections, feed,
-commerce, payment, orders, fulfillment, or analytics. Cross-domain references use
-typed identifiers and public ports; Groups tables do not foreign-key optional modules.
+## Responsibility zone
 
-## Multilingual and privacy contract
+Groups owns group identity, localized presentation, visibility, join policy,
+memberships, local roles, invitations, membership applications, ordered questions
+and rules, policy revision history, application lifecycle, feature bindings, command
+receipts, audit, and Groups semantic source events.
 
-Language-neutral state belongs to base tables. Localized copy belongs to exact-locale
-rows. The host supplies the resolved locale through `PortContext`; Groups normalizes
-and selects only that row. There is no English, arbitrary-first-row, or module fallback.
+Groups does not own auth users/sessions, profile presentation, media binaries, Forum,
+Blog, Pages, Marketplace, comments, notification inbox/delivery, search projections,
+feed entries, checkout, payment, orders, fulfillment, or analytics.
 
-- public groups expose localized shell and public features;
-- closed groups expose a summary shell but gate private content;
-- secret groups return not-found to non-members, including application attempts;
-- provider failure never grants private access;
-- selected transport errors never trigger implicit fallback.
+No Groups table has a foreign key to another optional domain module. Cross-domain
+references are logical typed identifiers resolved through public ports.
+
+## Multilingual database contract
+
+Language-neutral state belongs to base tables. Localized business copy belongs to
+parallel exact-locale rows:
+
+- `groups` stores language-neutral identity and policy state;
+- `group_translations` stores title, summary, and body;
+- `group_membership_policies` stores current language-neutral application-policy
+  revision/enabled state;
+- `group_membership_policy_translations` stores ordered questions and rules by
+  normalized `locale VARCHAR(32)`;
+- `group_membership_policy_revisions` stores append-only exact-locale snapshots of
+  successful policy writes;
+- `group_membership_applications` stores the exact policy ID, revision, locale, and
+  immutable question/rule snapshot seen by the candidate.
+
+The host supplies the already-resolved effective locale through `PortContext`.
+Groups normalizes it and selects only that row. It never injects an English fallback,
+arbitrary first row, or another stored locale. Missing copy is explicit unavailable
+or not-found state.
+
+Application `policy_snapshot` and policy revision rows are immutable evidence, not
+shadow localization stores. Current canonical policy copy remains the exact-locale
+translation row.
+
+## Access and privacy
+
+- `public`: localized shell and public features are readable;
+- `closed`: summary shell is discoverable, while body, members, features, and provider
+  content require active membership or platform authority;
+- `secret`: non-members receive not-found semantics, including application attempts.
+
+The access contract separates discovery, summary-shell access, and private-content
+access. Provider failure never grants private access, and a transport error never
+causes implicit retry through another path.
+
+Join policies are `open`, `request`, and `invite_only`. Local roles are `owner`,
+`admin`, `moderator`, and `member`. Platform RBAC protects operator surfaces while
+Groups policy protects one group; owner services enforce both.
 
 ## Invitation contract
 
 `GroupInvitationReadPort`, `GroupInvitationCommandPort`, and
-`GroupTargetedInvitationCommandPort` own listing, create/revoke, token acceptance, and
-authenticated targeted accept-by-ID. Plaintext tokens are returned once and never
-persisted in owner state, audit, receipts, or events. Targeted inserts append
-`groups.invitation.targeted_created` without token data. Notifications delivery remains
-Notifications-owned and optional to the Groups command transaction.
+`GroupTargetedInvitationCommandPort` own manager listing, create/revoke/token
+acceptance, and authenticated targeted accept-by-ID.
 
-## Membership-application persistence
+Targeted invitations are single-use. Shareable links permit at most 100 uses and
+expire within 300 seconds to 30 days. Plaintext is returned only by the first create
+response; persistence, audit, receipts, and semantic events contain no recoverable
+plaintext. Redemption, membership activation, member count, group version, audit,
+and receipt commit in one owner transaction.
 
-- `group_membership_policies`: current language-neutral revision/enabled state;
-- `group_membership_policy_translations`: ordered exact-locale questions/rules;
-- `group_membership_policy_revisions`: append-only successful-write snapshots;
-- `group_membership_applications`: exact policy identity/revision/locale, immutable
-  snapshot, answers, acknowledgements, status, and review metadata.
+Targeted insert appends `groups.invitation.targeted_created` to append-only
+`group_domain_events` through a database trigger. The event carries only typed
+invitation/group/recipient/actor identifiers. Notifications inbox, preferences,
+fan-out, email/push, retry, and cleanup remain Notifications-owner responsibilities.
 
-Policy revision capture occurs in the same database transaction as policy translation
-writes. Revision rows reject update/delete.
+## Membership-application contract
 
-## Application policy CAS
+### Current policy and history
+
+`GroupApplicationReadPort::read_group_application_policy` exposes the current policy
+for the host-resolved exact locale.
+
+- one current language-neutral policy exists per group;
+- each exact-locale row contains at most 20 questions and 20 rules;
+- ordered stable normalized keys identify questions and rules;
+- prompt/help/rule copy and answer limits are bounded;
+- management requires active owner/admin or platform `groups:manage`;
+- no module-local locale fallback exists.
+
+Every successful application-policy translation INSERT/UPDATE is captured into
+`group_membership_policy_revisions` by PostgreSQL or SQLite trigger. Capture occurs in
+the same database transaction as the current policy write. Existing rows are
+backfilled during migration, and history rows reject UPDATE and DELETE.
+
+`GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions`
+provides manager-only history ordered by revision descending and locale ascending.
+It reuses the application-review authorization boundary: active owner/admin/moderator
+or platform manage authority. Candidates cannot enumerate policy history.
+
+### Atomic policy preconditions
 
 Interactive policy save and candidate submit use `GroupApplicationCasCommandPort`:
 
 - `upsert_group_application_policy_if_current`;
 - `submit_group_membership_application_if_current`.
 
-Requests carry `policy_id`, positive `revision`, and exact `locale`. The owner checks an
-identical receipt first, locks the group row, repeats authorization/group checks,
-reloads current policy, and compares the precondition before owner-state writes. A
-mismatch returns `groups.application_policy_changed`. Successful state, version, audit,
-and receipt commit together.
+Both requests carry `GroupApplicationPolicyPrecondition` containing the policy ID,
+positive revision, and exact locale rendered by the client. The owner:
 
-Legacy unconditional Rust save/submit methods remain compatibility-only. Final GraphQL
-and module-owned FFA do not expose or use them.
+1. validates deadline, idempotency, tenant, actor, locale, and request bounds;
+2. returns an identical committed receipt before checking the policy again;
+3. locks the existing candidate application before the group for resubmit, or locks
+   the group and rechecks the candidate application for a first submission;
+4. repeats authorization and group-state checks;
+5. reloads current policy state and compares ID, revision, and locale;
+6. returns `groups.application_policy_changed` on mismatch before any owner-state
+   write;
+7. commits successful policy/application state, group version, audit, and receipt in
+   one transaction.
 
-## Application lifecycle
+Policy upsert does not require an application lock. For a new policy,
+`expected_policy = null` is accepted only while no current policy exists. Updating an
+existing policy requires a matching precondition.
 
-### Exact-candidate read
+The older unconditional save and submit methods on `GroupApplicationCommandPort`
+remain public for source compatibility. Module-owned FFA and final GraphQL do not use
+or expose them. Their removal or versioned deprecation remains an API migration gate.
+
+### Submission
+
+Only active `request` groups accept applications. Secret groups return not-found
+semantics; banned users and active members are rejected. Pending or approved
+applications cannot be resubmitted, while rejected and cancelled applications may
+receive a fresh current-policy snapshot.
+
+Unknown answer keys and rule acknowledgements are rejected. Every required question
+must contain a bounded non-empty answer, and every required rule must be acknowledged.
+A stale form returns `groups.application_policy_changed` without changing membership,
+application, group version, audit, or receipt state.
+
+A successful submit stores pending membership, application snapshot, group version,
+audit, and receipt together.
+
+### Exact-candidate application read
 
 `GroupApplicationLifecycleReadPort::read_my_group_membership_application` returns only
-the authenticated actor's application for the requested tenant/group. It never permits
-cross-candidate enumeration.
+the authenticated actor's current application for the requested tenant/group. The
+query cannot enumerate another candidate's application. Storefront uses this read
+before exposing submit or cancellation controls.
 
 ### Candidate cancellation
 
 `GroupApplicationLifecycleCommandPort::cancel_group_membership_application`:
 
-- requires the exact candidate; another actor receives not-found semantics;
-- accepts only `pending` applications with a still-pending, non-banned membership;
-- moves membership to `left`, records `left_at`, and application to `cancelled`;
-- clears review metadata while preserving submitted policy snapshot, answers, and
-  acknowledgements;
+- accepts only the exact candidate; another actor receives not-found semantics;
+- accepts only a pending application whose membership is still pending and not banned;
+- locks application then group where supported;
+- moves membership to `left`, records `left_at`, and marks the application
+  `cancelled`;
+- clears review metadata but preserves submitted policy identity/revision/locale,
+  snapshot, answers, and acknowledgements;
 - commits application, membership, group version, audit
-  `group.membership_application_cancelled`, and receipt atomically.
+  `group.membership_application_cancelled`, and receipt together.
+
+Cancellation keeps `apply=<group_uuid>` in the storefront route. After refetch, the
+candidate may prepare a fresh CAS submission using the current policy.
 
 ### Manager reopen
 
 `GroupApplicationLifecycleCommandPort::reopen_group_membership_application`:
 
-- requires active owner/admin/moderator or platform authority;
-- accepts only `rejected` or `cancelled` applications;
-- requires an active non-secret `request` group and a `left`, non-banned, non-active
+- requires active owner/admin/moderator or platform manage authority;
+- authorizes before disclosing or validating the current application status;
+- accepts only rejected or cancelled applications;
+- requires an active non-secret `request` group and a left, non-banned, non-active
   membership;
-- restores application/membership to `pending` and clears review metadata;
+- locks application then group where supported;
+- restores membership/application to `pending` and clears prior review metadata;
 - preserves submitted timestamp, policy identity/revision/locale, snapshot, answers,
   and acknowledgements;
-- commits version, audit `group.membership_application_reopened`, and receipt atomically.
+- commits group version, audit `group.membership_application_reopened`, and receipt
+  together.
 
-A fresh candidate resubmit is not reopen. It uses current-policy CAS and replaces the
-snapshot only after successful submission. Pending and approved applications cannot be
-freshly submitted.
+Reopen preserves the snapshot for later manager review. A fresh candidate resubmit is
+a distinct CAS command that replaces the snapshot only after success.
 
 ### Review
 
-Manager review accepts only pending applications. Approve activates membership and
-increments member count; reject moves membership to `left`. Review, cancellation, and
-reopen use application-then-group lock ordering where supported.
+Listing/review through `GroupApplicationReadPort` and
+`GroupApplicationCommandPort::review_group_membership_application` requires active
+owner/admin/moderator or platform manage authority. Only pending applications may be
+reviewed. Approve activates membership and increments member count; reject moves
+membership to `left`. Review note is optional and bounded to 2,000 characters.
+Application, membership, group version, audit, and receipt commit together.
 
 ## FBA contract
 
-Published boundaries include summary, membership, access, localization, invitation,
-application policy/history, application CAS, application lifecycle, group command, and
-governance ports. All use `PortContext`, `PortCallPolicy`, and `PortError`. Reads require
-a deadline; writes require deadline plus idempotency key. Consumers never import Groups
-entities or query Groups tables.
+Published ports include summary, membership, access, localization, invitation,
+targeted invitation, application read, application policy history, application CAS,
+application lifecycle read/command, group command, and governance boundaries. All use
+`PortContext`, `PortCallPolicy`, and `PortError`. Reads require a deadline; writes
+require deadline plus idempotency key. Consumers never import Groups entities or query
+Groups tables directly.
 
-Final GraphQL remains
-`graphql_application_cas::GroupsQueryRoot` / `GroupsMutationRoot`. It composes core,
-localization, governance, invitations, policy/history, CAS save/submit, review,
-exact-candidate application read, cancellation, and reopen. Legacy unconditional
-application mutations remain absent.
+The final GraphQL composition is
+`graphql_application_cas::GroupsQueryRoot` / `GroupsMutationRoot`. It retains core,
+localization, governance, invitation, targeted invitation, application, and policy
+history fields and adds CAS save/submit, exact-candidate application read, review,
+cancel, and reopen. Legacy unconditional application mutations remain absent. Native
+server functions and GraphQL adapters call the same owner ports.
 
 ## FFA contract
 
-Admin/storefront preserve `core → transport → UI` separation. UI imports only the
-facade. Native and GraphQL paths never fall back.
+Admin and storefront packages retain `core → transport → UI` separation. UI imports
+only the transport facade, never raw adapters. Selected native or GraphQL transport
+never falls back implicitly.
 
-Admin:
+The admin policy editor captures the loaded policy identity and sends it directly to
+the CAS mutation. On `groups.application_policy_changed`, it keeps the stale identity
+and requires explicit reload before another save. The locale is read-only and comes
+from host route context. Revision history remains manager-only.
 
-- filters pending, approved, rejected, and cancelled applications;
-- reviews pending rows;
-- exposes reopen only on rejected/cancelled rows;
-- renders the preserved policy snapshot and candidate answers.
+The admin application workspace filters pending, approved, rejected, and cancelled
+rows. Pending rows can be reviewed; rejected/cancelled rows expose manager reopen.
+Reopen uses the lifecycle port and preserves the submitted snapshot.
 
-Storefront:
-
-- loads exact-candidate current application before exposing controls;
-- pending shows cancellation and hides submit;
-- approved blocks duplicate submit;
-- rejected/cancelled permit a fresh current-policy CAS form;
-- cancellation preserves `apply=<group_uuid>` and reloads current state;
-- successful fresh submit clears `apply`;
-- stale-policy reload clears old answers and acknowledgements.
+The storefront uses `apply=<group_uuid>` to read current candidate status and load the
+exact-locale policy when a fresh form is allowed. Pending status exposes candidate
+cancel, approved status blocks duplicate submit, and rejected/cancelled status exposes
+a current-policy CAS form. A stale conflict preserves the route, disables repeated
+submission, and exposes explicit reload that clears old answers and acknowledgements.
+Successful submit clears `apply`; cancellation never clears it.
 
 ## Degraded modes
 
-- Groups unavailable: deny private content.
-- Exact-locale policy unavailable: disable form/editor; never choose another locale.
-- Current-application read unavailable: do not guess status or expose submit controls.
-- CAS conflict: write no state and require explicit reload.
-- Lifecycle transport failure: preserve selected-path error and route; never fall back.
-- Profiles unavailable: show UUID/placeholder without copied canonical state.
-- Notifications/search unavailable: owner writes remain authoritative.
+- Groups provider unavailable: deny private content.
+- Exact-locale policy unavailable: disable application/editor; never choose another
+  locale.
+- Policy CAS conflict: write no owner state, preserve the selected transport error,
+  and require explicit reload before retry.
+- Current-application lifecycle read unavailable: do not guess status or expose
+  submit/cancel controls.
+- Lifecycle command transport failure: preserve selected-path error and `apply`; never
+  retry through another transport.
+- Policy history unavailable: current owner policy remains authoritative; hide
+  history rather than synthesizing revisions.
+- Native or GraphQL transport failure: surface selected-path error; never retry
+  through another transport.
+- Profiles unavailable: display stable UUID/placeholder, never copy canonical profile
+  state.
+- Notifications unavailable: owner commands commit and remain authoritative.
+- Search/index unavailable: owner writes commit; future projections may catch up.
 
-## Open gates and verification
+## Open gates
 
-Open work includes legacy Rust API migration, multi-locale manager picker, bounded bulk
-review, ProfilesReader summaries, application semantic events, pagination/pickers,
-audit/receipt history, parity, replay, CAS/lifecycle concurrency, lock ordering,
-migration execution, accessibility, security, retry, and recovery.
+The following remain source or evidence work:
 
-Expected commands before readiness promotion include:
+- remove or version-deprecate legacy unconditional application command methods;
+- explicit multi-locale policy management contract and picker;
+- bounded bulk review and per-item audit/result handling;
+- ProfilesReader summaries and application semantic events;
+- migration execution/backfill/immutability evidence;
+- native/GraphQL stable-code and lifecycle parity, replay, stale/lifecycle races,
+  concurrency, lock ordering, accessibility, security, retry, and recovery evidence.
+
+## Verification
+
+Expected commands before readiness promotion:
 
 ```bash
 cargo xtask module validate groups
@@ -165,18 +278,22 @@ cargo check -p rustok-groups-admin --features ssr
 cargo check -p rustok-groups-storefront --features ssr
 cargo test -p rustok-groups
 node scripts/verify/verify-groups-boundary.mjs
+node scripts/verify/verify-groups-localization-boundary.mjs
+node scripts/verify/verify-groups-invitations-boundary.mjs
+node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
 node scripts/verify/verify-groups-application-lifecycle.mjs
+node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
 
-No build, test, migration, verifier, GraphQL schema, parity, replay, concurrency,
-accessibility, security, retry, or recovery command was executed for this source slice.
-FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; runtime evidence remains
-`null`.
+No build, test, migration, verifier, parity, replay, stale/lifecycle-race,
+concurrency, accessibility, security, retry, or recovery command was executed for
+this source slice. FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; runtime
+evidence keys remain `null`.
 
 ## Related documents
 
