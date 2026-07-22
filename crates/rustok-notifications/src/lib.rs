@@ -1,3 +1,4 @@
+mod candidate;
 pub mod entities;
 pub mod error;
 mod fanout;
@@ -10,6 +11,11 @@ use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
 use rustok_notifications_api::ensure_notification_source_registry;
 use sea_orm_migration::MigrationTrait;
 
+pub use candidate::{
+    NotificationCandidateProcessResult, NotificationCandidateService, NotificationRecipientPolicy,
+    NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
+    NotificationRecipientPolicyRequest, NotificationRecipientSuppression,
+};
 pub use error::{NotificationError, NotificationResult};
 pub use fanout::{
     NotificationFanoutPageResult, NotificationFanoutService, NotificationSourceInboxReceipt,
@@ -72,8 +78,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 2);
-        assert_eq!(module.migration_dependencies().len(), 2);
+        assert_eq!(module.migrations().len(), 3);
+        assert_eq!(module.migration_dependencies().len(), 3);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module
