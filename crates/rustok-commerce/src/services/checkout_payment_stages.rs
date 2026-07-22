@@ -1,20 +1,26 @@
+use std::{sync::Arc, time::Duration};
+
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_order::OrderResponse;
-use rustok_payment::PaymentService;
-use rustok_payment::dto::{
-    AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
-    PaymentCollectionResponse,
+use rustok_payment::{
+    AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
+    CheckoutPaymentExecutionPort, CheckoutPaymentIdentity, InProcessCheckoutPaymentExecutionPort,
+    PaymentCollectionResponse, PaymentProviderRegistry, PrepareCheckoutPaymentCollectionRequest,
+    ReadCheckoutPaymentCollectionRequest, in_process_checkout_payment_execution_port,
 };
-use rustok_payment::error::PaymentError;
-use rustok_payment::providers::PaymentProviderRegistry;
-use serde_json::{Value, json};
+use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::entities::checkout_operation;
 
 use super::{
     CheckoutOperationCheckpoint, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanRecord,
-    DEFAULT_CHECKOUT_LEASE_SECONDS, PaymentOrchestrationError, PaymentOrchestrationService,
+    DEFAULT_CHECKOUT_LEASE_SECONDS,
 };
+
+const PAYMENT_EXECUTION_PORT_DEADLINE_SECONDS: u64 = 5;
 
 #[derive(Clone, Debug)]
 pub struct CheckoutPaymentCapturedState {
@@ -28,10 +34,15 @@ pub struct CheckoutPaymentCapturedState {
 pub enum CheckoutPaymentStageError {
     #[error(transparent)]
     Operation(#[from] CheckoutOperationError),
-    #[error(transparent)]
-    Payment(#[from] PaymentError),
-    #[error(transparent)]
-    Orchestration(#[from] PaymentOrchestrationError),
+    #[error(
+        "checkout payment boundary `{stage}` failed with `{code}` (retryable={retryable}): {message}"
+    )]
+    Boundary {
+        stage: &'static str,
+        code: String,
+        message: String,
+        retryable: bool,
+    },
     #[error("checkout payment stage conflict: {0}")]
     Conflict(String),
 }
@@ -39,19 +50,21 @@ pub enum CheckoutPaymentStageError {
 pub type CheckoutPaymentStageResult<T> = Result<T, CheckoutPaymentStageError>;
 
 pub struct CheckoutPaymentStageExecutor {
-    payment_service: PaymentService,
-    payment_orchestration: PaymentOrchestrationService,
+    payment_port: Arc<dyn CheckoutPaymentExecutionPort>,
     operation_journal: CheckoutOperationJournal,
+    owner_db: sea_orm::DatabaseConnection,
     lease_seconds: i64,
+    port_deadline: Duration,
 }
 
 impl CheckoutPaymentStageExecutor {
     pub fn new(db: sea_orm::DatabaseConnection) -> Self {
         Self {
-            payment_service: PaymentService::new(db.clone()),
-            payment_orchestration: PaymentOrchestrationService::new(db.clone()),
-            operation_journal: CheckoutOperationJournal::new(db),
+            payment_port: in_process_checkout_payment_execution_port(db.clone()),
+            operation_journal: CheckoutOperationJournal::new(db.clone()),
+            owner_db: db,
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
+            port_deadline: Duration::from_secs(PAYMENT_EXECUTION_PORT_DEADLINE_SECONDS),
         }
     }
 
@@ -59,9 +72,20 @@ impl CheckoutPaymentStageExecutor {
         mut self,
         payment_provider_registry: PaymentProviderRegistry,
     ) -> Self {
-        self.payment_orchestration = self
-            .payment_orchestration
-            .with_provider_registry(payment_provider_registry);
+        self.payment_port = Arc::new(
+            InProcessCheckoutPaymentExecutionPort::with_provider_registry(
+                self.owner_db.clone(),
+                payment_provider_registry,
+            ),
+        );
+        self
+    }
+
+    pub fn with_payment_port(
+        mut self,
+        payment_port: Arc<dyn CheckoutPaymentExecutionPort>,
+    ) -> Self {
+        self.payment_port = payment_port;
         self
     }
 
@@ -70,10 +94,9 @@ impl CheckoutPaymentStageExecutor {
         self
     }
 
-    /// Advances a claimed checkout operation through journaled authorization
-    /// and capture. Provider side effects are owned by
-    /// `PaymentOrchestrationService`; this executor only binds them to durable
-    /// checkout checkpoints.
+    /// Advances a claimed checkout operation through payment owner
+    /// prepare/authorize/capture commands. Provider journal and payment lifecycle
+    /// policy remain inside `rustok-payment`; commerce owns only stage checkpoints.
     pub async fn advance_to_payment_captured(
         &self,
         tenant_id: Uuid,
@@ -87,50 +110,59 @@ impl CheckoutPaymentStageExecutor {
 
         for _ in 0..3 {
             let operation = self.operation_journal.get(tenant_id, operation_id).await?;
-            if operation.status != CheckoutOperationStatus::Executing.as_str() {
-                return Err(CheckoutPaymentStageError::Conflict(format!(
-                    "checkout operation {} must be executing, not `{}`",
-                    operation.id, operation.status
-                )));
-            }
-            if operation.order_id != Some(order.id) {
-                return Err(CheckoutPaymentStageError::Conflict(format!(
-                    "checkout operation {} is not bound to order {}",
-                    operation.id, order.id
-                )));
-            }
+            validate_operation(&operation, &order)?;
+            let identity = payment_identity(&operation, &order, &plan);
 
             match operation.stage.as_str() {
                 stage if stage == CheckoutOperationStage::PaymentReady.as_str() => {
                     let collection = self
-                        .prepare_collection(tenant_id, &operation, &order, &plan)
-                        .await?;
-                    let authorized = self
-                        .payment_orchestration
-                        .authorize_collection(
-                            tenant_id,
-                            collection.id,
-                            AuthorizePaymentInput {
-                                provider_id: collection.provider_id.clone(),
-                                provider_payment_id: None,
-                                amount: Some(order.total_amount),
-                                metadata: payment_stage_metadata(
-                                    plan.payload.checkout_metadata.clone(),
-                                    operation_id,
-                                    order.id,
-                                    plan.plan_hash.as_str(),
-                                    "authorize",
-                                ),
+                        .payment_port
+                        .prepare_checkout_collection(
+                            payment_write_context(
+                                tenant_id,
+                                operation_id,
+                                plan.payload.context.locale.as_str(),
+                                self.port_deadline,
+                                "prepare",
+                                format!("checkout:{operation_id}:payment:collection"),
+                            ),
+                            PrepareCheckoutPaymentCollectionRequest {
+                                identity: identity.clone(),
+                                metadata: plan.payload.checkout_metadata.clone(),
                             },
                         )
-                        .await?;
+                        .await
+                        .map_err(|error| boundary_error("prepare", error))?;
+                    validate_collection(&collection, tenant_id, &identity)?;
+
+                    let authorized = self
+                        .payment_port
+                        .authorize_checkout_collection(
+                            payment_write_context(
+                                tenant_id,
+                                operation_id,
+                                plan.payload.context.locale.as_str(),
+                                self.port_deadline,
+                                "authorize",
+                                format!(
+                                    "payment_collection:{}:authorize",
+                                    collection.id
+                                ),
+                            ),
+                            AuthorizeCheckoutPaymentCollectionRequest {
+                                identity,
+                                collection_id: collection.id,
+                                provider_id: collection.provider_id.clone(),
+                                provider_payment_id: None,
+                                metadata: plan.payload.checkout_metadata.clone(),
+                            },
+                        )
+                        .await
+                        .map_err(|error| boundary_error("authorize", error))?;
                     validate_collection(
                         &authorized,
                         tenant_id,
-                        operation.cart_id,
-                        &order,
-                        operation_id,
-                        plan.plan_hash.as_str(),
+                        &payment_identity(&operation, &order, &plan),
                     )?;
                     if !matches!(authorized.status.as_str(), "authorized" | "captured") {
                         return Err(CheckoutPaymentStageError::Conflict(format!(
@@ -159,42 +191,29 @@ impl CheckoutPaymentStageExecutor {
                             operation.id
                         ))
                     })?;
-                    let collection = self
-                        .payment_service
-                        .get_collection(tenant_id, collection_id)
-                        .await?;
-                    validate_collection(
-                        &collection,
-                        tenant_id,
-                        operation.cart_id,
-                        &order,
-                        operation_id,
-                        plan.plan_hash.as_str(),
-                    )?;
                     let captured = self
-                        .payment_orchestration
-                        .capture_collection(
-                            tenant_id,
-                            collection_id,
-                            CapturePaymentInput {
-                                amount: Some(order.total_amount),
-                                metadata: payment_stage_metadata(
-                                    plan.payload.checkout_metadata.clone(),
-                                    operation_id,
-                                    order.id,
-                                    plan.plan_hash.as_str(),
-                                    "capture",
-                                ),
+                        .payment_port
+                        .capture_checkout_collection(
+                            payment_write_context(
+                                tenant_id,
+                                operation_id,
+                                plan.payload.context.locale.as_str(),
+                                self.port_deadline,
+                                "capture",
+                                format!("payment_collection:{collection_id}:capture"),
+                            ),
+                            CaptureCheckoutPaymentCollectionRequest {
+                                identity,
+                                collection_id,
+                                metadata: plan.payload.checkout_metadata.clone(),
                             },
                         )
-                        .await?;
+                        .await
+                        .map_err(|error| boundary_error("capture", error))?;
                     validate_collection(
                         &captured,
                         tenant_id,
-                        operation.cart_id,
-                        &order,
-                        operation_id,
-                        plan.plan_hash.as_str(),
+                        &payment_identity(&operation, &order, &plan),
                     )?;
                     if captured.status != "captured"
                         || captured.captured_amount != order.total_amount
@@ -219,38 +238,9 @@ impl CheckoutPaymentStageExecutor {
                         .await?;
                 }
                 stage if stage == CheckoutOperationStage::PaymentCaptured.as_str() => {
-                    let collection_id = operation.payment_collection_id.ok_or_else(|| {
-                        CheckoutPaymentStageError::Conflict(format!(
-                            "checkout operation {} has no captured payment collection",
-                            operation.id
-                        ))
-                    })?;
-                    let collection = self
-                        .payment_service
-                        .get_collection(tenant_id, collection_id)
-                        .await?;
-                    validate_collection(
-                        &collection,
-                        tenant_id,
-                        operation.cart_id,
-                        &order,
-                        operation_id,
-                        plan.plan_hash.as_str(),
-                    )?;
-                    if collection.status != "captured"
-                        || collection.captured_amount != order.total_amount
-                    {
-                        return Err(CheckoutPaymentStageError::Conflict(format!(
-                            "checkout operation {} is payment_captured but collection {} is `{}`",
-                            operation.id, collection.id, collection.status
-                        )));
-                    }
-                    return Ok(CheckoutPaymentCapturedState {
-                        operation_id,
-                        order,
-                        plan,
-                        payment_collection: collection,
-                    });
+                    return self
+                        .load_payment_captured_state(tenant_id, operation_id, order, plan)
+                        .await;
                 }
                 stage => {
                     return Err(CheckoutPaymentStageError::Conflict(format!(
@@ -266,60 +256,96 @@ impl CheckoutPaymentStageExecutor {
         )))
     }
 
-    async fn prepare_collection(
+    pub async fn load_payment_captured_state(
         &self,
         tenant_id: Uuid,
-        operation: &crate::entities::checkout_operation::Model,
-        order: &OrderResponse,
-        plan: &CheckoutOrderPlanRecord,
-    ) -> CheckoutPaymentStageResult<PaymentCollectionResponse> {
-        let metadata = payment_stage_metadata(
-            plan.payload.checkout_metadata.clone(),
-            operation.id,
-            order.id,
-            plan.plan_hash.as_str(),
-            "collection",
-        );
-        let collection = match self
-            .payment_service
-            .find_reusable_collection_by_cart(tenant_id, operation.cart_id)
-            .await?
-        {
-            Some(existing) => {
-                validate_optional_collection_identity(
-                    &existing,
-                    operation.id,
-                    plan.plan_hash.as_str(),
-                )?;
-                self.payment_service
-                    .attach_order_to_collection(tenant_id, existing.id, order.id, metadata)
-                    .await?
-            }
-            None => {
-                self.payment_service
-                    .create_collection(
-                        tenant_id,
-                        CreatePaymentCollectionInput {
-                            cart_id: Some(operation.cart_id),
-                            order_id: Some(order.id),
-                            customer_id: order.customer_id,
-                            currency_code: order.currency_code.clone(),
-                            amount: order.total_amount,
-                            metadata,
-                        },
-                    )
-                    .await?
-            }
-        };
-        validate_collection(
-            &collection,
-            tenant_id,
-            operation.cart_id,
+        operation_id: Uuid,
+        order: OrderResponse,
+        plan: CheckoutOrderPlanRecord,
+    ) -> CheckoutPaymentStageResult<CheckoutPaymentCapturedState> {
+        validate_order_plan(tenant_id, operation_id, &order, &plan)?;
+        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
+        validate_operation(&operation, &order)?;
+        if !matches!(
+            operation.stage.as_str(),
+            "payment_captured" | "fulfillment_created" | "cart_completed" | "completed"
+        ) {
+            return Err(CheckoutPaymentStageError::Conflict(format!(
+                "checkout operation {} has not reached payment_captured, stage={}",
+                operation.id, operation.stage
+            )));
+        }
+        let collection_id = operation.payment_collection_id.ok_or_else(|| {
+            CheckoutPaymentStageError::Conflict(format!(
+                "checkout operation {} has no captured payment collection",
+                operation.id
+            ))
+        })?;
+        let identity = payment_identity(&operation, &order, &plan);
+        let collection = self
+            .payment_port
+            .read_checkout_collection(
+                payment_read_context(
+                    tenant_id,
+                    operation_id,
+                    plan.payload.context.locale.as_str(),
+                    self.port_deadline,
+                ),
+                ReadCheckoutPaymentCollectionRequest {
+                    identity: identity.clone(),
+                    collection_id,
+                },
+            )
+            .await
+            .map_err(|error| boundary_error("read", error))?;
+        validate_collection(&collection, tenant_id, &identity)?;
+        if collection.status != "captured" || collection.captured_amount != order.total_amount {
+            return Err(CheckoutPaymentStageError::Conflict(format!(
+                "checkout operation {} is payment_captured but collection {} is `{}`",
+                operation.id, collection.id, collection.status
+            )));
+        }
+        Ok(CheckoutPaymentCapturedState {
+            operation_id,
             order,
-            operation.id,
-            plan.plan_hash.as_str(),
-        )?;
-        Ok(collection)
+            plan,
+            payment_collection: collection,
+        })
+    }
+}
+
+fn validate_operation(
+    operation: &checkout_operation::Model,
+    order: &OrderResponse,
+) -> CheckoutPaymentStageResult<()> {
+    if operation.status != CheckoutOperationStatus::Executing.as_str() {
+        return Err(CheckoutPaymentStageError::Conflict(format!(
+            "checkout operation {} must be executing, not `{}`",
+            operation.id, operation.status
+        )));
+    }
+    if operation.order_id != Some(order.id) {
+        return Err(CheckoutPaymentStageError::Conflict(format!(
+            "checkout operation {} is not bound to order {}",
+            operation.id, order.id
+        )));
+    }
+    Ok(())
+}
+
+fn payment_identity(
+    operation: &checkout_operation::Model,
+    order: &OrderResponse,
+    plan: &CheckoutOrderPlanRecord,
+) -> CheckoutPaymentIdentity {
+    CheckoutPaymentIdentity {
+        checkout_operation_id: operation.id,
+        cart_id: operation.cart_id,
+        order_id: order.id,
+        customer_id: order.customer_id,
+        currency_code: order.currency_code.clone(),
+        amount: order.total_amount,
+        order_plan_hash: plan.plan_hash.clone(),
     }
 }
 
@@ -361,61 +387,25 @@ fn validate_order_plan(
     Ok(())
 }
 
-fn validate_optional_collection_identity(
-    collection: &PaymentCollectionResponse,
-    operation_id: Uuid,
-    plan_hash: &str,
-) -> CheckoutPaymentStageResult<()> {
-    let checkout = collection.metadata.get("checkout");
-    let operation_id = operation_id.to_string();
-    if let Some(existing_operation) = checkout
-        .and_then(|value| value.get("operation_id"))
-        .and_then(Value::as_str)
-    {
-        if existing_operation != operation_id {
-            return Err(CheckoutPaymentStageError::Conflict(format!(
-                "payment collection {} belongs to another checkout operation",
-                collection.id
-            )));
-        }
-    }
-    if let Some(existing_plan_hash) = checkout
-        .and_then(|value| value.get("order_plan_hash"))
-        .and_then(Value::as_str)
-    {
-        if existing_plan_hash != plan_hash {
-            return Err(CheckoutPaymentStageError::Conflict(format!(
-                "payment collection {} belongs to another order plan",
-                collection.id
-            )));
-        }
-    }
-    Ok(())
-}
-
 fn validate_collection(
     collection: &PaymentCollectionResponse,
     tenant_id: Uuid,
-    cart_id: Uuid,
-    order: &OrderResponse,
-    operation_id: Uuid,
-    plan_hash: &str,
+    identity: &CheckoutPaymentIdentity,
 ) -> CheckoutPaymentStageResult<()> {
     if collection.tenant_id != tenant_id
-        || collection.cart_id != Some(cart_id)
-        || collection.order_id != Some(order.id)
-        || collection.customer_id != order.customer_id
+        || collection.cart_id != Some(identity.cart_id)
+        || collection.order_id != Some(identity.order_id)
+        || collection.customer_id != identity.customer_id
         || !collection
             .currency_code
-            .eq_ignore_ascii_case(order.currency_code.as_str())
-        || collection.amount != order.total_amount
+            .eq_ignore_ascii_case(identity.currency_code.as_str())
+        || collection.amount != identity.amount
     {
         return Err(CheckoutPaymentStageError::Conflict(format!(
             "payment collection {} does not match checkout order {}",
-            collection.id, order.id
+            collection.id, identity.order_id
         )));
     }
-    validate_optional_collection_identity(collection, operation_id, plan_hash)?;
     let checkout = collection
         .metadata
         .get("checkout")
@@ -426,9 +416,10 @@ fn validate_collection(
                 collection.id
             ))
         })?;
-    let operation_id = operation_id.to_string();
+    let operation_id = identity.checkout_operation_id.to_string();
     if checkout.get("operation_id").and_then(Value::as_str) != Some(operation_id.as_str())
-        || checkout.get("order_plan_hash").and_then(Value::as_str) != Some(plan_hash)
+        || checkout.get("order_plan_hash").and_then(Value::as_str)
+            != Some(identity.order_plan_hash.as_str())
     {
         return Err(CheckoutPaymentStageError::Conflict(format!(
             "payment collection {} has a mismatched checkout identity",
@@ -438,38 +429,55 @@ fn validate_collection(
     Ok(())
 }
 
-fn payment_stage_metadata(
-    base: Value,
+fn payment_write_context(
+    tenant_id: Uuid,
     operation_id: Uuid,
-    order_id: Uuid,
-    plan_hash: &str,
-    stage: &str,
-) -> Value {
-    let mut root = match base {
-        Value::Object(root) => root,
-        _ => Default::default(),
-    };
-    let mut checkout = root
-        .remove("checkout")
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    checkout.insert(
-        "operation_id".to_string(),
-        Value::String(operation_id.to_string()),
-    );
-    checkout.insert("order_id".to_string(), Value::String(order_id.to_string()));
-    checkout.insert(
-        "order_plan_hash".to_string(),
-        Value::String(plan_hash.to_string()),
-    );
-    checkout.insert(
-        "payment_stage".to_string(),
-        Value::String(stage.to_string()),
-    );
-    root.insert("checkout".to_string(), Value::Object(checkout));
-    root.insert(
-        "commerce_orchestration".to_string(),
-        json!({"operation": format!("checkout_payment_{stage}")}),
-    );
-    Value::Object(root)
+    locale: &str,
+    deadline: Duration,
+    action: &str,
+    idempotency_key: String,
+) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.checkout-payment-stage"),
+        normalize_locale(locale),
+        format!("checkout:{operation_id}:payment:{action}"),
+    )
+    .with_causation_id(operation_id.to_string())
+    .with_idempotency_key(idempotency_key)
+    .with_deadline(deadline)
+}
+
+fn payment_read_context(
+    tenant_id: Uuid,
+    operation_id: Uuid,
+    locale: &str,
+    deadline: Duration,
+) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.checkout-payment-stage"),
+        normalize_locale(locale),
+        format!("checkout:{operation_id}:payment:read"),
+    )
+    .with_causation_id(operation_id.to_string())
+    .with_deadline(deadline)
+}
+
+fn normalize_locale(locale: &str) -> String {
+    let locale = locale.trim();
+    if locale.is_empty() {
+        PLATFORM_FALLBACK_LOCALE.to_string()
+    } else {
+        locale.to_string()
+    }
+}
+
+fn boundary_error(stage: &'static str, error: PortError) -> CheckoutPaymentStageError {
+    CheckoutPaymentStageError::Boundary {
+        stage,
+        code: error.code,
+        message: error.message,
+        retryable: error.retryable,
+    }
 }
