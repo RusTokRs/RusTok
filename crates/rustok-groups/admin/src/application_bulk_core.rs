@@ -2,6 +2,7 @@ use uuid::Uuid;
 
 use crate::application_model::{
     BulkReviewGroupMembershipApplicationsCommand, GroupsAdminApplicationReviewDecision,
+    GroupsAdminMembershipApplicationQuery,
 };
 
 const MAX_BULK_REVIEW_ITEMS: usize = 50;
@@ -12,9 +13,22 @@ pub enum GroupsAdminBulkReviewInputError {
     EmptySelection,
     TooManyApplications,
     DuplicateApplication,
+    InvalidGroupId,
     InvalidApplicationId,
     ConfirmationRequired,
     ReviewNoteTooLong,
+}
+
+pub fn prepare_bulk_review_group_membership_application_query(
+    group_id: &str,
+) -> Result<GroupsAdminMembershipApplicationQuery, GroupsAdminBulkReviewInputError> {
+    Ok(GroupsAdminMembershipApplicationQuery {
+        group_id: normalize_uuid(group_id)
+            .map_err(|_| GroupsAdminBulkReviewInputError::InvalidGroupId)?,
+        status: Some("pending".to_string()),
+        page: 1,
+        per_page: MAX_BULK_REVIEW_ITEMS as u64,
+    })
 }
 
 pub fn prepare_bulk_review_group_membership_applications(
