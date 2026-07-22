@@ -186,11 +186,23 @@ jobs:
               );
           }
           RS
-      - name: Run scoped PostgreSQL contract
+      - name: Capture scoped PostgreSQL contract evidence
+        shell: bash
         env:
           ACTIVE_MENU_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
-        run: >-
-          cargo test --locked
-          -p rustok-pages
-          --test active_menu_postgres_diagnostic
-          -- --nocapture
+        run: |
+          set +e
+          cargo test --locked \
+            -p rustok-pages \
+            --test active_menu_postgres_diagnostic \
+            -- --nocapture 2>&1 | tee /tmp/active-menu-postgres.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > /tmp/active-menu-postgres.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: active-menu-postgres-evidence
+          path: |
+            /tmp/active-menu-postgres.log
+            /tmp/active-menu-postgres.status
+          if-no-files-found: error
