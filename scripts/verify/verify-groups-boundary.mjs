@@ -20,10 +20,13 @@ const required = [
   "crates/rustok-groups/src/invitations.rs",
   "crates/rustok-groups/src/targeted_invitations.rs",
   "crates/rustok-groups/src/applications.rs",
+  "crates/rustok-groups/src/applications_legacy.rs",
+  "crates/rustok-groups/src/applications_cas.rs",
   "crates/rustok-groups/src/policy_history.rs",
   "crates/rustok-groups/src/governance.rs",
   "crates/rustok-groups/src/graphql_applications.rs",
   "crates/rustok-groups/src/graphql_policy_history.rs",
+  "crates/rustok-groups/src/graphql_application_cas.rs",
   "crates/rustok-groups/src/migrations/m20260722_000007_create_group_membership_policy_revisions.rs",
   "crates/rustok-groups/admin/src/core.rs",
   "crates/rustok-groups/admin/src/application_core.rs",
@@ -41,6 +44,7 @@ const required = [
   "scripts/verify/verify-groups-targeted-invitation-delivery.mjs",
   "scripts/verify/verify-groups-membership-applications.mjs",
   "scripts/verify/verify-groups-membership-policy-revisions.mjs",
+  "scripts/verify/verify-groups-application-policy-cas.mjs",
 ];
 
 for (const relative of required) {
@@ -73,7 +77,7 @@ for (const uiPath of [
   if (!ui.includes("crate::transport")) {
     failures.push(`Leptos UI must consume the Groups transport facade: ${uiPath}`);
   }
-  if (/graphql_(?:applications|invitations|policy_history)?_?adapter|native_(?:applications|invitations|policy_history)?_?adapter|native_server_adapter/.test(ui)) {
+  if (/graphql_(?:applications|invitations|policy_history|policy_locale)?_?adapter|native_(?:applications|invitations|policy_history|policy_locale)?_?adapter|native_server_adapter/.test(ui)) {
     failures.push(`Leptos UI must not import raw transport adapters: ${uiPath}`);
   }
 }
@@ -83,7 +87,8 @@ const serviceFiles = [
   "crates/rustok-groups/src/localization.rs",
   "crates/rustok-groups/src/invitations.rs",
   "crates/rustok-groups/src/targeted_invitations.rs",
-  "crates/rustok-groups/src/applications.rs",
+  "crates/rustok-groups/src/applications_legacy.rs",
+  "crates/rustok-groups/src/applications_cas.rs",
   "crates/rustok-groups/src/policy_history.rs",
   "crates/rustok-groups/src/governance.rs",
 ];
@@ -132,11 +137,23 @@ if (exists("crates/rustok-groups/src/policy_history.rs")) {
   }
 }
 
+if (exists("crates/rustok-groups/src/applications_cas.rs")) {
+  const cas = read("crates/rustok-groups/src/applications_cas.rs");
+  for (const marker of [
+    "GroupApplicationCasCommandPort",
+    "GROUP_APPLICATION_POLICY_CHANGED_CODE",
+    "ensure_policy_update_precondition",
+    "ensure_loaded_policy_precondition",
+  ]) {
+    if (!cas.includes(marker)) failures.push(`Groups application CAS boundary is missing marker: ${marker}`);
+  }
+}
+
 if (exists("crates/rustok-groups/rustok-module.toml")) {
   const manifest = read("crates/rustok-groups/rustok-module.toml");
   for (const marker of [
-    'query = "graphql_policy_history::GroupsQueryRoot"',
-    'mutation = "graphql_policy_history::GroupsMutationRoot"',
+    'query = "graphql_application_cas::GroupsQueryRoot"',
+    'mutation = "graphql_application_cas::GroupsMutationRoot"',
     'subpath = "applications"',
     'subpath = "invitations"',
   ]) {
@@ -144,13 +161,14 @@ if (exists("crates/rustok-groups/rustok-module.toml")) {
   }
 }
 
-if (exists("crates/rustok-groups/src/graphql_policy_history.rs")) {
-  const graphql = read("crates/rustok-groups/src/graphql_policy_history.rs");
+if (exists("crates/rustok-groups/src/graphql_application_cas.rs")) {
+  const graphql = read("crates/rustok-groups/src/graphql_application_cas.rs");
   for (const marker of [
-    "MergedObject",
     "GroupsBaseQueryRoot",
-    "GroupsMutationRoot",
-    "group_application_policy_revisions",
+    "GroupsBaseMutationRoot",
+    "GroupsApplicationCasMutation",
+    "upsert_group_application_policy_if_current",
+    "submit_group_membership_application_if_current",
   ]) {
     if (!graphql.includes(marker)) failures.push(`Groups final GraphQL root is missing marker: ${marker}`);
   }
@@ -166,6 +184,8 @@ if (exists("crates/rustok-groups/src/ports.rs")) {
     "GroupInvitationReadPort",
     "GroupTargetedInvitationCommandPort",
     "GroupApplicationReadPort",
+    "GroupApplicationPolicyHistoryReadPort",
+    "GroupApplicationCasCommandPort",
     "GroupApplicationCommandPort",
     "GroupGovernanceCommandPort",
     'private_content_fallback: "deny"',
@@ -198,7 +218,8 @@ if (exists("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (registry?.membership_applications?.module_local_fallback !== false) failures.push("Application policy must not own locale fallback");
   if (registry?.membership_applications?.transport_fallback !== "never") failures.push("Application transport must never fall back implicitly");
   if (registry?.membership_applications?.policy_revision_history !== "implemented_source") failures.push("Policy revision history must remain source-only before runtime evidence");
-  if (registry?.membership_applications?.atomic_expected_revision_guard !== "planned") failures.push("Atomic expected-revision guard must remain planned");
+  if (registry?.membership_applications?.atomic_expected_revision_guard !== "implemented_source") failures.push("Atomic expected-revision guard must be source-complete");
+  if (registry?.evidence?.membership_application_policy_cas !== null) failures.push("Unexecuted application CAS evidence must remain null");
 }
 
 for (const localePath of [
@@ -216,4 +237,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups aggregate ownership, privacy, exact-locale, FFA/FBA, application, policy-history, invitation, governance, and no-fallback boundary checks passed.");
+console.log("Groups aggregate ownership, privacy, exact-locale, FFA/FBA, application CAS/history, invitation, governance, and no-fallback boundary checks passed.");
