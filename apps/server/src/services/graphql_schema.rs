@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
-use crate::graphql::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
+use crate::graphql::{build_schema, AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema};
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
@@ -32,6 +32,12 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
         .with_shared_value(registry);
     let host_runtime = module_runtime_extensions_from_ctx(ctx).apply_to_host_runtime(host_runtime);
     let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
+    let host_runtime =
+        if let Some(catalog) = ctx.shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>() {
+            host_runtime.with_shared_value(catalog)
+        } else {
+            host_runtime
+        };
     #[cfg(feature = "mod-media")]
     let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
         host_runtime.with_shared_value(storage)

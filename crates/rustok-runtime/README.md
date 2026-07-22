@@ -26,6 +26,8 @@ adapters away from framework-specific runtime contexts.
 
 - Depends on `rustok-api` for the current `HostRuntimeContext` contract and keeps settings as a
   host-neutral JSON snapshot rather than depending on server configuration types.
+- Enables only the neutral `rustok-api/runtime` feature; it does not pull Axum or
+  Async-GraphQL into module owners that consume runtime helpers.
 - Is consumed by server/module adapters for typed runtime lookups.
 - Does not own HTTP routing, CLI, FBA provider metadata, domain services, or UI transport.
 

@@ -15,7 +15,9 @@ pub enum MarketplaceLedgerError {
     ReversalAlreadyPosted(Uuid),
     #[error("marketplace seller balance transfer source {0} is already posted")]
     BalanceTransferAlreadyPosted(Uuid),
-    #[error("marketplace seller balance for seller {seller_id} and currency {currency_code} was not found")]
+    #[error(
+        "marketplace seller balance for seller {seller_id} and currency {currency_code} was not found"
+    )]
     SellerBalanceNotFound {
         seller_id: Uuid,
         currency_code: String,

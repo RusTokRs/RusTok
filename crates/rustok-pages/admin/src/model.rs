@@ -1,4 +1,4 @@
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

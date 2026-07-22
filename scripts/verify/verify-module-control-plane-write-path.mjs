@@ -17,11 +17,26 @@ const nonOwnerRoots = [
   'crates/rustok-worker-transport/src',
 ].map((relativePath) => path.join(root, relativePath));
 const ownerRoot = path.join(root, 'crates/rustok-modules/src');
+const adminModuleTransportRoot = path.join(root, 'apps/admin/src/features/modules/transport');
+const ownerManifestPath = path.join(root, 'crates/rustok-modules/Cargo.toml');
+const runtimeManifestPath = path.join(root, 'crates/rustok-runtime/Cargo.toml');
+const forbiddenOwnerDependencies = [
+  'alloy',
+  'async-graphql',
+  'axum',
+  'leptos',
+  'rustok-ai',
+  'rustok-commerce',
+  'rustok-mcp',
+  'rustok-product',
+];
+const forbiddenOwnerImportPattern = /\b(?:use|extern\s+crate)\s+(?:alloy|async_graphql|axum|leptos|rustok_ai|rustok_commerce|rustok_mcp|rustok_product)\b/;
 const writePattern = /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:platform_state|module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|module_static_[a-z_]+|registry_[a-z_]+)\b/i;
 const activeModelPattern = /\b(?:module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|module_static_[a-z_]+|registry_[a-z_]+)::ActiveModel\b/;
 const entityMutationPattern = /\b(?:module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|module_static_[a-z_]+|registry_[a-z_]+)::Entity::(?:insert|insert_many|update_many|delete_many|delete_by_id)\b/;
 const ownerServiceConstructorPattern = /\b(?:ModuleDefinitionCatalog::from_static_registry|ModuleEffectivePolicyQuery::new|ModuleLifecycleDbWriter::new|SeaOrmArtifactInstallationStore::new|SeaOrmArtifactSandboxPolicyResolver::new|SeaOrmArtifactDataCapabilityBrokerResolver::new|SeaOrmArtifactDataObjectCapabilityBrokerResolver::new|SeaOrmArtifactDataExportService::new|SeaOrmArtifactDataSnapshotService::new|SeaOrmArtifactDataSnapshotRetentionService::new|SeaOrmArtifactDataSnapshotCollectionService::new|SeaOrmArtifactSecretService::new|SeaOrmArtifactSecretHandleService::new|SeaOrmArtifactSecretCapabilityBroker::new|SeaOrmArtifactSecretCapabilityBrokerResolver::new|SeaOrmArtifactSecretUseService::new|SeaOrmArtifactExecutionObserver::new|SeaOrmArtifactEventSubscriptionProjector::new|SeaOrmArtifactBindingIdempotencyStore::new|SeaOrmModuleBuildService::new|SeaOrmModuleCompositionService::new|SeaOrmModuleGovernanceService::new|SeaOrmModulePromotionService::with_infrastructure|SeaOrmModuleStaticDistributionService::with_infrastructure|SeaOrmModuleStaticDistributionWorkerService::with_infrastructure|SeaOrmModuleStaticDistributionReleaseService::with_infrastructure)\s*\(/;
 const directEventEnvelopePattern = /\bEventEnvelope::new\s*\(/;
+const adminBackendLogicPattern = /\b(?:Statement::from|DatabaseBackend::|query_(?:one|all)|std::fs::|tokio::fs::|read_to_string\s*\(|Sha256::|walkdir::|cargo\s+(?:build|metadata)|ModuleBuildService::new|(?:rustok_build::)?BuildService\b)\b/;
 const ownerBoundaries = [
   {
     path: 'crates/rustok-modules/src/composition.rs',
@@ -99,6 +114,17 @@ function isProductionSource(filePath) {
 }
 
 try {
+  const ownerManifest = fs.readFileSync(ownerManifestPath, 'utf8');
+  const runtimeManifest = fs.readFileSync(runtimeManifestPath, 'utf8');
+  const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter((dependency) =>
+    new RegExp(`^${dependency.replaceAll('-', '\\-')}\\s*=`, 'm').test(ownerManifest),
+  );
+  const forbiddenImportViolations = rustFiles(ownerRoot)
+    .filter(isProductionSource)
+    .filter((filePath) =>
+      forbiddenOwnerImportPattern.test(fs.readFileSync(filePath, 'utf8')),
+    )
+    .map(relative);
   const productionSources = nonOwnerRoots
     .flatMap((directory) => rustFiles(directory))
     .filter((filePath) => !relative(filePath).startsWith('apps/server/src/models/'))
@@ -115,6 +141,28 @@ try {
     .filter((filePath) => relative(filePath) !== 'crates/rustok-modules/src/infrastructure.rs')
     .filter((filePath) => directEventEnvelopePattern.test(fs.readFileSync(filePath, 'utf8')))
     .map(relative);
+  const adminBackendLogicViolations = rustFiles(adminModuleTransportRoot)
+    .filter(isProductionSource)
+    .filter((filePath) => adminBackendLogicPattern.test(fs.readFileSync(filePath, 'utf8')))
+    .map(relative);
+
+  if (forbiddenDependencyViolations.length > 0) {
+    fail(
+      `modules owner must remain independent from AI, product, commerce, MCP, and host/UI frameworks; dependencies found: ${forbiddenDependencyViolations.join(', ')}`,
+    );
+  }
+
+  if (forbiddenImportViolations.length > 0) {
+    fail(
+      `modules owner source must not import AI, product, commerce, MCP, or host/UI frameworks; found: ${forbiddenImportViolations.join(', ')}`,
+    );
+  }
+
+  if (/rustok-api\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"server"/s.test(runtimeManifest)) {
+    fail(
+      'neutral rustok-runtime must not enable rustok-api/server and pull host GraphQL/HTTP frameworks into rustok-modules',
+    );
+  }
 
   if (writeViolations.length > 0) {
     fail(`control-plane writes must be owner-owned; found: ${writeViolations.join(', ')}`);
@@ -129,6 +177,12 @@ try {
   if (directEventEnvelopeViolations.length > 0) {
     fail(
       `control-plane events must use injected identity, time, tenant, and actor metadata; found: ${directEventEnvelopeViolations.join(', ')}`,
+    );
+  }
+
+  if (adminBackendLogicViolations.length > 0) {
+    fail(
+      `admin module transport must remain an owner-backed adapter without SQL, filesystem, hashing, dependency, or build logic; found: ${adminBackendLogicViolations.join(', ')}`,
     );
   }
 
@@ -161,7 +215,9 @@ try {
     fail('artifact binding operation persistence must keep its PostgreSQL tenant RLS policy');
   }
 
-  console.log('[verify-module-control-plane-write-path] owner boundaries verified');
+  console.log(
+    '[verify-module-control-plane-write-path] owner boundaries and dependency isolation verified',
+  );
 } catch (error) {
   if (
     error instanceof Error &&

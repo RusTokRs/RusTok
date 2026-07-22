@@ -1,15 +1,15 @@
 use async_trait::async_trait;
 use futures_util::TryStreamExt;
-use object_store::{ObjectStoreExt, PutMode, path::Path};
+use object_store::{path::Path, ObjectStoreExt, PutMode};
 use rustok_storage::{DigestObjectKey, ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 use crate::{
+    installation::{sha256_digest, valid_digest},
     ArtifactBlobStore, ControlPlaneInfrastructure, DurableArtifactBlobStore,
     ModuleInstallationError, StagedArtifactBlob,
-    installation::{sha256_digest, valid_digest},
 };
 
 /// Durable artifact CAS backed by platform-controlled object storage. Final
@@ -156,7 +156,10 @@ impl StorageArtifactBlobStore {
             .await
         {
             Ok(_) => true,
-            Err(object_store::Error::AlreadyExists { .. }) => false,
+            Err(
+                object_store::Error::AlreadyExists { .. }
+                | object_store::Error::Precondition { .. },
+            ) => false,
             Err(error) => return Err(Self::storage_error(error)),
         };
         if !created {

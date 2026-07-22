@@ -122,19 +122,18 @@ impl NormalizedChargebackEvent {
         })?;
         let collection_id = Uuid::parse_str(required_string(metadata, "collection_id")?.as_str())
             .map_err(|_| {
-                non_retryable(
-                    "payment.webhook_collection_id_invalid",
-                    "normalized chargeback webhook collection_id must be a UUID",
-                )
-            })?;
-        let amount = Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(
-            |_| {
+            non_retryable(
+                "payment.webhook_collection_id_invalid",
+                "normalized chargeback webhook collection_id must be a UUID",
+            )
+        })?;
+        let amount =
+            Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(|_| {
                 non_retryable(
                     "payment.webhook_amount_invalid",
                     "normalized chargeback webhook amount must be a decimal string",
                 )
-            },
-        )?;
+            })?;
         if amount <= Decimal::ZERO {
             return Err(non_retryable(
                 "payment.webhook_amount_invalid",

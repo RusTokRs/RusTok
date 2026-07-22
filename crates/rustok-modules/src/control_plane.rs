@@ -10,9 +10,12 @@ use crate::{
     ArtifactEventDeliveryConfig, ArtifactEventDeliveryError, ArtifactLifecycleExecutor,
     ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
     ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
-    ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
+    ControlPlaneInfrastructure, ModuleArtifactSecurityAuthorizer, ModuleDefinitionCatalog,
+    ModuleDefinitionError, ModuleEffectivePolicy, ModuleEffectivePolicyChannelInput,
+    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
     ModuleLifecycleDbWriter, ModuleStaticDistributionAuthorizer,
     ModuleStaticDistributionReleaseAuthorizer, ModuleStaticDistributionReleaseVerifier,
+    ModuleStaticDistributionRolloutAuthorizer, ModuleStaticDistributionTopologyResolver,
     ModuleStaticDistributionWorkerAuthorizer, ModuleStaticPromotionAuthorizer,
     SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
     SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
@@ -22,10 +25,12 @@ use crate::{
     SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretService,
-    SeaOrmArtifactSecretUseService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
+    SeaOrmArtifactSecretUseService, SeaOrmModuleArtifactSecurityResolver,
+    SeaOrmModuleArtifactSecurityService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
     SeaOrmModuleGovernanceService, SeaOrmModulePromotionService,
-    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionService,
-    SeaOrmModuleStaticDistributionWorkerService, StorageArtifactBlobStore,
+    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionRolloutService,
+    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
+    StorageArtifactBlobStore,
 };
 use rustok_storage::StorageRuntime;
 
@@ -45,11 +50,77 @@ pub struct EffectivePolicyService<'a> {
 }
 
 impl<'a> EffectivePolicyService<'a> {
+    /// Returns the canonical explainable decision set and its deterministic
+    /// revision. Hosts must retain this evidence instead of reconstructing
+    /// availability from the enabled-module projection.
+    pub async fn resolve(
+        &self,
+        tenant_id: uuid::Uuid,
+    ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle.effective_policy(tenant_id).await
+    }
+
+    /// Resolves policy from a tenant-safe channel snapshot produced by the
+    /// channel owner or host transport adapter.
+    pub async fn resolve_for_channel(
+        &self,
+        tenant_id: uuid::Uuid,
+        channel: ModuleEffectivePolicyChannelInput,
+    ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle
+            .effective_policy_for_channel(tenant_id, channel)
+            .await
+    }
+
+    /// Resolves policy from channel and operational maintenance snapshots
+    /// supplied by their owning host services.
+    pub async fn resolve_for_context(
+        &self,
+        tenant_id: uuid::Uuid,
+        channel: Option<ModuleEffectivePolicyChannelInput>,
+        maintenance: Option<ModuleEffectivePolicyMaintenanceInput>,
+        node_readiness: Option<ModuleEffectivePolicyNodeReadinessInput>,
+    ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle
+            .effective_policy_for_context(tenant_id, channel, maintenance, node_readiness)
+            .await
+    }
+
+    pub async fn resolve_for_maintenance(
+        &self,
+        tenant_id: uuid::Uuid,
+        maintenance: ModuleEffectivePolicyMaintenanceInput,
+    ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle
+            .effective_policy_for_maintenance(tenant_id, maintenance)
+            .await
+    }
+
+    pub async fn resolve_for_node_readiness(
+        &self,
+        tenant_id: uuid::Uuid,
+        node_readiness: ModuleEffectivePolicyNodeReadinessInput,
+    ) -> Result<ModuleEffectivePolicy, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle
+            .effective_policy_for_node_readiness(tenant_id, node_readiness)
+            .await
+    }
+
     pub async fn resolve_enabled(
         &self,
         tenant_id: uuid::Uuid,
     ) -> Result<HashSet<String>, crate::ModuleLifecycleDbWriterError> {
-        self.lifecycle.effective_enabled_modules(tenant_id).await
+        Ok(self.resolve(tenant_id).await?.into_enabled_modules())
+    }
+
+    pub async fn tenant_override_snapshots(
+        &self,
+        tenant_id: uuid::Uuid,
+        limit: u32,
+    ) -> Result<Vec<crate::TenantModuleOverrideSnapshot>, crate::ModuleLifecycleDbWriterError> {
+        self.lifecycle
+            .tenant_override_snapshots(tenant_id, limit)
+            .await
     }
 }
 
@@ -75,6 +146,14 @@ impl ModuleControlPlane {
         registry: &ModuleRegistry,
     ) -> Result<ModuleDefinitionCatalog, ModuleDefinitionError> {
         ModuleDefinitionCatalog::from_static_registry(registry)
+    }
+
+    pub fn static_distribution_catalog(
+        &self,
+        registry: &ModuleRegistry,
+        release: &crate::ModuleStaticDistributionRelease,
+    ) -> Result<ModuleDefinitionCatalog, ModuleDefinitionError> {
+        ModuleDefinitionCatalog::from_static_distribution(registry, release)
     }
 
     pub fn composition(&self) -> SeaOrmModuleCompositionService {
@@ -167,11 +246,46 @@ impl ModuleControlPlane {
         )
     }
 
+    pub fn static_distribution_rollout<A, T>(
+        &self,
+        authorizer: A,
+        topology: T,
+    ) -> SeaOrmModuleStaticDistributionRolloutService<A, T>
+    where
+        A: ModuleStaticDistributionRolloutAuthorizer,
+        T: ModuleStaticDistributionTopologyResolver,
+    {
+        SeaOrmModuleStaticDistributionRolloutService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            topology,
+            self.infrastructure.clone(),
+        )
+    }
+
     pub fn installation(&self) -> SeaOrmArtifactInstallationStore {
         SeaOrmArtifactInstallationStore::with_infrastructure(
             self.db.clone(),
             self.infrastructure.clone(),
         )
+    }
+
+    /// Returns the platform security owner for immutable artifact release
+    /// quarantine and terminal emergency revocation. Registry yanking remains
+    /// a separate discovery/install lifecycle.
+    pub fn artifact_security<A>(&self, authorizer: A) -> SeaOrmModuleArtifactSecurityService<A>
+    where
+        A: ModuleArtifactSecurityAuthorizer,
+    {
+        SeaOrmModuleArtifactSecurityService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    pub fn artifact_security_resolver(&self) -> SeaOrmModuleArtifactSecurityResolver {
+        SeaOrmModuleArtifactSecurityResolver::new(self.db.clone())
     }
 
     pub fn artifact_sandbox_policy(&self) -> SeaOrmArtifactSandboxPolicyResolver {
@@ -389,6 +503,28 @@ impl ModuleControlPlane {
         )
     }
 
+    /// Returns the lifecycle owner bound to one exact verified native
+    /// distribution release. Promoted implementations retain their registry
+    /// release and promotion identities instead of being flattened into
+    /// platform-native definitions.
+    pub fn static_distribution_lifecycle<'a>(
+        &self,
+        registry: &'a ModuleRegistry,
+        release: &crate::ModuleStaticDistributionRelease,
+        default_enabled_modules: Vec<String>,
+    ) -> Result<ModuleLifecycleDbWriter<'a>, ModuleDefinitionError> {
+        let catalog = self.static_distribution_catalog(registry, release)?;
+        Ok(
+            ModuleLifecycleDbWriter::static_distribution_with_infrastructure(
+                self.db.clone(),
+                catalog,
+                registry,
+                default_enabled_modules,
+                self.infrastructure.clone(),
+            ),
+        )
+    }
+
     /// Returns the artifact-only lifecycle/settings owner for a resolved
     /// immutable definition catalog. Dynamic settings therefore use the same
     /// facade infrastructure as lifecycle binding dispatch.
@@ -415,5 +551,20 @@ impl ModuleControlPlane {
         EffectivePolicyService {
             lifecycle: self.lifecycle(registry, default_enabled_modules),
         }
+    }
+
+    pub fn static_distribution_effective_policy<'a>(
+        &self,
+        registry: &'a ModuleRegistry,
+        release: &crate::ModuleStaticDistributionRelease,
+        default_enabled_modules: Vec<String>,
+    ) -> Result<EffectivePolicyService<'a>, ModuleDefinitionError> {
+        Ok(EffectivePolicyService {
+            lifecycle: self.static_distribution_lifecycle(
+                registry,
+                release,
+                default_enabled_modules,
+            )?,
+        })
     }
 }

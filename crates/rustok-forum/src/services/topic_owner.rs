@@ -189,7 +189,7 @@ impl TopicService {
     }
 
     pub(crate) async fn set_pinned_in_tx(
-        txn: &DatabaseTransaaction,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         topic_id: Uuid,
         is_pinned: bool,

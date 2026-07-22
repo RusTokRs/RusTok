@@ -5,14 +5,13 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::MarketplaceSellerService;
 use crate::dto::{
-    AddMarketplaceSellerMemberInput, MarketplaceSellerEventKind,
-    MarketplaceSellerEventProvenance, MarketplaceSellerMemberRole,
-    MarketplaceSellerMemberStatus, UpdateMarketplaceSellerMemberInput,
+    AddMarketplaceSellerMemberInput, MarketplaceSellerEventKind, MarketplaceSellerEventProvenance,
+    MarketplaceSellerMemberRole, MarketplaceSellerMemberStatus, UpdateMarketplaceSellerMemberInput,
 };
 use crate::entities::{seller, seller_command_receipt};
 use crate::error::MarketplaceSellerError;
-use crate::MarketplaceSellerService;
 
 #[tokio::test]
 async fn member_commands_commit_one_event_per_receipt_and_bind_locale() {
@@ -108,12 +107,15 @@ async fn member_commands_commit_one_event_per_receipt_and_bind_locale() {
         .filter(|event| {
             matches!(
                 event.event_kind,
-                MarketplaceSellerEventKind::MemberAdded
-                    | MarketplaceSellerEventKind::MemberUpdated
+                MarketplaceSellerEventKind::MemberAdded | MarketplaceSellerEventKind::MemberUpdated
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(member_events.len(), 2, "replay must not duplicate member events");
+    assert_eq!(
+        member_events.len(),
+        2,
+        "replay must not duplicate member events"
+    );
     assert!(member_events.iter().all(|event| {
         event.actor_id == Some(actor_id)
             && event.locale.as_deref() == Some("en-US")

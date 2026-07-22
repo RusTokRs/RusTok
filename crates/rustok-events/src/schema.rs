@@ -154,6 +154,12 @@ const INDEX_UPDATED_FIELDS: &[FieldSchema] =
     &[field!("index_name", "string"), field!("target_id", "uuid")];
 const BUILD_REQUESTED_FIELDS: &[FieldSchema] =
     &[field!("build_id", "uuid"), field!("requested_by", "string")];
+const BUILD_ROLLED_BACK_FIELDS: &[FieldSchema] = &[
+    field!("requested_build_id", "uuid"),
+    field!("restored_build_id", "uuid"),
+    field!("from_release_id", "string"),
+    field!("to_release_id", "string"),
+];
 
 const BLOG_POST_CREATED_FIELDS: &[FieldSchema] = &[
     field!("post_id", "uuid"),
@@ -172,6 +178,12 @@ const BLOG_POST_ARCHIVED_FIELDS: &[FieldSchema] = &[
     field!("reason", "string", optional),
 ];
 const BLOG_POST_DELETED_FIELDS: &[FieldSchema] = &[field!("post_id", "uuid")];
+const COMMENT_FIELDS: &[FieldSchema] = &[
+    field!("comment_id", "uuid"),
+    field!("target_type", "string"),
+    field!("target_id", "uuid"),
+    field!("author_id", "uuid"),
+];
 
 const FORUM_TOPIC_CREATED_FIELDS: &[FieldSchema] = &[
     field!("topic_id", "uuid"),
@@ -370,6 +382,46 @@ const MODULE_STATIC_DISTRIBUTION_RELEASE_REVOKED_FIELDS: &[FieldSchema] = &[
     field!("release_state_revision", "uint64"),
     field!("was_active", "bool"),
     field!("policy_revision", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_ROLLOUT_REQUESTED_FIELDS: &[FieldSchema] = &[
+    field!("rollout_id", "uuid"),
+    field!("predecessor_rollout_id", "uuid", optional),
+    field!("distribution_release_id", "uuid"),
+    field!("rollout_revision", "uint64"),
+    field!("rollout_state_revision", "uint64"),
+    field!("composition_revision", "uint64"),
+    field!("composition_digest", "string"),
+    field!("artifact_digest", "string"),
+    field!("topology_digest", "string"),
+    field!("policy_revision", "string"),
+    field!("target_nodes", "uint64"),
+    field!("executor_mode", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_NODE_OBSERVED_FIELDS: &[FieldSchema] = &[
+    field!("rollout_id", "uuid"),
+    field!("node_id", "string"),
+    field!("reporter_id", "string"),
+    field!("observation_revision", "uint64"),
+    field!("phase", "string"),
+    field!("report_digest", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_ROLLOUT_STATUS_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("rollout_id", "uuid"),
+    field!("distribution_release_id", "uuid"),
+    field!("rollout_revision", "uint64"),
+    field!("rollout_state_revision", "uint64"),
+    field!("status", "string"),
+    field!("observed_rollout_id", "uuid", optional),
+    field!("failure_code", "string", optional),
+];
+const MODULE_ARTIFACT_SECURITY_STATE_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("module_slug", "string"),
+    field!("module_version", "string"),
+    field!("payload_digest", "string"),
+    field!("security_revision", "uint64"),
+    field!("status", "string"),
+    field!("policy_revision", "string"),
+    field!("reason_code", "string"),
 ];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
 
@@ -597,6 +649,12 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         fields: BUILD_REQUESTED_FIELDS,
     },
     EventSchema {
+        event_type: "build.rolled_back",
+        version: 1,
+        description: "An active platform build release was rolled back to its direct predecessor.",
+        fields: BUILD_ROLLED_BACK_FIELDS,
+    },
+    EventSchema {
         event_type: "blog.post.created",
         version: 1,
         description: "Blog post created.",
@@ -631,6 +689,18 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Blog post deleted.",
         fields: BLOG_POST_DELETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "comment.created",
+        version: 1,
+        description: "Comment created.",
+        fields: COMMENT_FIELDS,
+    },
+    EventSchema {
+        event_type: "comment.deleted",
+        version: 1,
+        description: "Comment deleted.",
+        fields: COMMENT_FIELDS,
     },
     EventSchema {
         event_type: "forum.topic.created",
@@ -835,6 +905,30 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "A static distribution release was revoked under an immutable policy.",
         fields: MODULE_STATIC_DISTRIBUTION_RELEASE_REVOKED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.rollout_requested",
+        version: 1,
+        description: "A topology-bound native distribution rollout became desired.",
+        fields: MODULE_STATIC_DISTRIBUTION_ROLLOUT_REQUESTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.node_observed",
+        version: 1,
+        description: "A deployment node reported an exact native distribution observation.",
+        fields: MODULE_STATIC_DISTRIBUTION_NODE_OBSERVED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.rollout_status_changed",
+        version: 1,
+        description: "A native distribution rollout changed durable observed status.",
+        fields: MODULE_STATIC_DISTRIBUTION_ROLLOUT_STATUS_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.security_state_changed",
+        version: 1,
+        description: "An immutable artifact release changed global quarantine or revocation state.",
+        fields: MODULE_ARTIFACT_SECURITY_STATE_CHANGED_FIELDS,
     },
     EventSchema {
         event_type: "locale.enabled",

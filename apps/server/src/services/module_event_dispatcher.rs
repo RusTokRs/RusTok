@@ -262,8 +262,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
             let observers = runtime_ctx
                 .shared_get::<rustok_payment::PaymentProviderEventObservers>()
                 .unwrap_or_else(|| {
-                    let observers =
-                        financial_runtime.payment_provider_event_observers(db.clone());
+                    let observers = financial_runtime.payment_provider_event_observers(db.clone());
                     runtime_ctx.shared_insert(observers.clone());
                     observers
                 });
@@ -313,15 +312,12 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     #[cfg(feature = "mod-notifications")]
     {
         let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
-        rustok_notifications::api::materialize_notification_source_registry(
-            &mut extensions,
-            &host,
-        )
-        .map_err(|error| {
-            Error::Message(format!(
-                "notification source provider materialization failed: {error}"
-            ))
-        })?;
+        rustok_notifications::api::materialize_notification_source_registry(&mut extensions, &host)
+            .map_err(|error| {
+                Error::Message(format!(
+                    "notification source provider materialization failed: {error}"
+                ))
+            })?;
     }
 
     Ok(Arc::new(extensions))

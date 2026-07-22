@@ -17,8 +17,7 @@ use crate::entities::provider_event;
 use crate::providers::{PaymentProviderRegistry, PaymentProviderWebhookRequest};
 use crate::{
     PaymentError, PaymentObservedDomainEventApplier, PaymentProviderEventIngressError,
-    PaymentProviderEventIngressService, PaymentProviderEventJournal,
-    PaymentProviderEventObservers,
+    PaymentProviderEventIngressService, PaymentProviderEventJournal, PaymentProviderEventObservers,
 };
 
 const DELIVERY_ID_HEADERS: [&str; 3] = [

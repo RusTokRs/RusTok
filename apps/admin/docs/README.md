@@ -126,6 +126,13 @@ call a native adapter directly.
 - For `apps/admin` this is considered the final repo-side contract: no new client-owned lifecycle is needed here going forward, only targeted verification mapping and periodic reconciliation of `/modules` UX with the server-driven policy surface.
 - Toggle/install/uninstall/upgrade module composition must not have a local SSR SQL lifecycle duplicate: the host uses canonical server GraphQL/control-plane entrypoints, where CAS-update `platform_state` and build enqueue are atomic, and `manifest_ref`/`manifest_hash` are taken from the server-side snapshot contract.
 - For module toggle, `apps/admin` maintains a GraphQL-only entrypoint contract (without a native fallback toggle path): error taxonomy, dependency/core checks, and journal semantics (`module_operations`) are defined by the server lifecycle service, not by local Leptos logic. The Leptos SSR adapter and UI must propagate `BAD_USER_INPUT`/`MODULE_HOOK_FAILED`/`INTERNAL_ERROR`, `correlation_id`, `requested_by`, `status`, `retryable_issue`, and related recovery fields without client-side remap.
+- Module-control-plane GraphQL reads fail closed on transport or owner errors.
+  The admin host does not synthesize registry, installation, tenant intent, or
+  marketplace facts from its generated navigation registry. Native marketplace
+  and registry lifecycle reads use the host-provided owner catalog and
+  governance snapshot. The admin host contains no direct registry SQL,
+  workspace/Cargo scanner, catalog hashing, dependency solving, or build
+  planning path.
 
 ## Local debug launch
 

@@ -10,6 +10,8 @@ pub mod domain;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod governance;
+pub mod governance_entities;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 #[cfg(feature = "graphql")]
@@ -22,8 +24,6 @@ pub mod graphql_invitations;
 pub mod graphql_localization;
 #[cfg(feature = "graphql")]
 pub mod graphql_policy_history;
-pub mod governance;
-pub mod governance_entities;
 pub mod group_event_entities;
 pub mod invitation_entities;
 pub mod invitations;

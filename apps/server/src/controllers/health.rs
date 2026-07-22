@@ -396,7 +396,7 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
     use rustok_storage::StorageRuntime;
 
     let Some(storage) = ctx.shared_get::<StorageRuntime>() else {
-        return Ok(()); // not configured — skip
+        return Err("storage runtime is not configured".to_string());
     };
 
     let probe = rustok_storage::ObjectKey::chronological(
@@ -404,7 +404,7 @@ async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Resul
         rustok_storage::ObjectZone::Staging,
         rustok_storage::ObjectScope::Platform,
         chrono::Utc::now(),
-        uuid::Uuid::new_v4(),
+        uuid::Uuid::nil(),
         "probe",
     )
     .expect("platform health key constants are valid")

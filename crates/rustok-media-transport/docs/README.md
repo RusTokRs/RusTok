@@ -17,8 +17,13 @@ small deterministic gRPC-to-port fallback mapping.
 
 Embedded deployments use `MediaService` directly. Extracted deployments wrap
 the same provider in `MediaGrpcService` and inject `GrpcMediaProvider` into
-consumers. Production listeners must use host-owned mutual TLS, authorization,
-health/readiness, and observability configuration.
+consumers. Production listeners must use host-owned mutual TLS and an
+authentication/authorization interceptor that inserts `TrustedMediaAuthority`
+with an explicit allow-list of `MediaGrpcOperation` values into tonic request
+extensions. The server rejects requests without that trusted authority or
+without an allow-listed operation, and replaces caller-supplied
+tenant/principal claims before invoking the provider. Host-owned
+health/readiness and observability configuration remain required.
 
 ## Verification
 

@@ -69,19 +69,15 @@ impl PageBuilderReviewedPublishRuntime {
         &self,
     ) -> Result<PageBuilderPreviewRuntime, PageBuilderPublishRuntimeReviewError> {
         self.validate()?;
-        let runtime = PageBuilderPreviewRuntime::new(
-            self.context.clone(),
-            Some(self.scenario_id.clone()),
-        );
+        let runtime =
+            PageBuilderPreviewRuntime::new(self.context.clone(), Some(self.scenario_id.clone()));
         runtime
             .validate()
             .map_err(|error| PageBuilderPublishRuntimeReviewError::Runtime(error.to_string()))?;
         Ok(runtime)
     }
 
-    pub fn runtime_context_hash(
-        &self,
-    ) -> Result<String, PageBuilderPublishRuntimeReviewError> {
+    pub fn runtime_context_hash(&self) -> Result<String, PageBuilderPublishRuntimeReviewError> {
         self.validate()?;
         stable_hash(&self.context)
     }

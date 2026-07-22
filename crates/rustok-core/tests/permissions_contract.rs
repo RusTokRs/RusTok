@@ -109,14 +109,8 @@ fn permission_constants_match_canonical_strings() {
         (Permission::PRODUCTS_READ, "products:read"),
         (Permission::SEO_GENERATE, "seo:execute"),
         (Permission::BLOG_POSTS_PUBLISH, "blog_posts:publish"),
-        (
-            Permission::BLOG_CATEGORIES_MANAGE,
-            "blog_categories:manage",
-        ),
-        (
-            Permission::FORUM_TOPICS_MODERATE,
-            "forum_topics:moderate",
-        ),
+        (Permission::BLOG_CATEGORIES_MANAGE, "blog_categories:manage"),
+        (Permission::FORUM_TOPICS_MODERATE, "forum_topics:moderate"),
         (Permission::AI_ROUTER_OVERRIDE, "ai:router:override"),
         (
             Permission::AI_TASKS_MULTIMODAL_RUN,

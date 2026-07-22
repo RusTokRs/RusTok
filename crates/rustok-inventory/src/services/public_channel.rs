@@ -1,7 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use rustok_commerce_foundation::{
-    entities::{inventory_item, inventory_level, product_variant, stock_location},
+    entities::{inventory_item, inventory_level, stock_location},
     error::{CommerceError, CommerceResult},
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -84,18 +84,18 @@ pub fn check_public_channel_inventory_request(
 pub async fn check_variant_availability_for_public_channel(
     db: &DatabaseConnection,
     tenant_id: Uuid,
-    variant: &product_variant::Model,
+    variant: PublicChannelInventoryVariantProjectionInput<'_>,
     requested_quantity: i32,
     public_channel_slug: Option<&str>,
 ) -> CommerceResult<bool> {
-    if check_public_channel_inventory_request(&variant.inventory_policy, requested_quantity)? {
+    if check_public_channel_inventory_request(variant.inventory_policy, requested_quantity)? {
         return Ok(true);
     }
 
     let available_inventory = load_available_inventory_for_variant_in_public_channel(
         db,
         tenant_id,
-        variant.id,
+        variant.variant_id,
         public_channel_slug,
     )
     .await?;
@@ -251,10 +251,10 @@ pub async fn load_available_inventory_for_variant_in_public_channel(
 #[cfg(test)]
 mod tests {
     use super::{
-        PublicChannelInventoryVariantProjectionInput, check_public_channel_inventory_request,
-        extract_allowed_channel_slugs, is_allowlist_visible_for_public_channel,
-        is_metadata_visible_for_public_channel, normalize_public_channel_slug,
-        public_channel_inventory_projection_map,
+        check_public_channel_inventory_request, extract_allowed_channel_slugs,
+        is_allowlist_visible_for_public_channel, is_metadata_visible_for_public_channel,
+        normalize_public_channel_slug, public_channel_inventory_projection_map,
+        PublicChannelInventoryVariantProjectionInput,
     };
 
     use std::collections::HashMap;
@@ -361,22 +361,16 @@ mod tests {
         let error = check_public_channel_inventory_request("continue", -1)
             .expect_err("negative quantities must fail before policy checks");
 
-        assert!(
-            error
-                .to_string()
-                .contains("requested inventory quantity must be non-negative")
-        );
+        assert!(error
+            .to_string()
+            .contains("requested inventory quantity must be non-negative"));
     }
 
     #[test]
     fn public_channel_inventory_request_skips_lookup_for_backorder_policy() {
-        assert!(
-            check_public_channel_inventory_request(" CONTINUE ", 0)
-                .expect("backorderable request should be valid")
-        );
-        assert!(
-            !check_public_channel_inventory_request("deny", 0)
-                .expect("deny-policy zero request should still be valid")
-        );
+        assert!(check_public_channel_inventory_request(" CONTINUE ", 0)
+            .expect("backorderable request should be valid"));
+        assert!(!check_public_channel_inventory_request("deny", 0)
+            .expect("deny-policy zero request should still be valid"));
     }
 }

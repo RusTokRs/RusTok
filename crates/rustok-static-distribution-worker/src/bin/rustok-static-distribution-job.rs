@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
-use rustok_static_distribution_worker::{run_static_distribution_job, StaticDistributionJobPaths};
+use rustok_static_distribution_worker::{StaticDistributionJobPaths, run_static_distribution_job};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

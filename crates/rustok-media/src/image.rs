@@ -154,15 +154,35 @@ pub struct ImageProcessingLimits {
 impl Default for ImageProcessingLimits {
     fn default() -> Self {
         Self {
-            max_input_bytes: 32 * 1024 * 1024,
+            max_input_bytes: crate::dto::DEFAULT_MAX_SIZE as usize,
             max_output_bytes: 32 * 1024 * 1024,
             max_width: 16_384,
             max_height: 16_384,
             max_pixels: 100_000_000,
-            max_decoded_bytes: 512 * 1024 * 1024,
+            max_decoded_bytes: 256 * 1024 * 1024,
             max_frames: 1,
         }
     }
+}
+
+pub fn inspect_image(
+    input: &[u8],
+    limits: ImageProcessingLimits,
+) -> Result<(u32, u32), ImageProcessingError> {
+    if input.is_empty() || input.len() > limits.max_input_bytes {
+        return Err(ImageProcessingError::InputBytesLimit {
+            actual: input.len(),
+            max: limits.max_input_bytes,
+        });
+    }
+    let format = image::guess_format(input)?;
+    let mut reader = ImageReader::new(Cursor::new(input));
+    reader.set_format(format);
+    let decoder = reader.into_decoder()?;
+    let (width, height) = decoder.dimensions();
+    validate_dimensions(width, height, limits)?;
+    validate_decoded_bytes(decoder.total_bytes(), limits)?;
+    Ok((width, height))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,11 +284,18 @@ fn ensure_single_frame(
             let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(input))?;
             let (width, height) = decoder.dimensions();
             validate_dimensions(width, height, limits)?;
-            decoder
-                .into_frames()
-                .take(2)
-                .collect::<Result<Vec<_>, _>>()?
-                .len()
+            let frame_bytes = u64::from(width)
+                .checked_mul(u64::from(height))
+                .and_then(|pixels| pixels.checked_mul(4))
+                .ok_or(ImageProcessingError::DecodedBytesLimit {
+                    actual: u64::MAX,
+                    max: limits.max_decoded_bytes,
+                })?;
+            validate_decoded_bytes(frame_bytes, limits)?;
+            let mut frames = decoder.into_frames();
+            let first = usize::from(frames.next().transpose()?.is_some());
+            let second = usize::from(frames.next().transpose()?.is_some());
+            first + second
         }
         ImageFormat::WebP => {
             let decoder = image::codecs::webp::WebPDecoder::new(Cursor::new(input))?;
@@ -378,7 +405,7 @@ impl ImageWorker {
             .map(usize::from)
             .unwrap_or(2);
         Self::new(
-            parallelism.div_ceil(2).clamp(1, 4),
+            parallelism.div_ceil(2).clamp(1, 2),
             Duration::from_secs(60),
             ImageProcessingLimits::default(),
         )

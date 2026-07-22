@@ -7,6 +7,11 @@ channel, GraphQL, route, locale, permission, and transport-agnostic port
 primitives. `PortContext`, `PortError`, and `PortCallPolicy` provide shared
 read/write/replay/best-effort policy without module business logic.
 
+The SeaORM-backed `HostRuntimeContext` is gated behind the neutral `runtime`
+feature. The `server` feature includes `runtime` and adds Axum/Async-GraphQL;
+runtime helpers therefore do not pull web frameworks into standalone module
+owners.
+
 The crate has no dependency on `rustok-core`; core owns runtime RBAC/security
 and consumes API contracts. `apps/server` is the composition root, not a second
 shared API framework. Module resolvers, controllers, and domain ports remain
@@ -42,12 +47,26 @@ with their owners.
    **Done when:** the documentation and `verify:api:surface-contract` describe
    the same dependency direction and owner responsibilities.
 
+4. **Add the neutral richtext wire contract during the atomic cutover.** Own
+   `RichTextDocument`, neutral `RichTextProfileId`, the read-only
+   `RichTextView`, generated schema, and optional transport adapters without
+   importing Tiptap or executable content policy. Validation, rendering,
+   profile definitions, and plain-text extraction remain in
+   `rustok-content::richtext`.
+   **Depends on:** the
+   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
+   and synchronized Blog/Forum/Comments transports.
+   **Done when:** repository-owned transports use one typed document instead of
+   a body string plus `content_json`, and this crate remains dependency-neutral.
+
 ## Verification
 
 - `npm run verify:api:surface-contract`
 - Targeted compile/tests when changing shared request, auth, tenant, channel,
   GraphQL, route, locale, permission, or port contracts.
 - Documentation synchronization for `apps/server` and module-owned transports.
+- Generated richtext schema drift and Serde/GraphQL adapter tests when the
+  Richtext cutover is implemented.
 
 ## Change rules
 

@@ -7,10 +7,11 @@ description = "Shared RusToK web/API contracts for server adapters and module-fa
 
 [features]
 default = []
+runtime = ["dep:sea-orm"]
 server = [
+  "runtime",
   "dep:async-graphql",
   "dep:axum",
-  "dep:sea-orm",
 ]
 
 [dependencies]

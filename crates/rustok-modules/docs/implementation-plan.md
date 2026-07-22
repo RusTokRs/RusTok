@@ -12,6 +12,13 @@ The cross-component sequence and completion rules are defined by the
 
 ## Current state
 
+The owner boundary has a standalone dependency profile: `rustok-modules` does
+not directly import or depend on AI, product, commerce, MCP, Alloy, Leptos,
+Axum, or Async-GraphQL. Its runtime foundation uses only the neutral
+`rustok-api/runtime` feature, keeping HTTP and GraphQL frameworks out of the
+module control plane. The repository verifier checks both this dependency
+boundary and the module-owned admin transport for backend write/build logic.
+
 ## FFA/FBA status
 
 - FFA status: `not_started`
@@ -249,20 +256,85 @@ audit observer through the root; outbox projection receives the durable artifact
 event projector, and routed artifact HTTP receives its binding-idempotency
 store. RBAC permission evaluation remains an RBAC-owner adapter.
 `EffectivePolicyService` now exposes the same owner-owned catalog/default/tenant
-override resolution used by lifecycle commands, so server guards, GraphQL, and
-installer adapters do not query `tenant_modules` to reconstruct policy. The
+override resolution used by lifecycle commands as a serializable
+`ModuleEffectivePolicy`. Its deterministic digest revision covers the exact
+catalog, normalized defaults, tenant overrides, and exact artifact runtime
+evidence. Selected artifacts now require the existing tenant-RLS installation
+resolver, the matching durable sandbox-policy revision, an injected isolated
+executor, and an enabled dependency closure. Every module result carries typed
+contributing facts and stable denial reasons; no capability grant contents or
+resolver error text enter the decision. Enabled-module sets are only
+projections of that decision, so server guards, GraphQL, and installer adapters
+do not query `tenant_modules` to reconstruct policy. The
 installer verification adapter also obtains its static catalog through the
 same facade rather than rebuilding it independently.
 
 M2 has started with a transport-neutral definition catalog. It derives static
 definitions from the compile-time registry while keeping registry handles
-limited to static runtime concerns, and rejects ambiguous active definitions.
-Effective-policy resolution and toggle validation now consume the catalog.
+limited to native runtime concerns, and rejects ambiguous active definitions.
+The generic static source was replaced atomically by distinct
+`platform_native` and `promoted_native` identities. A verified distribution
+catalog maps each compiled promotion to its exact promotion revision, registry
+release, distribution release/revision, native artifact digest, and persisted
+`static_native` executor mode. Effective-policy resolution and toggle
+validation consume the same catalog, and the static-distribution lifecycle
+constructor retains compiled handles without flattening promoted identity.
+
+The first runtime-activation slice now adds a durable native rollout aggregate.
+`ModuleControlPlane::static_distribution_rollout` pins a topology reference and
+digest, the active verified release, policy revision, and executor mode in a
+desired rollout. Node observations are exact-identity, reporter-bound, and
+revisioned. The owner enforces `prepared -> healthy -> active`, emits an
+activation transition only after every target is healthy, converges only after
+every target is active, and turns post-convergence drift into a recoverable
+`degraded` state. Request/report idempotency and all state transitions are
+transactional with outbox events; external deployment and transport wiring are
+the remaining boundary.
 
 The lifecycle entrypoints now use `ModuleExecutionDispatcher`, which resolves
 the active definition before invoking a static implementation. Artifact
 lifecycle bindings execute only through the admitted sandbox adapter supplied
 by host composition; no artifact path falls back to a compiled callback.
+
+Tenant lifecycle toggles calculate the canonical before/after effective-policy
+revision and use `ModuleEffectivePolicyTransitionCoordinator` to advance the
+durable lifecycle cursor and publish the predecessor-bound transition event in
+the same state transaction; a stale lifecycle cursor aborts the state mutation
+rather than advancing a divergent projection.
+
+`ArtifactRuntimeLifecycleExecutor` now requires a host-owned
+`ArtifactEffectivePolicyResolver` and re-resolves the canonical policy before
+every non-lifecycle binding. HTTP, command, event, and scheduled dispatches
+therefore fail closed after a policy change even if their transport-level check
+observed an older revision; lifecycle hooks remain governed by the owner
+toggle transaction. Durable event and schedule adapters use the same shared
+executor rather than a parallel runtime path.
+
+The owner facade also exposes bounded `TenantModuleOverrideSnapshot` reads for
+operator transports. This is intentionally distinct from effective
+availability: it shows persisted tenant intent and settings, while
+`ModuleEffectivePolicy` remains the only enabled/denied decision. GraphQL no
+longer reads `tenant_modules` directly for this surface.
+
+The admin GraphQL adapter now fails closed when module-control-plane reads fail;
+it no longer converts its generated navigation registry into synthetic module
+registry, installation, tenant-intent, or marketplace success responses. The
+native module catalog and registry lifecycle reads now consume the owner-backed
+`SharedModuleMarketplaceCatalog` and governance lifecycle snapshot. The admin
+workspace/Cargo scanner, local catalog synthesis, canonical hashing,
+dependency/build planning, and direct registry SQL have been deleted. Broader
+transport parity evidence remains Phase 7 work.
+
+Platform build active/history/release reads and rollback are now also
+host-composed through `rustok_build::SharedBuildControl`. The server supplies
+the event-aware owner implementation, and GraphQL/native admin adapters no
+longer construct `BuildService` directly. Canonical error/detail parity and
+the remaining build-worker/registry-release transport work stay open in Phase
+7.
+Rollback streaming now preserves the explicit owner `BuildRolledBack` event
+through the canonical root event, WebSocket, and GraphQL adapters. Requested
+and restored builds, the release predecessor transition, and actor identity are
+not reconstructed by transports or flattened into `BuildCompleted`.
 
 Lifecycle hooks never receive the transaction that commits tenant state or the
 operation journal. Validation and durable intent happen first; the pre-hook
@@ -364,9 +436,61 @@ subscriptions and cannot enter a delivered execution envelope.
 
 `ModuleEffectivePolicyQuery` is the sole owner query for composing immutable
 Core definitions, distribution defaults, and persisted tenant overrides. It
-returns a typed effective set for a supplied catalog, so the server
-effective-policy adapter, lifecycle writer, and installer verification provide
-only infrastructure inputs instead of reproducing enablement semantics.
+returns a typed, revisioned decision set with per-module facts and denial
+reasons for a supplied catalog. The server effective-policy adapter, lifecycle
+writer, and installer verification provide only infrastructure inputs instead
+of reproducing enablement semantics. Artifact lifecycle policy now resolves the
+exact active installation and matching grant revision through the same owner
+ports used by runtime and denies missing executors or dependencies. The
+channel boundary is now typed in the policy owner. A host or `rustok-channel`
+adapter maps its resolved `ChannelDetailResponse` to
+`ModuleEffectivePolicyChannelInput` (tenant, channel, surface, immutable
+channel revision, and module bindings) and calls
+`EffectivePolicyService::resolve_for_channel`. The modules crate does not
+resolve channel tables or depend on `rustok-channel`; missing optional bindings,
+disabled bindings, and inactive channels are explicit denial reasons and the
+channel snapshot participates in the policy revision. The policy owner now
+also accepts a revisioned maintenance snapshot with explicit global or
+module-scoped impact and a bounded reason code. Active maintenance produces a
+typed denial without rewriting tenant intent; generic durable node
+reconciliation remains open Phase 8 work before this decision becomes the
+universal runtime/routing gate.
+
+The node-readiness boundary is typed as
+`ModuleEffectivePolicyNodeReadinessInput`. A node reports immutable readiness
+and evidence revisions, required Core readiness, artifact graph revision, CAS
+availability, executor ABI, and optional affected module scope. The input must
+observe the deterministic base policy revision; the final policy revision then
+includes the validated readiness snapshot. An unready or stale node produces a
+typed denial/fail-closed error and cannot be treated as an in-memory health
+hint.
+
+The reusable `ModulePolicyRevisionTransition` and `ModulePolicyRevisionGate`
+contract is the common consumer primitive for existing transactional module
+events. It does not infer ordering from digest values: only a matching durable
+predecessor applies, exact replays are idempotent, and divergent transitions
+remain stale until an owner reconciliation supplies the correct predecessor.
+`SeaOrmModulePolicyRevisionConsumer` is the durable adapter: it creates and
+row-locks one `(tenant_id, consumer_key)` cursor under tenant RLS, applies the
+gate, and commits only an `Applied` successor. Duplicate and stale deliveries
+commit without advancing the cursor. Its `apply_in_transaction` entry point
+also lets an owner append its state mutation, outbox event, and cursor advance
+to one existing transaction; no consumer may acknowledge a transition before
+the corresponding owner mutation is durable.
+`ModuleEffectivePolicyTransitionPublisher` is the matching producer boundary:
+it validates a real `sha256:` predecessor/successor pair and appends an
+explicit `module.effective_policy_revision_changed` event to the owner
+transaction. Existing security and distribution revisions remain separate
+contracts and must not be routed through this publisher.
+
+The current Phase 8 security slice adds `SeaOrmModuleArtifactSecurityService`.
+It persists global `clear/quarantined/revoked` state keyed by immutable artifact
+release identity, separates ordinary registry yanking from emergency
+enforcement, and uses exact idempotency receipts plus revision CAS. Quarantine
+can be cleared only through an authorized command; revocation is terminal. A
+tenant's enablement row is never rewritten by these transitions. The read-only
+security resolver contributes registry status and redacted security evidence to
+`ModuleEffectivePolicy`.
 
 The server constructs the compile-time `ModuleRegistry` exactly once during
 runtime bootstrap and shares that static implementation registry with the
@@ -724,7 +848,7 @@ context; and redacted runtime `ExecutionObserver` plus transactional owner audit
 rows/outbox facts are the audit boundaries. Domain operations no longer
 construct `OutboxTransport`, publish outside their transaction, or write a
 second audit journal. The M2 infrastructure-port slice is complete.
-On 2026-07-20 the permitted `rustfmt --edition 2021`, `git diff --check`, and
+On 2026-07-20 the permitted `rustfmt --edition 2024`, `git diff --check`, and
 `cargo metadata --no-deps` structural checks passed; compile and test suites
 were intentionally not run.
 
@@ -1134,8 +1258,19 @@ and installation lifecycle preconditions before that command may delete data.
   invokes the digest-pinned publisher, validates its fully bound receipt, and
   writes the owner receipt. Infrastructure retries rebuild only the derived
   workspace and reuse a valid publisher receipt; immutable attempt inputs are
-  never overwritten. Implement and deploy the concrete idempotent evidence
-  publisher, publish the evidence bundle, and deploy the worker independently.
+  never overwritten. The concrete publisher now uploads the fixed native
+  executable, CycloneDX SBOM, SLSA provenance, and raw test evidence through
+  generic current OCI publication primitives, signs the exact artifact digest
+  through the shared digest-pinned KMS Cosign boundary, resolves the signature
+  manifest, and writes a create-only fully bound receipt. Deployment-owned
+  registry/KMS configuration and end-to-end integration evidence remain, along
+  with independent worker deployment.
+  Every immutable distribution item now persists `static_native` executor mode,
+  which participates in composition and generated-output digests. Verified
+  release reads reload and validate the complete build before exposing its
+  items. Runtime catalog composition maps those items to exact promoted-native
+  lifecycle definitions instead of treating them as anonymous platform-native
+  modules. Runtime rollout and desired/observed convergence remain separate.
   Promotion reads the current release
   `checksum_sha256` identity directly and does not retain a legacy checksum
   alias or fallback query.
@@ -1144,15 +1279,47 @@ and installation lifecycle preconditions before that command may delete data.
   package was deleted instead of retaining a compatibility service, plaintext
   constructor, or fallback route.
 - The 2026-07-22 Phase 10 slices were checked only with
-  touched-file `rustfmt --edition 2021 --check`, `git diff --check`, and
+  touched-file `rustfmt --edition 2024 --check`, `git diff --check`, and
   `cargo metadata --no-deps`; no compile or test suite was run in the shared
   worktree.
+- The 2026-07-22 Phase 7 marketplace/lifecycle cutover and current-only catalog
+  route update were checked with touched-file `rustfmt --edition 2024`,
+  `git diff --check`, and `cargo metadata --no-deps`; no compile or test suite
+  was run in the shared worktree.
 - Keep static/native composition distinct from runtime installation.
 - Publish declarative UI contributions and bind actions to admitted runtime
   bindings; custom untrusted UI and native UI follow the central isolation and
   static-promotion rules.
 
 ## Verification
+
+### 2026-07-22 quality and isolation audit
+
+The focused owner profile was rechecked after the marketplace and lifecycle
+cutovers. `rustok-api/runtime`, `rustok-runtime`, and both standalone/default
+`rustok-modules` library profiles compile; the API `server` feature also
+compiles. Unit evidence is 25 `rustok-api` tests, 3 `rustok-runtime` tests, and
+152 `rustok-modules` tests, all passing with incremental compilation disabled.
+The owner dependency tree contains no AI, product, commerce, MCP, Alloy,
+Leptos, Axum, or Async-GraphQL packages. The repository guard additionally
+checks owner imports and concrete admin transport SQL/filesystem/hash/build
+planning bypasses. Direct admin build reads and rollback are now routed through
+the host-composed `rustok_build::SharedBuildControl`,
+with the server retaining event-aware rollback composition. Remaining Phase 7
+work covers canonical transport errors and the other resolver families.
+
+### 2026-07-22 cross-boundary error audit
+
+The edition-2024 workspace was rechecked after the owner-neutral product and
+inventory projections, the SHA-256 helper migration required by `sha2` 0.11,
+and the admin governance lifecycle mapper changes. Targeted `cargo check`
+passed for `rustok-forum`, `rustok-pricing`, `rustok-commerce`,
+`rustok-groups`, `rustok-server --no-default-features`, and
+`rustok-admin --no-default-features --features ssr` (warnings only). The three
+focused domain tests in `rustok-groups`, including the SHA-256 encoding
+regression test, passed individually. The module
+control-plane write-path guard, `git diff --check`, and `cargo metadata
+--no-deps` also passed. No workspace-wide compile or test claim is made.
 
 - Restore a crate-wide `cargo fmt -p rustok-modules -- --check` baseline; the
   current formatter reports pre-existing drift across owner source and migration

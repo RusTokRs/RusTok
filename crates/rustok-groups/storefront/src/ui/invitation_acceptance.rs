@@ -5,9 +5,9 @@ use leptos_ui_routing::use_route_query_writer;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    groups_storefront_error, prepare_accept_group_invitation,
-    prepare_accept_targeted_group_invitation, GroupsStorefrontInvitationInputError,
     GROUP_INVITATION_TOKEN_QUERY_KEY, GROUP_TARGETED_INVITATION_QUERY_KEY,
+    GroupsStorefrontInvitationInputError, groups_storefront_error, prepare_accept_group_invitation,
+    prepare_accept_targeted_group_invitation,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -15,8 +15,8 @@ use crate::model::{
     GroupsStorefrontAcceptInvitationResult,
 };
 use crate::transport::{
-    accept_groups_storefront_invitation, accept_groups_storefront_targeted_invitation,
-    GroupsStorefrontTransportContext,
+    GroupsStorefrontTransportContext, accept_groups_storefront_invitation,
+    accept_groups_storefront_targeted_invitation,
 };
 
 #[derive(Clone)]
@@ -45,9 +45,7 @@ enum PendingInvitationAcceptance {
 }
 
 #[component]
-pub fn GroupsInvitationAcceptance(
-    transport: GroupsStorefrontTransportContext,
-) -> impl IntoView {
+pub fn GroupsInvitationAcceptance(transport: GroupsStorefrontTransportContext) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let copy = invitation_acceptance_copy(route_context.locale.as_deref());
     let initial_token = route_context
@@ -61,8 +59,7 @@ pub fn GroupsInvitationAcceptance(
     let query_writer = use_route_query_writer();
 
     let (token, set_token) = signal(initial_token);
-    let (targeted_invitation_id, set_targeted_invitation_id) =
-        signal(initial_targeted_invitation);
+    let (targeted_invitation_id, set_targeted_invitation_id) = signal(initial_targeted_invitation);
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
     let (result, set_result) = signal(Option::<GroupsStorefrontAcceptInvitationResult>::None);
@@ -244,21 +241,77 @@ fn invitation_input_error_message(
 
 fn invitation_acceptance_copy(locale: Option<&str>) -> InvitationAcceptanceCopy {
     InvitationAcceptanceCopy {
-        title: t(locale, "groups.storefront.invitation.title", "Accept a group invitation"),
-        body: t(locale, "groups.storefront.invitation.body", "Sign in, review the invitation token, and join the group. The token is removed from the URL when the command is submitted."),
-        targeted_body: t(locale, "groups.storefront.invitation.targetedBody", "This invitation was addressed to your account. Sign in and accept it without exposing an invitation token."),
-        token_label: t(locale, "groups.storefront.invitation.tokenLabel", "Invitation token"),
-        token_hint: t(locale, "groups.storefront.invitation.tokenHint", "Paste the opaque token from the invitation. It is never displayed after acceptance."),
-        targeted_hint: t(locale, "groups.storefront.invitation.targetedHint", "The invitation identifier came from an authorized notification route and can only be accepted by the addressed account."),
-        accept: t(locale, "groups.storefront.invitation.accept", "Accept invitation"),
-        busy: t(locale, "groups.storefront.invitation.busy", "Accepting invitation..."),
-        error: t(locale, "groups.storefront.invitation.error", "Invitation could not be accepted"),
-        success: t(locale, "groups.storefront.invitation.success", "Invitation accepted. You are now a group member."),
+        title: t(
+            locale,
+            "groups.storefront.invitation.title",
+            "Accept a group invitation",
+        ),
+        body: t(
+            locale,
+            "groups.storefront.invitation.body",
+            "Sign in, review the invitation token, and join the group. The token is removed from the URL when the command is submitted.",
+        ),
+        targeted_body: t(
+            locale,
+            "groups.storefront.invitation.targetedBody",
+            "This invitation was addressed to your account. Sign in and accept it without exposing an invitation token.",
+        ),
+        token_label: t(
+            locale,
+            "groups.storefront.invitation.tokenLabel",
+            "Invitation token",
+        ),
+        token_hint: t(
+            locale,
+            "groups.storefront.invitation.tokenHint",
+            "Paste the opaque token from the invitation. It is never displayed after acceptance.",
+        ),
+        targeted_hint: t(
+            locale,
+            "groups.storefront.invitation.targetedHint",
+            "The invitation identifier came from an authorized notification route and can only be accepted by the addressed account.",
+        ),
+        accept: t(
+            locale,
+            "groups.storefront.invitation.accept",
+            "Accept invitation",
+        ),
+        busy: t(
+            locale,
+            "groups.storefront.invitation.busy",
+            "Accepting invitation...",
+        ),
+        error: t(
+            locale,
+            "groups.storefront.invitation.error",
+            "Invitation could not be accepted",
+        ),
+        success: t(
+            locale,
+            "groups.storefront.invitation.success",
+            "Invitation accepted. You are now a group member.",
+        ),
         group: t(locale, "groups.storefront.invitation.group", "Group"),
         role: t(locale, "groups.storefront.invitation.role", "Role"),
-        status: t(locale, "groups.storefront.invitation.status", "Membership status"),
-        missing_token: t(locale, "groups.storefront.invitation.missingToken", "Enter an invitation token."),
-        invalid_token: t(locale, "groups.storefront.invitation.invalidToken", "The invitation token has an invalid length."),
-        invalid_invitation_id: t(locale, "groups.storefront.invitation.invalidInvitationId", "The targeted invitation identifier is invalid."),
+        status: t(
+            locale,
+            "groups.storefront.invitation.status",
+            "Membership status",
+        ),
+        missing_token: t(
+            locale,
+            "groups.storefront.invitation.missingToken",
+            "Enter an invitation token.",
+        ),
+        invalid_token: t(
+            locale,
+            "groups.storefront.invitation.invalidToken",
+            "The invitation token has an invalid length.",
+        ),
+        invalid_invitation_id: t(
+            locale,
+            "groups.storefront.invitation.invalidInvitationId",
+            "The targeted invitation identifier is invalid.",
+        ),
     }
 }

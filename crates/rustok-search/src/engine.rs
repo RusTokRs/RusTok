@@ -207,7 +207,11 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    fn item(entity_type: &str, source_module: &str, payload: serde_json::Value) -> SearchResultItem {
+    fn item(
+        entity_type: &str,
+        source_module: &str,
+        payload: serde_json::Value,
+    ) -> SearchResultItem {
         SearchResultItem {
             id: Uuid::parse_str("00000000-0000-0000-0000-000000000001").expect("valid UUID"),
             entity_type: entity_type.to_string(),

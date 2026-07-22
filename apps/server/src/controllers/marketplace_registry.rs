@@ -1,14 +1,14 @@
 use axum::{
-    Json,
     body::Body,
     body::Bytes,
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{
-        HeaderMap, HeaderName, HeaderValue, Response, StatusCode,
         header::{CACHE_CONTROL, ETAG, IF_NONE_MATCH},
+        HeaderMap, HeaderName, HeaderValue, Response, StatusCode,
     },
     response::IntoResponse,
     routing::{get, post, put},
+    Json,
 };
 use object_store::ObjectStoreExt;
 
@@ -27,18 +27,9 @@ use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::error::{Error, http_error};
+use crate::error::{http_error, Error};
 use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
-    RegistryCatalogModule, RegistryCatalogResponse, RegistryExternalPrebuiltStageRequest,
-    RegistryExternalPrebuiltStageResponse, RegistryGovernanceAction, RegistryMutationResponse,
-    RegistryOwnerTransferRequest, RegistryPlatformBuildStageRequest,
-    RegistryPlatformBuildStageResponse, RegistryPublishDecisionRequest, RegistryPublishRequest,
-    RegistryPublishStatusFollowUpGate, RegistryPublishStatusResponse,
-    RegistryPublishStatusValidationStage, RegistryPublishValidationRequest,
-    RegistryRunnerClaimPayload, RegistryRunnerClaimRequest, RegistryRunnerClaimResponse,
-    RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
-    RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
     registry_catalog_from_modules, registry_catalog_module_path, registry_catalog_path,
     registry_owner_transfer_path, registry_publish_approve_path, registry_publish_artifact_path,
     registry_publish_external_stage_path, registry_publish_hold_path, registry_publish_path,
@@ -47,24 +38,32 @@ use crate::services::marketplace_catalog::{
     registry_publish_stage_report_path, registry_publish_status_path,
     registry_publish_validate_path, registry_runner_claim_path, registry_runner_complete_path,
     registry_runner_fail_path, registry_runner_heartbeat_path, registry_yank_path,
-    validate_registry_mutation_schema_version,
+    validate_registry_mutation_schema_version, RegistryCatalogModule, RegistryCatalogResponse,
+    RegistryExternalPrebuiltStageRequest, RegistryExternalPrebuiltStageResponse,
+    RegistryGovernanceAction, RegistryMutationResponse, RegistryOwnerTransferRequest,
+    RegistryPlatformBuildStageRequest, RegistryPlatformBuildStageResponse,
+    RegistryPublishDecisionRequest, RegistryPublishRequest, RegistryPublishStatusFollowUpGate,
+    RegistryPublishStatusResponse, RegistryPublishStatusValidationStage,
+    RegistryPublishValidationRequest, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
+    RegistryRunnerClaimResponse, RegistryRunnerCompletionRequest, RegistryRunnerHeartbeatRequest,
+    RegistryRunnerMutationResponse, RegistryValidationStageReportRequest, RegistryYankRequest,
 };
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::{
+    release_status_label, request_status_label, validation_stage_status_label,
+    RegistryArtifactUpload, RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
+    RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
+    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot,
     REGISTRY_APPROVE_OVERRIDE_REASON_CODES, REGISTRY_HOLD_REASON_CODES,
     REGISTRY_OWNER_TRANSFER_REASON_CODES, REGISTRY_REJECT_REASON_CODES,
     REGISTRY_REQUEST_CHANGES_REASON_CODES, REGISTRY_RESUME_REASON_CODES,
-    REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES, RegistryArtifactUpload,
-    RegistryExternalPrebuiltStageInput, RegistryFollowUpGateSnapshot,
-    RegistryGovernanceActionSnapshot, RegistryGovernanceError, RegistryGovernanceService,
-    RegistryPlatformBuildStageInput, RegistryValidationStageSnapshot, release_status_label,
-    request_status_label, validation_stage_status_label,
+    REGISTRY_VALIDATION_STAGE_REASON_CODES, REGISTRY_YANK_REASON_CODES,
 };
 use crate::services::registry_principal::RegistryAuthority;
 use crate::services::registry_remote_runner::claim_remote_validation_stage_atomic;
 use crate::services::registry_remote_transitions::{
-    RegistryRemoteTransitionError, RemoteTerminalOutcome, finish_remote_validation_stage_atomic,
-    heartbeat_remote_validation_stage_atomic,
+    finish_remote_validation_stage_atomic, heartbeat_remote_validation_stage_atomic,
+    RegistryRemoteTransitionError, RemoteTerminalOutcome,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::context::AuthContextExtension;
@@ -81,10 +80,10 @@ struct RegistryCatalogListParams {
     offset: Option<usize>,
 }
 
-/// GET /v1/catalog - Reference read-only marketplace registry catalog
+/// GET /catalog - Reference read-only marketplace registry catalog
 #[utoipa::path(
     get,
-    path = "/v1/catalog",
+    path = "/catalog",
     tag = "marketplace",
     params(
         RegistryCatalogListParams,
@@ -128,10 +127,10 @@ async fn catalog(
     build_registry_response(&headers, &payload, Some(total_count))
 }
 
-/// GET /v1/catalog/{slug} - Reference read-only marketplace registry module detail
+/// GET /catalog/{slug} - Reference read-only marketplace registry module detail
 #[utoipa::path(
     get,
-    path = "/v1/catalog/{slug}",
+    path = "/catalog/{slug}",
     tag = "marketplace",
     params(
         ("slug" = String, Path, description = "Module slug"),
@@ -2897,7 +2896,8 @@ fn map_registry_governance_error(error: anyhow::Error) -> Error {
 /// must not reclassify owner failures into server-local error types.
 fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::Error) -> Error {
     match error {
-        ModuleGovernanceError::InvalidYankCommand
+        ModuleGovernanceError::InvalidLifecycleQuery
+        | ModuleGovernanceError::InvalidYankCommand
         | ModuleGovernanceError::InvalidYankReasonCode(_)
         | ModuleGovernanceError::InvalidOwnerTransferCommand
         | ModuleGovernanceError::InvalidOwnerBindCommand
@@ -2943,7 +2943,8 @@ fn map_module_governance_error(error: &ModuleGovernanceError, source: &anyhow::E
         | ModuleGovernanceError::ValidationJobNotFound
         | ModuleGovernanceError::ValidationStageNotFound
         | ModuleGovernanceError::RemoteValidationLeaseNotFound => Error::NotFound,
-        ModuleGovernanceError::Store(_) => {
+        ModuleGovernanceError::Store(_)
+        | ModuleGovernanceError::InvalidLifecycleArtifactOrigin(_) => {
             tracing::error!(error = %source, "Registry governance owner store error");
             Error::InternalServerError
         }

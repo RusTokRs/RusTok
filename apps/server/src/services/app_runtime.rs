@@ -119,6 +119,12 @@ pub async fn bootstrap_app_runtime(
     )?;
     runtime_ctx.shared_insert(runtime_extensions.clone());
     runtime_ctx.shared_insert(registry.clone());
+    runtime_ctx.shared_insert(rustok_modules::SharedModuleMarketplaceCatalog(Arc::new(
+        crate::services::marketplace_catalog_adapter::ServerMarketplaceCatalog::new(
+            runtime_ctx.clone(),
+            registry.clone(),
+        ),
+    )));
     ManifestManager::validate(&manifest)
         .and_then(|_| ManifestManager::validate_with_registry(&manifest, &registry))
         .map_err(|error| Error::BadRequest(format!("modules.toml validation failed: {error}")))?;
@@ -127,6 +133,9 @@ pub async fn bootstrap_app_runtime(
         runtime_ctx.shared_insert(event_runtime.transport.clone());
         spawn_module_event_dispatcher(&runtime_ctx, &registry, runtime_extensions.clone());
         runtime_ctx.shared_insert(Arc::new(event_runtime));
+        runtime_ctx.shared_insert(crate::services::build_control::ServerBuildControl::shared(
+            runtime_ctx.clone(),
+        ));
         runtime_ctx.shared_insert(
             crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(runtime_ctx.db_clone()),
         );
@@ -475,11 +484,9 @@ mod tests {
         };
 
         let error = validate_compiled_surface_contract(&contract, true, false).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("without feature `embed-storefront`")
-        );
+        assert!(error
+            .to_string()
+            .contains("without feature `embed-storefront`"));
     }
 
     #[test]

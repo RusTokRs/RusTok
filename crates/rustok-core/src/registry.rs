@@ -264,7 +264,9 @@ mod tests {
             &self,
             _extensions: &mut ModuleRuntimeExtensions,
         ) -> crate::Result<()> {
-            Err(crate::Error::Validation("duplicate demo provider".to_string()))
+            Err(crate::Error::Validation(
+                "duplicate demo provider".to_string(),
+            ))
         }
     }
 
@@ -294,9 +296,11 @@ mod tests {
             .err()
             .expect("registration must fail");
 
-        assert!(error
-            .to_string()
-            .contains("module `failing` runtime extension registration failed"));
+        assert!(
+            error
+                .to_string()
+                .contains("module `failing` runtime extension registration failed")
+        );
         assert!(error.to_string().contains("duplicate demo provider"));
     }
 

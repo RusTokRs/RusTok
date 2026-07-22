@@ -8,12 +8,12 @@ pub use executor::{
     StaticDistributionJobReceipt, StaticDistributionJobRequest, StaticDistributionWorker,
 };
 pub use job::{
-    materialize_static_distribution_workspace, run_static_distribution_job,
     PreparedStaticDistributionWorkspace, StaticDistributionJobConfig, StaticDistributionJobError,
     StaticDistributionJobPaths, StaticDistributionPublicationReceipt,
     StaticDistributionPublisherRequest, StaticDistributionTestEvidence,
+    materialize_static_distribution_workspace, run_static_distribution_job,
 };
 pub use publisher::{
-    run_static_distribution_publisher, StaticDistributionPublisherConfig,
-    StaticDistributionPublisherError, StaticDistributionPublisherPaths,
+    StaticDistributionPublisherConfig, StaticDistributionPublisherError,
+    StaticDistributionPublisherPaths, run_static_distribution_publisher,
 };

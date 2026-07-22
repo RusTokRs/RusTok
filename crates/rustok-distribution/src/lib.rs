@@ -21,10 +21,10 @@ use rustok_tenant::TenantModule;
 use serde::Serialize;
 
 pub use generation::{
-    generate_static_distribution, GeneratedStaticDistributionFiles,
+    GENERATED_DISTRIBUTION_CARGO_MANIFEST_PATH, GENERATED_DISTRIBUTION_MANIFEST_PATH,
+    GENERATED_DISTRIBUTION_REGISTRY_PATH, GeneratedStaticDistributionFiles,
     GeneratedStaticDistributionManifest, GeneratedStaticDistributionSource,
-    StaticDistributionGenerationError, GENERATED_DISTRIBUTION_CARGO_MANIFEST_PATH,
-    GENERATED_DISTRIBUTION_MANIFEST_PATH, GENERATED_DISTRIBUTION_REGISTRY_PATH,
+    StaticDistributionGenerationError, generate_static_distribution,
 };
 
 /// Immutable identity of the modules compiled into this distribution.
@@ -250,10 +250,12 @@ mod tests {
 
         assert_eq!(first, second);
         assert_eq!(first.hash.len(), 64);
-        assert!(first
-            .hash
-            .chars()
-            .all(|character| character.is_ascii_hexdigit()));
+        assert!(
+            first
+                .hash
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        );
         assert!(first.modules.iter().any(|module| module.slug == "tenant"));
     }
 }

@@ -1019,7 +1019,7 @@ mod tests {
         SecretResolverRegistry, SecretString,
     };
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
-    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use sea_orm_migration::SchemaManager;
     use serde_json::json;
     use uuid::Uuid;
 

@@ -5,13 +5,13 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::HostRuntimeContext;
 use rustok_notifications_api::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest,
-    NotificationAudienceCandidate, NotificationAudiencePage, NotificationOpenAuthorization,
-    NotificationPriority, NotificationProviderError, NotificationProviderResult,
-    NotificationSemanticDescriptor, NotificationSourceEventRef, NotificationSourceProvider,
-    NotificationSourceProviderFactory, NotificationSourceSlug, NotificationTargetKind,
-    NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,
-    NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
+    NotificationAudiencePage, NotificationOpenAuthorization, NotificationPriority,
+    NotificationProviderError, NotificationProviderResult, NotificationSemanticDescriptor,
+    NotificationSourceEventRef, NotificationSourceProvider, NotificationSourceProviderFactory,
+    NotificationSourceSlug, NotificationTargetKind, NotificationTargetRef, NotificationTargetRoute,
+    NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
+    ResolveNotificationAudienceRequest,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
@@ -219,11 +219,9 @@ impl NotificationSourceProvider for GroupsNotificationSourceProvider {
         if invitation.target_user_id != Some(request.recipient_id) {
             return Ok(NotificationOpenAuthorization::Unavailable);
         }
-        let route = NotificationTargetRoute::new(format!(
-            "/modules/groups?invitation={}",
-            invitation.id
-        ))
-        .map_err(|_| NotificationProviderError::Internal { retryable: false })?;
+        let route =
+            NotificationTargetRoute::new(format!("/modules/groups?invitation={}", invitation.id))
+                .map_err(|_| NotificationProviderError::Internal { retryable: false })?;
         Ok(NotificationOpenAuthorization::Allowed { route })
     }
 }

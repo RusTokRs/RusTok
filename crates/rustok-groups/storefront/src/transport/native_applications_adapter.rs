@@ -42,10 +42,7 @@ pub async fn submit_group_membership_application(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/storefront/applications/policy"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/storefront/applications/policy")]
 async fn groups_storefront_application_policy_native(
     query: GroupsStorefrontApplicationPolicyQuery,
 ) -> Result<GroupsStorefrontApplicationPolicy, ServerFnError> {
@@ -53,8 +50,8 @@ async fn groups_storefront_application_policy_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationReadPort, GroupApplicationService, ReadGroupApplicationPolicyRequest,
@@ -105,10 +102,7 @@ async fn groups_storefront_application_policy_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/storefront/applications/submit"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/storefront/applications/submit")]
 async fn groups_storefront_submit_application_native(
     command: SubmitGroupMembershipApplicationCommand,
 ) -> Result<GroupsStorefrontSubmitApplicationResult, ServerFnError> {
@@ -116,8 +110,8 @@ async fn groups_storefront_submit_application_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationCommandPort, GroupApplicationService,

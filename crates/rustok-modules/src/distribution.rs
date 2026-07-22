@@ -62,6 +62,34 @@ impl ModuleStaticDistributionBuildStatus {
     }
 }
 
+/// The only executor class admitted into a trusted native distribution.
+///
+/// This value is persisted and participates in the immutable composition
+/// digest so runtime consumers never infer native execution from a package or
+/// source layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleStaticDistributionExecutorMode {
+    StaticNative,
+}
+
+impl ModuleStaticDistributionExecutorMode {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::StaticNative => "static_native",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, ModuleStaticDistributionError> {
+        match value {
+            "static_native" => Ok(Self::StaticNative),
+            _ => Err(ModuleStaticDistributionError::Store(
+                "static distribution executor mode is invalid".to_string(),
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModuleStaticDistributionSelection {
     pub promotion_id: Uuid,
@@ -92,6 +120,7 @@ pub struct ModuleStaticDistributionItem {
     pub source_reference: String,
     pub source_digest: String,
     pub dependency_lock_digest: String,
+    pub executor_mode: ModuleStaticDistributionExecutorMode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -245,6 +274,7 @@ impl ModuleStaticDistributionWorkItem {
                     != Some(item.entry_type.as_str())
                 || !valid_cas_source_reference(&item.source_reference, &item.source_digest)
                 || !valid_digest(&item.dependency_lock_digest)
+                || item.executor_mode != ModuleStaticDistributionExecutorMode::StaticNative
             {
                 return Err(ModuleStaticDistributionError::InvalidCommand);
             }
@@ -457,6 +487,7 @@ where
                 source_reference: promotion.source_reference,
                 source_digest: promotion.source_digest,
                 dependency_lock_digest: promotion.dependency_lock_digest,
+                executor_mode: ModuleStaticDistributionExecutorMode::StaticNative,
             });
         }
         items.sort_by(|left, right| {
@@ -1423,8 +1454,8 @@ pub(crate) async fn insert_build(
                     "INSERT INTO module_static_distribution_items
                      (distribution_build_id, ordinal, promotion_id, promotion_revision,
                       release_id, module_slug, module_version, cargo_package, entry_type,
-                      source_reference, source_digest, dependency_lock_digest)
-                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+                      source_reference, source_digest, dependency_lock_digest, executor_mode)
+                     VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
                     placeholder(backend, 1),
                     placeholder(backend, 2),
                     placeholder(backend, 3),
@@ -1437,6 +1468,7 @@ pub(crate) async fn insert_build(
                     placeholder(backend, 10),
                     placeholder(backend, 11),
                     placeholder(backend, 12),
+                    placeholder(backend, 13),
                 ),
                 vec![
                     uuid_value(distribution_build_id, backend),
@@ -1453,6 +1485,7 @@ pub(crate) async fn insert_build(
                     item.source_reference.clone().into(),
                     item.source_digest.clone().into(),
                     item.dependency_lock_digest.clone().into(),
+                    item.executor_mode.as_str().into(),
                 ],
             ))
             .await
@@ -1720,7 +1753,7 @@ pub(crate) async fn load_build<C: ConnectionTrait>(
             format!(
                 "SELECT promotion_id, promotion_revision, release_id, module_slug,
                         module_version, cargo_package, entry_type, source_reference, source_digest,
-                        dependency_lock_digest
+                        dependency_lock_digest, executor_mode
                  FROM module_static_distribution_items WHERE distribution_build_id = {}
                  ORDER BY ordinal",
                 placeholder(backend, 1),
@@ -1829,6 +1862,10 @@ fn item_from_row(
         dependency_lock_digest: row
             .try_get("", "dependency_lock_digest")
             .map_err(store_error)?,
+        executor_mode: ModuleStaticDistributionExecutorMode::parse(
+            &row.try_get::<String>("", "executor_mode")
+                .map_err(store_error)?,
+        )?,
     })
 }
 

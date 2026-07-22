@@ -55,11 +55,9 @@ impl BlogGraphqlRateLimiter for ScriptedLimiter {
                     BlogGraphqlRateLimitExceeded { limit, retry_after },
                 ))
             }
-            LimiterOutcome::BackendUnavailable(reason) => {
-                Err(BlogGraphqlRateLimitError::BackendUnavailable(
-                    reason.to_string(),
-                ))
-            }
+            LimiterOutcome::BackendUnavailable(reason) => Err(
+                BlogGraphqlRateLimitError::BackendUnavailable(reason.to_string()),
+            ),
         }
     }
 }
@@ -187,10 +185,7 @@ async fn exceeded_read_returns_structured_graphql_extensions_and_retry_after_hea
     let json = response_json(response);
 
     assert_eq!(json["errors"][0]["extensions"]["code"], "BLOG_RATE_LIMITED");
-    assert_eq!(
-        json["errors"][0]["extensions"]["surface"],
-        "post_by_slug"
-    );
+    assert_eq!(json["errors"][0]["extensions"]["surface"], "post_by_slug");
     assert_eq!(json["errors"][0]["extensions"]["limit"], 12);
     assert_eq!(json["errors"][0]["extensions"]["retryAfter"], 9);
     assert_eq!(
@@ -204,9 +199,9 @@ async fn exceeded_read_returns_structured_graphql_extensions_and_retry_after_hea
 #[tokio::test]
 async fn backend_unavailable_returns_fail_closed_graphql_error_without_retry_after() {
     let tenant_id = Uuid::new_v4();
-    let limiter = Arc::new(ScriptedLimiter::new(
-        LimiterOutcome::BackendUnavailable("redis unavailable"),
-    ));
+    let limiter = Arc::new(ScriptedLimiter::new(LimiterOutcome::BackendUnavailable(
+        "redis unavailable",
+    )));
     let schema = schema(tenant(tenant_id), None, None, limiter.clone());
 
     let response = schema.execute(Request::new("{ posts }")).await;
@@ -320,9 +315,7 @@ async fn selected_operation_keeps_document_wide_fail_closed_accounting() {
         limiter.keys(),
         vec![
             format!("tenant:{tenant_id}:blog:graphql:read:posts:user:{actor_id}"),
-            format!(
-                "tenant:{tenant_id}:blog:graphql:write:create_post:user:{actor_id}"
-            ),
+            format!("tenant:{tenant_id}:blog:graphql:write:create_post:user:{actor_id}"),
         ]
     );
 }

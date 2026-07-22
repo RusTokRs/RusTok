@@ -9,6 +9,7 @@ pub mod auth_lifecycle;
 pub mod auth_lifecycle_provider;
 pub mod auth_password_reset;
 pub mod build_event_hub;
+pub mod build_control;
 pub mod build_executor;
 pub mod cache_redis_status_monitor;
 pub mod cache_runtime;
@@ -24,6 +25,7 @@ pub mod email;
 pub mod event_bus;
 pub mod graphql_schema;
 pub mod marketplace_catalog;
+pub mod marketplace_catalog_adapter;
 pub mod marketplace_catalog_cache;
 #[cfg(feature = "mod-commerce")]
 pub mod marketplace_financial_worker;

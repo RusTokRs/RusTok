@@ -46,4 +46,8 @@ impl ExecutorRegistry {
             .cloned()
             .ok_or(SandboxError::ExecutorNotRegistered(kind))
     }
+
+    pub fn contains(&self, kind: SandboxExecutorKind) -> bool {
+        self.executors.contains_key(&kind)
+    }
 }

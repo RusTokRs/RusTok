@@ -27,18 +27,14 @@ impl PageCacheInvalidationPort for ServerPagesCacheInvalidationPort {
         let mut receipt = PageCacheInvalidationReceipt::new(&request);
         for scope in request.scopes() {
             let namespace = request.namespace(*scope);
-            let generation = self
-                .generations
-                .bump(&namespace)
-                .await
-                .map_err(|error| {
-                    PageCacheInvalidationError::Provider(format!(
-                        "unable to bump {} namespace `{namespace}` for tenant {} and page {}: {error}",
-                        scope.as_str(),
-                        request.tenant_id,
-                        request.page_id,
-                    ))
-                })?;
+            let generation = self.generations.bump(&namespace).await.map_err(|error| {
+                PageCacheInvalidationError::Provider(format!(
+                    "unable to bump {} namespace `{namespace}` for tenant {} and page {}: {error}",
+                    scope.as_str(),
+                    request.tenant_id,
+                    request.page_id,
+                ))
+            })?;
             receipt.record(*scope, generation.value());
         }
         receipt.validate_for(&request)?;

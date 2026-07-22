@@ -109,7 +109,9 @@ fn policy_history_service(ctx: &Context<'_>) -> Result<GroupApplicationPolicyHis
     let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
     })?;
-    Ok(GroupApplicationPolicyHistoryService::new(runtime.db_clone()))
+    Ok(GroupApplicationPolicyHistoryService::new(
+        runtime.db_clone(),
+    ))
 }
 
 fn require_authenticated<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {
@@ -161,18 +163,14 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Groups membership policy history is temporarily unavailable",
             )
         }
-        PortErrorKind::InvariantViolation => {
-            <FieldError as GraphQLError>::internal_error(
-                "Groups membership policy history requires review",
-            )
-        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Groups membership policy history requires review",
+        ),
     }
 }

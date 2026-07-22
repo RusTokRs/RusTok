@@ -11,7 +11,8 @@ use crate::artifact::canonical_schema_digest;
 use crate::{
     ArtifactModuleKind, ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
     ArtifactUiContribution, ModuleArtifactDescriptor, ModuleDependencyConstraint,
-    ModuleRuntimeBinding,
+    ModuleRuntimeBinding, ModuleStaticDistributionExecutorMode, ModuleStaticDistributionRelease,
+    ModuleStaticDistributionReleaseStatus,
 };
 
 /// Whether a definition is permanently active platform infrastructure or can
@@ -36,8 +37,22 @@ impl From<ModuleKind> for ModuleDefinitionKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum ModuleDefinitionSource {
-    Static { distribution_version: String },
-    Artifact { release: ArtifactReleaseRef },
+    PlatformNative {
+        distribution_version: String,
+    },
+    PromotedNative {
+        distribution_version: String,
+        distribution_release_id: uuid::Uuid,
+        distribution_release_revision: u64,
+        registry_release_id: String,
+        promotion_id: uuid::Uuid,
+        promotion_revision: u64,
+        distribution_artifact_digest: String,
+        executor_mode: ModuleStaticDistributionExecutorMode,
+    },
+    Artifact {
+        release: ArtifactReleaseRef,
+    },
 }
 
 /// All metadata that policy and dispatch will resolve without inspecting a
@@ -73,7 +88,7 @@ impl ModuleDefinition {
             slug: module.slug().to_string(),
             version: module.version().to_string(),
             kind: module.kind().into(),
-            source: ModuleDefinitionSource::Static {
+            source: ModuleDefinitionSource::PlatformNative {
                 distribution_version: module.version().to_string(),
             },
             dependencies: module
@@ -172,7 +187,11 @@ impl ModuleDefinitionCatalog {
             &definition.source,
             definition.settings_schema_digest.as_ref(),
         ) {
-            (ModuleDefinitionSource::Static { .. }, Some(_)) => {
+            (
+                ModuleDefinitionSource::PlatformNative { .. }
+                | ModuleDefinitionSource::PromotedNative { .. },
+                Some(_),
+            ) => {
                 return Err(ModuleDefinitionError::StaticArtifactSettingsSchema {
                     slug: definition.slug,
                 });
@@ -204,6 +223,66 @@ impl ModuleDefinitionCatalog {
         self.definitions.get(slug)
     }
 
+    /// Binds compiled promoted implementations to the exact verified
+    /// distribution and registry release that produced the running binary.
+    /// Platform-native definitions absent from the promotion selection retain
+    /// their platform identity.
+    pub fn from_static_distribution(
+        registry: &ModuleRegistry,
+        release: &ModuleStaticDistributionRelease,
+    ) -> Result<Self, ModuleDefinitionError> {
+        if release.status == ModuleStaticDistributionReleaseStatus::Revoked {
+            return Err(ModuleDefinitionError::RevokedStaticDistributionRelease {
+                distribution_release_id: release.distribution_release_id,
+            });
+        }
+        let mut catalog = Self::from_static_registry(registry)?;
+        for item in &release.items {
+            if item.executor_mode != ModuleStaticDistributionExecutorMode::StaticNative {
+                return Err(
+                    ModuleDefinitionError::InvalidStaticDistributionExecutorMode {
+                        slug: item.module_slug.clone(),
+                    },
+                );
+            }
+            let definition = catalog
+                .definitions
+                .get_mut(&item.module_slug)
+                .ok_or_else(
+                    || ModuleDefinitionError::MissingPromotedNativeImplementation {
+                        slug: item.module_slug.clone(),
+                        registry_release_id: item.release_id.clone(),
+                    },
+                )?;
+            if definition.version != item.module_version {
+                return Err(ModuleDefinitionError::PromotedNativeVersionMismatch {
+                    slug: item.module_slug.clone(),
+                    expected: item.module_version.clone(),
+                    actual: definition.version.clone(),
+                });
+            }
+            if !matches!(
+                &definition.source,
+                ModuleDefinitionSource::PlatformNative { .. }
+            ) {
+                return Err(ModuleDefinitionError::PromotedNativeSourceConflict {
+                    slug: item.module_slug.clone(),
+                });
+            }
+            definition.source = ModuleDefinitionSource::PromotedNative {
+                distribution_version: definition.version.clone(),
+                distribution_release_id: release.distribution_release_id,
+                distribution_release_revision: release.release_revision,
+                registry_release_id: item.release_id.clone(),
+                promotion_id: item.promotion_id,
+                promotion_revision: item.promotion_revision,
+                distribution_artifact_digest: release.evidence.artifact_digest.clone(),
+                executor_mode: item.executor_mode,
+            };
+        }
+        Ok(catalog)
+    }
+
     pub fn definitions(&self) -> impl Iterator<Item = &ModuleDefinition> {
         self.definitions.values()
     }
@@ -223,6 +302,27 @@ pub enum ModuleDefinitionError {
     ArtifactSettingsSchemaNotAdmitted { slug: String },
     #[error("static module `{slug}` cannot select an artifact settings schema")]
     StaticArtifactSettingsSchema { slug: String },
+    #[error("static distribution release `{distribution_release_id}` is revoked")]
+    RevokedStaticDistributionRelease { distribution_release_id: uuid::Uuid },
+    #[error(
+        "promoted native module `{slug}` from registry release `{registry_release_id}` is absent from the compiled registry"
+    )]
+    MissingPromotedNativeImplementation {
+        slug: String,
+        registry_release_id: String,
+    },
+    #[error(
+        "promoted native module `{slug}` version mismatch: expected `{expected}`, compiled `{actual}`"
+    )]
+    PromotedNativeVersionMismatch {
+        slug: String,
+        expected: String,
+        actual: String,
+    },
+    #[error("promoted native module `{slug}` does not use the static/native executor")]
+    InvalidStaticDistributionExecutorMode { slug: String },
+    #[error("promoted native module `{slug}` conflicts with a non-platform native definition")]
+    PromotedNativeSourceConflict { slug: String },
 }
 
 #[cfg(test)]
@@ -242,7 +342,7 @@ mod tests {
         assert_eq!(definition.kind, ModuleDefinitionKind::Core);
         assert!(matches!(
             definition.source,
-            ModuleDefinitionSource::Static { .. }
+            ModuleDefinitionSource::PlatformNative { .. }
         ));
     }
 

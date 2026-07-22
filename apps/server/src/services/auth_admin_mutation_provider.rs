@@ -5,9 +5,7 @@ use rustok_auth::{
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use std::str::FromStr;
 use uuid::Uuid;
 

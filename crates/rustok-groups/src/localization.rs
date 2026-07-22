@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{normalize_locale_tag, PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
@@ -370,5 +370,5 @@ fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
         .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
+        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }

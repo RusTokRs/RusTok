@@ -12,6 +12,15 @@
 - Execute queued build plans from server workers or `rustok-cli` through explicit event, release-activation, and release-publication ports.
 - Define portable `DeploymentSettings`, `DeploymentBackend`, and
   `DeploymentWorkspace` contracts for server and CLI host adapters.
+- Own bounded build/release history and active-release reads so transports do
+  not query build persistence entities directly.
+- Expose the host-composed `BuildControl`/`SharedBuildControl` port for
+  active-build, release-history, and rollback operations. The server wires the
+  event-aware rollback implementation; admin and GraphQL transports consume
+  this port without constructing `BuildService` themselves.
+- Emit an explicit `BuildRolledBack` owner event with requested/restored build,
+  release transition, and actor identity. Rollback is never represented as an
+  ordinary build completion.
 
 ## Interactions
 

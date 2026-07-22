@@ -17,7 +17,7 @@ use crate::{
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef, InstalledModuleArtifact,
-    ModuleArtifactError, ModuleInstallationError, ModuleRuntimeBinding,
+    ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError, ModuleRuntimeBinding,
 };
 
 /// Bounded node-local cache for already-admitted CAS blobs. It is not a source
@@ -111,6 +111,12 @@ where
             sandbox,
             schema_validators: ArtifactSchemaValidatorCache::default(),
         }
+    }
+
+    pub fn supports_payload_kind(&self, payload_kind: crate::ArtifactPayloadKind) -> bool {
+        payload_kind
+            .sandbox_executor()
+            .is_some_and(|executor| self.sandbox.supports_executor(executor))
     }
 
     pub async fn execute_binding(
@@ -263,22 +269,40 @@ pub trait ArtifactSandboxPolicyResolver: Send + Sync {
     ) -> Result<SandboxPolicy, String>;
 }
 
+/// Resolves the canonical effective module policy immediately before a
+/// non-lifecycle binding crosses the sandbox boundary.
+#[async_trait]
+pub trait ArtifactEffectivePolicyResolver: Send + Sync {
+    async fn resolve(
+        &self,
+        tenant_id: uuid::Uuid,
+        module_slug: &str,
+    ) -> Result<ModuleEffectivePolicy, String>;
+}
+
 /// Production adapter from admitted dispatcher bindings to the shared sandbox.
-pub struct ArtifactRuntimeLifecycleExecutor<R, I, P> {
+pub struct ArtifactRuntimeLifecycleExecutor<R, I, P, E> {
     runtime: ArtifactRuntime<R>,
     installations: I,
     policies: P,
+    effective_policy: E,
 }
 
-impl<B, I, P> ArtifactRuntimeLifecycleExecutor<B, I, P>
+impl<B, I, P, E> ArtifactRuntimeLifecycleExecutor<B, I, P, E>
 where
     B: ArtifactBlobStore,
 {
-    pub fn new(runtime: ArtifactRuntime<B>, installations: I, policies: P) -> Self {
+    pub fn new(
+        runtime: ArtifactRuntime<B>,
+        installations: I,
+        policies: P,
+        effective_policy: E,
+    ) -> Self {
         Self {
             runtime,
             installations,
             policies,
+            effective_policy,
         }
     }
 }
@@ -300,12 +324,17 @@ fn effective_binding_policy(
 }
 
 #[async_trait]
-impl<B, I, P> ArtifactBindingExecutor for ArtifactRuntimeLifecycleExecutor<B, I, P>
+impl<B, I, P, E> ArtifactBindingExecutor for ArtifactRuntimeLifecycleExecutor<B, I, P, E>
 where
     B: ArtifactBlobStore,
     I: ArtifactInstallationResolver,
     P: ArtifactSandboxPolicyResolver,
+    E: ArtifactEffectivePolicyResolver,
 {
+    fn supports_payload_kind(&self, payload_kind: crate::ArtifactPayloadKind) -> bool {
+        self.runtime.supports_payload_kind(payload_kind)
+    }
+
     async fn dispatch_binding(
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
@@ -325,6 +354,19 @@ where
                     .await?
             }
         };
+        if dispatch.phase != ExecutionPhase::Lifecycle {
+            let policy = self
+                .effective_policy
+                .resolve(dispatch.tenant_id, &dispatch.release.slug)
+                .await?;
+            if !policy.contains(&dispatch.release.slug) {
+                return Err(format!(
+                    "module `{}` is denied by effective policy revision {}",
+                    dispatch.release.slug,
+                    policy.policy_revision()
+                ));
+            }
+        }
         let policy = effective_binding_policy(
             dispatch.binding,
             dispatch.phase,

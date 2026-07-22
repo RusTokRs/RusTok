@@ -2,9 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rustok_api::HostRuntimeContext;
-use rustok_core::{
-    MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole,
-};
+use rustok_core::{MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole};
 use rustok_forum::entities::forum_domain_event;
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ModerationService,
@@ -12,12 +10,11 @@ use rustok_forum::{
 };
 use rustok_notifications::NotificationsModule;
 use rustok_notifications_api::{
-    materialize_notification_source_registry,
-    notification_source_factory_registry_from_extensions,
-    notification_source_registry_from_extensions, AuthorizeNotificationTargetRequest,
-    DescribeNotificationRequest, NotificationOpenAuthorization, NotificationProviderError,
-    NotificationSourceEventRef, NotificationSourceSlug, NotificationTypeKey,
-    ResolveNotificationAudienceRequest,
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationOpenAuthorization,
+    NotificationProviderError, NotificationSourceEventRef, NotificationSourceSlug,
+    NotificationTypeKey, ResolveNotificationAudienceRequest,
+    materialize_notification_source_registry, notification_source_factory_registry_from_extensions,
+    notification_source_registry_from_extensions,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
@@ -124,8 +121,7 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
     let mut on_extensions = on_registry
         .build_runtime_extensions()
         .expect("Notifications and Forum runtime extensions should initialize");
-    let host = on_extensions
-        .apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
+    let host = on_extensions.apply_to_host_runtime(HostRuntimeContext::new(db.clone()));
     let providers = materialize_notification_source_registry(&mut on_extensions, &host)
         .expect("Forum source factory should materialize");
     let provider = providers
@@ -142,7 +138,10 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
     assert_eq!(descriptor.notification_type.as_str(), "forum.topic.created");
     assert_eq!(descriptor.target.id, topic.id);
     let topic_id = topic.id.to_string();
-    assert_eq!(descriptor.template_data.get("topic_id"), Some(topic_id.as_str()));
+    assert_eq!(
+        descriptor.template_data.get("topic_id"),
+        Some(topic_id.as_str())
+    );
 
     let first_page = provider
         .resolve_audience(ResolveNotificationAudienceRequest {
@@ -176,7 +175,10 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         .chain(second_page.recipients())
         .map(|candidate| candidate.recipient_id)
         .collect::<BTreeSet<_>>();
-    assert_eq!(recipients, BTreeSet::from([first_recipient, second_recipient]));
+    assert_eq!(
+        recipients,
+        BTreeSet::from([first_recipient, second_recipient])
+    );
     assert!(!recipients.contains(&author_id));
 
     let authorization = provider
@@ -190,10 +192,7 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
     match authorization {
         NotificationOpenAuthorization::Allowed { route } => assert_eq!(
             route.as_str(),
-            format!(
-                "/modules/forum?category={}&topic={}",
-                category.id, topic.id
-            )
+            format!("/modules/forum?category={}&topic={}", category.id, topic.id)
         ),
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }

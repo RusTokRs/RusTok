@@ -1,5 +1,5 @@
 use async_graphql::{
-    MergedObject, MergedSubscription, Schema, dataloader::DataLoader, extensions::Analyzer,
+    dataloader::DataLoader, extensions::Analyzer, MergedObject, MergedSubscription, Schema,
 };
 use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::DatabaseConnection;
@@ -154,6 +154,9 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         #[cfg(feature = "mod-media")]
         storage,
     } = dependencies;
+    let marketplace_catalog = graphql_runtime_inputs
+        .shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>()
+        .expect("module marketplace catalog must be composed before GraphQL schema construction");
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
         db.clone(),
@@ -216,6 +219,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         .data(transactional_event_bus)
         .data(build_event_hub)
         .data(flex_runtime)
+        .data(marketplace_catalog)
         .data(runtime_extensions)
         .data(rbac_role_writer);
 

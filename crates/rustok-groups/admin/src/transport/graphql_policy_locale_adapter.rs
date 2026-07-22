@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
@@ -14,11 +14,15 @@ pub type GraphqlGroupsPolicyLocaleError = String;
 const POLICY_FIELDS: &str = "id group_id: groupId revision enabled locale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required }";
 
 fn policy_query() -> String {
-    format!("query GroupsAdminApplicationPolicyLocale($groupId: UUID!) {{ group_application_policy: groupApplicationPolicy(groupId: $groupId) {{ {POLICY_FIELDS} }} }}")
+    format!(
+        "query GroupsAdminApplicationPolicyLocale($groupId: UUID!) {{ group_application_policy: groupApplicationPolicy(groupId: $groupId) {{ {POLICY_FIELDS} }} }}"
+    )
 }
 
 fn upsert_policy_mutation() -> String {
-    format!("mutation GroupsAdminUpsertApplicationPolicyLocale($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}")
+    format!(
+        "mutation GroupsAdminUpsertApplicationPolicyLocale($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}"
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -148,19 +152,27 @@ pub async fn upsert_group_application_policy(
                 input: UpsertInput {
                     locale: command.locale,
                     enabled: command.enabled,
-                    questions: command.questions.into_iter().map(|question| QuestionInput {
-                        key: question.key,
-                        prompt: question.prompt,
-                        help_text: question.help_text,
-                        required: question.required,
-                        max_answer_chars: question.max_answer_chars.min(i32::MAX as u32) as i32,
-                    }).collect(),
-                    rules: command.rules.into_iter().map(|rule| RuleInput {
-                        key: rule.key,
-                        title: rule.title,
-                        body: rule.body,
-                        required: rule.required,
-                    }).collect(),
+                    questions: command
+                        .questions
+                        .into_iter()
+                        .map(|question| QuestionInput {
+                            key: question.key,
+                            prompt: question.prompt,
+                            help_text: question.help_text,
+                            required: question.required,
+                            max_answer_chars: question.max_answer_chars.min(i32::MAX as u32) as i32,
+                        })
+                        .collect(),
+                    rules: command
+                        .rules
+                        .into_iter()
+                        .map(|rule| RuleInput {
+                            key: rule.key,
+                            title: rule.title,
+                            body: rule.body,
+                            required: rule.required,
+                        })
+                        .collect(),
                 },
             }),
         ),
@@ -228,8 +240,8 @@ fn graphql_url() -> String {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let base = std::env::var("RUSTOK_API_URL")
-            .unwrap_or_else(|_| "http://localhost:5150".to_string());
+        let base =
+            std::env::var("RUSTOK_API_URL").unwrap_or_else(|_| "http://localhost:5150".to_string());
         format!("{base}/api/graphql")
     }
 }

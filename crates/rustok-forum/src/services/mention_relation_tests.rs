@@ -146,12 +146,7 @@ async fn setup_db() -> DatabaseConnection {
     db
 }
 
-async fn insert_topic_source(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    body: &str,
-) {
+async fn insert_topic_source(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid, body: &str) {
     let category_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         "INSERT INTO forum_topics (
@@ -324,7 +319,9 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
         .persist_in_tx(&txn, replay_prepared)
         .await
         .expect("identical replay should persist idempotently");
-    txn.commit().await.expect("replay transaction should commit");
+    txn.commit()
+        .await
+        .expect("replay transaction should commit");
     assert!(replay.replayed());
     assert_eq!(replay.source().revision_id(), first.source().revision_id());
     assert!(replay.added_user_ids().is_empty());
@@ -347,7 +344,9 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
         .persist_in_tx(&txn, changed_prepared)
         .await
         .expect("changed projection should persist");
-    txn.commit().await.expect("changed transaction should commit");
+    txn.commit()
+        .await
+        .expect("changed transaction should commit");
     assert!(!changed.replayed());
     assert_eq!(changed.added_user_ids(), &[bob_id]);
     assert!(changed.source().revision_id() > first.source().revision_id());
@@ -415,7 +414,9 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
         ))
         .await
         .expect_err("persisted mention rows must be immutable");
-    assert!(immutable_error
-        .to_string()
-        .contains("forum relation projections are immutable"));
+    assert!(
+        immutable_error
+            .to_string()
+            .contains("forum relation projections are immutable")
+    );
 }

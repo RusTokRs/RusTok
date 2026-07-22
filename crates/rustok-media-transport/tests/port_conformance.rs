@@ -7,7 +7,8 @@ use rustok_media::{
     MediaUploadRequest, MediaUploadTransport, UploadInput, UpsertTranslationInput, migrations,
 };
 use rustok_media_transport::{
-    GrpcMediaProvider, MediaGrpcService, proto::media_service_server::MediaServiceServer,
+    GrpcMediaProvider, MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority,
+    proto::media_service_server::MediaServiceServer,
 };
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
@@ -154,6 +155,23 @@ async fn exercise_provider(
         .expect("upsert_translation should preserve normalization");
     assert_eq!(translation.locale, "en-us");
     assert_eq!(translation.title.as_deref(), Some("Hero"));
+    let replay_context = read_context(tenant_id)
+        .with_idempotency_key(format!("translation-replay-{}", Uuid::new_v4()));
+    let replay_input = UpsertTranslationInput {
+        locale: "en-us".to_string(),
+        title: Some("Replay-safe hero".to_string()),
+        alt_text: None,
+        caption: None,
+    };
+    let first = write
+        .upsert_translation(replay_context.clone(), asset_id, replay_input.clone())
+        .await
+        .expect("first receipted translation should succeed");
+    let replay = write
+        .upsert_translation(replay_context, asset_id, replay_input)
+        .await
+        .expect("same idempotency key should replay its response");
+    assert_eq!(replay, first);
     assert_eq!(
         read.get_translations(read_context(tenant_id), asset_id)
             .await
@@ -245,7 +263,28 @@ async fn embedded_and_loopback_grpc_providers_pass_the_same_port_suite() {
         .expect("listener address should exist");
     let incoming = TcpListenerStream::new(listener);
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let server_service = MediaServiceServer::new(MediaGrpcService::new(service.clone()));
+    let authority = TrustedMediaAuthority::new(
+        tenant_id.to_string(),
+        PortActor::service("media-conformance"),
+    )
+    .allow_operations([
+        MediaGrpcOperation::GetAsset,
+        MediaGrpcOperation::ListAssets,
+        MediaGrpcOperation::GetImageDescriptor,
+        MediaGrpcOperation::GetTranslations,
+        MediaGrpcOperation::PrepareUpload,
+        MediaGrpcOperation::CompleteUpload,
+        MediaGrpcOperation::DeleteAsset,
+        MediaGrpcOperation::UpsertTranslation,
+        MediaGrpcOperation::ReconcileStorage,
+    ]);
+    let server_service = MediaServiceServer::with_interceptor(
+        MediaGrpcService::new(service.clone()),
+        move |mut request: tonic::Request<()>| {
+            request.extensions_mut().insert(authority.clone());
+            Ok(request)
+        },
+    );
     let server = tokio::spawn(async move {
         Server::builder()
             .add_service(server_service)

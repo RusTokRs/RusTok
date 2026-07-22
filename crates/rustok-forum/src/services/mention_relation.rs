@@ -151,13 +151,9 @@ impl MentionRelationService {
         lock_source_in_tx(txn, prepared.tenant_id, prepared.target).await?;
         ensure_prepared_matches_source_in_tx(txn, &prepared).await?;
         validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;
-        let latest = latest_revision_in_tx(
-            txn,
-            prepared.tenant_id,
-            prepared.target,
-            &prepared.locale,
-        )
-        .await?;
+        let latest =
+            latest_revision_in_tx(txn, prepared.tenant_id, prepared.target, &prepared.locale)
+                .await?;
         let current_snapshot = ProjectionSnapshot::from_prepared(&prepared);
 
         if let Some(latest) = latest.as_ref() {
@@ -180,8 +176,7 @@ impl MentionRelationService {
                     replayed: true,
                     added_user_ids: Vec::new(),
                     added_audiences: Vec::new(),
-                    mention_count: current_snapshot.users.len()
-                        + current_snapshot.audiences.len(),
+                    mention_count: current_snapshot.users.len() + current_snapshot.audiences.len(),
                     quote_count: current_snapshot.quotes.len(),
                 });
             }
@@ -339,9 +334,7 @@ async fn ensure_prepared_matches_source_in_tx(
                 .one(txn)
                 .await?
                 .ok_or_else(|| {
-                    ForumError::Validation(
-                        "Forum relation source body is unavailable".to_string(),
-                    )
+                    ForumError::Validation("Forum relation source body is unavailable".to_string())
                 })?;
             (row.body, row.body_format)
         }
@@ -369,10 +362,7 @@ async fn latest_revision_in_tx(
 ) -> ForumResult<Option<forum_relation_revision::Model>> {
     Ok(forum_relation_revision::Entity::find()
         .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
-        .filter(
-            forum_relation_revision::Column::TargetKind
-                .eq(target_kind_value(target.kind())),
-        )
+        .filter(forum_relation_revision::Column::TargetKind.eq(target_kind_value(target.kind())))
         .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
         .filter(forum_relation_revision::Column::Locale.eq(locale))
         .order_by_desc(forum_relation_revision::Column::RevisionId)
@@ -431,8 +421,7 @@ async fn validate_quote_targets_in_tx(
         let exists = forum_relation_revision::Entity::find_by_id(quote.revision_id())
             .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
             .filter(
-                forum_relation_revision::Column::TargetKind
-                    .eq(target_kind_value(target.kind())),
+                forum_relation_revision::Column::TargetKind.eq(target_kind_value(target.kind())),
             )
             .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
             .one(txn)
@@ -458,9 +447,7 @@ async fn lock_source_in_tx(
             };
             let found = match txn.get_database_backend() {
                 DbBackend::Sqlite => query().one(txn).await?,
-                DbBackend::Postgres | DbBackend::MySql => {
-                    query().lock_exclusive().one(txn).await?
-                }
+                DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
             };
             if found.is_none() {
                 return Err(ForumError::TopicNotFound(target.id()));
@@ -473,9 +460,7 @@ async fn lock_source_in_tx(
             };
             let found = match txn.get_database_backend() {
                 DbBackend::Sqlite => query().one(txn).await?,
-                DbBackend::Postgres | DbBackend::MySql => {
-                    query().lock_exclusive().one(txn).await?
-                }
+                DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
             };
             if found.is_none() {
                 return Err(ForumError::ReplyNotFound(target.id()));
@@ -510,7 +495,13 @@ fn projection_fingerprint(
         update_digest(&mut digest, quote.target().id().as_bytes());
         update_digest(&mut digest, &quote.revision_id().to_be_bytes());
     }
-    format!("{:x}", digest.finalize())
+    let digest = digest.finalize();
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        std::fmt::Write::write_fmt(&mut encoded, format_args!("{byte:02x}"))
+            .expect("writing a SHA-256 digest to a string cannot fail");
+    }
+    encoded
 }
 
 fn update_digest(digest: &mut Sha256, bytes: &[u8]) {

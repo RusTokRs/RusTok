@@ -23,6 +23,11 @@ or calling a broker, the host verifies that the call's execution ID, subject,
 phase, tenant, actor and trace context match its active request. The crate has no
 dependency on Alloy, `rustok-modules`, server hosts or domain modules.
 
+`ExecutorRegistry::contains` and `SandboxRuntime::supports_executor` expose
+read-only registry-backed readiness. Owner policy adapters may use this fact to
+deny an admitted payload whose concrete executor is not registered; merely
+injecting an execution port is not readiness evidence.
+
 The `platform.http` grant requires typed `hosts`, `methods`, and
 `path_prefixes` constraints. All three lists must be non-empty; host and method
 matching is exact, while paths use an explicit allowed prefix. The host enforces

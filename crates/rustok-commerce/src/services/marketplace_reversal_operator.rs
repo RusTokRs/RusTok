@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::entities::{
-    marketplace_reversal_adaptation_failure, marketplace_reversal_event_inbox,
-};
+use crate::entities::{marketplace_reversal_adaptation_failure, marketplace_reversal_event_inbox};
 
 use super::{
     MarketplaceProviderReversalEventAdapter, MarketplaceProviderReversalEventAdapterError,
@@ -103,10 +101,7 @@ impl MarketplaceReversalOperatorService {
         financial_port: Arc<dyn MarketplaceFinancialCommandPort>,
     ) -> Self {
         Self {
-            inbox: MarketplaceReversalEventInboxService::new(
-                db.clone(),
-                financial_port.clone(),
-            ),
+            inbox: MarketplaceReversalEventInboxService::new(db.clone(), financial_port.clone()),
             failures: MarketplaceReversalAdaptationFailureJournal::new(db.clone()),
             adapter: MarketplaceProviderReversalEventAdapter::new(db.clone(), financial_port),
             db,
@@ -207,9 +202,8 @@ impl MarketplaceReversalOperatorService {
         &self,
         tenant_id: Uuid,
         limit: u64,
-    ) -> MarketplaceReversalOperatorResult<
-        Vec<MarketplaceReversalAdaptationFailureOperatorView>,
-    > {
+    ) -> MarketplaceReversalOperatorResult<Vec<MarketplaceReversalAdaptationFailureOperatorView>>
+    {
         self.failures
             .list_operator_review(tenant_id, limit)
             .await
@@ -268,12 +262,10 @@ impl MarketplaceReversalOperatorService {
         }
         let now = Utc::now().fixed_offset();
         let recoverable = Condition::any()
-            .add(
-                marketplace_reversal_event_inbox::Column::Status.is_in([
-                    MarketplaceReversalEventStatus::Received.as_str(),
-                    MarketplaceReversalEventStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_reversal_event_inbox::Column::Status.is_in([
+                MarketplaceReversalEventStatus::Received.as_str(),
+                MarketplaceReversalEventStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(
@@ -332,10 +324,7 @@ impl MarketplaceReversalOperatorService {
     }
 }
 
-fn validate_identity(
-    tenant_id: Uuid,
-    inbox_id: Uuid,
-) -> MarketplaceReversalOperatorResult<()> {
+fn validate_identity(tenant_id: Uuid, inbox_id: Uuid) -> MarketplaceReversalOperatorResult<()> {
     if tenant_id.is_nil() || inbox_id.is_nil() {
         return Err(MarketplaceReversalOperatorError::Validation(
             "tenant_id and inbox_id must not be nil".to_string(),
@@ -347,16 +336,12 @@ fn validate_identity(
 fn map_event(
     model: marketplace_reversal_event_inbox::Model,
 ) -> MarketplaceReversalOperatorResult<MarketplaceReversalEventOperatorView> {
-    let line_count = model
-        .lines_json
-        .as_array()
-        .map(Vec::len)
-        .ok_or_else(|| {
-            MarketplaceReversalOperatorError::Conflict(format!(
-                "reversal inbox row {} has corrupt line evidence",
-                model.id
-            ))
-        })?;
+    let line_count = model.lines_json.as_array().map(Vec::len).ok_or_else(|| {
+        MarketplaceReversalOperatorError::Conflict(format!(
+            "reversal inbox row {} has corrupt line evidence",
+            model.id
+        ))
+    })?;
     Ok(MarketplaceReversalEventOperatorView {
         id: model.id,
         tenant_id: model.tenant_id,

@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use rustok_core::{events::EventHandler, MigrationSource};
+use rustok_core::{MigrationSource, events::EventHandler};
 use rustok_events::{ContractEventEnvelope, DomainEvent, EventEnvelope};
 use rustok_search::{SearchIngestionHandler, SearchModule};
 use sea_orm::{
@@ -201,9 +201,11 @@ async fn blog_events_upsert_publish_archive_and_delete_search_document() -> Test
             DomainEvent::BlogPostDeleted { post_id },
         )?)
         .await?;
-    assert!(load_blog_document(&test_db.db, tenant_id, post_id)
-        .await?
-        .is_none());
+    assert!(
+        load_blog_document(&test_db.db, tenant_id, post_id)
+            .await?
+            .is_none()
+    );
 
     test_db.cleanup().await
 }
@@ -274,18 +276,26 @@ async fn full_blog_reindex_replaces_only_current_tenant_blog_documents() -> Test
         .await?;
 
     assert_eq!(count_blog_documents(&test_db.db, tenant_id).await?, 2);
-    assert!(load_blog_document(&test_db.db, tenant_id, stale_id)
-        .await?
-        .is_none());
-    assert!(load_blog_document(&test_db.db, tenant_id, first_post_id)
-        .await?
-        .is_some());
-    assert!(load_blog_document(&test_db.db, tenant_id, second_post_id)
-        .await?
-        .is_some());
-    assert!(load_blog_document(&test_db.db, other_tenant_id, other_tenant_document_id)
-        .await?
-        .is_some());
+    assert!(
+        load_blog_document(&test_db.db, tenant_id, stale_id)
+            .await?
+            .is_none()
+    );
+    assert!(
+        load_blog_document(&test_db.db, tenant_id, first_post_id)
+            .await?
+            .is_some()
+    );
+    assert!(
+        load_blog_document(&test_db.db, tenant_id, second_post_id)
+            .await?
+            .is_some()
+    );
+    assert!(
+        load_blog_document(&test_db.db, other_tenant_id, other_tenant_document_id)
+            .await?
+            .is_some()
+    );
 
     test_db.cleanup().await
 }
@@ -346,9 +356,11 @@ async fn blog_module_disable_cleans_scope_and_enable_rebuilds_it() -> TestResult
         )?)
         .await?;
     assert_eq!(count_blog_documents(&test_db.db, tenant_id).await?, 0);
-    assert!(load_blog_document(&test_db.db, other_tenant_id, other_tenant_document_id)
-        .await?
-        .is_some());
+    assert!(
+        load_blog_document(&test_db.db, other_tenant_id, other_tenant_document_id)
+            .await?
+            .is_some()
+    );
 
     handler
         .handle(&envelope(
@@ -362,9 +374,11 @@ async fn blog_module_disable_cleans_scope_and_enable_rebuilds_it() -> TestResult
         )?)
         .await?;
     assert_eq!(count_blog_documents(&test_db.db, tenant_id).await?, 1);
-    assert!(load_blog_document(&test_db.db, tenant_id, post_id)
-        .await?
-        .is_some());
+    assert!(
+        load_blog_document(&test_db.db, tenant_id, post_id)
+            .await?
+            .is_some()
+    );
 
     test_db.cleanup().await
 }
@@ -399,9 +413,11 @@ async fn targeted_reindex_removes_stale_document_when_source_post_is_missing() -
         )?)
         .await?;
 
-    assert!(load_blog_document(&test_db.db, tenant_id, missing_post_id)
-        .await?
-        .is_none());
+    assert!(
+        load_blog_document(&test_db.db, tenant_id, missing_post_id)
+            .await?
+            .is_none()
+    );
 
     test_db.cleanup().await
 }
@@ -414,7 +430,9 @@ fn envelope(
     Ok(ContractEventEnvelope::new(tenant_id, actor_id, event)?.into_root_envelope()?)
 }
 
-async fn create_blog_projection_source_tables(db: &DatabaseConnection) -> Result<(), sea_orm::DbErr> {
+async fn create_blog_projection_source_tables(
+    db: &DatabaseConnection,
+) -> Result<(), sea_orm::DbErr> {
     db.execute_unprepared(
         r#"
         CREATE TABLE users (
@@ -612,10 +630,8 @@ async fn connect(database_url: &str) -> TestResult<DatabaseConnection> {
 }
 
 async fn set_search_path(db: &DatabaseConnection, schema_name: &str) -> TestResult<()> {
-    db.execute_unprepared(&format!(
-        r#"SET search_path TO "{schema_name}", public"#
-    ))
-    .await?;
+    db.execute_unprepared(&format!(r#"SET search_path TO "{schema_name}", public"#))
+        .await?;
     Ok(())
 }
 

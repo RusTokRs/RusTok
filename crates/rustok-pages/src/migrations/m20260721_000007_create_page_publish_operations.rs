@@ -71,10 +71,7 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_page_publish_operations_page")
-                            .from(
-                                PagePublishOperations::Table,
-                                PagePublishOperations::PageId,
-                            )
+                            .from(PagePublishOperations::Table, PagePublishOperations::PageId)
                             .to(Pages::Table, Pages::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),

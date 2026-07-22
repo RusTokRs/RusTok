@@ -87,10 +87,7 @@ impl ForumError {
         Self::QuoteTargetUnavailable
     }
 
-    pub const fn capability_unavailable(
-        capability: &'static str,
-        code: &'static str,
-    ) -> Self {
+    pub const fn capability_unavailable(capability: &'static str, code: &'static str) -> Self {
         Self::CapabilityUnavailable { capability, code }
     }
 

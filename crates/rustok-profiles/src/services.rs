@@ -211,14 +211,8 @@ impl ProfileService {
         let mut active: entities::profile::ActiveModel = profile.into();
         active.updated_at = Set(Utc::now().into());
         active.update(&txn).await?;
-        self.upsert_translation_in_conn(
-            &txn,
-            user_id,
-            &translation_locale,
-            &display_name,
-            bio,
-        )
-        .await?;
+        self.upsert_translation_in_conn(&txn, user_id, &translation_locale, &display_name, bio)
+            .await?;
         txn.commit().await?;
 
         self.get_profile(

@@ -426,8 +426,8 @@ mod tests {
     fn graphql_http_response_preserves_extension_headers() {
         let mut headers = HeaderMap::new();
         headers.insert(header::RETRY_AFTER, "23".parse().expect("valid header"));
-        let graphql_response = async_graphql::Response::new(async_graphql::Value::Null)
-            .http_headers(headers);
+        let graphql_response =
+            async_graphql::Response::new(async_graphql::Value::Null).http_headers(headers);
 
         let http_response = graphql_http_response(graphql_response);
 

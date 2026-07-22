@@ -1,11 +1,11 @@
 use axum::{
     extract::State,
-    http::{StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
 };
-use utoipa::OpenApi;
 use utoipa::openapi::OpenApi as OpenApiDoc;
+use utoipa::OpenApi;
 
 use crate::common::settings::RustokSettings;
 use crate::error::{Error, Result};
@@ -152,8 +152,8 @@ const REGISTRY_ONLY_OPENAPI_PATHS: &[&str] = &[
     "/health/runtime",
     "/health/modules",
     "/metrics",
-    "/v1/catalog",
-    "/v1/catalog/{slug}",
+    "/catalog",
+    "/catalog/{slug}",
     "/api/openapi.json",
     "/api/openapi.yaml",
 ];
@@ -245,7 +245,7 @@ impl utoipa::Modify for SecurityAddon {
 
 #[cfg(test)]
 mod tests {
-    use super::{ApiDoc, build_openapi_document};
+    use super::{build_openapi_document, ApiDoc};
     use crate::common::settings::{RuntimeHostMode, RustokSettings};
     use utoipa::OpenApi;
 
@@ -254,12 +254,12 @@ mod tests {
         let openapi = ApiDoc::openapi();
 
         assert!(
-            openapi.paths.paths.contains_key("/v1/catalog"),
-            "OpenAPI spec must include /v1/catalog"
+            openapi.paths.paths.contains_key("/catalog"),
+            "OpenAPI spec must include /catalog"
         );
         assert!(
-            openapi.paths.paths.contains_key("/v1/catalog/{slug}"),
-            "OpenAPI spec must include /v1/catalog/{{slug}}"
+            openapi.paths.paths.contains_key("/catalog/{slug}"),
+            "OpenAPI spec must include /catalog/{{slug}}"
         );
         assert!(
             openapi.paths.paths.contains_key("/v2/catalog/publish"),
@@ -338,54 +338,40 @@ mod tests {
 
         let openapi = build_openapi_document(&settings);
 
-        assert!(openapi.paths.paths.contains_key("/v1/catalog"));
-        assert!(openapi.paths.paths.contains_key("/v1/catalog/{slug}"));
+        assert!(openapi.paths.paths.contains_key("/catalog"));
+        assert!(openapi.paths.paths.contains_key("/catalog/{slug}"));
         assert!(openapi.paths.paths.contains_key("/metrics"));
         assert!(openapi.paths.paths.contains_key("/api/openapi.json"));
         assert!(openapi.paths.paths.contains_key("/api/openapi.yaml"));
         assert!(!openapi.paths.paths.contains_key("/v2/catalog/publish"));
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/publish/{request_id}")
-        );
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/publish/{request_id}/artifact")
-        );
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/publish/{request_id}/validate")
-        );
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/publish/{request_id}/approve")
-        );
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/publish/{request_id}/reject")
-        );
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/publish/{request_id}/stages")
-        );
-        assert!(
-            !openapi
-                .paths
-                .paths
-                .contains_key("/v2/catalog/owner-transfer")
-        );
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/artifact"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/validate"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/approve"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/reject"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/publish/{request_id}/stages"));
+        assert!(!openapi
+            .paths
+            .paths
+            .contains_key("/v2/catalog/owner-transfer"));
         assert!(!openapi.paths.paths.contains_key("/v2/catalog/yank"));
         assert!(!openapi.paths.paths.contains_key("/api/auth/login"));
         assert!(!openapi.paths.paths.contains_key("/api/admin/events/dlq"));

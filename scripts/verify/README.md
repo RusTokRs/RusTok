@@ -591,7 +591,7 @@ The script runs `cargo check` and profile-specific smoke-test router/startup for
 `registry-only` it additionally checks env override `RUSTOK_RUNTIME_HOST_MODE=registry_only`,
 narrowed runtime surface and reduced OpenAPI so the deployment contract for a read-only catalog host does not
 drift between docs and actual runtime.
-Additionally for `registry-only` the matrix already holds `GET /v1/catalog/{slug}` detail-path,
+Additionally for `registry-only` the matrix already holds `GET /catalog/{slug}` detail-path,
 cache-contract via `ETag` / `If-None-Match` and negative smoke on write routes
 `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`,
 `POST /v2/catalog/publish/{request_id}/stages`,
@@ -698,7 +698,10 @@ also rejects direct construction of extracted owner SeaORM services outside
 `ModuleControlPlane`. The guard also locks the durable artifact-binding
 idempotency boundary: claim, completion, and abandonment must establish
 transaction-local tenant scope, and PostgreSQL persistence must retain its RLS
-policy over `module_artifact_binding_operations`.
+policy over `module_artifact_binding_operations`. The module-owned admin
+transport is checked separately for SQL, filesystem, hashing, dependency,
+build-planning, and direct `BuildService` use so it remains an owner-backed
+DTO/command adapter.
 
 ---
 ### `verify-oci-registry-transport-policy.mjs`

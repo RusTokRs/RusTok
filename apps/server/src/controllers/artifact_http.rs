@@ -1,26 +1,27 @@
 //! Platform-owned HTTP transport for admitted artifact bindings.
 
 use axum::{
-    Json,
     extract::{Path, State},
-    http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
+    http::{header::CONTENT_TYPE, HeaderMap, Method, StatusCode},
     response::Response,
     routing::{any, post},
+    Json,
 };
+use rustok_core::ModuleRegistry;
 use rustok_modules::{
+    artifact_binding_request_digest, dispatch_artifact_command_binding,
+    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
     ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactInstallationTarget,
     InstalledModuleArtifact, ModuleBindingIdempotency, ModuleControlPlane, ModuleDispatchError,
     ModuleHttpMethod, ModuleRuntimeBinding, SharedArtifactBindingExecutor,
-    artifact_binding_request_digest, dispatch_artifact_command_binding,
-    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
 };
 use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
 use rustok_web::json_response;
 use uuid::Uuid;
 
 use crate::{
-    error::{Error, Result, http_error},
+    error::{http_error, Error, Result},
     extractors::{auth::CurrentUser, tenant::CurrentTenant},
     services::server_runtime_context::ServerRuntimeContext,
 };
@@ -137,6 +138,25 @@ async fn dispatch_operation(
     binding: &ModuleRuntimeBinding,
     operation: ArtifactOperation,
 ) -> Result<Response> {
+    let registry = ctx.shared_get::<ModuleRegistry>().ok_or_else(|| {
+        Error::Message("artifact dispatch requires the initialized module registry".to_string())
+    })?;
+    let policy = crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
+        ctx.db(),
+        &registry,
+        tenant_id,
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(%error, "artifact dispatch effective-policy resolution failed");
+        Error::InternalServerError
+    })?;
+    if !policy.contains(&installation.release.slug) {
+        return Err(http_error(rustok_web::HttpError::forbidden(
+            "module_policy_denied",
+            "The module is not enabled by the effective module policy",
+        )));
+    }
     authorize_binding(ctx, tenant_id, actor_id, &installation, binding).await?;
     let executor = ctx
         .shared_get::<SharedArtifactBindingExecutor>()

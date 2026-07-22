@@ -4,11 +4,11 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
 use crate::{
-    validate_module_toggle, ControlPlaneInfrastructure, ModuleExecutionDispatcher,
-    ModuleLifecycleHookPhase, ModuleOperationJournal, ModuleOperationRecordOutcome,
-    ModuleOperationRequest, ModuleOperationSnapshot, ModuleOperationStatus,
-    ModuleToggleValidationError, TenantModuleStateRecord, TenantModuleStateRequest,
-    TenantModuleStateStore,
+    validate_module_toggle, ControlPlaneInfrastructure, ModuleEffectivePolicyTransitionCoordinator,
+    ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
+    ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
+    ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
+    TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
 };
 
 #[derive(Clone, Debug)]
@@ -21,6 +21,7 @@ pub struct ModuleLifecycleToggleRequest {
     pub idempotency_key: Option<uuid::Uuid>,
     pub effective_enabled_modules: HashSet<String>,
     pub current_settings: serde_json::Value,
+    pub policy_transition: Option<ModulePolicyRevisionTransition>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,12 +44,15 @@ pub enum ModuleLifecycleExecutionError {
     InvalidIdempotencyKey,
     #[error("module lifecycle idempotency key was reused for a different command")]
     IdempotencyConflict,
+    #[error("module effective-policy transition could not be published: {0}")]
+    PolicyTransition(String),
 }
 
 pub async fn execute_module_toggle(
     infrastructure: &ControlPlaneInfrastructure,
     db: &DatabaseConnection,
     dispatcher: &ModuleExecutionDispatcher<'_>,
+    policy_transition_coordinator: Option<ModuleEffectivePolicyTransitionCoordinator>,
     request: ModuleLifecycleToggleRequest,
 ) -> Result<ModuleLifecycleToggleResult, ModuleLifecycleExecutionError> {
     if request.idempotency_key == Some(uuid::Uuid::nil()) {
@@ -83,7 +87,7 @@ pub async fn execute_module_toggle(
         &request.module_slug,
         request.enabled,
     )?;
-    if previous_effective_enabled == request.enabled {
+    if previous_effective_enabled == request.enabled && request.policy_transition.is_none() {
         let state = TenantModuleStateStore::persist(
             db,
             TenantModuleStateRequest {
@@ -98,6 +102,12 @@ pub async fn execute_module_toggle(
             state,
             operation_id: None,
         });
+    }
+
+    if request.policy_transition.is_some() && policy_transition_coordinator.is_none() {
+        return Err(ModuleLifecycleExecutionError::PolicyTransition(
+            "publisher is required for an effective-policy transition".to_string(),
+        ));
     }
 
     let operation = if operation_request.idempotency_key.is_some() {
@@ -154,6 +164,9 @@ pub async fn execute_module_toggle(
         module_slug: request.module_slug.clone(),
         enabled: request.enabled,
     };
+    let policy_transition = request.policy_transition.clone();
+    let tenant_id = request.tenant_id;
+    let coordinator = policy_transition_coordinator;
     let state = match db
         .transaction::<_, TenantModuleStateRecord, ModuleLifecycleExecutionError>(|transaction| {
             Box::pin(async move {
@@ -167,6 +180,20 @@ pub async fn execute_module_toggle(
                     .map_err(|error| {
                         ModuleLifecycleExecutionError::Persistence(error.to_string())
                     })?;
+                if let (Some(coordinator), Some(transition)) = (coordinator, policy_transition) {
+                    coordinator
+                        .publish_and_advance(
+                            transaction,
+                            tenant_id,
+                            None,
+                            "module.lifecycle",
+                            &transition,
+                        )
+                        .await
+                        .map_err(|error| {
+                            ModuleLifecycleExecutionError::PolicyTransition(error.to_string())
+                        })?;
+                }
                 Ok(state)
             })
         })
@@ -347,6 +374,7 @@ mod tests {
             &infrastructure,
             &database,
             &dispatcher,
+            None,
             ModuleLifecycleToggleRequest {
                 tenant_id: uuid::Uuid::new_v4(),
                 module_slug: "optional-test".to_string(),
@@ -356,6 +384,7 @@ mod tests {
                 idempotency_key: None,
                 effective_enabled_modules: HashSet::new(),
                 current_settings: serde_json::json!({}),
+                policy_transition: None,
             },
         )
         .await;

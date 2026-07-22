@@ -68,9 +68,8 @@ pub fn sanitize_static_landing_project(
     project_data: &Value,
 ) -> Result<PageBuilderSanitizedStaticLandingProject, PageBuilderStaticLandingSanitizationError> {
     let document = StaticLandingCompiler::default().prepare_document(project_data)?;
-    let sanitized_project = serde_json::to_value(document.project).map_err(|error| {
-        PageBuilderStaticLandingSanitizationError::Encode(error.to_string())
-    })?;
+    let sanitized_project = serde_json::to_value(document.project)
+        .map_err(|error| PageBuilderStaticLandingSanitizationError::Encode(error.to_string()))?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
         sanitized_hash: sanitization_hash(&sanitized_project)?,
@@ -83,10 +82,7 @@ pub fn sanitize_static_landing_project(
 fn sanitization_hash(
     sanitized_project: &Value,
 ) -> Result<String, PageBuilderStaticLandingSanitizationError> {
-    stable_hash(&(
-        PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
-        sanitized_project,
-    ))
+    stable_hash(&(PAGE_BUILDER_STATIC_SANITIZATION_FORMAT, sanitized_project))
 }
 
 fn stable_hash(
@@ -139,9 +135,11 @@ mod tests {
             first.sanitized_hash,
             sanitization_hash(&first.sanitized_project).expect("versioned sanitization hash")
         );
-        assert!(first.sanitized_project["pages"][0]["component"]["components"][0]["id"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("fly-static-")));
+        assert!(
+            first.sanitized_project["pages"][0]["component"]["components"][0]["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("fly-static-"))
+        );
         first.verify_integrity().expect("sanitization integrity");
     }
 

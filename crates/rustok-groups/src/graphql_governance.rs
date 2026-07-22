@@ -174,18 +174,14 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Groups governance service is temporarily unavailable",
             )
         }
-        PortErrorKind::InvariantViolation => {
-            <FieldError as GraphQLError>::internal_error(
-                "Groups governance operation requires review",
-            )
-        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Groups governance operation requires review",
+        ),
     }
 }

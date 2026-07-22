@@ -42,8 +42,8 @@ async fn groups_admin_application_policy_revisions_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationPolicyHistoryReadPort, GroupApplicationPolicyHistoryService,
@@ -77,17 +77,18 @@ async fn groups_admin_application_policy_revisions_native(
         for permission in auth.permissions {
             context = context.with_claim(permission.to_string());
         }
-        let result = GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions(
-            &GroupApplicationPolicyHistoryService::new(runtime.db_clone()),
-            context,
-            ListGroupApplicationPolicyRevisionsRequest {
-                group_id,
-                page: query.page,
-                per_page: query.per_page,
-            },
-        )
-        .await
-        .map_err(|error| ServerFnError::new(error.message))?;
+        let result =
+            GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions(
+                &GroupApplicationPolicyHistoryService::new(runtime.db_clone()),
+                context,
+                ListGroupApplicationPolicyRevisionsRequest {
+                    group_id,
+                    page: query.page,
+                    per_page: query.per_page,
+                },
+            )
+            .await
+            .map_err(|error| ServerFnError::new(error.message))?;
         Ok(GroupsAdminApplicationPolicyRevisionConnection {
             items: result.items.into_iter().map(map_revision).collect(),
             total: result.total,
@@ -117,23 +118,27 @@ fn map_revision(
         questions: value
             .questions
             .into_iter()
-            .map(|question| crate::application_model::GroupsAdminApplicationQuestion {
-                key: question.key,
-                prompt: question.prompt,
-                help_text: question.help_text,
-                required: question.required,
-                max_answer_chars: question.max_answer_chars,
-            })
+            .map(
+                |question| crate::application_model::GroupsAdminApplicationQuestion {
+                    key: question.key,
+                    prompt: question.prompt,
+                    help_text: question.help_text,
+                    required: question.required,
+                    max_answer_chars: question.max_answer_chars,
+                },
+            )
             .collect(),
         rules: value
             .rules
             .into_iter()
-            .map(|rule| crate::application_model::GroupsAdminApplicationRule {
-                key: rule.key,
-                title: rule.title,
-                body: rule.body,
-                required: rule.required,
-            })
+            .map(
+                |rule| crate::application_model::GroupsAdminApplicationRule {
+                    key: rule.key,
+                    title: rule.title,
+                    body: rule.body,
+                    required: rule.required,
+                },
+            )
             .collect(),
         created_by_user_id: value.created_by_user_id.to_string(),
         created_at: value.created_at.to_rfc3339(),

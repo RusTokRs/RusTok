@@ -1,8 +1,8 @@
 use chrono::Utc;
 use object_store::{ObjectStoreExt, path::Path};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -31,7 +31,7 @@ use crate::{
         },
     },
     error::{MediaError, Result},
-    image::ImageWorker,
+    image::{ImageProcessingLimits, ImageWorker, inspect_image},
     lifecycle::{AssetState, BlobState, RenditionState, UploadState},
 };
 
@@ -379,6 +379,10 @@ impl MediaService {
         }
     }
 
+    pub(crate) fn database(&self) -> &DatabaseConnection {
+        &self.db
+    }
+
     pub fn with_image_worker(mut self, image_worker: ImageWorker) -> Self {
         self.image_worker = image_worker;
         self
@@ -421,6 +425,12 @@ impl MediaService {
             verified.extension,
         )?;
         let checksum_sha256 = hex::encode(Sha256::digest(input.data.as_ref()));
+        let dimensions = if verified.mime_type.starts_with("image/") {
+            let (width, height) = inspect_image(&input.data, ImageProcessingLimits::default())?;
+            Some((width as i32, height as i32))
+        } else {
+            None
+        };
         self.storage
             .objects
             .put_opts(
@@ -458,14 +468,15 @@ impl MediaService {
                 mime_type: Set(verified.mime_type.to_string()),
                 size: Set(size as i64),
                 checksum_sha256: Set(checksum_sha256),
-                width: Set(None),
-                height: Set(None),
+                width: Set(dimensions.map(|(width, _)| width)),
+                height: Set(dimensions.map(|(_, height)| height)),
                 state: Set(BlobState::Ready.as_str().to_string()),
                 created_at: Set(timestamp),
                 ready_at: Set(Some(timestamp)),
                 delete_requested_at: Set(None),
                 deleted_at: Set(None),
                 reconcile_attempts: Set(0),
+                last_reconciled_at: Set(timestamp),
                 last_error: Set(None),
             }
             .insert(&transaction)
@@ -483,23 +494,40 @@ impl MediaService {
         .await;
 
         match persistence {
-            Ok(()) => self.get(input.tenant_id, asset_id).await,
+            Ok(()) => {
+                let item = self.get(input.tenant_id, asset_id).await?;
+                rustok_telemetry::metrics::record_media_upload(
+                    &input.tenant_id.to_string(),
+                    &item.mime_type,
+                    item.size as u64,
+                );
+                Ok(item)
+            }
             Err(error) => {
-                if let Err(cleanup_error) = self.storage.objects.delete(key.as_path()).await {
-                    tracing::error!(
-                        path = %path,
-                        error = %cleanup_error,
-                        "Failed to compensate media storage after database insert failure"
-                    );
-                }
-                if let Some(upload_session_id) = upload_session_id
-                    && let Some(existing) = AssetEntity::find()
-                        .filter(AssetCol::TenantId.eq(input.tenant_id))
-                        .filter(AssetCol::UploadSessionId.eq(upload_session_id))
-                        .one(&self.db)
-                        .await?
+                match BlobEntity::find_by_id(blob_id)
+                    .filter(BlobCol::TenantId.eq(input.tenant_id))
+                    .filter(BlobCol::ObjectKey.eq(&path))
+                    .one(&self.db)
+                    .await
                 {
-                    return self.get(input.tenant_id, existing.id).await;
+                    Ok(Some(_)) => return self.get(input.tenant_id, asset_id).await,
+                    Ok(None) => {
+                        if let Err(cleanup_error) = self.storage.objects.delete(key.as_path()).await
+                        {
+                            tracing::error!(
+                                path = %path,
+                                error = %cleanup_error,
+                                "Failed to compensate uncommitted media object"
+                            );
+                        }
+                    }
+                    Err(verification_error) => {
+                        tracing::error!(
+                            path = %path,
+                            error = %verification_error,
+                            "Media commit outcome is unknown; preserving object for reconciliation"
+                        );
+                    }
                 }
                 Err(error.into())
             }
@@ -512,6 +540,15 @@ impl MediaService {
 
     pub async fn prepare_upload_session(
         &self,
+        input: PrepareUploadSessionInput,
+    ) -> Result<PreparedUploadSession> {
+        self.prepare_upload_session_with_id(generate_id(), input)
+            .await
+    }
+
+    pub(crate) async fn prepare_upload_session_with_id(
+        &self,
+        id: Uuid,
         input: PrepareUploadSessionInput,
     ) -> Result<PreparedUploadSession> {
         if !self.supports_presigned_upload() {
@@ -544,7 +581,26 @@ impl MediaService {
             return Err(MediaError::UnsupportedMimeType(content_type));
         }
 
-        let id = generate_id();
+        if let Some(existing) = UploadSessionEntity::find_by_id(id)
+            .filter(UploadSessionCol::TenantId.eq(input.tenant_id))
+            .one(&self.db)
+            .await?
+        {
+            let now = Utc::now().fixed_offset();
+            if existing.expires_at <= now {
+                return Err(MediaError::UploadSessionExpired(id));
+            }
+            let expires_in = (existing.expires_at - now).to_std().map_err(|error| {
+                MediaError::InvalidMediaContent {
+                    declared: existing.expected_mime_type.clone(),
+                    reason: error.to_string(),
+                }
+            })?;
+            return self
+                .sign_upload_session(id, &existing.staging_key, existing.expires_at, expires_in)
+                .await;
+        }
+
         let created_at = Utc::now();
         let expires_at = created_at
             + chrono::Duration::from_std(input.expires_in).map_err(|error| {
@@ -581,9 +637,25 @@ impl MediaService {
         .insert(&self.db)
         .await?;
 
+        self.sign_upload_session(
+            id,
+            &key.to_string(),
+            expires_at.fixed_offset(),
+            input.expires_in,
+        )
+        .await
+    }
+
+    async fn sign_upload_session(
+        &self,
+        id: Uuid,
+        staging_key: &str,
+        expires_at: chrono::DateTime<chrono::FixedOffset>,
+        expires_in: std::time::Duration,
+    ) -> Result<PreparedUploadSession> {
         match self
             .storage
-            .signed_upload_url(key.as_path(), input.expires_in)
+            .signed_upload_url(&Path::from(staging_key), expires_in)
             .await
         {
             Ok(Some(endpoint)) => {
@@ -591,7 +663,7 @@ impl MediaService {
                 Ok(PreparedUploadSession {
                     id,
                     endpoint,
-                    expires_at,
+                    expires_at: expires_at.with_timezone(&Utc),
                 })
             }
             Ok(None) => {
@@ -663,14 +735,40 @@ impl MediaService {
             .get(&Path::from(session.staging_key.as_str()))
             .await
         {
-            Ok(result) => match result.bytes().await {
-                Ok(bytes) => bytes,
-                Err(error) => {
+            Ok(result) => {
+                let staged_size = result.meta.size;
+                if staged_size > DEFAULT_MAX_SIZE {
+                    let error = MediaError::FileTooLarge {
+                        size: staged_size,
+                        max: DEFAULT_MAX_SIZE,
+                    };
                     self.mark_upload_session_failed(session_id, &error.to_string())
                         .await;
-                    return Err(error.into());
+                    return Err(error);
                 }
-            },
+                if session
+                    .expected_size
+                    .is_some_and(|expected| expected != staged_size as i64)
+                {
+                    let reason = format!(
+                        "staged object has {staged_size} bytes; expected {}",
+                        session.expected_size.unwrap_or_default()
+                    );
+                    self.mark_upload_session_failed(session_id, &reason).await;
+                    return Err(MediaError::InvalidMediaContent {
+                        declared: session.expected_mime_type,
+                        reason,
+                    });
+                }
+                match result.bytes().await {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        self.mark_upload_session_failed(session_id, &error.to_string())
+                            .await;
+                        return Err(error.into());
+                    }
+                }
+            }
             Err(error) => {
                 self.mark_upload_session_failed(session_id, &error.to_string())
                     .await;
@@ -813,7 +911,7 @@ impl MediaService {
             .filter(RenditionCol::RecipeHash.eq(&recipe_hash))
             .one(&self.db)
             .await?;
-        let rendition_id = if let Some(existing) = existing {
+        let (rendition_id, expected_state, expected_updated_at) = if let Some(existing) = existing {
             if existing.state == RenditionState::Ready.as_str()
                 && let Some(item) = self.ready_rendition_item(&existing).await?
             {
@@ -828,7 +926,7 @@ impl MediaService {
             {
                 return Err(MediaError::RenditionInProgress(existing.id));
             }
-            existing.id
+            (existing.id, existing.state, existing.updated_at)
         } else {
             let rendition_id = generate_id();
             let insert = RenditionActiveModel {
@@ -858,10 +956,14 @@ impl MediaService {
                 }
                 return Err(error.into());
             }
-            rendition_id
+            (
+                rendition_id,
+                RenditionState::Pending.as_str().to_string(),
+                now,
+            )
         };
 
-        RenditionEntity::update_many()
+        let claim = RenditionEntity::update_many()
             .col_expr(
                 RenditionCol::State,
                 sea_orm::sea_query::Expr::value(RenditionState::Processing.as_str()),
@@ -875,8 +977,13 @@ impl MediaService {
                 sea_orm::sea_query::Expr::value(Option::<String>::None),
             )
             .filter(RenditionCol::Id.eq(rendition_id))
+            .filter(RenditionCol::State.eq(expected_state))
+            .filter(RenditionCol::UpdatedAt.eq(expected_updated_at))
             .exec(&self.db)
             .await?;
+        if claim.rows_affected != 1 {
+            return Err(MediaError::RenditionInProgress(rendition_id));
+        }
 
         let source = match self
             .storage
@@ -905,14 +1012,7 @@ impl MediaService {
             .process(source.to_vec(), input.recipe)
             .await
         {
-            Ok(output) => {
-                rustok_telemetry::metrics::record_media_rendition(
-                    output_format,
-                    "ready",
-                    processing_started.elapsed().as_secs_f64(),
-                );
-                output
-            }
+            Ok(output) => output,
             Err(error) => {
                 rustok_telemetry::metrics::record_media_rendition(
                     output_format,
@@ -948,6 +1048,11 @@ impl MediaService {
             )
             .await
         {
+            rustok_telemetry::metrics::record_media_rendition(
+                output_format,
+                "failed",
+                processing_started.elapsed().as_secs_f64(),
+            );
             self.mark_rendition_failed(rendition_id, &error.to_string())
                 .await;
             return Err(error.into());
@@ -972,6 +1077,7 @@ impl MediaService {
                 delete_requested_at: Set(None),
                 deleted_at: Set(None),
                 reconcile_attempts: Set(0),
+                last_reconciled_at: Set(timestamp),
                 last_error: Set(None),
             }
             .insert(&transaction)
@@ -997,17 +1103,61 @@ impl MediaService {
         .await;
 
         if let Err(error) = persistence {
+            match RenditionEntity::find_by_id(rendition_id)
+                .one(&self.db)
+                .await
+            {
+                Ok(Some(rendition)) => match self.ready_rendition_item(&rendition).await {
+                    Ok(Some(item)) => {
+                        rustok_telemetry::metrics::record_media_rendition(
+                            output_format,
+                            "ready",
+                            processing_started.elapsed().as_secs_f64(),
+                        );
+                        return Ok(item);
+                    }
+                    Ok(None) => {}
+                    Err(verification_error) => {
+                        tracing::error!(
+                            path = %object_key,
+                            error = %verification_error,
+                            "Rendition commit outcome is unknown; preserving object"
+                        );
+                        return Err(error.into());
+                    }
+                },
+                Ok(None) => {}
+                Err(verification_error) => {
+                    tracing::error!(
+                        path = %object_key,
+                        error = %verification_error,
+                        "Rendition commit outcome is unknown; preserving object"
+                    );
+                    return Err(error.into());
+                }
+            }
             if let Err(cleanup_error) = self.storage.objects.delete(key.as_path()).await {
                 tracing::error!(
                     path = %object_key,
                     error = %cleanup_error,
-                    "Failed to compensate rendition storage after database failure"
+                    "Failed to compensate uncommitted rendition object"
                 );
             }
             self.mark_rendition_failed(rendition_id, &error.to_string())
                 .await;
+            rustok_telemetry::metrics::record_media_rendition(
+                output_format,
+                "failed",
+                processing_started.elapsed().as_secs_f64(),
+            );
             return Err(error.into());
         }
+
+        rustok_telemetry::metrics::record_media_rendition(
+            output_format,
+            "ready",
+            processing_started.elapsed().as_secs_f64(),
+        );
 
         Ok(MediaRenditionItem {
             id: rendition_id,
@@ -1155,10 +1305,21 @@ impl MediaService {
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         let asset = AssetEntity::find_by_id(id)
             .filter(AssetCol::TenantId.eq(tenant_id))
-            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
             .one(&self.db)
             .await?
             .ok_or(MediaError::NotFound(id))?;
+        if asset.lifecycle_state == AssetState::Deleted.as_str() {
+            return Ok(());
+        }
+        if asset.lifecycle_state == AssetState::DeletePending.as_str() {
+            self.reconcile_asset_deletion(tenant_id, id).await?;
+            return Ok(());
+        }
+        if asset.lifecycle_state != AssetState::Active.as_str()
+            && asset.lifecycle_state != AssetState::Failed.as_str()
+        {
+            return Err(MediaError::NotFound(id));
+        }
         let now = Utc::now().fixed_offset();
         let transaction = self.db.begin().await?;
         let mut active: AssetActiveModel = asset.into();
@@ -1181,6 +1342,7 @@ impl MediaService {
             .exec(&transaction)
             .await?;
         transaction.commit().await?;
+        rustok_telemetry::metrics::record_media_delete(&tenant_id.to_string());
         self.reconcile_asset_deletion(tenant_id, id).await?;
         Ok(())
     }
@@ -1195,6 +1357,7 @@ impl MediaService {
         let input = input.normalize().map_err(MediaError::InvalidLocale)?;
 
         let existing = TransEntity::find()
+            .filter(TransCol::TenantId.eq(tenant_id))
             .filter(TransCol::AssetId.eq(media_id))
             .filter(TransCol::Locale.eq(&input.locale))
             .one(&self.db)
@@ -1209,6 +1372,7 @@ impl MediaService {
         } else {
             TranslationActiveModel {
                 id: Set(generate_id()),
+                tenant_id: Set(tenant_id),
                 asset_id: Set(media_id),
                 locale: Set(input.locale),
                 title: Set(input.title),
@@ -1236,6 +1400,7 @@ impl MediaService {
     ) -> Result<Vec<MediaTranslationItem>> {
         let _ = self.get(tenant_id, media_id).await?;
         let rows = TransEntity::find()
+            .filter(TransCol::TenantId.eq(tenant_id))
             .filter(TransCol::AssetId.eq(media_id))
             .order_by_asc(TransCol::Locale)
             .all(&self.db)
@@ -1258,18 +1423,11 @@ impl MediaService {
         tenant_id: Uuid,
         limit: u64,
     ) -> Result<MediaReconciliationReport> {
-        let rows = BlobEntity::find()
-            .filter(BlobCol::TenantId.eq(tenant_id))
-            .filter(
-                BlobCol::State
-                    .is_in([BlobState::Ready.as_str(), BlobState::DeletePending.as_str()]),
-            )
-            .order_by_asc(BlobCol::CreatedAt)
-            .limit(limit)
-            .all(&self.db)
-            .await?;
+        let rows = self.reconciliation_rows(Some(tenant_id), limit).await?;
 
         let mut report = self.reconcile_storage_rows(rows).await?;
+        self.finalize_delete_pending_assets(Some(tenant_id), limit)
+            .await?;
         report.merge(
             self.reconcile_upload_sessions(Some(tenant_id), limit)
                 .await?,
@@ -1282,17 +1440,10 @@ impl MediaService {
         &self,
         limit: u64,
     ) -> Result<MediaReconciliationReport> {
-        let rows = BlobEntity::find()
-            .filter(
-                BlobCol::State
-                    .is_in([BlobState::Ready.as_str(), BlobState::DeletePending.as_str()]),
-            )
-            .order_by_asc(BlobCol::CreatedAt)
-            .limit(limit)
-            .all(&self.db)
-            .await?;
+        let rows = self.reconciliation_rows(None, limit).await?;
 
         let mut report = self.reconcile_storage_rows(rows).await?;
+        self.finalize_delete_pending_assets(None, limit).await?;
         report.merge(self.reconcile_upload_sessions(None, limit).await?);
         record_reconciliation_metrics(&report);
         Ok(report)
@@ -1306,7 +1457,37 @@ impl MediaService {
             .all(&self.db)
             .await?;
         self.reconcile_storage_rows(rows).await?;
+        self.finalize_asset_deletion(tenant_id, asset_id).await?;
         Ok(())
+    }
+
+    async fn reconciliation_rows(
+        &self,
+        tenant_id: Option<Uuid>,
+        limit: u64,
+    ) -> Result<Vec<blob::Model>> {
+        let mut pending = BlobEntity::find()
+            .filter(BlobCol::State.eq(BlobState::DeletePending.as_str()))
+            .order_by_asc(BlobCol::DeleteRequestedAt)
+            .limit(limit);
+        if let Some(tenant_id) = tenant_id {
+            pending = pending.filter(BlobCol::TenantId.eq(tenant_id));
+        }
+        let mut rows = pending.all(&self.db).await?;
+        let remaining = limit.saturating_sub(rows.len() as u64);
+        if remaining == 0 {
+            return Ok(rows);
+        }
+        let mut ready = BlobEntity::find()
+            .filter(BlobCol::State.eq(BlobState::Ready.as_str()))
+            .order_by_asc(BlobCol::LastReconciledAt)
+            .order_by_asc(BlobCol::CreatedAt)
+            .limit(remaining);
+        if let Some(tenant_id) = tenant_id {
+            ready = ready.filter(BlobCol::TenantId.eq(tenant_id));
+        }
+        rows.extend(ready.all(&self.db).await?);
+        Ok(rows)
     }
 
     async fn reconcile_storage_rows(
@@ -1314,19 +1495,17 @@ impl MediaService {
         rows: Vec<blob::Model>,
     ) -> Result<MediaReconciliationReport> {
         let mut report = MediaReconciliationReport::default();
-        let mut delete_assets = std::collections::HashSet::new();
-
         for row in rows {
             report.inspected += 1;
             let path = Path::from(row.object_key.as_str());
             if row.state == BlobState::DeletePending.as_str() {
-                delete_assets.insert(row.asset_id);
                 match self.storage.objects.delete(&path).await {
                     Ok(()) | Err(object_store::Error::NotFound { .. }) => {
                         let mut active: BlobActiveModel = row.into();
                         let now = Utc::now().fixed_offset();
                         active.state = Set(BlobState::Deleted.as_str().to_string());
                         active.deleted_at = Set(Some(now));
+                        active.last_reconciled_at = Set(now);
                         active.last_error = Set(None);
                         active.update(&self.db).await?;
                         report.deletions_completed += 1;
@@ -1339,6 +1518,7 @@ impl MediaService {
                             .as_ref()
                             .to_owned()
                             .saturating_add(1));
+                        active.last_reconciled_at = Set(Utc::now().fixed_offset());
                         active.last_error = Set(Some(error.to_string()));
                         active.update(&self.db).await?;
                         report.retry_later += 1;
@@ -1355,10 +1535,16 @@ impl MediaService {
             let probe = self.storage.objects.head(&path).await;
             match classify_reconciliation_probe(&probe) {
                 MediaReconciliationDecision::Healthy => {
+                    let mut active: BlobActiveModel = row.into();
+                    active.last_reconciled_at = Set(Utc::now().fixed_offset());
+                    active.last_error = Set(None);
+                    active.update(&self.db).await?;
                     report.healthy += 1;
                 }
                 MediaReconciliationDecision::MarkMissing => {
                     let asset_id = row.asset_id;
+                    let blob_id = row.id;
+                    let tenant_id = row.tenant_id;
                     let mut active: BlobActiveModel = row.into();
                     active.state = Set(BlobState::Failed.as_str().to_string());
                     active.reconcile_attempts = Set(active
@@ -1367,20 +1553,52 @@ impl MediaService {
                         .to_owned()
                         .saturating_add(1));
                     active.last_error = Set(Some("object missing from storage".to_string()));
+                    active.last_reconciled_at = Set(Utc::now().fixed_offset());
                     active.update(&self.db).await?;
-                    AssetEntity::update_many()
-                        .col_expr(
-                            AssetCol::LifecycleState,
-                            sea_orm::sea_query::Expr::value(AssetState::Failed.as_str()),
-                        )
-                        .col_expr(
-                            AssetCol::UpdatedAt,
-                            sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
-                        )
-                        .filter(AssetCol::Id.eq(asset_id))
-                        .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
-                        .exec(&self.db)
+                    let asset = AssetEntity::find_by_id(asset_id)
+                        .filter(AssetCol::TenantId.eq(tenant_id))
+                        .one(&self.db)
                         .await?;
+                    if asset.as_ref().and_then(|asset| asset.active_blob_id) == Some(blob_id) {
+                        AssetEntity::update_many()
+                            .col_expr(
+                                AssetCol::LifecycleState,
+                                sea_orm::sea_query::Expr::value(AssetState::Failed.as_str()),
+                            )
+                            .col_expr(
+                                AssetCol::UpdatedAt,
+                                sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+                            )
+                            .filter(AssetCol::Id.eq(asset_id))
+                            .filter(AssetCol::TenantId.eq(tenant_id))
+                            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+                            .exec(&self.db)
+                            .await?;
+                    } else {
+                        RenditionEntity::update_many()
+                            .col_expr(
+                                RenditionCol::State,
+                                sea_orm::sea_query::Expr::value(RenditionState::Failed.as_str()),
+                            )
+                            .col_expr(
+                                RenditionCol::ResultBlobId,
+                                sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
+                            )
+                            .col_expr(
+                                RenditionCol::LastError,
+                                sea_orm::sea_query::Expr::value(
+                                    "rendition object missing from storage",
+                                ),
+                            )
+                            .col_expr(
+                                RenditionCol::UpdatedAt,
+                                sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+                            )
+                            .filter(RenditionCol::TenantId.eq(tenant_id))
+                            .filter(RenditionCol::ResultBlobId.eq(blob_id))
+                            .exec(&self.db)
+                            .await?;
+                    }
                     report.missing_marked += 1;
                 }
                 MediaReconciliationDecision::RetryLater => {
@@ -1394,6 +1612,7 @@ impl MediaService {
                             .to_owned()
                             .saturating_add(1));
                         active.last_error = Set(Some(error.to_string()));
+                        active.last_reconciled_at = Set(Utc::now().fixed_offset());
                         active.update(&self.db).await?;
                         tracing::warn!(
                             path = %object_key,
@@ -1405,28 +1624,51 @@ impl MediaService {
             }
         }
 
-        for asset_id in delete_assets {
-            let remaining = BlobEntity::find()
-                .filter(BlobCol::AssetId.eq(asset_id))
-                .filter(BlobCol::State.ne(BlobState::Deleted.as_str()))
-                .count(&self.db)
-                .await?;
-            if remaining == 0 {
-                let now = Utc::now().fixed_offset();
-                AssetEntity::update_many()
-                    .col_expr(
-                        AssetCol::LifecycleState,
-                        sea_orm::sea_query::Expr::value(AssetState::Deleted.as_str()),
-                    )
-                    .col_expr(AssetCol::DeletedAt, sea_orm::sea_query::Expr::value(now))
-                    .col_expr(AssetCol::UpdatedAt, sea_orm::sea_query::Expr::value(now))
-                    .filter(AssetCol::Id.eq(asset_id))
-                    .exec(&self.db)
-                    .await?;
-            }
-        }
-
         Ok(report)
+    }
+
+    async fn finalize_delete_pending_assets(
+        &self,
+        tenant_id: Option<Uuid>,
+        limit: u64,
+    ) -> Result<()> {
+        let mut query = AssetEntity::find()
+            .filter(AssetCol::LifecycleState.eq(AssetState::DeletePending.as_str()))
+            .order_by_asc(AssetCol::DeleteRequestedAt)
+            .limit(limit);
+        if let Some(tenant_id) = tenant_id {
+            query = query.filter(AssetCol::TenantId.eq(tenant_id));
+        }
+        for asset in query.all(&self.db).await? {
+            self.finalize_asset_deletion(asset.tenant_id, asset.id)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn finalize_asset_deletion(&self, tenant_id: Uuid, asset_id: Uuid) -> Result<()> {
+        let remaining = BlobEntity::find()
+            .filter(BlobCol::TenantId.eq(tenant_id))
+            .filter(BlobCol::AssetId.eq(asset_id))
+            .filter(BlobCol::State.ne(BlobState::Deleted.as_str()))
+            .count(&self.db)
+            .await?;
+        if remaining == 0 {
+            let now = Utc::now().fixed_offset();
+            AssetEntity::update_many()
+                .col_expr(
+                    AssetCol::LifecycleState,
+                    sea_orm::sea_query::Expr::value(AssetState::Deleted.as_str()),
+                )
+                .col_expr(AssetCol::DeletedAt, sea_orm::sea_query::Expr::value(now))
+                .col_expr(AssetCol::UpdatedAt, sea_orm::sea_query::Expr::value(now))
+                .filter(AssetCol::TenantId.eq(tenant_id))
+                .filter(AssetCol::Id.eq(asset_id))
+                .filter(AssetCol::LifecycleState.eq(AssetState::DeletePending.as_str()))
+                .exec(&self.db)
+                .await?;
+        }
+        Ok(())
     }
 
     async fn reconcile_upload_sessions(
@@ -1434,21 +1676,24 @@ impl MediaService {
         tenant_id: Option<Uuid>,
         limit: u64,
     ) -> Result<MediaReconciliationReport> {
+        let now = Utc::now().fixed_offset();
         let mut query = UploadSessionEntity::find()
             .filter(UploadSessionCol::StagingDeletedAt.is_null())
-            .filter(UploadSessionCol::State.is_in([
-                UploadState::Pending.as_str(),
-                UploadState::Finalizing.as_str(),
-                UploadState::Completed.as_str(),
-                UploadState::Failed.as_str(),
-            ]))
-            .order_by_asc(UploadSessionCol::CreatedAt)
+            .filter(
+                Condition::any()
+                    .add(UploadSessionCol::ExpiresAt.lte(now))
+                    .add(UploadSessionCol::State.is_in([
+                        UploadState::Completed.as_str(),
+                        UploadState::Failed.as_str(),
+                        UploadState::Expired.as_str(),
+                    ])),
+            )
+            .order_by_asc(UploadSessionCol::ExpiresAt)
             .limit(limit);
         if let Some(tenant_id) = tenant_id {
             query = query.filter(UploadSessionCol::TenantId.eq(tenant_id));
         }
         let sessions = query.all(&self.db).await?;
-        let now = Utc::now().fixed_offset();
         let mut report = MediaReconciliationReport::default();
 
         for session in sessions {
@@ -1460,10 +1705,6 @@ impl MediaService {
                 .await?;
             let completed =
                 completed_asset.is_some() || session.state == UploadState::Completed.as_str();
-            if !completed && session.expires_at > now {
-                continue;
-            }
-
             match self
                 .storage
                 .objects

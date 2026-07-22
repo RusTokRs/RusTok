@@ -13,9 +13,11 @@ The read-only marketplace registry catalog is a deployment-global platform surfa
 
 The following routes intentionally bypass tenant resolution:
 
-- `GET /v1/catalog`;
-- `GET /v1/catalog/{slug}`;
-- the compatibility aliases under `/catalog` while they remain supported.
+- `GET /catalog`;
+- `GET /catalog/{slug}`.
+
+These are the only current read-only catalog routes. Version-suffixed
+compatibility aliases are not part of the platform contract.
 
 Registry mutation and governance routes under `/v2/catalog/*` do not bypass tenant resolution.
 

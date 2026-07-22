@@ -61,10 +61,7 @@ pub struct PaymentObservedDomainEventApplier {
 }
 
 impl PaymentObservedDomainEventApplier {
-    pub fn new(
-        db: sea_orm::DatabaseConnection,
-        observers: PaymentProviderEventObservers,
-    ) -> Self {
+    pub fn new(db: sea_orm::DatabaseConnection, observers: PaymentProviderEventObservers) -> Self {
         Self {
             domain: PaymentDomainEventApplier::new(db),
             observers,

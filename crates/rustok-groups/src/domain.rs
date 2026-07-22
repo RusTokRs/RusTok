@@ -108,11 +108,17 @@ pub fn normalize_group_handle(value: &str) -> Result<String, String> {
     }
     if normalized.starts_with('-')
         || normalized.ends_with('-')
-        || !normalized
-            .chars()
-            .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-' || character == '_')
+        || !normalized.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || character == '-'
+                || character == '_'
+        })
     {
-        return Err("group handle may contain lowercase ASCII letters, digits, hyphens, and underscores".to_string());
+        return Err(
+            "group handle may contain lowercase ASCII letters, digits, hyphens, and underscores"
+                .to_string(),
+        );
     }
     Ok(normalized)
 }
@@ -120,19 +126,36 @@ pub fn normalize_group_handle(value: &str) -> Result<String, String> {
 pub fn normalize_feature_key(value: &str) -> Result<String, String> {
     let normalized = value.trim().to_ascii_lowercase();
     let Some((owner, feature)) = normalized.split_once('.') else {
-        return Err("group feature key must be namespaced, for example forum.discussions".to_string());
+        return Err(
+            "group feature key must be namespaced, for example forum.discussions".to_string(),
+        );
     };
     let valid_part = |part: &str| {
         !part.is_empty()
             && part.len() <= 64
-            && part
-                .chars()
-                .all(|character| character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_' || character == '-')
+            && part.chars().all(|character| {
+                character.is_ascii_lowercase()
+                    || character.is_ascii_digit()
+                    || character == '_'
+                    || character == '-'
+            })
     };
     if !valid_part(owner) || !valid_part(feature) {
         return Err("group feature namespace and name contain unsupported characters".to_string());
     }
     Ok(normalized)
+}
+
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        std::fmt::Write::write_fmt(&mut encoded, format_args!("{byte:02x}"))
+            .expect("writing a SHA-256 digest to a string cannot fail");
+    }
+    encoded
 }
 
 #[cfg(test)]
@@ -141,14 +164,28 @@ mod tests {
 
     #[test]
     fn handles_are_normalized_without_locale_rules() {
-        assert_eq!(normalize_group_handle(" Rust-Users ").unwrap(), "rust-users");
+        assert_eq!(
+            normalize_group_handle(" Rust-Users ").unwrap(),
+            "rust-users"
+        );
         assert!(normalize_group_handle("секция").is_err());
         assert!(normalize_group_handle("a").is_err());
     }
 
     #[test]
     fn feature_keys_require_an_owner_namespace() {
-        assert_eq!(normalize_feature_key("Forum.Discussions").unwrap(), "forum.discussions");
+        assert_eq!(
+            normalize_feature_key("Forum.Discussions").unwrap(),
+            "forum.discussions"
+        );
         assert!(normalize_feature_key("forum").is_err());
+    }
+
+    #[test]
+    fn sha256_hex_is_lowercase_and_fixed_width() {
+        assert_eq!(
+            sha256_hex(b"hello"),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
     }
 }

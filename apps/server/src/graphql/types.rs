@@ -506,6 +506,18 @@ pub enum GqlBuildStatus {
     Cancelled,
 }
 
+#[derive(Enum, Copy, Clone, Debug, Eq, PartialEq)]
+#[graphql(rename_items = "SCREAMING_SNAKE_CASE")]
+pub enum GqlBuildEventKind {
+    Requested,
+    Started,
+    Progress,
+    Completed,
+    RolledBack,
+    Cancelled,
+    Failed,
+}
+
 impl From<BuildStatus> for GqlBuildStatus {
     fn from(status: BuildStatus) -> Self {
         match status {
@@ -684,11 +696,16 @@ impl BuildJob {
 
 #[derive(SimpleObject, Clone)]
 pub struct BuildProgressEvent {
+    pub kind: GqlBuildEventKind,
     pub build_id: String,
     pub status: GqlBuildStatus,
     pub stage: GqlBuildStage,
     pub progress: i32,
     pub release_id: Option<String>,
+    pub restored_build_id: Option<String>,
+    pub from_release_id: Option<String>,
+    pub to_release_id: Option<String>,
+    pub actor_id: Option<Uuid>,
     pub error_message: Option<String>,
 }
 
@@ -696,11 +713,16 @@ impl BuildProgressEvent {
     pub fn from_event(event: BuildEvent) -> Self {
         match event {
             BuildEvent::BuildRequested { build_id, .. } => Self {
+                kind: GqlBuildEventKind::Requested,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Queued,
                 stage: GqlBuildStage::Pending,
                 progress: 0,
                 release_id: None,
+                restored_build_id: None,
+                from_release_id: None,
+                to_release_id: None,
+                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildStarted {
@@ -708,11 +730,16 @@ impl BuildProgressEvent {
                 stage,
                 progress,
             } => Self {
+                kind: GqlBuildEventKind::Started,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Running,
                 stage: stage.into(),
                 progress,
                 release_id: None,
+                restored_build_id: None,
+                from_release_id: None,
+                to_release_id: None,
+                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildProgress {
@@ -720,22 +747,51 @@ impl BuildProgressEvent {
                 stage,
                 progress,
             } => Self {
+                kind: GqlBuildEventKind::Progress,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Running,
                 stage: stage.into(),
                 progress,
                 release_id: None,
+                restored_build_id: None,
+                from_release_id: None,
+                to_release_id: None,
+                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildCompleted {
                 build_id,
                 release_id,
             } => Self {
+                kind: GqlBuildEventKind::Completed,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Success,
                 stage: GqlBuildStage::Complete,
                 progress: 100,
                 release_id,
+                restored_build_id: None,
+                from_release_id: None,
+                to_release_id: None,
+                actor_id: None,
+                error_message: None,
+            },
+            BuildEvent::BuildRolledBack {
+                requested_build_id,
+                restored_build_id,
+                from_release_id,
+                to_release_id,
+                actor_id,
+            } => Self {
+                kind: GqlBuildEventKind::RolledBack,
+                build_id: requested_build_id.to_string(),
+                status: GqlBuildStatus::Success,
+                stage: GqlBuildStage::Complete,
+                progress: 100,
+                release_id: Some(to_release_id.clone()),
+                restored_build_id: Some(restored_build_id.to_string()),
+                from_release_id: Some(from_release_id),
+                to_release_id: Some(to_release_id),
+                actor_id: Some(actor_id),
                 error_message: None,
             },
             BuildEvent::BuildCancelled {
@@ -743,11 +799,16 @@ impl BuildProgressEvent {
                 stage,
                 progress,
             } => Self {
+                kind: GqlBuildEventKind::Cancelled,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Cancelled,
                 stage: stage.into(),
                 progress,
                 release_id: None,
+                restored_build_id: None,
+                from_release_id: None,
+                to_release_id: None,
+                actor_id: None,
                 error_message: None,
             },
             BuildEvent::BuildFailed {
@@ -756,14 +817,54 @@ impl BuildProgressEvent {
                 progress,
                 error,
             } => Self {
+                kind: GqlBuildEventKind::Failed,
                 build_id: build_id.to_string(),
                 status: GqlBuildStatus::Failed,
                 stage: stage.into(),
                 progress,
                 release_id: None,
+                restored_build_id: None,
+                from_release_id: None,
+                to_release_id: None,
+                actor_id: None,
                 error_message: Some(error),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod build_progress_event_tests {
+    use uuid::Uuid;
+
+    use super::{BuildProgressEvent, GqlBuildEventKind, GqlBuildStatus};
+    use rustok_build::BuildEvent;
+
+    #[test]
+    fn rollback_event_preserves_transition_and_actor_facts() {
+        let requested_build_id = Uuid::new_v4();
+        let restored_build_id = Uuid::new_v4();
+        let restored_build_id_text = restored_build_id.to_string();
+        let actor_id = Uuid::new_v4();
+        let event = BuildProgressEvent::from_event(BuildEvent::BuildRolledBack {
+            requested_build_id,
+            restored_build_id,
+            from_release_id: "release-current".to_string(),
+            to_release_id: "release-previous".to_string(),
+            actor_id,
+        });
+
+        assert_eq!(event.kind, GqlBuildEventKind::RolledBack);
+        assert_eq!(event.build_id, requested_build_id.to_string());
+        assert_eq!(event.status, GqlBuildStatus::Success);
+        assert_eq!(event.release_id.as_deref(), Some("release-previous"));
+        assert_eq!(
+            event.restored_build_id.as_deref(),
+            Some(restored_build_id_text.as_str())
+        );
+        assert_eq!(event.from_release_id.as_deref(), Some("release-current"));
+        assert_eq!(event.to_release_id.as_deref(), Some("release-previous"));
+        assert_eq!(event.actor_id, Some(actor_id));
     }
 }
 

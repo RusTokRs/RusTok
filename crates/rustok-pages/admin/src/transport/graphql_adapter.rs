@@ -1,20 +1,16 @@
 use std::collections::BTreeMap;
 
+use fly::ProjectHash;
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use fly::ProjectHash;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
-use rustok_page_builder_admin::{
-    load_publish_scenario_selection, resolve_publish_scenario,
-};
+use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder_admin::{load_publish_scenario_selection, resolve_publish_scenario};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::model::{
-    CreatePageDraft, PageDetail, PageList, PageMutationResult, PublishPageReceipt,
-};
+use crate::model::{CreatePageDraft, PageDetail, PageList, PageMutationResult, PublishPageReceipt};
 
 pub type ApiError = GraphqlHttpError;
 
@@ -273,13 +269,8 @@ async fn fetch_page_at_locale(
     id: String,
     locale: Option<String>,
 ) -> Result<Option<PageDetail>, ApiError> {
-    let response: PageResponse = request(
-        PAGE_QUERY,
-        PageVariables { id, locale },
-        token,
-        tenant_slug,
-    )
-    .await?;
+    let response: PageResponse =
+        request(PAGE_QUERY, PageVariables { id, locale }, token, tenant_slug).await?;
     Ok(response.page)
 }
 
@@ -414,36 +405,27 @@ pub async fn publish_page(
     let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
-    let revisions = fetch_page_body_revisions(
-        token.clone(),
-        tenant_slug.clone(),
-        &page,
-    )
-    .await?;
-    let baseline = fetch_page_builder_scenario_baseline(
-        token.clone(),
-        tenant_slug.clone(),
-        id.clone(),
-    )
-    .await?
-    .ok_or_else(|| {
-        GraphqlHttpError::Graphql(
-            "Publish requires a promoted Page Builder runtime scenario baseline".to_string(),
-        )
-    })?;
+    let revisions = fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
+    let baseline =
+        fetch_page_builder_scenario_baseline(token.clone(), tenant_slug.clone(), id.clone())
+            .await?
+            .ok_or_else(|| {
+                GraphqlHttpError::Graphql(
+                    "Publish requires a promoted Page Builder runtime scenario baseline"
+                        .to_string(),
+                )
+            })?;
     let selected_scenario_id = load_publish_scenario_selection(&id, &baseline.baseline_hash)
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
     let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
-    let reviewed = PageBuilderReviewedPublishRuntime::new(
-        scenario.id.clone(),
-        scenario.context.clone(),
-    )
-    .map_err(|error| {
-        GraphqlHttpError::Graphql(format!(
-            "Unable to prepare reviewed Page Builder runtime: {error}"
-        ))
-    })?;
+    let reviewed =
+        PageBuilderReviewedPublishRuntime::new(scenario.id.clone(), scenario.context.clone())
+            .map_err(|error| {
+                GraphqlHttpError::Graphql(format!(
+                    "Unable to prepare reviewed Page Builder runtime: {error}"
+                ))
+            })?;
     let expected_body_revisions = revisions
         .iter()
         .map(|(locale, revision)| PageBodyRevisionInput {

@@ -99,6 +99,7 @@ struct ModuleRuntimeMetadataEntry {
     trust_level: String,
     recommended_admin_surfaces: Vec<String>,
     showcase_admin_surfaces: Vec<String>,
+    settings_schema_json: String,
 }
 
 #[derive(Debug)]
@@ -169,6 +170,7 @@ fn generate_admin_module_codegen() -> Result<(), Box<dyn Error>> {
             trust_level: package_manifest.module.trust_level.clone(),
             recommended_admin_surfaces: package_manifest.module.recommended_admin_surfaces.clone(),
             showcase_admin_surfaces: package_manifest.module.showcase_admin_surfaces.clone(),
+            settings_schema_json: serde_json::to_string(&package_manifest.settings)?,
         });
         let Some(admin_ui) = package_manifest.provides.admin_ui else {
             continue;
@@ -347,12 +349,13 @@ fn render_admin_registry_codegen(
             )
         };
         out.push_str(&format!(
-            "        \"{slug}\" => Some(super::GeneratedModuleRuntimeMetadata {{ ownership: \"{ownership}\", trust_level: \"{trust_level}\", recommended_admin_surfaces: {recommended}, showcase_admin_surfaces: {showcase} }}),\n",
+            "        \"{slug}\" => Some(super::GeneratedModuleRuntimeMetadata {{ ownership: \"{ownership}\", trust_level: \"{trust_level}\", recommended_admin_surfaces: {recommended}, showcase_admin_surfaces: {showcase}, settings_schema_json: {settings_schema_json:?} }}),\n",
             slug = entry.slug,
             ownership = entry.ownership,
             trust_level = entry.trust_level,
             recommended = recommended,
             showcase = showcase,
+            settings_schema_json = entry.settings_schema_json,
         ));
     }
     out.push_str("        _ => None,\n");

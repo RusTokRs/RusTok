@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use rustok_module_build_transport::{
-    static_distribution_proto::static_distribution_build_service_server::StaticDistributionBuildServiceServer,
     StaticDistributionGrpcService,
+    static_distribution_proto::static_distribution_build_service_server::StaticDistributionBuildServiceServer,
 };
 use rustok_static_distribution_worker::StaticDistributionWorker;
 use rustok_worker_transport::MutualTlsListenerConfig;

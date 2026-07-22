@@ -75,10 +75,12 @@ ssr = [
   "dep:leptos_axum",
   "dep:sea-orm",
   "dep:rustok-cache",
+  "dep:rustok-build",
   "dep:rustok-comments",
   "rustok-comments/server",
   "dep:rustok-core",
   "dep:rustok-media",
+  "dep:rustok-modules",
   "dep:rustok-seo",
   "dep:rustok-rbac",
   "dep:rustok-search",
@@ -86,7 +88,6 @@ ssr = [
   "dep:rustok-tenant",
   "dep:rustok-web",
   "dep:rustok-workflow",
-  "dep:toml",
   "leptos-auth/ssr",
   "rustok-ai-admin/ssr",
   "rustok-channel-admin/ssr",
@@ -151,16 +152,16 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 sea-orm = { workspace = true, optional = true }
 base64 = { workspace = true }
-hex = { workspace = true }
-sha2 = { workspace = true }
 wasm-bindgen = { version = "0.2", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["Clipboard", "CloseEvent", "ErrorEvent", "Event", "MessageEvent", "Navigator", "Storage", "WebSocket", "Window"] }
 rustok-api = { path = "../../crates/rustok-api", default-features = false }
 rustok-installer = { path = "../../crates/rustok-installer", default-features = false }
 rustok-cache = { workspace = true, optional = true }
+rustok-build = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
+rustok-modules = { workspace = true, optional = true }
 rustok-seo = { workspace = true, optional = true }
 rustok-rbac = { workspace = true, optional = true }
 rustok-search = { workspace = true, optional = true }
@@ -168,7 +169,6 @@ rustok-storage = { workspace = true, optional = true }
 rustok-tenant = { workspace = true, optional = true }
 rustok-web = { workspace = true, optional = true }
 rustok-workflow = { workspace = true, optional = true }
-toml = { workspace = true, optional = true }
 rustok-blog-admin = { path = "../../crates/rustok-blog/admin", default-features = false }
 rustok-ai-admin = { path = "../../crates/rustok-ai/admin", default-features = false }
 rustok-channel-admin = { path = "../../crates/rustok-channel/admin", default-features = false }
@@ -208,6 +208,7 @@ tower.workspace = true
 [build-dependencies]
 leptos_i18n_build = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 toml = { workspace = true }
 
 [package.metadata.leptos]

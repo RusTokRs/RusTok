@@ -64,6 +64,33 @@ digest because an owner reclaim can repeat the call after an infrastructure
 interruption. A valid existing publisher receipt is verified and reused; it is
 never overwritten.
 
+The crate includes the fixed `rustok-static-distribution-publisher` binary. Its
+strict `rustok.static_distribution.publisher_config` document pins the OCI
+registry/repository, one artifact filename, credential-broker path and digest,
+Cosign path and digest, KMS key reference, artifact/evidence bounds, and the
+publication deadline. The nested publisher config is loaded during worker
+readiness, so a missing, mutated, symlinked, or invalid broker or signer keeps
+the worker not ready.
+
+The publisher reads the executable only from
+`.rustok/target/<build-target>/release/<artifact-file-name>` in the new
+job-local workspace. It publishes that native artifact and then publishes a
+CycloneDX 1.6 SBOM, in-toto SLSA provenance, and the exact launcher-produced
+test evidence as subject-bound OCI referrers. The provenance binds the job,
+composition, generated output, toolchain, target, and resolved workspace lock.
+All OCI references in the receipt must use the single configured repository
+and exact returned manifest digests.
+
+Registry authentication is a short-lived repository lease acquired through
+the shared `rustok-build-publication` credential boundary. The publisher signs
+only the exact digest-pinned native artifact with the shared KMS-only Cosign
+adapter and resolves the resulting signature manifest to a digest-pinned
+identity. Broker and Cosign programs are re-hashed before each invocation,
+receive cleared environments, and have no request-selected or raw-key path.
+The receipt stores the raw test JSON digest separately from the OCI test
+referrer manifest digest; conflating those identities is rejected by the
+launcher.
+
 The launcher writes a terminal job receipt only for immutable source-policy,
 lock-resolution, test, or build outcomes, or after a valid publication receipt.
 A missing, malformed, mismatched, oversized, or symlink receipt is a transport
@@ -86,5 +113,8 @@ owner attempt is terminal and the evidence retention policy permits deletion.
 ## Verification
 
 Target verification includes crate compilation and receipt/launcher integration
-tests. During the current shared-worktree implementation only the explicitly
-allowed formatting, diff, and metadata checks are run.
+tests plus registry publication, referrer, credential-expiry, executable
+mutation, and signing-failure cases. Deployment-owned registry/KMS
+configuration and end-to-end integration evidence remain. During the current
+shared-worktree implementation only the explicitly allowed formatting, diff,
+and metadata checks are run.

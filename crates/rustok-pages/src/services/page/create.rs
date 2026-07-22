@@ -50,8 +50,7 @@ impl PageService {
         let body = normalize_page_body_input(input.body)?;
         if let Some(body) = body.as_ref() {
             let has_translation = input.translations.iter().any(|translation| {
-                normalize_locale(&translation.locale)
-                    .is_ok_and(|locale| locale == body.locale)
+                normalize_locale(&translation.locale).is_ok_and(|locale| locale == body.locale)
             });
             if !has_translation {
                 return Err(PagesError::validation(format!(

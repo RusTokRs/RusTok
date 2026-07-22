@@ -30,7 +30,12 @@ impl GroupsAdminTransportProfile {
 }
 
 pub fn selected_transport_profile(value: Option<&str>) -> GroupsAdminTransportProfile {
-    match value.unwrap_or_default().trim().to_ascii_lowercase().as_str() {
+    match value
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "graphql" => GroupsAdminTransportProfile::Graphql,
         _ => GroupsAdminTransportProfile::Native,
     }
@@ -103,8 +108,8 @@ pub fn prepare_change_group_role(
     target_user_id: &str,
     role: GroupsAdminAssignableRole,
 ) -> Result<ChangeGroupRoleCommand, GroupsAdminGovernanceInputError> {
-    let group_id = normalize_uuid(group_id)
-        .map_err(|_| GroupsAdminGovernanceInputError::InvalidGroupId)?;
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminGovernanceInputError::InvalidGroupId)?;
     let target_user_id = normalize_uuid(target_user_id)
         .map_err(|_| GroupsAdminGovernanceInputError::InvalidTargetUserId)?;
     Ok(ChangeGroupRoleCommand {
@@ -119,8 +124,8 @@ pub fn prepare_transfer_group_ownership(
     group_id: &str,
     new_owner_user_id: &str,
 ) -> Result<TransferGroupOwnershipCommand, GroupsAdminGovernanceInputError> {
-    let group_id = normalize_uuid(group_id)
-        .map_err(|_| GroupsAdminGovernanceInputError::InvalidGroupId)?;
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminGovernanceInputError::InvalidGroupId)?;
     let new_owner_user_id = normalize_uuid(new_owner_user_id)
         .map_err(|_| GroupsAdminGovernanceInputError::InvalidNewOwnerUserId)?;
     Ok(TransferGroupOwnershipCommand {
@@ -133,8 +138,8 @@ pub fn prepare_transfer_group_ownership(
 pub fn prepare_group_translation_query(
     group_id: &str,
 ) -> Result<GroupsAdminTranslationQuery, GroupsAdminLocalizationInputError> {
-    let group_id = normalize_uuid(group_id)
-        .map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
     Ok(GroupsAdminTranslationQuery { group_id })
 }
 
@@ -145,10 +150,10 @@ pub fn prepare_upsert_group_translation(
     summary: Option<String>,
     body: Option<String>,
 ) -> Result<UpsertGroupTranslationCommand, GroupsAdminLocalizationInputError> {
-    let group_id = normalize_uuid(group_id)
-        .map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
-    let locale = normalize_locale_tag(locale)
-        .ok_or(GroupsAdminLocalizationInputError::InvalidLocale)?;
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
+    let locale =
+        normalize_locale_tag(locale).ok_or(GroupsAdminLocalizationInputError::InvalidLocale)?;
     let title = title.trim();
     if title.is_empty() {
         return Err(GroupsAdminLocalizationInputError::MissingTitle);
@@ -177,10 +182,10 @@ pub fn prepare_delete_group_translation(
     group_id: &str,
     locale: &str,
 ) -> Result<DeleteGroupTranslationCommand, GroupsAdminLocalizationInputError> {
-    let group_id = normalize_uuid(group_id)
-        .map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
-    let locale = normalize_locale_tag(locale)
-        .ok_or(GroupsAdminLocalizationInputError::InvalidLocale)?;
+    let group_id =
+        normalize_uuid(group_id).map_err(|_| GroupsAdminLocalizationInputError::InvalidGroupId)?;
+    let locale =
+        normalize_locale_tag(locale).ok_or(GroupsAdminLocalizationInputError::InvalidLocale)?;
     Ok(DeleteGroupTranslationCommand {
         idempotency_key: format!("groups-admin-delete-translation-{}", Uuid::new_v4()),
         group_id,

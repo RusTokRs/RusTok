@@ -8,6 +8,10 @@ fn id(value: u128) -> Uuid {
     Uuid::from_u128(value)
 }
 
+fn digest(nibble: char) -> String {
+    format!("sha256:{}", nibble.to_string().repeat(64))
+}
+
 fn sample_events() -> Vec<DomainEvent> {
     vec![
         DomainEvent::NodeCreated {
@@ -138,6 +142,12 @@ fn sample_events() -> Vec<DomainEvent> {
         DomainEvent::BuildRequested {
             build_id: id(48),
             requested_by: "release-bot".to_string(),
+        },
+        DomainEvent::BuildRolledBack {
+            requested_build_id: id(149),
+            restored_build_id: id(150),
+            from_release_id: "release-current".to_string(),
+            to_release_id: "release-previous".to_string(),
         },
         DomainEvent::BlogPostCreated {
             post_id: id(49),
@@ -318,6 +328,121 @@ fn sample_events() -> Vec<DomainEvent> {
             tenant_id: id(83),
             module_slug: "blog".to_string(),
             enabled: true,
+        },
+        DomainEvent::ModuleArtifactAdmitted {
+            installation_id: id(1001),
+            artifact_digest: digest('a'),
+            media_type: "application/vnd.rustok.module.wasm-component.v1+wasm".to_string(),
+            size_bytes: 1024,
+        },
+        DomainEvent::ModuleArtifactReverified {
+            installation_id: id(1001),
+            status: "verified".to_string(),
+            revision: 2,
+        },
+        DomainEvent::ModuleStaticPromotionRequested {
+            promotion_id: id(1002),
+            release_id: "release-platform".to_string(),
+            module_slug: "search".to_string(),
+            module_version: "1.2.3".to_string(),
+            source_digest: digest('b'),
+        },
+        DomainEvent::ModuleStaticPromotionApproved {
+            promotion_id: id(1002),
+            release_id: "release-platform".to_string(),
+            module_slug: "search".to_string(),
+            module_version: "1.2.3".to_string(),
+            revision: 1,
+            policy_revision: "policy-static-1".to_string(),
+        },
+        DomainEvent::ModuleStaticDistributionBuildQueued {
+            distribution_build_id: id(1003),
+            predecessor_build_id: Some(id(1004)),
+            composition_revision: 7,
+            composition_digest: digest('c'),
+            selected_promotions: 1,
+        },
+        DomainEvent::ModuleStaticDistributionBuildClaimed {
+            distribution_build_id: id(1003),
+            claim_id: id(1005),
+            attempt_number: 1,
+            runner_id: "distribution-runner-1".to_string(),
+            reclaimed_expired_lease: false,
+        },
+        DomainEvent::ModuleStaticDistributionBuildCompleted {
+            distribution_build_id: id(1003),
+            claim_id: id(1005),
+            composition_revision: 7,
+            composition_digest: digest('c'),
+            outcome: "succeeded".to_string(),
+            result_digest: Some(digest('d')),
+            completion_digest: digest('e'),
+        },
+        DomainEvent::ModuleStaticDistributionReleaseActivated {
+            distribution_release_id: id(1006),
+            predecessor_release_id: Some(id(1007)),
+            distribution_build_id: id(1003),
+            release_revision: 2,
+            composition_revision: 7,
+            composition_digest: digest('c'),
+            artifact_digest: digest('d'),
+            policy_revision: "policy-static-1".to_string(),
+        },
+        DomainEvent::ModuleStaticDistributionRollbackBuildQueued {
+            rollback_id: id(1008),
+            from_release_id: id(1006),
+            target_release_id: id(1007),
+            distribution_build_id: id(1009),
+            composition_revision: 8,
+            composition_digest: digest('f'),
+            policy_revision: "policy-static-1".to_string(),
+        },
+        DomainEvent::ModuleStaticDistributionReleaseRevoked {
+            distribution_release_id: id(1006),
+            distribution_build_id: id(1003),
+            release_state_revision: 3,
+            was_active: true,
+            policy_revision: "policy-static-1".to_string(),
+        },
+        DomainEvent::ModuleStaticDistributionRolloutRequested {
+            rollout_id: id(1010),
+            predecessor_rollout_id: Some(id(1011)),
+            distribution_release_id: id(1006),
+            rollout_revision: 1,
+            rollout_state_revision: 1,
+            composition_revision: 7,
+            composition_digest: digest('c'),
+            artifact_digest: digest('d'),
+            topology_digest: digest('1'),
+            policy_revision: "policy-static-1".to_string(),
+            target_nodes: 2,
+            executor_mode: "static_native".to_string(),
+        },
+        DomainEvent::ModuleStaticDistributionNodeObserved {
+            rollout_id: id(1010),
+            node_id: "node-1".to_string(),
+            reporter_id: "deployment-controller".to_string(),
+            observation_revision: 1,
+            phase: "healthy".to_string(),
+            report_digest: digest('2'),
+        },
+        DomainEvent::ModuleStaticDistributionRolloutStatusChanged {
+            rollout_id: id(1010),
+            distribution_release_id: id(1006),
+            rollout_revision: 1,
+            rollout_state_revision: 2,
+            status: "converged".to_string(),
+            observed_rollout_id: Some(id(1010)),
+            failure_code: None,
+        },
+        DomainEvent::ModuleArtifactSecurityStateChanged {
+            module_slug: "search".to_string(),
+            module_version: "1.2.3".to_string(),
+            payload_digest: digest('d'),
+            security_revision: 1,
+            status: "clear".to_string(),
+            policy_revision: "policy-security-1".to_string(),
+            reason_code: "verification_passed".to_string(),
         },
         DomainEvent::LocaleEnabled {
             tenant_id: id(84),

@@ -20,6 +20,7 @@ pub struct Model {
     pub delete_requested_at: Option<DateTimeWithTimeZone>,
     pub deleted_at: Option<DateTimeWithTimeZone>,
     pub reconcile_attempts: i32,
+    pub last_reconciled_at: DateTimeWithTimeZone,
     pub last_error: Option<String>,
 }
 

@@ -40,9 +40,9 @@ fn menu_storage_is_tenant_composite_and_locale_bound() {
         assert!(migration.contains(marker), "missing DB marker: {marker}");
     }
     assert!(migrations.contains("mod m20260721_000005_enforce_menu_effective_locale;"));
-    assert!(migrations.contains(
-        "Box::new(m20260721_000005_enforce_menu_effective_locale::Migration)"
-    ));
+    assert!(
+        migrations.contains("Box::new(m20260721_000005_enforce_menu_effective_locale::Migration)")
+    );
     assert!(menu_translation.contains("pub tenant_id: Uuid"));
     assert!(item_translation.contains("pub tenant_id: Uuid"));
     assert!(item_translation.contains("pub menu_id: Uuid"));

@@ -3,19 +3,17 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_api::{
-    normalize_locale_tag, PortActorKind, PortCallPolicy, PortContext, PortError,
-};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, Set, TransactionTrait,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::{
-    normalize_feature_key, normalize_group_handle, GroupAction, GroupFeatureStatus,
-    GroupJoinPolicy, GroupMembershipStatus, GroupRole, GroupStatus, GroupVisibility,
+    GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipStatus, GroupRole,
+    GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
 };
 use crate::dto::*;
 use crate::entities::{feature_binding, group, membership, translation};
@@ -199,9 +197,8 @@ impl GroupsService {
         query = match (request.group_id, request.handle) {
             (Some(group_id), _) => query.filter(group::Column::Id.eq(group_id)),
             (None, Some(handle)) => query.filter(
-                group::Column::Handle.eq(
-                    normalize_group_handle(&handle).map_err(GroupsError::Validation)?,
-                ),
+                group::Column::Handle
+                    .eq(normalize_group_handle(&handle).map_err(GroupsError::Validation)?),
             ),
             (None, None) => {
                 return Err(GroupsError::Validation(
@@ -288,7 +285,13 @@ impl GroupsService {
         let items = models
             .into_iter()
             .map(|model| {
-                self.map_summary(context, model, &translations, &context.locale, &effective_locale)
+                self.map_summary(
+                    context,
+                    model,
+                    &translations,
+                    &context.locale,
+                    &effective_locale,
+                )
             })
             .collect::<GroupsResult<Vec<_>>>()?;
 
@@ -346,9 +349,7 @@ impl GroupsService {
             (_, _, Some(row)) if row.status == GroupMembershipStatus::Invited.as_str() => {
                 GroupMembershipStatus::Active
             }
-            (GroupVisibility::Public, GroupJoinPolicy::Open, _) => {
-                GroupMembershipStatus::Active
-            }
+            (GroupVisibility::Public, GroupJoinPolicy::Open, _) => GroupMembershipStatus::Active,
             (GroupVisibility::Secret, _, _) | (_, GroupJoinPolicy::InviteOnly, _) => {
                 return Err(GroupsError::Forbidden(
                     "group requires an invitation".to_string(),
@@ -476,11 +477,11 @@ impl GroupsService {
             ));
         }
 
-        let feature_key = normalize_feature_key(&request.feature_key)
-            .map_err(GroupsError::Validation)?;
+        let feature_key =
+            normalize_feature_key(&request.feature_key).map_err(GroupsError::Validation)?;
         let owner_module = feature_key
             .split_once('.')
-            .map(|(owner, _)| owner)
+            .map(|(owner, _)| owner.to_string())
             .ok_or_else(|| GroupsError::Invariant("feature key lost namespace".to_string()))?;
         let status = if request.enabled {
             GroupFeatureStatus::Enabled
@@ -509,7 +510,7 @@ impl GroupsService {
                 tenant_id: Set(tenant_id),
                 group_id: Set(request.group_id),
                 feature_key: Set(feature_key),
-                owner_module: Set(owner_module.to_string()),
+                owner_module: Set(owner_module),
                 contract_version: Set(request.contract_version),
                 status: Set(status.as_str().to_string()),
                 sort_order: Set(request.sort_order),
@@ -552,9 +553,7 @@ impl GroupsService {
         } else {
             match action {
                 GroupAction::Discover => visibility != GroupVisibility::Secret,
-                GroupAction::ViewSummary => {
-                    visibility != GroupVisibility::Secret || active_member
-                }
+                GroupAction::ViewSummary => visibility != GroupVisibility::Secret || active_member,
                 GroupAction::View | GroupAction::ViewMembers => {
                     visibility == GroupVisibility::Public || active_member
                 }
@@ -563,14 +562,11 @@ impl GroupsService {
                         && membership_status != Some(GroupMembershipStatus::Banned)
                 }
                 GroupAction::Post | GroupAction::Comment => active_member,
-                GroupAction::Invite
-                | GroupAction::ReviewMemberships
-                | GroupAction::Moderate => {
+                GroupAction::Invite | GroupAction::ReviewMemberships | GroupAction::Moderate => {
                     active_member && membership_role.is_some_and(GroupRole::can_moderate)
                 }
                 GroupAction::ManageFeatures | GroupAction::ManageSettings => {
-                    active_member
-                        && membership_role.is_some_and(GroupRole::can_manage_settings)
+                    active_member && membership_role.is_some_and(GroupRole::can_manage_settings)
                 }
                 GroupAction::TransferOwnership => membership_role == Some(GroupRole::Owner),
             }
@@ -688,7 +684,9 @@ impl GroupSummaryReadPort for GroupsService {
         context: PortContext,
         request: ReadGroupRequest,
     ) -> Result<GroupDetails, PortError> {
-        self.read_group_owned(&context, request).await.map_err(Into::into)
+        self.read_group_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn list_groups(
@@ -696,7 +694,9 @@ impl GroupSummaryReadPort for GroupsService {
         context: PortContext,
         request: ListGroupsRequest,
     ) -> Result<GroupConnection, PortError> {
-        self.list_groups_owned(&context, request).await.map_err(Into::into)
+        self.list_groups_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -743,14 +743,15 @@ impl GroupMembershipReadPort for GroupsService {
             .filter(membership::Column::Status.ne(GroupMembershipStatus::Left.as_str()))
             .order_by_asc(membership::Column::CreatedAt)
             .paginate(&self.db, per_page);
-        let total = paginator
-            .num_items()
-            .await
-            .map_err(|error| PortError::unavailable("groups.memberships_unavailable", error.to_string()))?;
+        let total = paginator.num_items().await.map_err(|error| {
+            PortError::unavailable("groups.memberships_unavailable", error.to_string())
+        })?;
         let items = paginator
             .fetch_page(page.saturating_sub(1))
             .await
-            .map_err(|error| PortError::unavailable("groups.memberships_unavailable", error.to_string()))?
+            .map_err(|error| {
+                PortError::unavailable("groups.memberships_unavailable", error.to_string())
+            })?
             .into_iter()
             .map(map_membership)
             .collect::<GroupsResult<Vec<_>>>()
@@ -801,7 +802,9 @@ impl GroupAccessReadPort for GroupsService {
             .order_by_asc(feature_binding::Column::SortOrder)
             .all(&self.db)
             .await
-            .map_err(|error| PortError::unavailable("groups.features_unavailable", error.to_string()))?
+            .map_err(|error| {
+                PortError::unavailable("groups.features_unavailable", error.to_string())
+            })?
             .into_iter()
             .map(map_feature)
             .collect::<GroupsResult<Vec<_>>>()
@@ -816,7 +819,9 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         input: CreateGroupInput,
     ) -> Result<GroupDetails, PortError> {
-        self.create_group_owned(&context, input).await.map_err(Into::into)
+        self.create_group_owned(&context, input)
+            .await
+            .map_err(Into::into)
     }
 
     async fn join_group(
@@ -824,7 +829,9 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: JoinGroupRequest,
     ) -> Result<GroupMembership, PortError> {
-        self.join_group_owned(&context, request).await.map_err(Into::into)
+        self.join_group_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn leave_group(
@@ -832,7 +839,9 @@ impl GroupCommandPort for GroupsService {
         context: PortContext,
         request: LeaveGroupRequest,
     ) -> Result<GroupMembership, PortError> {
-        self.leave_group_owned(&context, request).await.map_err(Into::into)
+        self.leave_group_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn set_group_feature(
@@ -878,8 +887,7 @@ fn optional_actor_user_id(context: &PortContext) -> Option<Uuid> {
 }
 
 fn parse_uuid(value: &str, field: &str) -> GroupsResult<Uuid> {
-    Uuid::parse_str(value)
-        .map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))
+    Uuid::parse_str(value).map_err(|_| GroupsError::Validation(format!("{field} must be a UUID")))
 }
 
 fn parse_visibility(value: &str) -> GroupsResult<GroupVisibility> {
@@ -898,9 +906,8 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
 }
 
 fn normalize_effective_locale(value: &str) -> GroupsResult<String> {
-    normalize_locale_tag(value).ok_or_else(|| {
-        GroupsError::Validation("host effective locale is invalid".to_string())
-    })
+    normalize_locale_tag(value)
+        .ok_or_else(|| GroupsError::Validation("host effective locale is invalid".to_string()))
 }
 
 fn normalize_language_agnostic_metadata(value: Value) -> GroupsResult<Value> {
@@ -922,7 +929,7 @@ fn normalize_language_agnostic_metadata(value: Value) -> GroupsResult<Value> {
     })?;
     if let Some(key) = LOCALIZED_COPY_KEYS
         .iter()
-        .find(|key| object.contains_key(*key))
+        .find(|key| object.contains_key(**key))
     {
         return Err(GroupsError::Validation(format!(
             "group metadata must remain language-agnostic; localized presentation key `{key}` belongs in group_translations"
@@ -935,7 +942,7 @@ fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
         .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
+        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }
 
 fn select_translation<'a>(
@@ -956,8 +963,7 @@ fn map_membership(model: membership::Model) -> GroupsResult<GroupMembership> {
         group_id: model.group_id,
         user_id: model.user_id,
         role: GroupRole::from_str(&model.role).map_err(GroupsError::Invariant)?,
-        status: GroupMembershipStatus::from_str(&model.status)
-            .map_err(GroupsError::Invariant)?,
+        status: GroupMembershipStatus::from_str(&model.status).map_err(GroupsError::Invariant)?,
     })
 }
 

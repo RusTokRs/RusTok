@@ -336,9 +336,14 @@ async fn ensure_sqlite_zero(
 ) -> Result<(), DbErr> {
     let row = manager
         .get_connection()
-        .query_one(Statement::from_string(DatabaseBackend::Sqlite, sql.to_owned()))
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            sql.to_owned(),
+        ))
         .await?
-        .ok_or_else(|| DbErr::Custom("failed to validate Groups language-agnostic migration".into()))?;
+        .ok_or_else(|| {
+            DbErr::Custom("failed to validate Groups language-agnostic migration".into())
+        })?;
     let invalid_count: i64 = row.try_get("", "invalid_count")?;
     if invalid_count != 0 {
         return Err(DbErr::Custom(message.to_owned()));

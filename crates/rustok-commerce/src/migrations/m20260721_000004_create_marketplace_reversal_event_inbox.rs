@@ -99,19 +99,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .col(
-                        ColumnDef::new(MarketplaceReversalEventInbox::LeaseOwner)
-                            .string_len(191),
-                    )
+                    .col(ColumnDef::new(MarketplaceReversalEventInbox::LeaseOwner).string_len(191))
                     .col(
                         ColumnDef::new(MarketplaceReversalEventInbox::LeaseExpiresAt)
                             .timestamp_with_time_zone(),
                     )
                     .col(ColumnDef::new(MarketplaceReversalEventInbox::ReversalId).uuid())
-                    .col(
-                        ColumnDef::new(MarketplaceReversalEventInbox::LedgerTransactionId)
-                            .uuid(),
-                    )
+                    .col(ColumnDef::new(MarketplaceReversalEventInbox::LedgerTransactionId).uuid())
                     .col(
                         ColumnDef::new(MarketplaceReversalEventInbox::LastErrorCode)
                             .string_len(100),

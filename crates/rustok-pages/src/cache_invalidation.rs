@@ -16,8 +16,7 @@ const ALL_SCOPES: [PageCacheScope; 3] = [
     PageCacheScope::Page,
     PageCacheScope::Artifact,
 ];
-const ROUTE_AND_PAGE_SCOPES: [PageCacheScope; 2] =
-    [PageCacheScope::Route, PageCacheScope::Page];
+const ROUTE_AND_PAGE_SCOPES: [PageCacheScope; 2] = [PageCacheScope::Route, PageCacheScope::Page];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PageCacheScope {
@@ -168,7 +167,10 @@ impl PageCacheInvalidationReceipt {
             return Err(PageCacheInvalidationError::ReceiptIdentityMismatch);
         }
         for scope in request.scopes() {
-            if self.generation(*scope).is_none_or(|generation| generation == 0) {
+            if self
+                .generation(*scope)
+                .is_none_or(|generation| generation == 0)
+            {
                 return Err(PageCacheInvalidationError::MissingGeneration(*scope));
             }
         }
@@ -375,10 +377,7 @@ mod tests {
 
     #[test]
     fn published_pages_invalidate_route_page_and_artifact_namespaces() {
-        assert_eq!(
-            PageCacheInvalidationCause::Published.scopes(),
-            &ALL_SCOPES
-        );
+        assert_eq!(PageCacheInvalidationCause::Published.scopes(), &ALL_SCOPES);
         assert_eq!(
             PageCacheInvalidationCause::Updated.scopes(),
             &ROUTE_AND_PAGE_SCOPES
@@ -405,9 +404,9 @@ mod tests {
     #[tokio::test]
     async fn handler_forwards_only_page_events_and_validates_the_receipt() {
         let port = Arc::new(FakePort::default());
-        let handler = PageCacheInvalidationEventHandler::new(
-            PagesCacheInvalidationRuntime::new(port.clone()),
-        );
+        let handler = PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(
+            port.clone(),
+        ));
         let page_id = Uuid::from_u128(42);
         let page = envelope(DomainEvent::NodePublished {
             node_id: page_id,
@@ -439,8 +438,7 @@ mod tests {
     fn cache_keys_bind_scope_generation_page_and_variant_without_raw_variant_text() {
         let tenant = Uuid::from_u128(11);
         let page = Uuid::from_u128(22);
-        let key = page_cache_key(PageCacheScope::Route, tenant, page, 3, "en:/about")
-            .unwrap();
+        let key = page_cache_key(PageCacheScope::Route, tenant, page, 3, "en:/about").unwrap();
         assert!(key.contains(":g-3:page:"));
         assert!(key.contains(&page.to_string()));
         assert!(!key.contains("/about"));

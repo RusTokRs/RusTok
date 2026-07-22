@@ -4,9 +4,7 @@ fn seller_balance_transfer_source_is_append_only_replay_safe_and_capacity_bound(
     let service = include_str!("../src/balance_transfer.rs");
     let balance = include_str!("../src/balance.rs");
     let ports = include_str!("../src/ports.rs");
-    let schema = include_str!(
-        "../src/migrations/m20260721_000003_add_seller_balance_transfers.rs"
-    );
+    let schema = include_str!("../src/migrations/m20260721_000003_add_seller_balance_transfers.rs");
     let immutability = include_str!(
         "../src/migrations/m20260721_000004_enforce_seller_balance_transfer_immutability.rs"
     );
@@ -85,9 +83,10 @@ fn seller_balance_transfer_source_is_append_only_replay_safe_and_capacity_bound(
     assert!(immutability.contains("BEFORE UPDATE OR DELETE"));
     assert!(immutability.contains("append-only"));
     assert!(migration_registry.contains("m20260721_000003_add_seller_balance_transfers"));
-    assert!(migration_registry.contains(
-        "m20260721_000004_enforce_seller_balance_transfer_immutability"
-    ));
+    assert!(
+        migration_registry
+            .contains("m20260721_000004_enforce_seller_balance_transfer_immutability")
+    );
 
     assert!(ledger_contract.contains("marketplace.ledger.v3"));
     assert!(ledger_contract.contains("post_seller_balance_transfer"));

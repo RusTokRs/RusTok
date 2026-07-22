@@ -4,15 +4,15 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    groups_admin_error, prepare_create_group_invitation, prepare_group_invitation_query,
+    GroupsAdminInvitationInputError, GroupsAdminTransportProfile, groups_admin_error,
+    prepare_create_group_invitation, prepare_group_invitation_query,
     prepare_revoke_group_invitation, selected_transport_profile,
-    GroupsAdminInvitationInputError, GroupsAdminTransportProfile,
 };
 use crate::i18n::t;
 use crate::model::GroupsAdminInvitation;
 use crate::transport::{
-    create_group_admin_invitation, load_group_admin_invitations,
-    revoke_group_admin_invitation, GroupsAdminTransportContext,
+    GroupsAdminTransportContext, create_group_admin_invitation, load_group_admin_invitations,
+    revoke_group_admin_invitation,
 };
 
 #[derive(Clone)]
@@ -76,7 +76,10 @@ pub fn GroupsInvitationsAdmin() -> impl IntoView {
         ) {
             Ok(query) => query,
             Err(input_error) => {
-                set_error.set(Some(invitation_input_error_message(input_error, &load_copy)));
+                set_error.set(Some(invitation_input_error_message(
+                    input_error,
+                    &load_copy,
+                )));
                 set_success.set(None);
                 return;
             }
@@ -132,7 +135,10 @@ pub fn GroupsInvitationsAdmin() -> impl IntoView {
         ) {
             Ok(command) => command,
             Err(input_error) => {
-                set_error.set(Some(invitation_input_error_message(input_error, &create_copy)));
+                set_error.set(Some(invitation_input_error_message(
+                    input_error,
+                    &create_copy,
+                )));
                 set_success.set(None);
                 return;
             }
@@ -170,12 +176,13 @@ pub fn GroupsInvitationsAdmin() -> impl IntoView {
     let revoke_copy = copy.clone();
     let on_revoke_submit = move |event: SubmitEvent| {
         event.prevent_default();
-        let command = match prepare_revoke_group_invitation(
-            &revoke_invitation_id.get_untracked(),
-        ) {
+        let command = match prepare_revoke_group_invitation(&revoke_invitation_id.get_untracked()) {
             Ok(command) => command,
             Err(input_error) => {
-                set_error.set(Some(invitation_input_error_message(input_error, &revoke_copy)));
+                set_error.set(Some(invitation_input_error_message(
+                    input_error,
+                    &revoke_copy,
+                )));
                 set_success.set(None);
                 return;
             }
@@ -259,7 +266,7 @@ pub fn GroupsInvitationsAdmin() -> impl IntoView {
                 </div>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground">{busy_label}</p>
+                <p class="mt-4 text-sm text-muted-foreground">{busy_label.clone()}</p>
             </Show>
 
             <div class="mt-6 grid gap-6 xl:grid-cols-2">
@@ -329,33 +336,125 @@ fn invitation_input_error_message(
 
 fn invitation_copy(locale: Option<&str>) -> InvitationCopy {
     InvitationCopy {
-        title: t(locale, "groups.admin.invitations.title", "Group invitations"),
-        body: t(locale, "groups.admin.invitations.body", "Create targeted invitations or bounded shareable links. Plaintext tokens are displayed once and are never stored by Groups."),
+        title: t(
+            locale,
+            "groups.admin.invitations.title",
+            "Group invitations",
+        ),
+        body: t(
+            locale,
+            "groups.admin.invitations.body",
+            "Create targeted invitations or bounded shareable links. Plaintext tokens are displayed once and are never stored by Groups.",
+        ),
         group_id: t(locale, "groups.admin.invitations.groupId", "Group UUID"),
-        target_user_id: t(locale, "groups.admin.invitations.targetUserId", "Target user UUID (optional)"),
-        target_hint: t(locale, "groups.admin.invitations.targetHint", "Leave the target empty for a shareable link. Targeted invitations must be single-use."),
-        expiry_seconds: t(locale, "groups.admin.invitations.expirySeconds", "Expiry in seconds"),
+        target_user_id: t(
+            locale,
+            "groups.admin.invitations.targetUserId",
+            "Target user UUID (optional)",
+        ),
+        target_hint: t(
+            locale,
+            "groups.admin.invitations.targetHint",
+            "Leave the target empty for a shareable link. Targeted invitations must be single-use.",
+        ),
+        expiry_seconds: t(
+            locale,
+            "groups.admin.invitations.expirySeconds",
+            "Expiry in seconds",
+        ),
         max_uses: t(locale, "groups.admin.invitations.maxUses", "Maximum uses"),
-        invitation_id: t(locale, "groups.admin.invitations.invitationId", "Invitation UUID"),
-        include_inactive: t(locale, "groups.admin.invitations.includeInactive", "Include expired/revoked"),
+        invitation_id: t(
+            locale,
+            "groups.admin.invitations.invitationId",
+            "Invitation UUID",
+        ),
+        include_inactive: t(
+            locale,
+            "groups.admin.invitations.includeInactive",
+            "Include expired/revoked",
+        ),
         load: t(locale, "groups.admin.invitations.load", "Load invitations"),
-        create: t(locale, "groups.admin.invitations.create", "Create invitation"),
-        revoke: t(locale, "groups.admin.invitations.revoke", "Revoke invitation"),
-        empty: t(locale, "groups.admin.invitations.empty", "No invitations loaded."),
-        busy: t(locale, "groups.admin.invitations.busy", "Applying invitation command..."),
-        error: t(locale, "groups.admin.invitations.error", "Invitation command failed"),
-        loaded: t(locale, "groups.admin.invitations.loaded", "Invitations loaded"),
-        created: t(locale, "groups.admin.invitations.created", "Invitation created"),
-        revoked: t(locale, "groups.admin.invitations.revoked", "Invitation revoked"),
-        token_once: t(locale, "groups.admin.invitations.tokenOnce", "Copy this token now. It will not be shown again."),
+        create: t(
+            locale,
+            "groups.admin.invitations.create",
+            "Create invitation",
+        ),
+        revoke: t(
+            locale,
+            "groups.admin.invitations.revoke",
+            "Revoke invitation",
+        ),
+        empty: t(
+            locale,
+            "groups.admin.invitations.empty",
+            "No invitations loaded.",
+        ),
+        busy: t(
+            locale,
+            "groups.admin.invitations.busy",
+            "Applying invitation command...",
+        ),
+        error: t(
+            locale,
+            "groups.admin.invitations.error",
+            "Invitation command failed",
+        ),
+        loaded: t(
+            locale,
+            "groups.admin.invitations.loaded",
+            "Invitations loaded",
+        ),
+        created: t(
+            locale,
+            "groups.admin.invitations.created",
+            "Invitation created",
+        ),
+        revoked: t(
+            locale,
+            "groups.admin.invitations.revoked",
+            "Invitation revoked",
+        ),
+        token_once: t(
+            locale,
+            "groups.admin.invitations.tokenOnce",
+            "Copy this token now. It will not be shown again.",
+        ),
         version: t(locale, "groups.admin.invitations.version", "group version"),
-        shareable: t(locale, "groups.admin.invitations.shareable", "Shareable link"),
-        invalid_group_id: t(locale, "groups.admin.invitations.invalidGroupId", "Enter a valid group UUID."),
-        invalid_invitation_id: t(locale, "groups.admin.invitations.invalidInvitationId", "Enter a valid invitation UUID."),
-        invalid_target_user_id: t(locale, "groups.admin.invitations.invalidTargetUserId", "Enter a valid target user UUID or leave it empty."),
-        invalid_expiry: t(locale, "groups.admin.invitations.invalidExpiry", "Expiry must be between 300 and 2592000 seconds."),
-        invalid_max_uses: t(locale, "groups.admin.invitations.invalidMaxUses", "Maximum uses must be between 1 and 100."),
-        targeted_single_use: t(locale, "groups.admin.invitations.targetedSingleUse", "A targeted invitation must have exactly one use."),
+        shareable: t(
+            locale,
+            "groups.admin.invitations.shareable",
+            "Shareable link",
+        ),
+        invalid_group_id: t(
+            locale,
+            "groups.admin.invitations.invalidGroupId",
+            "Enter a valid group UUID.",
+        ),
+        invalid_invitation_id: t(
+            locale,
+            "groups.admin.invitations.invalidInvitationId",
+            "Enter a valid invitation UUID.",
+        ),
+        invalid_target_user_id: t(
+            locale,
+            "groups.admin.invitations.invalidTargetUserId",
+            "Enter a valid target user UUID or leave it empty.",
+        ),
+        invalid_expiry: t(
+            locale,
+            "groups.admin.invitations.invalidExpiry",
+            "Expiry must be between 300 and 2592000 seconds.",
+        ),
+        invalid_max_uses: t(
+            locale,
+            "groups.admin.invitations.invalidMaxUses",
+            "Maximum uses must be between 1 and 100.",
+        ),
+        targeted_single_use: t(
+            locale,
+            "groups.admin.invitations.targetedSingleUse",
+            "A targeted invitation must have exactly one use.",
+        ),
     }
 }
 

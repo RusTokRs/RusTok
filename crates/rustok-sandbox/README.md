@@ -23,6 +23,8 @@ Alloy drafts and installed module artifacts.
 - Admit executions through shared global, executor, tenant, and artifact gates
   with automatic permit release on every terminal path.
 - Register language/runtime executors without depending on their consumers.
+- Expose registry-backed executor readiness so owner policy can distinguish an
+  execution port from a registered payload executor.
 - Publish comparable audit evidence for draft and installed executions.
 
 ## Entry points

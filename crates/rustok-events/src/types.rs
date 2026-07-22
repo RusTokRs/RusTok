@@ -299,6 +299,12 @@ pub enum DomainEvent {
         build_id: Uuid,
         requested_by: String,
     },
+    BuildRolledBack {
+        requested_build_id: Uuid,
+        restored_build_id: Uuid,
+        from_release_id: String,
+        to_release_id: String,
+    },
 
     // ════════════════════════════════════════════════════════════════
     // BLOG EVENTS
@@ -677,6 +683,54 @@ pub enum DomainEvent {
         was_active: bool,
         policy_revision: String,
     },
+    ModuleStaticDistributionRolloutRequested {
+        rollout_id: Uuid,
+        predecessor_rollout_id: Option<Uuid>,
+        distribution_release_id: Uuid,
+        rollout_revision: u64,
+        rollout_state_revision: u64,
+        composition_revision: u64,
+        composition_digest: String,
+        artifact_digest: String,
+        topology_digest: String,
+        policy_revision: String,
+        target_nodes: u32,
+        executor_mode: String,
+    },
+    ModuleStaticDistributionNodeObserved {
+        rollout_id: Uuid,
+        node_id: String,
+        reporter_id: String,
+        observation_revision: u64,
+        phase: String,
+        report_digest: String,
+    },
+    ModuleStaticDistributionRolloutStatusChanged {
+        rollout_id: Uuid,
+        distribution_release_id: Uuid,
+        rollout_revision: u64,
+        rollout_state_revision: u64,
+        status: String,
+        observed_rollout_id: Option<Uuid>,
+        failure_code: Option<String>,
+    },
+    ModuleArtifactSecurityStateChanged {
+        module_slug: String,
+        module_version: String,
+        payload_digest: String,
+        security_revision: u64,
+        status: String,
+        policy_revision: String,
+        reason_code: String,
+    },
+    /// Explicit predecessor-bound effective-policy transition. The envelope
+    /// supplies the tenant; this payload identifies the consumer projection
+    /// whose cursor must apply the transition exactly once.
+    ModuleEffectivePolicyRevisionChanged {
+        consumer_key: String,
+        previous_revision: Option<String>,
+        next_revision: String,
+    },
     LocaleEnabled {
         tenant_id: Uuid,
         locale: String,
@@ -822,6 +876,7 @@ impl DomainEvent {
             Self::IndexUpdated { .. } => "index.updated",
 
             Self::BuildRequested { .. } => "build.requested",
+            Self::BuildRolledBack { .. } => "build.rolled_back",
 
             Self::BlogPostCreated { .. } => "blog.post.created",
             Self::BlogPostPublished { .. } => "blog.post.published",
@@ -905,6 +960,21 @@ impl DomainEvent {
             }
             Self::ModuleStaticDistributionReleaseRevoked { .. } => {
                 "module.static_distribution.release_revoked"
+            }
+            Self::ModuleStaticDistributionRolloutRequested { .. } => {
+                "module.static_distribution.rollout_requested"
+            }
+            Self::ModuleStaticDistributionNodeObserved { .. } => {
+                "module.static_distribution.node_observed"
+            }
+            Self::ModuleStaticDistributionRolloutStatusChanged { .. } => {
+                "module.static_distribution.rollout_status_changed"
+            }
+            Self::ModuleArtifactSecurityStateChanged { .. } => {
+                "module.artifact.security_state_changed"
+            }
+            Self::ModuleEffectivePolicyRevisionChanged { .. } => {
+                "module.effective_policy_revision_changed"
             }
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
@@ -1002,6 +1072,7 @@ impl DomainEvent {
 
             // Build events (v1)
             Self::BuildRequested { .. } => 1,
+            Self::BuildRolledBack { .. } => 1,
 
             // Blog events (v1)
             Self::BlogPostCreated { .. } => 1,
@@ -1068,6 +1139,11 @@ impl DomainEvent {
             Self::ModuleStaticDistributionReleaseActivated { .. } => 1,
             Self::ModuleStaticDistributionRollbackBuildQueued { .. } => 1,
             Self::ModuleStaticDistributionReleaseRevoked { .. } => 1,
+            Self::ModuleStaticDistributionRolloutRequested { .. } => 1,
+            Self::ModuleStaticDistributionNodeObserved { .. } => 1,
+            Self::ModuleStaticDistributionRolloutStatusChanged { .. } => 1,
+            Self::ModuleArtifactSecurityStateChanged { .. } => 1,
+            Self::ModuleEffectivePolicyRevisionChanged { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1509,6 +1585,26 @@ impl ValidateEvent for DomainEvent {
                 validators::validate_not_nil_uuid("build_id", build_id)?;
                 validators::validate_not_empty("requested_by", requested_by)?;
                 validators::validate_max_length("requested_by", requested_by, 255)?;
+                Ok(())
+            }
+            Self::BuildRolledBack {
+                requested_build_id,
+                restored_build_id,
+                from_release_id,
+                to_release_id,
+            } => {
+                validators::validate_not_nil_uuid("requested_build_id", requested_build_id)?;
+                validators::validate_not_nil_uuid("restored_build_id", restored_build_id)?;
+                validators::validate_not_empty("from_release_id", from_release_id)?;
+                validators::validate_max_length("from_release_id", from_release_id, 255)?;
+                validators::validate_not_empty("to_release_id", to_release_id)?;
+                validators::validate_max_length("to_release_id", to_release_id, 255)?;
+                if from_release_id == to_release_id {
+                    return Err(EventValidationError::InvalidValue(
+                        "to_release_id",
+                        "must differ from from_release_id".to_string(),
+                    ));
+                }
                 Ok(())
             }
 
@@ -2442,6 +2538,162 @@ impl ValidateEvent for DomainEvent {
                 }
                 validate_policy_revision(policy_revision)
             }
+            Self::ModuleStaticDistributionRolloutRequested {
+                rollout_id,
+                predecessor_rollout_id,
+                distribution_release_id,
+                rollout_revision,
+                rollout_state_revision,
+                composition_revision,
+                composition_digest,
+                artifact_digest,
+                topology_digest,
+                policy_revision,
+                target_nodes,
+                executor_mode,
+            } => {
+                validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
+                validators::validate_not_nil_uuid(
+                    "distribution_release_id",
+                    distribution_release_id,
+                )?;
+                if predecessor_rollout_id
+                    .is_some_and(|value| value.is_nil() || value == *rollout_id)
+                    || *rollout_revision == 0
+                    || *rollout_state_revision == 0
+                    || *composition_revision == 0
+                    || *target_nodes == 0
+                    || *target_nodes > 1024
+                    || executor_mode != "static_native"
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution rollout identity",
+                        "must contain canonical positive revisions, topology, and static/native executor identity"
+                            .to_string(),
+                    ));
+                }
+                validate_policy_revision(policy_revision)?;
+                validate_sha256_digest("composition_digest", composition_digest)?;
+                validate_sha256_digest("artifact_digest", artifact_digest)?;
+                validate_sha256_digest("topology_digest", topology_digest)
+            }
+            Self::ModuleStaticDistributionNodeObserved {
+                rollout_id,
+                node_id,
+                reporter_id,
+                observation_revision,
+                phase,
+                report_digest,
+            } => {
+                validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
+                validators::validate_not_empty("node_id", node_id)?;
+                validators::validate_max_length("node_id", node_id, 128)?;
+                validators::validate_not_empty("reporter_id", reporter_id)?;
+                validators::validate_max_length("reporter_id", reporter_id, 128)?;
+                if *observation_revision == 0
+                    || node_id.trim() != node_id
+                    || node_id.chars().any(char::is_control)
+                    || reporter_id.trim() != reporter_id
+                    || reporter_id.chars().any(char::is_control)
+                    || !matches!(phase.as_str(), "prepared" | "healthy" | "active" | "failed")
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution node observation",
+                        "must contain a positive revision, canonical node, and supported phase"
+                            .to_string(),
+                    ));
+                }
+                validate_sha256_digest("report_digest", report_digest)
+            }
+            Self::ModuleStaticDistributionRolloutStatusChanged {
+                rollout_id,
+                distribution_release_id,
+                rollout_revision,
+                rollout_state_revision,
+                status,
+                observed_rollout_id,
+                failure_code,
+            } => {
+                validators::validate_not_nil_uuid("rollout_id", rollout_id)?;
+                validators::validate_not_nil_uuid(
+                    "distribution_release_id",
+                    distribution_release_id,
+                )?;
+                if *rollout_revision == 0
+                    || *rollout_state_revision == 0
+                    || !matches!(
+                        status.as_str(),
+                        "activating" | "converged" | "failed" | "degraded"
+                    )
+                    || observed_rollout_id.is_some_and(|value| value.is_nil())
+                    || (status == "converged" && *observed_rollout_id != Some(*rollout_id))
+                    || matches!(status.as_str(), "failed" | "degraded") != failure_code.is_some()
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution rollout status",
+                        "must contain canonical revision, observation, and failure state"
+                            .to_string(),
+                    ));
+                }
+                if let Some(failure_code) = failure_code {
+                    validators::validate_not_empty("failure_code", failure_code)?;
+                    validators::validate_max_length("failure_code", failure_code, 128)?;
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactSecurityStateChanged {
+                module_slug,
+                module_version,
+                payload_digest,
+                security_revision,
+                status,
+                policy_revision,
+                reason_code,
+            } => {
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
+                validators::validate_not_empty("module_version", module_version)?;
+                validators::validate_max_length("module_version", module_version, 128)?;
+                validate_sha256_digest("payload_digest", payload_digest)?;
+                validate_policy_revision(policy_revision)?;
+                validators::validate_not_empty("reason_code", reason_code)?;
+                validators::validate_max_length("reason_code", reason_code, 128)?;
+                if *security_revision == 0
+                    || !matches!(status.as_str(), "clear" | "quarantined" | "revoked")
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "artifact security state",
+                        "must contain a positive revision and supported status".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleEffectivePolicyRevisionChanged {
+                consumer_key,
+                previous_revision,
+                next_revision,
+            } => {
+                validators::validate_not_empty("consumer_key", consumer_key)?;
+                validators::validate_max_length("consumer_key", consumer_key, 128)?;
+                if consumer_key.trim() != consumer_key || consumer_key.chars().any(char::is_control)
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "consumer_key",
+                        "must be a canonical printable value".to_string(),
+                    ));
+                }
+                if let Some(previous_revision) = previous_revision {
+                    validate_sha256_digest("previous_revision", previous_revision)?;
+                }
+                validate_sha256_digest("next_revision", next_revision)?;
+                if previous_revision.as_deref() == Some(next_revision.as_str()) {
+                    return Err(EventValidationError::InvalidValue(
+                        "policy revision transition",
+                        "predecessor and successor must differ".to_string(),
+                    ));
+                }
+                Ok(())
+            }
             Self::LocaleEnabled { tenant_id, locale }
             | Self::LocaleDisabled { tenant_id, locale } => {
                 validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
@@ -2818,6 +3070,32 @@ mod tests {
     }
 
     #[test]
+    fn test_build_rolled_back_valid_and_metadata() {
+        let event = DomainEvent::BuildRolledBack {
+            requested_build_id: Uuid::new_v4(),
+            restored_build_id: Uuid::new_v4(),
+            from_release_id: "release-current".to_string(),
+            to_release_id: "release-previous".to_string(),
+        };
+
+        assert_eq!(event.event_type(), "build.rolled_back");
+        assert_eq!(event.schema_version(), 1);
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_build_rolled_back_rejects_same_release() {
+        let event = DomainEvent::BuildRolledBack {
+            requested_build_id: Uuid::new_v4(),
+            restored_build_id: Uuid::new_v4(),
+            from_release_id: "release-current".to_string(),
+            to_release_id: "release-current".to_string(),
+        };
+
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
     fn test_flex_entry_created_valid_standalone_binding() {
         let event = DomainEvent::FlexEntryCreated {
             tenant_id: Uuid::new_v4(),
@@ -2862,6 +3140,34 @@ mod tests {
             tenant_id: Uuid::new_v4(),
             module_slug: "".to_string(),
             enabled: true,
+        };
+
+        assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn test_effective_policy_revision_transition_is_predecessor_bound() {
+        let event = DomainEvent::ModuleEffectivePolicyRevisionChanged {
+            consumer_key: "runtime.node-1".to_string(),
+            previous_revision: Some(format!("sha256:{}", "a".repeat(64))),
+            next_revision: format!("sha256:{}", "b".repeat(64)),
+        };
+
+        assert_eq!(
+            event.event_type(),
+            "module.effective_policy_revision_changed"
+        );
+        assert_eq!(event.schema_version(), 1);
+        assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn test_effective_policy_revision_transition_rejects_noop() {
+        let revision = format!("sha256:{}", "a".repeat(64));
+        let event = DomainEvent::ModuleEffectivePolicyRevisionChanged {
+            consumer_key: "runtime.node-1".to_string(),
+            previous_revision: Some(revision.clone()),
+            next_revision: revision,
         };
 
         assert!(event.validate().is_err());

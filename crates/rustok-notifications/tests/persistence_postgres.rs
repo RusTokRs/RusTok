@@ -7,8 +7,8 @@ use uuid::Uuid;
 const DATABASE_ENV: &str = "NOTIFICATIONS_TEST_DATABASE_URL";
 
 #[tokio::test]
-async fn notification_persistence_enforces_postgres_invariants(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn notification_persistence_enforces_postgres_invariants()
+-> Result<(), Box<dyn std::error::Error>> {
     let Some(database_url) = postgres_database_url() else {
         eprintln!("{DATABASE_ENV} is not set; skipping PostgreSQL notification persistence test");
         return Ok(());

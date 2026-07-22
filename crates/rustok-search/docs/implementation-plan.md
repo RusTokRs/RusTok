@@ -164,6 +164,15 @@ only normalized Search ports are exposed remotely.
    fallback, and data-consistency contracts. Done when a selected connector
    cannot bypass `SearchQueryPort`/`SearchSuggestionPort` or replace the
    PostgreSQL baseline implicitly.
+8. **Stop indexing serialized richtext JSON.** During the atomic
+   [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md),
+   replace raw `body` insertion in Blog/shared-content projectors with the one
+   `rustok-content::richtext` plain-text projection. Split SQL
+   `INSERT ... SELECT` into a typed Rust projection or consume owner-extracted
+   text through an event; do not add a shadow text source without evidence.
+   **Done when:** Search/Index fixtures contain prose rather than JSON syntax,
+   locale/profile failures are observable, and no Search-local tree walker
+   exists.
 
 ## Verification
 

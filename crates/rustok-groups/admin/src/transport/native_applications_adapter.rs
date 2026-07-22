@@ -2,12 +2,12 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::application_model::{
-    GroupsAdminApplicationAnswer, GroupsAdminApplicationPolicy,
-    GroupsAdminApplicationPolicyQuery, GroupsAdminApplicationQuestion,
-    GroupsAdminApplicationRule, GroupsAdminMembership, GroupsAdminMembershipApplication,
-    GroupsAdminMembershipApplicationConnection, GroupsAdminMembershipApplicationQuery,
-    GroupsAdminReviewApplicationResult, GroupsAdminUpsertApplicationPolicyResult,
-    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
+    GroupsAdminApplicationAnswer, GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
+    GroupsAdminApplicationQuestion, GroupsAdminApplicationRule, GroupsAdminMembership,
+    GroupsAdminMembershipApplication, GroupsAdminMembershipApplicationConnection,
+    GroupsAdminMembershipApplicationQuery, GroupsAdminReviewApplicationResult,
+    GroupsAdminUpsertApplicationPolicyResult, ReviewGroupMembershipApplicationCommand,
+    UpsertGroupApplicationPolicyCommand,
 };
 
 #[derive(Debug, Clone)]
@@ -59,10 +59,7 @@ pub async fn review_group_membership_application(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/applications/policy/read"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/applications/policy/read")]
 async fn groups_admin_application_policy_native(
     query: GroupsAdminApplicationPolicyQuery,
 ) -> Result<GroupsAdminApplicationPolicy, ServerFnError> {
@@ -70,8 +67,8 @@ async fn groups_admin_application_policy_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationReadPort, GroupApplicationService, ReadGroupApplicationPolicyRequest,
@@ -133,8 +130,8 @@ async fn groups_admin_upsert_application_policy_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationCommandPort, GroupApplicationQuestion, GroupApplicationRule,
@@ -217,10 +214,7 @@ async fn groups_admin_upsert_application_policy_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/applications/list"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/applications/list")]
 async fn groups_admin_membership_applications_native(
     query: GroupsAdminMembershipApplicationQuery,
 ) -> Result<GroupsAdminMembershipApplicationConnection, ServerFnError> {
@@ -228,8 +222,8 @@ async fn groups_admin_membership_applications_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationReadPort, GroupApplicationService, GroupApplicationStatus,
@@ -298,10 +292,7 @@ async fn groups_admin_membership_applications_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/applications/review"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/applications/review")]
 async fn groups_admin_review_membership_application_native(
     command: ReviewGroupMembershipApplicationCommand,
 ) -> Result<GroupsAdminReviewApplicationResult, ServerFnError> {
@@ -309,8 +300,8 @@ async fn groups_admin_review_membership_application_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationCommandPort, GroupApplicationReviewDecision, GroupApplicationService,

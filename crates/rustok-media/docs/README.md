@@ -22,15 +22,17 @@ only constructs that runtime and enforces canonical keys.
   on Media-owned streaming REST or short-lived presigned S3 PUT targets, outside generic port DTOs;
 - loopback-verified `rustok-media-transport` tonic adapters for all read/write
   control operations; gRPC propagates deadlines and exact typed owner errors
-  while binary bodies remain outside the service;
+  while binary bodies remain outside the service. Remote calls require a
+  server-side `TrustedMediaAuthority` extension; caller-supplied tenant and
+  principal fields are never authoritative;
 - GraphQL and REST adapters of the module;
 - upload validation by size/MIME policy and tenant isolation before accessing storage;
 - module-owned admin UI package `rustok-media-admin` with FFA split `core`/`transport`/`ui/leptos`; native server functions use `HostRuntimeContext` and the host-provided `StorageRuntime` instead of a host-wide `AppContext`;
 - observability signals for upload, delete, rendition latency/outcome, upload sessions,
   reconciliation outcomes, and storage health;
 - translation normalization: `locale` trim/lowercase, empty `title`/`alt_text`/`caption` are stored as `None`, translation lists are returned in stable order by locale;
-- owner-local lifecycle persistence in `media_assets`, `media_blobs`, `media_renditions`, `media_upload_sessions`, and `media_translations`; the former Content-owned `media` migration no longer exists.
-- reconciliation contract: `reconcile_storage` probes exact immutable object keys, marks missing ready blobs as failed without deleting evidence, retries transient failures, and completes persisted delete tombstones; `MediaReconciliationReport` exposes healthy, missing, deletion, and retry counts.
+- owner-local lifecycle persistence in `media_assets`, `media_blobs`, `media_renditions`, `media_upload_sessions`, `media_translations`, and durable `media_port_operations`; the former Content-owned `media` migration no longer exists.
+- reconciliation contract: `reconcile_storage` probes exact immutable object keys with a rotating persisted cursor, marks a missing active blob as failed without deleting evidence, isolates missing rendition results, retries transient failures, completes persisted delete tombstones, and removes only eligible staging objects; `MediaReconciliationReport` exposes healthy, missing, deletion, and retry counts.
 - `rustok-media-cli` provides `media reconcile`; it explicitly builds `StorageRuntime` from the host-neutral CLI storage settings and invokes the Media service across tenants.
 - the image pipeline emits immutable JPEG, PNG, WebP, and AVIF renditions with golden-output,
   orientation, animated-input rejection, memory, timeout, and concurrency tests;

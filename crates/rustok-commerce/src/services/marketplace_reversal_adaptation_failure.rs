@@ -165,9 +165,12 @@ impl MarketplaceReversalAdaptationFailureJournal {
             .exec(&self.db)
             .await?;
         if update.rows_affected == 0 {
-            return self.find_by_provider_event(tenant_id, provider_event_id).await;
+            return self
+                .find_by_provider_event(tenant_id, provider_event_id)
+                .await;
         }
-        self.find_by_provider_event(tenant_id, provider_event_id).await
+        self.find_by_provider_event(tenant_id, provider_event_id)
+            .await
     }
 
     pub async fn reset_for_retry(
@@ -206,9 +209,9 @@ impl MarketplaceReversalAdaptationFailureJournal {
             .exec(&self.db)
             .await?;
         if update.rows_affected == 0 {
-            return Err(MarketplaceReversalAdaptationFailureError::Conflict(format!(
-                "adaptation failure {failure_id} is not retryable"
-            )));
+            return Err(MarketplaceReversalAdaptationFailureError::Conflict(
+                format!("adaptation failure {failure_id} is not retryable"),
+            ));
         }
         self.get(tenant_id, failure_id).await
     }
@@ -347,10 +350,7 @@ fn retry_backoff(attempt_count: i32) -> Duration {
     Duration::seconds(seconds)
 }
 
-fn validate_identity(
-    tenant_id: Uuid,
-    id: Uuid,
-) -> MarketplaceReversalAdaptationFailureResult<()> {
+fn validate_identity(tenant_id: Uuid, id: Uuid) -> MarketplaceReversalAdaptationFailureResult<()> {
     if tenant_id.is_nil() || id.is_nil() {
         return Err(MarketplaceReversalAdaptationFailureError::Validation(
             "tenant_id and identity must not be nil".to_string(),
@@ -366,9 +366,9 @@ fn normalize_required(
 ) -> MarketplaceReversalAdaptationFailureResult<String> {
     let value = value.trim().to_string();
     if value.is_empty() || value.len() > max_length {
-        return Err(MarketplaceReversalAdaptationFailureError::Validation(format!(
-            "{field} must contain 1 to {max_length} bytes"
-        )));
+        return Err(MarketplaceReversalAdaptationFailureError::Validation(
+            format!("{field} must contain 1 to {max_length} bytes"),
+        ));
     }
     Ok(value)
 }

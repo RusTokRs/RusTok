@@ -445,9 +445,7 @@ pub struct SubmitGroupMembershipApplicationResultGql {
     pub replayed: bool,
 }
 
-impl From<SubmitGroupMembershipApplicationResult>
-    for SubmitGroupMembershipApplicationResultGql
-{
+impl From<SubmitGroupMembershipApplicationResult> for SubmitGroupMembershipApplicationResultGql {
     fn from(value: SubmitGroupMembershipApplicationResult) -> Self {
         Self {
             application: value.application.into(),
@@ -466,9 +464,7 @@ pub struct ReviewGroupMembershipApplicationResultGql {
     pub replayed: bool,
 }
 
-impl From<ReviewGroupMembershipApplicationResult>
-    for ReviewGroupMembershipApplicationResultGql
-{
+impl From<ReviewGroupMembershipApplicationResult> for ReviewGroupMembershipApplicationResultGql {
     fn from(value: ReviewGroupMembershipApplicationResult) -> Self {
         Self {
             application: value.application.into(),
@@ -550,18 +546,14 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Groups membership application service is temporarily unavailable",
             )
         }
-        PortErrorKind::InvariantViolation => {
-            <FieldError as GraphQLError>::internal_error(
-                "Groups membership application operation requires review",
-            )
-        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Groups membership application operation requires review",
+        ),
     }
 }

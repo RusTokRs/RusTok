@@ -57,9 +57,19 @@ Develop `apps/next-frontend` as the primary Next.js storefront with clear API/UI
 - [ ] API/UI contracts match.
 - [ ] Navigation and RBAC behavior are equivalent.
 
-### Current rich-text status (blog/forum/pages)
+### Current richtext status (Blog/Forum/Comments)
 
-- **Admin (Leptos, `apps/admin`)**: [ ] Not started / in sync process with Next.js implementation.
-- **Admin (Next.js, `apps/next-admin`)**: [~] Partially implemented (Tiptap/Page Builder routes connected, needs real entity ID work and parity-check with Leptos).
-- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).
-- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Not started (rich-text rendering parity for blog/forum/pages planned).
+- Target contract: the
+  [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md).
+- **Admin (Leptos, `apps/admin`)**: [ ] Target shared framed editor and owner
+  native `#[server]` paths are not implemented.
+- **Admin (Next.js, `apps/next-admin`)**: [~] A Blog-local legacy Tiptap
+  prototype exists, but it is not the target shared runtime and incorrectly
+  contains Forum UI.
+- **Storefront (Leptos SSR, `apps/storefront`)**: [ ] Canonical server-rendered
+  HTML projection is not integrated.
+- **Storefront (Next.js, `apps/next-frontend`)**: [ ] Blog detail/Forum packages,
+  effective-locale use, and canonical server-rendered HTML projection are not
+  integrated.
+- Pages body remains Page Builder/Fly and is outside the richtext body
+  migration. A future embedded Page component property is a separate opt-in.

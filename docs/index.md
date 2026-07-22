@@ -78,7 +78,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
   - [Architecture Guide](./backend/module-backend-architecture.md) - backend ownership, runtime boundaries, foundation crates and FBA/CLI split
   - [Implementation Guide](./backend/module-backend-implementation.md) - crate layout, runtime helpers, transport adapters, ports and forbidden patterns
   - [Verification Guide](./backend/module-backend-verification.md) - fast guardrails, targeted Rust checks and FBA evidence
-- [Rich Text Implementation Plan](./modules/rich-text-implementation-plan.md)
+- [Richtext Implementation Plan](./modules/rich-text-implementation-plan.md)
 - [Page Builder Implementation Plan](./modules/page-builder-implementation-plan.md)
 - AI support adapter plans for `rustok-ai-media` and `rustok-ai-alloy` are available through the [module documentation index](./modules/_index.md).
 
@@ -93,7 +93,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
 - [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
-- [Rich Text Track](./modules/rich-text-implementation-plan.md)
+- [Richtext Track](./modules/rich-text-implementation-plan.md)
 - [Page Builder Track](./modules/page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)
 - **Module UI Package Guides** (read the relevant one when working on `crates/rustok-*/admin` or `crates/rustok-*/storefront`):
@@ -103,6 +103,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [ADR: Richtext capability boundary and single-document contract](../DECISIONS/2026-07-22-richtext-capability-boundary.md)
+- [ADR: Artifact security state boundary](../DECISIONS/2026-07-22-artifact-security-state-boundary.md)
+- [ADR: Channel binding policy boundary](../DECISIONS/2026-07-22-channel-binding-policy-boundary.md)
+- [ADR: Effective module policy decision](../DECISIONS/2026-07-22-effective-module-policy-decision.md)
 - [ADR: Static promotion review boundary](../DECISIONS/2026-07-22-static-promotion-review-boundary.md)
 - [ADR: Durable artifact-data snapshot and guarded restore](../DECISIONS/2026-07-22-artifact-data-snapshot-restore.md)
 - [ADR: Athanor-owned RAG data plane](../DECISIONS/2026-07-18-rag-postgres-capability-profiles.md)
@@ -149,7 +153,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Errors](./standards/errors.md)
 - [Security](./standards/security.md)
 - [Coding Standards](./standards/coding.md)
-- [RT JSON v1 Standard](./standards/rt-json-v1.md)
+- [Legacy RT JSON implementation snapshot](./standards/rt-json-v1.md)
 
 ## Platform Verification
 

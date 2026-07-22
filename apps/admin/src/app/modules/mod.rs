@@ -22,6 +22,7 @@ pub struct GeneratedModuleRuntimeMetadata {
     pub trust_level: &'static str,
     pub recommended_admin_surfaces: &'static [&'static str],
     pub showcase_admin_surfaces: &'static [&'static str],
+    pub settings_schema_json: &'static str,
 }
 
 #[derive(Clone, Copy)]

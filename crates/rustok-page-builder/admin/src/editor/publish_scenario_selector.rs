@@ -41,11 +41,8 @@ pub fn PublishScenarioSelectorPanel(
                 }
                 Some(scenario.id.clone())
             }
-            scenarios if scenarios.len() > 1 => stored.filter(|scenario_id| {
-                scenarios
-                    .iter()
-                    .any(|scenario| scenario.id == *scenario_id)
-            }),
+            scenarios if scenarios.len() > 1 => stored
+                .filter(|scenario_id| scenarios.iter().any(|scenario| scenario.id == *scenario_id)),
             _ => None,
         };
         selected_scenario.set(selected);
@@ -63,11 +60,7 @@ pub fn PublishScenarioSelectorPanel(
             return;
         };
         if scenario_id.is_empty() {
-            match save_publish_scenario_selection(
-                &select_page_id,
-                &baseline.baseline_hash,
-                None,
-            ) {
+            match save_publish_scenario_selection(&select_page_id, &baseline.baseline_hash, None) {
                 Ok(()) => {
                     selected_scenario.set(None);
                     select_runtime.announce("Publish runtime scenario selection cleared");

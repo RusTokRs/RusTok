@@ -62,6 +62,14 @@ must never be implemented in this module or exposed through its ports.
    **Done when:** public consumers use documented read-model contracts and do
    not import ranking or search-engine internals from this module.
 
+4. **Consume canonical plain text for richtext sources.** During the atomic
+   [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md),
+   replace raw body/format persistence and JSON indexing with the shared
+   `rustok-content::richtext` plain-text projection or an owner-published typed
+   projection. Keep the document tree and rendering policy outside Index.
+   **Done when:** indexed content contains deterministic prose, not serialized
+   JSON, and Index has no local richtext parser or renderer.
+
 ## Verification
 
 - `npm run verify:index:fba`

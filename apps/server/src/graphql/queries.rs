@@ -7,7 +7,7 @@ use rustok_core::ModuleRegistry;
 use rustok_telemetry::metrics;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    QuerySelect,
 };
 use semver::{Version, VersionReq};
 use std::time::Instant;
@@ -20,31 +20,38 @@ use crate::graphql::types::{
     MarketplaceModuleVersion, ModuleOperationRecoveryPlan, ModuleRegistryItem, ModuleSettingField,
     ReleaseInfo, Tenant, TenantModule, User, UserConnection, UserEdge, UsersFilter,
 };
-use crate::models::_entities::tenant_modules::Column as TenantModulesColumn;
-use crate::models::_entities::tenant_modules::Entity as TenantModulesEntity;
 use crate::models::_entities::users::Column as UsersColumn;
 use crate::models::users;
 use crate::modules::ManifestManager;
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
 use crate::services::marketplace_catalog::marketplace_catalog_from_context;
+use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ModuleOperationRecoveryError};
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::rbac_service::RbacService;
-use crate::services::registry_governance::{
-    RegistryGovernanceService, RegistryModuleLifecycleSnapshot,
-};
+use crate::services::registry_governance::RegistryGovernanceService;
+use crate::services::registry_principal::RegistryPrincipalRef;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
-use rustok_api::graphql::{PageInfo, PaginationInput, encode_cursor};
-use rustok_build::BuildService;
-use rustok_build::build::{Column as BuildColumn, Entity as BuildEntity};
-use rustok_build::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
+use rustok_api::graphql::{encode_cursor, PageInfo, PaginationInput};
+use rustok_build::SharedBuildControl;
+
+fn build_control_from_context(ctx: &Context<'_>) -> Result<SharedBuildControl> {
+    ctx.data::<ServerRuntimeContext>()?
+        .shared_get::<SharedBuildControl>()
+        .ok_or_else(|| {
+            <FieldError as GraphQLError>::internal_error("build control is not configured")
+        })
+}
 
 fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {
-        if current == 0 { 0.0 } else { 100.0 }
+        if current == 0 {
+            0.0
+        } else {
+            100.0
+        }
     } else {
         ((current - previous) as f64 / previous as f64) * 100.0
     }
@@ -238,22 +245,124 @@ fn marketplace_module_from_catalog_entry(
     }
 }
 
+fn marketplace_module_from_owner_entry(
+    entry: rustok_modules::ModuleMarketplaceEntry,
+) -> MarketplaceModule {
+    MarketplaceModule {
+        slug: entry.slug,
+        name: entry.name,
+        latest_version: entry.latest_version,
+        description: entry.description,
+        source: entry.source,
+        kind: entry.kind,
+        category: entry.category,
+        tags: entry.tags,
+        icon_url: entry.icon_url,
+        banner_url: entry.banner_url,
+        screenshots: entry.screenshots,
+        crate_name: entry.crate_name,
+        dependencies: entry.dependencies,
+        ownership: entry.ownership,
+        trust_level: entry.trust_level,
+        rustok_min_version: entry.rustok_min_version,
+        rustok_max_version: entry.rustok_max_version,
+        publisher: entry.publisher,
+        checksum_sha256: entry.checksum_sha256,
+        signature_present: entry.signature_present,
+        versions: entry
+            .versions
+            .into_iter()
+            .map(|version| MarketplaceModuleVersion {
+                version: version.version,
+                changelog: version.changelog,
+                yanked: version.yanked,
+                published_at: version.published_at,
+                checksum_sha256: version.checksum_sha256,
+                signature_present: version.signature_present,
+            })
+            .collect(),
+        has_admin_ui: entry.has_admin_ui,
+        has_storefront_ui: entry.has_storefront_ui,
+        ui_classification: entry.ui_classification,
+        registry_lifecycle: entry
+            .registry_lifecycle
+            .map(registry_module_lifecycle_from_snapshot),
+        compatible: entry.compatible,
+        recommended_admin_surfaces: entry.recommended_admin_surfaces,
+        showcase_admin_surfaces: entry.showcase_admin_surfaces,
+        settings_schema: owner_settings_schema_fields(entry.settings_schema),
+        installed: entry.installed,
+        installed_version: entry.installed_version,
+        update_available: entry.update_available,
+    }
+}
+
+fn owner_settings_schema_fields(
+    schema: std::collections::BTreeMap<String, rustok_modules::ModuleSettingSpec>,
+) -> Vec<ModuleSettingField> {
+    schema
+        .into_iter()
+        .map(|(key, spec)| {
+            let object_keys = if spec.properties.is_empty() {
+                spec.object_keys.clone()
+            } else {
+                let mut keys = spec.properties.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                keys
+            };
+            let item_type = spec
+                .items
+                .as_deref()
+                .map(|item| item.value_type.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .or(spec.item_type.clone());
+            let mut shape = serde_json::Map::new();
+            if !spec.properties.is_empty() {
+                shape.insert(
+                    "properties".to_string(),
+                    serde_json::to_value(&spec.properties)
+                        .expect("owner settings schema must serialize"),
+                );
+            }
+            if let Some(items) = spec.items.as_deref() {
+                shape.insert(
+                    "items".to_string(),
+                    serde_json::to_value(items).expect("owner settings schema must serialize"),
+                );
+            }
+            ModuleSettingField {
+                key,
+                value_type: spec.value_type,
+                required: spec.required,
+                default_value: spec.default,
+                description: spec.description,
+                min: spec.min,
+                max: spec.max,
+                options: spec.options,
+                object_keys,
+                item_type,
+                shape: (!shape.is_empty()).then_some(serde_json::Value::Object(shape)),
+            }
+        })
+        .collect()
+}
+
 fn registry_module_lifecycle_from_snapshot(
-    snapshot: RegistryModuleLifecycleSnapshot,
+    snapshot: rustok_modules::ModuleGovernanceLifecycleSnapshot,
 ) -> crate::graphql::types::RegistryModuleLifecycle {
     crate::graphql::types::RegistryModuleLifecycle {
         moderation_policy: crate::graphql::types::RegistryModerationPolicyLifecycle {
-            mode: "registry_v2".to_string(),
-            live_publish_supported: true,
-            live_governance_supported: true,
-            manual_review_required: true,
-            restriction_reason_code: None,
-            restriction_reason: String::new(),
+            mode: snapshot.moderation_policy.mode,
+            live_publish_supported: snapshot.moderation_policy.live_publish_supported,
+            live_governance_supported: snapshot.moderation_policy.live_governance_supported,
+            manual_review_required: snapshot.moderation_policy.manual_review_required,
+            restriction_reason_code: snapshot.moderation_policy.restriction_reason_code,
+            restriction_reason: snapshot.moderation_policy.restriction_reason,
         },
         owner_binding: snapshot.owner_binding.map(|owner| {
             crate::graphql::types::RegistryOwnerLifecycle {
-                owner: owner.owner.into(),
-                bound_by: owner.bound_by.into(),
+                owner: RegistryPrincipalRef::from_json_value(&owner.owner_principal).into(),
+                bound_by: RegistryPrincipalRef::from_json_value(&owner.bound_by_principal).into(),
                 bound_at: owner.bound_at,
                 updated_at: owner.updated_at,
             }
@@ -262,16 +371,39 @@ fn registry_module_lifecycle_from_snapshot(
             crate::graphql::types::RegistryPublishRequestLifecycle {
                 id: request.id,
                 status: request.status,
-                requested_by: request.requested_by.into(),
-                publisher: request.publisher.map(Into::into),
-                approved_by: request.approved_by.map(Into::into),
-                rejected_by: request.rejected_by.map(Into::into),
+                requested_by: RegistryPrincipalRef::from_json_value(
+                    &request.requested_by_principal,
+                )
+                .into(),
+                publisher: request
+                    .publisher_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value)
+                    .map(Into::into),
+                approved_by: request
+                    .approved_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value)
+                    .map(Into::into),
+                rejected_by: request
+                    .rejected_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value)
+                    .map(Into::into),
                 rejection_reason: request.rejection_reason,
-                changes_requested_by: request.changes_requested_by.map(Into::into),
+                changes_requested_by: request
+                    .changes_requested_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value)
+                    .map(Into::into),
                 changes_requested_reason: request.changes_requested_reason,
                 changes_requested_reason_code: request.changes_requested_reason_code,
                 changes_requested_at: request.changes_requested_at,
-                held_by: request.held_by.map(Into::into),
+                held_by: request
+                    .held_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value)
+                    .map(Into::into),
                 held_reason: request.held_reason,
                 held_reason_code: request.held_reason_code,
                 held_at: request.held_at,
@@ -287,11 +419,16 @@ fn registry_module_lifecycle_from_snapshot(
             crate::graphql::types::RegistryReleaseLifecycle {
                 version: release.version,
                 status: release.status,
-                publisher: release.publisher.into(),
+                publisher: RegistryPrincipalRef::from_json_value(&release.publisher_principal)
+                    .into(),
                 checksum_sha256: release.checksum_sha256,
                 published_at: release.published_at,
                 yanked_reason: release.yanked_reason,
-                yanked_by: release.yanked_by.map(Into::into),
+                yanked_by: release
+                    .yanked_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value)
+                    .map(Into::into),
                 yanked_at: release.yanked_at,
             }
         }),
@@ -302,8 +439,12 @@ fn registry_module_lifecycle_from_snapshot(
                 |event| crate::graphql::types::RegistryGovernanceEventLifecycle {
                     id: event.id,
                     event_type: event.event_type,
-                    actor: event.actor.into(),
-                    publisher: event.publisher.map(Into::into),
+                    actor: RegistryPrincipalRef::from_json_value(&event.actor_principal).into(),
+                    publisher: event
+                        .publisher_principal
+                        .as_ref()
+                        .map(RegistryPrincipalRef::from_json_value)
+                        .map(Into::into),
                     payload: crate::graphql::types::RegistryGovernanceEventPayloadLifecycle {
                         reason: event.payload.reason,
                         reason_code: event.payload.reason_code,
@@ -313,9 +454,21 @@ fn registry_module_lifecycle_from_snapshot(
                         attempt_number: event.payload.attempt_number,
                         owner_transition: event.payload.owner_transition.map(|transition| {
                             crate::graphql::types::RegistryOwnerTransitionLifecycle {
-                                previous_owner: transition.previous_owner.map(Into::into),
-                                new_owner: transition.new_owner.map(Into::into),
-                                bound_by: transition.bound_by.map(Into::into),
+                                previous_owner: transition
+                                    .previous_owner_principal
+                                    .as_ref()
+                                    .map(RegistryPrincipalRef::from_json_value)
+                                    .map(Into::into),
+                                new_owner: transition
+                                    .new_owner_principal
+                                    .as_ref()
+                                    .map(RegistryPrincipalRef::from_json_value)
+                                    .map(Into::into),
+                                bound_by: transition
+                                    .bound_by_principal
+                                    .as_ref()
+                                    .map(RegistryPrincipalRef::from_json_value)
+                                    .map(Into::into),
                             }
                         }),
                         warnings: event.payload.warnings,
@@ -341,9 +494,8 @@ fn registry_module_lifecycle_from_snapshot(
         validation_stages: snapshot
             .validation_stages
             .into_iter()
-            .map(|stage| {
-                let stage_key = stage.key.clone();
-                crate::graphql::types::RegistryValidationStageLifecycle {
+            .map(
+                |stage| crate::graphql::types::RegistryValidationStageLifecycle {
                     key: stage.key,
                     status: stage.status,
                     detail: stage.detail,
@@ -351,28 +503,15 @@ fn registry_module_lifecycle_from_snapshot(
                     updated_at: stage.updated_at,
                     started_at: stage.started_at,
                     finished_at: stage.finished_at,
-                    execution_mode: fallback_validation_stage_execution_mode(&stage_key)
-                        .to_string(),
-                    runnable: matches!(
-                        stage_key.as_str(),
-                        "compile_smoke" | "targeted_tests" | "security_policy_review"
-                    ),
-                    requires_manual_confirmation: stage_key == "security_policy_review",
-                    allowed_terminal_reason_codes: fallback_validation_stage_reason_codes(),
-                    suggested_pass_reason_code: fallback_validation_stage_pass_reason_code(
-                        &stage_key,
-                    )
-                    .map(str::to_string),
-                    suggested_failure_reason_code: fallback_validation_stage_failure_reason_code(
-                        &stage_key,
-                    )
-                    .map(str::to_string),
-                    suggested_blocked_reason_code: fallback_validation_stage_blocked_reason_code(
-                        &stage_key,
-                    )
-                    .map(str::to_string),
-                }
-            })
+                    execution_mode: stage.execution_mode,
+                    runnable: stage.runnable,
+                    requires_manual_confirmation: stage.requires_manual_confirmation,
+                    allowed_terminal_reason_codes: stage.allowed_terminal_reason_codes,
+                    suggested_pass_reason_code: stage.suggested_pass_reason_code,
+                    suggested_failure_reason_code: stage.suggested_failure_reason_code,
+                    suggested_blocked_reason_code: stage.suggested_blocked_reason_code,
+                },
+            )
             .collect(),
         governance_actions: snapshot
             .governance_actions
@@ -387,57 +526,6 @@ fn registry_module_lifecycle_from_snapshot(
                 },
             )
             .collect(),
-    }
-}
-
-fn fallback_validation_stage_execution_mode(key: &str) -> &'static str {
-    match key {
-        "security_policy_review" => "manual_review",
-        "compile_smoke" | "targeted_tests" => "remote",
-        _ => "external",
-    }
-}
-
-fn fallback_validation_stage_reason_codes() -> Vec<String> {
-    [
-        "local_runner_passed",
-        "manual_review_complete",
-        "build_failure",
-        "test_failure",
-        "policy_preflight_failed",
-        "security_findings",
-        "policy_exception",
-        "license_issue",
-        "manual_override",
-        "other",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect()
-}
-
-fn fallback_validation_stage_pass_reason_code(key: &str) -> Option<&'static str> {
-    match key {
-        "compile_smoke" | "targeted_tests" => Some("local_runner_passed"),
-        "security_policy_review" => Some("manual_review_complete"),
-        _ => None,
-    }
-}
-
-fn fallback_validation_stage_failure_reason_code(key: &str) -> Option<&'static str> {
-    match key {
-        "compile_smoke" => Some("build_failure"),
-        "targeted_tests" => Some("test_failure"),
-        "security_policy_review" => Some("policy_preflight_failed"),
-        _ => None,
-    }
-}
-
-fn fallback_validation_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
-    match key {
-        "security_policy_review" => Some("security_findings"),
-        "compile_smoke" | "targeted_tests" => Some("other"),
-        _ => None,
     }
 }
 
@@ -758,15 +846,19 @@ impl RootQuery {
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
+        let registry = ctx.data::<ModuleRegistry>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let modules = TenantModulesEntity::find()
-            .filter(TenantModulesColumn::TenantId.eq(tenant.id))
-            .order_by_asc(TenantModulesColumn::ModuleSlug)
-            .limit(limit as u64)
-            .all(db)
-            .await
-            .map_err(|err| err.to_string())?;
+        let owner_limit = u32::try_from(limit)
+            .map_err(|_| <FieldError as GraphQLError>::internal_error("invalid module limit"))?;
+        let modules = EffectiveModulePolicyService::tenant_override_snapshots(
+            db,
+            registry,
+            tenant.id,
+            owner_limit,
+        )
+        .await
+        .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
         let modules = modules
             .into_iter()
@@ -834,93 +926,30 @@ impl RootQuery {
     ) -> Result<Vec<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let db = runtime_ctx.db();
-        let registry = ctx.data::<ModuleRegistry>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
         let requested_limit = requested_collection_limit(limit);
         let limit = clamp_collection_limit(limit);
-        let manifest = PlatformCompositionService::active_manifest(db)
+        let modules = ctx
+            .data::<rustok_modules::SharedModuleMarketplaceCatalog>()?
+            .0
+            .list(rustok_modules::ModuleMarketplaceQuery {
+                search,
+                category,
+                tag,
+                source,
+                trust_level,
+                only_compatible: only_compatible.unwrap_or(true),
+                installed_only: installed_only.unwrap_or(false),
+                preferred_locale: Some(request_context.locale.clone()),
+                fallback_locale: Some(tenant.default_locale.clone()),
+                limit: limit as u32,
+            })
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        let installed_modules = ManifestManager::installed_modules(&manifest);
-        let search = search
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let category = category
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_lowercase);
-        let tag = tag
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_lowercase);
-        let trust_level = trust_level
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let source = source
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty());
-        let only_compatible = only_compatible.unwrap_or(true);
-        let installed_only = installed_only.unwrap_or(false);
-        let query = MarketplaceCatalogQuery {
-            search: search.map(str::to_string),
-            category: category.clone(),
-            tag: tag.clone(),
-        };
-
-        let modules = marketplace_modules_from_catalog(
-            load_marketplace_catalog(
-                db,
-                runtime_ctx,
-                &manifest,
-                registry,
-                &query,
-                MarketplaceProjectionLocales {
-                    preferred: Some(request_context.locale.as_str()),
-                    fallback: Some(tenant.default_locale.as_str()),
-                },
-            )
-            .await?,
-            registry,
-            &installed_modules,
-        )
-        .into_iter()
-        .filter(|module| module.kind == "optional")
-        .filter(|module| !only_compatible || module.compatible || module.installed)
-        .filter(|module| !installed_only || module.installed)
-        .filter(|module| trust_level_matches(module, trust_level))
-        .filter(|module| source_matches(module, source))
-        .filter(|module| {
-            category
-                .as_ref()
-                .is_none_or(|category| module.category.eq_ignore_ascii_case(category))
-        })
-        .filter(|module| {
-            tag.as_ref().is_none_or(|tag| {
-                module
-                    .tags
-                    .iter()
-                    .any(|module_tag| module_tag.eq_ignore_ascii_case(tag))
-            })
-        })
-        .filter(|module| {
-            search.is_none_or(|search| {
-                let search = search.to_lowercase();
-                module.slug.to_lowercase().contains(&search)
-                    || module.name.to_lowercase().contains(&search)
-                    || module.description.to_lowercase().contains(&search)
-                    || module.crate_name.to_lowercase().contains(&search)
-            })
-        })
-        .take(limit)
-        .collect::<Vec<_>>();
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+            .into_iter()
+            .map(marketplace_module_from_owner_entry)
+            .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",
@@ -940,42 +969,18 @@ impl RootQuery {
     ) -> Result<Option<MarketplaceModule>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let db = runtime_ctx.db();
-        let registry = ctx.data::<ModuleRegistry>()?;
         let tenant = ctx.data::<TenantContext>()?;
         let request_context = ctx.data::<RequestContext>()?;
-        let manifest = PlatformCompositionService::active_manifest(db)
+        ctx.data::<rustok_modules::SharedModuleMarketplaceCatalog>()?
+            .0
+            .get(
+                &slug,
+                Some(request_context.locale.clone()),
+                Some(tenant.default_locale.clone()),
+            )
             .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
-        let installed_modules = ManifestManager::installed_modules(&manifest);
-        let slug = slug.trim().to_lowercase();
-        let query = MarketplaceCatalogQuery::default();
-        let module = load_marketplace_module(
-            db,
-            runtime_ctx,
-            &manifest,
-            registry,
-            &query,
-            &slug,
-            MarketplaceProjectionLocales {
-                preferred: Some(request_context.locale.as_str()),
-                fallback: Some(tenant.default_locale.as_str()),
-            },
-        )
-        .await?;
-        let Some(entry) = module else {
-            return Ok(None);
-        };
-
-        let mut module = marketplace_module_from_catalog_entry(entry, registry, &installed_modules);
-        module.registry_lifecycle = RegistryGovernanceService::new(db.clone())
-            .lifecycle_snapshot(&module.slug)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
-            .map(registry_module_lifecycle_from_snapshot);
-
-        Ok(Some(module))
+            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
+            .map(|entry| entry.map(marketplace_module_from_owner_entry))
     }
 
     async fn module_operation_recovery_plan(
@@ -1039,8 +1044,8 @@ impl RootQuery {
     async fn active_build(&self, ctx: &Context<'_>) -> Result<Option<BuildJob>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let db = ctx.data::<DatabaseConnection>()?;
-        let build = BuildService::new(db.clone())
+        let build = build_control_from_context(ctx)?
+            .0
             .active_build()
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
@@ -1056,16 +1061,13 @@ impl RootQuery {
     ) -> Result<Vec<BuildJob>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let db = ctx.data::<DatabaseConnection>()?;
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;
         let offset = offset.max(0) as u64;
 
-        let builds = BuildEntity::find()
-            .order_by_desc(BuildColumn::CreatedAt)
-            .offset(offset)
-            .limit(limit)
-            .all(db)
+        let builds = build_control_from_context(ctx)?
+            .0
+            .list_builds_page(limit, offset)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -1085,11 +1087,9 @@ impl RootQuery {
     async fn active_release(&self, ctx: &Context<'_>) -> Result<Option<ReleaseInfo>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let db = ctx.data::<DatabaseConnection>()?;
-        let release = ReleaseEntity::find()
-            .filter(ReleaseColumn::Status.eq(ReleaseStatus::Active))
-            .order_by_desc(ReleaseColumn::UpdatedAt)
-            .one(db)
+        let release = build_control_from_context(ctx)?
+            .0
+            .active_release()
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
@@ -1104,16 +1104,13 @@ impl RootQuery {
     ) -> Result<Vec<ReleaseInfo>> {
         ensure_modules_read_permission(ctx).await?;
 
-        let db = ctx.data::<DatabaseConnection>()?;
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;
         let offset = offset.max(0) as u64;
 
-        let releases = ReleaseEntity::find()
-            .order_by_desc(ReleaseColumn::CreatedAt)
-            .offset(offset)
-            .limit(limit)
-            .all(db)
+        let releases = build_control_from_context(ctx)?
+            .0
+            .list_releases_page(limit, offset)
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 

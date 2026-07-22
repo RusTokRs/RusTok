@@ -1,3 +1,4 @@
+use crate::entities;
 use rust_decimal::prelude::ToPrimitive;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
 use rustok_commerce_foundation::dto::{
@@ -5,7 +6,6 @@ use rustok_commerce_foundation::dto::{
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
     ProductTranslationInput, ProductTranslationResponse,
 };
-use crate::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use sea_orm::{
@@ -783,7 +783,10 @@ pub async fn load_available_inventory_by_variant_for_public_channel(
     }
 
     let inventory_items = commerce_foundation::entities::inventory_item::Entity::find()
-        .filter(commerce_foundation::entities::inventory_item::Column::VariantId.is_in(variant_ids.iter().copied()))
+        .filter(
+            commerce_foundation::entities::inventory_item::Column::VariantId
+                .is_in(variant_ids.iter().copied()),
+        )
         .all(db)
         .await?;
     if inventory_items.is_empty() {

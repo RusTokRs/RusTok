@@ -3,6 +3,154 @@ use rustok_modules::{
     ModuleMarketplaceContentProjection, ModuleOwnerTransferCommand, ModuleReleaseYankCommand,
 };
 
+pub(crate) fn map_owner_lifecycle_snapshot(
+    snapshot: rustok_modules::ModuleGovernanceLifecycleSnapshot,
+) -> RegistryModuleLifecycleSnapshot {
+    RegistryModuleLifecycleSnapshot {
+        owner_binding: snapshot
+            .owner_binding
+            .map(|owner| RegistryModuleOwnerSnapshot {
+                owner: RegistryPrincipalRef::from_json_value(&owner.owner_principal),
+                bound_by: RegistryPrincipalRef::from_json_value(&owner.bound_by_principal),
+                bound_at: owner.bound_at,
+                updated_at: owner.updated_at,
+            }),
+        latest_request: snapshot
+            .latest_request
+            .map(|request| RegistryPublishRequestSnapshot {
+                id: request.id,
+                status: request.status,
+                artifact_origin: request.artifact_origin,
+                requested_by: RegistryPrincipalRef::from_json_value(
+                    &request.requested_by_principal,
+                ),
+                publisher: request
+                    .publisher_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                approved_by: request
+                    .approved_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                rejected_by: request
+                    .rejected_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                rejection_reason: request.rejection_reason,
+                changes_requested_by: request
+                    .changes_requested_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                changes_requested_reason: request.changes_requested_reason,
+                changes_requested_reason_code: request.changes_requested_reason_code,
+                changes_requested_at: request.changes_requested_at,
+                held_by: request
+                    .held_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                held_reason: request.held_reason,
+                held_reason_code: request.held_reason_code,
+                held_at: request.held_at,
+                held_from_status: request.held_from_status,
+                warnings: request.warnings,
+                errors: request.errors,
+                created_at: request.created_at,
+                updated_at: request.updated_at,
+                published_at: request.published_at,
+            }),
+        latest_release: snapshot
+            .latest_release
+            .map(|release| RegistryModuleReleaseSnapshot {
+                version: release.version,
+                status: release.status,
+                publisher: RegistryPrincipalRef::from_json_value(&release.publisher_principal),
+                checksum_sha256: release.checksum_sha256,
+                published_at: release.published_at,
+                yanked_reason: release.yanked_reason,
+                yanked_by: release
+                    .yanked_by_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                yanked_at: release.yanked_at,
+            }),
+        recent_events: snapshot
+            .recent_events
+            .into_iter()
+            .map(|event| RegistryGovernanceEventSnapshot {
+                id: event.id,
+                event_type: event.event_type,
+                actor: RegistryPrincipalRef::from_json_value(&event.actor_principal),
+                publisher: event
+                    .publisher_principal
+                    .as_ref()
+                    .map(RegistryPrincipalRef::from_json_value),
+                payload: RegistryGovernanceEventPayload {
+                    reason: event.payload.reason,
+                    reason_code: event.payload.reason_code,
+                    detail: event.payload.detail,
+                    version: event.payload.version,
+                    stage_key: event.payload.stage_key,
+                    attempt_number: event.payload.attempt_number,
+                    owner_transition: event.payload.owner_transition.map(|transition| {
+                        RegistryOwnerTransitionPayload {
+                            previous_owner: transition
+                                .previous_owner_principal
+                                .as_ref()
+                                .map(RegistryPrincipalRef::from_json_value),
+                            new_owner: transition
+                                .new_owner_principal
+                                .as_ref()
+                                .map(RegistryPrincipalRef::from_json_value),
+                            bound_by: transition
+                                .bound_by_principal
+                                .as_ref()
+                                .map(RegistryPrincipalRef::from_json_value),
+                        }
+                    }),
+                    warnings: event.payload.warnings,
+                    errors: event.payload.errors,
+                    mode: event.payload.mode,
+                },
+                created_at: event.created_at,
+            })
+            .collect(),
+        follow_up_gates: snapshot
+            .follow_up_gates
+            .into_iter()
+            .map(|gate| RegistryFollowUpGateSnapshot {
+                key: gate.key,
+                status: gate.status,
+                detail: gate.detail,
+                updated_at: gate.updated_at,
+            })
+            .collect(),
+        validation_stages: snapshot
+            .validation_stages
+            .into_iter()
+            .map(|stage| RegistryValidationStageSnapshot {
+                key: stage.key,
+                status: stage.status,
+                detail: stage.detail,
+                attempt_number: stage.attempt_number,
+                updated_at: stage.updated_at,
+                started_at: stage.started_at,
+                finished_at: stage.finished_at,
+            })
+            .collect(),
+        governance_actions: snapshot
+            .governance_actions
+            .into_iter()
+            .map(|action| RegistryGovernanceActionSnapshot {
+                key: action.key,
+                reason_required: action.reason_required,
+                reason_code_required: action.reason_code_required,
+                reason_codes: action.reason_codes,
+                destructive: action.destructive,
+            })
+            .collect(),
+    }
+}
+
 impl RegistryGovernanceService {
     pub async fn yank_release(
         &self,
@@ -180,124 +328,12 @@ impl RegistryGovernanceService {
         &self,
         slug: &str,
     ) -> anyhow::Result<Option<RegistryModuleLifecycleSnapshot>> {
-        let owner_binding = RegistryModuleOwnerEntity::find_by_id(slug)
-            .one(&self.db)
-            .await?;
-        let latest_request = RegistryPublishRequestEntity::find()
-            .filter(registry_publish_request::Column::Slug.eq(slug))
-            .order_by_desc(registry_publish_request::Column::CreatedAt)
-            .one(&self.db)
-            .await?;
-        let latest_release = RegistryModuleReleaseEntity::find()
-            .filter(registry_module_release::Column::Slug.eq(slug))
-            .order_by_desc(registry_module_release::Column::PublishedAt)
-            .one(&self.db)
-            .await?;
-        let recent_events = RegistryGovernanceEventEntity::find()
-            .filter(registry_governance_event::Column::Slug.eq(slug))
-            .order_by_desc(registry_governance_event::Column::CreatedAt)
-            .limit(10)
-            .all(&self.db)
-            .await?;
-        let validation_stage_rows = if let Some(request) = latest_request.as_ref() {
-            self.validation_stage_rows(&request.id).await?
-        } else {
-            Vec::new()
-        };
-
-        if owner_binding.is_none()
-            && latest_request.is_none()
-            && latest_release.is_none()
-            && recent_events.is_empty()
-            && validation_stage_rows.is_empty()
-        {
-            return Ok(None);
-        }
-
-        let validation_stages = derive_validation_stage_snapshots(
-            latest_request.as_ref(),
-            &recent_events,
-            &validation_stage_rows,
-        );
-        let follow_up_gates = derive_follow_up_gate_snapshots(
-            latest_request.as_ref(),
-            &recent_events,
-            &validation_stages,
-        );
-
-        let governance_actions = lifecycle_governance_actions(
-            latest_request.as_ref(),
-            latest_release.as_ref(),
-            owner_binding.as_ref(),
-            &validation_stages,
-        );
-
-        Ok(Some(RegistryModuleLifecycleSnapshot {
-            owner_binding: owner_binding
-                .as_ref()
-                .map(|binding| RegistryModuleOwnerSnapshot {
-                    owner: principal_from_json(&binding.owner_principal),
-                    bound_by: principal_from_json(&binding.bound_by),
-                    bound_at: binding.bound_at.to_rfc3339(),
-                    updated_at: binding.updated_at.to_rfc3339(),
-                }),
-            latest_request: latest_request
-                .as_ref()
-                .map(|request| RegistryPublishRequestSnapshot {
-                    id: request.id.clone(),
-                    status: request_status_label(request.status.clone()).to_string(),
-                    artifact_origin: request.artifact_origin.clone(),
-                    requested_by: principal_from_json(&request.requested_by),
-                    publisher: optional_principal_from_json(&request.publisher_principal),
-                    approved_by: optional_principal_from_json(&request.approved_by),
-                    rejected_by: optional_principal_from_json(&request.rejected_by),
-                    rejection_reason: request.rejection_reason.clone(),
-                    changes_requested_by: optional_principal_from_json(
-                        &request.changes_requested_by,
-                    ),
-                    changes_requested_reason: request.changes_requested_reason.clone(),
-                    changes_requested_reason_code: request.changes_requested_reason_code.clone(),
-                    changes_requested_at: request
-                        .changes_requested_at
-                        .map(|value| value.to_rfc3339()),
-                    held_by: optional_principal_from_json(&request.held_by),
-                    held_reason: request.held_reason.clone(),
-                    held_reason_code: request.held_reason_code.clone(),
-                    held_at: request.held_at.map(|value| value.to_rfc3339()),
-                    held_from_status: request.held_from_status.clone(),
-                    warnings: deserialize_message_list(&request.validation_warnings),
-                    errors: deserialize_message_list(&request.validation_errors),
-                    created_at: request.created_at.to_rfc3339(),
-                    updated_at: request.updated_at.to_rfc3339(),
-                    published_at: request.published_at.map(|value| value.to_rfc3339()),
-                }),
-            latest_release: latest_release
-                .as_ref()
-                .map(|release| RegistryModuleReleaseSnapshot {
-                    version: release.version.clone(),
-                    status: release_status_label(release.status.clone()).to_string(),
-                    publisher: principal_from_json(&release.publisher),
-                    checksum_sha256: release.checksum_sha256.clone(),
-                    published_at: release.published_at.to_rfc3339(),
-                    yanked_reason: release.yanked_reason.clone(),
-                    yanked_by: optional_principal_from_json(&release.yanked_by),
-                    yanked_at: release.yanked_at.map(|value| value.to_rfc3339()),
-                }),
-            recent_events: recent_events
-                .into_iter()
-                .map(|event| RegistryGovernanceEventSnapshot {
-                    id: event.id,
-                    event_type: event.event_type,
-                    actor: principal_from_json(&event.actor),
-                    publisher: optional_principal_from_json(&event.publisher),
-                    payload: governance_event_payload(&event.details),
-                    created_at: event.created_at.to_rfc3339(),
-                })
-                .collect(),
-            follow_up_gates,
-            governance_actions,
-            validation_stages,
-        }))
+        let snapshot = self
+            .release_service()
+            .lifecycle_snapshot(slug)
+            .await
+            .map_err(anyhow::Error::new)?;
+        Ok(snapshot.map(map_owner_lifecycle_snapshot))
     }
 
     pub async fn publish_request_follow_up_snapshot(

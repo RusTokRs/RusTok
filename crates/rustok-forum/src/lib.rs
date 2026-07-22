@@ -95,13 +95,12 @@ impl RusToKModule for ForumModule {
                     "forum category SEO target registration failed: {error}"
                 ))
             })?;
-        register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider).map_err(
-            |error| {
+        register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider)
+            .map_err(|error| {
                 rustok_core::Error::Validation(format!(
                     "forum topic SEO target registration failed: {error}"
                 ))
-            },
-        )?;
+            })?;
         register_notification_source_provider_factory(
             extensions,
             notification_source::ForumNotificationSourceProviderFactory,

@@ -10,11 +10,11 @@ use crate::application_model::{
     GroupsAdminApplicationPolicyRevision, GroupsAdminApplicationPolicyRevisionQuery,
     GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
 };
-use crate::core::{groups_admin_error, selected_transport_profile, GroupsAdminTransportProfile};
+use crate::core::{GroupsAdminTransportProfile, groups_admin_error, selected_transport_profile};
 use crate::i18n::t;
 use crate::transport::{
-    load_group_admin_application_policy, load_group_admin_application_policy_revisions,
-    upsert_group_admin_application_policy, GroupsAdminTransportContext,
+    GroupsAdminTransportContext, load_group_admin_application_policy,
+    load_group_admin_application_policy_revisions, upsert_group_admin_application_policy,
 };
 
 #[derive(Clone)]
@@ -146,10 +146,8 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
             }
         };
         let expected_revision = loaded_revision.get_untracked();
-        let query = match prepare_group_application_policy_query(
-            &command.group_id,
-            &command.locale,
-        ) {
+        let query = match prepare_group_application_policy_query(&command.group_id, &command.locale)
+        {
             Ok(query) => query,
             Err(_) => {
                 error.set(Some(save_copy.invalid.clone()));
@@ -318,7 +316,20 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                                 <textarea class="min-h-20 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=question_help.clone() prop:value=help_value on:input=move |event| questions.update(|items| if let Some(item) = items.get_mut(index) { let value = event_target_value(&event); item.help_text = (!value.trim().is_empty()).then_some(value); })></textarea>
                                 <div class="flex flex-wrap items-center gap-3">
                                     <label class="flex items-center gap-2 text-sm"><input type="checkbox" prop:checked=question.required on:change=move |event| questions.update(|items| if let Some(item) = items.get_mut(index) { item.required = event_target_checked(&event); }) /><span>{question_required.clone()}</span></label>
-                                    <input class="w-40 rounded-xl border border-border bg-background px-3 py-2 text-sm" aria-label=answer_limit.clone() prop:value=question.max_answer_chars.to_string() on:input=move |event| if let Ok(value) = event_target_value(&event).parse::<u32>() { questions.update(|items| if let Some(item) = items.get_mut(index) { item.max_answer_chars = value; }); } />
+                                    <input
+                                        class="w-40 rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                                        aria-label=answer_limit.clone()
+                                        prop:value=question.max_answer_chars.to_string()
+                                        on:input=move |event| {
+                                            if let Ok(value) = event_target_value(&event).parse::<u32>() {
+                                                questions.update(|items| {
+                                                    if let Some(item) = items.get_mut(index) {
+                                                        item.max_answer_chars = value;
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    />
                                     <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(questions, index, -1)>{question_move_up.clone()}</button>
                                     <button type="button" class="rounded-lg border border-border px-2 py-1 text-xs" on:click=move |_| move_item(questions, index, 1)>{question_move_down.clone()}</button>
                                     <button type="button" class="rounded-lg border border-destructive px-2 py-1 text-xs text-destructive" on:click=move |_| questions.update(|items| { if index < items.len() { items.remove(index); } })>{question_remove.clone()}</button>
@@ -387,7 +398,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     }
 }
 
-fn move_item<T>(signal: RwSignal<Vec<T>>, index: usize, direction: isize) {
+fn move_item<T: Send + Sync + 'static>(signal: RwSignal<Vec<T>>, index: usize, direction: isize) {
     signal.update(|items| {
         let target = index as isize + direction;
         if index < items.len() && target >= 0 && (target as usize) < items.len() {
@@ -398,19 +409,51 @@ fn move_item<T>(signal: RwSignal<Vec<T>>, index: usize, direction: isize) {
 
 fn policy_editor_copy(locale: Option<&str>) -> PolicyEditorCopy {
     PolicyEditorCopy {
-        title: t(locale, "groups.admin.policyEditor.title", "Membership policy editor"),
-        body: t(locale, "groups.admin.policyEditor.body", "Edit exact-locale questions and rules. Ordering is preserved in candidate snapshots and every successful save is captured as immutable history."),
+        title: t(
+            locale,
+            "groups.admin.policyEditor.title",
+            "Membership policy editor",
+        ),
+        body: t(
+            locale,
+            "groups.admin.policyEditor.body",
+            "Edit exact-locale questions and rules. Ordering is preserved in candidate snapshots and every successful save is captured as immutable history.",
+        ),
         group_id: t(locale, "groups.admin.policyEditor.groupId", "Group UUID"),
         locale: t(locale, "groups.admin.policyEditor.locale", "Policy locale"),
-        enabled: t(locale, "groups.admin.policyEditor.enabled", "Applications enabled"),
+        enabled: t(
+            locale,
+            "groups.admin.policyEditor.enabled",
+            "Applications enabled",
+        ),
         load: t(locale, "groups.admin.policyEditor.load", "Load policy"),
         save: t(locale, "groups.admin.policyEditor.save", "Save policy"),
-        add_question: t(locale, "groups.admin.policyEditor.addQuestion", "Add question"),
+        add_question: t(
+            locale,
+            "groups.admin.policyEditor.addQuestion",
+            "Add question",
+        ),
         add_rule: t(locale, "groups.admin.policyEditor.addRule", "Add rule"),
-        question_key: t(locale, "groups.admin.policyEditor.questionKey", "Question key"),
-        question_prompt: t(locale, "groups.admin.policyEditor.questionPrompt", "Question prompt"),
-        question_help: t(locale, "groups.admin.policyEditor.questionHelp", "Help text (optional)"),
-        answer_limit: t(locale, "groups.admin.policyEditor.answerLimit", "Maximum answer characters"),
+        question_key: t(
+            locale,
+            "groups.admin.policyEditor.questionKey",
+            "Question key",
+        ),
+        question_prompt: t(
+            locale,
+            "groups.admin.policyEditor.questionPrompt",
+            "Question prompt",
+        ),
+        question_help: t(
+            locale,
+            "groups.admin.policyEditor.questionHelp",
+            "Help text (optional)",
+        ),
+        answer_limit: t(
+            locale,
+            "groups.admin.policyEditor.answerLimit",
+            "Maximum answer characters",
+        ),
         rule_key: t(locale, "groups.admin.policyEditor.ruleKey", "Rule key"),
         rule_title: t(locale, "groups.admin.policyEditor.ruleTitle", "Rule title"),
         rule_body: t(locale, "groups.admin.policyEditor.ruleBody", "Rule body"),
@@ -418,16 +461,40 @@ fn policy_editor_copy(locale: Option<&str>) -> PolicyEditorCopy {
         move_up: t(locale, "groups.admin.policyEditor.moveUp", "Move up"),
         move_down: t(locale, "groups.admin.policyEditor.moveDown", "Move down"),
         remove: t(locale, "groups.admin.policyEditor.remove", "Remove"),
-        history: t(locale, "groups.admin.policyEditor.history", "Policy revision history"),
-        empty_history: t(locale, "groups.admin.policyEditor.emptyHistory", "No policy revisions loaded."),
+        history: t(
+            locale,
+            "groups.admin.policyEditor.history",
+            "Policy revision history",
+        ),
+        empty_history: t(
+            locale,
+            "groups.admin.policyEditor.emptyHistory",
+            "No policy revisions loaded.",
+        ),
         revision: t(locale, "groups.admin.policyEditor.revision", "revision"),
         changed_by: t(locale, "groups.admin.policyEditor.changedBy", "changed by"),
-        busy: t(locale, "groups.admin.policyEditor.busy", "Applying policy operation..."),
+        busy: t(
+            locale,
+            "groups.admin.policyEditor.busy",
+            "Applying policy operation...",
+        ),
         loaded: t(locale, "groups.admin.policyEditor.loaded", "Policy loaded"),
         saved: t(locale, "groups.admin.policyEditor.saved", "Policy saved"),
-        stale: t(locale, "groups.admin.policyEditor.stale", "The policy changed after it was loaded. Review the latest revision before saving again."),
-        error: t(locale, "groups.admin.policyEditor.error", "Policy operation failed"),
-        invalid: t(locale, "groups.admin.policyEditor.invalid", "Check the group UUID, locale, question keys, text limits, and rule fields."),
+        stale: t(
+            locale,
+            "groups.admin.policyEditor.stale",
+            "The policy changed after it was loaded. Review the latest revision before saving again.",
+        ),
+        error: t(
+            locale,
+            "groups.admin.policyEditor.error",
+            "Policy operation failed",
+        ),
+        invalid: t(
+            locale,
+            "groups.admin.policyEditor.invalid",
+            "Check the group UUID, locale, question keys, text limits, and rule fields.",
+        ),
     }
 }
 

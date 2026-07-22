@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::{PortCallPolicy, PortContext, PortError};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

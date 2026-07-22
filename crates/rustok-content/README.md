@@ -4,11 +4,18 @@
 
 `rustok-content` provides shared content helpers and a port-based cross-domain orchestration core for RusToK.
 
+The target richtext boundary keeps neutral document/read-projection types in
+`rustok-api::richtext` and executable profiles, validation, safe HTML rendering,
+and plain-text extraction in `rustok-content::richtext`. Blog, Forum, Comments,
+and future consumers continue to own their localized rows and revisions. See
+the [central implementation plan](../../docs/modules/rich-text-implementation-plan.md).
+
 ## Responsibilities
 
 - Provide `ContentModule` metadata for the runtime registry.
 - Own shared content entities, shared migrations, and orchestration state.
-- Provide shared locale, slug, and rich-text helpers used by domain modules.
+- Provide shared locale and slug helpers and the target executable richtext
+  policy used by domain modules.
 - Own orchestration state, idempotency, audit records, and canonical URL/alias mappings for cross-domain flows.
 - Own content dashboard post analytics snapshots (`ContentCountSnapshot` and
   `load_post_stats_snapshot`) so host GraphQL does not embed `nodes` SQL.

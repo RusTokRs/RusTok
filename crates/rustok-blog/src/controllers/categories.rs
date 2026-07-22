@@ -1,11 +1,11 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{
-    has_effective_permission, Action, AuthContext, Permission, RequestContext, Resource,
-    TenantContext,
+    Action, AuthContext, Permission, RequestContext, Resource, TenantContext,
+    has_effective_permission,
 };
 use rustok_web::{HttpError, HttpResult};
 use std::collections::HashMap;
@@ -47,9 +47,7 @@ fn map_category_error(error: BlogError) -> HttpError {
             "blog_category_not_found",
             format!("Blog category {category_id} not found"),
         ),
-        BlogError::Forbidden(message) => {
-            HttpError::forbidden("blog_category_forbidden", message)
-        }
+        BlogError::Forbidden(message) => HttpError::forbidden("blog_category_forbidden", message),
         BlogError::Validation(message) => {
             HttpError::bad_request("blog_category_validation_failed", message)
         }

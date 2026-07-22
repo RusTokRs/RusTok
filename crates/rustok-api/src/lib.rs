@@ -20,7 +20,7 @@ pub mod permissions;
 pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
-#[cfg(feature = "server")]
+#[cfg(feature = "runtime")]
 pub mod runtime;
 pub mod tenant_rbac;
 pub mod write_path_feedback;
@@ -56,7 +56,7 @@ pub use ports::{
 };
 #[cfg(feature = "server")]
 pub use request::RequestContext;
-#[cfg(feature = "server")]
+#[cfg(feature = "runtime")]
 pub use runtime::{HostRuntimeContext, HostSettingsSnapshot};
 pub use tenant_rbac::{
     SharedTenantRbacCatalog, TenantRbacCatalog, TenantRbacCatalogError, TenantRbacPermission,

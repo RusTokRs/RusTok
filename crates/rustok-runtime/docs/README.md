@@ -8,6 +8,8 @@ being removed.
 
 Boundary rules:
 
+- The crate enables only `rustok-api/runtime`; HTTP and GraphQL frameworks remain behind
+  `rustok-api/server` and are not part of this dependency graph.
 - Runtime contracts currently sourced from `rustok-api` may move here only when they are
   executable runtime helpers rather than stable API contracts.
 - Domain services do not move here.

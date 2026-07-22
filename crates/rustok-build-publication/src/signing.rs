@@ -5,8 +5,8 @@ use thiserror::Error;
 use tokio::{process::Command, time::timeout};
 
 use crate::credentials::{
-    remove_private_directory, validate_fixed_program, RegistryCredentialError,
-    RegistryCredentialLease,
+    RegistryCredentialError, RegistryCredentialLease, remove_private_directory,
+    validate_fixed_program,
 };
 
 pub struct CosignArtifactSigner {

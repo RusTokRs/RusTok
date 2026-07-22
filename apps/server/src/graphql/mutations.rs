@@ -13,7 +13,7 @@ use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManife
 #[cfg(test)]
 use crate::services::auth_lifecycle::AuthLifecycleError;
 use crate::services::build_event_hub::{
-    BuildEventHubPublisher, CompositeBuildEventPublisher, build_event_hub_from_context,
+    build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
 };
 use crate::services::event_bus::event_bus_from_context;
 #[cfg(test)]
@@ -30,15 +30,14 @@ use crate::services::platform_composition::{
 };
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_api::Permission;
 use rustok_api::graphql::GraphQLError;
+use rustok_api::Permission;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
 };
-use rustok_build::BuildService;
 use rustok_build::EventBusBuildEventPublisher;
-use rustok_build::release::{Column as ReleaseColumn, Entity as ReleaseEntity, ReleaseStatus};
+use rustok_build::{BuildRollbackCommand, SharedBuildControl};
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_modules::ModuleCompositionError;
 use std::sync::Arc;
@@ -656,74 +655,22 @@ impl RootMutation {
         let (_, tenant) = ensure_modules_manage_permission(ctx).await?;
 
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
-        let service = BuildService::with_event_publisher(
-            runtime_ctx.db_clone(),
-            Arc::new(CompositeBuildEventPublisher::new(vec![
-                Arc::new(BuildEventHubPublisher::new(build_event_hub_from_context(
-                    runtime_ctx,
-                ))),
-                Arc::new(EventBusBuildEventPublisher::new(
-                    event_bus_from_context(runtime_ctx),
-                    tenant.id,
-                )),
-            ])),
-        );
-
-        if service
-            .active_build()
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
-            .is_some()
-        {
-            return Err(FieldError::new(
-                "Cannot rollback while another build is still queued or running",
-            ));
-        }
-
-        let build = service
-            .get_build(parse_build_id(&build_id)?)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
-            .ok_or_else(|| FieldError::new("Build not found"))?;
-
-        let release_id = build
-            .release_id
-            .clone()
-            .ok_or_else(|| FieldError::new("Build does not have a release to rollback"))?;
-
-        let active_release = ReleaseEntity::find()
-            .filter(ReleaseColumn::Status.eq(ReleaseStatus::Active))
-            .one(runtime_ctx.db())
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
-            .ok_or_else(|| FieldError::new("No active release available for rollback"))?;
-
-        if active_release.id != release_id {
-            return Err(FieldError::new(
-                "Only the build that backs the current active release can be rolled back",
-            ));
-        }
-
-        if active_release.previous_release_id.is_none() {
-            return Err(FieldError::new(
-                "No previous release available for rollback",
-            ));
-        }
-
-        let restored_release = service
-            .rollback(&release_id)
-            .await
-            .map_err(|err| FieldError::new(err.to_string()))?;
-
-        let restored_build = service
-            .get_build(restored_release.build_id)
-            .await
-            .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?
+        let build_control = runtime_ctx
+            .shared_get::<SharedBuildControl>()
             .ok_or_else(|| {
                 <FieldError as GraphQLError>::internal_error(
-                    "restored release is missing its build record",
+                    "build control is not configured",
                 )
             })?;
+        let restored_build = build_control
+            .0
+            .rollback_build(BuildRollbackCommand {
+                build_id: parse_build_id(&build_id)?,
+                tenant_id: tenant.id,
+                actor_id: ctx.data::<AuthContext>()?.user_id,
+            })
+            .await
+            .map_err(|err| FieldError::new(err.to_string()))?;
 
         Ok(BuildJob::from_model(&restored_build))
     }
@@ -896,19 +843,19 @@ impl RootMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthLifecycleError, ManifestError, PlatformCompositionBuildError, PlatformCompositionError,
-        TOGGLE_ERR_UNKNOWN_MODULE, ToggleModuleError, map_create_user_error, map_manifest_error,
-        map_platform_composition_build_error, map_platform_composition_error,
-        map_toggle_module_error, prepare_user_custom_fields_write,
+        map_create_user_error, map_manifest_error, map_platform_composition_build_error,
+        map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
         toggle_err_core_module_cannot_be_disabled, toggle_err_has_dependents,
         toggle_err_hook_failed, toggle_err_missing_dependencies, validate_custom_fields,
+        AuthLifecycleError, ManifestError, PlatformCompositionBuildError, PlatformCompositionError,
+        ToggleModuleError, TOGGLE_ERR_UNKNOWN_MODULE,
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use async_graphql::ErrorExtensions;
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
-        ActiveModelTrait, DatabaseConnection, Set, entity::prelude::DateTimeWithTimeZone,
+        entity::prelude::DateTimeWithTimeZone, ActiveModelTrait, DatabaseConnection, Set,
     };
     use uuid::Uuid;
 

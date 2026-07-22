@@ -29,6 +29,11 @@ entrypoints must not re-export `src/features/*` implementations.
 - Keep typed `snake_case` URL query keys aligned with the Leptos admin host.
 - Keep starter-only routes (`billing`, `exclusive`, `workspaces`,
   `workspaces/team`) returning `notFound()`.
+- Prepare the atomic
+  [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md):
+  replace the Blog-local React prototype with the shared framed vanilla
+  Tiptap runtime, move Forum UI/API/navigation to its owner package, consume
+  host i18n/locale context, and never ship a second Markdown/raw-JSON mode.
 
 ## Open Improvement Areas
 
@@ -39,6 +44,8 @@ entrypoints must not re-export `src/features/*` implementations.
 - Add client telemetry events and correlation-id propagation for critical admin
   flows.
 - Strengthen route/action RBAC guard coverage.
+- Add Next/Leptos parity, CSP-frame, accessibility, lazy-bundle, and
+  save/reload coverage for the shared richtext editor and server-rendered view.
 
 ## Verification
 

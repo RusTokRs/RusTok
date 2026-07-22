@@ -7,8 +7,8 @@ use leptos_ui_routing::use_route_query_writer;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
+    GROUP_APPLICATION_QUERY_KEY, GroupsStorefrontApplicationInputError,
     prepare_group_application_policy_query, prepare_submit_group_membership_application,
-    GroupsStorefrontApplicationInputError, GROUP_APPLICATION_QUERY_KEY,
 };
 use crate::application_model::{
     GroupsStorefrontApplicationPolicy, GroupsStorefrontSubmitApplicationResult,
@@ -16,8 +16,8 @@ use crate::application_model::{
 use crate::core::groups_storefront_error;
 use crate::i18n::t;
 use crate::transport::{
-    load_groups_storefront_application_policy, submit_groups_storefront_membership_application,
-    GroupsStorefrontTransportContext,
+    GroupsStorefrontTransportContext, load_groups_storefront_application_policy,
+    submit_groups_storefront_membership_application,
 };
 
 #[derive(Clone)]
@@ -44,9 +44,7 @@ struct ApplicationCopy {
 }
 
 #[component]
-pub fn GroupsMembershipApplication(
-    transport: GroupsStorefrontTransportContext,
-) -> impl IntoView {
+pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale.clone();
     let copy = application_copy(locale.as_deref());
@@ -293,24 +291,84 @@ fn application_input_error_message(
 
 fn application_copy(locale: Option<&str>) -> ApplicationCopy {
     ApplicationCopy {
-        title: t(locale, "groups.storefront.application.title", "Apply to join this group"),
-        body: t(locale, "groups.storefront.application.body", "Answer the current membership questions and acknowledge required rules. Your submission keeps an immutable snapshot for review."),
-        loading: t(locale, "groups.storefront.application.loading", "Loading membership policy..."),
-        unavailable: t(locale, "groups.storefront.application.unavailable", "Membership applications are unavailable for this group or locale."),
+        title: t(
+            locale,
+            "groups.storefront.application.title",
+            "Apply to join this group",
+        ),
+        body: t(
+            locale,
+            "groups.storefront.application.body",
+            "Answer the current membership questions and acknowledge required rules. Your submission keeps an immutable snapshot for review.",
+        ),
+        loading: t(
+            locale,
+            "groups.storefront.application.loading",
+            "Loading membership policy...",
+        ),
+        unavailable: t(
+            locale,
+            "groups.storefront.application.unavailable",
+            "Membership applications are unavailable for this group or locale.",
+        ),
         required: t(locale, "groups.storefront.application.required", "Required"),
         optional: t(locale, "groups.storefront.application.optional", "Optional"),
         rules: t(locale, "groups.storefront.application.rules", "Group rules"),
-        acknowledge: t(locale, "groups.storefront.application.acknowledge", "I acknowledge this rule"),
-        submit: t(locale, "groups.storefront.application.submit", "Submit application"),
-        busy: t(locale, "groups.storefront.application.busy", "Submitting application..."),
-        error: t(locale, "groups.storefront.application.error", "Membership application could not be submitted"),
-        success: t(locale, "groups.storefront.application.success", "Application submitted for review."),
+        acknowledge: t(
+            locale,
+            "groups.storefront.application.acknowledge",
+            "I acknowledge this rule",
+        ),
+        submit: t(
+            locale,
+            "groups.storefront.application.submit",
+            "Submit application",
+        ),
+        busy: t(
+            locale,
+            "groups.storefront.application.busy",
+            "Submitting application...",
+        ),
+        error: t(
+            locale,
+            "groups.storefront.application.error",
+            "Membership application could not be submitted",
+        ),
+        success: t(
+            locale,
+            "groups.storefront.application.success",
+            "Application submitted for review.",
+        ),
         pending: t(locale, "groups.storefront.application.pending", "Pending"),
-        invalid_group_id: t(locale, "groups.storefront.application.invalidGroupId", "The application link contains an invalid group UUID."),
-        unknown_question: t(locale, "groups.storefront.application.unknownQuestion", "The application contains an unknown question."),
-        missing_answer: t(locale, "groups.storefront.application.missingAnswer", "Answer every required question."),
-        answer_too_long: t(locale, "groups.storefront.application.answerTooLong", "One or more answers exceed their character limit."),
-        unknown_rule: t(locale, "groups.storefront.application.unknownRule", "The application contains an unknown rule acknowledgement."),
-        missing_rule: t(locale, "groups.storefront.application.missingRule", "Acknowledge every required group rule."),
+        invalid_group_id: t(
+            locale,
+            "groups.storefront.application.invalidGroupId",
+            "The application link contains an invalid group UUID.",
+        ),
+        unknown_question: t(
+            locale,
+            "groups.storefront.application.unknownQuestion",
+            "The application contains an unknown question.",
+        ),
+        missing_answer: t(
+            locale,
+            "groups.storefront.application.missingAnswer",
+            "Answer every required question.",
+        ),
+        answer_too_long: t(
+            locale,
+            "groups.storefront.application.answerTooLong",
+            "One or more answers exceed their character limit.",
+        ),
+        unknown_rule: t(
+            locale,
+            "groups.storefront.application.unknownRule",
+            "The application contains an unknown rule acknowledgement.",
+        ),
+        missing_rule: t(
+            locale,
+            "groups.storefront.application.missingRule",
+            "Acknowledge every required group rule.",
+        ),
     }
 }

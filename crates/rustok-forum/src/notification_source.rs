@@ -4,14 +4,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustok_api::HostRuntimeContext;
 use rustok_notifications_api::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest,
-    NotificationAudienceCandidate, NotificationAudienceCursor, NotificationAudiencePage,
-    NotificationOpenAuthorization, NotificationPriority, NotificationProviderError,
-    NotificationProviderResult, NotificationSemanticDescriptor, NotificationSourceEventRef,
-    NotificationSourceProvider, NotificationSourceProviderFactory, NotificationSourceSlug,
-    NotificationTargetKind, NotificationTargetRef, NotificationTargetRoute,
-    NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
-    ResolveNotificationAudienceRequest,
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
+    NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
+    NotificationPriority, NotificationProviderError, NotificationProviderResult,
+    NotificationSemanticDescriptor, NotificationSourceEventRef, NotificationSourceProvider,
+    NotificationSourceProviderFactory, NotificationSourceSlug, NotificationTargetKind,
+    NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,
+    NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
@@ -61,9 +60,7 @@ impl ForumNotificationSourceProvider {
         &self,
         event: &NotificationSourceEventRef,
     ) -> NotificationProviderResult<forum_domain_event::Model> {
-        if event.source() != &forum_source_slug()
-            || event.event_type() != &topic_created_type()
-        {
+        if event.source() != &forum_source_slug() || event.event_type() != &topic_created_type() {
             return Err(NotificationProviderError::InvalidEvent);
         }
         let sequence_no = i64::try_from(event.source_revision())
@@ -213,9 +210,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             .filter(forum_category_subscription::Column::TenantId.eq(event.tenant_id))
             .filter(forum_category_subscription::Column::CategoryId.eq(topic.category_id))
             .filter(forum_category_subscription::Column::NotifyNewTopics.eq(true))
-            .filter(
-                forum_category_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted),
-            )
+            .filter(forum_category_subscription::Column::Level.ne(ForumSubscriptionLevel::Muted))
             .order_by_asc(forum_category_subscription::Column::UserId);
         if let Some(cursor) = cursor {
             query = query.filter(forum_category_subscription::Column::UserId.gt(cursor));
@@ -234,7 +229,9 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
         let next_cursor = if has_more {
             subscriptions
                 .last()
-                .map(|subscription| NotificationAudienceCursor::new(subscription.user_id.to_string()))
+                .map(|subscription| {
+                    NotificationAudienceCursor::new(subscription.user_id.to_string())
+                })
                 .transpose()
                 .map_err(|_| NotificationProviderError::Internal { retryable: false })?
         } else {
@@ -286,7 +283,8 @@ fn retryable_database_error(_error: sea_orm::DbErr) -> NotificationProviderError
 }
 
 fn forum_source_slug() -> NotificationSourceSlug {
-    NotificationSourceSlug::new(FORUM_SOURCE).expect("forum notification source slug must stay valid")
+    NotificationSourceSlug::new(FORUM_SOURCE)
+        .expect("forum notification source slug must stay valid")
 }
 
 fn topic_created_type() -> NotificationTypeKey {

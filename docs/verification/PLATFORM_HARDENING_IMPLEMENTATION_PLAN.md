@@ -55,7 +55,7 @@ The plan was initially revalidated against `main` on 2026-07-17 at commit `9c3a5
 29. Negative tenant isolation coverage rejects missing, malformed, unknown, conflicting and disabled tenant assertions across REST, GraphQL HTTP, GraphQL WebSocket and storefront paths.
 30. Subdomain tenant resolution requires at least one configured base domain at bootstrap.
 31. Production startup requires an explicit HTTPS deployment declaration, and HSTS flag parsing is normalized.
-32. The `/v1/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
+32. The `/catalog*` bypass was reviewed and documented as a global read-only registry boundary; `/v2/catalog/*` mutation routes remain tenant-bound.
 33. `modules.toml.example` and `docs/modules/overview.md` were synchronized with `modules.toml`, and an automated drift gate protects them.
 34. The stale `quick-xml` advisory waivers were removed after confirming that the package is absent from the resolved `Cargo.lock` graph.
 35. Three stale `rustls-webpki` waivers were removed because the resolved version is `0.103.13`, which meets all three patched thresholds.

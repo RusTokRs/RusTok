@@ -9,13 +9,14 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::MarketplaceLedgerService;
 use crate::dto::{
-    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
-    MarketplaceLedgerEntryResponse, MarketplaceLedgerTransactionResponse,
-    MarketplaceLedgerTransactionStatus, MarketplaceSellerBalanceBucket,
-    MarketplaceSellerBalanceTransferKind, MarketplaceSellerBalanceTransferLineResponse,
-    MarketplaceSellerBalanceTransferResponse, PostMarketplaceSellerBalanceTransferInput,
-    RebuildMarketplaceSellerBalanceInput, MAX_LEDGER_BALANCE_TRANSFER_LINES,
+    MAX_LEDGER_BALANCE_TRANSFER_LINES, MarketplaceLedgerAccountCode,
+    MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryResponse,
+    MarketplaceLedgerTransactionResponse, MarketplaceLedgerTransactionStatus,
+    MarketplaceSellerBalanceBucket, MarketplaceSellerBalanceTransferKind,
+    MarketplaceSellerBalanceTransferLineResponse, MarketplaceSellerBalanceTransferResponse,
+    PostMarketplaceSellerBalanceTransferInput, RebuildMarketplaceSellerBalanceInput,
 };
 use crate::entities::{
     balance_transfer, balance_transfer_line, entry, entry_balance_bucket, reversal_line,
@@ -23,11 +24,10 @@ use crate::entities::{
 };
 use crate::error::{MarketplaceLedgerError, MarketplaceLedgerResult};
 use crate::receipts::{
-    admit_command_receipt, command_request_hash, complete_receipt, normalize_idempotency_key,
-    replay_command_receipt, replay_existing_command, rollback_receipt, LedgerReceiptAdmission,
-    NewLedgerReceipt,
+    LedgerReceiptAdmission, NewLedgerReceipt, admit_command_receipt, command_request_hash,
+    complete_receipt, normalize_idempotency_key, replay_command_receipt, replay_existing_command,
+    rollback_receipt,
 };
-use crate::MarketplaceLedgerService;
 
 const COMMAND_KIND: &str = "post_seller_balance_transfer";
 
@@ -43,15 +43,14 @@ impl MarketplaceLedgerService {
         validate_input(&input)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = command_request_hash(COMMAND_KIND, actor_id, &input)?;
-        if let Some(response) =
-            replay_existing_command::<MarketplaceSellerBalanceTransferResponse>(
-                self.database(),
-                tenant_id,
-                key.as_str(),
-                COMMAND_KIND,
-                hash.as_str(),
-            )
-            .await?
+        if let Some(response) = replay_existing_command::<MarketplaceSellerBalanceTransferResponse>(
+            self.database(),
+            tenant_id,
+            key.as_str(),
+            COMMAND_KIND,
+            hash.as_str(),
+        )
+        .await?
         {
             self.rebuild_seller_balance_projection(
                 tenant_id,
@@ -120,8 +119,7 @@ async fn post_in_transaction(
             .filter(entry::Column::TenantId.eq(tenant_id))
             .filter(entry::Column::SellerId.eq(input.seller_id))
             .filter(
-                entry::Column::AccountCode
-                    .eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
+                entry::Column::AccountCode.eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
             )
             .filter(entry::Column::CurrencyCode.eq(currency_code.clone()))
             .order_by_asc(entry::Column::CreatedAt)
@@ -136,10 +134,7 @@ async fn post_in_transaction(
     let mut seller_entry_query = entry::Entity::find()
         .filter(entry::Column::TenantId.eq(tenant_id))
         .filter(entry::Column::SellerId.eq(input.seller_id))
-        .filter(
-            entry::Column::AccountCode
-                .eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
-        )
+        .filter(entry::Column::AccountCode.eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()))
         .filter(entry::Column::CurrencyCode.eq(currency_code.clone()))
         .order_by_asc(entry::Column::CreatedAt)
         .order_by_asc(entry::Column::Id);
@@ -154,7 +149,10 @@ async fn post_in_transaction(
         });
     }
 
-    let entry_ids = seller_entries.iter().map(|model| model.id).collect::<Vec<_>>();
+    let entry_ids = seller_entries
+        .iter()
+        .map(|model| model.id)
+        .collect::<Vec<_>>();
     let explicit_buckets = entry_balance_bucket::Entity::find()
         .filter(entry_balance_bucket::Column::TenantId.eq(tenant_id))
         .filter(entry_balance_bucket::Column::EntryId.is_in(entry_ids.clone()))
@@ -229,12 +227,15 @@ async fn post_in_transaction(
                 line.reference_entry_id
             )));
         }
-        let reference = indexed.get(&line.reference_entry_id).copied().ok_or_else(|| {
-            MarketplaceLedgerError::Validation(format!(
-                "reference seller payable entry {} was not found",
-                line.reference_entry_id
-            ))
-        })?;
+        let reference = indexed
+            .get(&line.reference_entry_id)
+            .copied()
+            .ok_or_else(|| {
+                MarketplaceLedgerError::Validation(format!(
+                    "reference seller payable entry {} was not found",
+                    line.reference_entry_id
+                ))
+            })?;
         if reference.amount <= 0 {
             return Err(MarketplaceLedgerError::Validation(format!(
                 "reference seller payable entry {} must have a positive amount",
@@ -262,12 +263,14 @@ async fn post_in_transaction(
             .get(&reference.id)
             .copied()
             .unwrap_or(0);
-        let cumulative = already_transferred.checked_add(line.amount).ok_or_else(|| {
-            MarketplaceLedgerError::Validation(format!(
-                "reference entry {} cumulative transfer amount overflow",
-                reference.id
-            ))
-        })?;
+        let cumulative = already_transferred
+            .checked_add(line.amount)
+            .ok_or_else(|| {
+                MarketplaceLedgerError::Validation(format!(
+                    "reference entry {} cumulative transfer amount overflow",
+                    reference.id
+                ))
+            })?;
         if cumulative > reference.amount {
             return Err(MarketplaceLedgerError::Validation(format!(
                 "reference entry {} cumulative transfer amount {} exceeds credit amount {}",
@@ -317,7 +320,9 @@ async fn post_in_transaction(
         currency_code: Set(currency_code.clone()),
         debit_total_amount: Set(total_amount),
         credit_total_amount: Set(total_amount),
-        status: Set(MarketplaceLedgerTransactionStatus::Posted.as_str().to_string()),
+        status: Set(MarketplaceLedgerTransactionStatus::Posted
+            .as_str()
+            .to_string()),
         posted_at: Set(input.transferred_at.clone()),
         metadata: Set(serde_json::json!({
             "transfer_id": transfer_id,
@@ -526,9 +531,7 @@ fn transfer_total(
 ) -> MarketplaceLedgerResult<i64> {
     let total = input.lines.iter().try_fold(0_i64, |total, line| {
         total.checked_add(line.amount).ok_or_else(|| {
-            MarketplaceLedgerError::Validation(
-                "seller balance transfer total overflow".to_string(),
-            )
+            MarketplaceLedgerError::Validation("seller balance transfer total overflow".to_string())
         })
     })?;
     if total <= 0 {
@@ -633,12 +636,13 @@ fn map_transaction(
     model: transaction::Model,
     entries: Vec<MarketplaceLedgerEntryResponse>,
 ) -> MarketplaceLedgerResult<MarketplaceLedgerTransactionResponse> {
-    let status = MarketplaceLedgerTransactionStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceLedgerError::Validation(format!(
-            "unknown ledger transaction status `{}`",
-            model.status
-        ))
-    })?;
+    let status =
+        MarketplaceLedgerTransactionStatus::parse(model.status.as_str()).ok_or_else(|| {
+            MarketplaceLedgerError::Validation(format!(
+                "unknown ledger transaction status `{}`",
+                model.status
+            ))
+        })?;
     if model.debit_total_amount != model.credit_total_amount {
         return Err(MarketplaceLedgerError::Validation(format!(
             "ledger transaction {} is not balanced",
@@ -670,14 +674,13 @@ fn map_entry(model: entry::Model) -> MarketplaceLedgerResult<MarketplaceLedgerEn
                 model.account_code
             ))
         })?;
-    let direction = MarketplaceLedgerEntryDirection::parse(model.direction.as_str()).ok_or_else(
-        || {
+    let direction =
+        MarketplaceLedgerEntryDirection::parse(model.direction.as_str()).ok_or_else(|| {
             MarketplaceLedgerError::Validation(format!(
                 "unknown ledger entry direction `{}`",
                 model.direction
             ))
-        },
-    )?;
+        })?;
     Ok(MarketplaceLedgerEntryResponse {
         id: model.id,
         tenant_id: model.tenant_id,

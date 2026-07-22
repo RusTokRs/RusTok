@@ -21,7 +21,7 @@ mod native_policy_locale_adapter;
 #[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
-use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
+use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 
 use crate::application_model::{
     GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
@@ -243,7 +243,9 @@ pub async fn upsert_group_admin_application_policy(
         "groups.admin.applications.policy.upsert",
         context.path(),
         move || native_applications_adapter::upsert_group_application_policy(native_command),
-        move || graphql_policy_locale_adapter::upsert_group_application_policy(token, tenant, command),
+        move || {
+            graphql_policy_locale_adapter::upsert_group_application_policy(token, tenant, command)
+        },
     )
     .await
 }
@@ -258,8 +260,14 @@ pub async fn load_group_admin_application_policy_revisions(
     execute_selected_transport(
         "groups.admin.applications.policy.history",
         context.path(),
-        move || native_policy_history_adapter::load_group_application_policy_revisions(native_query),
-        move || graphql_policy_history_adapter::load_group_application_policy_revisions(token, tenant, query),
+        move || {
+            native_policy_history_adapter::load_group_application_policy_revisions(native_query)
+        },
+        move || {
+            graphql_policy_history_adapter::load_group_application_policy_revisions(
+                token, tenant, query,
+            )
+        },
     )
     .await
 }
@@ -275,7 +283,9 @@ pub async fn load_group_admin_membership_applications(
         "groups.admin.applications.list",
         context.path(),
         move || native_applications_adapter::load_group_membership_applications(native_query),
-        move || graphql_applications_adapter::load_group_membership_applications(token, tenant, query),
+        move || {
+            graphql_applications_adapter::load_group_membership_applications(token, tenant, query)
+        },
     )
     .await
 }
@@ -291,7 +301,11 @@ pub async fn review_group_admin_membership_application(
         "groups.admin.applications.review",
         context.path(),
         move || native_applications_adapter::review_group_membership_application(native_command),
-        move || graphql_applications_adapter::review_group_membership_application(token, tenant, command),
+        move || {
+            graphql_applications_adapter::review_group_membership_application(
+                token, tenant, command,
+            )
+        },
     )
     .await
 }

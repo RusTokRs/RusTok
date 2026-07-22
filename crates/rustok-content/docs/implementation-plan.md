@@ -9,6 +9,14 @@ orchestration, audit/idempotency state, and owner-owned dashboard post
 analytics. `apps/server` only composes the public roots, loaders, and owner
 helper.
 
+The accepted architecture assigns executable richtext policy to this module,
+but the current implementation still lives in `rustok-core::rt_json` and is
+transported as a string plus `content_json`. The target boundary is recorded in
+the [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md):
+neutral types move to `rustok-api::richtext`, while this module implements
+profiles, strict validation, normalization, one safe HTML renderer, and one
+plain-text extractor. Domain owners keep locale rows and persistence.
+
 The canonical URL guard already rejects cross-target canonical/alias conflicts
 before state or outbox mutations; aliases are resolved before canonical routes.
 The local README and runbook record the stable contract and incident recovery
@@ -34,13 +42,18 @@ procedure.
    **Done when:** targeted tests cover every public outcome and failure has no
    persisted orchestration state or outbox side effect.
 
-3. **Keep shared rich-text and locale invariants aligned with consumers.** When
-   a domain changes conversion semantics or a public content contract, update
-   the shared contract, local README/runbook, module metadata, and consumer
-   references in the same change.
-   **Depends on:** the change-owning domain module.
-   **Done when:** no consumer relies on a divergent fallback, validation, or
-   route-resolution rule.
+3. **Execute the atomic richtext boundary cutover.** Add the executable target
+   policy under `rustok-content::richtext`, consume neutral
+   `rustok-api::richtext` types, migrate every Blog/Forum/Comments and
+   orchestration caller, then delete `rustok-core::rt_json`, the generic legacy
+   format helper, aliases, and dual body/`content_json` paths. Keep Pages body
+   on its Page Builder/Fly contract. Direct Comments writes and destination
+   profile conversions must never bypass validation.
+   **Depends on:** the central Richtext plan, owner-local data migrations, and
+   all repository-owned transports/renderers/search projections.
+   **Done when:** one strict validator, one safe HTML renderer, and one
+   plain-text extractor serve all owners; no internal fallback or duplicate
+   renderer remains; locale exists only in owner context/storage.
 
 ## Verification
 
@@ -60,3 +73,5 @@ procedure.
    public or operational contract change.
 3. Update `rustok-module.toml` and consumer references when module metadata or
    shared rich-text/locale contracts change.
+4. Keep richtext executable behavior here and neutral wire types in
+   `rustok-api`; do not create a second richtext backend owner.

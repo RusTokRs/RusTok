@@ -180,12 +180,12 @@ async fn execute_preview(
                 result.page_id
             )))
         }
-        PageBuilderCapabilityResponse::Preview(result) => Err(PageBuilderAdminFacadeError::new(
-            format!(
+        PageBuilderCapabilityResponse::Preview(result) => {
+            Err(PageBuilderAdminFacadeError::new(format!(
                 "Page Builder preview returned runtime scenario `{:?}`, but Pages requested `{:?}`",
                 result.runtime_scenario_id, requested_runtime_scenario_id
-            ),
-        )),
+            )))
+        }
         response => Err(PageBuilderAdminFacadeError::new(format!(
             "Page Builder capability transport returned `{}` for a preview request",
             response.capability()
@@ -209,12 +209,12 @@ async fn execute_publish(
         PageBuilderCapabilityResponse::Publish(result) if result.page_id == requested_page_id => {
             Ok(PageBuilderCapabilityResponse::Publish(result))
         }
-        PageBuilderCapabilityResponse::Publish(result) => Err(PageBuilderAdminFacadeError::new(
-            format!(
+        PageBuilderCapabilityResponse::Publish(result) => {
+            Err(PageBuilderAdminFacadeError::new(format!(
                 "Page Builder publish returned page `{}`, but Pages requested `{requested_page_id}`",
                 result.page_id
-            ),
-        )),
+            )))
+        }
         response => Err(PageBuilderAdminFacadeError::new(format!(
             "Page Builder capability transport returned `{}` for a publish request",
             response.capability()
@@ -277,12 +277,9 @@ async fn dispatch_pages_page_builder_capability(
         on_saved,
     };
     let expected_capability = request.capability();
-    let handlers = compose_fly_page_builder_handlers(
-        store,
-        renderer,
-        BuilderCapabilityFlags::default(),
-    )
-    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    let handlers =
+        compose_fly_page_builder_handlers(store, renderer, BuilderCapabilityFlags::default())
+            .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     let response = handlers
         .handle(&context, &auth, request)
         .await
@@ -471,7 +468,9 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         )
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
-        .ok_or_else(|| PageBuilderServiceError::Runtime("Pages document no longer exists".into()))?;
+        .ok_or_else(|| {
+            PageBuilderServiceError::Runtime("Pages document no longer exists".into())
+        })?;
         if current_page.status.eq_ignore_ascii_case("published") {
             return Err(PageBuilderServiceError::Validation(format!(
                 "{PAGE_PUBLISHED_DOCUMENT_IMMUTABLE}: published page documents are immutable"
@@ -540,7 +539,9 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
         )
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?
-        .ok_or_else(|| PageBuilderServiceError::Runtime("Pages document no longer exists".into()))?;
+        .ok_or_else(|| {
+            PageBuilderServiceError::Runtime("Pages document no longer exists".into())
+        })?;
         PageBuilderRenderer
             .render_runtime_document_html(
                 input.project_data.clone(),

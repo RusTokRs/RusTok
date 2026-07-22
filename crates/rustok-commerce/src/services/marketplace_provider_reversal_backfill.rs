@@ -44,10 +44,7 @@ impl MarketplaceProviderReversalBackfillService {
         financial_port: Arc<dyn rustok_marketplace::MarketplaceFinancialCommandPort>,
     ) -> Self {
         Self {
-            adapter: MarketplaceProviderReversalEventAdapter::new(
-                db.clone(),
-                financial_port,
-            ),
+            adapter: MarketplaceProviderReversalEventAdapter::new(db.clone(), financial_port),
             failures: MarketplaceReversalAdaptationFailureJournal::new(db.clone()),
             db,
         }
@@ -105,11 +102,13 @@ impl MarketplaceProviderReversalBackfillService {
                         .record_failure(&event, error.code(), safe_message, retryable)
                         .await?;
                     report.failed += 1;
-                    report.failures.push(MarketplaceProviderReversalAdaptFailure {
-                        provider_event_id: event.id,
-                        retryable,
-                        message: safe_message.to_string(),
-                    });
+                    report
+                        .failures
+                        .push(MarketplaceProviderReversalAdaptFailure {
+                            provider_event_id: event.id,
+                            retryable,
+                            message: safe_message.to_string(),
+                        });
                 }
             }
         }

@@ -9,10 +9,10 @@ use rustok_page_builder::service::{
     PageBuilderCapabilityService, PageBuilderProjectSaveResult, PageBuilderProjectStore,
     PageBuilderServiceResult,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
 };
 
 #[derive(Clone, Default)]
@@ -103,9 +103,16 @@ async fn preview_passes_canonical_runtime_to_port_and_response() {
         .await
         .expect("preview response");
 
-    assert_eq!(response.runtime_scenario_id.as_deref(), Some("mobile-checkout"));
+    assert_eq!(
+        response.runtime_scenario_id.as_deref(),
+        Some("mobile-checkout")
+    );
     assert_eq!(response.html, "<h1>Scenario title</h1>");
-    let observed = observed.lock().expect("runtime lock").clone().expect("runtime");
+    let observed = observed
+        .lock()
+        .expect("runtime lock")
+        .clone()
+        .expect("runtime");
     assert_eq!(observed.context["page"]["title"], "Scenario title");
     assert_eq!(observed.scenario_id.as_deref(), Some("mobile-checkout"));
 }
@@ -125,7 +132,11 @@ async fn preview_rejects_non_object_runtime_before_renderer() {
         .await
         .expect_err("non-object context must fail");
 
-    assert!(error.to_string().contains("runtime context must be a JSON object"));
+    assert!(
+        error
+            .to_string()
+            .contains("runtime context must be a JSON object")
+    );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }
 
@@ -146,6 +157,10 @@ async fn preview_rejects_oversized_runtime_before_renderer() {
         .await
         .expect_err("oversized context must fail");
 
-    assert!(error.to_string().contains("runtime context exceeds 262144 bytes"));
+    assert!(
+        error
+            .to_string()
+            .contains("runtime context exceeds 262144 bytes")
+    );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 }

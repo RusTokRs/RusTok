@@ -82,6 +82,13 @@ validation and attribute outbox events.
    declared fallback or degraded mode against the live provider.
    Dependency: priority 1 and the respective consumer composition. Verification:
    `npm run verify:ecommerce:fba` and `npm run verify:ai-product:fba`.
+3. Keep Product richtext adoption explicitly deferred until the owner approves
+   a typed storage/API/index migration. `product_translations.description` and
+   catalog attributes currently named `richtext` are scalar text, so replacing
+   their textarea alone would create a false contract. When approved, use the
+   shared [Richtext plan](../../../docs/modules/rich-text-implementation-plan.md),
+   assign an owner profile, migrate both transports, and keep short/meta
+   descriptions plain text.
 
 ## Verification
 

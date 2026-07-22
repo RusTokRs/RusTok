@@ -28,6 +28,9 @@ executor boundary for reviewed native module promotions.
   and release-build commands, and bind the resolved lock digest to evidence.
 - Invoke only the digest-pinned evidence publisher and accept its receipt only
   when it binds the exact publisher request and all required evidence digests.
+- Publish the fixed native executable plus CycloneDX SBOM, SLSA provenance,
+  and test-evidence OCI referrers, then sign the exact artifact digest through
+  the shared KMS-only Cosign boundary.
 
 ## Non-responsibilities
 
@@ -42,6 +45,8 @@ executor boundary for reviewed native module promotions.
 - `src/main.rs` configures the mutually authenticated listener.
 - `src/bin/rustok-static-distribution-job.rs` is the fixed native CI launcher
   invoked by the worker.
+- `src/bin/rustok-static-distribution-publisher.rs` is the fixed production OCI
+  evidence publisher invoked by that launcher.
 - `StaticDistributionWorker` implements the `rustok-modules` executor and
   readiness ports.
 - The launcher materializes the CAS sources, applies the generated Cargo and

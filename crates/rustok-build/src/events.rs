@@ -26,6 +26,13 @@ pub enum BuildEvent {
         build_id: Uuid,
         release_id: Option<String>,
     },
+    BuildRolledBack {
+        requested_build_id: Uuid,
+        restored_build_id: Uuid,
+        from_release_id: String,
+        to_release_id: String,
+        actor_id: Uuid,
+    },
     BuildCancelled {
         build_id: Uuid,
         stage: BuildStage,
@@ -75,14 +82,32 @@ impl EventBusBuildEventPublisher {
 #[async_trait]
 impl BuildEventPublisher for EventBusBuildEventPublisher {
     async fn publish(&self, event: BuildEvent) -> anyhow::Result<()> {
-        let domain_event = match event {
+        let (actor_id, domain_event) = match event {
             BuildEvent::BuildRequested {
                 build_id,
                 requested_by,
-            } => rustok_events::DomainEvent::BuildRequested {
-                build_id,
-                requested_by,
-            },
+            } => (
+                None,
+                rustok_events::DomainEvent::BuildRequested {
+                    build_id,
+                    requested_by,
+                },
+            ),
+            BuildEvent::BuildRolledBack {
+                requested_build_id,
+                restored_build_id,
+                from_release_id,
+                to_release_id,
+                actor_id,
+            } => (
+                Some(actor_id),
+                rustok_events::DomainEvent::BuildRolledBack {
+                    requested_build_id,
+                    restored_build_id,
+                    from_release_id,
+                    to_release_id,
+                },
+            ),
             unsupported => {
                 warn!(
                     ?unsupported,
@@ -92,7 +117,7 @@ impl BuildEventPublisher for EventBusBuildEventPublisher {
             }
         };
         self.event_bus
-            .publish(self.tenant_id, None, domain_event)
+            .publish(self.tenant_id, actor_id, domain_event)
             .map_err(|error| anyhow::anyhow!("failed to publish build event: {error}"))
     }
 }

@@ -127,7 +127,10 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         approved.onboarding_status,
         MarketplaceSellerOnboardingStatus::Approved
     );
-    assert_eq!(approved.onboarding_note.as_deref(), Some("verification passed"));
+    assert_eq!(
+        approved.onboarding_note.as_deref(),
+        Some("verification passed")
+    );
 
     let replay = service
         .review_onboarding_with_receipt(
@@ -170,7 +173,10 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         )
         .await
         .unwrap();
-    assert_eq!(suspended_replay.suspension_reason, suspended.suspension_reason);
+    assert_eq!(
+        suspended_replay.suspension_reason,
+        suspended.suspension_reason
+    );
 
     let reactivated = service
         .reactivate_seller_with_receipt(tenant_id, actor_id, "reactivate-seller", "en", seller_id)
@@ -203,8 +209,14 @@ async fn lifecycle_commands_commit_one_event_with_state_and_receipt() {
         .unwrap();
     assert_eq!(suspension_event.note.as_deref(), Some("risk hold"));
 
-    let projected = service.get_seller(tenant_id, seller_id, "en").await.unwrap();
-    assert_eq!(projected.onboarding_note.as_deref(), Some("verification passed"));
+    let projected = service
+        .get_seller(tenant_id, seller_id, "en")
+        .await
+        .unwrap();
+    assert_eq!(
+        projected.onboarding_note.as_deref(),
+        Some("verification passed")
+    );
     assert!(projected.suspension_reason.is_none());
 
     let receipts = seller_command_receipt::Entity::find()

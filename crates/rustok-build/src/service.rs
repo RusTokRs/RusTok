@@ -20,6 +20,9 @@ use crate::{
 };
 use rustok_api::manifest_hash::hash_manifest_snapshot;
 
+const MAX_HISTORY_PAGE_SIZE: u64 = 100;
+const MAX_HISTORY_OFFSET: u64 = 1_000_000;
+
 pub struct BuildService {
     db: DatabaseConnection,
     event_publisher: Arc<dyn BuildEventPublisher>,
@@ -163,9 +166,11 @@ impl BuildService {
             .await?)
     }
 
-    pub async fn list_builds(&self, limit: u64) -> anyhow::Result<Vec<Build>> {
+    pub async fn list_builds_page(&self, limit: u64, offset: u64) -> anyhow::Result<Vec<Build>> {
+        validate_history_page(limit, offset)?;
         let builds = BuildEntity::find()
             .order_by_desc(crate::build::Column::CreatedAt)
+            .offset(offset)
             .limit(limit)
             .all(&self.db)
             .await?;
@@ -334,7 +339,7 @@ impl BuildService {
             modules,
         );
 
-        if let Some(prev) = self.get_active_release().await? {
+        if let Some(prev) = self.active_release().await? {
             release.previous_release_id = Some(prev.id);
         }
 
@@ -501,49 +506,133 @@ impl BuildService {
         Ok(updated)
     }
 
-    async fn get_active_release(&self) -> anyhow::Result<Option<Release>> {
+    pub async fn active_release(&self) -> anyhow::Result<Option<Release>> {
         Ok(ReleaseEntity::find()
             .filter(crate::release::Column::Status.eq(ReleaseStatus::Active))
+            .order_by_desc(crate::release::Column::UpdatedAt)
             .one(&self.db)
             .await?)
     }
 
-    pub async fn list_releases(&self, limit: u64) -> anyhow::Result<Vec<Release>> {
+    pub async fn list_releases_page(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> anyhow::Result<Vec<Release>> {
+        validate_history_page(limit, offset)?;
         let releases = ReleaseEntity::find()
             .order_by_desc(crate::release::Column::CreatedAt)
+            .offset(offset)
             .limit(limit)
             .all(&self.db)
             .await?;
         Ok(releases)
     }
 
-    pub async fn rollback(&self, release_id: &str) -> anyhow::Result<Release> {
-        let current = self
-            .get_release(release_id)
+    pub async fn rollback_build(
+        &self,
+        command: crate::BuildRollbackCommand,
+    ) -> anyhow::Result<Build> {
+        command.validate()?;
+        let build = self
+            .get_build(command.build_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Release not found"))?;
-
-        let previous_id = current
-            .previous_release_id
+            .ok_or_else(|| anyhow::anyhow!("Build not found"))?;
+        let release_id = build
+            .release_id
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("No previous release to rollback to"))?;
-
-        let previous = self
-            .get_release(&previous_id)
+            .ok_or_else(|| anyhow::anyhow!("Build does not have a release to rollback"))?;
+        let restored_release = self.rollback_release(&release_id).await?;
+        let restored_build = self
+            .get_build(restored_release.build_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Previous release not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("Restored release is missing its build record"))?;
 
-        let mut current_model: ReleaseActiveModel = current.into();
-        current_model.status = Set(ReleaseStatus::RolledBack);
-        current_model.rolled_back_at = Set(Some(Utc::now()));
-        current_model.updated_at = Set(Utc::now());
-        current_model.update(&self.db).await?;
+        self.event_publisher
+            .publish(BuildEvent::BuildRolledBack {
+                requested_build_id: build.id,
+                restored_build_id: restored_build.id,
+                from_release_id: release_id,
+                to_release_id: restored_release.id,
+                actor_id: command.actor_id,
+            })
+            .await?;
 
-        let mut prev_model: ReleaseActiveModel = previous.clone().into();
-        prev_model.status = Set(ReleaseStatus::Active);
-        prev_model.deployed_at = Set(Some(Utc::now()));
-        prev_model.updated_at = Set(Utc::now());
-        prev_model.update(&self.db).await?;
+        Ok(restored_build)
+    }
+
+    async fn rollback_release(&self, release_id: &str) -> anyhow::Result<Release> {
+        let release_id = release_id.to_string();
+        let (previous, previous_id) = self
+            .db
+            .transaction::<_, (Release, String), sea_orm::DbErr>(|transaction| {
+                let release_id = release_id.clone();
+                Box::pin(async move {
+                    if BuildEntity::find()
+                        .filter(
+                            crate::build::Column::Status
+                                .is_in([BuildStatus::Queued, BuildStatus::Running]),
+                        )
+                        .one(transaction)
+                        .await?
+                        .is_some()
+                    {
+                        return Err(sea_orm::DbErr::Custom(
+                            "Cannot rollback while another build is still queued or running"
+                                .to_string(),
+                        ));
+                    }
+
+                    let current = ReleaseEntity::find()
+                        .filter(crate::release::Column::Status.eq(ReleaseStatus::Active))
+                        .one(transaction)
+                        .await?
+                        .ok_or_else(|| {
+                            sea_orm::DbErr::Custom(
+                                "No active release available for rollback".to_string(),
+                            )
+                        })?;
+                    if current.id != release_id {
+                        return Err(sea_orm::DbErr::Custom(
+                            "Only the current active release can be rolled back".to_string(),
+                        ));
+                    }
+
+                    let previous_id = current.previous_release_id.clone().ok_or_else(|| {
+                        sea_orm::DbErr::Custom(
+                            "No previous release available for rollback".to_string(),
+                        )
+                    })?;
+                    let previous = ReleaseEntity::find_by_id(&previous_id)
+                        .one(transaction)
+                        .await?
+                        .ok_or_else(|| {
+                            sea_orm::DbErr::Custom("Previous release not found".to_string())
+                        })?;
+                    if previous.status != ReleaseStatus::RolledBack {
+                        return Err(sea_orm::DbErr::Custom(
+                            "Previous release is not eligible for rollback activation".to_string(),
+                        ));
+                    }
+
+                    let now = Utc::now();
+                    let mut current_model: ReleaseActiveModel = current.into();
+                    current_model.status = Set(ReleaseStatus::RolledBack);
+                    current_model.rolled_back_at = Set(Some(now));
+                    current_model.updated_at = Set(now);
+                    current_model.update(transaction).await?;
+
+                    let mut previous_model: ReleaseActiveModel = previous.clone().into();
+                    previous_model.status = Set(ReleaseStatus::Active);
+                    previous_model.deployed_at = Set(Some(now));
+                    previous_model.updated_at = Set(now);
+                    previous_model.update(transaction).await?;
+
+                    Ok((previous, previous_id))
+                })
+            })
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to rollback release: {error}"))?;
 
         info!(
             from_release = %release_id,
@@ -551,15 +640,17 @@ impl BuildService {
             "Rollback completed"
         );
 
-        self.event_publisher
-            .publish(BuildEvent::BuildCompleted {
-                build_id: previous.build_id,
-                release_id: Some(previous.id.clone()),
-            })
-            .await?;
-
         Ok(previous)
     }
+}
+
+fn validate_history_page(limit: u64, offset: u64) -> anyhow::Result<()> {
+    if limit == 0 || limit > MAX_HISTORY_PAGE_SIZE || offset > MAX_HISTORY_OFFSET {
+        anyhow::bail!(
+            "history query requires a limit between 1 and {MAX_HISTORY_PAGE_SIZE} and an offset not greater than {MAX_HISTORY_OFFSET}"
+        );
+    }
+    Ok(())
 }
 
 fn compute_build_request_hash(request: &BuildRequest) -> String {
@@ -575,7 +666,7 @@ fn compute_build_request_hash(request: &BuildRequest) -> String {
 mod tests {
     use std::collections::HashMap;
 
-    use super::compute_build_request_hash;
+    use super::{compute_build_request_hash, validate_history_page};
     use crate::{BuildExecutionPlan, BuildRequest, BuildRuntimeMode, DeploymentProfile};
 
     #[test]
@@ -610,5 +701,14 @@ mod tests {
             compute_build_request_hash(&request(BuildRuntimeMode::Api)),
             compute_build_request_hash(&request(BuildRuntimeMode::Worker)),
         );
+    }
+
+    #[test]
+    fn history_page_rejects_unbounded_queries() {
+        assert!(validate_history_page(1, 0).is_ok());
+        assert!(validate_history_page(100, 1_000_000).is_ok());
+        assert!(validate_history_page(0, 0).is_err());
+        assert!(validate_history_page(101, 0).is_err());
+        assert!(validate_history_page(1, 1_000_001).is_err());
     }
 }

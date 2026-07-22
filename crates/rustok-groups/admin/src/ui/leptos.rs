@@ -4,17 +4,15 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    default_groups_admin_filters, groups_admin_error, groups_admin_header,
-    prepare_change_group_role, prepare_transfer_group_ownership, selected_transport_profile,
-    GroupsAdminGovernanceInputError, GroupsAdminTransportProfile,
+    GroupsAdminGovernanceInputError, GroupsAdminTransportProfile, default_groups_admin_filters,
+    groups_admin_error, groups_admin_header, prepare_change_group_role,
+    prepare_transfer_group_ownership, selected_transport_profile,
 };
 use crate::i18n::t;
-use crate::model::{
-    GroupsAdminAssignableRole, GroupsAdminDirectory, GroupsAdminGovernanceResult,
-};
+use crate::model::{GroupsAdminAssignableRole, GroupsAdminDirectory, GroupsAdminGovernanceResult};
 use crate::transport::{
-    change_group_admin_role, load_groups_admin_directory, transfer_group_admin_ownership,
-    GroupsAdminTransportContext,
+    GroupsAdminTransportContext, change_group_admin_role, load_groups_admin_directory,
+    transfer_group_admin_ownership,
 };
 
 #[component]
@@ -219,10 +217,8 @@ pub fn GroupsAdmin() -> impl IntoView {
                     &replayed_label,
                     &result,
                 ))),
-                Err(error) => set_governance_error.set(Some(groups_admin_error(
-                    &error_label,
-                    &error.to_string(),
-                ))),
+                Err(error) => set_governance_error
+                    .set(Some(groups_admin_error(&error_label, &error.to_string()))),
             }
             set_governance_busy.set(false);
         });
@@ -270,10 +266,8 @@ pub fn GroupsAdmin() -> impl IntoView {
                     &replayed_label,
                     &result,
                 ))),
-                Err(error) => set_governance_error.set(Some(groups_admin_error(
-                    &error_label,
-                    &error.to_string(),
-                ))),
+                Err(error) => set_governance_error
+                    .set(Some(groups_admin_error(&error_label, &error.to_string()))),
             }
             set_governance_busy.set(false);
         });
@@ -427,9 +421,7 @@ fn governance_input_error_message(
 ) -> String {
     match error {
         GroupsAdminGovernanceInputError::InvalidGroupId => invalid_group_id.to_string(),
-        GroupsAdminGovernanceInputError::InvalidTargetUserId => {
-            invalid_target_user_id.to_string()
-        }
+        GroupsAdminGovernanceInputError::InvalidTargetUserId => invalid_target_user_id.to_string(),
         GroupsAdminGovernanceInputError::InvalidNewOwnerUserId => {
             invalid_new_owner_user_id.to_string()
         }

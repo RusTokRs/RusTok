@@ -4,17 +4,17 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
-    prepare_group_membership_application_query, prepare_review_group_membership_application,
-    GroupsAdminApplicationInputError,
+    GroupsAdminApplicationInputError, prepare_group_membership_application_query,
+    prepare_review_group_membership_application,
 };
 use crate::application_model::{
     GroupsAdminApplicationReviewDecision, GroupsAdminMembershipApplication,
 };
-use crate::core::{groups_admin_error, selected_transport_profile, GroupsAdminTransportProfile};
+use crate::core::{GroupsAdminTransportProfile, groups_admin_error, selected_transport_profile};
 use crate::i18n::t;
 use crate::transport::{
-    load_group_admin_membership_applications, review_group_admin_membership_application,
-    GroupsAdminTransportContext,
+    GroupsAdminTransportContext, load_group_admin_membership_applications,
+    review_group_admin_membership_application,
 };
 
 #[derive(Clone)]
@@ -71,7 +71,10 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
         ) {
             Ok(query) => query,
             Err(input_error) => {
-                set_error.set(Some(application_input_error_message(input_error, &load_copy)));
+                set_error.set(Some(application_input_error_message(
+                    input_error,
+                    &load_copy,
+                )));
                 set_success.set(None);
                 return;
             }
@@ -184,7 +187,7 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                 <p class="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-foreground" role="status">{move || success.get().unwrap_or_default()}</p>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground">{busy_label}</p>
+                <p class="mt-4 text-sm text-muted-foreground">{busy_label.clone()}</p>
             </Show>
 
             <div class="mt-6">
@@ -292,29 +295,93 @@ fn application_input_error_message(
 
 fn application_copy(locale: Option<&str>) -> ApplicationCopy {
     ApplicationCopy {
-        title: t(locale, "groups.admin.applications.title", "Membership applications"),
-        body: t(locale, "groups.admin.applications.body", "Review pending applications against the exact policy snapshot seen by each candidate."),
+        title: t(
+            locale,
+            "groups.admin.applications.title",
+            "Membership applications",
+        ),
+        body: t(
+            locale,
+            "groups.admin.applications.body",
+            "Review pending applications against the exact policy snapshot seen by each candidate.",
+        ),
         group_id: t(locale, "groups.admin.applications.groupId", "Group UUID"),
-        load: t(locale, "groups.admin.applications.load", "Load pending applications"),
-        empty: t(locale, "groups.admin.applications.empty", "No pending applications loaded."),
-        application_id: t(locale, "groups.admin.applications.applicationId", "Application UUID"),
+        load: t(
+            locale,
+            "groups.admin.applications.load",
+            "Load pending applications",
+        ),
+        empty: t(
+            locale,
+            "groups.admin.applications.empty",
+            "No pending applications loaded.",
+        ),
+        application_id: t(
+            locale,
+            "groups.admin.applications.applicationId",
+            "Application UUID",
+        ),
         decision: t(locale, "groups.admin.applications.decision", "Decision"),
         approve: t(locale, "groups.admin.applications.approve", "Approve"),
         reject: t(locale, "groups.admin.applications.reject", "Reject"),
-        note: t(locale, "groups.admin.applications.note", "Review note (optional)"),
+        note: t(
+            locale,
+            "groups.admin.applications.note",
+            "Review note (optional)",
+        ),
         review: t(locale, "groups.admin.applications.review", "Apply review"),
-        busy: t(locale, "groups.admin.applications.busy", "Applying membership application command..."),
-        error: t(locale, "groups.admin.applications.error", "Membership application command failed"),
-        loaded: t(locale, "groups.admin.applications.loaded", "Pending applications loaded"),
-        reviewed: t(locale, "groups.admin.applications.reviewed", "Application reviewed"),
+        busy: t(
+            locale,
+            "groups.admin.applications.busy",
+            "Applying membership application command...",
+        ),
+        error: t(
+            locale,
+            "groups.admin.applications.error",
+            "Membership application command failed",
+        ),
+        loaded: t(
+            locale,
+            "groups.admin.applications.loaded",
+            "Pending applications loaded",
+        ),
+        reviewed: t(
+            locale,
+            "groups.admin.applications.reviewed",
+            "Application reviewed",
+        ),
         user: t(locale, "groups.admin.applications.user", "Candidate"),
-        policy: t(locale, "groups.admin.applications.policy", "Policy snapshot"),
+        policy: t(
+            locale,
+            "groups.admin.applications.policy",
+            "Policy snapshot",
+        ),
         answers: t(locale, "groups.admin.applications.answers", "Answers"),
-        acknowledgements: t(locale, "groups.admin.applications.acknowledgements", "Acknowledged rules"),
-        invalid_group_id: t(locale, "groups.admin.applications.invalidGroupId", "Enter a valid group UUID."),
-        invalid_application_id: t(locale, "groups.admin.applications.invalidApplicationId", "Enter a valid application UUID."),
-        invalid_status: t(locale, "groups.admin.applications.invalidStatus", "Select a supported application status."),
-        review_note_too_long: t(locale, "groups.admin.applications.reviewNoteTooLong", "The review note must not exceed 2000 characters."),
+        acknowledgements: t(
+            locale,
+            "groups.admin.applications.acknowledgements",
+            "Acknowledged rules",
+        ),
+        invalid_group_id: t(
+            locale,
+            "groups.admin.applications.invalidGroupId",
+            "Enter a valid group UUID.",
+        ),
+        invalid_application_id: t(
+            locale,
+            "groups.admin.applications.invalidApplicationId",
+            "Enter a valid application UUID.",
+        ),
+        invalid_status: t(
+            locale,
+            "groups.admin.applications.invalidStatus",
+            "Select a supported application status.",
+        ),
+        review_note_too_long: t(
+            locale,
+            "groups.admin.applications.reviewNoteTooLong",
+            "The review note must not exceed 2000 characters.",
+        ),
     }
 }
 

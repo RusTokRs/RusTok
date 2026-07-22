@@ -24,6 +24,12 @@ shapes, schema metadata, and validation rules.
   audit, terminal result digest, and verified release-head activation identity
   plus rebuild-only rollback and release revocation identity without carrying
   build logs, operator reasons, or evidence payloads inline.
+- root effective-policy transition events carry an explicit consumer key and
+  digest predecessor/successor pair so revision-aware projections never infer
+  ordering from opaque hashes.
+- root `build.rolled_back` events preserve requested/restored build identity
+  and the exact release predecessor transition; actor identity remains in the
+  canonical envelope.
 
 ## Sealed event-family contract
 

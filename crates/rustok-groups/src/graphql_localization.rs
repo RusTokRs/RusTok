@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use async_graphql::{
-    Context, FieldError, InputObject, MergedObject, Object, Result, SimpleObject,
-};
+use async_graphql::{Context, FieldError, InputObject, MergedObject, Object, Result, SimpleObject};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
@@ -13,10 +11,9 @@ use uuid::Uuid;
 
 use crate::graphql::GroupsQuery;
 use crate::{
-    DeleteGroupTranslationRequest, DeleteGroupTranslationResult,
-    GroupLocalizationCommandPort, GroupLocalizationReadPort, GroupLocalizationService,
-    GroupTranslation, GroupTranslationMutationResult, ListGroupTranslationsRequest,
-    UpsertGroupTranslationRequest,
+    DeleteGroupTranslationRequest, DeleteGroupTranslationResult, GroupLocalizationCommandPort,
+    GroupLocalizationReadPort, GroupLocalizationService, GroupTranslation,
+    GroupTranslationMutationResult, ListGroupTranslationsRequest, UpsertGroupTranslationRequest,
 };
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
@@ -239,18 +236,14 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Groups localization service is temporarily unavailable",
             )
         }
-        PortErrorKind::InvariantViolation => {
-            <FieldError as GraphQLError>::internal_error(
-                "Groups localization operation requires review",
-            )
-        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Groups localization operation requires review",
+        ),
     }
 }

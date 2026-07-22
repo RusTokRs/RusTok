@@ -103,6 +103,15 @@ For the commerce family, the same principle applies:
 - projections and index updates go through the consumer path
 - transport/runtime does not replace domain ownership
 
+## Platform Build Events
+
+`rustok-build` owns platform build lifecycle events. A rollback is the explicit
+`BuildRolledBack` transition, not another successful completion. Its canonical
+root event is `build.rolled_back`: the payload binds the requested and restored
+builds plus source and target releases, while `EventEnvelope.actor_id` carries
+the verified actor. Server WebSocket and GraphQL subscriptions adapt that same
+owner event and must preserve those facts.
+
 ## Retry and Resilience
 
 For event flow, the following are mandatory:

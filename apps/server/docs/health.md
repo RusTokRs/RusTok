@@ -198,8 +198,8 @@ Minimum smoke after start:
 curl -i http://127.0.0.1:5150/health/ready
 curl -i http://127.0.0.1:5150/health/runtime
 curl -i http://127.0.0.1:5150/health/modules
-curl -i http://127.0.0.1:5150/v1/catalog?limit=1
-curl -i http://127.0.0.1:5150/v1/catalog/blog
+curl -i http://127.0.0.1:5150/catalog?limit=1
+curl -i http://127.0.0.1:5150/catalog/blog
 curl -i http://127.0.0.1:5150/api/openapi.json
 ```
 
@@ -207,8 +207,8 @@ Expected behavior:
 
 - `GET /health/ready` and `GET /health/modules` return `200`, despite reduced surface;
 - `GET /health/runtime` explicitly returns `host_mode="registry_only"` and `runtime_dependencies_enabled=false`;
-- `GET /v1/catalog` returns read-only catalog contract with `ETag`, `Cache-Control` and `X-Total-Count`;
-- `GET /v1/catalog/{slug}` remains available as canonical detail contract for external discovery;
+- `GET /catalog` returns the current read-only catalog contract with `ETag`, `Cache-Control` and `X-Total-Count`;
+- `GET /catalog/{slug}` is the canonical detail contract for external discovery;
 - `GET /api/openapi.json` advertises only registry/health/metrics/swagger surface;
 - `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer` and `POST /v2/catalog/yank` should not be available and normally give `404`;
 - `GET /api/graphql`, `GET /api/auth/me`, `GET /admin` should not be available and normally give `404`.
@@ -244,17 +244,17 @@ Minimum production checklist before switching traffic:
 1. Ensure deployment is built with the same `apps/server` binary, but without embedded admin/storefront surface.
 2. Ensure runtime env explicitly sets `RUSTOK_RUNTIME_HOST_MODE=registry_only`.
 3. Check `/health/ready` and `/health/runtime` on target instance.
-4. Check `GET /v1/catalog?limit=1` and `GET /v1/catalog/{slug}` on target instance.
-5. Check `ETag`, `Cache-Control` and `X-Total-Count` on `GET /v1/catalog?limit=1`.
+4. Check `GET /catalog?limit=1` and `GET /catalog/{slug}` on target instance.
+5. Check `ETag`, `Cache-Control` and `X-Total-Count` on `GET /catalog?limit=1`.
 6. Check `GET /api/openapi.json` and ensure the spec has no `/v2/catalog/*`, `/api/graphql`, `/api/auth/*`.
 7. Check negative smoke: `POST /v2/catalog/publish`, `POST /v2/catalog/publish/{request_id}/validate`, `POST /v2/catalog/publish/{request_id}/stages`, `POST /v2/catalog/publish/{request_id}/request-changes`, `POST /v2/catalog/publish/{request_id}/hold`, `POST /v2/catalog/publish/{request_id}/resume`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank`, `GET /api/graphql`, `GET /admin` should give `404`.
 
 Provider-agnostic edge/runtime invariants for this host:
 
-- edge/CDN/reverse proxy must not rewrite path prefix and query string for `/v1/catalog*`, `/health/*`, `/metrics`, `/api/openapi.*`;
-- edge must not remove `ETag`, `Cache-Control`, `If-None-Match` and `X-Total-Count`, because this is part of live V1 contract;
+- edge/CDN/reverse proxy must not rewrite path prefix and query string for `/catalog*`, `/health/*`, `/metrics`, `/api/openapi.*`;
+- edge must not remove `ETag`, `Cache-Control`, `If-None-Match` and `X-Total-Count`, because this is part of the live catalog contract;
 - edge must not replace API responses with its own HTML error pages for `404` on write/admin paths;
-- `GET /v1/catalog*` can be cached only with respect to origin headers; `/health/*` and `/api/openapi.*` should not become long-lived CDN cache;
+- `GET /catalog*` can be cached only with respect to origin headers; `/health/*` and `/api/openapi.*` should not become long-lived CDN cache;
 - TLS termination/HSTS and redirect policy should be configured on edge, but without path rewrites and without downgrade to `http`;
 - WAF/rate-limit layer must not inject auth headers and must not turn expected `404` on write-path into provider-specific `401/403`, otherwise external reduced-surface contract is lost.
 
@@ -278,7 +278,7 @@ This external smoke does not replace the local build/profile matrix, but complem
 
 - checks `/health/ready` and `/health/runtime` already on public host;
 - checks `/health/modules` as live marker for registered `ModuleRegistry` even on reduced host;
-- checks `GET /v1/catalog?limit=1` and `GET /v1/catalog/{slug}` on live instance;
+- checks `GET /catalog?limit=1` and `GET /catalog/{slug}` on live instance;
 - checks `ETag`, `Cache-Control` and `X-Total-Count`;
 - checks reduced OpenAPI (`/api/openapi.json` and `/api/openapi.yaml`) for absence of write/API/UI surface;
 - checks that `POST /v2/catalog/*`, `POST /v2/catalog/runner/claim`, `POST /v2/catalog/owner-transfer`, `POST /v2/catalog/yank` and `GET /admin` actually give `404`.
@@ -303,8 +303,8 @@ Minimum acceptance after rollout:
 
 - `/health/ready` returns `200`;
 - `/health/runtime` returns `host_mode="registry_only"` and `runtime_dependencies_enabled=false`;
-- `GET /v1/catalog` responds as cache-friendly V1 contract;
-- `GET /v1/catalog/{slug}` responds as canonical detail contract;
+- `GET /catalog` responds as the cache-friendly current contract;
+- `GET /catalog/{slug}` responds as the canonical detail contract;
 - reduced OpenAPI does not advertise write/API/UI surface;
 - V2 write-path and monolith shell are actually unavailable from outside.
 

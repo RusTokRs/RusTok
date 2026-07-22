@@ -60,8 +60,18 @@ credentials move with the whole module.
 
 Original media blobs and generated renditions are immutable. Editing creates a
 validated recipe and a new blob identity. A database transaction publishes the
-new active reference only after the object write succeeds; failed and obsolete
-objects are reconciled asynchronously from owner-local lifecycle state.
+new active reference only after the object write succeeds. Commit errors are
+verified against the durable row before compensation; when the outcome is
+ambiguous, the object is preserved and owner-local reconciliation resolves the
+state. Failed and obsolete objects are reconciled asynchronously.
+
+Write-port idempotency is owned by Media in durable `media_port_operations`
+receipts. Receipts bind tenant, operation, request digest, status and response;
+stale processing leases can be reclaimed only after the operation's owner-local
+state makes retry safe, and fencing tokens prevent an old worker from completing
+after its lease has been reclaimed. Remote gRPC authority is established by a
+host-owned authentication/authorization interceptor, carries an explicit
+operation allow-list, and is never accepted from serialized caller claims.
 
 ## Consequences
 

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -178,36 +179,53 @@ impl MediaAssetWritePort for MediaService {
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
         validate_upload_request(&request)?;
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "prepare_upload",
+            &serde_json::json!({ "actor": &context.actor, "request": &request }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
 
-        if self.supports_presigned_upload() {
+        let result = if self.supports_presigned_upload() {
             let expiry = std::time::Duration::from_millis(
                 context.deadline_ms.unwrap_or(600_000).clamp(1_000, 900_000),
             );
             let prepared = self
-                .prepare_upload_session(PrepareUploadSessionInput {
-                    tenant_id,
-                    actor_id: Uuid::parse_str(&context.actor.id).ok(),
-                    original_name: request.original_name,
-                    content_type: request.content_type,
-                    content_length: request.content_length,
-                    expires_in: expiry,
-                })
+                .prepare_upload_session_with_id(
+                    lease.operation_id,
+                    PrepareUploadSessionInput {
+                        tenant_id,
+                        actor_id: Uuid::parse_str(&context.actor.id).ok(),
+                        original_name: request.original_name,
+                        content_type: request.content_type,
+                        content_length: request.content_length,
+                        expires_in: expiry,
+                    },
+                )
                 .await
-                .map_err(media_error_to_port_error)?;
-            return Ok(MediaUploadTarget {
+                .map_err(media_error_to_port_error);
+            prepared.map(|prepared| MediaUploadTarget {
                 transport: MediaUploadTransport::PresignedObjectStore,
                 endpoint: prepared.endpoint,
                 session_id: Some(prepared.id),
                 expires_at: Some(prepared.expires_at),
-            });
-        }
-
-        Ok(MediaUploadTarget {
-            transport: MediaUploadTransport::OwnerStreamingRest,
-            endpoint: MEDIA_OWNER_STREAMING_UPLOAD_PATH.to_string(),
-            session_id: None,
-            expires_at: None,
-        })
+            })
+        } else {
+            Ok(MediaUploadTarget {
+                transport: MediaUploadTransport::OwnerStreamingRest,
+                endpoint: MEDIA_OWNER_STREAMING_UPLOAD_PATH.to_string(),
+                session_id: None,
+                expires_at: None,
+            })
+        };
+        finish_write(self, lease, result).await
     }
 
     async fn complete_upload(
@@ -217,17 +235,47 @@ impl MediaAssetWritePort for MediaService {
     ) -> Result<MediaItem, PortError> {
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.complete_upload_session(tenant_id, session_id)
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "complete_upload",
+            &serde_json::json!({ "actor": &context.actor, "session_id": session_id }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
+        let result = self
+            .complete_upload_session(tenant_id, session_id)
             .await
-            .map_err(media_error_to_port_error)
+            .map_err(media_error_to_port_error);
+        finish_write(self, lease, result).await
     }
 
     async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError> {
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.delete(tenant_id, media_id)
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "delete_asset",
+            &serde_json::json!({ "actor": &context.actor, "media_id": media_id }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
+        let result = self
+            .delete(tenant_id, media_id)
             .await
-            .map_err(media_error_to_port_error)
+            .map_err(media_error_to_port_error);
+        finish_write(self, lease, result).await
     }
 
     async fn upsert_translation(
@@ -238,9 +286,24 @@ impl MediaAssetWritePort for MediaService {
     ) -> Result<MediaTranslationItem, PortError> {
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
-        self.upsert_translation(tenant_id, media_id, input)
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "upsert_translation",
+            &serde_json::json!({ "actor": &context.actor, "media_id": media_id, "input": &input }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
+        let result = self
+            .upsert_translation(tenant_id, media_id, input)
             .await
-            .map_err(media_error_to_port_error)
+            .map_err(media_error_to_port_error);
+        finish_write(self, lease, result).await
     }
 
     async fn reconcile_storage(
@@ -251,10 +314,77 @@ impl MediaAssetWritePort for MediaService {
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
         validate_reconciliation_request(&request)?;
-        self.reconcile_storage(tenant_id, request.limit)
+        let lease = match admit_write(
+            self,
+            &context,
+            tenant_id,
+            "reconcile_storage",
+            &serde_json::json!({ "actor": &context.actor, "request": &request }),
+        )
+        .await?
+        {
+            WriteAdmission::Run(lease) => lease,
+            WriteAdmission::Replay(value) => return decode_replay(value),
+            WriteAdmission::ReplayError(error) => return Err(error),
+        };
+        let result = self
+            .reconcile_storage(tenant_id, request.limit)
             .await
-            .map_err(media_error_to_port_error)
+            .map_err(media_error_to_port_error);
+        finish_write(self, lease, result).await
     }
+}
+
+enum WriteAdmission {
+    Run(crate::idempotency::OperationLease),
+    Replay(serde_json::Value),
+    ReplayError(PortError),
+}
+
+async fn admit_write<T: Serialize>(
+    service: &MediaService,
+    context: &PortContext,
+    tenant_id: Uuid,
+    operation: &str,
+    request: &T,
+) -> Result<WriteAdmission, PortError> {
+    let key = context.idempotency_key.as_deref().unwrap_or_default();
+    match crate::idempotency::admit(service.database(), tenant_id, key, operation, request).await? {
+        crate::idempotency::Admission::Run(lease) => Ok(WriteAdmission::Run(lease)),
+        crate::idempotency::Admission::Replay(value) => Ok(WriteAdmission::Replay(value)),
+        crate::idempotency::Admission::ReplayError(error) => Ok(WriteAdmission::ReplayError(error)),
+    }
+}
+
+async fn finish_write<T: Serialize>(
+    service: &MediaService,
+    lease: crate::idempotency::OperationLease,
+    result: Result<T, PortError>,
+) -> Result<T, PortError> {
+    match result {
+        Ok(value) => {
+            crate::idempotency::complete(service.database(), lease, &value).await?;
+            Ok(value)
+        }
+        Err(error) => {
+            if let Err(receipt_error) =
+                crate::idempotency::fail(service.database(), lease, &error).await
+            {
+                tracing::error!(
+                    operation_id = %lease.operation_id,
+                    error = %receipt_error.message,
+                    "Failed to persist Media port failure receipt"
+                );
+            }
+            Err(error)
+        }
+    }
+}
+
+fn decode_replay<T: DeserializeOwned>(value: serde_json::Value) -> Result<T, PortError> {
+    serde_json::from_value(value).map_err(|error| {
+        PortError::invariant_violation("media.idempotency_receipt_corrupt", error.to_string())
+    })
 }
 
 fn validate_media_list_limit(limit: u64) -> Result<(), PortError> {

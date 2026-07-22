@@ -2,8 +2,8 @@ use crate::dto::PageBuilderPreviewRuntime;
 use crate::landing::LandingProjectError;
 use crate::static_landing::StaticLandingCompiler;
 use fly::{
-    materialize_project_with_runtime_context, PageSelection, ProjectHash, RuntimeContextScenario,
-    RuntimeScenarioRenderSnapshot, StaticLandingArtifact, ValidationSeverity,
+    PageSelection, ProjectHash, RuntimeContextScenario, RuntimeScenarioRenderSnapshot,
+    StaticLandingArtifact, ValidationSeverity, materialize_project_with_runtime_context,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -76,25 +76,28 @@ impl PageBuilderMaterializedStaticLandingArtifact {
             .enumerate()
         {
             if !snapshot.is_valid_format() || !snapshot.is_renderable() {
-                return Err(PageBuilderStaticLandingMaterializationError::Integrity(format!(
-                    "runtime snapshot for static page {page_index} is not renderable"
-                )));
+                return Err(PageBuilderStaticLandingMaterializationError::Integrity(
+                    format!("runtime snapshot for static page {page_index} is not renderable"),
+                ));
             }
             if snapshot.selection != PageSelection::Index(page_index) || snapshot.cases.len() != 1 {
-                return Err(PageBuilderStaticLandingMaterializationError::Integrity(format!(
-                    "runtime snapshot for static page {page_index} has an invalid selection or case count"
-                )));
+                return Err(PageBuilderStaticLandingMaterializationError::Integrity(
+                    format!(
+                        "runtime snapshot for static page {page_index} has an invalid selection or case count"
+                    ),
+                ));
             }
             let case = &snapshot.cases[0];
-            let static_document_hash =
-                ProjectHash::from_bytes(page.document_html.as_bytes()).hex();
+            let static_document_hash = ProjectHash::from_bytes(page.document_html.as_bytes()).hex();
             if case.scenario_id != expected_scenario_id
                 || case.page_id != page.page_id
                 || case.document_hash.as_deref() != Some(static_document_hash.as_str())
             {
-                return Err(PageBuilderStaticLandingMaterializationError::Integrity(format!(
-                    "runtime snapshot for static page {page_index} does not match the materialized artifact"
-                )));
+                return Err(PageBuilderStaticLandingMaterializationError::Integrity(
+                    format!(
+                        "runtime snapshot for static page {page_index} does not match the materialized artifact"
+                    ),
+                ));
             }
         }
 
@@ -364,7 +367,9 @@ mod tests {
         assert_eq!(result.identity.runtime_context_hash.len(), 64);
         assert_eq!(result.identity.runtime_snapshot_hash.len(), 64);
         assert_eq!(result.identity.materialization_hash.len(), 64);
-        result.verify_integrity().expect("materialization integrity");
+        result
+            .verify_integrity()
+            .expect("materialization integrity");
     }
 
     #[test]

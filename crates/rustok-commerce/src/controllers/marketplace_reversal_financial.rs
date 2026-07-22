@@ -87,10 +87,7 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
             "/reversal-events/operator-review",
             axum::routing::get(list_operator_review),
         )
-        .route(
-            "/reversal-events/{id}",
-            axum::routing::get(show_event),
-        )
+        .route("/reversal-events/{id}", axum::routing::get(show_event))
         .route(
             "/reversal-events/{id}/retry",
             axum::routing::post(retry_event),

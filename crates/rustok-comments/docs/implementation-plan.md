@@ -64,6 +64,19 @@ writes.
    **Done when:** closed/spam/trash behavior and recovery are observable and
    documented for operators.
 
+5. **Close the direct-write richtext bypass and join the atomic cutover.** A
+   direct `CommentsThreadPort` or service write must accept the typed
+   `RichTextDocument`, select the `comment` profile server-side, and pass the
+   same strict validator as Blog-integrated writes. Migrate `comment_bodies`,
+   remove client-selectable formats and body/`content_json` duplication, and
+   use the canonical HTML/plain-text projections for moderation, storefront,
+   events, and Search/Index consumers.
+   **Depends on:** the
+   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
+   and synchronized Blog consumer contract.
+   **Done when:** invalid/empty/oversized documents fail at every entry point,
+   no direct port bypass exists, and Next/Leptos reads share the server renderer.
+
 ## Verification
 
 - `npm run verify:comments:admin-boundary`

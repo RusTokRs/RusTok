@@ -259,6 +259,9 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
         ModuleLifecycleExecutionError::IdempotencyConflict => ToggleModuleError::Policy(
             "module lifecycle idempotency key was reused for a different command".to_string(),
         ),
+        ModuleLifecycleExecutionError::PolicyTransition(error) => {
+            ToggleModuleError::Policy(error)
+        }
     }
 }
 
@@ -272,6 +275,7 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         ModuleLifecycleDbWriterError::Definition(error) => {
             ToggleModuleError::Policy(error.to_string())
         }
+        ModuleLifecycleDbWriterError::Policy(error) => ToggleModuleError::Policy(error.to_string()),
         ModuleLifecycleDbWriterError::Recovery(error) => {
             ToggleModuleError::Policy(error.to_string())
         }
@@ -281,6 +285,12 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
             reason,
         } => ToggleModuleError::Policy(format!("artifact settings for `{module_slug}`: {reason}")),
         ModuleLifecycleDbWriterError::Settings(error) => {
+            ToggleModuleError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::PolicyTransition(error) => {
+            ToggleModuleError::Policy(error)
+        }
+        error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ToggleModuleError::Policy(error.to_string())
         }
     }
@@ -309,6 +319,9 @@ fn map_lifecycle_writer_recovery_error(
         ModuleLifecycleDbWriterError::Definition(error) => {
             ModuleOperationRecoveryError::Policy(error.to_string())
         }
+        ModuleLifecycleDbWriterError::Policy(error) => {
+            ModuleOperationRecoveryError::Policy(error.to_string())
+        }
         ModuleLifecycleDbWriterError::UnknownModule(error) => {
             ModuleOperationRecoveryError::Policy(error)
         }
@@ -320,6 +333,12 @@ fn map_lifecycle_writer_recovery_error(
         )),
         ModuleLifecycleDbWriterError::Settings(error) => {
             ModuleOperationRecoveryError::Database(DbErr::Custom(error.to_string()))
+        }
+        ModuleLifecycleDbWriterError::PolicyTransition(error) => {
+            ModuleOperationRecoveryError::Policy(error)
+        }
+        error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
+            ModuleOperationRecoveryError::Policy(error.to_string())
         }
     }
 }
@@ -345,10 +364,19 @@ fn map_lifecycle_writer_settings_error(
         ModuleLifecycleDbWriterError::Definition(error) => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
+        ModuleLifecycleDbWriterError::Policy(error) => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
         ModuleLifecycleDbWriterError::Lifecycle(error) => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
         ModuleLifecycleDbWriterError::Recovery(error) => {
+            UpdateModuleSettingsError::Policy(error.to_string())
+        }
+        ModuleLifecycleDbWriterError::PolicyTransition(error) => {
+            UpdateModuleSettingsError::Policy(error)
+        }
+        error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             UpdateModuleSettingsError::Policy(error.to_string())
         }
     }

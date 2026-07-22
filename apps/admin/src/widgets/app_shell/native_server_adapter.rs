@@ -232,7 +232,10 @@ mod tests {
     #[test]
     fn unknown_search_sources_fail_closed() {
         assert_eq!(required_admin_search_permission("secret", "unknown"), None);
-        assert_eq!(required_admin_search_permission("blog_post", "content"), None);
+        assert_eq!(
+            required_admin_search_permission("blog_post", "content"),
+            None
+        );
         assert_eq!(required_admin_search_permission("node", "unknown"), None);
     }
 }

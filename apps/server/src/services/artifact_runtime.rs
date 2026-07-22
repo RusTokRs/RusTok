@@ -7,16 +7,43 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    ArtifactCapabilityBrokerResolverRouter, ArtifactRuntime, ArtifactRuntimeLifecycleExecutor,
-    ModuleControlPlane, ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
+    ArtifactCapabilityBrokerResolverRouter, ArtifactEffectivePolicyResolver, ArtifactRuntime,
+    ArtifactRuntimeLifecycleExecutor, ModuleControlPlane, ModuleEffectivePolicy,
+    ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
 use rustok_storage::StorageRuntime;
+use sea_orm::DatabaseConnection;
 
 use crate::error::{Error, Result};
 
 use super::server_runtime_context::ServerRuntimeContext;
+
+#[derive(Clone)]
+struct ServerArtifactEffectivePolicyResolver {
+    db: DatabaseConnection,
+    registry: ModuleRegistry,
+}
+
+#[async_trait]
+impl ArtifactEffectivePolicyResolver for ServerArtifactEffectivePolicyResolver {
+    async fn resolve(
+        &self,
+        tenant_id: uuid::Uuid,
+        _module_slug: &str,
+    ) -> Result<ModuleEffectivePolicy, String> {
+        crate::services::effective_module_policy::EffectiveModulePolicyService::resolve(
+            &self.db,
+            &self.registry,
+            tenant_id,
+        )
+        .await
+        .map_err(|error| error.to_string())
+    }
+}
 
 /// Builds the one server-owned executor used for all admitted artifact
 /// bindings. Rhai calls reach host capabilities only through the neutral
@@ -62,9 +89,16 @@ pub fn compose_artifact_binding_executor(
     )
     .with_observer(Arc::new(control_plane.artifact_execution_audit()));
     let runtime = ArtifactRuntime::new(control_plane.artifact_blob_store(storage), sandbox);
+    let registry = ctx
+        .shared_get::<ModuleRegistry>()
+        .ok_or_else(|| Error::Message("module registry is not initialized".to_string()))?;
     Ok(Arc::new(ArtifactRuntimeLifecycleExecutor::new(
         runtime,
         control_plane.installation(),
         control_plane.artifact_sandbox_policy(),
+        ServerArtifactEffectivePolicyResolver {
+            db: ctx.db_clone(),
+            registry,
+        },
     )))
 }

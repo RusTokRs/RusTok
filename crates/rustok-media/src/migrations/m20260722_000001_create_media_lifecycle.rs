@@ -66,6 +66,18 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
+            .create_index(
+                Index::create()
+                    .name("uidx_media_assets_tenant_id")
+                    .table(Assets::Table)
+                    .col(Assets::TenantId)
+                    .col(Assets::Id)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
             .create_table(
                 Table::create()
                     .table(Blobs::Table)
@@ -99,6 +111,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
+                    .col(
+                        ColumnDef::new(Blobs::LastReconciledAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
                     .col(ColumnDef::new(Blobs::LastError).text())
                     .foreign_key(
                         ForeignKey::create()
@@ -109,11 +127,98 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_blobs_asset")
-                            .from(Blobs::Table, Blobs::AssetId)
-                            .to(Assets::Table, Assets::Id)
+                            .name("fk_media_blobs_tenant_asset")
+                            .from_tbl(Blobs::Table)
+                            .from_col(Blobs::TenantId)
+                            .from_col(Blobs::AssetId)
+                            .to_tbl(Assets::Table)
+                            .to_col(Assets::TenantId)
+                            .to_col(Assets::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uidx_media_blobs_tenant_id")
+                    .table(Blobs::Table)
+                    .col(Blobs::TenantId)
+                    .col(Blobs::Id)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(PortOperations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PortOperations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(PortOperations::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(PortOperations::IdempotencyKey)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PortOperations::Operation)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PortOperations::RequestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(PortOperations::LeaseToken).uuid().not_null())
+                    .col(
+                        ColumnDef::new(PortOperations::Status)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(PortOperations::ResponseJson).json_binary())
+                    .col(ColumnDef::new(PortOperations::ErrorJson).json_binary())
+                    .col(
+                        ColumnDef::new(PortOperations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(PortOperations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(ColumnDef::new(PortOperations::CompletedAt).timestamp_with_time_zone())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_media_port_operations_tenant")
+                            .from(PortOperations::Table, PortOperations::TenantId)
+                            .to(Tenants::Table, Tenants::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("uidx_media_port_operations_tenant_key")
+                    .table(PortOperations::Table)
+                    .col(PortOperations::TenantId)
+                    .col(PortOperations::IdempotencyKey)
+                    .unique()
                     .to_owned(),
             )
             .await?;
@@ -180,24 +285,36 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_renditions_asset")
-                            .from(Renditions::Table, Renditions::AssetId)
-                            .to(Assets::Table, Assets::Id)
+                            .name("fk_media_renditions_tenant_asset")
+                            .from_tbl(Renditions::Table)
+                            .from_col(Renditions::TenantId)
+                            .from_col(Renditions::AssetId)
+                            .to_tbl(Assets::Table)
+                            .to_col(Assets::TenantId)
+                            .to_col(Assets::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_renditions_source_blob")
-                            .from(Renditions::Table, Renditions::SourceBlobId)
-                            .to(Blobs::Table, Blobs::Id)
+                            .name("fk_media_renditions_tenant_source_blob")
+                            .from_tbl(Renditions::Table)
+                            .from_col(Renditions::TenantId)
+                            .from_col(Renditions::SourceBlobId)
+                            .to_tbl(Blobs::Table)
+                            .to_col(Blobs::TenantId)
+                            .to_col(Blobs::Id)
                             .on_delete(ForeignKeyAction::Restrict),
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_renditions_result_blob")
-                            .from(Renditions::Table, Renditions::ResultBlobId)
-                            .to(Blobs::Table, Blobs::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
+                            .name("fk_media_renditions_tenant_result_blob")
+                            .from_tbl(Renditions::Table)
+                            .from_col(Renditions::TenantId)
+                            .from_col(Renditions::ResultBlobId)
+                            .to_tbl(Blobs::Table)
+                            .to_col(Blobs::TenantId)
+                            .to_col(Blobs::Id)
+                            .on_delete(ForeignKeyAction::Restrict),
                     )
                     .to_owned(),
             )
@@ -277,6 +394,19 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_assets_upload_session")
+                        .from(Assets::Table, Assets::UploadSessionId)
+                        .to(UploadSessions::Table, UploadSessions::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
+
         manager
             .create_table(
                 Table::create()
@@ -288,6 +418,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
+                    .col(ColumnDef::new(Translations::TenantId).uuid().not_null())
                     .col(ColumnDef::new(Translations::AssetId).uuid().not_null())
                     .col(
                         ColumnDef::new(Translations::Locale)
@@ -299,9 +430,13 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Translations::Caption).text())
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_translations_asset")
-                            .from(Translations::Table, Translations::AssetId)
-                            .to(Assets::Table, Assets::Id)
+                            .name("fk_media_translations_tenant_asset")
+                            .from_tbl(Translations::Table)
+                            .from_col(Translations::TenantId)
+                            .from_col(Translations::AssetId)
+                            .to_tbl(Assets::Table)
+                            .to_col(Assets::TenantId)
+                            .to_col(Assets::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
@@ -313,8 +448,21 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
+            .drop_table(Table::drop().table(PortOperations::Table).to_owned())
+            .await?;
+        manager
             .drop_table(Table::drop().table(Translations::Table).to_owned())
             .await?;
+        if manager.get_database_backend() == DatabaseBackend::Postgres {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_media_assets_upload_session")
+                        .table(Assets::Table)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .drop_table(Table::drop().table(UploadSessions::Table).to_owned())
             .await?;
@@ -366,6 +514,13 @@ async fn create_indexes(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             .table(Blobs::Table)
             .col(Blobs::AssetId)
             .col(Blobs::State)
+            .to_owned(),
+        Index::create()
+            .name("idx_media_blobs_tenant_state_reconciled")
+            .table(Blobs::Table)
+            .col(Blobs::TenantId)
+            .col(Blobs::State)
+            .col(Blobs::LastReconciledAt)
             .to_owned(),
         Index::create()
             .name("idx_media_renditions_source_recipe")
@@ -430,7 +585,26 @@ enum Blobs {
     DeleteRequestedAt,
     DeletedAt,
     ReconcileAttempts,
+    LastReconciledAt,
     LastError,
+}
+
+#[derive(Iden)]
+enum PortOperations {
+    #[iden = "media_port_operations"]
+    Table,
+    Id,
+    TenantId,
+    IdempotencyKey,
+    Operation,
+    RequestHash,
+    LeaseToken,
+    Status,
+    ResponseJson,
+    ErrorJson,
+    CreatedAt,
+    UpdatedAt,
+    CompletedAt,
 }
 
 #[derive(Iden)]
@@ -476,6 +650,7 @@ enum Translations {
     #[iden = "media_translations"]
     Table,
     Id,
+    TenantId,
     AssetId,
     Locale,
     Title,

@@ -7,7 +7,7 @@ description = "Neutral notification source, audience, and target authorization c
 
 [features]
 default = ["server"]
-server = ["dep:async-trait", "dep:rustok-api", "dep:rustok-core"]
+server = ["dep:async-trait", "rustok-api/runtime", "dep:rustok-core"]
 
 [dependencies]
 async-trait = { workspace = true, optional = true }

@@ -33,17 +33,17 @@ pub use fly::{
     StaticLandingBuildIdentity, StaticLandingPage,
 };
 pub use publish_runtime::{
-    PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
-    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_FORMAT, PageBuilderPublishRuntimeReviewError,
+    PageBuilderReviewedPublishRuntime,
 };
 pub use publish_sanitization::{
-    sanitize_static_landing_project, PageBuilderSanitizedStaticLandingProject,
-    PageBuilderStaticLandingSanitizationError, PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
+    PAGE_BUILDER_STATIC_SANITIZATION_FORMAT, PageBuilderSanitizedStaticLandingProject,
+    PageBuilderStaticLandingSanitizationError, sanitize_static_landing_project,
 };
 pub use static_landing_materialization::{
-    compile_materialized_static_landing, PageBuilderMaterializedStaticLandingArtifact,
+    PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT, PageBuilderMaterializedStaticLandingArtifact,
     PageBuilderStaticLandingMaterializationError, PageBuilderStaticLandingMaterializationIdentity,
-    PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT,
+    compile_materialized_static_landing,
 };
 
 #[cfg(feature = "server")]
@@ -135,16 +135,16 @@ mod tests {
         let encoded = serde_json::to_value(&input).expect("serialize input");
         assert_eq!(encoded["page_id"], "home");
 
-        let preview = PreviewPageBuilderInput::new(
-            "home",
-            serde_json::json!({ "pages": [] }),
-        )
-        .with_runtime(PageBuilderPreviewRuntime::new(
-            serde_json::json!({ "page": { "title": "Welcome" } }),
-            Some("desktop".to_string()),
-        ));
+        let preview = PreviewPageBuilderInput::new("home", serde_json::json!({ "pages": [] }))
+            .with_runtime(PageBuilderPreviewRuntime::new(
+                serde_json::json!({ "page": { "title": "Welcome" } }),
+                Some("desktop".to_string()),
+            ));
         let preview_json = serde_json::to_value(&preview).expect("serialize preview input");
-        assert_eq!(preview_json["runtime"]["context"]["page"]["title"], "Welcome");
+        assert_eq!(
+            preview_json["runtime"]["context"]["page"]["title"],
+            "Welcome"
+        );
         assert_eq!(preview_json["runtime"]["scenario_id"], "desktop");
         let decoded_preview: PreviewPageBuilderInput =
             serde_json::from_value(preview_json).expect("deserialize preview input");

@@ -264,7 +264,7 @@ async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store
         rustok_storage::ObjectZone::Staging,
         rustok_storage::ObjectScope::Platform,
         chrono::Utc::now(),
-        uuid::Uuid::new_v4(),
+        uuid::Uuid::nil(),
         "probe",
     )
     .expect("platform health key constants are valid")

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub asset_id: Uuid,
     pub locale: String,
     pub title: Option<String>,

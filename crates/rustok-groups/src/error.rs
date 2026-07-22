@@ -30,14 +30,13 @@ impl From<sea_orm::DbErr> for GroupsError {
 impl From<GroupsError> for PortError {
     fn from(value: GroupsError) -> Self {
         match value {
-            GroupsError::Validation(message) => {
-                PortError::validation("groups.validation", message)
+            GroupsError::Validation(message) => PortError::validation("groups.validation", message),
+            GroupsError::NotFound => {
+                PortError::not_found("groups.not_found", "group was not found")
             }
-            GroupsError::NotFound => PortError::not_found("groups.not_found", "group was not found"),
-            GroupsError::HandleConflict => PortError::conflict(
-                "groups.handle_conflict",
-                "group handle already exists",
-            ),
+            GroupsError::HandleConflict => {
+                PortError::conflict("groups.handle_conflict", "group handle already exists")
+            }
             GroupsError::Forbidden(message) => PortError::forbidden("groups.forbidden", message),
             GroupsError::Conflict(message) => PortError::conflict("groups.conflict", message),
             GroupsError::Persistence(message) => PortError::new(

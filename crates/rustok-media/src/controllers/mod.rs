@@ -9,7 +9,6 @@ use rustok_api::{
     has_effective_permission,
 };
 use rustok_storage::StorageRuntime;
-use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -180,7 +179,6 @@ pub async fn upload(
             .await
             .map_err(media_error)?;
 
-        metrics::record_media_upload(&tenant.id.to_string(), &item.mime_type, item.size as u64);
         return Ok((StatusCode::CREATED, Json(item)));
     }
 
@@ -231,7 +229,6 @@ pub async fn delete_media(
     require_media_permission(&tenant, &auth, Action::Delete)?;
     let service = MediaService::new(runtime.db_clone(), runtime.storage());
     service.delete(tenant.id, id).await.map_err(media_error)?;
-    metrics::record_media_delete(&tenant.id.to_string());
     Ok(StatusCode::NO_CONTENT)
 }
 

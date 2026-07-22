@@ -3,8 +3,8 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -830,7 +830,7 @@ fn url_has_credentials(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{inspect_resolved_lock_graph, SourcePolicyError};
+    use super::{SourcePolicyError, inspect_resolved_lock_graph};
     use rustok_modules::ModuleBuildDependencyPolicy;
 
     fn policy() -> ModuleBuildDependencyPolicy {

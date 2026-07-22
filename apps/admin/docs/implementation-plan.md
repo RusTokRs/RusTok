@@ -27,6 +27,15 @@ Host-owned features use explicit model/transport boundaries:
 Pages and components call public transport facades only. Raw GraphQL, REST and
 native `#[server]` functions stay behind those transport boundaries.
 
+Module-control-plane GraphQL adapters now propagate transport/owner failures
+instead of constructing successful-looking registry, installation, tenant, or
+marketplace responses from compile-time navigation metadata. This removes a
+second state model while preserving the native and GraphQL transport paths.
+Native marketplace and registry lifecycle reads consume host-provided owner
+ports. The former direct registry SQL, workspace/Cargo scanning, catalog
+synthesis, canonical hashing, dependency solving, and build planning have been
+deleted from the admin host.
+
 ## Active Work
 
 - Keep host FFA guardrails current in `scripts/verify/verify-frontend-host-ffa-contract.mjs`.
@@ -37,6 +46,13 @@ native `#[server]` functions stay behind those transport boundaries.
   public/headless-capable.
 - Keep locale propagation host-owned; module UI receives effective locale from
   host context and must not add local cookie/header/query fallback chains.
+- Keep module-control-plane native reads behind owner services and the
+  host-composed marketplace catalog handle.
+- Prepare the Leptos side of the atomic
+  [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md):
+  mount the shared sandboxed editor frame through a thin support adapter, keep
+  native `#[server]` as the internal owner path with parallel GraphQL, and do
+  not retry failed mutations blindly through another protocol.
 
 ## Open Improvement Areas
 
@@ -48,6 +64,9 @@ native `#[server]` functions stay behind those transport boundaries.
 - Expand focused component and contract tests for host operator features.
 - Keep Leptos admin and Next admin behavior aligned for loading, empty, error and
   permission-gated states.
+- Prove richtext frame CSP, host-provided i18n/locale, accessibility,
+  save/reload, and server-rendered read parity without weakening the parent
+  `style-src-attr 'none'` policy.
 
 ## Verification
 

@@ -3,17 +3,16 @@ use rustok_ui_transport::UiTransportPath;
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
-    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
-    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
-    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
-    registry_principal_label_from_value,
+    registry_principal_label_from_value, RegistryFollowUpGateLifecycle,
+    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
+    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
+    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
     ReleaseInfo, TenantModule, ToggleModuleResult,
 };
-use crate::shared::api::{ApiError, map_server_fn_error, request};
+use crate::shared::api::{map_server_fn_error, request, ApiError};
 
 use super::native_server_adapter::*;
 use super::types::*;
@@ -56,292 +55,6 @@ pub async fn fetch_enabled_modules_graphql(
     Ok(response.enabled_modules)
 }
 
-pub fn bundled_humanize_module_slug(slug: &str) -> String {
-    slug.split(['-', '_'])
-        .filter(|part| !part.is_empty())
-        .map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-pub fn bundled_module_category(nav_group: &str) -> String {
-    match nav_group {
-        "Content" => "content",
-        "Commerce" => "commerce",
-        "Runtime" => "runtime",
-        "Governance" => "governance",
-        "Automation" => "automation",
-        _ => "extensions",
-    }
-    .to_string()
-}
-
-pub fn fallback_module_registry() -> Vec<ModuleInfo> {
-    let core_slugs = crate::app::modules::core_module_slugs();
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(|entry| {
-            let metadata = crate::app::modules::module_runtime_metadata(entry.module_slug);
-            let is_core = core_slugs.contains(&entry.module_slug);
-            ModuleInfo {
-                module_slug: entry.module_slug.to_string(),
-                name: entry.nav_label.to_string(),
-                description: format!("{} module", entry.nav_label),
-                version: "workspace".to_string(),
-                kind: if is_core { "core" } else { "optional" }.to_string(),
-                dependencies: Vec::new(),
-                enabled: true,
-                ownership: metadata
-                    .map(|metadata| metadata.ownership.to_string())
-                    .unwrap_or_else(|| "first_party".to_string()),
-                trust_level: metadata
-                    .map(|metadata| metadata.trust_level.to_string())
-                    .unwrap_or_else(|| "trusted".to_string()),
-                has_admin_ui: true,
-                has_storefront_ui: false,
-                ui_classification: "admin".to_string(),
-                recommended_admin_surfaces: metadata
-                    .map(|metadata| {
-                        metadata
-                            .recommended_admin_surfaces
-                            .iter()
-                            .map(|surface| surface.to_string())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                showcase_admin_surfaces: metadata
-                    .map(|metadata| {
-                        metadata
-                            .showcase_admin_surfaces
-                            .iter()
-                            .map(|surface| surface.to_string())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            }
-        })
-        .collect::<Vec<_>>();
-    modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
-    modules.dedup_by(|left, right| left.module_slug == right.module_slug);
-    modules
-}
-
-pub fn fallback_installed_modules() -> Vec<InstalledModule> {
-    let core_slugs = crate::app::modules::core_module_slugs();
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(|entry| InstalledModule {
-            slug: entry.module_slug.to_string(),
-            source: "bundled".to_string(),
-            crate_name: format!("rustok-{}", entry.module_slug),
-            version: Some("workspace".to_string()),
-            required: core_slugs.contains(&entry.module_slug),
-            dependencies: Vec::new(),
-        })
-        .collect::<Vec<_>>();
-    modules.sort_by(|left, right| left.slug.cmp(&right.slug));
-    modules.dedup_by(|left, right| left.slug == right.slug);
-    modules
-}
-
-pub fn fallback_tenant_modules() -> Vec<TenantModule> {
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(|entry| TenantModule {
-            module_slug: entry.module_slug.to_string(),
-            enabled: true,
-            settings: "{}".to_string(),
-        })
-        .collect::<Vec<_>>();
-    modules.sort_by(|left, right| left.module_slug.cmp(&right.module_slug));
-    modules.dedup_by(|left, right| left.module_slug == right.module_slug);
-    modules
-}
-
-pub fn fallback_marketplace_module_from_entry(
-    entry: &crate::app::modules::GeneratedModuleNavigationEntry,
-) -> MarketplaceModule {
-    let metadata = crate::app::modules::module_runtime_metadata(entry.module_slug);
-    MarketplaceModule {
-        slug: entry.module_slug.to_string(),
-        name: entry.nav_label.to_string(),
-        latest_version: "workspace".to_string(),
-        description: format!("{} module", entry.nav_label),
-        source: "bundled".to_string(),
-        kind: "optional".to_string(),
-        category: bundled_module_category(entry.nav_group),
-        tags: vec![entry.nav_group.to_ascii_lowercase()],
-        icon_url: None,
-        banner_url: None,
-        screenshots: Vec::new(),
-        crate_name: format!("rustok-{}", entry.module_slug),
-        dependencies: Vec::new(),
-        ownership: metadata
-            .map(|metadata| metadata.ownership.to_string())
-            .unwrap_or_else(|| "first_party".to_string()),
-        trust_level: metadata
-            .map(|metadata| metadata.trust_level.to_string())
-            .unwrap_or_else(|| "trusted".to_string()),
-        rustok_min_version: None,
-        rustok_max_version: None,
-        publisher: None,
-        checksum_sha256: None,
-        signature_present: false,
-        versions: vec![MarketplaceModuleVersion {
-            version: "workspace".to_string(),
-            changelog: None,
-            yanked: false,
-            published_at: None,
-            checksum_sha256: None,
-            signature_present: false,
-        }],
-        has_admin_ui: true,
-        has_storefront_ui: false,
-        ui_classification: "admin".to_string(),
-        registry_lifecycle: None,
-        compatible: true,
-        recommended_admin_surfaces: metadata
-            .map(|metadata| {
-                metadata
-                    .recommended_admin_surfaces
-                    .iter()
-                    .map(|surface| surface.to_string())
-                    .collect()
-            })
-            .unwrap_or_default(),
-        showcase_admin_surfaces: metadata
-            .map(|metadata| {
-                metadata
-                    .showcase_admin_surfaces
-                    .iter()
-                    .map(|surface| surface.to_string())
-                    .collect()
-            })
-            .unwrap_or_default(),
-        settings_schema: Vec::new(),
-        installed: true,
-        installed_version: Some("workspace".to_string()),
-        update_available: false,
-    }
-}
-
-pub fn fallback_marketplace_modules(variables: &MarketplaceVariables) -> Vec<MarketplaceModule> {
-    let search = variables.search.as_ref().map(|value| value.to_lowercase());
-    let category = variables
-        .category
-        .as_ref()
-        .map(|value| value.to_lowercase());
-    let tag = variables.tag.as_ref().map(|value| value.to_lowercase());
-    let source = variables.source.as_ref().map(|value| value.to_lowercase());
-    let trust_level = variables
-        .trust_level
-        .as_ref()
-        .map(|value| value.to_lowercase());
-    let installed_only = variables.installed_only.unwrap_or(false);
-
-    let mut modules = crate::app::modules::module_navigation_entries()
-        .iter()
-        .map(fallback_marketplace_module_from_entry)
-        .filter(|module| !installed_only || module.installed)
-        .filter(|module| {
-            category
-                .as_ref()
-                .is_none_or(|value| value == "all" || module.category.eq_ignore_ascii_case(value))
-        })
-        .filter(|module| {
-            tag.as_ref().is_none_or(|value| {
-                value == "all"
-                    || module
-                        .tags
-                        .iter()
-                        .any(|module_tag| module_tag.eq_ignore_ascii_case(value))
-            })
-        })
-        .filter(|module| {
-            source
-                .as_ref()
-                .is_none_or(|value| value == "all" || module.source.eq_ignore_ascii_case(value))
-        })
-        .filter(|module| {
-            trust_level.as_ref().is_none_or(|value| {
-                value == "all" || module.trust_level.eq_ignore_ascii_case(value)
-            })
-        })
-        .filter(|module| {
-            search.as_ref().is_none_or(|value| {
-                module.slug.to_lowercase().contains(value)
-                    || module.name.to_lowercase().contains(value)
-                    || module.description.to_lowercase().contains(value)
-                    || module.crate_name.to_lowercase().contains(value)
-            })
-        })
-        .collect::<Vec<_>>();
-
-    modules.sort_by(|left, right| left.slug.cmp(&right.slug));
-    modules.dedup_by(|left, right| left.slug == right.slug);
-    modules
-}
-
-pub fn fallback_marketplace_module(slug: &str) -> Option<MarketplaceModule> {
-    let slug = slug.trim();
-    crate::app::modules::module_navigation_entries()
-        .iter()
-        .find(|entry| entry.module_slug.eq_ignore_ascii_case(slug))
-        .map(fallback_marketplace_module_from_entry)
-        .or_else(|| {
-            (!slug.is_empty()).then(|| {
-                let label = bundled_humanize_module_slug(slug);
-                MarketplaceModule {
-                    slug: slug.to_string(),
-                    name: label.clone(),
-                    latest_version: "workspace".to_string(),
-                    description: format!("{label} module"),
-                    source: "bundled".to_string(),
-                    kind: "optional".to_string(),
-                    category: "extensions".to_string(),
-                    tags: Vec::new(),
-                    icon_url: None,
-                    banner_url: None,
-                    screenshots: Vec::new(),
-                    crate_name: format!("rustok-{slug}"),
-                    dependencies: Vec::new(),
-                    ownership: "first_party".to_string(),
-                    trust_level: "trusted".to_string(),
-                    rustok_min_version: None,
-                    rustok_max_version: None,
-                    publisher: None,
-                    checksum_sha256: None,
-                    signature_present: false,
-                    versions: vec![MarketplaceModuleVersion {
-                        version: "workspace".to_string(),
-                        changelog: None,
-                        yanked: false,
-                        published_at: None,
-                        checksum_sha256: None,
-                        signature_present: false,
-                    }],
-                    has_admin_ui: true,
-                    has_storefront_ui: false,
-                    ui_classification: "admin".to_string(),
-                    registry_lifecycle: None,
-                    compatible: true,
-                    recommended_admin_surfaces: Vec::new(),
-                    showcase_admin_surfaces: Vec::new(),
-                    settings_schema: Vec::new(),
-                    installed: true,
-                    installed_version: Some("workspace".to_string()),
-                    update_available: false,
-                }
-            })
-        })
-}
-
 pub async fn fetch_modules(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -351,17 +64,14 @@ pub async fn fetch_modules(
             .await
             .map_err(map_server_fn_error),
         UiTransportPath::Graphql => {
-            let response: Result<ModuleRegistryResponse, ApiError> = request(
+            let response: ModuleRegistryResponse = request(
                 MODULE_REGISTRY_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await;
-            match response {
-                Ok(response) => Ok(response.module_registry),
-                Err(_) => Ok(fallback_module_registry()),
-            }
+            .await?;
+            Ok(response.module_registry)
         }
     }
 }
@@ -375,17 +85,14 @@ pub async fn fetch_installed_modules(
             .await
             .map_err(map_server_fn_error),
         UiTransportPath::Graphql => {
-            let response: Result<InstalledModulesResponse, ApiError> = request(
+            let response: InstalledModulesResponse = request(
                 INSTALLED_MODULES_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await;
-            match response {
-                Ok(response) => Ok(response.installed_modules),
-                Err(_) => Ok(fallback_installed_modules()),
-            }
+            .await?;
+            Ok(response.installed_modules)
         }
     }
 }
@@ -399,17 +106,14 @@ pub async fn fetch_tenant_modules(
             .await
             .map_err(map_server_fn_error),
         UiTransportPath::Graphql => {
-            let response: Result<TenantModulesResponse, ApiError> = request(
+            let response: TenantModulesResponse = request(
                 TENANT_MODULES_QUERY,
                 serde_json::json!({}),
                 token,
                 tenant_slug,
             )
-            .await;
-            match response {
-                Ok(response) => Ok(response.tenant_modules),
-                Err(_) => Ok(fallback_tenant_modules()),
-            }
+            .await?;
+            Ok(response.tenant_modules)
         }
     }
 }
@@ -420,17 +124,9 @@ pub async fn fetch_marketplace_modules(
     variables: MarketplaceVariables,
 ) -> Result<Vec<MarketplaceModule>, ApiError> {
     if token.is_some() {
-        let response: Result<MarketplaceResponse, ApiError> = request(
-            MARKETPLACE_QUERY,
-            variables.clone(),
-            token.clone(),
-            tenant_slug.clone(),
-        )
-        .await;
-        return match response {
-            Ok(response) => Ok(response.marketplace),
-            Err(_) => Ok(fallback_marketplace_modules(&variables)),
-        };
+        let response: MarketplaceResponse =
+            request(MARKETPLACE_QUERY, variables, token, tenant_slug).await?;
+        return Ok(response.marketplace);
     }
 
     match selected_transport_path() {
@@ -446,13 +142,9 @@ pub async fn fetch_marketplace_modules(
         .await
         .map_err(map_server_fn_error),
         UiTransportPath::Graphql => {
-            let fallback_variables = variables.clone();
-            let response: Result<MarketplaceResponse, ApiError> =
-                request(MARKETPLACE_QUERY, variables, token, tenant_slug).await;
-            match response {
-                Ok(response) => Ok(response.marketplace),
-                Err(_) => Ok(fallback_marketplace_modules(&fallback_variables)),
-            }
+            let response: MarketplaceResponse =
+                request(MARKETPLACE_QUERY, variables, token, tenant_slug).await?;
+            Ok(response.marketplace)
         }
     }
 }
@@ -463,17 +155,14 @@ pub async fn fetch_marketplace_module(
     tenant_slug: Option<String>,
 ) -> Result<Option<MarketplaceModule>, ApiError> {
     if token.is_some() {
-        let response: Result<MarketplaceModuleResponse, ApiError> = request(
+        let response: MarketplaceModuleResponse = request(
             MARKETPLACE_MODULE_QUERY,
-            MarketplaceModuleVariables { slug: slug.clone() },
-            token.clone(),
-            tenant_slug.clone(),
+            MarketplaceModuleVariables { slug },
+            token,
+            tenant_slug,
         )
-        .await;
-        return match response {
-            Ok(response) => Ok(response.marketplace_module),
-            Err(_) => Ok(fallback_marketplace_module(&slug)),
-        };
+        .await?;
+        return Ok(response.marketplace_module);
     }
 
     match selected_transport_path() {
@@ -481,18 +170,14 @@ pub async fn fetch_marketplace_module(
             .await
             .map_err(map_server_fn_error),
         UiTransportPath::Graphql => {
-            let fallback_slug = slug.clone();
-            let response: Result<MarketplaceModuleResponse, ApiError> = request(
+            let response: MarketplaceModuleResponse = request(
                 MARKETPLACE_MODULE_QUERY,
                 MarketplaceModuleVariables { slug },
                 token,
                 tenant_slug,
             )
-            .await;
-            match response {
-                Ok(response) => Ok(response.marketplace_module),
-                Err(_) => Ok(fallback_marketplace_module(&fallback_slug)),
-            }
+            .await?;
+            Ok(response.marketplace_module)
         }
     }
 }

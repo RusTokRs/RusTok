@@ -1,7 +1,7 @@
 use fly_browser::{BrowserAdapterConfig, FLY_BROWSER_ADAPTER_JS};
 use leptos::prelude::*;
 use rustok_page_builder::browser_host::{
-    page_builder_browser_module, PageBuilderBrowserModuleOptions,
+    PageBuilderBrowserModuleOptions, page_builder_browser_module,
 };
 
 fn browser_adapter_config_json(
@@ -63,9 +63,7 @@ pub fn PageBuilderBrowserAdapter(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fly_browser::{
-        DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS, DEFAULT_MAX_BROWSER_MESSAGE_BYTES,
-    };
+    use fly_browser::{DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS, DEFAULT_MAX_BROWSER_MESSAGE_BYTES};
 
     #[test]
     fn adapter_asset_does_not_depend_on_wasm_runtime() {
@@ -84,10 +82,7 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).expect("JSON");
         assert_eq!(value["intentEndpoint"], "/admin/fly/intents");
         assert_eq!(value["csrfToken"], "csrf-token");
-        assert_eq!(
-            value["maxMessageBytes"],
-            DEFAULT_MAX_BROWSER_MESSAGE_BYTES
-        );
+        assert_eq!(value["maxMessageBytes"], DEFAULT_MAX_BROWSER_MESSAGE_BYTES);
         assert_eq!(
             value["maxGeometryComponents"],
             DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS

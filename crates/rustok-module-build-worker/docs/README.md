@@ -28,21 +28,32 @@ The worker requires a mutually authenticated listener configured with the
   publication destination).
 - `RUSTOK_MODULE_BUILD_COSIGN_PROGRAM` (an absolute non-symlink image-owned
   Cosign executable).
+- `RUSTOK_MODULE_BUILD_COSIGN_PROGRAM_DIGEST` (the exact lowercase SHA-256
+  identity of that executable).
 - `RUSTOK_MODULE_BUILD_COSIGN_KEY_REFERENCE` (an approved KMS provider URI;
   never a file path or raw private key).
 - `RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER` (an absolute non-symlink
   deployment-owned executable that returns a short-lived scoped registry lease).
+- `RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER_DIGEST` (the exact lowercase
+  SHA-256 identity of that executable).
 
 The worker never reads registry usernames or passwords from environment. Before
 publication it invokes the fixed credential broker with exactly one bounded JSON
-request containing `protocol_version: 1`, configured `registry`, `repository`,
-and `minimum_ttl_seconds`. The broker returns one bounded JSON lease for that
-same repository with username, password, and expiry. Publication/signing uses a
+request containing contract `rustok.registry_credential.request`, configured
+`registry`, `repository`, and `minimum_ttl_seconds`. The broker returns one
+bounded `rustok.registry_credential.response` lease for that same repository
+with username, password, and expiry. Publication/signing uses a
 14-minute maximum window and requests a further 30-second lease margin, while
 the lease itself remains capped at 15 minutes and is kept only in worker memory.
 Broker stdout is limited to 16 KiB; stderr is discarded. The broker runs with a
 cleared environment and must use its own deployment-managed workload identity
 or local provider channel.
+
+Credential and signing process handling is owned by the shared current-only
+`rustok-build-publication` crate. Both executable digests are checked at
+construction, readiness, and every invocation. The former worker-local broker
+and signer modules were removed atomically; there is no alternate framing or
+fallback execution path.
 
 The worker validates the configured publication target at construction even
 when it is instantiated without environment loading. It rechecks the acquired

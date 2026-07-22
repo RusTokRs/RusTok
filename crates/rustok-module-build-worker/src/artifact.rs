@@ -4,8 +4,8 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -903,23 +903,25 @@ mod tests {
             { "profile": "check", "outcome": "passed" },
             { "profile": "test", "outcome": "passed" }
         ]);
-        assert!(inspect_slsa_provenance(
-            &document,
-            &digest('c'),
-            &digest('a'),
-            &digest('b'),
-            &digest('d'),
-            &digest('e'),
-            "1.2.3",
-            "4.5.6",
-            "example",
-            "1.0.0",
-            "wit-component-v1",
-            1,
-            &profiles,
-            &results,
-        )
-        .is_ok());
+        assert!(
+            inspect_slsa_provenance(
+                &document,
+                &digest('c'),
+                &digest('a'),
+                &digest('b'),
+                &digest('d'),
+                &digest('e'),
+                "1.2.3",
+                "4.5.6",
+                "example",
+                "1.0.0",
+                "wit-component-v1",
+                1,
+                &profiles,
+                &results,
+            )
+            .is_ok()
+        );
 
         assert!(matches!(
             inspect_slsa_provenance(

@@ -25,10 +25,12 @@ async fn notification_persistence_enforces_sqlite_invariants() {
         "notification_digest_items",
         "notification_push_subscriptions",
     ] {
-        assert!(manager
-            .has_table(table)
-            .await
-            .expect("table lookup should succeed"));
+        assert!(
+            manager
+                .has_table(table)
+                .await
+                .expect("table lookup should succeed")
+        );
     }
 
     let tenant = Uuid::new_v4();
@@ -74,7 +76,10 @@ async fn notification_persistence_enforces_sqlite_invariants() {
         "notification-two",
     )
     .await;
-    assert!(duplicate.is_err(), "source-event recipient dedupe must hold");
+    assert!(
+        duplicate.is_err(),
+        "source-event recipient dedupe must hold"
+    );
 
     let cross_tenant = insert_notification(
         &db,
@@ -149,7 +154,10 @@ async fn notification_persistence_enforces_sqlite_invariants() {
             Uuid::new_v4(), tenant, notification_id, recipient
         ))
         .await;
-    assert!(invalid_delivery.is_err(), "leased delivery needs lease fields");
+    assert!(
+        invalid_delivery.is_err(),
+        "leased delivery needs lease fields"
+    );
 
     let fanout_job_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
@@ -168,10 +176,16 @@ async fn notification_persistence_enforces_sqlite_invariants() {
             "INSERT INTO notification_fanout_items \
              (id, tenant_id, fanout_job_id, recipient_id, status, idempotency_key) \
              VALUES ('{}', '{}', '{}', '{}', 'pending', 'fanout-cross-tenant')",
-            Uuid::new_v4(), tenant, fanout_job_id, foreign_user
+            Uuid::new_v4(),
+            tenant,
+            fanout_job_id,
+            foreign_user
         ))
         .await;
-    assert!(cross_tenant_item.is_err(), "fanout recipient tenant mismatch must fail");
+    assert!(
+        cross_tenant_item.is_err(),
+        "fanout recipient tenant mismatch must fail"
+    );
 
     db.execute_unprepared(&format!(
         "INSERT INTO notification_preferences \
@@ -189,7 +203,10 @@ async fn notification_persistence_enforces_sqlite_invariants() {
             Uuid::new_v4(), tenant, recipient
         ))
         .await;
-    assert!(duplicate_preference.is_err(), "preference scope must be unique");
+    assert!(
+        duplicate_preference.is_err(),
+        "preference scope must be unique"
+    );
 
     let invalid_push = db
         .execute_unprepared(&format!(
@@ -199,7 +216,10 @@ async fn notification_persistence_enforces_sqlite_invariants() {
             Uuid::new_v4(), tenant, recipient
         ))
         .await;
-    assert!(invalid_push.is_err(), "push endpoint hash must be normalized");
+    assert!(
+        invalid_push.is_err(),
+        "push endpoint hash must be normalized"
+    );
 }
 
 async fn setup() -> DatabaseConnection {
@@ -236,11 +256,9 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!(
-        "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
-    ))
-    .await
-    .expect("tenant fixture should persist");
+    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+        .await
+        .expect("tenant fixture should persist");
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {

@@ -196,9 +196,24 @@ async fn transfers_move_seller_payable_between_buckets_and_replay_exactly() {
     assert_eq!(balance.negative_amount, 0);
 
     assert_eq!(transaction::Entity::find().count(&db).await.unwrap(), 6);
-    assert_eq!(balance_transfer::Entity::find().count(&db).await.unwrap(), 5);
-    assert_eq!(balance_transfer_line::Entity::find().count(&db).await.unwrap(), 5);
-    assert_eq!(entry_balance_bucket::Entity::find().count(&db).await.unwrap(), 10);
+    assert_eq!(
+        balance_transfer::Entity::find().count(&db).await.unwrap(),
+        5
+    );
+    assert_eq!(
+        balance_transfer_line::Entity::find()
+            .count(&db)
+            .await
+            .unwrap(),
+        5
+    );
+    assert_eq!(
+        entry_balance_bucket::Entity::find()
+            .count(&db)
+            .await
+            .unwrap(),
+        10
+    );
 }
 
 #[tokio::test]
@@ -276,7 +291,10 @@ async fn cumulative_reference_capacity_rejects_reusing_an_original_credit() {
         Err(MarketplaceLedgerError::Validation(message))
             if message.contains("cumulative transfer amount")
     ));
-    assert_eq!(balance_transfer::Entity::find().count(&db).await.unwrap(), 1);
+    assert_eq!(
+        balance_transfer::Entity::find().count(&db).await.unwrap(),
+        1
+    );
 }
 
 fn transfer_input(

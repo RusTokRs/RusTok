@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use rustok_marketplace::{MarketplaceFinancialCommandPort, MarketplaceFinancialOrchestrationService};
+use rustok_marketplace::{
+    MarketplaceFinancialCommandPort, MarketplaceFinancialOrchestrationService,
+};
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentProviderEventObservers;
@@ -37,9 +39,8 @@ impl MarketplaceFinancialRuntime {
     }
 
     pub fn in_process(db: DatabaseConnection) -> Self {
-        let allocation = Arc::new(
-            rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()),
-        );
+        let allocation =
+            Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()));
         let commission = Arc::new(
             rustok_marketplace_commission::MarketplaceCommissionService::new(
                 db.clone(),
@@ -100,9 +101,8 @@ impl MarketplaceFinancialRuntime {
         &self,
         db: DatabaseConnection,
     ) -> PaymentProviderEventObservers {
-        PaymentProviderEventObservers::default().with_observer(Arc::new(
-            self.provider_reversal_event_adapter(db),
-        ))
+        PaymentProviderEventObservers::default()
+            .with_observer(Arc::new(self.provider_reversal_event_adapter(db)))
     }
 
     pub fn operator_service(

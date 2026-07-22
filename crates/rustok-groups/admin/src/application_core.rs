@@ -67,8 +67,7 @@ pub fn prepare_upsert_group_application_policy(
         }
     }
     for rule in &mut rules {
-        rule.key =
-            normalize_key(&rule.key).ok_or(GroupsAdminApplicationInputError::InvalidRule)?;
+        rule.key = normalize_key(&rule.key).ok_or(GroupsAdminApplicationInputError::InvalidRule)?;
         rule.title = rule.title.trim().to_string();
         rule.body = rule.body.trim().to_string();
         if rule.title.is_empty()

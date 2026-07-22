@@ -1,15 +1,15 @@
 use axum::{
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     extract::State,
     http::{
-        Method, Request, StatusCode,
         header::{self, HeaderValue},
+        Method, Request, StatusCode,
     },
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use object_store::ObjectStoreExt;
-use rustok_api::{AuthContextExtension, Permission, has_effective_permission};
+use rustok_api::{has_effective_permission, AuthContextExtension, Permission};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use subtle::ConstantTimeEq;
 
@@ -431,7 +431,7 @@ fn internal_error(message: &str) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{RegistryOperation, is_remote_runner_path, registry_route};
+    use super::{is_remote_runner_path, registry_route, RegistryOperation};
 
     #[test]
     fn classifies_sensitive_registry_publish_routes() {
@@ -464,7 +464,7 @@ mod tests {
                 Some(("rpr_1", RegistryOperation::ReviewMutation))
             );
         }
-        assert_eq!(registry_route("/v1/catalog/rpr_1/artifact"), None);
+        assert_eq!(registry_route("/catalog/rpr_1/artifact"), None);
         assert_eq!(registry_route("/v2/catalog/yank"), None);
     }
 

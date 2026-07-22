@@ -3,12 +3,12 @@ use leptos_auth::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    default_groups_storefront_filters, groups_storefront_error, selected_transport_profile,
-    GroupsStorefrontTransportProfile,
+    GroupsStorefrontTransportProfile, default_groups_storefront_filters, groups_storefront_error,
+    selected_transport_profile,
 };
 use crate::i18n::t;
 use crate::model::GroupsStorefrontDirectory;
-use crate::transport::{load_groups_storefront_directory, GroupsStorefrontTransportContext};
+use crate::transport::{GroupsStorefrontTransportContext, load_groups_storefront_directory};
 use crate::ui::application::GroupsMembershipApplication;
 use crate::ui::invitation_acceptance::GroupsInvitationAcceptance;
 
@@ -48,7 +48,11 @@ pub fn GroupsView() -> impl IntoView {
         "No public groups are available yet.",
     );
     let members_label = t(locale.as_deref(), "groups.storefront.members", "members");
-    let apply_label = t(locale.as_deref(), "groups.storefront.application.open", "Apply to join");
+    let apply_label = t(
+        locale.as_deref(),
+        "groups.storefront.application.open",
+        "Apply to join",
+    );
 
     view! {
         <section class="groups-storefront space-y-8">
@@ -117,10 +121,7 @@ fn transport_context(
             let tenant_slug = auth_context
                 .and_then(AuthContext::get_tenant)
                 .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
-            GroupsStorefrontTransportContext::graphql_with_access_token(
-                access_token,
-                tenant_slug,
-            )
+            GroupsStorefrontTransportContext::graphql_with_access_token(access_token, tenant_slug)
         }
     }
 }

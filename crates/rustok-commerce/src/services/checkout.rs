@@ -3,7 +3,7 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
+use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_cart::error::CartError;
 use rustok_cart::{
@@ -15,16 +15,16 @@ use rustok_fulfillment::providers::FulfillmentProviderRegistry;
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_order::error::OrderError;
 use rustok_outbox::TransactionalEventBus;
-use rustok_payment::PaymentService;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
+use rustok_payment::PaymentService;
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
+    entities::product::ProductStatus, ProductCatalogReadPort, ProductProjectionRequest,
+    VariantProductProjectionRequest,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
-use crate::StoreContextService;
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CompleteCheckoutInput, CompleteCheckoutResponse,
     CreateFulfillmentInput, CreateOrderAdjustmentInput, CreateOrderInput, CreateOrderLineItemInput,
@@ -37,7 +37,7 @@ use crate::storefront_channel::{
 use crate::storefront_shipping::{
     effective_shipping_profile_slug, is_shipping_option_compatible_with_profiles,
 };
-use rustok_commerce_foundation::entities::product::ProductStatus;
+use crate::StoreContextService;
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 

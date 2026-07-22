@@ -15,7 +15,7 @@ API would pull in the entire core runtime, while the `server` feature maintained
 1. `rustok-api` is the sole owner of `Port*`, `Permission`, `Action`,
    `Resource`, platform locale normalization/matching/candidates, and
    `Accept-Language` parsing.
-2. `rustok-api` does not depend on `rustok-core` in either the default or `server` feature.
+2. `rustok-api` does not depend on `rustok-core` in the default, `runtime`, or `server` feature.
 3. The dependency graph is directed only as `rustok-core -> rustok-api`.
 4. `rustok-core` owns runtime policy: `UserRole`, `UserStatus`, `Rbac`,
    `PermissionScope`, `SecurityActorKind`, `SecurityContext`, and role inference.
@@ -26,6 +26,10 @@ API would pull in the entire core runtime, while the `server` feature maintained
    not depend on `rustok-outbox`.
 7. All module ports use the canonical path `rustok_api::ports::*` or
    root re-exports `rustok_api::*`.
+8. The SeaORM-backed `HostRuntimeContext` is available through the neutral
+   `runtime` feature. The `server` feature includes `runtime` and separately adds
+   Axum and Async-GraphQL, so backend runtime helpers do not force transport
+   frameworks into standalone module owners.
 
 ## Consequences
 
@@ -39,3 +43,5 @@ API would pull in the entire core runtime, while the `server` feature maintained
   through public/published/channel-visible read paths.
 - Consumers use the owner-provided outbox runtime contract rather than a
   framework-specific adapter.
+- `rustok-runtime` and its module-owner consumers compile against
+  `rustok-api/runtime` without Axum or Async-GraphQL in their normal dependency graph.

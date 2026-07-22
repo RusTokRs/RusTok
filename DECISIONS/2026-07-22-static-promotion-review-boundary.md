@@ -86,6 +86,42 @@ resolved lock, and all five evidence identities. Reclaim rebuilds only the
 job-owned derived workspace; immutable attempt inputs are verified, not
 overwritten.
 
+The production publisher is a third fixed binary in the static-distribution
+worker package. It reads the executable only from the job-local fixed target
+path, publishes the native artifact plus CycloneDX SBOM, SLSA provenance, and
+raw test-evidence OCI referrers, signs the exact artifact digest with KMS-backed
+Cosign, resolves the signature manifest digest, and writes a create-only fully
+bound receipt. The receipt records the raw test-evidence payload digest
+separately from the test referrer manifest digest. Credential broker and Cosign
+process handling are shared with the untrusted module publisher through
+`rustok-build-publication`; both programs are deployment-pinned and re-hashed
+before every invocation. There is no worker-local alternate credential or
+signing path.
+
+Native execution identity is explicit rather than inferred from Cargo or the
+compiled registry. Each immutable distribution item persists
+`executor_mode = static_native`, and that value participates in composition and
+generated-output digests. A release read reloads and validates the complete
+succeeded build before exposing those items. Runtime catalog construction
+retains ordinary compiled modules as `platform_native` and maps selected
+promotions to `promoted_native` definitions carrying the exact promotion,
+registry release, distribution release/revision, artifact digest, and executor
+mode. Lifecycle and effective-policy services can use the same catalog while
+resolving implementation handles only through the compiled registry. Rolling
+the binary onto nodes and reconciling desired/observed state remain separate
+deployment operations.
+
+The rollout boundary is owner-owned and topology-bound. A trusted topology
+resolver supplies a sorted node set and canonical digest; the owner creates a
+desired rollout only for the exact active verified release and policy revision.
+Node agents report identity-bound observations with per-node revisions and
+health evidence. The state machine is `preparing -> activating -> converged`,
+with fail-closed terminal failure before convergence and recoverable
+`degraded` state after drift. The owner advances desired/observed pointers under
+database CAS, journals request/report idempotency, rejects stale reports, and
+writes outbox events. No rollout operation invokes a native loader or replaces
+the current server process; deployment agents and their transport are separate.
+
 `ModuleControlPlane::static_distribution_release` is the only release-activation
 owner. It accepts only the current successful build and requires separate host
 authorization plus an external fail-closed verification decision for the exact

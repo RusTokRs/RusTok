@@ -59,6 +59,10 @@ impl SandboxRuntime {
         self
     }
 
+    pub fn supports_executor(&self, kind: crate::SandboxExecutorKind) -> bool {
+        self.executors.contains(kind)
+    }
+
     pub async fn execute(&self, request: SandboxRequest) -> SandboxResult<SandboxOutcome> {
         self.execute_with_cancellation(request, SandboxCancellation::new())
             .await

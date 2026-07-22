@@ -468,7 +468,7 @@ fn menu_location_from_storage(value: &str) -> PagesResult<MenuLocation> {
         other => {
             return Err(PagesError::validation(format!(
                 "Unknown menu location in storage: {other}"
-            )))
+            )));
         }
     })
 }

@@ -6,8 +6,8 @@ use async_graphql::{
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
-    has_any_effective_permission, AuthContext, ChannelContext, HostRuntimeContext, Permission,
-    PortActor, PortContext, PortError, PortErrorKind, TenantContext,
+    AuthContext, ChannelContext, HostRuntimeContext, Permission, PortActor, PortContext, PortError,
+    PortErrorKind, TenantContext, has_any_effective_permission,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -38,10 +38,7 @@ impl GroupsQuery {
         let include_non_public = include_non_public.unwrap_or(false);
         let auth = ctx.data_opt::<AuthContext>();
         if include_non_public {
-            require_any_permission(
-                ctx,
-                &[Permission::GROUPS_LIST, Permission::GROUPS_READ],
-            )?;
+            require_any_permission(ctx, &[Permission::GROUPS_LIST, Permission::GROUPS_READ])?;
         }
         let service = service(ctx)?;
         GroupSummaryReadPort::list_groups(
@@ -135,7 +132,10 @@ impl GroupsMutation {
                 category_id: input.category_id,
                 avatar_media_id: input.avatar_media_id,
                 cover_media_id: input.cover_media_id,
-                metadata: input.metadata.map(|value| value.0).unwrap_or_else(empty_object),
+                metadata: input
+                    .metadata
+                    .map(|value| value.0)
+                    .unwrap_or_else(empty_object),
             },
         )
         .await
@@ -547,9 +547,7 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Groups service is temporarily unavailable",

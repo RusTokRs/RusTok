@@ -21,7 +21,7 @@
 ## Interactions
 - Used by `apps/server` as the current composition root.
 - Used by module crates such as `rustok-blog`, `rustok-content`, `rustok-commerce`, and others when their GraphQL/REST adapters need shared host/API contracts.
-- All feature profiles, including `server`, remain independent from `rustok-core`.
+- All feature profiles, including `runtime` and `server`, remain independent from `rustok-core`.
 - `rustok-core` consumes API-owned contracts and adds runtime RBAC/security policy.
 - Runtime-specific composition helpers remain owner-owned; `rustok-api` does not depend on outbox runtime wiring.
 
@@ -46,7 +46,8 @@
 ## Features
 
 - `default = []`: neutral contracts with no core runtime dependency.
-- `server`: server-side auth/request/GraphQL adapters without a core dependency.
+- `runtime`: SeaORM-backed host runtime context without HTTP or GraphQL frameworks.
+- `server`: server-side auth/request/GraphQL adapters; it includes `runtime` and adds Axum and Async-GraphQL.
 
 ## Docs
 

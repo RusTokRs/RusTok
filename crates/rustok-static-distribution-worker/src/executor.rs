@@ -9,7 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use rustok_distribution::{generate_static_distribution, GeneratedStaticDistributionManifest};
+use rustok_distribution::{GeneratedStaticDistributionManifest, generate_static_distribution};
 use rustok_modules::{
     ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionCompletionOutcome,
     ModuleStaticDistributionExecutor, ModuleStaticDistributionExecutorError,

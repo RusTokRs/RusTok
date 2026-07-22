@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rustok_api::normalize_locale_tag;
 use rustok_core::{
-    normalize_content_format, validate_and_sanitize_rt_json, RtJsonValidationConfig,
-    CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1,
+    CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1, RtJsonValidationConfig,
+    normalize_content_format, validate_and_sanitize_rt_json,
 };
 use rustok_profiles::{
     ProfileError, ProfileRecord, ProfileService, ProfileStatus, ProfileVisibility, ProfilesReader,
@@ -66,13 +66,14 @@ impl ForumMentionCandidates {
         let mut normalized_handles = BTreeSet::new();
         for handle in handles {
             let normalized = ProfileService::normalize_handle(&handle).map_err(|_| {
-                ForumError::Validation("Forum mention contains an invalid profile handle".to_string())
+                ForumError::Validation(
+                    "Forum mention contains an invalid profile handle".to_string(),
+                )
             })?;
             normalized_handles.insert(normalized);
         }
         let audiences = audiences.into_iter().collect::<BTreeSet<_>>();
-        if audiences.contains(&ForumMentionAudience::Moderators)
-            && !policy.allow_moderator_audience
+        if audiences.contains(&ForumMentionAudience::Moderators) && !policy.allow_moderator_audience
         {
             return Err(ForumError::forbidden(
                 "Mentioning the forum moderator audience requires moderation permission",
@@ -261,7 +262,10 @@ pub struct ForumMentionRevisionProjection {
 }
 
 impl ForumMentionRevisionProjection {
-    pub fn new(source: ForumRevisionIdentity, resolved: ForumResolvedMentions) -> ForumResult<Self> {
+    pub fn new(
+        source: ForumRevisionIdentity,
+        resolved: ForumResolvedMentions,
+    ) -> ForumResult<Self> {
         let users = resolved.users.into_iter().collect::<BTreeSet<_>>();
         let audiences = resolved.audiences.into_iter().collect::<BTreeSet<_>>();
         ensure_mention_limit(
@@ -373,12 +377,7 @@ pub async fn resolve_forum_mentions(
     let mut users = BTreeMap::new();
     for handle in candidates.handles {
         let profile = profiles
-            .get_profile_by_handle(
-                tenant_id,
-                &handle,
-                requested_locale,
-                tenant_default_locale,
-            )
+            .get_profile_by_handle(tenant_id, &handle, requested_locale, tenant_default_locale)
             .await
             .map_err(|error| map_profile_mention_error(error))?;
         validate_resolved_profile(tenant_id, &handle, &profile)?;
@@ -407,8 +406,7 @@ pub fn validate_forum_quote_references(
         )));
     }
     for reference in &references {
-        if reference.target() == source.target()
-            && reference.revision_id() == source.revision_id()
+        if reference.target() == source.target() && reference.revision_id() == source.revision_id()
         {
             return Err(ForumError::Validation(
                 "Forum revision cannot quote itself".to_string(),
@@ -456,11 +454,7 @@ pub fn diff_forum_mentions(
     let previous_audiences = previous
         .map(|value| value.audiences().iter().copied().collect::<BTreeSet<_>>())
         .unwrap_or_default();
-    let current_audiences = current
-        .audiences()
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
+    let current_audiences = current.audiences().iter().copied().collect::<BTreeSet<_>>();
 
     Ok(ForumMentionDiff {
         source: current.source().clone(),
@@ -530,12 +524,14 @@ impl ForumMentionDiff {
                 source: self.source.clone(),
                 target: ForumMentionEventTarget::User(mention.user_id()),
             })
-            .chain(self.added_audiences.iter().map(|audience| {
-                ForumMentionEventCandidate {
-                    source: self.source.clone(),
-                    target: ForumMentionEventTarget::Audience(*audience),
-                }
-            }))
+            .chain(
+                self.added_audiences
+                    .iter()
+                    .map(|audience| ForumMentionEventCandidate {
+                        source: self.source.clone(),
+                        target: ForumMentionEventTarget::Audience(*audience),
+                    }),
+            )
             .collect()
     }
 }
@@ -632,7 +628,11 @@ fn scan_text_mentions(
         if byte == b'\\' {
             index += 1;
             if index < text.len() {
-                index += text[index..].chars().next().map(char::len_utf8).unwrap_or(1);
+                index += text[index..]
+                    .chars()
+                    .next()
+                    .map(char::len_utf8)
+                    .unwrap_or(1);
             }
             continue;
         }
@@ -665,7 +665,11 @@ fn scan_text_mentions(
                 continue;
             }
         }
-        index += text[index..].chars().next().map(char::len_utf8).unwrap_or(1);
+        index += text[index..]
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or(1);
     }
     Ok(())
 }

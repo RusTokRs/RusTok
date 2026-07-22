@@ -26,6 +26,15 @@ surface, including tenant lifecycle events. The server outbound event bus now
 has atomic context registration, abort-on-drop ownership, restart after panic or
 unexpected exit, and critical readiness escalation when the supervisor stops.
 The configured `EventRuntime` is published before module dispatcher startup.
+The root `module.effective_policy_revision_changed` event is the canonical
+predecessor-bound producer contract for effective-policy projections; it is
+validated as a digest transition and is appended only through an owner
+transaction boundary.
+The root `build.rolled_back` event is likewise explicit: it carries the
+requested/restored builds and source/target releases, while the envelope
+carries the actor. Schema-registry exact-set coverage now also includes the
+registered module security/distribution events and the previously missing
+comment schemas.
 
 This does not create an inbound cross-replica consumer. Module listeners still
 receive the configured local listener bus; an owner that requires durable cache
@@ -49,6 +58,8 @@ generation rather than assuming remote event replay.
 - [x] Publish the configured runtime/listener bus before module dispatcher
   startup.
 - [x] Add a permanent path-scoped event-runtime lifecycle gate.
+- [x] Keep explicit platform rollback facts synchronized across the owner
+  event, root schema registry, and transport adapters.
 
 ## Open results
 

@@ -204,7 +204,7 @@ fn default_local_base_url() -> String {
     "/media".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct S3StorageConfig {
     #[serde(default)]
     pub bucket: String,
@@ -224,4 +224,27 @@ pub struct S3StorageConfig {
     pub allow_http: bool,
     #[serde(default)]
     pub virtual_hosted_style_request: bool,
+}
+
+impl std::fmt::Debug for S3StorageConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("S3StorageConfig")
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("endpoint_url", &self.endpoint_url)
+            .field("access_key_id_configured", &self.access_key_id.is_some())
+            .field(
+                "secret_access_key_configured",
+                &self.secret_access_key.is_some(),
+            )
+            .field("session_token_configured", &self.session_token.is_some())
+            .field("public_base_url", &self.public_base_url)
+            .field("allow_http", &self.allow_http)
+            .field(
+                "virtual_hosted_style_request",
+                &self.virtual_hosted_style_request,
+            )
+            .finish()
+    }
 }

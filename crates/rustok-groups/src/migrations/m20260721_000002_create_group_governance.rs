@@ -17,7 +17,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(GroupAuditEntries::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupAuditEntries::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(GroupAuditEntries::GroupId).uuid().not_null())
                     .col(ColumnDef::new(GroupAuditEntries::ActorUserId).uuid())
                     .col(
@@ -87,8 +91,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(GroupCommandReceipts::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(GroupCommandReceipts::GroupId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupCommandReceipts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupCommandReceipts::GroupId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(GroupCommandReceipts::ActorUserId)
                             .uuid()

@@ -161,7 +161,8 @@ impl<'a> ModuleExecutionDispatcher<'a> {
             .get(module_slug)
             .ok_or_else(|| ModuleDispatchError::UnknownDefinition(module_slug.to_string()))?;
         match &definition.source {
-            ModuleDefinitionSource::Static { .. } => {
+            ModuleDefinitionSource::PlatformNative { .. }
+            | ModuleDefinitionSource::PromotedNative { .. } => {
                 let static_registry = self.static_registry.ok_or_else(|| {
                     ModuleDispatchError::MissingStaticImplementation(module_slug.to_string())
                 })?;
@@ -483,6 +484,11 @@ where
 /// callback cannot implement this port.
 #[async_trait]
 pub trait ArtifactBindingExecutor: Send + Sync {
+    /// Reports whether the composed sandbox has the executor required by this
+    /// admitted payload kind. Policy uses this as readiness evidence and must
+    /// not infer availability from the presence of this port alone.
+    fn supports_payload_kind(&self, payload_kind: crate::ArtifactPayloadKind) -> bool;
+
     async fn dispatch_binding(
         &self,
         dispatch: ArtifactBindingDispatch<'_>,
@@ -649,6 +655,10 @@ mod tests {
 
     #[async_trait]
     impl ArtifactBindingExecutor for RecordingArtifactExecutor {
+        fn supports_payload_kind(&self, _payload_kind: crate::ArtifactPayloadKind) -> bool {
+            true
+        }
+
         async fn dispatch_binding(
             &self,
             dispatch: ArtifactBindingDispatch<'_>,
@@ -671,6 +681,10 @@ mod tests {
 
     #[async_trait]
     impl ArtifactBindingExecutor for EchoArtifactExecutor {
+        fn supports_payload_kind(&self, _payload_kind: crate::ArtifactPayloadKind) -> bool {
+            true
+        }
+
         async fn dispatch_binding(
             &self,
             dispatch: ArtifactBindingDispatch<'_>,

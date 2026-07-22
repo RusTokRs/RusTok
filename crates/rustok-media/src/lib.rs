@@ -3,6 +3,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+mod idempotency;
 pub mod image;
 pub mod lifecycle;
 pub mod migrations;
@@ -24,7 +25,7 @@ pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};
 pub use image::{
     CropRect, ImageBackground, ImageOutput, ImageOutputFormat, ImageProcessingError,
-    ImageProcessingLimits, ImageRecipe, ImageResize, ImageWorker, QuarterTurn,
+    ImageProcessingLimits, ImageRecipe, ImageResize, ImageWorker, QuarterTurn, inspect_image,
 };
 pub use lifecycle::{AssetState, BlobState, RenditionState, UploadState};
 pub use ports::*;

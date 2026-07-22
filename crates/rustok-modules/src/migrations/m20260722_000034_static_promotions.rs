@@ -155,6 +155,7 @@ impl MigrationTrait for Migration {
                     source_reference TEXT NOT NULL CHECK (length(trim(source_reference)) BETWEEN 1 AND 512),\
                     source_digest TEXT NOT NULL CHECK (source_digest ~ '^sha256:[0-9a-f]{64}$'),\
                     dependency_lock_digest TEXT NOT NULL CHECK (dependency_lock_digest ~ '^sha256:[0-9a-f]{64}$'),\
+                    executor_mode TEXT NOT NULL CHECK (executor_mode = 'static_native'),\
                     PRIMARY KEY (distribution_build_id, ordinal),\
                     UNIQUE (distribution_build_id, promotion_id),\
                     UNIQUE (distribution_build_id, module_slug)\
@@ -428,6 +429,7 @@ impl MigrationTrait for Migration {
                     source_reference TEXT NOT NULL CHECK (length(trim(source_reference)) BETWEEN 1 AND 512),\
                     source_digest TEXT NOT NULL CHECK (length(source_digest) = 71 AND substr(source_digest, 1, 7) = 'sha256:' AND substr(source_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     dependency_lock_digest TEXT NOT NULL CHECK (length(dependency_lock_digest) = 71 AND substr(dependency_lock_digest, 1, 7) = 'sha256:' AND substr(dependency_lock_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
+                    executor_mode TEXT NOT NULL CHECK (executor_mode = 'static_native'),\
                     PRIMARY KEY (distribution_build_id, ordinal),\
                     UNIQUE (distribution_build_id, promotion_id),\
                     UNIQUE (distribution_build_id, module_slug)\

@@ -155,7 +155,9 @@ impl HardenedRegistryMarketplaceProvider {
         slug: &str,
     ) -> anyhow::Result<Option<CatalogManifestModule>> {
         validate_cache_key_component("registry_url", registry_url)?;
-        validate_cache_key_component("slug", slug)?;
+        let slug = rustok_modules::normalize_module_marketplace_slug(slug)
+            .ok_or_else(|| anyhow::anyhow!("marketplace registry module slug is invalid"))?;
+        validate_cache_key_component("slug", &slug)?;
 
         let _permit =
             try_acquire_fetch_permit(Arc::clone(&self.fetch_permits), &self.saturated_fetches)?;
@@ -163,7 +165,7 @@ impl HardenedRegistryMarketplaceProvider {
             &self.client,
             registry_url,
             registry_catalog_module_path(),
-            slug,
+            &slug,
             self.max_response_bytes,
         )
         .await

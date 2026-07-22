@@ -4,15 +4,15 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    groups_admin_error, prepare_delete_group_translation, prepare_group_translation_query,
+    GroupsAdminLocalizationInputError, GroupsAdminTransportProfile, groups_admin_error,
+    prepare_delete_group_translation, prepare_group_translation_query,
     prepare_upsert_group_translation, selected_transport_profile,
-    GroupsAdminLocalizationInputError, GroupsAdminTransportProfile,
 };
 use crate::i18n::t;
 use crate::model::GroupsAdminTranslation;
 use crate::transport::{
-    delete_group_admin_translation, load_group_admin_translations,
-    upsert_group_admin_translation, GroupsAdminTransportContext,
+    GroupsAdminTransportContext, delete_group_admin_translation, load_group_admin_translations,
+    upsert_group_admin_translation,
 };
 
 #[derive(Clone)]
@@ -134,10 +134,7 @@ pub fn GroupsLocalizationAdmin() -> impl IntoView {
                     });
                     set_success.set(Some(format!(
                         "{}: {} · {} {}",
-                        copy.saved,
-                        result.translation.locale,
-                        copy.version,
-                        result.group_version
+                        copy.saved, result.translation.locale, copy.version, result.group_version
                     )));
                 }
                 Err(save_error) => set_error.set(Some(groups_admin_error(
@@ -175,9 +172,8 @@ pub fn GroupsLocalizationAdmin() -> impl IntoView {
         spawn_local(async move {
             match delete_group_admin_translation(context, command).await {
                 Ok(result) => {
-                    set_translations.update(|items| {
-                        items.retain(|item| item.locale != result.locale)
-                    });
+                    set_translations
+                        .update(|items| items.retain(|item| item.locale != result.locale));
                     set_success.set(Some(format!(
                         "{}: {} · {} {}",
                         copy.deleted, result.locale, copy.version, result.group_version
@@ -241,7 +237,7 @@ pub fn GroupsLocalizationAdmin() -> impl IntoView {
                 </p>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground">{busy_label}</p>
+                <p class="mt-4 text-sm text-muted-foreground">{busy_label.clone()}</p>
             </Show>
 
             <div class="mt-6 grid gap-6 xl:grid-cols-2">
@@ -301,29 +297,97 @@ fn localization_input_error_message(
 
 fn localization_copy(locale: Option<&str>) -> LocalizationCopy {
     LocalizationCopy {
-        title: t(locale, "groups.admin.localization.title", "Localized presentation"),
-        body: t(locale, "groups.admin.localization.body", "Manage exact locale rows. Locale fallback remains a host/runtime responsibility."),
+        title: t(
+            locale,
+            "groups.admin.localization.title",
+            "Localized presentation",
+        ),
+        body: t(
+            locale,
+            "groups.admin.localization.body",
+            "Manage exact locale rows. Locale fallback remains a host/runtime responsibility.",
+        ),
         group_id: t(locale, "groups.admin.localization.groupId", "Group UUID"),
         locale: t(locale, "groups.admin.localization.locale", "Locale"),
-        translation_title: t(locale, "groups.admin.localization.translationTitle", "Title"),
+        translation_title: t(
+            locale,
+            "groups.admin.localization.translationTitle",
+            "Title",
+        ),
         summary: t(locale, "groups.admin.localization.summary", "Summary"),
         translation_body: t(locale, "groups.admin.localization.translationBody", "Body"),
-        load: t(locale, "groups.admin.localization.load", "Load translations"),
+        load: t(
+            locale,
+            "groups.admin.localization.load",
+            "Load translations",
+        ),
         save: t(locale, "groups.admin.localization.save", "Save translation"),
-        delete: t(locale, "groups.admin.localization.delete", "Delete translation"),
-        empty: t(locale, "groups.admin.localization.empty", "No translations loaded."),
-        busy: t(locale, "groups.admin.localization.busy", "Applying localization command..."),
-        error: t(locale, "groups.admin.localization.error", "Localization command failed"),
-        loaded: t(locale, "groups.admin.localization.loaded", "Translations loaded"),
-        saved: t(locale, "groups.admin.localization.saved", "Translation saved"),
-        deleted: t(locale, "groups.admin.localization.deleted", "Translation deleted"),
+        delete: t(
+            locale,
+            "groups.admin.localization.delete",
+            "Delete translation",
+        ),
+        empty: t(
+            locale,
+            "groups.admin.localization.empty",
+            "No translations loaded.",
+        ),
+        busy: t(
+            locale,
+            "groups.admin.localization.busy",
+            "Applying localization command...",
+        ),
+        error: t(
+            locale,
+            "groups.admin.localization.error",
+            "Localization command failed",
+        ),
+        loaded: t(
+            locale,
+            "groups.admin.localization.loaded",
+            "Translations loaded",
+        ),
+        saved: t(
+            locale,
+            "groups.admin.localization.saved",
+            "Translation saved",
+        ),
+        deleted: t(
+            locale,
+            "groups.admin.localization.deleted",
+            "Translation deleted",
+        ),
         version: t(locale, "groups.admin.localization.version", "group version"),
-        last_translation_warning: t(locale, "groups.admin.localization.lastTranslationWarning", "The owner service rejects deletion of the last translation row."),
-        invalid_group_id: t(locale, "groups.admin.localization.invalidGroupId", "Enter a valid group UUID."),
-        invalid_locale: t(locale, "groups.admin.localization.invalidLocale", "Enter a valid locale tag."),
-        missing_title: t(locale, "groups.admin.localization.missingTitle", "Title is required."),
-        title_too_long: t(locale, "groups.admin.localization.titleTooLong", "Title must not exceed 240 characters."),
-        summary_too_long: t(locale, "groups.admin.localization.summaryTooLong", "Summary must not exceed 500 characters."),
+        last_translation_warning: t(
+            locale,
+            "groups.admin.localization.lastTranslationWarning",
+            "The owner service rejects deletion of the last translation row.",
+        ),
+        invalid_group_id: t(
+            locale,
+            "groups.admin.localization.invalidGroupId",
+            "Enter a valid group UUID.",
+        ),
+        invalid_locale: t(
+            locale,
+            "groups.admin.localization.invalidLocale",
+            "Enter a valid locale tag.",
+        ),
+        missing_title: t(
+            locale,
+            "groups.admin.localization.missingTitle",
+            "Title is required.",
+        ),
+        title_too_long: t(
+            locale,
+            "groups.admin.localization.titleTooLong",
+            "Title must not exceed 240 characters.",
+        ),
+        summary_too_long: t(
+            locale,
+            "groups.admin.localization.summaryTooLong",
+            "Summary must not exceed 500 characters.",
+        ),
     }
 }
 

@@ -56,7 +56,7 @@ async fn groups_storefront_directory_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            HostRuntimeContext, PortActor, PortContext, TenantContext, request::RequestContext,
         };
         use rustok_groups::{GroupSummaryReadPort, GroupsService, ListGroupsRequest};
         use std::time::Duration;
@@ -118,10 +118,7 @@ async fn groups_storefront_directory_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/storefront/invitations/accept"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/storefront/invitations/accept")]
 async fn groups_storefront_accept_invitation_native(
     command: AcceptGroupInvitationCommand,
 ) -> Result<GroupsStorefrontAcceptInvitationResult, ServerFnError> {
@@ -129,8 +126,8 @@ async fn groups_storefront_accept_invitation_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             AcceptGroupInvitationRequest, GroupInvitationCommandPort, GroupInvitationService,
@@ -196,8 +193,8 @@ async fn groups_storefront_accept_targeted_invitation_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             AcceptTargetedGroupInvitationRequest, GroupTargetedInvitationCommandPort,

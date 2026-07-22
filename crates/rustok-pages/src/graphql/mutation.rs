@@ -10,12 +10,12 @@ use uuid::Uuid;
 
 use crate::{
     CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuItemInput,
-    MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput, PageBodyInput,
-    PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
-    PublishPageInput, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
+    MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
-    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY, PageBodyInput,
+    PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
+    PublishPageInput, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
 };
 
 use super::types::*;
@@ -334,9 +334,7 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
         PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
         PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",
         PagesError::CannotDeletePublished => CANNOT_DELETE_PUBLISHED_ERROR_CODE,
-        PagesError::PublishRuntimeReviewInvalid(_) => {
-            PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID
-        }
+        PagesError::PublishRuntimeReviewInvalid(_) => PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID,
         PagesError::PublishSanitize(_) => PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
         PagesError::PublishRuntimeMaterializationMismatch(_) => {
             PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH

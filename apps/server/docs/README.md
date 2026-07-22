@@ -55,6 +55,17 @@ crates above instead of accumulating in `apps/server` or expanding `rustok-api`.
 
 The tenant-toggle logic applies only to `Optional` modules. `Core` modules should not be treated as switchable by host configuration.
 
+Effective module policy remains owner-resolved in `rustok-modules`. When a
+request has a channel resolution, the server/channel adapter forwards a
+validated `ModuleEffectivePolicyChannelInput` to
+`EffectiveModulePolicyService::resolve_for_channel`; channel lookup and
+channel-owned storage stay in `rustok-channel`.
+Operational maintenance is forwarded through the same context facade as a
+revisioned module-scoped or global snapshot; active maintenance denies serving
+without changing tenant enablement rows.
+Node readiness is forwarded as the same owner context and must observe the
+base policy revision before the server accepts the final policy revision.
+
 ## Runtime surface
 
 - `/api/graphql` and `/api/fn/*` are parallel transport layers; Leptos server functions do not replace the GraphQL API.
@@ -99,6 +110,13 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   directly and do not depend on a framework-global host context.
 - Host-owned `RootQuery` also does not extract a framework-global context: DB-only read paths use
   schema-owned `DatabaseConnection`, and marketplace/cache paths use `ServerRuntimeContext`.
+- Build history, active build/release, and rollback GraphQL/native transports use the
+  host-composed `rustok_build::SharedBuildControl`; the server owns event-aware rollback
+  composition and transports do not construct `BuildService` directly.
+- Platform rollback streaming preserves the owner `BuildRolledBack` event as a
+  distinct WebSocket/GraphQL event kind with requested/restored build, release
+  predecessor transition, and actor facts. It is not mapped to a synthetic
+  successful build completion.
 - All of `apps/server/src/graphql/**`, including `RootMutation`, RBAC writer, and search rate limiter,
   accepts explicit runtime dependencies. `services/graphql_schema.rs` also accepts only
   `ServerRuntimeContext`.
@@ -140,7 +158,10 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
   `storefront_ssr`, or `worker` host. API and SSR modes skip background
   workers; the worker mode completes normal runtime bootstrap and starts those
   workers while mounting only health and metrics HTTP surfaces. `host_mode`
-  does not replace a deployment profile or choose build artifacts.
+  does not replace a deployment profile or choose build artifacts. Artifact
+  HTTP and command dispatch resolve the shared effective module policy before
+  invoking a binding and fail closed for a disabled or denied module; they do
+  not reconstruct tenant enablement from transport-local SQL.
 - `settings.rustok.runtime.background_workers` governs only maintenance workers on top of the already published HTTP/GraphQL surface. In `development.yaml`, for standalone admin debug, `workflow_cron_enabled` and `seo_bulk_enabled` are disabled so that cron/bulk loops do not saturate the local PostgreSQL pool; the production/default runtime keeps them enabled.
 - The generic module-work host supplies artifact queues with an active-tenant enumerator from `rustok-tenant` and a server-composed CAS-backed Rhai/WASM executor before artifact registrations run. The runtime CAS is obtained from the same operation-scoped `ModuleControlPlane` as artifact capability, installation, audit, and sandbox-policy services, so the server does not create an independent artifact staging identity source. Its neutral Rhai bridge and WIT import both reach only `SandboxHost`; `platform.data` and `platform.data.objects` are the composed sandbox capability routes. The latter has bounded single-call object transfer and resumable owner-owned uploads: every decoded base64 chunk is at most 44 KiB, durable private sessions verify ordering, final size, and SHA-256 before publication, and no call exposes a storage key, URL, bucket, or credential. Secret, MCP, and all other capability names remain default-deny until their deployment adapters are explicitly wired. Artifact HTTP is a separate host transport at `/api/artifacts/{installation_id}/{*path}` and artifact commands use `POST /api/artifacts/{installation_id}/commands/{binding_id}`. Both resolve only an active exact installation, check the binding's dynamic RBAC grant, enforce JSON and shared durable binding-idempotency limits through `rustok-modules`, and call the shared sandbox executor rather than mounting artifact routers or injecting dynamic GraphQL fields.
 - `development.yaml` keeps `database.max_connections: 30` because heavy admin bootstrap routes like AI control plane resolve several GraphQL root fields in parallel. This is a local debug guardrail for both admin panels, not a new production contract.
@@ -148,7 +169,21 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - Registry release, publication, and validation adapters obtain their shared transactional governance aggregate through `ModuleControlPlane`; host authorization and artifact storage remain adapter concerns.
 - For control-plane composition install/uninstall/upgrade server uses a single orchestration path: manifest validation, CAS-update `platform_state` and enqueue build are executed atomically within one transaction boundary. `manifest_ref` for build is always formed as `platform_state:<revision>`, and `manifest_hash` is computed as SHA-256 canonical JSON snapshot.
 - Server module-control-plane adapters construct `ModuleControlPlane` once per scoped operation and obtain composition, lifecycle, installation, or sandbox-policy services only through that owner facade. Tenant module enable/disable and settings persistence therefore load only active distribution defaults and a host-resolved settings schema before invoking its lifecycle writer and rehydrating an ORM view; bypass model-level toggles, server-built policy/catalog/dispatcher state, and server-owned lifecycle writes are not production contracts. `module_operations` records lifecycle status in the module-owned typed model `validated/running/committed/failed`, and pre-validation errors/no-op transitions must not create extraneous journal rows. GraphQL maps canonical lifecycle/recovery facts to transport errors (`BAD_USER_INPUT`, `MODULE_HOOK_FAILED`, `INTERNAL_ERROR`); admin/SSR clients must not remap these fields.
-- Effective module availability now uses the facade's `EffectivePolicyService`, which reads tenant overrides and applies Core/default policy inside `rustok-modules`; server guards, GraphQL, and installer adapters consume only the resulting set.
+- GraphQL `tenantModules` reads bounded explicit override/settings snapshots
+  through the module owner facade. It does not query `tenant_modules` or infer
+  effective availability; enabled/denied state remains owned by
+  `ModuleEffectivePolicy`.
+- GraphQL build/release history, active release, and rollback precondition reads
+  use the host-composed `rustok-build::SharedBuildControl`. Pagination limits
+  are enforced by the owner, and the transport does not import build/release
+  persistence entities.
+- Native admin and GraphQL marketplace reads share the host-composed
+  `SharedModuleMarketplaceCatalog`. The server adapter combines active local
+  composition with configured remote registry providers, applies durable
+  governance projection once, and attaches the owner-derived registry
+  lifecycle snapshot for detail reads. Transport adapters perform DTO mapping
+  only and do not scan the workspace or recreate governance policy.
+- Effective module availability now uses the facade's `EffectivePolicyService`, which reads tenant overrides and applies Core/default policy inside `rustok-modules`. The service returns the owner decision with its deterministic revision, typed facts, and denial reasons; server guards, GraphQL, and installer adapters consume only its enabled projection.
 - Static module manifests and catalog entries are parsed by the server host, but `rustok-modules` owns module metadata, resolved static-catalog topology (defaults, dependencies, conflicts, and version compatibility), static manifest-versus-registry comparison, settings-schema, marketplace metadata, static UI classification, UI i18n semantics, static HTTP provider exclusivity, crate-local runtime binding normalization, deployment build-surface semantics, and settings normalization before lifecycle persistence with the effective-enablement and Core invariants; server filesystem, registry-fact extraction, and ORM code are adapters only.
 - For post-hook failure recovery/compensation a separate runbook `module-lifecycle-retry-compensation-runbook.md` is used; committed tenant state is not rolled back automatically. The server verifies tenant scope, then delegates retry/compensation policy, state assembly, dispatch, and journaling to `ModuleLifecycleDbWriter` as separate owner lifecycle operations. `retryFailedModuleOperationPostHook` and `compensateFailedModuleOperation` require non-nil UUID `idempotencyKey` values; the owner journals each key tenant-scoped and replays the same attempt without redispatching its hook, while a conflicting key reuse returns `IDEMPOTENCY_CONFLICT`.
 - Registry metadata now follows the common multilingual storage contract: publish/release base rows hold language-agnostic state and `default_locale`, while display metadata (`name`, `description`) live in `registry_*_translations`.
@@ -158,9 +193,9 @@ The tenant-toggle logic applies only to `Optional` modules. `Core` modules shoul
 - `GET /v2/catalog/publish/{request_id}` remains a machine-readable operator status contract: without bearer auth it returns a status-driven superset `governanceActions`, and with a session-backed user bearer it scopes request-level actions to those actually allowed for that principal.
 - Registry artifacts are never read or written through server-local filesystem paths: persisted state stores only `artifact_storage_key`, owner services call the shared `ObjectStore` directly, and `GET /v2/catalog/publish/{request_id}/artifact/download` uses native signing with stream fallback. Validation is selected by immutable artifact origin: platform-built and external-prebuilt uploads retain the bounded metadata-bundle contract, while `alloy_authored` accepts only the bounded canonical Rhai workspace media type. Final Alloy staging still requires that upload checksum to equal the reviewed source-revision digest.
 - Alloy release staging is host-composed on both transports: `POST /api/alloy/scripts/{id}/releases/stage` and the manifest-owned GraphQL `stageRelease` mutation require the authenticated tenant's current script revision, `scripts:manage` plus `modules:manage`, reviewed source digest, publish request ID, and idempotency key. They delegate all marketplace writes to `rustok-modules`; final promotion remains the registry governance approval operation, and publish-status `nextStep` now points Alloy-authored requests to this staging boundary instead of implying direct approval.
-- Marketplace catalog transport is versioned only at `GET /v1/catalog` and
-  `GET /v1/catalog/{slug}`. The server router and both outbound registry clients
-  do not probe or serve the removed unversioned `/catalog` compatibility paths.
+- Marketplace catalog transport exposes only the current `GET /catalog` and
+  `GET /catalog/{slug}` contracts. The server router and outbound registry
+  clients do not probe or serve version-suffixed compatibility paths.
   Catalog generation fails closed when the active platform composition is
   invalid; it never substitutes a builtin manifest as a legacy fallback. The
   bounded registry client disables redirects and fails startup if its bounded

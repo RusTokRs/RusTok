@@ -47,6 +47,13 @@ enum WsBuildMessage {
         build_id: Uuid,
         release_id: Option<String>,
     },
+    BuildRolledBack {
+        requested_build_id: Uuid,
+        restored_build_id: Uuid,
+        from_release_id: String,
+        to_release_id: String,
+        actor_id: Uuid,
+    },
     BuildCancelled {
         build_id: Uuid,
         stage: String,
@@ -94,6 +101,19 @@ impl From<BuildEvent> for WsBuildMessage {
             } => Self::BuildCompleted {
                 build_id,
                 release_id,
+            },
+            BuildEvent::BuildRolledBack {
+                requested_build_id,
+                restored_build_id,
+                from_release_id,
+                to_release_id,
+                actor_id,
+            } => Self::BuildRolledBack {
+                requested_build_id,
+                restored_build_id,
+                from_release_id,
+                to_release_id,
+                actor_id,
             },
             BuildEvent::BuildCancelled {
                 build_id,

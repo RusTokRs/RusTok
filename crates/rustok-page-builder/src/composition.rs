@@ -4,9 +4,7 @@ use crate::rollout::{BuilderCapabilityFlags, BuilderRolloutError};
 use crate::runtime_scenario_release::{
     NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
 };
-use crate::runtime_telemetry::{
-    NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeTelemetry,
-};
+use crate::runtime_telemetry::{NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeTelemetry};
 use crate::service::{
     AuthorizedPageBuilderHandlers, CapabilityGuardedService, PageBuilderCapabilityAuthorizer,
     PageBuilderCapabilityPortPolicies, PageBuilderProjectStore,

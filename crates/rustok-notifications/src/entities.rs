@@ -2,8 +2,8 @@ use sea_orm::entity::prelude::*;
 
 use crate::model::{
     DeliveryStatus, DigestJobStatus, DigestMode, FanoutItemStatus, NotificationChannel,
-    NotificationDeliveryMode, NotificationJobStatus, NotificationPriorityValue,
-    NotificationState, PushPlatform, PushSubscriptionStatus,
+    NotificationDeliveryMode, NotificationJobStatus, NotificationPriorityValue, NotificationState,
+    PushPlatform, PushSubscriptionStatus,
 };
 
 pub mod notification {

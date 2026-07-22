@@ -119,12 +119,7 @@ async fn explicit_non_builder_publish_and_unpublish_advance_metadata_version() {
     let (service, tenant_id, security) = setup().await;
     let draft = create_draft(&service, tenant_id, security.clone()).await;
     let published = service
-        .publish_non_builder_if_current(
-            tenant_id,
-            security.clone(),
-            draft.id,
-            Some(draft.version),
-        )
+        .publish_non_builder_if_current(tenant_id, security.clone(), draft.id, Some(draft.version))
         .await
         .expect("non-builder publish");
     assert_eq!(published.version, draft.version + 1);
@@ -155,12 +150,7 @@ async fn published_pages_must_be_unpublished_before_delete() {
     let (service, tenant_id, security) = setup().await;
     let draft = create_draft(&service, tenant_id, security.clone()).await;
     let published = service
-        .publish_non_builder_if_current(
-            tenant_id,
-            security.clone(),
-            draft.id,
-            Some(draft.version),
-        )
+        .publish_non_builder_if_current(tenant_id, security.clone(), draft.id, Some(draft.version))
         .await
         .expect("non-builder publish");
 

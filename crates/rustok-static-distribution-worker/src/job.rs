@@ -14,7 +14,7 @@ use thiserror::Error;
 use tokio::{process::Command, time::timeout};
 
 use crate::{
-    executor::validate_evidence, StaticDistributionJobReceipt, StaticDistributionJobRequest,
+    StaticDistributionJobReceipt, StaticDistributionJobRequest, executor::validate_evidence,
 };
 
 const JOB_CONFIG_CONTRACT: &str = "rustok.static_distribution.job_config";

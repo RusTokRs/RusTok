@@ -7,9 +7,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::{GroupMembershipStatus, GroupRole};
@@ -108,13 +107,8 @@ impl GroupGovernanceService {
         }
 
         let mut group_model = find_group(&transaction, tenant_id, request.group_id).await?;
-        let actor_membership = find_membership(
-            &transaction,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-        )
-        .await?;
+        let actor_membership =
+            find_membership(&transaction, tenant_id, request.group_id, actor_user_id).await?;
         let target_membership = find_membership(
             &transaction,
             tenant_id,
@@ -130,7 +124,12 @@ impl GroupGovernanceService {
                 "the owner role can only change through ownership transfer".to_string(),
             ));
         }
-        authorize_role_change(actor_role, target_role, request.role, has_platform_manage(context))?;
+        authorize_role_change(
+            actor_role,
+            target_role,
+            request.role,
+            has_platform_manage(context),
+        )?;
 
         let now = Utc::now().fixed_offset();
         let mut target_active: membership::ActiveModel = target_membership.into();
@@ -226,13 +225,8 @@ impl GroupGovernanceService {
             ));
         }
         let previous_owner_id = group_model.owner_user_id;
-        let previous_owner = find_membership(
-            &transaction,
-            tenant_id,
-            request.group_id,
-            previous_owner_id,
-        )
-        .await?;
+        let previous_owner =
+            find_membership(&transaction, tenant_id, request.group_id, previous_owner_id).await?;
         let new_owner = find_membership(
             &transaction,
             tenant_id,
@@ -314,7 +308,9 @@ impl GroupGovernanceCommandPort for GroupGovernanceService {
         context: PortContext,
         request: ChangeGroupRoleRequest,
     ) -> Result<GroupGovernanceResult, PortError> {
-        self.change_role_owned(&context, request).await.map_err(Into::into)
+        self.change_role_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn transfer_group_ownership(
@@ -436,7 +432,9 @@ async fn store_receipt<T: Serialize>(
         command_type: Set(command_type.to_string()),
         request_hash: Set(request_hash),
         response: Set(serde_json::to_value(response).map_err(|error| {
-            GroupsError::Invariant(format!("group command response is not serializable: {error}"))
+            GroupsError::Invariant(format!(
+                "group command response is not serializable: {error}"
+            ))
         })?),
         created_at: Set(Utc::now().fixed_offset()),
     }
@@ -473,9 +471,11 @@ async fn append_audit(
 
 fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
     let bytes = serde_json::to_vec(request).map_err(|error| {
-        GroupsError::Validation(format!("group command request is not serializable: {error}"))
+        GroupsError::Validation(format!(
+            "group command request is not serializable: {error}"
+        ))
     })?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(crate::domain::sha256_hex(&bytes))
 }
 
 fn require_write(context: &PortContext) -> GroupsResult<()> {
@@ -513,7 +513,7 @@ fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
         .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
+        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }
 
 #[cfg(test)]
@@ -522,34 +522,35 @@ mod tests {
 
     #[test]
     fn admins_cannot_promote_another_admin() {
-        assert!(authorize_role_change(
-            GroupRole::Admin,
-            GroupRole::Admin,
-            GroupRole::Moderator,
-            false,
-        )
-        .is_err());
+        assert!(
+            authorize_role_change(
+                GroupRole::Admin,
+                GroupRole::Admin,
+                GroupRole::Moderator,
+                false,
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn admins_can_manage_moderators_and_members() {
-        assert!(authorize_role_change(
-            GroupRole::Admin,
-            GroupRole::Member,
-            GroupRole::Moderator,
-            false,
-        )
-        .is_ok());
+        assert!(
+            authorize_role_change(
+                GroupRole::Admin,
+                GroupRole::Member,
+                GroupRole::Moderator,
+                false,
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn owners_can_delegate_all_non_owner_roles() {
-        assert!(authorize_role_change(
-            GroupRole::Owner,
-            GroupRole::Admin,
-            GroupRole::Member,
-            false,
-        )
-        .is_ok());
+        assert!(
+            authorize_role_change(GroupRole::Owner, GroupRole::Admin, GroupRole::Member, false,)
+                .is_ok()
+        );
     }
 }

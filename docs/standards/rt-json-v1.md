@@ -1,22 +1,30 @@
 ---
 id: doc://docs/standards/rt-json-v1.md
-kind: project_overview
-language: markdown
-last_verified_snapshot: snap_jsonl_00000021
-source_language: markdown
-status: verified
+kind: technical_reference
+language: en
+status: deprecated
 ---
 
-# `rt_json_v1` Specification
+# Legacy `rt_json_v1` Implementation Snapshot
 
-`rt_json_v1` is the canonical JSON rich-text format for RusToK (blog/forum).
+> Deprecated: this document describes the currently implemented legacy
+> contract only. New architecture and implementation work must follow the
+> [Richtext implementation plan](../modules/rich-text-implementation-plan.md)
+> and the
+> [proposed capability-boundary ADR](../../DECISIONS/2026-07-22-richtext-capability-boundary.md).
 
-## Payload format
+`rt_json_v1` is not the target RusToK contract. It remains documented while the
+current code still reads/writes it so that the atomic cutover can inventory and
+remove every dependency without pretending that the target is already live.
+
+## Implemented envelope
+
+The current backend expects an outer envelope:
 
 ```json
 {
   "version": "rt_json_v1",
-  "locale": "ru",
+  "locale": "en",
   "doc": {
     "type": "doc",
     "content": []
@@ -24,102 +32,60 @@ status: verified
 }
 ```
 
-- `version` is required and must be `rt_json_v1`.
-- `locale` is required, valid in `ll` or `ll-RR` format and must match the request locale.
-- `doc` is required and contains the node tree.
+The implementation is primarily in `crates/rustok-core/src/rt_json.rs` and
+`crates/rustok-core/src/content_format.rs`. Blog and Forum serialize the JSON
+into string body columns and reconstruct a separate `content_json` transport
+field. Some callers also accept `rt_json` as an alias.
 
-## Allowed nodes
+## Implemented node and mark names
 
-Supported node types:
+The legacy allowlist contains:
 
-- `doc`
-- `paragraph`
-- `heading` (`attrs.level` from 1 to 6)
-- `bullet_list`
-- `ordered_list`
-- `list_item`
-- `blockquote`
-- `code_block`
-- `horizontal_rule`
-- `hard_break`
-- `text`
-- `image` (`attrs.src`)
-- `embed` (`attrs.provider`, `attrs.url`)
+- nodes: `doc`, `paragraph`, `heading`, `bullet_list`, `ordered_list`,
+  `list_item`, `blockquote`, `code_block`, `horizontal_rule`, `hard_break`,
+  `text`, `image`, and `embed`;
+- marks: `bold`, `italic`, `strike`, `code`, and `link`.
 
-## Allowed marks
+The configured baseline limits are depth 8, 2,000 nodes, 100,000 text
+characters, and 8 marks on one text node. Link schemes are limited; image and
+embed URLs have separate legacy checks.
 
-Supported marks:
+## Known implementation limitations
 
-- `bold`
-- `italic`
-- `strike`
-- `code`
-- `link` (`attrs.href`)
+This snapshot must not be used as a design baseline:
 
-A single `text` node may have at most 8 marks.
+- locale is duplicated inside the document instead of remaining solely in the
+  owner row/request;
+- the locale parser is narrower than the platform locale contract;
+- validation does not enforce the complete ProseMirror tree grammar;
+- unknown nodes/marks can be silently dropped, which can lose author data;
+- unrecognised object fields can survive normalization;
+- different callers enforce different levels of validation, and direct
+  Comments writes can bypass document parsing;
+- the manual browser mapping between legacy snake-case node names and Tiptap
+  names can drift and lose content;
+- the same source is transported as both a serialized body and `content_json`;
+- the legacy migration binary does not cover current owner-local Blog, Forum,
+  and Comments tables and is not a valid target migration path.
 
-## Depth and size limits
+## Superseded compatibility strategy
 
-- Maximum tree depth: `8`.
-- Maximum node count: `2000`.
-- Maximum total text content size: `100000` characters.
+The previous dual-read/dual-write and indefinite Markdown fallback strategy is
+superseded by the repository's initial-implementation rule. The target cutover
+will migrate repository-owned data and callers atomically, then delete aliases,
+fallbacks, legacy editor modes, and this snapshot.
 
-## URL / embed policy
+Historical Markdown, if material rows exist, is an offline migration input
+only. It is not a supported target storage or authoring format.
 
-- For `link.attrs.href`: only `http`, `https`, `mailto` are allowed.
-- For `image.attrs.src`: only `http`, `https` are allowed.
-- For `embed`, only the following providers are allowed:
-  - `youtube` (`youtube.com`, `www.youtube.com`, `youtu.be`)
-  - `vimeo` (`vimeo.com`, `player.vimeo.com`)
-- For `embed.attrs.url`, `https` is required.
+## Removal criteria
 
-## Unknown node/mark handling
+Delete this document with the legacy implementation when all of the following
+are true:
 
-- Unknown nodes and marks are not persisted (dropped during sanitize).
-- If after sanitize the document becomes empty/invalid — the request is rejected as a validation error.
-
-## Format versions
-
-- `rt_json_v1` — the currently supported version for writing and rendering in the backend.
-- `rt_json_v2` — reserved (known-but-unsupported): backend v1 recognizes it but rejects with an explicit incompatibility error.
-- Any other version is considered unknown and rejected.
-
-## Versioning and compatibility
-
-- **Backward compatibility (legacy -> v1)**: if `version` is absent, the backend attempts to transform the payload into `rt_json_v1`:
-  - if payload already looks like `doc`, it is wrapped in `{"version":"rt_json_v1","locale":"<request-locale>","doc":...}`;
-  - if payload is an object with `doc`, missing `version/locale` fields are added.
-- **Forward compatibility (v2+ -> v1 backend)**: unknown versions (`version != rt_json_v1`) are rejected.
-
-## Backend enforcement
-
-In blog/forum, client-side validation is considered **advisory only**.
-
-Every incoming rich-text JSON on the backend goes through:
-
-1. schema validation (`version/locale/doc`, allowed nodes/marks, limits, URL/embed policy),
-2. sanitize (drop unknown nodes/marks, normalize attrs),
-3. storage of only sanitized JSON.
-
-## Migration plan `markdown -> rt_json_v1` (without breaking release)
-
-The migration is performed in stages, preserving backward compatibility:
-
-1. **Dual-write-ready API (current stage)**
-   - DTO create/update accept `body_format`/`content_format` and `content_json`.
-   - Backend accepts both formats: `markdown` and `rt_json_v1`.
-   - For rich-content, sanitized `rt_json_v1` is stored.
-2. **Dual-read + legacy fallback**
-   - When reading old records without a format or with historical markdown, a `markdown` fallback is applied.
-   - No database migration is required at this step.
-3. **Background conversion of historical data**
-   - A batch-job converts markdown records to `rt_json_v1` in the background (tenant-by-tenant / module-by-module).
-   - For each record, both audit trail and safe retry capability are preserved.
-4. **Gradual rollout by write channels**
-   - UI/API clients gradually switch to sending `rt_json_v1`.
-   - Metrics: share of `rt_json_v1` writes, validation errors, sanitize-drop rate.
-5. **Legacy write restriction (after saturation)**
-   - After reaching the target threshold (>95% rich writes), a soft-warning is introduced for new markdown writes.
-   - Hard markdown disable is only permitted by a separate ADR and release note.
-
-Key principle: **read compatibility is preserved at all stages**, so no "big bang" migration is necessary.
+1. owner-local Blog, Forum, and Comments rows/revisions are migrated;
+2. all transports use the typed `RichTextDocument` contract;
+3. `rustok-core::rt_json`, generic legacy content-format helpers, aliases, and
+   the old migration binary are removed;
+4. Search/Index consume the canonical plain-text projection;
+5. Next and Leptos editor/read paths pass the target verification matrix.

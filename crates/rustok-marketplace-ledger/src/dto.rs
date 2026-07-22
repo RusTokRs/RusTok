@@ -176,7 +176,10 @@ impl MarketplaceSellerBalanceTransferKind {
 
     pub const fn buckets(
         self,
-    ) -> (MarketplaceSellerBalanceBucket, MarketplaceSellerBalanceBucket) {
+    ) -> (
+        MarketplaceSellerBalanceBucket,
+        MarketplaceSellerBalanceBucket,
+    ) {
         match self {
             Self::PendingRelease => (
                 MarketplaceSellerBalanceBucket::Pending,

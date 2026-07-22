@@ -35,6 +35,37 @@ confined to the default infrastructure adapters outside test fixtures.
 Database-expression timestamps remain owned by the transactional storage
 adapter so one commit uses the database clock.
 
+Effective availability is returned as `ModuleEffectivePolicy`, not reconstructed
+by a host from a boolean set. Its `sha256:` policy revision covers the exact
+ordered definition catalog, normalized platform defaults, and persisted tenant
+overrides plus owner-resolved artifact runtime evidence. Each selected artifact
+must resolve an exact active installation through tenant RLS, a matching durable
+capability-policy revision, an available isolated executor, and an enabled
+dependency closure. The policy retains only redacted installation/revision facts,
+not grant contents or resolver failures. A channel owner can add a canonical
+tenant-safe snapshot containing channel identity, surface, binding state, and
+its own `sha256:` revision. The modules owner evaluates that snapshot without
+resolving channel tables, and channel facts become part of the same policy
+revision. Operational owners can additionally supply a revisioned maintenance
+snapshot with a bounded reason code and global or module-scoped impact;
+maintenance blocks serving without changing tenant enablement. Lifecycle writes and server guards
+obtain the enabled projection from this same decision object; unknown modules
+and unavailable artifact runtime state are explicitly denied instead of
+appearing as absent implementation details.
+
+Node readiness is a separate host-owned snapshot. It carries Core readiness,
+artifact graph, CAS, executor ABI, and node/policy revisions. The node must
+observe the base policy revision before the final policy revision is materialized;
+stale observations fail closed rather than becoming a cache or runtime hint.
+
+Revision-aware outbox consumers must use `ModulePolicyRevisionGate`: policy
+revisions are opaque identities, so a transition is applied only when its
+predecessor matches the durable cursor. Exact replays are acknowledged as
+duplicates and divergent or out-of-order transitions are rejected as stale.
+`SeaOrmModulePolicyRevisionConsumer` persists the cursor under tenant RLS and
+advances it atomically with the gate result; it is consumer state, not another
+event journal.
+
 The caller-supplied SeaORM connection and owner-opened transaction form the
 transactional storage boundary. `ControlPlaneInfrastructure` carries the
 object-safe `rustok-outbox::TransactionalEventWriter`; owner commands append
@@ -73,6 +104,15 @@ build component while preserving the receipt manifest digest for signature,
 admission, and final-publication joins.
 That receipt records build-service signature evidence only; author signatures
 and marketplace approvals remain separate owner-governance facts.
+
+Global artifact security is a separate owner aggregate. Registry yanking is an
+ordinary discovery/install state and does not silently disable an already
+admitted tenant intent. `ModuleControlPlane::artifact_security` owns explicit
+quarantine, quarantine-clear, and terminal emergency-revoke commands with
+revision CAS, platform authorization, exact idempotency replay, and outbox
+events. The read-only security resolver feeds effective policy with redacted
+status/revision/release facts; quarantine and revoke block new execution, while
+a revoked state cannot be cleared.
 Successful build results must carry the complete component, SBOM, provenance,
 interface, and validation evidence. Failed and cancelled results reject those
 success artifacts and require a structured diagnostic matching the terminal
@@ -145,7 +185,8 @@ the same promotion. `ModuleControlPlane::static_distribution` is the only owner
 that can consume approved records. It replaces the complete selection under a
 separate CAS head, revalidates every release/build pair, pins platform source,
 toolchain and target identities, carries the Cargo package and native entry type
-into every distribution item and its composition digest, and records an
+into every distribution item, persists the explicit `static_native` executor
+mode, binds all of those facts into its composition digest, and records an
 immutable predecessor-linked
 build intent plus outbox evidence. Selection also requires its own fail-closed
 host authorization decision. These services have no compiler,
@@ -163,8 +204,17 @@ policy decisions must all pass under the exact requested policy revision. The
 owner atomically supersedes the prior release, advances a dedicated release CAS
 head, stores immutable admission evidence and exact-replay idempotency, and
 publishes `module.static_distribution.release_activated`. This release ledger
-does not deploy code or mutate the running composition; deployment, explicit
-rollback, and revocation remain separate owner operations.
+reloads the exact immutable build items before returning a release. A runtime
+host builds its definition catalog through
+`ModuleDefinitionCatalog::from_static_distribution`: compiled platform modules
+remain `platform_native`, while every promoted module becomes
+`promoted_native` with exact promotion, registry release, distribution release,
+release revision, native artifact digest, and `static_native` executor facts.
+The same catalog can be supplied to the owner lifecycle and effective-policy
+services; lifecycle dispatch still resolves the implementation only from the
+compiled registry. This release ledger does not deploy code or mutate the
+running composition; deployment, explicit rollback, and revocation remain
+separate owner operations.
 `ModuleControlPlane::static_distribution_release` also owns those lifecycle
 commands. Rollback is limited to the active release's direct predecessor and is
 accepted only when the distribution head still matches the active release. It
@@ -178,6 +228,22 @@ records actor/reason/policy, cancels pending rollback requests involving that
 release, and clears the head when the revoked release was active. Neither
 operation mutates a running process; deployment consumes the resulting owner
 events.
+
+`ModuleControlPlane::static_distribution_rollout` owns the next deployment
+boundary. A topology resolver returns one sorted, bounded node set with a
+canonical digest; the request owner pins that snapshot, the active verified
+release, policy revision, artifact digest, and `static_native` executor mode in
+a durable desired rollout. Node agents report only exact identity matches
+through the owner port. Each node uses an observation revision and transitions
+through `prepared`, `healthy`, and `active`; a healthy fleet moves the rollout
+to `activating`, and only an active fleet becomes `converged`. A failed node
+before convergence makes the rollout terminal; drift after convergence makes
+it `degraded`, clears observed readiness, and permits an explicit
+prepare/health recovery before activation again. Duplicate reports replay
+their immutable receipt, while stale or out-of-order revisions fail closed.
+Desired and observed rollout pointers, node observations, and operation
+journals are transactional and emit outbox events. The deployment process,
+node transport, and binary replacement remain outside the control-plane crate.
 Activation, rollback, and revocation reserve one shared lifecycle idempotency
 key namespace, so a UUID cannot be reused across command kinds.
 
@@ -233,6 +299,15 @@ the projection's tagged structured data as non-system data and must never turn
 README, metadata, source comments, test output, or artifact text into
 instructions. Validation-stage and delivery-retry audit records use stable
 owner-generated diagnostics rather than caller or runner output.
+
+`ModuleMarketplaceCatalog` is the framework-neutral read port for the current
+catalog. The host composes local and configured remote providers behind
+`SharedModuleMarketplaceCatalog`; native and GraphQL adapters consume that same
+handle and may not scan the workspace or synthesize catalog state. Registry
+detail reads attach `ModuleGovernanceLifecycleSnapshot`, whose owner service
+derives moderation policy, validation gates, events, and available governance
+actions from durable registry state. A missing catalog handle or unsupported
+durable artifact origin fails closed.
 
 `module_artifact_installations` is the host-managed persistence boundary. Its
 PostgreSQL migration enables RLS; tenant-scoped connections must set

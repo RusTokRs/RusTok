@@ -3,8 +3,8 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{
     CreateGroupInvitationCommand, GroupsAdminCreateInvitationResult, GroupsAdminInvitation,
-    GroupsAdminInvitationConnection, GroupsAdminInvitationQuery,
-    GroupsAdminRevokeInvitationResult, RevokeGroupInvitationCommand,
+    GroupsAdminInvitationConnection, GroupsAdminInvitationQuery, GroupsAdminRevokeInvitationResult,
+    RevokeGroupInvitationCommand,
 };
 
 #[derive(Debug, Clone)]
@@ -27,7 +27,9 @@ impl From<ServerFnError> for NativeGroupsInvitationError {
 pub async fn load_group_invitations(
     query: GroupsAdminInvitationQuery,
 ) -> Result<GroupsAdminInvitationConnection, NativeGroupsInvitationError> {
-    groups_admin_invitations_native(query).await.map_err(Into::into)
+    groups_admin_invitations_native(query)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn create_group_invitation(
@@ -46,10 +48,7 @@ pub async fn revoke_group_invitation(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/invitations/list"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/invitations/list")]
 async fn groups_admin_invitations_native(
     query: GroupsAdminInvitationQuery,
 ) -> Result<GroupsAdminInvitationConnection, ServerFnError> {
@@ -57,8 +56,8 @@ async fn groups_admin_invitations_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupInvitationReadPort, GroupInvitationService, ListGroupInvitationsRequest,
@@ -119,10 +118,7 @@ async fn groups_admin_invitations_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/invitations/create"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/invitations/create")]
 async fn groups_admin_create_invitation_native(
     command: CreateGroupInvitationCommand,
 ) -> Result<GroupsAdminCreateInvitationResult, ServerFnError> {
@@ -130,8 +126,8 @@ async fn groups_admin_create_invitation_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             CreateGroupInvitationRequest, GroupInvitationCommandPort, GroupInvitationService,
@@ -199,10 +195,7 @@ async fn groups_admin_create_invitation_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/invitations/revoke"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/invitations/revoke")]
 async fn groups_admin_revoke_invitation_native(
     command: RevokeGroupInvitationCommand,
 ) -> Result<GroupsAdminRevokeInvitationResult, ServerFnError> {
@@ -210,8 +203,8 @@ async fn groups_admin_revoke_invitation_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupInvitationCommandPort, GroupInvitationService, RevokeGroupInvitationRequest,

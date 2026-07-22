@@ -245,37 +245,37 @@ if ([string]::IsNullOrWhiteSpace($externalBaseUrl)) {
             Write-Fail "external /health/runtime disables runtime dependencies"
         }
 
-        if (Test-HeaderPresent -Url "$externalBaseUrl/v1/catalog?limit=1" -HeaderName "etag" -HeadersPath (Join-Path $tempDir "catalog-headers.txt") -BodyPath (Join-Path $tempDir "catalog-body.json")) {
-            Write-Pass "external /v1/catalog exposes ETag"
+        if (Test-HeaderPresent -Url "$externalBaseUrl/catalog?limit=1" -HeaderName "etag" -HeadersPath (Join-Path $tempDir "catalog-headers.txt") -BodyPath (Join-Path $tempDir "catalog-body.json")) {
+            Write-Pass "external /catalog exposes ETag"
         } else {
-            Write-Fail "external /v1/catalog exposes ETag"
+            Write-Fail "external /catalog exposes ETag"
         }
 
-        if (Test-HeaderPresent -Url "$externalBaseUrl/v1/catalog?limit=1" -HeaderName "cache-control" -HeadersPath (Join-Path $tempDir "catalog-headers.txt") -BodyPath (Join-Path $tempDir "catalog-body.json")) {
-            Write-Pass "external /v1/catalog exposes Cache-Control"
+        if (Test-HeaderPresent -Url "$externalBaseUrl/catalog?limit=1" -HeaderName "cache-control" -HeadersPath (Join-Path $tempDir "catalog-headers.txt") -BodyPath (Join-Path $tempDir "catalog-body.json")) {
+            Write-Pass "external /catalog exposes Cache-Control"
         } else {
-            Write-Fail "external /v1/catalog exposes Cache-Control"
+            Write-Fail "external /catalog exposes Cache-Control"
         }
 
-        if (Test-HeaderPresent -Url "$externalBaseUrl/v1/catalog?limit=1" -HeaderName "x-total-count" -HeadersPath (Join-Path $tempDir "catalog-headers.txt") -BodyPath (Join-Path $tempDir "catalog-body.json")) {
-            Write-Pass "external /v1/catalog exposes X-Total-Count"
+        if (Test-HeaderPresent -Url "$externalBaseUrl/catalog?limit=1" -HeaderName "x-total-count" -HeadersPath (Join-Path $tempDir "catalog-headers.txt") -BodyPath (Join-Path $tempDir "catalog-body.json")) {
+            Write-Pass "external /catalog exposes X-Total-Count"
         } else {
-            Write-Fail "external /v1/catalog exposes X-Total-Count"
+            Write-Fail "external /catalog exposes X-Total-Count"
         }
 
-        if (Test-HttpStatus -Method "GET" -Url "$externalBaseUrl/v1/catalog/$smokeSlug" -ExpectedStatus "200") {
-            Write-Pass "external /v1/catalog/{slug} returns 200"
+        if (Test-HttpStatus -Method "GET" -Url "$externalBaseUrl/catalog/$smokeSlug" -ExpectedStatus "200") {
+            Write-Pass "external /catalog/{slug} returns 200"
         } else {
-            Write-Fail "external /v1/catalog/{slug} returns 200"
+            Write-Fail "external /catalog/{slug} returns 200"
         }
 
-        if (Test-BodyMatches -Url "$externalBaseUrl/api/openapi.json" -Pattern '"/v1/catalog/\{slug\}"' -HeadersPath (Join-Path $tempDir "openapi-headers.txt") -BodyPath (Join-Path $tempDir "openapi-body.json")) {
+        if (Test-BodyMatches -Url "$externalBaseUrl/api/openapi.json" -Pattern '"/catalog/\{slug\}"' -HeadersPath (Join-Path $tempDir "openapi-headers.txt") -BodyPath (Join-Path $tempDir "openapi-body.json")) {
             Write-Pass "external reduced OpenAPI keeps catalog detail path"
         } else {
             Write-Fail "external reduced OpenAPI keeps catalog detail path"
         }
 
-        if (Test-BodyMatches -Url "$externalBaseUrl/api/openapi.yaml" -Pattern '/v1/catalog/\{slug\}' -HeadersPath (Join-Path $tempDir "openapi-yaml-headers.txt") -BodyPath (Join-Path $tempDir "openapi-yaml-body.yaml")) {
+        if (Test-BodyMatches -Url "$externalBaseUrl/api/openapi.yaml" -Pattern '/catalog/\{slug\}' -HeadersPath (Join-Path $tempDir "openapi-yaml-headers.txt") -BodyPath (Join-Path $tempDir "openapi-yaml-body.yaml")) {
             Write-Pass "external reduced OpenAPI YAML keeps catalog detail path"
         } else {
             Write-Fail "external reduced OpenAPI YAML keeps catalog detail path"

@@ -2,10 +2,10 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use rustok_forum::{
+    ForumContentTarget, ForumMentionAudience, ForumMentionCandidates, ForumMentionEventTarget,
+    ForumMentionPolicy, ForumMentionRevisionProjection, ForumQuoteReference, ForumRevisionIdentity,
     diff_forum_mentions, extract_forum_mention_candidates, resolve_forum_mentions,
-    validate_forum_quote_references, ForumContentTarget, ForumMentionAudience,
-    ForumMentionCandidates, ForumMentionEventTarget, ForumMentionPolicy,
-    ForumMentionRevisionProjection, ForumQuoteReference, ForumRevisionIdentity,
+    validate_forum_quote_references,
 };
 use rustok_profiles::{
     ProfileError, ProfileRecord, ProfileResult, ProfileStatus, ProfileSummary, ProfileVisibility,
@@ -127,13 +127,9 @@ fn rt_json_extraction_ignores_code_blocks_and_code_marks() {
     })
     .to_string();
 
-    let result = extract_forum_mention_candidates(
-        &body,
-        "rt_json_v1",
-        "en",
-        ForumMentionPolicy::default(),
-    )
-    .expect("mentions should parse");
+    let result =
+        extract_forum_mention_candidates(&body, "rt_json_v1", "en", ForumMentionPolicy::default())
+            .expect("mentions should parse");
     assert_eq!(result.handles(), &["alice".to_string()]);
 }
 
@@ -284,23 +280,22 @@ async fn revision_diff_emits_only_new_targets_and_replay_is_immutable() {
     .await
     .expect("current resolution");
 
-    let previous = ForumMentionRevisionProjection::new(
-        revision(tenant_id, target, 10),
-        previous_resolved,
-    )
-    .expect("previous projection");
-    let current = ForumMentionRevisionProjection::new(
-        revision(tenant_id, target, 11),
-        current_resolved,
-    )
-    .expect("current projection");
+    let previous =
+        ForumMentionRevisionProjection::new(revision(tenant_id, target, 10), previous_resolved)
+            .expect("previous projection");
+    let current =
+        ForumMentionRevisionProjection::new(revision(tenant_id, target, 11), current_resolved)
+            .expect("current projection");
 
     let diff = diff_forum_mentions(Some(&previous), &current).expect("valid diff");
     assert_eq!(diff.added_users().len(), 1);
     assert_eq!(diff.added_users()[0].user_id(), bob.user_id);
     assert_eq!(diff.unchanged_users().len(), 1);
     assert_eq!(diff.unchanged_users()[0].user_id(), alice.user_id);
-    assert_eq!(diff.removed_audiences(), &[ForumMentionAudience::Moderators]);
+    assert_eq!(
+        diff.removed_audiences(),
+        &[ForumMentionAudience::Moderators]
+    );
     let candidates = diff.event_candidates();
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].source(), current.source());
@@ -327,27 +322,18 @@ async fn revision_diff_emits_only_new_targets_and_replay_is_immutable() {
     )
     .await
     .expect("changed replay resolution");
-    let replay_changed = ForumMentionRevisionProjection::new(
-        current.source().clone(),
-        changed_replay_resolved,
-    )
-    .expect("changed replay projection");
+    let replay_changed =
+        ForumMentionRevisionProjection::new(current.source().clone(), changed_replay_resolved)
+            .expect("changed replay projection");
     assert!(diff_forum_mentions(Some(&current), &replay_changed).is_err());
 }
 
 #[test]
 fn quote_references_are_revision_bound_deduplicated_and_non_recursive() {
     let tenant_id = Uuid::new_v4();
-    let source = revision(
-        tenant_id,
-        ForumContentTarget::reply(Uuid::new_v4()),
-        20,
-    );
-    let quoted = ForumQuoteReference::new(
-        ForumContentTarget::reply(Uuid::new_v4()),
-        4,
-    )
-    .expect("valid quote reference");
+    let source = revision(tenant_id, ForumContentTarget::reply(Uuid::new_v4()), 20);
+    let quoted = ForumQuoteReference::new(ForumContentTarget::reply(Uuid::new_v4()), 4)
+        .expect("valid quote reference");
     let result = validate_forum_quote_references(&source, [quoted.clone(), quoted.clone()])
         .expect("duplicate quote input should normalize");
     assert_eq!(result, vec![quoted]);

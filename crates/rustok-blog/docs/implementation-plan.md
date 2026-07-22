@@ -126,6 +126,18 @@ transactional outbox publication.
 5. **Close comments runtime evidence.** Cover approved-only reads, moderation,
    pagination, independent create commands, duplicate delivery, concurrent
    counters, missing-post retry, rollback, and outbox publication.
+6. **Join the atomic richtext cutover.** Replace the string body plus
+   `content_json` transport with `RichTextDocument`, assign the `article`
+   profile in the owner service, migrate `blog_post_translations` and relevant
+   revision/audit data, and use the canonical server HTML/plain-text
+   projections for admin, both storefronts, Search, AI/SEO, and Comments
+   integration. The Blog package must not own Forum editor/API code.
+   **Depends on:** the
+   [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
+   and target `rustok-api`/`rustok-content` contracts.
+   **Done when:** Next and Leptos save/reload/SSR match on the target-only
+   contract, public comments rendering parity uses the same server projection,
+   and no Blog path accepts Markdown, format aliases, or raw JSON.
 
 ## Verification
 
@@ -159,3 +171,4 @@ transactional outbox publication.
 - [Crate README](../README.md)
 - [Blog documentation](./README.md)
 - [Comments consumer registry](../contracts/blog-fba-registry.json)
+- [Richtext implementation plan](../../../docs/modules/rich-text-implementation-plan.md)

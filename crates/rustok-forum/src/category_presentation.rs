@@ -224,9 +224,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
+        CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE, CategoryCoverMediaCandidate,
         hydrate_category_cover_for_read, normalize_category_icon_key,
         resolve_category_cover_for_write, validate_category_cover_candidate,
-        CategoryCoverMediaCandidate, CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE,
     };
     use crate::ForumError;
 
@@ -269,7 +269,10 @@ mod tests {
             normalize_category_icon_key("  Message-Square  ").as_deref(),
             Some("message-square")
         );
-        assert_eq!(normalize_category_icon_key("support2").as_deref(), Some("support2"));
+        assert_eq!(
+            normalize_category_icon_key("support2").as_deref(),
+            Some("support2")
+        );
     }
 
     #[test]
@@ -284,7 +287,11 @@ mod tests {
             "-message",
             "message-",
         ] {
-            assert_eq!(normalize_category_icon_key(value), None, "accepted {value:?}");
+            assert_eq!(
+                normalize_category_icon_key(value),
+                None,
+                "accepted {value:?}"
+            );
         }
     }
 
@@ -317,31 +324,26 @@ mod tests {
     #[tokio::test]
     async fn media_disabled_write_returns_stable_capability_error() {
         let tenant_id = Uuid::new_v4();
-        let error = resolve_category_cover_for_write(
-            None,
-            port_context(tenant_id),
-            Uuid::new_v4(),
-            None,
-        )
-        .await
-        .expect_err("write must fail when Media owner is absent");
+        let error =
+            resolve_category_cover_for_write(None, port_context(tenant_id), Uuid::new_v4(), None)
+                .await
+                .expect_err("write must fail when Media owner is absent");
 
         assert!(matches!(&error, ForumError::CapabilityUnavailable { .. }));
-        assert_eq!(error.stable_code(), CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE);
+        assert_eq!(
+            error.stable_code(),
+            CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE_CODE
+        );
         assert!(!error.is_retryable());
     }
 
     #[tokio::test]
     async fn media_disabled_read_degrades_to_absent_descriptor() {
         let tenant_id = Uuid::new_v4();
-        let descriptor = hydrate_category_cover_for_read(
-            None,
-            port_context(tenant_id),
-            Uuid::new_v4(),
-            None,
-        )
-        .await
-        .expect("disabled Media read profile should remain available");
+        let descriptor =
+            hydrate_category_cover_for_read(None, port_context(tenant_id), Uuid::new_v4(), None)
+                .await
+                .expect("disabled Media read profile should remain available");
 
         assert!(descriptor.is_none());
     }

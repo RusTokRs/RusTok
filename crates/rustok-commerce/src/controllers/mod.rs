@@ -105,7 +105,8 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         )
         .nest(
             "/admin/marketplace-financial",
-            marketplace_financial::axum_router().merge(marketplace_reversal_financial::axum_router()),
+            marketplace_financial::axum_router()
+                .merge(marketplace_reversal_financial::axum_router()),
         )
         .with_state(state))
 }

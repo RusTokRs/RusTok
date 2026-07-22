@@ -9,9 +9,8 @@ use sea_orm::{
     DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
     TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::{GroupMembershipStatus, GroupRole, GroupStatus};
@@ -332,12 +331,8 @@ impl GroupInvitationService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
-        let invitation_model = find_invitation_for_update(
-            &transaction,
-            tenant_id,
-            request.invitation_id,
-        )
-        .await?;
+        let invitation_model =
+            find_invitation_for_update(&transaction, tenant_id, request.invitation_id).await?;
 
         if let Some(mut replayed) = replay_receipt::<RevokeGroupInvitationResult>(
             &transaction,
@@ -533,7 +528,8 @@ impl GroupInvitationService {
         invitation_active.updated_at = Set(now.fixed_offset());
         invitation_active.update(&transaction).await?;
 
-        let group_version = increment_group_membership_version(&transaction, group_model, now).await?;
+        let group_version =
+            increment_group_membership_version(&transaction, group_model, now).await?;
         let result = AcceptGroupInvitationResult {
             invitation_id,
             group_id,
@@ -673,14 +669,7 @@ async fn authorize_invitation_management_in_transaction(
     group_id: Uuid,
     actor_user_id: Uuid,
 ) -> GroupsResult<()> {
-    authorize_invitation_management(
-        transaction,
-        context,
-        tenant_id,
-        group_id,
-        actor_user_id,
-    )
-    .await
+    authorize_invitation_management(transaction, context, tenant_id, group_id, actor_user_id).await
 }
 
 async fn find_group_for_update(
@@ -821,15 +810,11 @@ fn map_membership(model: membership::Model) -> GroupsResult<GroupMembership> {
 }
 
 fn generate_invitation_token() -> String {
-    format!(
-        "gri_{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    )
+    format!("gri_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
 }
 
 fn invitation_token_hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    crate::domain::sha256_hex(token.as_bytes())
 }
 
 fn invalid_invitation_token() -> GroupsError {
@@ -884,7 +869,9 @@ async fn store_receipt<T: Serialize>(
         command_type: Set(command_type.to_string()),
         request_hash: Set(request_hash),
         response: Set(serde_json::to_value(response).map_err(|error| {
-            GroupsError::Invariant(format!("group command response is not serializable: {error}"))
+            GroupsError::Invariant(format!(
+                "group command response is not serializable: {error}"
+            ))
         })?),
         created_at: Set(Utc::now().fixed_offset()),
     }
@@ -921,9 +908,11 @@ async fn append_audit(
 
 fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
     let bytes = serde_json::to_vec(request).map_err(|error| {
-        GroupsError::Validation(format!("group command request is not serializable: {error}"))
+        GroupsError::Validation(format!(
+            "group command request is not serializable: {error}"
+        ))
     })?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(crate::domain::sha256_hex(&bytes))
 }
 
 fn require_read(context: &PortContext) -> GroupsResult<()> {
@@ -972,5 +961,5 @@ fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
         .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
+        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }

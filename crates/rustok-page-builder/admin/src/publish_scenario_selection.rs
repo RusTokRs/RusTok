@@ -44,11 +44,10 @@ pub fn resolve_publish_scenario<'a>(
             }),
         },
         scenarios => {
-            let selected = selected_scenario_id.ok_or(
-                PublishScenarioSelectionError::SelectionRequired {
+            let selected =
+                selected_scenario_id.ok_or(PublishScenarioSelectionError::SelectionRequired {
                     count: scenarios.len(),
-                },
-            )?;
+                })?;
             scenarios
                 .iter()
                 .find(|scenario| scenario.id == selected)

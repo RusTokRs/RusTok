@@ -19,26 +19,41 @@ fn module_has_permissions() {
     let module = BlogModule;
     let permissions = module.permissions();
 
-    assert!(!permissions.is_empty(), "Module should have permissions defined");
+    assert!(
+        !permissions.is_empty(),
+        "Module should have permissions defined"
+    );
 
-    assert!(permissions
-        .iter()
-        .any(|p| p.resource == Resource::BlogPosts && p.action == Action::Create));
-    assert!(permissions
-        .iter()
-        .any(|p| p.resource == Resource::BlogPosts && p.action == Action::Publish));
-    assert!(permissions
-        .iter()
-        .any(|p| p.resource == Resource::BlogPosts && p.action == Action::Manage));
-    assert!(permissions
-        .iter()
-        .any(|p| p.resource == Resource::BlogCategories && p.action == Action::Create));
-    assert!(permissions
-        .iter()
-        .any(|p| p.resource == Resource::BlogCategories && p.action == Action::Manage));
-    assert!(!permissions
-        .iter()
-        .any(|p| p.resource == Resource::Categories));
+    assert!(
+        permissions
+            .iter()
+            .any(|p| p.resource == Resource::BlogPosts && p.action == Action::Create)
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|p| p.resource == Resource::BlogPosts && p.action == Action::Publish)
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|p| p.resource == Resource::BlogPosts && p.action == Action::Manage)
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|p| p.resource == Resource::BlogCategories && p.action == Action::Create)
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|p| p.resource == Resource::BlogCategories && p.action == Action::Manage)
+    );
+    assert!(
+        !permissions
+            .iter()
+            .any(|p| p.resource == Resource::Categories)
+    );
 }
 
 #[test]

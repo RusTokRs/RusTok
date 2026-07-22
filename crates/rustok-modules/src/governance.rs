@@ -328,6 +328,144 @@ pub struct ModuleValidationJobEnqueueResult {
     pub validation_job_id: Option<String>,
 }
 
+/// Canonical, transport-neutral registry moderation policy exposed with the
+/// lifecycle snapshot. Hosts render these facts but do not reconstruct them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceModerationPolicy {
+    pub mode: String,
+    pub live_publish_supported: bool,
+    pub live_governance_supported: bool,
+    pub manual_review_required: bool,
+    pub restriction_reason_code: Option<String>,
+    pub restriction_reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceOwnerSnapshot {
+    pub owner_principal: serde_json::Value,
+    pub bound_by_principal: serde_json::Value,
+    pub bound_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceRequestSnapshot {
+    pub id: String,
+    pub status: String,
+    pub artifact_origin: String,
+    pub requested_by_principal: serde_json::Value,
+    pub publisher_principal: Option<serde_json::Value>,
+    pub approved_by_principal: Option<serde_json::Value>,
+    pub rejected_by_principal: Option<serde_json::Value>,
+    pub rejection_reason: Option<String>,
+    pub changes_requested_by_principal: Option<serde_json::Value>,
+    pub changes_requested_reason: Option<String>,
+    pub changes_requested_reason_code: Option<String>,
+    pub changes_requested_at: Option<String>,
+    pub held_by_principal: Option<serde_json::Value>,
+    pub held_reason: Option<String>,
+    pub held_reason_code: Option<String>,
+    pub held_at: Option<String>,
+    pub held_from_status: Option<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub published_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceReleaseSnapshot {
+    pub version: String,
+    pub status: String,
+    pub publisher_principal: serde_json::Value,
+    pub checksum_sha256: Option<String>,
+    pub published_at: String,
+    pub yanked_reason: Option<String>,
+    pub yanked_by_principal: Option<serde_json::Value>,
+    pub yanked_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceEventPayload {
+    pub reason: Option<String>,
+    pub reason_code: Option<String>,
+    pub detail: Option<String>,
+    pub version: Option<String>,
+    pub stage_key: Option<String>,
+    pub attempt_number: Option<i32>,
+    pub owner_transition: Option<ModuleGovernanceOwnerTransition>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub mode: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceOwnerTransition {
+    pub previous_owner_principal: Option<serde_json::Value>,
+    pub new_owner_principal: Option<serde_json::Value>,
+    pub bound_by_principal: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceEventSnapshot {
+    pub id: String,
+    pub event_type: String,
+    pub actor_principal: serde_json::Value,
+    pub publisher_principal: Option<serde_json::Value>,
+    pub payload: ModuleGovernanceEventPayload,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceGateSnapshot {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceValidationStageSnapshot {
+    pub key: String,
+    pub status: String,
+    pub detail: String,
+    pub attempt_number: i32,
+    pub updated_at: String,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub execution_mode: String,
+    pub runnable: bool,
+    pub requires_manual_confirmation: bool,
+    pub allowed_terminal_reason_codes: Vec<String>,
+    pub suggested_pass_reason_code: Option<String>,
+    pub suggested_failure_reason_code: Option<String>,
+    pub suggested_blocked_reason_code: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceAction {
+    pub key: String,
+    pub reason_required: bool,
+    pub reason_code_required: bool,
+    pub reason_codes: Vec<String>,
+    pub destructive: bool,
+}
+
+/// Complete registry lifecycle projection for one module slug. All policy and
+/// stage metadata is owner-derived so transports cannot drift.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleGovernanceLifecycleSnapshot {
+    pub moderation_policy: ModuleGovernanceModerationPolicy,
+    pub owner_binding: Option<ModuleGovernanceOwnerSnapshot>,
+    pub latest_request: Option<ModuleGovernanceRequestSnapshot>,
+    pub latest_release: Option<ModuleGovernanceReleaseSnapshot>,
+    pub recent_events: Vec<ModuleGovernanceEventSnapshot>,
+    pub follow_up_gates: Vec<ModuleGovernanceGateSnapshot>,
+    pub validation_stages: Vec<ModuleGovernanceValidationStageSnapshot>,
+    pub governance_actions: Vec<ModuleGovernanceAction>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModuleValidationJobClaimCommand {
     pub validation_job_id: String,
@@ -1255,6 +1393,181 @@ impl SeaOrmModuleGovernanceService {
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
         Self { db, infrastructure }
+    }
+
+    /// Loads the complete owner-derived registry lifecycle projection for one
+    /// module slug. Transport adapters must map this DTO without querying
+    /// registry tables or recreating governance and validation-stage policy.
+    pub async fn lifecycle_snapshot(
+        &self,
+        slug: &str,
+    ) -> Result<Option<ModuleGovernanceLifecycleSnapshot>, ModuleGovernanceError> {
+        let slug = slug.trim();
+        if slug.is_empty() {
+            return Err(ModuleGovernanceError::InvalidLifecycleQuery);
+        }
+
+        let backend = self.db.get_database_backend();
+        let mark = |position| placeholder(backend, position);
+        let owner_row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT CAST(owner_principal AS TEXT) AS owner_principal, \
+                            CAST(bound_by_principal AS TEXT) AS bound_by_principal, \
+                            bound_at, updated_at \
+                     FROM registry_module_owners WHERE slug = {} LIMIT 1",
+                    mark(1)
+                ),
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let request_row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT id, status, artifact_origin, \
+                            CAST(requested_by_principal AS TEXT) AS requested_by_principal, \
+                            CAST(publisher_principal AS TEXT) AS publisher_principal, \
+                            CAST(approved_by_principal AS TEXT) AS approved_by_principal, \
+                            CAST(rejected_by_principal AS TEXT) AS rejected_by_principal, \
+                            rejection_reason, \
+                            CAST(changes_requested_by_principal AS TEXT) AS changes_requested_by_principal, \
+                            changes_requested_reason, changes_requested_reason_code, \
+                            changes_requested_at, \
+                            CAST(held_by_principal AS TEXT) AS held_by_principal, \
+                            held_reason, held_reason_code, held_at, held_from_status, \
+                            CAST(validation_warnings AS TEXT) AS validation_warnings, \
+                            CAST(validation_errors AS TEXT) AS validation_errors, \
+                            validated_at, approved_at, created_at, updated_at, published_at \
+                     FROM registry_publish_requests WHERE slug = {} \
+                     ORDER BY created_at DESC LIMIT 1",
+                    mark(1)
+                ),
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let release_row = self
+            .db
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT version, status, \
+                            CAST(publisher_principal AS TEXT) AS publisher_principal, \
+                            checksum_sha256, published_at, yanked_reason, \
+                            CAST(yanked_by_principal AS TEXT) AS yanked_by_principal, yanked_at \
+                     FROM registry_module_releases WHERE slug = {} \
+                     ORDER BY published_at DESC LIMIT 1",
+                    mark(1)
+                ),
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+        let event_rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT id, event_type, \
+                            CAST(actor_principal AS TEXT) AS actor_principal, \
+                            CAST(publisher_principal AS TEXT) AS publisher_principal, \
+                            CAST(details AS TEXT) AS details, created_at \
+                     FROM registry_governance_events WHERE slug = {} \
+                     ORDER BY created_at DESC LIMIT 10",
+                    mark(1)
+                ),
+                vec![slug.into()],
+            ))
+            .await
+            .map_err(store_error)?;
+
+        let owner_binding = owner_row
+            .as_ref()
+            .map(map_governance_owner_snapshot)
+            .transpose()?;
+        let latest_request = request_row
+            .as_ref()
+            .map(map_governance_request_row)
+            .transpose()?;
+        let latest_release = release_row
+            .as_ref()
+            .map(map_governance_release_snapshot)
+            .transpose()?;
+        let recent_event_rows = event_rows
+            .iter()
+            .map(map_governance_event_row)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let stage_rows = if let Some(request) = latest_request.as_ref() {
+            self.db
+                .query_all(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT stage_key, status, detail, attempt_number, updated_at, \
+                                started_at, finished_at \
+                         FROM registry_validation_stages WHERE request_id = {} \
+                         ORDER BY attempt_number DESC, created_at DESC",
+                        mark(1)
+                    ),
+                    vec![request.snapshot.id.clone().into()],
+                ))
+                .await
+                .map_err(store_error)?
+        } else {
+            Vec::new()
+        };
+
+        if owner_binding.is_none()
+            && latest_request.is_none()
+            && latest_release.is_none()
+            && recent_event_rows.is_empty()
+            && stage_rows.is_empty()
+        {
+            return Ok(None);
+        }
+
+        let validation_stages = derive_governance_validation_stages(
+            latest_request.as_ref(),
+            &recent_event_rows,
+            &stage_rows,
+        )?;
+        let follow_up_gates = derive_governance_follow_up_gates(
+            latest_request.as_ref(),
+            &recent_event_rows,
+            &validation_stages,
+        )?;
+        let governance_actions = derive_governance_actions(
+            latest_request.as_ref().map(|request| &request.snapshot),
+            latest_release.as_ref(),
+            owner_binding.as_ref(),
+            &validation_stages,
+        );
+
+        Ok(Some(ModuleGovernanceLifecycleSnapshot {
+            moderation_policy: ModuleGovernanceModerationPolicy {
+                mode: "registry".to_string(),
+                live_publish_supported: true,
+                live_governance_supported: true,
+                manual_review_required: true,
+                restriction_reason_code: None,
+                restriction_reason: String::new(),
+            },
+            owner_binding,
+            latest_request: latest_request.map(|request| request.snapshot),
+            latest_release,
+            recent_events: recent_event_rows
+                .into_iter()
+                .map(|event| event.snapshot)
+                .collect(),
+            follow_up_gates,
+            validation_stages,
+            governance_actions,
+        }))
     }
 
     /// Creates a draft publish request, default-locale metadata, and audit fact
@@ -6446,6 +6759,596 @@ fn validation_warnings_from_row(row: &QueryResult) -> Result<Vec<String>, Module
     Ok(warnings)
 }
 
+struct GovernanceRequestRow {
+    snapshot: ModuleGovernanceRequestSnapshot,
+    validated_at: Option<String>,
+    approved_at: Option<String>,
+}
+
+struct GovernanceEventRow {
+    snapshot: ModuleGovernanceEventSnapshot,
+    details: serde_json::Value,
+}
+
+fn map_governance_owner_snapshot(
+    row: &QueryResult,
+) -> Result<ModuleGovernanceOwnerSnapshot, ModuleGovernanceError> {
+    Ok(ModuleGovernanceOwnerSnapshot {
+        owner_principal: required_json_text(row, "owner_principal")?,
+        bound_by_principal: required_json_text(row, "bound_by_principal")?,
+        bound_at: required_timestamp(row, "bound_at")?,
+        updated_at: required_timestamp(row, "updated_at")?,
+    })
+}
+
+fn map_governance_request_row(
+    row: &QueryResult,
+) -> Result<GovernanceRequestRow, ModuleGovernanceError> {
+    Ok(GovernanceRequestRow {
+        snapshot: ModuleGovernanceRequestSnapshot {
+            id: required_column(row, "id")?,
+            status: required_column(row, "status")?,
+            artifact_origin: required_column(row, "artifact_origin")?,
+            requested_by_principal: required_json_text(row, "requested_by_principal")?,
+            publisher_principal: optional_json_text(row, "publisher_principal")?,
+            approved_by_principal: optional_json_text(row, "approved_by_principal")?,
+            rejected_by_principal: optional_json_text(row, "rejected_by_principal")?,
+            rejection_reason: optional_column(row, "rejection_reason")?,
+            changes_requested_by_principal: optional_json_text(
+                row,
+                "changes_requested_by_principal",
+            )?,
+            changes_requested_reason: optional_column(row, "changes_requested_reason")?,
+            changes_requested_reason_code: optional_column(row, "changes_requested_reason_code")?,
+            changes_requested_at: optional_timestamp(row, "changes_requested_at")?,
+            held_by_principal: optional_json_text(row, "held_by_principal")?,
+            held_reason: optional_column(row, "held_reason")?,
+            held_reason_code: optional_column(row, "held_reason_code")?,
+            held_at: optional_timestamp(row, "held_at")?,
+            held_from_status: optional_column(row, "held_from_status")?,
+            warnings: json_string_list(optional_json_text(row, "validation_warnings")?)?,
+            errors: json_string_list(optional_json_text(row, "validation_errors")?)?,
+            created_at: required_timestamp(row, "created_at")?,
+            updated_at: required_timestamp(row, "updated_at")?,
+            published_at: optional_timestamp(row, "published_at")?,
+        },
+        validated_at: optional_timestamp(row, "validated_at")?,
+        approved_at: optional_timestamp(row, "approved_at")?,
+    })
+}
+
+fn map_governance_release_snapshot(
+    row: &QueryResult,
+) -> Result<ModuleGovernanceReleaseSnapshot, ModuleGovernanceError> {
+    Ok(ModuleGovernanceReleaseSnapshot {
+        version: required_column(row, "version")?,
+        status: required_column(row, "status")?,
+        publisher_principal: required_json_text(row, "publisher_principal")?,
+        checksum_sha256: optional_column(row, "checksum_sha256")?,
+        published_at: required_timestamp(row, "published_at")?,
+        yanked_reason: optional_column(row, "yanked_reason")?,
+        yanked_by_principal: optional_json_text(row, "yanked_by_principal")?,
+        yanked_at: optional_timestamp(row, "yanked_at")?,
+    })
+}
+
+fn map_governance_event_row(
+    row: &QueryResult,
+) -> Result<GovernanceEventRow, ModuleGovernanceError> {
+    let details = optional_json_text(row, "details")?.unwrap_or(serde_json::Value::Null);
+    Ok(GovernanceEventRow {
+        snapshot: ModuleGovernanceEventSnapshot {
+            id: required_column(row, "id")?,
+            event_type: required_column(row, "event_type")?,
+            actor_principal: required_json_text(row, "actor_principal")?,
+            publisher_principal: optional_json_text(row, "publisher_principal")?,
+            payload: governance_event_payload(&details),
+            created_at: required_timestamp(row, "created_at")?,
+        },
+        details,
+    })
+}
+
+fn derive_governance_validation_stages(
+    latest_request: Option<&GovernanceRequestRow>,
+    recent_events: &[GovernanceEventRow],
+    stage_rows: &[QueryResult],
+) -> Result<Vec<ModuleGovernanceValidationStageSnapshot>, ModuleGovernanceError> {
+    let Some(request) = latest_request else {
+        return Ok(Vec::new());
+    };
+    let origin = ModulePublicationArtifactOrigin::parse(&request.snapshot.artifact_origin)
+        .ok_or_else(|| {
+            ModuleGovernanceError::InvalidLifecycleArtifactOrigin(
+                request.snapshot.artifact_origin.clone(),
+            )
+        })?;
+    let required_stages = publication_follow_up_stages(origin);
+    let mut latest_by_key = std::collections::HashMap::new();
+    for row in stage_rows {
+        let key: String = required_column(row, "stage_key")?;
+        latest_by_key.entry(key).or_insert(row);
+    }
+
+    let mut snapshots = Vec::new();
+    for required_stage in required_stages {
+        if let Some(row) = latest_by_key.get(required_stage.key) {
+            snapshots.push(map_governance_validation_stage_row(row)?);
+            continue;
+        }
+
+        if let Some(event) = recent_events.iter().find(|event| {
+            matches!(
+                event.snapshot.event_type.as_str(),
+                "follow_up_gate_queued" | "follow_up_gate_passed" | "follow_up_gate_failed"
+            ) && event
+                .details
+                .get("stage_key")
+                .and_then(serde_json::Value::as_str)
+                == Some(required_stage.key)
+        }) {
+            let status = event
+                .details
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| match event.snapshot.event_type.as_str() {
+                    "follow_up_gate_passed" => "passed",
+                    "follow_up_gate_failed" => "failed",
+                    _ => "queued",
+                });
+            snapshots.push(governance_validation_stage_snapshot(
+                required_stage.key,
+                if status.eq_ignore_ascii_case("pending") {
+                    "queued"
+                } else {
+                    status
+                },
+                event
+                    .details
+                    .get("detail")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| governance_gate_detail(required_stage.key)),
+                0,
+                event.snapshot.created_at.clone(),
+                None,
+                None,
+            ));
+            continue;
+        }
+
+        if matches!(request.snapshot.status.as_str(), "approved" | "published") {
+            snapshots.push(governance_validation_stage_snapshot(
+                required_stage.key,
+                "queued",
+                governance_gate_detail(required_stage.key),
+                0,
+                request
+                    .validated_at
+                    .as_ref()
+                    .or(request.approved_at.as_ref())
+                    .cloned()
+                    .unwrap_or_default(),
+                None,
+                None,
+            ));
+        }
+    }
+    Ok(snapshots)
+}
+
+fn map_governance_validation_stage_row(
+    row: &QueryResult,
+) -> Result<ModuleGovernanceValidationStageSnapshot, ModuleGovernanceError> {
+    let key: String = required_column(row, "stage_key")?;
+    Ok(governance_validation_stage_snapshot(
+        &key,
+        &required_column::<String>(row, "status")?,
+        &required_column::<String>(row, "detail")?,
+        required_column(row, "attempt_number")?,
+        required_timestamp(row, "updated_at")?,
+        optional_timestamp(row, "started_at")?,
+        optional_timestamp(row, "finished_at")?,
+    ))
+}
+
+fn governance_validation_stage_snapshot(
+    key: &str,
+    status: &str,
+    detail: &str,
+    attempt_number: i32,
+    updated_at: String,
+    started_at: Option<String>,
+    finished_at: Option<String>,
+) -> ModuleGovernanceValidationStageSnapshot {
+    ModuleGovernanceValidationStageSnapshot {
+        key: key.to_string(),
+        status: status.to_string(),
+        detail: detail.to_string(),
+        attempt_number,
+        updated_at,
+        started_at,
+        finished_at,
+        execution_mode: governance_stage_execution_mode(key).to_string(),
+        runnable: matches!(
+            key,
+            "compile_smoke" | "targeted_tests" | "security_policy_review"
+        ),
+        requires_manual_confirmation: key == "security_policy_review",
+        allowed_terminal_reason_codes: REGISTRY_VALIDATION_STAGE_REASON_CODES
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        suggested_pass_reason_code: governance_stage_pass_reason_code(key).map(str::to_string),
+        suggested_failure_reason_code: governance_stage_failure_reason_code(key)
+            .map(str::to_string),
+        suggested_blocked_reason_code: governance_stage_blocked_reason_code(key)
+            .map(str::to_string),
+    }
+}
+
+fn derive_governance_follow_up_gates(
+    latest_request: Option<&GovernanceRequestRow>,
+    recent_events: &[GovernanceEventRow],
+    validation_stages: &[ModuleGovernanceValidationStageSnapshot],
+) -> Result<Vec<ModuleGovernanceGateSnapshot>, ModuleGovernanceError> {
+    if !validation_stages.is_empty() {
+        return Ok(validation_stages
+            .iter()
+            .map(|stage| ModuleGovernanceGateSnapshot {
+                key: stage.key.clone(),
+                status: if stage.status == "queued" {
+                    "pending".to_string()
+                } else {
+                    stage.status.clone()
+                },
+                detail: stage.detail.clone(),
+                updated_at: stage.updated_at.clone(),
+            })
+            .collect());
+    }
+
+    let Some(request) = latest_request else {
+        return Ok(Vec::new());
+    };
+    let origin = ModulePublicationArtifactOrigin::parse(&request.snapshot.artifact_origin)
+        .ok_or_else(|| {
+            ModuleGovernanceError::InvalidLifecycleArtifactOrigin(
+                request.snapshot.artifact_origin.clone(),
+            )
+        })?;
+    let mut gates = Vec::new();
+    for required_stage in publication_follow_up_stages(origin) {
+        if let Some(event) = recent_events.iter().find(|event| {
+            matches!(
+                event.snapshot.event_type.as_str(),
+                "follow_up_gate_queued" | "follow_up_gate_passed" | "follow_up_gate_failed"
+            ) && event
+                .details
+                .get("stage_key")
+                .and_then(serde_json::Value::as_str)
+                == Some(required_stage.key)
+        }) {
+            let status = event
+                .details
+                .get("status")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_else(|| match event.snapshot.event_type.as_str() {
+                    "follow_up_gate_passed" => "passed",
+                    "follow_up_gate_failed" => "failed",
+                    _ => "pending",
+                });
+            gates.push(ModuleGovernanceGateSnapshot {
+                key: required_stage.key.to_string(),
+                status: status.to_string(),
+                detail: event
+                    .details
+                    .get("detail")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_else(|| governance_gate_detail(required_stage.key))
+                    .to_string(),
+                updated_at: event.snapshot.created_at.clone(),
+            });
+        } else if matches!(request.snapshot.status.as_str(), "approved" | "published") {
+            gates.push(ModuleGovernanceGateSnapshot {
+                key: required_stage.key.to_string(),
+                status: "pending".to_string(),
+                detail: governance_gate_detail(required_stage.key).to_string(),
+                updated_at: request
+                    .validated_at
+                    .as_ref()
+                    .or(request.approved_at.as_ref())
+                    .cloned()
+                    .unwrap_or_default(),
+            });
+        }
+    }
+    Ok(gates)
+}
+
+fn derive_governance_actions(
+    latest_request: Option<&ModuleGovernanceRequestSnapshot>,
+    latest_release: Option<&ModuleGovernanceReleaseSnapshot>,
+    owner_binding: Option<&ModuleGovernanceOwnerSnapshot>,
+    validation_stages: &[ModuleGovernanceValidationStageSnapshot],
+) -> Vec<ModuleGovernanceAction> {
+    let mut actions = Vec::new();
+    if let Some(request) = latest_request {
+        let approval_override_required = request.status == "approved"
+            && validation_stages
+                .iter()
+                .any(|stage| !stage.status.eq_ignore_ascii_case("passed"));
+        match request.status.as_str() {
+            "artifact_uploaded" | "submitted" => {
+                actions.push(governance_action("validate", false, false, &[], false));
+            }
+            "approved" => {
+                actions.push(governance_action(
+                    "approve",
+                    approval_override_required,
+                    approval_override_required,
+                    if approval_override_required {
+                        REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+                    } else {
+                        &[]
+                    },
+                    false,
+                ));
+                actions.push(governance_action(
+                    "request_changes",
+                    true,
+                    true,
+                    REGISTRY_REQUEST_CHANGES_REASON_CODES,
+                    false,
+                ));
+            }
+            _ => {}
+        }
+        if matches!(
+            request.status.as_str(),
+            "submitted" | "approved" | "changes_requested"
+        ) {
+            actions.push(governance_action(
+                "hold",
+                true,
+                true,
+                REGISTRY_HOLD_REASON_CODES,
+                false,
+            ));
+        }
+        if request.status == "on_hold" {
+            actions.push(governance_action(
+                "resume",
+                true,
+                true,
+                REGISTRY_RESUME_REASON_CODES,
+                false,
+            ));
+        }
+        if !matches!(
+            request.status.as_str(),
+            "rejected" | "published" | "on_hold"
+        ) {
+            actions.push(governance_action(
+                "reject",
+                true,
+                true,
+                REGISTRY_REJECT_REASON_CODES,
+                true,
+            ));
+        }
+        if request
+            .publisher_principal
+            .as_ref()
+            .is_some_and(|publisher| {
+                owner_binding.is_none_or(|owner| owner.owner_principal != *publisher)
+            })
+            || owner_binding.is_some()
+        {
+            actions.push(governance_action(
+                "owner_transfer",
+                true,
+                true,
+                REGISTRY_OWNER_TRANSFER_REASON_CODES,
+                true,
+            ));
+        }
+    } else if owner_binding.is_some() {
+        actions.push(governance_action(
+            "owner_transfer",
+            true,
+            true,
+            REGISTRY_OWNER_TRANSFER_REASON_CODES,
+            true,
+        ));
+    }
+    if latest_release.is_some_and(|release| release.status == "active") {
+        actions.push(governance_action(
+            "yank",
+            true,
+            true,
+            REGISTRY_YANK_REASON_CODES,
+            true,
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    actions
+        .into_iter()
+        .filter(|action| seen.insert(action.key.clone()))
+        .collect()
+}
+
+fn governance_action(
+    key: &str,
+    reason_required: bool,
+    reason_code_required: bool,
+    reason_codes: &[&str],
+    destructive: bool,
+) -> ModuleGovernanceAction {
+    ModuleGovernanceAction {
+        key: key.to_string(),
+        reason_required,
+        reason_code_required,
+        reason_codes: reason_codes
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        destructive,
+    }
+}
+
+fn governance_event_payload(details: &serde_json::Value) -> ModuleGovernanceEventPayload {
+    let string = |key| {
+        details
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string)
+    };
+    ModuleGovernanceEventPayload {
+        reason: string("reason"),
+        reason_code: string("reason_code"),
+        detail: string("detail"),
+        version: string("version"),
+        stage_key: string("stage_key"),
+        attempt_number: details
+            .get("attempt_number")
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|value| i32::try_from(value).ok()),
+        owner_transition: details
+            .get("owner_transition")
+            .and_then(serde_json::Value::as_object)
+            .map(|transition| ModuleGovernanceOwnerTransition {
+                previous_owner_principal: transition.get("previous_owner").cloned(),
+                new_owner_principal: transition.get("new_owner").cloned(),
+                bound_by_principal: transition.get("bound_by").cloned(),
+            }),
+        warnings: details
+            .get("warnings")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(ToString::to_string)
+            .collect(),
+        errors: details
+            .get("errors")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(serde_json::Value::as_str)
+            .map(ToString::to_string)
+            .collect(),
+        mode: string("mode"),
+    }
+}
+
+fn governance_gate_detail(key: &str) -> &'static str {
+    match key {
+        "compile_smoke" => "Compile smoke awaits exact platform build-worker validation evidence.",
+        "targeted_tests" => "Targeted tests await exact platform build-worker validation evidence.",
+        "security_policy_review" => {
+            "Security and policy review await exact origin-specific owner evidence."
+        }
+        _ => "External follow-up gate is still pending.",
+    }
+}
+
+fn governance_stage_execution_mode(key: &str) -> &'static str {
+    match key {
+        "security_policy_review" => "manual_review",
+        "compile_smoke" | "targeted_tests" => "remote",
+        _ => "external",
+    }
+}
+
+fn governance_stage_pass_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "compile_smoke" | "targeted_tests" => Some("local_runner_passed"),
+        "security_policy_review" => Some("manual_review_complete"),
+        _ => None,
+    }
+}
+
+fn governance_stage_failure_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "compile_smoke" => Some("build_failure"),
+        "targeted_tests" => Some("test_failure"),
+        "security_policy_review" => Some("policy_preflight_failed"),
+        _ => None,
+    }
+}
+
+fn governance_stage_blocked_reason_code(key: &str) -> Option<&'static str> {
+    match key {
+        "security_policy_review" => Some("security_findings"),
+        "compile_smoke" | "targeted_tests" => Some("other"),
+        _ => None,
+    }
+}
+
+fn required_json_text(
+    row: &QueryResult,
+    column: &str,
+) -> Result<serde_json::Value, ModuleGovernanceError> {
+    optional_json_text(row, column)?.ok_or_else(|| {
+        ModuleGovernanceError::Store(format!("registry column '{column}' must not be null"))
+    })
+}
+
+fn optional_json_text(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Option<serde_json::Value>, ModuleGovernanceError> {
+    row.try_get::<Option<String>>("", column)
+        .map_err(store_error)?
+        .map(|value| serde_json::from_str(&value).map_err(store_error))
+        .transpose()
+}
+
+fn json_string_list(
+    value: Option<serde_json::Value>,
+) -> Result<Vec<String>, ModuleGovernanceError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let values = value.as_array().ok_or_else(|| {
+        ModuleGovernanceError::Store("registry message list must be an array".to_string())
+    })?;
+    Ok(values
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(ToString::to_string)
+        .collect())
+}
+
+fn required_column<T>(row: &QueryResult, column: &str) -> Result<T, ModuleGovernanceError>
+where
+    T: sea_orm::TryGetable,
+{
+    row.try_get("", column).map_err(store_error)
+}
+
+fn optional_column<T>(row: &QueryResult, column: &str) -> Result<Option<T>, ModuleGovernanceError>
+where
+    T: sea_orm::TryGetable,
+{
+    row.try_get("", column).map_err(store_error)
+}
+
+fn required_timestamp(row: &QueryResult, column: &str) -> Result<String, ModuleGovernanceError> {
+    row.try_get::<chrono::DateTime<chrono::Utc>>("", column)
+        .map(|value| value.to_rfc3339())
+        .map_err(store_error)
+}
+
+fn optional_timestamp(
+    row: &QueryResult,
+    column: &str,
+) -> Result<Option<String>, ModuleGovernanceError> {
+    row.try_get::<Option<chrono::DateTime<chrono::Utc>>>("", column)
+        .map(|value| value.map(|value| value.to_rfc3339()))
+        .map_err(store_error)
+}
+
 fn placeholder(backend: sea_orm::DbBackend, position: usize) -> String {
     if backend == sea_orm::DbBackend::Postgres {
         format!("${position}")
@@ -6713,6 +7616,10 @@ fn validation_stage_transition_allowed(
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ModuleGovernanceError {
+    #[error("registry lifecycle query requires a module slug")]
+    InvalidLifecycleQuery,
+    #[error("registry lifecycle contains unsupported artifact origin `{0}`")]
+    InvalidLifecycleArtifactOrigin(String),
     #[error("release yank requires slug, version, reason, and actor principal")]
     InvalidYankCommand,
     #[error("unsupported release yank reason code `{0}`")]
@@ -6941,6 +7848,36 @@ mod tests {
         }
     }
 
+    fn governance_request_snapshot(
+        status: &str,
+        artifact_origin: &str,
+    ) -> ModuleGovernanceRequestSnapshot {
+        ModuleGovernanceRequestSnapshot {
+            id: "request-1".to_string(),
+            status: status.to_string(),
+            artifact_origin: artifact_origin.to_string(),
+            requested_by_principal: serde_json::json!({ "kind": "user", "id": "publisher" }),
+            publisher_principal: Some(serde_json::json!({ "kind": "user", "id": "publisher" })),
+            approved_by_principal: None,
+            rejected_by_principal: None,
+            rejection_reason: None,
+            changes_requested_by_principal: None,
+            changes_requested_reason: None,
+            changes_requested_reason_code: None,
+            changes_requested_at: None,
+            held_by_principal: None,
+            held_reason: None,
+            held_reason_code: None,
+            held_at: None,
+            held_from_status: None,
+            warnings: Vec::new(),
+            errors: Vec::new(),
+            created_at: "2026-07-22T00:00:00Z".to_string(),
+            updated_at: "2026-07-22T00:00:00Z".to_string(),
+            published_at: None,
+        }
+    }
+
     #[test]
     fn publish_request_contract_accepts_transport_ui_object_and_derives_warnings() {
         let command = publish_request_create_command();
@@ -6978,6 +7915,97 @@ mod tests {
         assert_eq!(alloy.len(), 1);
         assert_eq!(alloy[0].key, "security_policy_review");
         assert_eq!(alloy[0].runner_kind, "owner_evidence");
+    }
+
+    #[test]
+    fn lifecycle_stage_metadata_is_derived_only_by_the_owner_contract() {
+        let compile = governance_validation_stage_snapshot(
+            "compile_smoke",
+            "queued",
+            "waiting",
+            0,
+            "2026-07-22T00:00:00Z".to_string(),
+            None,
+            None,
+        );
+        assert_eq!(compile.execution_mode, "remote");
+        assert!(compile.runnable);
+        assert!(!compile.requires_manual_confirmation);
+        assert_eq!(
+            compile.suggested_failure_reason_code.as_deref(),
+            Some("build_failure")
+        );
+
+        let security = governance_validation_stage_snapshot(
+            "security_policy_review",
+            "queued",
+            "waiting",
+            0,
+            "2026-07-22T00:00:00Z".to_string(),
+            None,
+            None,
+        );
+        assert_eq!(security.execution_mode, "manual_review");
+        assert!(security.runnable);
+        assert!(security.requires_manual_confirmation);
+        assert_eq!(
+            security.suggested_pass_reason_code.as_deref(),
+            Some("manual_review_complete")
+        );
+        assert_eq!(
+            security.allowed_terminal_reason_codes,
+            REGISTRY_VALIDATION_STAGE_REASON_CODES
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn lifecycle_actions_fail_closed_for_unpassed_approval_gates() {
+        let request = governance_request_snapshot("approved", "platform_built");
+        let validation_stages = vec![governance_validation_stage_snapshot(
+            "compile_smoke",
+            "failed",
+            "failed",
+            1,
+            "2026-07-22T00:00:00Z".to_string(),
+            None,
+            Some("2026-07-22T00:00:00Z".to_string()),
+        )];
+        let actions = derive_governance_actions(Some(&request), None, None, &validation_stages);
+        let approve = actions
+            .iter()
+            .find(|action| action.key == "approve")
+            .expect("approve action");
+        assert!(approve.reason_required);
+        assert!(approve.reason_code_required);
+        assert_eq!(
+            approve.reason_codes,
+            REGISTRY_APPROVE_OVERRIDE_REASON_CODES
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(actions.iter().any(|action| action.key == "request_changes"));
+        assert!(actions.iter().any(|action| action.key == "hold"));
+        assert!(actions.iter().any(|action| action.key == "reject"));
+    }
+
+    #[test]
+    fn lifecycle_rejects_unknown_durable_artifact_origin() {
+        let request = GovernanceRequestRow {
+            snapshot: governance_request_snapshot("approved", "unknown_origin"),
+            validated_at: Some("2026-07-22T00:00:00Z".to_string()),
+            approved_at: None,
+        };
+        let error = derive_governance_validation_stages(Some(&request), &[], &[])
+            .expect_err("unknown durable origin must fail closed");
+        assert!(matches!(
+            error,
+            ModuleGovernanceError::InvalidLifecycleArtifactOrigin(origin)
+                if origin == "unknown_origin"
+        ));
     }
 
     #[test]
@@ -7732,6 +8760,7 @@ mod tests {
         for statement in [
             "CREATE TABLE registry_publish_requests (\
                 id TEXT PRIMARY KEY, slug TEXT NOT NULL, version TEXT NOT NULL, status TEXT NOT NULL,\
+                artifact_origin TEXT NOT NULL,\
                 publisher_principal TEXT NULL, held_by_principal TEXT NULL, held_reason TEXT NULL,\
                 held_reason_code TEXT NULL, held_at TEXT NULL, held_from_status TEXT NULL, updated_at TEXT NOT NULL\
              )",
@@ -7741,9 +8770,9 @@ mod tests {
                 details TEXT NOT NULL, created_at TEXT NOT NULL\
              )",
             "INSERT INTO registry_publish_requests (\
-                id, slug, version, status, publisher_principal, updated_at\
+                id, slug, version, status, artifact_origin, publisher_principal, updated_at\
              ) VALUES (\
-                'request-1', 'sample_module', '1.0.0', 'approved', \
+                'request-1', 'sample_module', '1.0.0', 'approved', 'platform_built', \
                 '{\"kind\":\"user\",\"id\":\"publisher\"}', datetime('now')\
              )",
         ] {

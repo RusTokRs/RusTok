@@ -27,7 +27,7 @@ use crate::{
     ControlPlaneInfrastructure, ModuleStaticDistributionBuild,
     ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionBuildStatus,
     ModuleStaticDistributionCompletionCommand, ModuleStaticDistributionCompletionOutcome,
-    ModuleStaticPromotionError, ModuleStaticPromotionStatus,
+    ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
 };
 
 const DISTRIBUTION_RELEASE_STATE_ID: &str = "current";
@@ -166,6 +166,7 @@ pub struct ModuleStaticDistributionRelease {
     pub revocation_policy_revision: Option<String>,
     pub verified_at: chrono::DateTime<chrono::Utc>,
     pub admission: ModuleStaticDistributionReleaseAdmission,
+    pub items: Vec<ModuleStaticDistributionItem>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -706,6 +707,15 @@ where
             &command.policy_revision,
         )
         .await?;
+        crate::distribution_rollout::revoke_rollouts_for_release(
+            &transaction,
+            &self.infrastructure,
+            command.distribution_release_id,
+            command.actor_id,
+            &command.policy_revision,
+        )
+        .await
+        .map_err(|error| ModuleStaticDistributionReleaseError::Store(error.to_string()))?;
         cancel_pending_rollbacks(&transaction, command.distribution_release_id).await?;
         let release_state_revision = release_state
             .revision
@@ -1246,7 +1256,7 @@ async fn lock_release_state(
     load_release_state(transaction, true).await
 }
 
-async fn load_release_state<C: ConnectionTrait>(
+pub(crate) async fn load_release_state<C: ConnectionTrait>(
     connection: &C,
     lock_row: bool,
 ) -> Result<ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseError> {
@@ -2085,7 +2095,7 @@ async fn load_rollback_record<C: ConnectionTrait>(
     })
 }
 
-async fn load_release_record<C: ConnectionTrait>(
+pub(crate) async fn load_release_record<C: ConnectionTrait>(
     connection: &C,
     distribution_release_id: Uuid,
     lock_row: bool,
@@ -2127,7 +2137,7 @@ async fn load_release_record<C: ConnectionTrait>(
         .await
         .map_err(store_error)?
         .ok_or(ModuleStaticDistributionReleaseError::ReleaseNotFound)?;
-    Ok(ModuleStaticDistributionRelease {
+    let mut release = ModuleStaticDistributionRelease {
         distribution_release_id: uuid_from_row(&row, "distribution_release_id", backend)
             .map_err(store_error)?,
         distribution_build_id: uuid_from_row(&row, "distribution_build_id", backend)
@@ -2186,7 +2196,15 @@ async fn load_release_record<C: ConnectionTrait>(
                 .try_get("", "dependency_policy_verified")
                 .map_err(store_error)?,
         },
-    })
+        items: Vec::new(),
+    };
+    let build = load_build(connection, release.distribution_build_id)
+        .await
+        .map_err(distribution_error)?;
+    ensure_build_ready(&build)?;
+    ensure_release_matches_build(&release, &build)?;
+    release.items = build.items;
+    Ok(release)
 }
 
 fn optional_uuid_value(value: Option<Uuid>, backend: DbBackend) -> sea_orm::Value {

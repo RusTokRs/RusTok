@@ -464,10 +464,13 @@ contract exposes persistence services.
 ### Scope
 
 Create forum-owned mention and quote relations keyed by tenant, source target,
-source revision and mentioned user. Parse Markdown and `rt_json_v1` without
-treating code blocks or escaped text as mentions. Resolve handles through the
-profiles contract, cap mentions per revision, reject abusive mass mentions and
-make special audiences such as moderators permission-gated.
+source revision and mentioned user. The implemented parser currently handles
+Markdown and `rt_json_v1`; that is legacy state, not the target authoring
+contract. During the atomic richtext cutover it must traverse the validated
+`RichTextDocument` tree directly, continue to exclude code blocks/code marks,
+and remove format branching. Resolve handles through the profiles contract,
+cap mentions per revision, reject abusive mass mentions and make special
+audiences such as moderators permission-gated.
 
 Editing uses a revision diff: new mention produces one semantic event, removed
 or unchanged mentions do not produce duplicate delivery. Quotes retain the
@@ -976,14 +979,25 @@ moderator-only statistics.
 
 ### Scope
 
-Canonical formats are Markdown and `rt_json_v1`. BBCode is import/optional
-compatibility, not a third core source format. Support quotes, mentions, code,
-spoilers, emoji, links, inline media, attachments, preview, drafts and keyboard
-shortcuts.
+Join the platform's atomic
+[Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md).
+Forum topic and reply bodies use one `RichTextDocument` with the owner-selected
+`discussion` profile. Markdown and `rt_json_v1` remain historical migration
+inputs only; BBCode belongs only to an explicit importer. Support owner-aware
+quotes and mentions first, then add spoilers, emoji, media, attachments,
+preview, drafts, and keyboard behavior only through the shared extension and
+server-profile contract.
 
-Persist source plus a derived sanitized-render cache identified by renderer
-version. Enforce allowed nodes/embeds/attributes, safe links, maximum bytes,
-depth and node count. Renderer upgrades schedule a resumable rebuild.
+Use the single `rustok-content::richtext` HTML renderer and plain-text
+extractor. Do not persist an independently writable HTML source or implement a
+Forum renderer. Cache only a derived projection keyed by canonical document
+hash and current renderer identity when evidence requires it.
+
+Migrate active topic/reply rows and both revision tables. Deletion and domain
+events must use typed lifecycle state instead of the literal `[deleted]` and
+`body_format = 'markdown'`. Next Forum UI/API/navigation must move out of the
+Blog package; Leptos uses native `#[server]` with parallel GraphQL and never
+retries a failed mutation blindly through REST.
 
 ## `FORUM-29` — realtime acceleration
 

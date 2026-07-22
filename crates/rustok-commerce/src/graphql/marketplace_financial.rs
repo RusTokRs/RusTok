@@ -436,12 +436,12 @@ fn bounded_limit(limit: Option<i32>) -> u64 {
 
 fn map_operator_error(error: crate::MarketplaceFinancialOperatorError) -> async_graphql::Error {
     match error {
-        crate::MarketplaceFinancialOperatorError::Validation(_) => async_graphql::Error::new(
-            "Marketplace financial operator request is invalid",
-        )
-        .extend_with(|_, extensions| {
-            extensions.set("code", "MARKETPLACE_FINANCIAL_OPERATOR_INVALID")
-        }),
+        crate::MarketplaceFinancialOperatorError::Validation(_) => {
+            async_graphql::Error::new("Marketplace financial operator request is invalid")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "MARKETPLACE_FINANCIAL_OPERATOR_INVALID")
+                })
+        }
         crate::MarketplaceFinancialOperatorError::Conflict(message)
             if message.contains("was not found") =>
         {
@@ -456,12 +456,12 @@ fn map_operator_error(error: crate::MarketplaceFinancialOperatorError) -> async_
         .extend_with(|_, extensions| {
             extensions.set("code", "MARKETPLACE_FINANCIAL_OPERATOR_CONFLICT")
         }),
-        crate::MarketplaceFinancialOperatorError::Database(_) => async_graphql::Error::new(
-            "Marketplace financial operator storage is unavailable",
-        )
-        .extend_with(|_, extensions| {
-            extensions.set("code", "MARKETPLACE_FINANCIAL_STORAGE_UNAVAILABLE")
-        }),
+        crate::MarketplaceFinancialOperatorError::Database(_) => {
+            async_graphql::Error::new("Marketplace financial operator storage is unavailable")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "MARKETPLACE_FINANCIAL_STORAGE_UNAVAILABLE")
+                })
+        }
         crate::MarketplaceFinancialOperatorError::Inbox(error) => {
             let (message, code) = if error.retryable() {
                 (
@@ -493,10 +493,10 @@ fn map_reversal_operator_error(
         crate::services::MarketplaceReversalOperatorError::Conflict(message)
             if message.contains("was not found") =>
         {
-            async_graphql::Error::new("Marketplace reversal event or adaptation failure was not found")
-                .extend_with(|_, extensions| {
-                    extensions.set("code", "MARKETPLACE_REVERSAL_NOT_FOUND")
-                })
+            async_graphql::Error::new(
+                "Marketplace reversal event or adaptation failure was not found",
+            )
+            .extend_with(|_, extensions| extensions.set("code", "MARKETPLACE_REVERSAL_NOT_FOUND"))
         }
         crate::services::MarketplaceReversalOperatorError::Conflict(_) => {
             async_graphql::Error::new(
@@ -527,36 +527,45 @@ fn map_reversal_operator_error(
             async_graphql::Error::new(message)
                 .extend_with(|_, extensions| extensions.set("code", code))
         }
-        crate::services::MarketplaceReversalOperatorError::AdaptationFailure(error) => match error {
-            crate::MarketplaceReversalAdaptationFailureError::Validation(_) => {
-                async_graphql::Error::new("Marketplace reversal adaptation request is invalid")
-                    .extend_with(|_, extensions| {
-                        extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_INVALID")
-                    })
-            }
-            crate::MarketplaceReversalAdaptationFailureError::Conflict(message)
-                if message.contains("was not found") =>
-            {
-                async_graphql::Error::new("Marketplace reversal adaptation failure was not found")
+        crate::services::MarketplaceReversalOperatorError::AdaptationFailure(error) => {
+            match error {
+                crate::MarketplaceReversalAdaptationFailureError::Validation(_) => {
+                    async_graphql::Error::new("Marketplace reversal adaptation request is invalid")
+                        .extend_with(|_, extensions| {
+                            extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_INVALID")
+                        })
+                }
+                crate::MarketplaceReversalAdaptationFailureError::Conflict(message)
+                    if message.contains("was not found") =>
+                {
+                    async_graphql::Error::new(
+                        "Marketplace reversal adaptation failure was not found",
+                    )
                     .extend_with(|_, extensions| {
                         extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_NOT_FOUND")
                     })
-            }
-            crate::MarketplaceReversalAdaptationFailureError::Conflict(_) => {
-                async_graphql::Error::new(
-                    "Marketplace reversal adaptation failure is not safely retryable",
-                )
-                .extend_with(|_, extensions| {
-                    extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_CONFLICT")
-                })
-            }
-            crate::MarketplaceReversalAdaptationFailureError::Database(_) => {
-                async_graphql::Error::new("Marketplace reversal adaptation storage is unavailable")
+                }
+                crate::MarketplaceReversalAdaptationFailureError::Conflict(_) => {
+                    async_graphql::Error::new(
+                        "Marketplace reversal adaptation failure is not safely retryable",
+                    )
                     .extend_with(|_, extensions| {
-                        extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_STORAGE_UNAVAILABLE")
+                        extensions.set("code", "MARKETPLACE_REVERSAL_ADAPTATION_CONFLICT")
                     })
+                }
+                crate::MarketplaceReversalAdaptationFailureError::Database(_) => {
+                    async_graphql::Error::new(
+                        "Marketplace reversal adaptation storage is unavailable",
+                    )
+                    .extend_with(|_, extensions| {
+                        extensions.set(
+                            "code",
+                            "MARKETPLACE_REVERSAL_ADAPTATION_STORAGE_UNAVAILABLE",
+                        )
+                    })
+                }
             }
-        },
+        }
         crate::services::MarketplaceReversalOperatorError::Adapter(error) => {
             let (message, code) = if error.retryable() {
                 (
@@ -575,9 +584,7 @@ fn map_reversal_operator_error(
     }
 }
 
-impl From<crate::MarketplaceFinancialOperationOperatorView>
-    for MarketplaceFinancialOperationGql
-{
+impl From<crate::MarketplaceFinancialOperationOperatorView> for MarketplaceFinancialOperationGql {
     fn from(value: crate::MarketplaceFinancialOperationOperatorView) -> Self {
         Self {
             checkout_operation_id: value.checkout_operation_id,
@@ -622,9 +629,7 @@ impl From<crate::MarketplacePaidEventOperatorView> for MarketplacePaidEventGql {
     }
 }
 
-impl From<crate::services::MarketplaceReversalEventOperatorView>
-    for MarketplaceReversalEventGql
-{
+impl From<crate::services::MarketplaceReversalEventOperatorView> for MarketplaceReversalEventGql {
     fn from(value: crate::services::MarketplaceReversalEventOperatorView) -> Self {
         Self {
             id: value.id,
@@ -695,9 +700,7 @@ impl From<crate::MarketplacePaidEventSweepReport> for MarketplaceFinancialSweepG
     }
 }
 
-impl From<crate::services::MarketplaceReversalEventSweepReport>
-    for MarketplaceReversalSweepGql
-{
+impl From<crate::services::MarketplaceReversalEventSweepReport> for MarketplaceReversalSweepGql {
     fn from(value: crate::services::MarketplaceReversalEventSweepReport) -> Self {
         Self {
             selected: value.selected as i32,

@@ -115,7 +115,7 @@ fn normalize_locale(value: String) -> std::result::Result<String, String> {
     valid.then_some(locale).ok_or(value)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MediaTranslationItem {
     pub id: Uuid,
     pub media_id: Uuid,

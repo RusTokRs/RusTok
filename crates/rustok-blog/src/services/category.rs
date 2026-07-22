@@ -391,10 +391,7 @@ fn resolve_category_translation<'a>(
         .copied()
         .find(|translation| translation.locale == PLATFORM_FALLBACK_LOCALE)
     {
-        return (
-            Some(translation),
-            PLATFORM_FALLBACK_LOCALE.to_string(),
-        );
+        return (Some(translation), PLATFORM_FALLBACK_LOCALE.to_string());
     }
     if let Some(translation) = translations.first().copied() {
         return (Some(translation), translation.locale.clone());

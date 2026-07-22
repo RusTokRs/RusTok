@@ -14,6 +14,10 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-07-22](./2026-07-22-artifact-security-state-boundary.md) | Artifact security state boundary | Accepted |
+| [2026-07-22](./2026-07-22-channel-binding-policy-boundary.md) | Channel binding policy boundary | Accepted |
+| [2026-07-22](./2026-07-22-effective-module-policy-decision.md) | Effective module policy decision | Accepted |
+| [2026-07-22](./2026-07-22-richtext-capability-boundary.md) | Richtext capability boundary and single-document contract | Proposed |
 | [2026-07-22](./2026-07-22-static-promotion-review-boundary.md) | Static promotion review boundary | Accepted |
 | [2026-07-18](./2026-07-18-rag-postgres-capability-profiles.md) | Athanor-owned RAG data plane | Accepted |
 | [2026-07-18](./2026-07-18-repository-connector-module-github-first.md) | Repository connector module with GitHub as the first provider | Accepted |

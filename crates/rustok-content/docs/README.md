@@ -4,6 +4,13 @@
 owns product CRUD for blog/forum/pages, but holds the common rich-text, locale and
 conversion contracts that domain modules rely on.
 
+For the target richtext boundary, neutral wire types live in
+`rustok-api::richtext`; this module owns executable profiles, validation,
+normalization, safe HTML rendering, and plain-text extraction. Domain modules
+retain their locale rows and body storage. The legacy executable implementation
+still lives in `rustok-core::rt_json` and is tracked for atomic removal by the
+[central plan](../../../docs/modules/rich-text-implementation-plan.md).
+
 ## Purpose
 
 - publish a shared content/orchestration runtime contract;
@@ -13,7 +20,8 @@ conversion contracts that domain modules rely on.
 ## Scope
 
 - `ContentOrchestrationService`, orchestration audit/idempotency and canonical URL state;
-- shared rich-text and locale fallback helpers;
+- shared richtext policy and locale fallback helpers without shared domain-body
+  persistence;
 - conversion flows `topic <-> post`, split/merge topic and canonical URL policy, including prohibition of cross-target canonical collisions and alias shadowing;
 - owner-owned GraphQL query `resolveCanonicalRoute` for canonical URL read contract;
 - content-owned GraphQL dataloaders for `nodes`, `node_translations` and `bodies`;
@@ -41,4 +49,5 @@ conversion contracts that domain modules rely on.
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
-- [RT JSON v1](../../../docs/standards/rt-json-v1.md)
+- [Richtext implementation plan](../../../docs/modules/rich-text-implementation-plan.md)
+- [Legacy RT JSON implementation snapshot](../../../docs/standards/rt-json-v1.md)

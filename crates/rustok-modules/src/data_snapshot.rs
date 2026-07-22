@@ -6,7 +6,6 @@ use sea_orm::{
     TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use uuid::Uuid;

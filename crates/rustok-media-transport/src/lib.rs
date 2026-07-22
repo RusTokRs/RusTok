@@ -11,5 +11,5 @@ pub mod proto {
 }
 
 pub use client::GrpcMediaProvider;
-pub use server::MediaGrpcService;
+pub use server::{MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority};
 pub use tonic::transport::ClientTlsConfig;

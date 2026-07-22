@@ -15,16 +15,18 @@ use rust_decimal::Decimal;
 use rustok_api::locale_tags_match;
 use rustok_api::{PortActor, PortContext, RequestContext};
 use rustok_cart::{
-    CartStorefrontContextUpdateRequest, CartStorefrontPort, CartStorefrontRepriceRequest,
-    in_process_cart_storefront_port,
+    in_process_cart_storefront_port, CartStorefrontContextUpdateRequest, CartStorefrontPort,
+    CartStorefrontRepriceRequest,
 };
-use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
+use rustok_customer::{in_process_customer_read_port, CustomerUserProjectionRequest};
 use rustok_fulfillment::FulfillmentService;
-use rustok_inventory::check_variant_availability_for_public_channel;
+use rustok_inventory::{
+    check_variant_availability_for_public_channel, PublicChannelInventoryVariantProjectionInput,
+};
 use rustok_order::OrderService;
 use rustok_pricing::{
-    PriceResolutionContext, PricingReadPort, ResolveProductPriceRequest,
-    in_process_pricing_read_port,
+    in_process_pricing_read_port, PriceResolutionContext, PricingReadPort,
+    ResolveProductPriceRequest,
 };
 use rustok_product::entities::{
     product, product_translation, product_variant, variant_translation,
@@ -33,14 +35,13 @@ use rustok_web::{HttpError, HttpResult};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::common::PaginationParams;
 use crate::{
-    StoreContextService,
     dto::{
         AddCartLineItemInput, CartResponse, ResolveStoreContextInput, StoreContextResponse,
         UpdateCartContextInput,
@@ -53,6 +54,7 @@ use crate::{
         effective_shipping_profile_slug, enrich_cart_delivery_groups,
         is_shipping_option_compatible_with_profiles, normalize_shipping_profile_slug,
     },
+    StoreContextService,
 };
 
 pub const MODULE_SLUG: &str = "commerce";
@@ -955,7 +957,10 @@ pub(crate) async fn validate_store_variant_inventory(
     let available = check_variant_availability_for_public_channel(
         db,
         tenant_id,
-        variant,
+        PublicChannelInventoryVariantProjectionInput {
+            variant_id: variant.id,
+            inventory_policy: &variant.inventory_policy,
+        },
         requested_quantity,
         public_channel_slug,
     )

@@ -1,9 +1,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationState {
@@ -17,9 +15,7 @@ pub enum NotificationState {
     Archived,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationPriorityValue {
@@ -33,9 +29,7 @@ pub enum NotificationPriorityValue {
     Urgent,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(24))")]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationChannel {
@@ -51,9 +45,7 @@ pub enum NotificationChannel {
     Sms,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(24))")]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryStatus {
@@ -71,9 +63,7 @@ pub enum DeliveryStatus {
     Cancelled,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(24))")]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationJobStatus {
@@ -89,9 +79,7 @@ pub enum NotificationJobStatus {
     DeadLetter,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum FanoutItemStatus {
@@ -105,9 +93,7 @@ pub enum FanoutItemStatus {
     Failed,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationDeliveryMode {
@@ -119,9 +105,7 @@ pub enum NotificationDeliveryMode {
     Digest,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum DigestMode {
@@ -133,9 +117,7 @@ pub enum DigestMode {
     Weekly,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(24))")]
 #[serde(rename_all = "snake_case")]
 pub enum DigestJobStatus {
@@ -153,9 +135,7 @@ pub enum DigestJobStatus {
     DeadLetter,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum PushPlatform {
@@ -167,9 +147,7 @@ pub enum PushPlatform {
     Android,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum PushSubscriptionStatus {

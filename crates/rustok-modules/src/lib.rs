@@ -17,6 +17,7 @@ mod dependency;
 mod dispatcher;
 mod distribution;
 mod distribution_release;
+mod distribution_rollout;
 mod event_delivery;
 mod execution_audit;
 mod executor;
@@ -25,6 +26,7 @@ mod infrastructure;
 mod installation;
 mod lifecycle;
 mod lifecycle_writer;
+mod marketplace;
 mod marketplace_content;
 mod mcp;
 mod migrations;
@@ -32,6 +34,8 @@ mod migrations;
 mod oci;
 mod operation_store;
 mod policy;
+mod policy_revision_consumer;
+mod policy_transition_event;
 mod promotion;
 mod publish_validation;
 mod recovery;
@@ -41,6 +45,7 @@ mod runtime_handles;
 mod schedule_delivery;
 mod schedule_materializer;
 mod secrets;
+mod security_state;
 mod settings;
 mod static_package;
 mod trust;
@@ -154,10 +159,10 @@ pub use distribution::{
     ModuleStaticDistributionClaimCommand, ModuleStaticDistributionCompletionCommand,
     ModuleStaticDistributionCompletionOutcome, ModuleStaticDistributionCompletionReceipt,
     ModuleStaticDistributionError, ModuleStaticDistributionExecutor,
-    ModuleStaticDistributionExecutorError, ModuleStaticDistributionExecutorReadiness,
-    ModuleStaticDistributionFailure, ModuleStaticDistributionHeartbeatCommand,
-    ModuleStaticDistributionHeartbeatReceipt, ModuleStaticDistributionItem,
-    ModuleStaticDistributionSelection, ModuleStaticDistributionState,
+    ModuleStaticDistributionExecutorError, ModuleStaticDistributionExecutorMode,
+    ModuleStaticDistributionExecutorReadiness, ModuleStaticDistributionFailure,
+    ModuleStaticDistributionHeartbeatCommand, ModuleStaticDistributionHeartbeatReceipt,
+    ModuleStaticDistributionItem, ModuleStaticDistributionSelection, ModuleStaticDistributionState,
     ModuleStaticDistributionWorkItem, ModuleStaticDistributionWorkerAuthorizer,
     SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
 };
@@ -171,6 +176,17 @@ pub use distribution_release::{
     ModuleStaticDistributionRollback, ModuleStaticDistributionRollbackCommand,
     ModuleStaticDistributionRollbackReceipt, ModuleStaticDistributionRollbackStatus,
     SeaOrmModuleStaticDistributionReleaseService,
+};
+pub use distribution_rollout::{
+    module_static_distribution_topology_digest, ModuleStaticDistributionHealthEvidence,
+    ModuleStaticDistributionNodeFailure, ModuleStaticDistributionNodePhase,
+    ModuleStaticDistributionNodeReport, ModuleStaticDistributionNodeReportReceipt,
+    ModuleStaticDistributionRollout, ModuleStaticDistributionRolloutAuthorizer,
+    ModuleStaticDistributionRolloutError, ModuleStaticDistributionRolloutNode,
+    ModuleStaticDistributionRolloutReceipt, ModuleStaticDistributionRolloutRequest,
+    ModuleStaticDistributionRolloutState, ModuleStaticDistributionRolloutStatus,
+    ModuleStaticDistributionTopologyResolver, ModuleStaticDistributionTopologySnapshot,
+    SeaOrmModuleStaticDistributionRolloutService,
 };
 pub use event_delivery::{
     ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig, ArtifactEventDeliveryError,
@@ -188,7 +204,12 @@ pub use executor::{
 pub use governance::{
     ModuleAlloyAuthoredStageCommand, ModuleAlloyAuthoredStageResult,
     ModuleBuildServiceAttestationCommand, ModuleExternalPrebuiltStageCommand,
-    ModuleExternalPrebuiltStageResult, ModuleExternalSourceEvidence, ModuleGovernanceError,
+    ModuleExternalPrebuiltStageResult, ModuleExternalSourceEvidence, ModuleGovernanceAction,
+    ModuleGovernanceError, ModuleGovernanceEventPayload, ModuleGovernanceEventSnapshot,
+    ModuleGovernanceGateSnapshot, ModuleGovernanceLifecycleSnapshot,
+    ModuleGovernanceModerationPolicy, ModuleGovernanceOwnerSnapshot,
+    ModuleGovernanceOwnerTransition, ModuleGovernanceReleaseSnapshot,
+    ModuleGovernanceRequestSnapshot, ModuleGovernanceValidationStageSnapshot,
     ModuleOwnerBindCommand, ModuleOwnerTransferCommand, ModulePlatformAdmissionCommand,
     ModulePublicationArtifactOrigin, ModulePublicationEvidenceAuthority,
     ModulePublicationEvidenceCommand, ModulePublicationEvidenceResult,
@@ -229,7 +250,14 @@ pub use installation::{
     SnapshotArtifactBlobRetentionPolicy, StagedArtifactBlob,
 };
 pub use lifecycle::{ModuleOperationIssue, ModuleOperationRecoveryAction, ModuleOperationStatus};
-pub use lifecycle_writer::{ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError};
+pub use lifecycle_writer::{
+    ModuleLifecycleDbWriter, ModuleLifecycleDbWriterError, TenantModuleOverrideSnapshot,
+};
+pub use marketplace::{
+    normalize_module_marketplace_slug, ModuleMarketplaceCatalog, ModuleMarketplaceEntry,
+    ModuleMarketplaceError, ModuleMarketplaceQuery, ModuleMarketplaceVersion,
+    SharedModuleMarketplaceCatalog, MODULE_MARKETPLACE_DEFAULT_LIMIT, MODULE_MARKETPLACE_MAX_LIMIT,
+};
 pub use marketplace_content::{
     ModuleMarketplaceContentError, ModuleMarketplaceContentProjection,
     MODULE_MARKETPLACE_CONTENT_FORMAT, MODULE_MARKETPLACE_CONTENT_TRUST,
@@ -260,8 +288,19 @@ pub(crate) use operation_store::{
     TenantModuleSettingsRequest, TenantModuleStateRequest, TenantModuleStateStore,
 };
 pub use policy::{
-    validate_module_toggle, ModuleEffectivePolicy, ModuleEffectivePolicyQuery,
-    ModuleToggleValidationError, TenantModuleOverride,
+    validate_module_toggle, ModuleEffectivePolicy, ModuleEffectivePolicyChannelBinding,
+    ModuleEffectivePolicyChannelInput, ModuleEffectivePolicyDecision,
+    ModuleEffectivePolicyDenialReason, ModuleEffectivePolicyError, ModuleEffectivePolicyFact,
+    ModuleEffectivePolicyMaintenanceInput, ModuleEffectivePolicyNodeReadinessInput,
+    ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate, ModulePolicyRevisionGateError,
+    ModulePolicyRevisionTransition, ModuleToggleValidationError, TenantModuleOverride,
+};
+pub use policy_revision_consumer::{
+    ModulePolicyRevisionConsumerError, SeaOrmModulePolicyRevisionConsumer,
+};
+pub use policy_transition_event::{
+    ModuleEffectivePolicyTransitionCoordinator, ModuleEffectivePolicyTransitionCoordinatorError,
+    ModuleEffectivePolicyTransitionPublisher, ModuleEffectivePolicyTransitionPublisherError,
 };
 pub use promotion::{
     ModuleStaticPromotion, ModuleStaticPromotionApprovalCommand,
@@ -286,8 +325,9 @@ pub use resolution::{
     ModuleResolutionRequest, ModuleResolutionResult, ModuleResolutionScope,
 };
 pub use runtime::{
-    ArtifactInstallationResolver, ArtifactRuntime, ArtifactRuntimeError,
-    ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver, VerifiedArtifactNodeCache,
+    ArtifactEffectivePolicyResolver, ArtifactInstallationResolver, ArtifactRuntime,
+    ArtifactRuntimeError, ArtifactRuntimeLifecycleExecutor, ArtifactSandboxPolicyResolver,
+    VerifiedArtifactNodeCache,
 };
 pub use runtime_handles::{
     ArtifactDeliveryTenantSource, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
@@ -311,6 +351,12 @@ pub use secrets::{
     ArtifactSecretValueConsumer, RegistryArtifactSecretAuthorizer,
     SeaOrmArtifactSecretCapabilityBroker, SeaOrmArtifactSecretCapabilityBrokerResolver,
     SeaOrmArtifactSecretHandleService, SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
+};
+pub use security_state::{
+    ModuleArtifactRegistryReleaseStatus, ModuleArtifactSecurityAuthorizer,
+    ModuleArtifactSecurityCommand, ModuleArtifactSecurityError, ModuleArtifactSecurityReceipt,
+    ModuleArtifactSecuritySnapshot, ModuleArtifactSecurityStatus,
+    SeaOrmModuleArtifactSecurityResolver, SeaOrmModuleArtifactSecurityService,
 };
 pub use settings::{
     normalize_module_settings, validate_module_settings_schema, ModuleSettingSpec,

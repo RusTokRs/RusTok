@@ -70,17 +70,16 @@ pub use services::{
     CompleteReturnRefundInput, CompleteReturnResolutionInput, CreateReturnDecisionInput,
     DEFAULT_CHECKOUT_LEASE_SECONDS, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
     ExchangeDifferenceRefundInput, FulfillmentCreateLabelRecoveryService,
-    FulfillmentReconciliationService, IngestMarketplacePaidEvent,
-    IngestMarketplaceReversalEvent, JournaledCheckoutError, JournaledCheckoutResult,
-    JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS, MAX_RETURN_COMPLETION_LEASE_SECONDS,
+    FulfillmentReconciliationService, IngestMarketplacePaidEvent, IngestMarketplaceReversalEvent,
+    JournaledCheckoutError, JournaledCheckoutResult, JournaledCheckoutService,
+    MAX_CHECKOUT_LEASE_SECONDS, MAX_RETURN_COMPLETION_LEASE_SECONDS,
     MarketplaceFinancialOperationError, MarketplaceFinancialOperationJournal,
     MarketplaceFinancialOperationOperatorView, MarketplaceFinancialOperationResult,
     MarketplaceFinancialOperationStatus, MarketplaceFinancialOperatorError,
     MarketplaceFinancialOperatorResult, MarketplaceFinancialOperatorService,
-    MarketplaceFinancialRuntime, MarketplacePaidEventInboxError,
-    MarketplacePaidEventInboxJournal, MarketplacePaidEventInboxResult,
-    MarketplacePaidEventInboxService, MarketplacePaidEventOperatorView,
-    MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
+    MarketplaceFinancialRuntime, MarketplacePaidEventInboxError, MarketplacePaidEventInboxJournal,
+    MarketplacePaidEventInboxResult, MarketplacePaidEventInboxService,
+    MarketplacePaidEventOperatorView, MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
     MarketplacePaidEventSweepReport, MarketplaceProviderPaidEventAdapter,
     MarketplaceProviderPaidEventAdapterError, MarketplaceProviderPaidEventAdapterResult,
     MarketplaceProviderReversalAdaptFailure, MarketplaceProviderReversalAdaptReport,
@@ -95,13 +94,11 @@ pub use services::{
     MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
     MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
     MarketplaceReversalOperatorService, OrderChangeOrchestrationService,
-    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
-    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
-    PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, RecoveringStagedCheckoutError,
-    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
-    RefundReconciliationService, ReturnClaimDecisionInput,
-    ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService, PaymentOrchestrationError,
+    PaymentOrchestrationResult, PaymentOrchestrationService, PlanCheckoutInventoryReservation,
+    PostOrderOrchestrationError, PostOrderOrchestrationService, RecoveringStagedCheckoutError,
+    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService, RefundReconciliationService,
+    ReturnClaimDecisionInput, ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
     ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
     ReturnCompletionOrchestrationService, ReturnDecisionInput, ReturnDecisionResponse,
@@ -174,9 +171,7 @@ impl RusToKModule for CommerceModule {
             .extensions
             .get::<TransactionalEventBus>()
             .cloned()
-            .expect(
-                "commerce module requires TransactionalEventBus in ModuleRuntimeExtensions",
-            );
+            .expect("commerce module requires TransactionalEventBus in ModuleRuntimeExtensions");
         registry.register(services::MarketplacePaidOrderFinancialHandler::new(
             ctx.db.clone(),
             event_bus,

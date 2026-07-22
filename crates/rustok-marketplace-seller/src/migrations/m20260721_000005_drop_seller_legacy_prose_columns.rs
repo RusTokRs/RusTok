@@ -29,7 +29,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(MarketplaceSellers::Table)
-                    .add_column(ColumnDef::new(MarketplaceSellers::OnboardingNote).text().null())
+                    .add_column(
+                        ColumnDef::new(MarketplaceSellers::OnboardingNote)
+                            .text()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -37,7 +41,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(MarketplaceSellers::Table)
-                    .add_column(ColumnDef::new(MarketplaceSellers::SuspensionReason).text().null())
+                    .add_column(
+                        ColumnDef::new(MarketplaceSellers::SuspensionReason)
+                            .text()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await

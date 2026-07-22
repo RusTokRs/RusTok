@@ -189,32 +189,32 @@ if [[ -n "${RUSTOK_REGISTRY_BASE_URL:-}" ]]; then
       "$TMP_DIR/runtime-body.json" "$TMP_DIR/runtime-headers.txt"
 
   run_cmd \
-    "external /v1/catalog exposes ETag" \
-    header_present "$BASE_URL/v1/catalog?limit=1" "etag" \
+    "external /catalog exposes ETag" \
+    header_present "$BASE_URL/catalog?limit=1" "etag" \
       "$TMP_DIR/catalog-headers.txt" "$TMP_DIR/catalog-body.json"
 
   run_cmd \
-    "external /v1/catalog exposes Cache-Control" \
-    header_present "$BASE_URL/v1/catalog?limit=1" "cache-control" \
+    "external /catalog exposes Cache-Control" \
+    header_present "$BASE_URL/catalog?limit=1" "cache-control" \
       "$TMP_DIR/catalog-headers.txt" "$TMP_DIR/catalog-body.json"
 
   run_cmd \
-    "external /v1/catalog exposes X-Total-Count" \
-    header_present "$BASE_URL/v1/catalog?limit=1" "x-total-count" \
+    "external /catalog exposes X-Total-Count" \
+    header_present "$BASE_URL/catalog?limit=1" "x-total-count" \
       "$TMP_DIR/catalog-headers.txt" "$TMP_DIR/catalog-body.json"
 
   run_cmd \
-    "external /v1/catalog/{slug} returns 200" \
-    status_is GET "$BASE_URL/v1/catalog/$SMOKE_SLUG" 200
+    "external /catalog/{slug} returns 200" \
+    status_is GET "$BASE_URL/catalog/$SMOKE_SLUG" 200
 
   run_cmd \
     "external reduced OpenAPI keeps catalog detail path" \
-    body_matches "$BASE_URL/api/openapi.json" '"/v1/catalog/\{slug\}"' \
+    body_matches "$BASE_URL/api/openapi.json" '"/catalog/\{slug\}"' \
       "$TMP_DIR/openapi-body.json" "$TMP_DIR/openapi-headers.txt"
 
   run_cmd \
     "external reduced OpenAPI YAML keeps catalog detail path" \
-    body_matches "$BASE_URL/api/openapi.yaml" '/v1/catalog/\{slug\}' \
+    body_matches "$BASE_URL/api/openapi.yaml" '/catalog/\{slug\}' \
       "$TMP_DIR/openapi-yaml-body.yaml" "$TMP_DIR/openapi-yaml-headers.txt"
 
   run_cmd \

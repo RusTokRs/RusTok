@@ -9,9 +9,8 @@ use rustok_marketplace::{
     ProcessMarketplaceFinancialReversalInput,
 };
 use rustok_marketplace_ledger::{
-    MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
+    MAX_LEDGER_REVERSAL_LINES, MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
     MarketplaceLedgerReversalResponse, PostMarketplaceLedgerReversalInput,
-    MAX_LEDGER_REVERSAL_LINES,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
@@ -111,7 +110,9 @@ impl MarketplaceReversalEventInboxError {
             Self::Busy(_) => "marketplace_reversal_event.busy".to_string(),
             Self::Database(_) => "marketplace_reversal_event.storage_unavailable".to_string(),
             Self::Financial(MarketplaceFinancialOrchestrationError::Context { code, .. })
-            | Self::Financial(MarketplaceFinancialOrchestrationError::Commission { code, .. })
+            | Self::Financial(MarketplaceFinancialOrchestrationError::Commission {
+                code, ..
+            })
             | Self::Financial(MarketplaceFinancialOrchestrationError::Ledger { code, .. }) => {
                 code.clone()
             }
@@ -125,8 +126,7 @@ impl MarketplaceReversalEventInboxError {
     }
 }
 
-pub type MarketplaceReversalEventInboxResult<T> =
-    Result<T, MarketplaceReversalEventInboxError>;
+pub type MarketplaceReversalEventInboxResult<T> = Result<T, MarketplaceReversalEventInboxError>;
 
 #[derive(Clone)]
 pub struct MarketplaceReversalEventInboxJournal {
@@ -165,7 +165,9 @@ impl MarketplaceReversalEventInboxJournal {
             currency_exponent: Set(input.currency_exponent),
             total_amount: Set(input.total_amount),
             lines_json: Set(input.lines_json.clone()),
-            status: Set(MarketplaceReversalEventStatus::Received.as_str().to_string()),
+            status: Set(MarketplaceReversalEventStatus::Received
+                .as_str()
+                .to_string()),
             attempt_count: Set(0),
             lease_owner: Set(None),
             lease_expires_at: Set(None),
@@ -216,9 +218,7 @@ impl MarketplaceReversalEventInboxJournal {
     ) -> MarketplaceReversalEventInboxResult<Option<marketplace_reversal_event_inbox::Model>> {
         marketplace_reversal_event_inbox::Entity::find()
             .filter(marketplace_reversal_event_inbox::Column::TenantId.eq(tenant_id))
-            .filter(
-                marketplace_reversal_event_inbox::Column::ProviderEventId.eq(provider_event_id),
-            )
+            .filter(marketplace_reversal_event_inbox::Column::ProviderEventId.eq(provider_event_id))
             .one(&self.db)
             .await
             .map_err(Into::into)
@@ -234,12 +234,10 @@ impl MarketplaceReversalEventInboxJournal {
         let now = Utc::now().fixed_offset();
         let expires_at = now + Duration::seconds(INBOX_LEASE_SECONDS);
         let claimable = Condition::any()
-            .add(
-                marketplace_reversal_event_inbox::Column::Status.is_in([
-                    MarketplaceReversalEventStatus::Received.as_str(),
-                    MarketplaceReversalEventStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_reversal_event_inbox::Column::Status.is_in([
+                MarketplaceReversalEventStatus::Received.as_str(),
+                MarketplaceReversalEventStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(
@@ -425,12 +423,10 @@ impl MarketplaceReversalEventInboxJournal {
     ) -> MarketplaceReversalEventInboxResult<Vec<marketplace_reversal_event_inbox::Model>> {
         let now = Utc::now().fixed_offset();
         let recoverable = Condition::any()
-            .add(
-                marketplace_reversal_event_inbox::Column::Status.is_in([
-                    MarketplaceReversalEventStatus::Received.as_str(),
-                    MarketplaceReversalEventStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_reversal_event_inbox::Column::Status.is_in([
+                MarketplaceReversalEventStatus::Received.as_str(),
+                MarketplaceReversalEventStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(
@@ -467,7 +463,8 @@ impl MarketplaceReversalEventInboxJournal {
         if let Some(model) = marketplace_reversal_event_inbox::Entity::find()
             .filter(marketplace_reversal_event_inbox::Column::TenantId.eq(input.tenant_id))
             .filter(
-                marketplace_reversal_event_inbox::Column::EventSource.eq(input.event_source.clone()),
+                marketplace_reversal_event_inbox::Column::EventSource
+                    .eq(input.event_source.clone()),
             )
             .filter(marketplace_reversal_event_inbox::Column::EventId.eq(input.event_id.clone()))
             .one(&self.db)
@@ -477,9 +474,7 @@ impl MarketplaceReversalEventInboxJournal {
         }
         marketplace_reversal_event_inbox::Entity::find()
             .filter(marketplace_reversal_event_inbox::Column::TenantId.eq(input.tenant_id))
-            .filter(
-                marketplace_reversal_event_inbox::Column::ReversalKind.eq(input.kind.as_str()),
-            )
+            .filter(marketplace_reversal_event_inbox::Column::ReversalKind.eq(input.kind.as_str()))
             .filter(marketplace_reversal_event_inbox::Column::SourceId.eq(input.source_id))
             .one(&self.db)
             .await
@@ -558,14 +553,7 @@ impl MarketplaceReversalEventInboxService {
                 let code = error.code();
                 let message = error.to_string();
                 self.journal
-                    .mark_failure(
-                        tenant_id,
-                        inbox_id,
-                        lease_owner,
-                        retryable,
-                        code,
-                        message,
-                    )
+                    .mark_failure(tenant_id, inbox_id, lease_owner, retryable, code, message)
                     .await?;
                 Err(error)
             }
@@ -706,13 +694,11 @@ fn normalize_input(
                 .to_string(),
         ));
     }
-    let event_source = normalize_text(input.event_source, 100, "event_source")?
-        .to_ascii_lowercase();
+    let event_source =
+        normalize_text(input.event_source, 100, "event_source")?.to_ascii_lowercase();
     let event_id = normalize_text(input.event_id, 191, "event_id")?;
     let currency_code = input.currency_code.trim().to_ascii_uppercase();
-    if currency_code.len() != 3
-        || !currency_code.bytes().all(|byte| byte.is_ascii_alphabetic())
-    {
+    if currency_code.len() != 3 || !currency_code.bytes().all(|byte| byte.is_ascii_alphabetic()) {
         return Err(MarketplaceReversalEventInboxError::Validation(
             "currency_code must be a three-letter alphabetic code".to_string(),
         ));

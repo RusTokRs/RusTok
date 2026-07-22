@@ -30,7 +30,7 @@ The ownership decision is fixed by
 ## Execution Checkpoint
 
 - Current phase: `runtime_foundation_and_control_plane_extraction`.
-- Last updated: 2026-07-16.
+- Last updated: 2026-07-22.
 - Completed foundation:
   - neutral sandbox request, policy, broker, executor, outcome, error, and audit
     contracts;
@@ -54,10 +54,52 @@ The ownership decision is fixed by
      `rustok-modules` facade;
   6. replace server and admin bypass paths;
   7. add isolated build, signing, SBOM, publication, and admission stages.
-- Known verification blocker outside this plan: a current `rustok-build`
-  dependency error prevents a clean workspace-wide server check. It must not be
-  confused with evidence that the module-platform slices are complete.
+- Targeted verification is current through the dirty-worktree boundary:
+  `rustok-forum`, `rustok-pricing`, `rustok-commerce`, `rustok-groups`,
+  `rustok-server --no-default-features`, and
+  `rustok-admin --no-default-features --features ssr` all pass `cargo check`
+  (warnings only). No workspace-wide compile or test claim is made.
 - Open architecture blockers: none.
+
+## Quality and Isolation Audit Checkpoint (2026-07-22)
+
+The owner boundary was rechecked after the marketplace and lifecycle cutovers.
+`rustok-modules` has no direct dependency or production import for AI, product,
+commerce, MCP, Alloy, Leptos, Axum, or Async-GraphQL. A transitive leak was
+found in the neutral runtime foundation: `HostRuntimeContext` was hidden behind
+the same `rustok-api/server` feature as HTTP/GraphQL. The current architecture
+now exposes a separate `rustok-api/runtime` feature for the SeaORM-backed host
+context; `server` includes it and adds only the transport frameworks. The
+standalone module profile is verified by Cargo dependency-tree inspection and
+the repository guard.
+
+Targeted evidence from this checkpoint:
+
+- `cargo check -p rustok-api --lib --features runtime` passed;
+- `cargo check -p rustok-api --lib --features server` passed;
+- `cargo check -p rustok-runtime --lib` passed;
+- `cargo check -p rustok-modules --no-default-features --lib` passed;
+- `cargo check -p rustok-modules --lib` passed;
+- `cargo test -p rustok-api --lib --features runtime`: 25 passed;
+- `cargo test -p rustok-runtime --lib`: 3 passed;
+- `cargo test -p rustok-modules --no-default-features --lib`: 152 passed;
+- `cargo check -p rustok-forum --lib`, `cargo check -p rustok-pricing --lib`,
+  `cargo check -p rustok-commerce --lib`, `cargo check -p rustok-groups --lib`,
+  `cargo check -p rustok-server --lib --no-default-features`, and
+  `cargo check -p rustok-admin --lib --no-default-features --features ssr`
+  passed (warnings only);
+- `node scripts/verify/verify-module-control-plane-write-path.mjs` passed,
+  including concrete admin transport backend-logic and runtime feature
+  isolation checks. The native admin and GraphQL build active/history/release
+  reads and rollback now use the host-composed `rustok_build::SharedBuildControl`;
+  remaining Phase 7 work is canonical transport parity and the other resolver
+  families.
+
+The SHA-256 digest formatting now uses an explicit byte-to-hex helper compatible
+with `sha2` 0.11, and product/inventory status and projection boundaries use
+owner-neutral DTOs. The admin lifecycle mapper has explicit `ServerFnError`
+closure types for optional governance records. Existing warnings remain
+tracked separately; no workspace-wide compile or test claim is made.
 
 ## Problem Statement
 
@@ -958,8 +1000,8 @@ adapter and must not be used as artifact identity or durable policy state.
   Owner storage faults remain a content-free `500`; server-local governance
   errors remain only for host authorization and storage-adapter concerns.
 - [x] Delete superseded server models/helpers after each atomic caller cutover.
-  The registry catalog adapter and router now expose only `/v1/catalog` and
-  `/v1/catalog/{slug}`. The former `/catalog` compatibility routes, client
+  The registry catalog adapter and router now expose only the current `/catalog`
+  and `/catalog/{slug}` contracts. Version-suffixed compatibility routes, client
   fallback probes, and helper exports were removed rather than preserving a
   dual transport path. Catalog generation now fails closed on an invalid active
   composition instead of silently substituting the builtin manifest. The
@@ -1922,7 +1964,7 @@ trust policy before admission.
   entity mutations, and binds execution ID, executor, runtime ABI, and effective
   policy digest. Origin-specific stages accept only their owner evidence and
   reconcile idempotently regardless of arrival order. Lightweight structural
-  verification on 2026-07-20 passed `rustfmt --edition 2021`,
+  verification on 2026-07-20 passed `rustfmt --edition 2024`,
   `git diff --check`, and `cargo metadata --no-deps`; compile and test suites
   were intentionally not run in this worktree.
 - [x] Record review decisions, required changes, holds, approvals, rejections,
@@ -2164,13 +2206,39 @@ multi-node reconciliation path consumed by those transports.
 - [ ] Migrate catalog, release, publication, installation, lifecycle,
   composition, build, effective-policy, recovery, rollback, and promotion
   resolvers to the facade.
+- [x] Move the `tenantModules` override/settings query off direct
+  `tenant_modules` SQL. The modules owner returns a bounded
+  `TenantModuleOverrideSnapshot` list through `EffectivePolicyService`, while
+  GraphQL performs transport mapping only. Broader resolver migration remains
+  open under the aggregate item above.
+- [x] Move platform build/release history, active-release, and rollback
+  precondition reads behind `rustok-build::BuildService`. The owner enforces
+  bounded history pages; GraphQL no longer imports the corresponding SeaORM
+  entities. The server now exposes the host-composed
+  `rustok_build::SharedBuildControl`, so native admin active/history reads and
+  rollback also use the owner port and the event-aware server implementation.
+  Module build-worker and registry-release transports remain open under the
+  aggregate item above.
+- [x] Move marketplace list/detail reads to the host-composed
+  `SharedModuleMarketplaceCatalog`. GraphQL and native admin consume the same
+  owner DTO, and detail lifecycle metadata is mapped directly from the owner
+  snapshot without transport-local stage or moderation fallbacks.
 - [ ] Map canonical codes/details without reconstructing issue/retry taxonomy.
 - [ ] Require typed actor, tenant, permission, idempotency, and revision inputs.
-- [ ] Keep subscriptions/build events as transport adapters over owner events.
+- [x] Keep subscriptions/build events as transport adapters over owner events.
+  Platform rollback now emits the explicit owner `BuildRolledBack` event with
+  requested/restored build identity, release predecessor transition, and actor.
+  The canonical `build.rolled_back` root event, WebSocket message, and GraphQL
+  subscription map that same event; rollback no longer emits a synthetic
+  `BuildCompleted`.
 
 ### 7.2 Native Leptos Server Functions
 
-- [ ] Add owner-backed native operations for required Leptos admin surfaces.
+- [x] Add owner-backed native operations for the current Leptos marketplace and
+  registry lifecycle reads. Both resolve the host-composed
+  `SharedModuleMarketplaceCatalog`; lifecycle policy, stages, gates, events,
+  and action availability come from the modules owner. Remaining native
+  mutation/parity coverage is tracked by the aggregate Phase 7 gate.
 - [ ] Reuse canonical DTOs through the approved framework-neutral contract
   layer; do not duplicate GraphQL types in the UI package.
 - [ ] Preserve GraphQL as the public/headless surface.
@@ -2183,7 +2251,8 @@ Compile-time module-owned Leptos/Next/Flutter packages cannot be the normal UI
 delivery mechanism for a runtime-installed artifact. The marketplace therefore
 uses an explicit UI trust boundary.
 
-- [ ] V1 requires host-rendered declarative contributions for settings,
+- [ ] The current marketplace contract requires host-rendered declarative
+  contributions for settings,
   commands/actions, status, help, navigation metadata, tables/forms supported
   by the shared UI schema, and result/error presentation.
 - [ ] Define one framework-neutral UI contribution schema and validate it with
@@ -2202,20 +2271,33 @@ uses an explicit UI trust boundary.
 - [ ] Native Leptos, Next, and Flutter code packages are allowed only through
   reviewed static promotion/distribution composition.
 - [ ] Add a dedicated ADR before enabling iframe/custom UI artifacts; the
-  declarative V1 path must not grow ad-hoc executable expressions.
+  current declarative path must not grow ad-hoc executable expressions.
 
 ### 7.4 Admin Simplification
 
-- [ ] Remove direct SQL to `platform_state`, build, registry, release, publish,
-  installation, and lifecycle tables.
-- [ ] Remove admin-owned module/Cargo manifest scanning and filesystem loading.
-- [ ] Remove admin-owned canonical hashing, dependency solving, build planning,
-  and marketplace synthesis.
-- [ ] Remove local lifecycle/governance/status/retry mappings.
+- [x] Remove direct SQL to `platform_state`, build, registry, release, publish,
+  installation, and lifecycle tables from the admin module transport. The
+  native adapter now calls owner services or the authenticated server
+  governance transport and performs DTO mapping only.
+- [x] Remove client-side success fallbacks that synthesized module registry,
+  installed-module, tenant-intent, and marketplace state from the generated
+  admin navigation registry after GraphQL failures. The transport now preserves
+  owner errors; native owner cutover remains open under the surrounding items.
+- [x] Remove admin-owned module/Cargo manifest scanning and filesystem loading.
+- [x] Remove admin-owned canonical hashing, dependency solving, build planning,
+  and marketplace synthesis. The active-composition DTO is retained only as a
+  transport-neutral snapshot shape.
+- [x] Remove local lifecycle/governance/status/retry policy derivation. The
+  remaining admin helpers are presentation-only labels and command rendering
+  over owner-provided facts.
 - [ ] Keep transport facade, route/query state, view models, optimistic UI keyed
   by revision/idempotency, and presentation effects.
-- [ ] Add a static verifier preventing backend logic from returning to the admin
-  host.
+- [x] Add a static verifier preventing backend logic from returning to the admin
+  host. The module control-plane guard now scans the admin module transport for
+  SQL, filesystem, hashing, dependency, build-planning, and direct
+  `BuildService` APIs while allowing owner-backed DTO and command mapping.
+  Native build reads and rollback now use `SharedBuildControl`; broader
+  transport parity and canonical-error contracts remain separate Phase 7 work.
 
 ### Verification Gate
 
@@ -2250,23 +2332,127 @@ workers, transports, and UI.
 ### Deliverables
 
 - [ ] Return decision, contributing facts, policy revision, and denial reasons.
+- [x] Return the current catalog/default/tenant-intent decision slice as one
+  serializable `ModuleEffectivePolicy`: its deterministic `sha256:` revision
+  covers the exact definition catalog, normalized platform defaults, and
+  persisted tenant overrides; every known module carries typed contributing
+  facts and stable denial reasons, and unknown modules are explicitly denied.
+  Artifact runtime evidence is covered by the following slices; channel,
+  quarantine, revocation, and maintenance are now owner inputs, while
+  node-readiness remains open under the aggregate Phase 8 deliverable above.
+- [x] Extend that same decision with exact artifact runtime availability:
+  selected artifact definitions resolve only through the existing tenant-RLS
+  active-installation owner, require the exact durable capability-policy
+  revision, require an injected isolated executor, and fail closed across the
+  complete dependency closure. The policy revision includes these redacted
+  facts; grant contents and resolver error text are excluded. Channel and
+  node-readiness inputs remain open; quarantine and emergency
+  revocation are covered by the following owner aggregate.
 - [ ] Use the same decision in lifecycle writes, runtime dispatch, routing,
   events, scheduler, APIs, and admin UI.
+- [x] Wire lifecycle tenant-toggle writes to the same effective-policy
+  transition boundary. The owner computes current/next policy revisions from
+  the canonical catalog and tenant overrides, checks the durable lifecycle
+  predecessor cursor, and appends the explicit transition event in the state
+  transaction through `ModuleEffectivePolicyTransitionCoordinator`. A
+  concurrent stale policy transition rolls back the lifecycle mutation;
+  runtime, routing, scheduler, transport, and UI consumers remain open until
+  they use the same decision directly.
+- [x] Make the server artifact HTTP/command transport resolve the canonical
+  effective policy before dispatch and fail closed when the exact module is not
+  enabled. The transport uses the shared registry/facade and does not rebuild
+  tenant enablement or inspect owner tables directly; runtime revalidation and
+  other transport surfaces remain open.
+- [x] Require the sandbox-backed artifact runtime executor to re-resolve the
+  same host-owned effective policy before every non-lifecycle binding. The
+  server supplies the shared registry/facade resolver, so event, scheduled,
+  manual, command, and HTTP calls fail closed after a policy change instead of
+  relying on a stale transport decision; lifecycle hooks remain governed by
+  the owner toggle transaction.
+- [x] Keep durable event and scheduled delivery on that same shared executor
+  path. Their delivery adapters do not construct a second runtime; the
+  executor-side policy revalidation therefore applies before event and
+  scheduled artifact bindings as well.
+- [x] Keep server module route guards and module-list GraphQL projections on
+  `EffectiveModulePolicyService`; they consume the canonical owner decision and
+  no longer reconstruct enablement from `tenant_modules` in routing code.
 - [ ] Invalidate/cache decisions using explicit revision dependencies.
 - [ ] Quarantine blocks new execution without silently changing tenant intent.
 - [ ] Revocation policy distinguishes emergency stop from ordinary yanking.
+- [x] Add the current artifact security owner aggregate: explicit quarantine,
+  authorized quarantine clear, and terminal emergency revoke are persisted by
+  immutable release identity with revision CAS, exact idempotency receipts, and
+  transactional outbox events. Registry yanking remains a discovery/install
+  state; effective policy consumes the redacted security snapshot and blocks
+  new execution without changing tenant intent.
+- [x] Define the neutral channel-policy input boundary: the channel owner or
+  host adapter supplies a tenant-safe channel id, surface, immutable
+  `sha256:` channel revision, active state, and module bindings. The modules
+  owner evaluates those facts through `EffectivePolicyService::resolve_for_channel`;
+  inactive channels, missing optional bindings, and disabled bindings are
+  explicit denials and the channel snapshot contributes to the same policy
+  revision. Channel resolution and channel-table access remain owned by
+  `rustok-channel`/the host adapter.
+- [x] Add a neutral revisioned maintenance input to the same effective-policy
+  aggregate. Operational owners can block all selected modules or an explicit
+  module subset with a bounded reason code; active maintenance emits a typed
+  denial and never rewrites tenant enablement intent. The snapshot is included
+  in the deterministic policy revision and is forwarded through the owner and
+  server context facades.
+- [x] Define node-readiness evidence as a host-owned snapshot carrying Core
+  readiness, active artifact graph revision, CAS availability, executor ABI,
+  node revision, and observed base policy revision. The node must observe the
+  deterministic base policy before the final policy revision is materialized;
+  stale observations fail closed and unready affected modules receive an
+  explicit denial. The final policy revision includes the validated snapshot.
 - [ ] Implement a durable desired-state/observed-state reconciler for every
   server/sandbox node; in-memory registries and caches are never control-plane
-  sources of truth.
+  sources of truth. The first current slice now implements the topology-bound
+  native distribution reconciler: durable desired/observed rollout pointers,
+  per-node observation revisions, prepare/health/activate/converged/degraded
+  transitions, exact replay, stale-report rejection, and transactional outbox
+  events. General artifact/sandbox node readiness still remains open.
+- [x] Implement the current topology-bound native distribution rollout slice
+  with durable rollout/node/state/idempotency records, exact release and
+  composition identity, full-topology convergence, stale-report rejection,
+  and release-revocation invalidation in the same transaction as release-head
+  CAS. This does not claim the generic artifact/sandbox reconciler is complete.
 - [ ] Publish composition, installation, activation, grant, quarantine,
   revocation, and binding changes through the existing transactional outbox.
 - [ ] Make consumers idempotent and revision-aware because delivery is
   at-least-once; stale/out-of-order events cannot reactivate old state.
-- [ ] Define node readiness: required Core/static definitions, active artifact
-  graph revision, CAS availability, executor ABI, and policy revision must be
-  reconciled before serving affected traffic.
+- [x] Define the reusable predecessor-bound `ModulePolicyRevisionGate` for
+  outbox consumers. It treats exact replays as duplicates, rejects divergent
+  or out-of-order transitions as stale, and never infers ordering from opaque
+  digest values. Wiring every individual consumer to this gate remains part of
+  the broader delivery cutover.
+- [x] Add the durable `module_policy_revision_cursors` owner table and
+  `SeaOrmModulePolicyRevisionConsumer`. It row-locks one cursor per tenant and
+  consumer key under RLS, applies the predecessor gate transactionally, and
+  never turns consumer state into a second event journal. The consumer also
+  exposes an owner-transaction adapter so a future concrete producer can commit
+  its state mutation, outbox append, and cursor advancement atomically; wiring
+  individual producers remains open until they carry an explicit predecessor
+  and successor effective-policy revision.
+- [x] Add the explicit `module.effective_policy_revision_changed` producer
+  contract and `ModuleEffectivePolicyTransitionPublisher`. It validates a
+  real `sha256:` predecessor/successor pair and appends the event on the same
+  owner transaction as the state mutation. Existing security and native
+  distribution command revisions are intentionally not treated as effective
+  policy transitions; concrete producer wiring remains open until those
+  owners compute and supply both policy revisions.
+- [x] Define node readiness: required Core/static definitions, active artifact
+  graph revision, CAS availability, executor ABI, and the observed base policy
+  revision are validated before serving affected traffic. Generic durable
+  artifact/sandbox fleet reconciliation remains open; this slice defines the
+  owner policy boundary and fail-closed evidence contract.
 - [ ] Define prepare -> health/smoke -> activate transitions and optional
-  tenant/cohort canary rollout for upgrades.
+  tenant/cohort canary rollout for upgrades. Native fleet transitions are now
+  owner-enforced for the full topology; cohort/canary policy remains open.
+- [x] Enforce prepare -> health -> activate -> converged transitions for the
+  native distribution fleet, with failed/degraded terminal handling and
+  revisioned node observations. Tenant/cohort canary orchestration remains
+  open.
 - [ ] Drain or cancel old-revision executions according to binding policy before
   releasing old blob/cache references.
 - [ ] Use distributed leases/locks only where necessary and always pair them with
@@ -2392,8 +2578,8 @@ distribution mode, not the default marketplace installation path.
   in an idempotent claim-attempt directory, runs the fixed launcher with an
   empty environment and bounded lifetime, and accepts only a receipt bound to
   the exact request, composition, output, launcher, config, toolchain, and
-  target. Missing or mismatched output remains reclaimable. The deployment-owned
-  production evidence publisher, signing/publication credentials, and worker
+  target. Missing or mismatched output remains reclaimable. Deployment-owned
+  signing/publication credentials, publisher configuration, and worker
   deployment remain.
   The static launcher and untrusted module worker share only
   `rustok-build-source` for exact CAS identity and bounded strict USTAR
@@ -2410,23 +2596,37 @@ distribution mode, not the default marketplace installation path.
   only locked workspace tests and release compilation, invokes the
   digest-pinned publisher, validates its fully bound receipt, and writes the
   terminal owner receipt. Reclaim removes and regenerates only the derived
-  workspace while immutable inputs remain create-only. The concrete
-  idempotent evidence publisher, worker deployment, and deployment evidence
-  remain.
+  workspace while immutable inputs remain create-only. The concrete current
+  publisher now uploads the fixed native executable and publishes CycloneDX
+  SBOM, SLSA provenance, and raw test evidence as subject-bound OCI referrers.
+  It obtains only a short-lived repository lease through the shared
+  digest-pinned credential broker, signs the exact artifact digest with the
+  shared KMS-only Cosign adapter, resolves the signature manifest, and writes a
+  create-only receipt that distinguishes the raw test payload digest from its
+  OCI referrer manifest digest. Worker deployment, deployment-owned credentials
+  and configuration, and integration evidence remain.
 - [ ] Compile promoted crates in CI/distribution builds, not the running server.
   The owner worker protocol now accepts only claimed build intents and records
   successful artifact, SBOM, provenance, signature-manifest, and test evidence,
   and the transport-neutral dispatcher maintains the owner lease around an
   external executor call. The current mTLS client/server adapter and separate
-  digest-pinned worker process, concrete launcher, and materialization/apply/
-  build orchestration are present. The production evidence-publisher
-  implementation, CI credentials, worker deployment, and integration evidence
+  digest-pinned worker process, concrete launcher, materialization/apply/build
+  orchestration, and production OCI evidence publisher are present. CI
+  credentials and configuration, worker deployment, and integration evidence
   are not wired yet, so this item remains open.
-- [ ] Map the native module to the same module/release identity and lifecycle
-  facts while marking executor mode as static/native. Verified release
-  activation now preserves the build composition identity and all five
-  digest-pinned build evidence pairs in a predecessor-linked release record;
-  runtime deployment remains separate.
+- [x] Map the native module to the same module/release identity and lifecycle
+  facts while marking executor mode as static/native. Every immutable
+  distribution item persists `static_native`; that field participates in the
+  composition digest and generated build manifest. Verified release reads
+  reload and validate the complete succeeded build before exposing its exact
+  items. Runtime catalog construction then distinguishes `platform_native`
+  definitions from `promoted_native` definitions and binds each promotion to
+  its registry release, promotion revision, distribution release/revision,
+  native artifact digest, and executor mode. The owner lifecycle and effective
+  policy services can consume that exact catalog while implementation handles
+  still come only from the compiled registry. A durable native rollout owner
+  now handles topology-bound desired/observed convergence; generic
+  artifact/sandbox reconciliation remains separate Phase 8 work.
 - [x] Require a new distribution build for promotion, upgrade, removal, or
   rollback. Promotion selection, replacement, and removal are represented only
   by a new full-snapshot build intent. Rollback accepts only the active
@@ -2452,10 +2652,12 @@ The build-worker transport now exposes the single current
 generation-suffixed module-build package was removed atomically; there is no
 compatibility service, plaintext connection constructor, or fallback route.
 
-Lightweight verification for the current Phase 10 slices on 2026-07-22 is
-limited to touched-file `rustfmt --edition 2021 --check`, `git diff --check`,
-and `cargo metadata --no-deps`. No compile or test suite was run in the shared
-worktree.
+Lightweight verification for the current Phase 10 slices on 2026-07-22 used
+touched-file `rustfmt --edition 2024 --check`, `git diff --check`, and
+`cargo metadata --no-deps`. The formatter check still reports pre-existing
+dirty-worktree import/layout drift in untouched portions of the touched files;
+`git diff --check` and metadata passed. Targeted crate checks are recorded in
+the quality checkpoint above; no workspace-wide compile or test claim is made.
 
 ### Verification Gate
 

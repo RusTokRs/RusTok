@@ -1,6 +1,7 @@
 //! Platform-owned build and release persistence contracts.
 
 pub mod build;
+pub mod control;
 pub mod events;
 pub mod execution;
 pub mod executor;
@@ -12,6 +13,7 @@ pub mod runtime;
 pub mod service;
 
 pub use build::{BuildStage, BuildStatus, DeploymentProfile};
+pub use control::{BuildControl, BuildRollbackCommand, SharedBuildControl};
 pub use events::{
     BuildEvent, BuildEventPublisher, EventBusBuildEventPublisher, NoopBuildEventPublisher,
 };

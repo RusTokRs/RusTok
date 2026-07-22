@@ -24,7 +24,8 @@ module transport adapters, but which should not live in `rustok-core`.
 - used by `apps/server` as the shared composition/root API layer;
 - module crates may depend on `rustok-api` when their GraphQL/REST adapters need shared host/API contracts;
 - default surface does not depend on `rustok-core` and publishes neutral contracts directly;
-- `server` feature enables `rustok-core` only for server-side security/permission/auth/request/GraphQL integration;
+- `runtime` enables the SeaORM-backed `HostRuntimeContext` without HTTP or GraphQL frameworks;
+- `server` includes `runtime` and adds server-side request/GraphQL integration through Axum and Async-GraphQL;
 - outbox runtime composition remains host-owned, so `rustok-api` does not depend on it;
 - must not be duplicated in `apps/server` or in per-module helper crates.
 

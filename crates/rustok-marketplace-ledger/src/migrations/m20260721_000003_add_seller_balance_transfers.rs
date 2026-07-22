@@ -17,9 +17,21 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(EntryBalanceBuckets::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(EntryBalanceBuckets::EntryId).uuid().not_null())
-                    .col(ColumnDef::new(EntryBalanceBuckets::SellerId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(EntryBalanceBuckets::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EntryBalanceBuckets::EntryId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(EntryBalanceBuckets::SellerId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(EntryBalanceBuckets::BalanceBucket)
                             .string_len(32)
@@ -30,7 +42,11 @@ impl MigrationTrait for Migration {
                             .string_len(80)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(EntryBalanceBuckets::SourceId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(EntryBalanceBuckets::SourceId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(EntryBalanceBuckets::CreatedAt)
                             .timestamp_with_time_zone()
@@ -253,7 +269,10 @@ impl MigrationTrait for Migration {
                                 SellerBalanceTransferLines::TenantId,
                             )
                             .from_col(SellerBalanceTransferLines::TransferId)
-                            .to(SellerBalanceTransfers::Table, SellerBalanceTransfers::TenantId)
+                            .to(
+                                SellerBalanceTransfers::Table,
+                                SellerBalanceTransfers::TenantId,
+                            )
                             .to_col(SellerBalanceTransfers::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),

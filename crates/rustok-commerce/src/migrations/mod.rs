@@ -63,9 +63,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260721_000002_create_marketplace_financial_operations::Migration),
         Box::new(m20260721_000003_create_marketplace_paid_event_inbox::Migration),
         Box::new(m20260721_000004_create_marketplace_reversal_event_inbox::Migration),
-        Box::new(
-            m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity::Migration,
-        ),
+        Box::new(m20260721_000005_enforce_marketplace_reversal_event_mysql_integrity::Migration),
         Box::new(m20260721_000006_create_marketplace_reversal_adaptation_failures::Migration),
         Box::new(m20260721_000007_align_language_agnostic_locale_contract::Migration),
     ]

@@ -1,6 +1,6 @@
 //! Deterministic build-time output for reviewed static promotions.
 
-use rustok_modules::ModuleStaticDistributionWorkItem;
+use rustok_modules::{ModuleStaticDistributionExecutorMode, ModuleStaticDistributionWorkItem};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -25,6 +25,7 @@ pub struct GeneratedStaticDistributionSource {
     pub source_reference: String,
     pub source_digest: String,
     pub dependency_lock_digest: String,
+    pub executor_mode: ModuleStaticDistributionExecutorMode,
     pub materialization_path: String,
 }
 
@@ -116,6 +117,7 @@ pub fn generate_static_distribution(
             source_reference: item.source_reference.clone(),
             source_digest: item.source_digest.clone(),
             dependency_lock_digest: item.dependency_lock_digest.clone(),
+            executor_mode: item.executor_mode,
             materialization_path: materialization_path(usize::from(ordinal)),
         });
     }

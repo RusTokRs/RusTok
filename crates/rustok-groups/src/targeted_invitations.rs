@@ -7,9 +7,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
     DbBackend, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::{GroupMembershipStatus, GroupRole, GroupStatus};
@@ -207,7 +206,9 @@ impl GroupTargetedInvitationCommandPort for GroupTargetedInvitationService {
         context: PortContext,
         request: AcceptTargetedGroupInvitationRequest,
     ) -> Result<AcceptGroupInvitationResult, PortError> {
-        self.accept_owned(&context, request).await.map_err(Into::into)
+        self.accept_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -342,7 +343,9 @@ async fn store_receipt<T: Serialize>(
         command_type: Set(command_type.to_string()),
         request_hash: Set(request_hash),
         response: Set(serde_json::to_value(response).map_err(|error| {
-            GroupsError::Invariant(format!("group command response is not serializable: {error}"))
+            GroupsError::Invariant(format!(
+                "group command response is not serializable: {error}"
+            ))
         })?),
         created_at: Set(Utc::now().fixed_offset()),
     }
@@ -379,9 +382,11 @@ async fn append_audit(
 
 fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
     let bytes = serde_json::to_vec(request).map_err(|error| {
-        GroupsError::Validation(format!("group command request is not serializable: {error}"))
+        GroupsError::Validation(format!(
+            "group command request is not serializable: {error}"
+        ))
     })?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(crate::domain::sha256_hex(&bytes))
 }
 
 fn require_write(context: &PortContext) -> GroupsResult<()> {

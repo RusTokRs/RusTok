@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
@@ -166,9 +166,18 @@ pub async fn submit_group_membership_application(
     Ok(GroupsStorefrontSubmitApplicationResult {
         application: GroupsStorefrontMembershipApplication {
             id: response.submit_group_membership_application.application.id,
-            group_id: response.submit_group_membership_application.application.group_id,
-            user_id: response.submit_group_membership_application.application.user_id,
-            policy_id: response.submit_group_membership_application.application.policy_id,
+            group_id: response
+                .submit_group_membership_application
+                .application
+                .group_id,
+            user_id: response
+                .submit_group_membership_application
+                .application
+                .user_id,
+            policy_id: response
+                .submit_group_membership_application
+                .application
+                .policy_id,
             policy_revision: response
                 .submit_group_membership_application
                 .application
@@ -189,8 +198,14 @@ pub async fn submit_group_membership_application(
         },
         membership: GroupsStorefrontApplicationMembership {
             id: response.submit_group_membership_application.membership.id,
-            group_id: response.submit_group_membership_application.membership.group_id,
-            user_id: response.submit_group_membership_application.membership.user_id,
+            group_id: response
+                .submit_group_membership_application
+                .membership
+                .group_id,
+            user_id: response
+                .submit_group_membership_application
+                .membership
+                .user_id,
             role: response
                 .submit_group_membership_application
                 .membership

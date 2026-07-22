@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::model::{
-    ChangeGroupRoleCommand, GroupsAdminDirectory, GroupsAdminFilters,
-    GroupsAdminGovernanceResult, TransferGroupOwnershipCommand,
+    ChangeGroupRoleCommand, GroupsAdminDirectory, GroupsAdminFilters, GroupsAdminGovernanceResult,
+    TransferGroupOwnershipCommand,
 };
 
 #[derive(Debug, Clone)]
@@ -26,7 +26,9 @@ impl From<ServerFnError> for NativeGroupsAdminError {
 pub async fn load_directory(
     filters: GroupsAdminFilters,
 ) -> Result<GroupsAdminDirectory, NativeGroupsAdminError> {
-    groups_admin_directory_native(filters).await.map_err(Into::into)
+    groups_admin_directory_native(filters)
+        .await
+        .map_err(Into::into)
 }
 
 pub async fn change_group_role(
@@ -53,8 +55,8 @@ async fn groups_admin_directory_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, Permission, PortActor,
-            PortContext, TenantContext,
+            AuthContext, HostRuntimeContext, Permission, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{GroupSummaryReadPort, GroupsService, ListGroupsRequest};
         use std::time::Duration;
@@ -136,10 +138,7 @@ async fn groups_admin_directory_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/governance/change-role"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/governance/change-role")]
 async fn groups_admin_change_role_native(
     command: ChangeGroupRoleCommand,
 ) -> Result<GroupsAdminGovernanceResult, ServerFnError> {
@@ -147,8 +146,8 @@ async fn groups_admin_change_role_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             ChangeGroupRoleRequest, GroupGovernanceCommandPort, GroupGovernanceService, GroupRole,
@@ -232,8 +231,8 @@ async fn groups_admin_transfer_ownership_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupGovernanceCommandPort, GroupGovernanceService, TransferGroupOwnershipRequest,

@@ -1,7 +1,7 @@
-use axum::Extension;
-use axum::Router as AxumRouter;
 use axum::middleware as axum_middleware;
 use axum::routing::post;
+use axum::Extension;
+use axum::Router as AxumRouter;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
@@ -238,6 +238,20 @@ pub fn compose_application_router(
         } else {
             runtime_ctx
         };
+        let runtime_ctx = if let Some(catalog) =
+            middleware_runtime_ctx.shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>()
+        {
+            runtime_ctx.with_shared_value(catalog)
+        } else {
+            runtime_ctx
+        };
+        let runtime_ctx = if let Some(build_control) = middleware_runtime_ctx
+            .shared_get::<rustok_build::SharedBuildControl>()
+        {
+            runtime_ctx.with_shared_value(build_control)
+        } else {
+            runtime_ctx
+        };
         if let Some(extensions) =
             middleware_runtime_ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
         {
@@ -273,7 +287,7 @@ pub fn compose_application_router(
                 ))
             })?;
 
-    Ok(mount_application_shell(
+    let router = mount_application_shell(
         router.route(
             "/api/fn/{*fn_name}",
             post(move |req| {
@@ -301,50 +315,53 @@ pub fn compose_application_router(
             .then(build_storefront_router),
     )
     .layer(Extension(runtime.registry))
-    .layer(Extension(runtime.graphql_schema))
-    .layer(axum_middleware::from_fn(
+    .layer(Extension(runtime.graphql_schema));
+    #[cfg(feature = "mod-cart")]
+    let router = router.layer(axum_middleware::from_fn(
         rustok_cart::guest_access_http::resolve,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        middleware_runtime_ctx.clone(),
-        middleware::mcp_scaffold_workspace::authorize_workspace,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        runtime.rate_limit_state,
-        rate_limit_for_paths,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        middleware_runtime_ctx.clone(),
-        middleware::channel::resolve,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        auth_runtime.clone(),
-        middleware::invite_accept::consume_once,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        auth_runtime,
-        middleware::auth_context::resolve_optional,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        middleware_runtime_ctx.clone(),
-        middleware::locale::resolve_locale,
-    ))
-    .layer(axum_middleware::from_fn_with_state(
-        middleware_runtime_ctx,
-        middleware::tenant::resolve,
-    ))
-    .layer(axum_middleware::from_fn(
-        middleware::security_headers::security_headers,
-    )))
+    ));
+
+    Ok(router
+        .layer(axum_middleware::from_fn_with_state(
+            middleware_runtime_ctx.clone(),
+            middleware::mcp_scaffold_workspace::authorize_workspace,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            runtime.rate_limit_state,
+            rate_limit_for_paths,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            middleware_runtime_ctx.clone(),
+            middleware::channel::resolve,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            auth_runtime.clone(),
+            middleware::invite_accept::consume_once,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            auth_runtime,
+            middleware::auth_context::resolve_optional,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            middleware_runtime_ctx.clone(),
+            middleware::locale::resolve_locale,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            middleware_runtime_ctx,
+            middleware::tenant::resolve,
+        ))
+        .layer(axum_middleware::from_fn(
+            middleware::security_headers::security_headers,
+        )))
 }
 
 #[cfg(test)]
 mod tests {
     use super::mount_application_shell;
-    use axum::Router as AxumRouter;
-    use axum::body::{Body, to_bytes};
+    use axum::body::{to_bytes, Body};
     use axum::http::{Request, StatusCode};
     use axum::routing::get;
+    use axum::Router as AxumRouter;
     use tower::ServiceExt;
 
     #[cfg(not(feature = "embed-admin"))]

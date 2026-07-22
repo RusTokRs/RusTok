@@ -5065,6 +5065,10 @@ mod tests {
 
     #[async_trait]
     impl ArtifactBindingExecutor for RecordingUpgradeBindingExecutor {
+        fn supports_payload_kind(&self, _payload_kind: crate::ArtifactPayloadKind) -> bool {
+            true
+        }
+
         async fn dispatch_binding(
             &self,
             dispatch: ArtifactBindingDispatch<'_>,

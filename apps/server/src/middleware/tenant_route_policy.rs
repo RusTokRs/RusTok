@@ -20,7 +20,7 @@ pub(crate) fn tenant_route_scope(path: &str) -> TenantRouteScope {
     if matches!(path, "/metrics" | "/api/openapi.json" | "/api/openapi.yaml")
         || path == "/api/graphql/schema.graphql"
         || path_is_or_descendant(path, "/api/install")
-        || path_is_or_descendant(path, "/v1/catalog")
+        || path_is_or_descendant(path, "/catalog")
         || path_is_or_descendant(path, "/catalog")
         || path_is_or_descendant(path, "/health")
     {
@@ -53,7 +53,7 @@ mod tests {
             TenantRouteScope::TenantBound
         );
         assert_eq!(
-            tenant_route_scope("/v1/catalog/modules"),
+            tenant_route_scope("/catalog/modules"),
             TenantRouteScope::GlobalOperator
         );
         assert_eq!(

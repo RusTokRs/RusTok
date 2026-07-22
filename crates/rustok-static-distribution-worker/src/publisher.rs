@@ -702,7 +702,12 @@ fn read_bounded_regular(
         ));
     }
     let mut file = fs::File::open(path).map_err(io_error)?;
-    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    let capacity = usize::try_from(metadata.len()).map_err(|_| {
+        StaticDistributionPublisherError::InvalidInput(
+            "publisher input length cannot be represented on this platform".to_string(),
+        )
+    })?;
+    let mut bytes = Vec::with_capacity(capacity);
     file.read_to_end(&mut bytes).map_err(io_error)?;
     if bytes.len() as u64 != metadata.len() {
         return Err(StaticDistributionPublisherError::Io(

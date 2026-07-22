@@ -102,7 +102,10 @@ async fn adapt_reversal_events(
     instance_id: u64,
     backfill: &rustok_commerce::MarketplaceProviderReversalBackfillService,
 ) {
-    match backfill.adapt_pending(MARKETPLACE_FINANCIAL_SWEEP_BATCH).await {
+    match backfill
+        .adapt_pending(MARKETPLACE_FINANCIAL_SWEEP_BATCH)
+        .await
+    {
         Ok(report) if report.selected > 0 => {
             tracing::info!(
                 worker = "marketplace_financial_recovery",

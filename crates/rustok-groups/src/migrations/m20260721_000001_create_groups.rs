@@ -115,7 +115,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(GroupTranslations::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupTranslations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(GroupTranslations::GroupId).uuid().not_null())
                     .col(
                         ColumnDef::new(GroupTranslations::Locale)
@@ -275,8 +279,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(GroupFeatureBindings::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(GroupFeatureBindings::GroupId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupFeatureBindings::GroupId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(GroupFeatureBindings::FeatureKey)
                             .string_len(160)

@@ -22,8 +22,8 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const REGISTRY_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const REGISTRY_MUTATION_SCHEMA_VERSION: u32 = 1;
-const REGISTRY_CATALOG_PATH: &str = "/v1/catalog";
-const REGISTRY_CATALOG_MODULE_PATH: &str = "/v1/catalog/{slug}";
+const REGISTRY_CATALOG_PATH: &str = "/catalog";
+const REGISTRY_CATALOG_MODULE_PATH: &str = "/catalog/{slug}";
 const REGISTRY_PUBLISH_PATH: &str = "/v2/catalog/publish";
 const REGISTRY_PUBLISH_STATUS_PATH: &str = "/v2/catalog/publish/{request_id}";
 const REGISTRY_PUBLISH_ARTIFACT_PATH: &str = "/v2/catalog/publish/{request_id}/artifact";

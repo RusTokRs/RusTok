@@ -11,6 +11,7 @@
 - Keep REST upload/list/get/delete/translation handlers on narrow `MediaHttpRuntime` state; the manifest-declared Axum router builds it from `HostRuntimeContext` and a typed storage handle.
 - Publish the module-owned Leptos admin UI crate `rustok-media-admin`.
 - Own storage-backed media lifecycle state while calling the shared `object_store` runtime directly.
+- Own durable write-port idempotency receipts and tenant-composite persistence integrity.
 - Generate immutable source and rendition keys through the canonical tenant/date/shard policy.
 - Own validated image edit recipes and bounded pure-Rust processing.
 - Publish the module-local `rustok-media-cli` adapter with `media reconcile`, keeping CLI/runtime assembly outside the domain crate.
@@ -40,6 +41,9 @@
   monolith uses the embedded provider; `rustok-media-transport` supplies a
   loopback-verified gRPC provider with the same owner service, DTO, deadline,
   typed-error, database/schema, storage-credential, and port semantics.
+  Remote tonic servers require host-authenticated `TrustedMediaAuthority` with
+  an explicit `MediaGrpcOperation` allow-list in request extensions;
+  serialized caller tenant/principal claims are not trusted.
 
 ## Entry points
 
@@ -66,7 +70,9 @@
 ## Runtime notes
 
 - Translation upserts normalize locale and text payloads before persistence: locale values are trimmed/lowercased, blank optional text fields become `None`, and translation lists are returned in locale order.
-- Reconciliation uses object metadata probes and preserves owner-local lifecycle evidence; a missing object must transition lifecycle state instead of silently erasing the asset record.
+- Reconciliation prioritizes delete tombstones, rotates ready blobs through
+  persisted progress, and preserves owner-local lifecycle evidence. Missing
+  rendition output is isolated from a healthy source asset.
 - Upload-session reconciliation removes completed or expired staging objects and preserves
   retryable failures. Repeating finalization returns the asset already bound to the session.
 - `media reconcile` creates storage explicitly from the CLI's `storage` settings snapshot and requires the CLI database runtime. Its limit is global across tenants, so it bounds one maintenance invocation without changing owner-local lifecycle policy.

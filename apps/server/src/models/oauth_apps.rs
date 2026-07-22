@@ -1,6 +1,6 @@
 //! Business logic wrapper for OAuth apps
 
-use rustok_api::{normalize_locale_tag, Permission};
+use rustok_api::{Permission, normalize_locale_tag};
 use sea_orm::sea_query::{Alias, OnConflict, Query};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection,
@@ -11,8 +11,8 @@ use std::{future::Future, str::FromStr};
 use uuid::Uuid;
 
 use super::_entities::oauth_apps::ActiveModel as DatabaseActiveModel;
-use super::_entities::{oauth_app_translations, tenants};
 pub use super::_entities::oauth_apps::{Column, Entity, Model, Relation};
+use super::_entities::{oauth_app_translations, tenants};
 
 const LEGACY_UNDETERMINED_LOCALE: &str = "und";
 const MANIFEST_GENERATED_COPY_LOCALE: &str = "en";
@@ -185,7 +185,7 @@ impl ActiveModel {
 }
 
 fn database_active(model: ActiveModel) -> DatabaseActiveModel {
-    let mut active = DatabaseActiveModel::default();
+    let mut active = <DatabaseActiveModel as Default>::default();
     active.id = model.id;
     active.tenant_id = model.tenant_id;
     active.slug = model.slug;
@@ -208,7 +208,10 @@ fn database_active(model: ActiveModel) -> DatabaseActiveModel {
     active
 }
 
-fn active_value<T: Clone>(value: &ActiveValue<T>) -> Option<T> {
+fn active_value<T>(value: &ActiveValue<T>) -> Option<T>
+where
+    T: Clone + Into<sea_orm::Value>,
+{
     match value {
         ActiveValue::Set(value) | ActiveValue::Unchanged(value) => Some(value.clone()),
         ActiveValue::NotSet => None,
@@ -353,13 +356,14 @@ async fn hydrate_tenant_default_or_identifier(
     db: &DatabaseConnection,
     mut model: Model,
 ) -> Result<Model, DbErr> {
-    let tenant = tenants::Entity::find_by_id(model.tenant_id).one(db).await?;
+    let tenant = tenants::Entity::find_by_id(db, model.tenant_id).await?;
     if let Some(locale) = tenant
         .as_ref()
         .and_then(|tenant| normalize_locale_tag(tenant.default_locale.as_str()))
         .filter(|locale| locale != LEGACY_UNDETERMINED_LOCALE)
     {
-        if let Some(translation) = resolve_translation(db, model.tenant_id, model.id, &locale).await?
+        if let Some(translation) =
+            resolve_translation(db, model.tenant_id, model.id, &locale).await?
         {
             model.name = translation.name;
             model.description = translation.description;

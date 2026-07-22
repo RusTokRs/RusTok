@@ -1,7 +1,7 @@
 use std::{ffi::OsString, path::PathBuf};
 
 use rustok_static_distribution_worker::{
-    run_static_distribution_publisher, StaticDistributionPublisherPaths,
+    StaticDistributionPublisherPaths, run_static_distribution_publisher,
 };
 
 #[tokio::main]

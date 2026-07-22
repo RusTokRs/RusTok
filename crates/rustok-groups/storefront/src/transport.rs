@@ -7,7 +7,7 @@ mod native_applications_adapter;
 #[path = "transport/native_server_adapter.rs"]
 mod native_server_adapter;
 
-use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
+use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 
 use crate::application_model::{
     GroupsStorefrontApplicationPolicy, GroupsStorefrontApplicationPolicyQuery,
@@ -116,9 +116,7 @@ pub async fn load_groups_storefront_application_policy(
         "groups.storefront.applications.policy",
         context.path(),
         move || native_applications_adapter::load_group_application_policy(native_query),
-        move || {
-            graphql_applications_adapter::load_group_application_policy(token, tenant, query)
-        },
+        move || graphql_applications_adapter::load_group_application_policy(token, tenant, query),
     )
     .await
 }
@@ -133,9 +131,7 @@ pub async fn submit_groups_storefront_membership_application(
     execute_selected_transport(
         "groups.storefront.applications.submit",
         context.path(),
-        move || {
-            native_applications_adapter::submit_group_membership_application(native_command)
-        },
+        move || native_applications_adapter::submit_group_membership_application(native_command),
         move || {
             graphql_applications_adapter::submit_group_membership_application(
                 token, tenant, command,

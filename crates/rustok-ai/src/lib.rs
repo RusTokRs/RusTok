@@ -144,13 +144,12 @@ impl rustok_core::RusToKModule for AiModule {
         &self,
         extensions: &mut rustok_core::ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
-        let deployment = runtime_extensions::AiDeploymentRuntime::from_environment().map_err(
-            |error| {
+        let deployment =
+            runtime_extensions::AiDeploymentRuntime::from_environment().map_err(|error| {
                 rustok_core::Error::Validation(format!(
                     "invalid deployment-owned AI runtime configuration: {error}"
                 ))
-            },
-        )?;
+            })?;
         extensions.insert(deployment.secret_registry);
         extensions.insert(deployment.egress_policy);
         extensions.insert(deployment.provider_targets);

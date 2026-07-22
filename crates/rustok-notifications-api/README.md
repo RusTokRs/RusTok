@@ -18,6 +18,9 @@ persistence, delivery provider SDK, contact data, source database model, or UI.
 - materialize those factories only after the executable host has a neutral
   `HostRuntimeContext`.
 
+The `server` feature explicitly enables `rustok-api/runtime`; notification
+contracts do not rely on unrelated host crates to activate that dependency.
+
 ## Safety boundaries
 
 Template data is a bounded string map and cannot contain arbitrary JSON or HTML.

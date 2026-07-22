@@ -1,5 +1,5 @@
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
@@ -14,7 +14,10 @@ use rustok_core::events::ValidateEvent;
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_product::CatalogService;
+use rustok_product::{
+    dto::{ProductResponse, ProductTranslationResponse},
+    CatalogService,
+};
 
 use rustok_commerce_foundation::dto::PriceInput;
 use rustok_commerce_foundation::entities;
@@ -1974,12 +1977,10 @@ fn apply_price_list_rule_to_resolved_price(
     }
 }
 
-fn map_product_detail(
-    product: rustok_commerce_foundation::dto::ProductResponse,
-) -> StorefrontPricingProductDetail {
+fn map_product_detail(product: ProductResponse) -> StorefrontPricingProductDetail {
     StorefrontPricingProductDetail {
         id: product.id,
-        status: product.status,
+        status: map_product_status(product.status),
         seller_id: product.seller_id,
         vendor: product.vendor,
         product_type: product.product_type,
@@ -2021,7 +2022,7 @@ fn map_product_detail(
 }
 
 fn map_admin_list_item(
-    product: rustok_commerce_foundation::dto::ProductResponse,
+    product: ProductResponse,
     locale: &str,
     fallback_locale: &str,
 ) -> AdminPricingProductListItem {
@@ -2030,7 +2031,7 @@ fn map_admin_list_item(
 
     AdminPricingProductListItem {
         id: product.id,
-        status: product.status,
+        status: map_product_status(product.status),
         seller_id: product.seller_id,
         title: translation
             .map(|translation| translation.title.clone())
@@ -2048,12 +2049,12 @@ fn map_admin_list_item(
 }
 
 fn map_admin_detail(
-    product: rustok_commerce_foundation::dto::ProductResponse,
+    product: ProductResponse,
     mut prices_by_variant: HashMap<Uuid, Vec<entities::price::Model>>,
 ) -> AdminPricingProductDetail {
     AdminPricingProductDetail {
         id: product.id,
-        status: product.status,
+        status: map_product_status(product.status),
         seller_id: product.seller_id,
         vendor: product.vendor,
         product_type: product.product_type,
@@ -2254,10 +2255,10 @@ fn price_specificity_cmp(
 }
 
 fn pick_product_translation<'a>(
-    translations: &'a [rustok_commerce_foundation::dto::ProductTranslationResponse],
+    translations: &'a [ProductTranslationResponse],
     locale: &str,
     fallback_locale: &str,
-) -> Option<&'a rustok_commerce_foundation::dto::ProductTranslationResponse> {
+) -> Option<&'a ProductTranslationResponse> {
     translations
         .iter()
         .find(|translation| locale_tags_match(&translation.locale, locale))
@@ -2269,4 +2270,12 @@ fn pick_product_translation<'a>(
             })?
         })
         .or_else(|| translations.first())
+}
+
+fn map_product_status(status: rustok_product::entities::product::ProductStatus) -> ProductStatus {
+    match status {
+        rustok_product::entities::product::ProductStatus::Draft => ProductStatus::Draft,
+        rustok_product::entities::product::ProductStatus::Active => ProductStatus::Active,
+        rustok_product::entities::product::ProductStatus::Archived => ProductStatus::Archived,
+    }
 }

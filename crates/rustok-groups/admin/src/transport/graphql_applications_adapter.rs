@@ -1,15 +1,15 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
-    GroupsAdminApplicationAnswer, GroupsAdminApplicationPolicy,
-    GroupsAdminApplicationPolicyQuery, GroupsAdminApplicationQuestion,
-    GroupsAdminApplicationRule, GroupsAdminMembership, GroupsAdminMembershipApplication,
-    GroupsAdminMembershipApplicationConnection, GroupsAdminMembershipApplicationQuery,
-    GroupsAdminReviewApplicationResult, GroupsAdminUpsertApplicationPolicyResult,
-    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
+    GroupsAdminApplicationAnswer, GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
+    GroupsAdminApplicationQuestion, GroupsAdminApplicationRule, GroupsAdminMembership,
+    GroupsAdminMembershipApplication, GroupsAdminMembershipApplicationConnection,
+    GroupsAdminMembershipApplicationQuery, GroupsAdminReviewApplicationResult,
+    GroupsAdminUpsertApplicationPolicyResult, ReviewGroupMembershipApplicationCommand,
+    UpsertGroupApplicationPolicyCommand,
 };
 
 pub type GraphqlGroupsApplicationError = String;
@@ -18,19 +18,27 @@ const POLICY_FIELDS: &str = "id group_id: groupId revision enabled locale questi
 const APPLICATION_FIELDS: &str = "id group_id: groupId user_id: userId policy_id: policyId policy_revision: policyRevision policy_locale: policyLocale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required } answers { key value } acknowledged_rule_keys: acknowledgedRuleKeys status submitted_at: submittedAt reviewed_at: reviewedAt reviewed_by_user_id: reviewedByUserId review_note: reviewNote";
 
 fn policy_query() -> String {
-    format!("query GroupsAdminApplicationPolicy($groupId: UUID!) {{ group_application_policy: groupApplicationPolicy(groupId: $groupId) {{ {POLICY_FIELDS} }} }}")
+    format!(
+        "query GroupsAdminApplicationPolicy($groupId: UUID!) {{ group_application_policy: groupApplicationPolicy(groupId: $groupId) {{ {POLICY_FIELDS} }} }}"
+    )
 }
 
 fn upsert_policy_mutation() -> String {
-    format!("mutation GroupsAdminUpsertApplicationPolicy($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}")
+    format!(
+        "mutation GroupsAdminUpsertApplicationPolicy($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}"
+    )
 }
 
 fn list_applications_query() -> String {
-    format!("query GroupsAdminMembershipApplications($groupId: UUID!, $status: GroupApplicationStatusGql, $page: Int, $perPage: Int) {{ group_membership_applications: groupMembershipApplications(groupId: $groupId, status: $status, page: $page, perPage: $perPage) {{ total page per_page: perPage items {{ {APPLICATION_FIELDS} }} }} }}")
+    format!(
+        "query GroupsAdminMembershipApplications($groupId: UUID!, $status: GroupApplicationStatusGql, $page: Int, $perPage: Int) {{ group_membership_applications: groupMembershipApplications(groupId: $groupId, status: $status, page: $page, perPage: $perPage) {{ total page per_page: perPage items {{ {APPLICATION_FIELDS} }} }} }}"
+    )
 }
 
 fn review_application_mutation() -> String {
-    format!("mutation GroupsAdminReviewMembershipApplication($idempotencyKey: String!, $applicationId: UUID!, $decision: GroupApplicationReviewDecisionGql!, $note: String) {{ review_group_membership_application: reviewGroupMembershipApplication(idempotencyKey: $idempotencyKey, applicationId: $applicationId, decision: $decision, note: $note) {{ application {{ {APPLICATION_FIELDS} }} membership {{ id group_id: groupId user_id: userId role status }} group_version: groupVersion replayed }} }}")
+    format!(
+        "mutation GroupsAdminReviewMembershipApplication($idempotencyKey: String!, $applicationId: UUID!, $decision: GroupApplicationReviewDecisionGql!, $note: String) {{ review_group_membership_application: reviewGroupMembershipApplication(idempotencyKey: $idempotencyKey, applicationId: $applicationId, decision: $decision, note: $note) {{ application {{ {APPLICATION_FIELDS} }} membership {{ id group_id: groupId user_id: userId role status }} group_version: groupVersion replayed }} }}"
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -208,7 +216,12 @@ pub async fn load_group_application_policy(
 ) -> Result<GroupsAdminApplicationPolicy, GraphqlGroupsApplicationError> {
     let response: PolicyResponse = execute_graphql(
         &graphql_url(),
-        GraphqlRequest::new(&policy_query(), Some(PolicyVariables { group_id: query.group_id })),
+        GraphqlRequest::new(
+            &policy_query(),
+            Some(PolicyVariables {
+                group_id: query.group_id,
+            }),
+        ),
         token,
         tenant_slug,
         None,

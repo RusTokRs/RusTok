@@ -265,8 +265,8 @@ pub fn register_notification_source_provider_factory<F>(
 where
     F: NotificationSourceProviderFactory + 'static,
 {
-    let registry = extensions
-        .get_or_insert_with::<Arc<NotificationSourceFactoryRegistry>, _>(|| {
+    let registry =
+        extensions.get_or_insert_with::<Arc<NotificationSourceFactoryRegistry>, _>(|| {
             Arc::new(NotificationSourceFactoryRegistry::default())
         });
     Arc::make_mut(registry).register(factory)
@@ -283,12 +283,13 @@ pub fn materialize_notification_source_registry(
         .unwrap_or_else(|| Arc::new(NotificationSourceFactoryRegistry::default()));
 
     for (declared, factory) in &factories.factories {
-        let provider = factory.build(host).map_err(|error| {
-            NotificationSourceRegistryError::FactoryBuild {
-                source: declared.clone(),
-                error,
-            }
-        })?;
+        let provider =
+            factory
+                .build(host)
+                .map_err(|error| NotificationSourceRegistryError::FactoryBuild {
+                    source: declared.clone(),
+                    error,
+                })?;
         let built = provider.slug();
         if &built != declared {
             return Err(NotificationSourceRegistryError::FactorySourceMismatch {
