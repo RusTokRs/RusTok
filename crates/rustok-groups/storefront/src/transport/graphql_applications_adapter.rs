@@ -5,15 +5,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
     GroupsStorefrontApplicationMembership, GroupsStorefrontApplicationPolicy,
-    GroupsStorefrontApplicationPolicyQuery, GroupsStorefrontApplicationQuestion,
-    GroupsStorefrontApplicationRule, GroupsStorefrontMembershipApplication,
-    GroupsStorefrontSubmitApplicationResult, SubmitGroupMembershipApplicationCommand,
+    GroupsStorefrontApplicationPolicyPrecondition, GroupsStorefrontApplicationPolicyQuery,
+    GroupsStorefrontApplicationQuestion, GroupsStorefrontApplicationRule,
+    GroupsStorefrontMembershipApplication, GroupsStorefrontSubmitApplicationResult,
+    SubmitGroupMembershipApplicationCommand,
 };
 
 pub type GraphqlGroupsApplicationError = String;
 
 const POLICY_QUERY: &str = "query GroupsStorefrontApplicationPolicy($groupId: UUID!) { group_application_policy: groupApplicationPolicy(groupId: $groupId) { id group_id: groupId revision enabled locale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required } } }";
-const SUBMIT_APPLICATION_MUTATION: &str = "mutation GroupsStorefrontSubmitApplication($idempotencyKey: String!, $groupId: UUID!, $input: SubmitGroupMembershipApplicationInputGql!) { submit_group_membership_application: submitGroupMembershipApplication(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) { application { id group_id: groupId user_id: userId policy_id: policyId policy_revision: policyRevision policy_locale: policyLocale status submitted_at: submittedAt } membership { id group_id: groupId user_id: userId role status } group_version: groupVersion replayed } }";
+const SUBMIT_APPLICATION_MUTATION: &str = "mutation GroupsStorefrontSubmitApplicationIfCurrent($idempotencyKey: String!, $groupId: UUID!, $expectedPolicy: GroupApplicationPolicyPreconditionInputGql!, $input: SubmitGroupMembershipApplicationInputGql!) { submit_group_membership_application: submitGroupMembershipApplicationIfCurrent(idempotencyKey: $idempotencyKey, groupId: $groupId, expectedPolicy: $expectedPolicy, input: $input) { application { id group_id: groupId user_id: userId policy_id: policyId policy_revision: policyRevision policy_locale: policyLocale status submitted_at: submittedAt } membership { id group_id: groupId user_id: userId role status } group_version: groupVersion replayed } }";
 
 #[derive(Debug, Serialize)]
 struct PolicyVariables {
@@ -27,7 +28,27 @@ struct SubmitVariables {
     idempotency_key: String,
     #[serde(rename = "groupId")]
     group_id: String,
+    #[serde(rename = "expectedPolicy")]
+    expected_policy: PolicyPreconditionInput,
     input: SubmitInput,
+}
+
+#[derive(Debug, Serialize)]
+struct PolicyPreconditionInput {
+    #[serde(rename = "policyId")]
+    policy_id: String,
+    revision: u64,
+    locale: String,
+}
+
+impl From<GroupsStorefrontApplicationPolicyPrecondition> for PolicyPreconditionInput {
+    fn from(value: GroupsStorefrontApplicationPolicyPrecondition) -> Self {
+        Self {
+            policy_id: value.policy_id,
+            revision: value.revision,
+            locale: value.locale,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -115,6 +136,7 @@ pub async fn load_group_application_policy(
     tenant_slug: Option<String>,
     query: GroupsStorefrontApplicationPolicyQuery,
 ) -> Result<GroupsStorefrontApplicationPolicy, GraphqlGroupsApplicationError> {
+    let locale = Some(query.locale.clone());
     let response: PolicyResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
@@ -125,7 +147,7 @@ pub async fn load_group_application_policy(
         ),
         token,
         tenant_slug,
-        None,
+        locale,
     )
     .await
     .map_err(|error| error.to_string())?;
@@ -137,6 +159,7 @@ pub async fn submit_group_membership_application(
     tenant_slug: Option<String>,
     command: SubmitGroupMembershipApplicationCommand,
 ) -> Result<GroupsStorefrontSubmitApplicationResult, GraphqlGroupsApplicationError> {
+    let locale = Some(command.expected_policy.locale.clone());
     let response: SubmitResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
@@ -144,6 +167,7 @@ pub async fn submit_group_membership_application(
             Some(SubmitVariables {
                 idempotency_key: command.idempotency_key,
                 group_id: command.group_id,
+                expected_policy: command.expected_policy.into(),
                 input: SubmitInput {
                     answers: command
                         .answers
@@ -159,7 +183,7 @@ pub async fn submit_group_membership_application(
         ),
         token,
         tenant_slug,
-        None,
+        locale,
     )
     .await
     .map_err(|error| error.to_string())?;

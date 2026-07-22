@@ -83,10 +83,9 @@ Membership-application policies follow the same rule:
 - a submitted application stores the policy revision, locale, and immutable
   question/rule snapshot seen by the candidate.
 
-The visual policy editor in this source slice is intentionally bound to the
-host-resolved effective locale. An explicit multi-locale management picker requires a
-future read contract carrying the selected locale rather than mutating only the UI
-field.
+The current visual editor and storefront application form are bound to the
+host-resolved exact locale. An explicit multi-locale management picker requires a
+future manager read contract carrying the selected locale.
 
 ### Privacy
 
@@ -98,7 +97,7 @@ field.
 - provider unavailability fails closed for private content;
 - no transport fallback may bypass an owner denial or timeout.
 
-### Commands
+### Commands and concurrency
 
 Writes require deadline plus idempotency key. Owner services repeat authorization
 and invariant checks inside the transaction. Successful command state, group
@@ -108,10 +107,23 @@ Policy revision capture is performed by a database trigger after the owner-manag
 translation INSERT/UPDATE, so the current policy write and append-only history row
 commit or roll back together. The history table rejects UPDATE and DELETE.
 
-The current admin editor performs a non-atomic stale preflight by rereading the
-current policy revision before save. This reduces accidental overwrites but is not an
-atomic expected-revision guarantee. A future command contract must compare an
-expected revision while holding the owner transaction lock.
+Interactive policy save and candidate submit use
+`GroupApplicationCasCommandPort`. Each command carries the policy ID, revision, and
+exact locale that the client rendered. The owner locks the group row, reloads the
+current exact-locale policy, and checks the precondition before writing policy,
+membership, application, version, audit, or receipt state. A mismatch returns the
+stable conflict code `groups.application_policy_changed`.
+
+Idempotent receipt replay is checked before the precondition is re-evaluated. An
+already-committed identical command therefore replays its result even when the
+policy has subsequently advanced.
+
+The older unconditional methods on `GroupApplicationCommandPort` remain public only
+for Rust source compatibility. Module-owned admin and storefront FFA do not use them
+for policy save or candidate submit. The final GraphQL root does not expose the
+legacy unconditional policy-save or candidate-submit mutations; it composes the
+pre-application mutation root with CAS save/submit and review. Removing or versioning
+those legacy Rust methods remains a separate API migration gate.
 
 ## Current implementation state
 
@@ -134,8 +146,13 @@ The following source exists:
   approve/reject review;
 - append-only membership policy revision storage, manager-only history port, native
   and GraphQL history adapters, and a localized visual policy editor;
-- editor controls for add/remove/reorder questions and rules, bounds preparation,
-  loading/history states, and a disclosed non-atomic stale preflight;
+- atomic expected-policy CAS for admin policy save and candidate submit under the
+  owner group lock, with a stable conflict code and idempotent replay semantics;
+- final GraphQL no-bypass composition exposing CAS save/submit and review while
+  omitting the legacy unconditional application mutations;
+- admin stale-save handling that requires an explicit reload after conflict;
+- storefront stale-submit handling that preserves the `apply` route, blocks repeated
+  submit, clears old answers on explicit reload, and reloads the exact-locale policy;
 - Rust ports, final merged GraphQL roots, native Leptos server functions, explicit
   native/GraphQL transport selection, admin review UI, and storefront application UI;
 - EN/RU copy, FBA registry, live README contracts, and focused static guards.
@@ -144,11 +161,12 @@ The following evidence remains open and must not be inferred:
 
 - compilation and executed unit/integration tests;
 - PostgreSQL and SQLite migration execution/rollback evidence;
-- native/GraphQL result and error parity;
+- native/GraphQL result, stable-code, and error parity;
 - policy history backfill, trigger atomicity, append-only rejection, and pagination
   execution;
-- atomic expected-revision enforcement for policy save and candidate submission;
-- idempotency replay, concurrent submit/review/policy-write, and lock-order evidence;
+- atomic stale policy save/submit race execution and lock-order evidence;
+- idempotency replay, concurrent submit/review/policy-write, and recovery evidence;
+- removal or versioned deprecation of the legacy unconditional Rust methods;
 - bulk-review limits, confirmation, partial-failure, and audit evidence;
 - accessibility and keyboard/screen-reader execution;
 - Notifications consumer ingestion/fan-out/retry/recovery evidence;
@@ -162,9 +180,9 @@ The following evidence remains open and must not be inferred:
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
 | GROUPS-02 | in_progress | group identity, localized presentation, visibility, join policy, feature bindings, receipts/audit, targeted source events | lifecycle/runtime/concurrency evidence |
 | GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | request/bans/concurrency completion |
-| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, governance ports | provider/consumer/fallback runtime matrix |
+| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, application-CAS, governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, storefront discovery, invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
-| GROUPS-06 | in_progress | localized policy, ordered questions/rules, application snapshots, submit/review, append-only revision history, visual editor, stale preflight | atomic revision guard, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
+| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, stale recovery UX | legacy Rust-port migration, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
 | GROUPS-07 | planned | bans, suspension, expiry, reason, bulk moderation, moderation adapter | all implementation/evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and group navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
@@ -198,13 +216,17 @@ The following evidence remains open and must not be inferred:
 - `GroupApplicationReadPort::read_group_application_policy`;
 - `GroupApplicationReadPort::list_group_membership_applications`;
 - `GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions`;
-- `GroupApplicationCommandPort::upsert_group_application_policy`;
-- `GroupApplicationCommandPort::submit_group_membership_application`;
+- `GroupApplicationCasCommandPort::upsert_group_application_policy_if_current`;
+- `GroupApplicationCasCommandPort::submit_group_membership_application_if_current`;
 - `GroupApplicationCommandPort::review_group_membership_application`.
 
 The history read port uses the same active owner/admin/moderator or platform-manage
 authorization boundary as application review. Candidates cannot enumerate policy
 history.
+
+`GroupApplicationCommandPort::upsert_group_application_policy` and
+`submit_group_membership_application` remain Rust compatibility methods. They are not
+used by module-owned FFA and are not exposed by the final GraphQL root.
 
 ### Policy invariants
 
@@ -214,8 +236,12 @@ history.
 - prompts, help text, rule titles/bodies, and answer limits are bounded by Unicode
   scalar count;
 - policy reads require the host-resolved exact locale and never select another row;
-- policy upsert increments policy revision and group version atomically with receipt
-  and audit;
+- a CAS update requires either no expected policy when no policy exists, or a matching
+  policy ID, positive revision, and exact locale when a policy exists;
+- the comparison occurs after the group lock and before policy state mutation;
+- a mismatch returns `groups.application_policy_changed` and writes no owner state;
+- successful policy upsert increments policy revision and group version atomically
+  with receipt and audit;
 - policy revision capture occurs in the same database transaction through PostgreSQL
   or SQLite triggers;
 - current policy rows remain mutable owner state while revision rows are append-only;
@@ -226,6 +252,11 @@ history.
 - only active `request` join-policy groups accept applications;
 - secret groups return not-found semantics;
 - the actor must be an authenticated, non-banned, non-active candidate;
+- submit requires the policy ID, revision, and exact locale that produced the form;
+- the owner compares that precondition after the group lock and before membership or
+  application lookup/write;
+- stale forms return `groups.application_policy_changed` without creating or changing
+  membership, application, group version, audit, or receipt state;
 - required answers must be non-empty and within the per-question limit;
 - unknown answer keys and unknown rule acknowledgements are rejected;
 - every required rule key must be acknowledged;
@@ -249,29 +280,29 @@ history.
 ### FFA surfaces
 
 - admin framework-neutral policy/history/review models and preparation core;
-- admin native and GraphQL policy/history/list/review adapters through one facade;
+- admin native and GraphQL CAS policy/history/list/review adapters through one facade;
 - localized visual policy editor for adding/removing/reordering questions and rules;
 - editor history list with revision, locale, actor, timestamp, enabled state, and item
   counts;
 - host-resolved locale rendered read-only in the current editor;
-- non-atomic stale preflight that blocks the save UX when the loaded revision differs;
+- editor submits its loaded policy identity to owner CAS and requires explicit reload
+  after `groups.application_policy_changed`;
 - localized pending review workspace displaying candidate, policy revision/locale,
   answers, and acknowledged rules;
 - storefront request-group links using `apply=<group_uuid>`;
-- storefront framework-neutral dynamic-form validation;
-- native and GraphQL policy/submit adapters through one facade;
-- localized question/rule form with loading, validation, error, and success states;
+- storefront framework-neutral dynamic-form validation and policy precondition capture;
+- native and GraphQL CAS submit adapters through one facade;
+- stale storefront forms block repeated submit, preserve the route, and expose explicit
+  reload that clears old answers and acknowledgements;
 - `apply` query removal only after successful submission;
 - no implicit native/GraphQL fallback.
 
 ### GROUPS-06 remaining work
 
-- atomic expected-revision enforcement inside policy upsert and candidate submit
-  transactions, including a stable conflict code;
-- explicit candidate stale-policy reload UX when the policy changes between render and
-  submit;
-- explicit multi-locale admin picker backed by an owner read contract carrying the
-  selected exact locale;
+- remove or version-deprecate the legacy unconditional Rust policy save/submit methods
+  after all external Rust consumers migrate to `GroupApplicationCasCommandPort`;
+- explicit multi-locale admin picker backed by an owner manager read contract carrying
+  the selected exact locale;
 - candidate cancellation and manager reopen/resubmit policy;
 - bulk review with bounded selection, confirmation, per-item results, and audit;
 - profile-backed candidate summaries through `ProfilesReader` without copying profile
@@ -279,8 +310,8 @@ history.
 - application submitted/reviewed semantic events and optional Notifications consumer;
 - operator filtering, pagination controls, pickers, and audit/receipt history;
 - keyboard, focus, validation association, and screen-reader evidence;
-- executed parity, replay, concurrency, lock-order, migration, security, and recovery
-  evidence.
+- executed parity, replay, stale-race, concurrency, lock-order, migration, security,
+  retry, and recovery evidence.
 
 ## Other open Groups contracts
 
@@ -288,7 +319,7 @@ Localization remains `in_progress`: localization idempotent receipts/replay,
 last-translation delete rejection execution, localization idempotency replay, and
 native/GraphQL concurrency evidence remain open.
 
-Targeted invitation delivery remains `in_progress`: the owner emits
+targeted invitation delivery remains `in_progress`: the owner emits
 `groups.invitation.targeted_created`, exposes `GroupTargetedInvitationCommandPort`,
 and registers a neutral source provider, while targeted invitation notification
 runtime, fan-out, retry, and recovery evidence remain open.
@@ -313,6 +344,8 @@ ownership and Groups never embeds another module's business UI directly.
 - Groups access provider unavailable: deny private content.
 - Application exact-locale policy unavailable: application form/editor is unavailable;
   do not select another locale.
+- Policy CAS conflict: write no owner state, preserve the selected transport error, and
+  require explicit reload before retry.
 - Policy history unavailable: current owner policy remains authoritative; hide history
   and do not synthesize revisions.
 - Native or GraphQL application transport failure: surface the selected-path error;
@@ -337,9 +370,11 @@ cargo test -p rustok-groups
 node scripts/verify/verify-groups-boundary.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
+node scripts/verify/verify-groups-invitation-acceptance-ui.mjs
 node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
+node scripts/verify/verify-groups-application-policy-cas.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
@@ -353,12 +388,13 @@ Additional executable evidence required for GROUPS-06 promotion:
 - policy exact-locale read and missing-locale failure;
 - required/optional question and rule validation;
 - banned, active-member, secret-group, and non-request-group denial;
-- idempotent policy save, submit, and review replay;
-- concurrent policy writers with atomic expected-revision conflict;
+- idempotent CAS policy save, CAS submit, and review replay;
+- concurrent policy writers with one successful revision and stable stale conflict;
+- policy change racing candidate submit with no stale membership/application write;
 - concurrent duplicate submit;
 - concurrent approve/reject with one terminal outcome;
 - approve member-count correctness and no double increment;
-- native/GraphQL result and stable error parity;
+- native/GraphQL result, conflict-code, and error parity;
 - selected-transport no-fallback behavior;
 - EN/RU editor/form/review rendering and accessibility execution.
 
@@ -374,6 +410,7 @@ security, retry, or recovery command was executed for this source slice. Therefo
 - `membership_application_transport_parity` remains `null`;
 - `membership_application_concurrency` remains `null`;
 - `membership_application_policy_revision` remains `null`;
+- `membership_application_policy_cas` remains `null`;
 - `membership_application_bulk_review` remains `null`.
 
 ## Definition of release-ready Groups MVP
