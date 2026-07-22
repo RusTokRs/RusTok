@@ -132,7 +132,7 @@ pub mod source_inbox {
         pub last_error_message: Option<String>,
         pub completed_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
-        pub updated_at: DateTimeWithTimeZone>,
+        pub updated_at: DateTimeWithTimeZone,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
