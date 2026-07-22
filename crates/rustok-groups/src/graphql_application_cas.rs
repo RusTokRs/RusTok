@@ -191,7 +191,11 @@ fn port_context(
 
 fn map_port_error(error: PortError) -> FieldError {
     if error.code == GROUP_APPLICATION_POLICY_CHANGED_CODE {
-        return FieldError::new(error.message).extend_with(|_, extensions| {
+        return FieldError::new(format!(
+            "{}: {}",
+            GROUP_APPLICATION_POLICY_CHANGED_CODE, error.message
+        ))
+        .extend_with(|_, extensions| {
             extensions.set("code", GROUP_APPLICATION_POLICY_CHANGED_CODE);
             extensions.set("kind", "CONFLICT");
         });
