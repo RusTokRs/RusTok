@@ -1,4 +1,4 @@
-use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -112,9 +112,30 @@ pub struct PublishPageReceipt {
     pub published_at: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RollbackPageReceipt {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "pageId")]
+    pub page_id: String,
+    pub version: i32,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: String,
+    #[serde(rename = "targetPublishOperationId")]
+    pub target_publish_operation_id: String,
+    #[serde(rename = "sourceArtifactSetHash")]
+    pub source_artifact_set_hash: String,
+    #[serde(rename = "targetArtifactSetHash")]
+    pub target_artifact_set_hash: String,
+    pub replayed: bool,
+    #[serde(rename = "rolledBackAt")]
+    pub rolled_back_at: String,
+}
+
 #[derive(Clone, Debug)]
 pub enum PagePublicationResult {
     Published(PublishPageReceipt),
+    RolledBack(RollbackPageReceipt),
     Unpublished(PageMutationResult),
 }
 
@@ -122,6 +143,7 @@ impl PagePublicationResult {
     pub fn page_id(&self) -> &str {
         match self {
             Self::Published(receipt) => &receipt.page_id,
+            Self::RolledBack(receipt) => &receipt.page_id,
             Self::Unpublished(page) => &page.id,
         }
     }
@@ -129,6 +151,7 @@ impl PagePublicationResult {
     pub fn version(&self) -> i32 {
         match self {
             Self::Published(receipt) => receipt.version,
+            Self::RolledBack(receipt) => receipt.version,
             Self::Unpublished(page) => page.version,
         }
     }
