@@ -202,7 +202,7 @@ at the end of this file remain authoritative.
 | `FORUM-09` | `done` | Forum-owned versioned event catalog and journal, merged through PR #1732. |
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
-| `FORUM-12` | `in_progress` | FORUM-12A/B1/B2/C deliver bounded extraction, append-only relations, active owner integration, versioned mention events and bounded reads; FORUM-12D1 adds exact-locale quote replacement commands. Inline D2 input, visibility/privacy integration and runtime evidence remain. |
+| `FORUM-12` | `in_progress` | FORUM-12A/B1/B2/C deliver bounded extraction, append-only relations, active owner integration, versioned mention events and bounded reads; FORUM-12D1/D2 add exact-locale replacement and inline quote commands with lost-update protection. Visibility/privacy integration and PostgreSQL/notifications runtime evidence remain. |
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
@@ -297,7 +297,8 @@ verified; they are no longer active execution items.
 
 ### Wave C — participation product
 
-1. finish `FORUM-12D2` inline quote input, then complete visibility/privacy and executable notification/runtime evidence for `FORUM-12`;
+1. complete PostgreSQL concurrency/runtime evidence for `FORUM-12`, then finish
+   visibility/privacy and executable notification evidence under `NOTIFY-03/07`;
 2. `FORUM-16`;
 3. `FORUM-17`;
 4. `FORUM-18`;
@@ -571,36 +572,54 @@ quoted target and quoted revision so edits do not rewrite history.
 - REST, GraphQL and OpenAPI expose dedicated topic/reply quote replacement
   commands without transport access to `MentionRelationService`.
 
+### Delivered in `FORUM-12D2`
+
+- separate topic/reply command DTOs accept bounded typed quote references without
+  changing the existing Rust create/update DTO structs;
+- create commands treat omitted quotes as an empty initial set, while update
+  commands distinguish omitted preservation, explicit empty clear and explicit
+  full replacement;
+- legacy facade create/update methods convert to command DTOs, so ordinary body
+  edits preserve the latest exact-locale quote set instead of silently clearing
+  it;
+- omitted preservation records the relation revision used during preparation,
+  locks the active source in the owner transaction and returns retryable
+  `FORUM_RELATION_REVISION_CONFLICT` if D1 or D2 changed the stream concurrently;
+- canonical body persistence, immutable relation projection, mention events,
+  outbox/journal rows and existing source counters/events remain one transaction;
+- existing REST create/update routes consume command DTOs, while GraphQL keeps
+  legacy mutations and adds additive `*WithQuotes` mutations;
+- SQLite source coverage proves stale omitted-preserve conflict and explicit
+  clear semantics without exposing the persistence seam to transports.
+
 ### Compatibility and degraded mode
 
 Existing source locales retain their `legacy` seed identity until an active
 owner write appends a canonical relation revision. Existing topic/reply
-create/edit DTOs remain source-compatible; D1 adds a separate quote replacement
-command rather than adding mandatory fields to Rust DTO literals. Notifications
-remain an optional downstream consumer and are never called synchronously from
-Forum transactions.
+create/edit DTOs remain source-compatible; separate D1/D2 command DTOs carry
+quote relations. Legacy body edits route through D2 and preserve current quotes.
+Notifications remain an optional downstream consumer and are never called
+synchronously from Forum transactions.
 
 ### Remaining scope
 
 FORUM-12 remains `in_progress` until all of the following are delivered:
 
-- `FORUM-12D2` composes optional inline quote input into topic/reply create and
-  body-edit owner commands without weakening the separate D1 replacement
-  semantics or breaking existing callers;
 - recheck blocked/private/deleted target and source visibility for notification
   consumption and target opening under NOTIFY-03/07;
-- add PostgreSQL runtime, concurrent owner-write, deletion/purge and executable
-  notifications-off/on evidence.
+- add PostgreSQL runtime, concurrent D1/D2 owner-write, deletion/purge and
+  executable notifications-off/on evidence.
 
 ### Definition of done
 
 - mention resolution is tenant/profile scoped and idempotent by source revision;
 - the source event contains target identity, not recipient contact data;
-- quote commands retain immutable target revision identity and are bounded;
+- quote commands retain immutable target revision identity, are bounded and
+  conflict rather than restore a stale preserved set;
 - blocked, private, deleted and unauthorized targets cannot generate or open a
   notification;
 - tests cover edit diffs, duplicate handles, code blocks, escaping, caps, quote
-  replacement/clear and replay.
+  replacement/clear/preserve, replay and expected-revision conflicts.
 
 ### Verification
 
@@ -608,6 +627,7 @@ FORUM-12 remains `in_progress` until all of the following are delivered:
 cargo test -p rustok-forum --test mention_contract
 cargo test -p rustok-forum mention_relation
 cargo test -p rustok-forum quote_command
+cargo test -p rustok-forum inline_quote
 node scripts/verify/verify-forum-mention-contract.mjs
 node scripts/verify/verify-forum-mention-contract.test.mjs
 node scripts/verify/verify-forum-mention-persistence.mjs
@@ -656,7 +676,7 @@ typed capability-unavailable error.
 - category colors remain restricted to safe bounded hexadecimal values;
 - `CategoryCoverMediaCandidate` is a transport-neutral validation input containing
   only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`;
-- cover candidate policy rejects foreign tenants, unsupported MIME, size or
+- cover candidate policy rejects foreign tenants, unsupported image MIME, size or
   dimension violations, descriptor mismatch and non-direct-public delivery;
 - a verifier rejects Media persistence/storage access and arbitrary category
   image URL/path fields;
@@ -1442,6 +1462,7 @@ cargo test -p rustok-forum --test owner_lifecycle_sqlite
 cargo test -p rustok-forum --test mention_contract
 cargo test -p rustok-forum mention_relation
 cargo test -p rustok-forum quote_command
+cargo test -p rustok-forum inline_quote
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1485,7 +1506,7 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `FORUM-12D2`: compose optional inline quote input into topic/reply create and body-edit owner commands;
+1. `FORUM-12`: PostgreSQL concurrent D1/D2 owner-write, deletion and notifications-off runtime evidence;
 2. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
 3. `NOTIFY-01`: inbox/preferences schema;
 4. `NOTIFY-03`: durable consumer and bounded fan-out;
@@ -1533,7 +1554,7 @@ possible.
 
 # Immediate next action
 
-Implement `FORUM-12D2`: add optional inline quote input to topic/reply create and
-body-edit owner commands without weakening the D1 full-replacement command,
-breaking existing Rust callers, or exposing the relation persistence seam to
-REST or GraphQL. Keep Notifications an optional downstream consumer.
+Add PostgreSQL concurrent owner-write and runtime evidence for `FORUM-12`,
+covering omitted-preserve CAS against D1/D2 replacement, soft deletion and the
+notifications-off profile. Keep privacy/open authorization under NOTIFY-03/07
+and never make Notifications a synchronous Forum command dependency.
