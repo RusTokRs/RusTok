@@ -80,3 +80,16 @@ This source slice creates the durable schema only. It does not yet call
 6. post `payout_settlement` after confirmed provider success;
 7. post `payout_reversal` after confirmed external reversal;
 8. retain PostgreSQL contention, restart, reconciliation, and mounted transport evidence.
+
+## Durable reservation orchestration
+
+The command port now schedules payouts through a durable operation journal. Selected seller-payable entries are grouped by order because a ledger balance transfer is order-scoped. Each group receives an idempotent `reserve_hold`; the existing payout receipt transaction runs only after all holds are posted. Failed operations release posted holds in reverse order using the Reserved-bucket credit entries returned by the ledger.
+
+Hosts that expose the payout command port must compose both sides explicitly:
+
+```rust
+MarketplacePayoutService::new(db, ledger_reader)
+    .with_ledger_writer(ledger_writer)
+```
+
+The direct receipt scheduler is crate-private so external callers cannot bypass balance reservation.

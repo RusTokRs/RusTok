@@ -3,9 +3,8 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::dto::{
-    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutListResponse,
-    MarketplacePayoutResponse, ReadMarketplacePayoutRequest,
-    ScheduleMarketplacePayoutInput,
+    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutListResponse, MarketplacePayoutResponse,
+    ReadMarketplacePayoutRequest, ScheduleMarketplacePayoutInput,
 };
 use crate::error::MarketplacePayoutError;
 
@@ -69,15 +68,9 @@ impl MarketplacePayoutCommandPort for crate::MarketplacePayoutService {
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
-        self.schedule_with_receipt(
-            context,
-            tenant_id,
-            actor_id,
-            idempotency_key,
-            request,
-        )
-        .await
-        .map_err(map_owner_error)
+        self.schedule_with_operation(context, tenant_id, actor_id, idempotency_key, request)
+            .await
+            .map_err(map_owner_error)
     }
 }
 
@@ -135,6 +128,38 @@ fn map_owner_error(error: MarketplacePayoutError) -> PortError {
         MarketplacePayoutError::ReceiptCorrupt => PortError::invariant_violation(
             "marketplace_payout.receipt_corrupt",
             "payout receipt requires operator review",
+        ),
+        MarketplacePayoutError::LedgerWriterNotConfigured => PortError::new(
+            PortErrorKind::Unavailable,
+            "marketplace_payout.ledger_writer_not_configured",
+            "marketplace payout ledger writer is not configured",
+            false,
+        ),
+        MarketplacePayoutError::OperationInProgress(operation_id) => PortError::new(
+            PortErrorKind::Unavailable,
+            "marketplace_payout.operation_in_progress",
+            format!("marketplace payout operation {operation_id} is already being processed"),
+            true,
+        ),
+        MarketplacePayoutError::OperationFailed { operation_id, code } => PortError::conflict(
+            "marketplace_payout.operation_failed",
+            format!("marketplace payout operation {operation_id} failed with code {code:?}"),
+        ),
+        MarketplacePayoutError::CompensationRequired(operation_id) => PortError::new(
+            PortErrorKind::Unavailable,
+            "marketplace_payout.compensation_required",
+            format!("marketplace payout operation {operation_id} requires compensation retry"),
+            true,
+        ),
+        MarketplacePayoutError::ReconciliationRequired(operation_id) => {
+            PortError::invariant_violation(
+                "marketplace_payout.reconciliation_required",
+                format!("marketplace payout operation {operation_id} requires reconciliation"),
+            )
+        }
+        MarketplacePayoutError::OperationCorrupt(operation_id) => PortError::invariant_violation(
+            "marketplace_payout.operation_corrupt",
+            format!("marketplace payout operation {operation_id} is corrupt"),
         ),
         MarketplacePayoutError::Validation(message) => {
             PortError::validation("marketplace_payout.validation", message)

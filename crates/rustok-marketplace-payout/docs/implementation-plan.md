@@ -114,3 +114,15 @@ The module remains `in_progress`. Schema or source inspection alone must not pro
 FBA status. Promotion requires compiled contracts, clean/upgraded database evidence,
 concurrent reservation proof, process restart recovery, provider redelivery, ledger
 reconciliation, mounted transports, and operator workflows.
+
+## Implemented reservation slice
+
+- durable operation admission and request-hash replay
+- lease/revision claim before side effects
+- deterministic per-order `reserve_hold` children
+- persisted ledger request and response payloads for crash recovery
+- existing atomic payout receipt transaction reused after reservation
+- reverse-order `reserve_release` compensation based on Reserved credit entries
+- retryable compensation and operator reconciliation states
+
+External provider submission and Reserved-to-Paid settlement remain separate follow-up slices.

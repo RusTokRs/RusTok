@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod operation_orchestration;
 mod receipts;
 #[cfg(test)]
 mod tests;

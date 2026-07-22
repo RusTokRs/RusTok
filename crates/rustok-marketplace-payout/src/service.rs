@@ -1,30 +1,33 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use chrono::Utc;
 use rustok_api::PortContext;
 use rustok_core::generate_id;
 use rustok_marketplace_ledger::{
     ListMarketplaceSellerLedgerEntriesRequest, MarketplaceLedgerAccountCode,
-    MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryResponse,
+    MarketplaceLedgerCommandPort, MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryResponse,
     MarketplaceLedgerReadPort,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use uuid::Uuid;
 
 use crate::dto::{
-    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutItemResponse,
-    MarketplacePayoutListResponse, MarketplacePayoutResponse, MarketplacePayoutStatus,
-    ScheduleMarketplacePayoutInput, MAX_PAYOUTS_PER_PAGE, MAX_PAYOUT_ITEMS_PER_BATCH,
+    ListMarketplaceSellerPayoutsRequest, MAX_PAYOUT_ITEMS_PER_BATCH, MAX_PAYOUTS_PER_PAGE,
+    MarketplacePayoutItemResponse, MarketplacePayoutListResponse, MarketplacePayoutResponse,
+    MarketplacePayoutStatus, ScheduleMarketplacePayoutInput,
 };
 use crate::entities::{item, payout};
 use crate::error::{MarketplacePayoutError, MarketplacePayoutResult};
 use crate::receipts::{
-    admit_receipt, complete_receipt, normalize_idempotency_key, replay_existing,
-    replay_receipt, rollback_receipt, schedule_request_hash, NewPayoutReceipt,
-    PayoutReceiptAdmission,
+    NewPayoutReceipt, PayoutReceiptAdmission, admit_receipt, complete_receipt,
+    normalize_idempotency_key, replay_existing, replay_receipt, rollback_receipt,
+    schedule_request_hash,
 };
 
 const LEDGER_PAGE_SIZE: u64 = 200;
@@ -32,21 +35,39 @@ const LEDGER_PAGE_SIZE: u64 = 200;
 pub struct MarketplacePayoutService {
     db: DatabaseConnection,
     ledger_reader: Arc<dyn MarketplaceLedgerReadPort>,
+    ledger_writer: Option<Arc<dyn MarketplaceLedgerCommandPort>>,
 }
 
 impl MarketplacePayoutService {
-    pub fn new(
-        db: DatabaseConnection,
-        ledger_reader: Arc<dyn MarketplaceLedgerReadPort>,
+    pub fn new(db: DatabaseConnection, ledger_reader: Arc<dyn MarketplaceLedgerReadPort>) -> Self {
+        Self {
+            db,
+            ledger_reader,
+            ledger_writer: None,
+        }
+    }
+
+    pub fn with_ledger_writer(
+        mut self,
+        ledger_writer: Arc<dyn MarketplaceLedgerCommandPort>,
     ) -> Self {
-        Self { db, ledger_reader }
+        self.ledger_writer = Some(ledger_writer);
+        self
+    }
+
+    pub(crate) fn ledger_writer(
+        &self,
+    ) -> MarketplacePayoutResult<Arc<dyn MarketplaceLedgerCommandPort>> {
+        self.ledger_writer
+            .clone()
+            .ok_or(MarketplacePayoutError::LedgerWriterNotConfigured)
     }
 
     pub fn database(&self) -> &DatabaseConnection {
         &self.db
     }
 
-    pub async fn schedule_with_receipt(
+    pub(crate) async fn schedule_with_receipt(
         &self,
         context: PortContext,
         tenant_id: Uuid,
@@ -57,13 +78,8 @@ impl MarketplacePayoutService {
         let input = normalize_schedule_input(input)?;
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = schedule_request_hash(actor_id, &input)?;
-        if let Some(response) = replay_existing(
-            &self.db,
-            tenant_id,
-            key.as_str(),
-            hash.as_str(),
-        )
-        .await?
+        if let Some(response) =
+            replay_existing(&self.db, tenant_id, key.as_str(), hash.as_str()).await?
         {
             return Ok(response);
         }
@@ -71,15 +87,7 @@ impl MarketplacePayoutService {
         let entries = self
             .load_selected_entries(context, tenant_id, &input)
             .await?;
-        match admit_receipt(
-            &self.db,
-            tenant_id,
-            actor_id,
-            key,
-            hash.as_str(),
-        )
-        .await?
-        {
+        match admit_receipt(&self.db, tenant_id, actor_id, key, hash.as_str()).await? {
             PayoutReceiptAdmission::Replay(receipt) => replay_receipt(receipt, hash.as_str()),
             PayoutReceiptAdmission::New(receipt) => {
                 let result = schedule_in_transaction(&receipt, tenant_id, input, entries).await;
@@ -145,7 +153,10 @@ impl MarketplacePayoutService {
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let payout_models = paginator.fetch_page(page.saturating_sub(1)).await?;
-        let payout_ids = payout_models.iter().map(|model| model.id).collect::<Vec<_>>();
+        let payout_ids = payout_models
+            .iter()
+            .map(|model| model.id)
+            .collect::<Vec<_>>();
         let mut items_by_payout = item::Entity::find()
             .filter(item::Column::TenantId.eq(tenant_id))
             .filter(item::Column::PayoutId.is_in(payout_ids))
@@ -153,10 +164,16 @@ impl MarketplacePayoutService {
             .all(&self.db)
             .await?
             .into_iter()
-            .fold(HashMap::<Uuid, Vec<MarketplacePayoutItemResponse>>::new(), |mut grouped, model| {
-                grouped.entry(model.payout_id).or_default().push(map_item(model));
-                grouped
-            });
+            .fold(
+                HashMap::<Uuid, Vec<MarketplacePayoutItemResponse>>::new(),
+                |mut grouped, model| {
+                    grouped
+                        .entry(model.payout_id)
+                        .or_default()
+                        .push(map_item(model));
+                    grouped
+                },
+            );
         let items = payout_models
             .into_iter()
             .map(|model| {
@@ -172,13 +189,17 @@ impl MarketplacePayoutService {
         })
     }
 
-    async fn load_selected_entries(
+    pub(crate) async fn load_selected_entries(
         &self,
         context: PortContext,
         tenant_id: Uuid,
         input: &ScheduleMarketplacePayoutInput,
     ) -> MarketplacePayoutResult<Vec<MarketplaceLedgerEntryResponse>> {
-        let wanted = input.ledger_entry_ids.iter().copied().collect::<HashSet<_>>();
+        let wanted = input
+            .ledger_entry_ids
+            .iter()
+            .copied()
+            .collect::<HashSet<_>>();
         let mut found = HashMap::<Uuid, MarketplaceLedgerEntryResponse>::new();
         let mut page = 1_u64;
         loop {
@@ -242,9 +263,9 @@ async fn schedule_in_transaction(
         ));
     }
     let total_amount = entries.iter().try_fold(0_i64, |total, entry| {
-        total.checked_add(entry.amount).ok_or_else(|| {
-            MarketplacePayoutError::Validation("payout total overflow".to_string())
-        })
+        total
+            .checked_add(entry.amount)
+            .ok_or_else(|| MarketplacePayoutError::Validation("payout total overflow".to_string()))
     })?;
     if total_amount <= 0 {
         return Err(MarketplacePayoutError::Validation(
@@ -298,7 +319,7 @@ async fn schedule_in_transaction(
     map_payout(payout_model, payout_items)
 }
 
-fn normalize_schedule_input(
+pub(crate) fn normalize_schedule_input(
     mut input: ScheduleMarketplacePayoutInput,
 ) -> MarketplacePayoutResult<ScheduleMarketplacePayoutInput> {
     if input.seller_id.is_nil() {

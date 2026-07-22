@@ -20,18 +20,23 @@
   "dependency": {
     "module": "marketplace_ledger",
     "read_port": "MarketplaceLedgerReadPort",
-    "future_command_port": "MarketplaceLedgerCommandPort",
     "read_operation": "list_seller_entries",
     "reserve_operation": "post_seller_balance_transfer.reserve_hold",
     "release_operation": "post_seller_balance_transfer.reserve_release",
     "completed_receipt_replay_before_provider_read": true,
     "required_account": "seller_payable",
     "required_direction": "credit",
-    "single_order_per_balance_transfer": true
+    "single_order_per_balance_transfer": true,
+    "command_port": "MarketplaceLedgerCommandPort"
   },
   "ports": {
-    "read": ["read_payout", "list_seller_payouts"],
-    "command": ["schedule_payout"],
+    "read": [
+      "read_payout",
+      "list_seller_payouts"
+    ],
+    "command": [
+      "schedule_payout"
+    ],
     "deadline_required": true,
     "write_idempotency_required": true
   },
@@ -44,7 +49,10 @@
     "single_seller_required": true,
     "single_currency_required": true,
     "positive_amount_required": true,
-    "receipt_identity_scope": ["tenant_id", "idempotency_key"],
+    "receipt_identity_scope": [
+      "tenant_id",
+      "idempotency_key"
+    ],
     "request_identity": "canonical_sha256_v1",
     "lost_response_replay_returns_saved_result": true,
     "conflicting_payload": "marketplace_payout.idempotency_conflict",
@@ -60,7 +68,9 @@
     "safe_error_code_only": true,
     "per_order_child_operations": true,
     "deterministic_compensation_order": "reverse_sequence",
-    "ledger_transfer_identity_persisted": true
+    "ledger_transfer_identity_persisted": true,
+    "runtime_orchestration_implemented": true,
+    "host_composition_ready": false
   },
   "execution": {
     "included_in_this_slice": false,
@@ -73,9 +83,7 @@
     "marketplace_root_read_projection": true
   },
   "known_gaps": [
-    "reserve_hold runtime orchestration",
-    "durable reserve_release compensation",
-    "operation transition and lease service",
+    "host command-port composition and live runtime evidence",
     "provider account and execution lifecycle",
     "verified provider webhook inbox",
     "lookup recovery",
