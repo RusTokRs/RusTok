@@ -106,7 +106,8 @@ async fn setup_db() -> DatabaseConnection {
             reply_count INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            last_reply_at TEXT
+            last_reply_at TEXT,
+            deleted_at TEXT
         )"#,
         r#"CREATE TABLE forum_topic_translations (
             id TEXT PRIMARY KEY,
@@ -129,7 +130,8 @@ async fn setup_db() -> DatabaseConnection {
             status TEXT NOT NULL,
             position INTEGER NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
         )"#,
         r#"CREATE TABLE forum_reply_bodies (
             id TEXT PRIMARY KEY,
