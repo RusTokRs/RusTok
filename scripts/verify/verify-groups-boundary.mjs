@@ -165,12 +165,20 @@ if (exists("crates/rustok-groups/src/graphql_application_cas.rs")) {
   const graphql = read("crates/rustok-groups/src/graphql_application_cas.rs");
   for (const marker of [
     "GroupsBaseQueryRoot",
-    "GroupsBaseMutationRoot",
+    "GroupsPreApplicationMutationRoot",
     "GroupsApplicationCasMutation",
     "upsert_group_application_policy_if_current",
     "submit_group_membership_application_if_current",
+    "review_group_membership_application",
   ]) {
     if (!graphql.includes(marker)) failures.push(`Groups final GraphQL root is missing marker: ${marker}`);
+  }
+  for (const forbidden of [
+    "GroupsMutationRoot as GroupsBaseMutationRoot",
+    "async fn upsert_group_application_policy(\n",
+    "async fn submit_group_membership_application(\n",
+  ]) {
+    if (graphql.includes(forbidden)) failures.push(`Groups final GraphQL root exposes a forbidden legacy path: ${forbidden}`);
   }
 }
 
@@ -219,6 +227,7 @@ if (exists("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (registry?.membership_applications?.transport_fallback !== "never") failures.push("Application transport must never fall back implicitly");
   if (registry?.membership_applications?.policy_revision_history !== "implemented_source") failures.push("Policy revision history must remain source-only before runtime evidence");
   if (registry?.membership_applications?.atomic_expected_revision_guard !== "implemented_source") failures.push("Atomic expected-revision guard must be source-complete");
+  if (registry?.membership_applications?.final_graphql_legacy_application_mutations !== "not_exposed") failures.push("Final GraphQL root must not expose legacy application mutations");
   if (registry?.evidence?.membership_application_policy_cas !== null) failures.push("Unexecuted application CAS evidence must remain null");
 }
 
@@ -237,4 +246,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups aggregate ownership, privacy, exact-locale, FFA/FBA, application CAS/history, invitation, governance, and no-fallback boundary checks passed.");
+console.log("Groups aggregate ownership, privacy, exact-locale, FFA/FBA, application CAS/history, GraphQL no-bypass, invitation, governance, and no-fallback boundary checks passed.");
