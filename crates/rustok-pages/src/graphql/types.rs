@@ -69,6 +69,19 @@ pub struct GqlPublishPageResult {
     pub published_at: String,
 }
 
+#[derive(Clone, Debug, SimpleObject)]
+pub struct GqlRollbackPageResult {
+    pub operation_id: Uuid,
+    pub page_id: Uuid,
+    pub version: i32,
+    pub idempotency_key: String,
+    pub target_publish_operation_id: Uuid,
+    pub source_artifact_set_hash: String,
+    pub target_artifact_set_hash: String,
+    pub replayed: bool,
+    pub rolled_back_at: String,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
 pub enum GqlMenuLocation {
     Header,
@@ -148,6 +161,12 @@ pub struct PublishGqlPageInput {
     pub expected_body_revisions: Vec<GqlPageBodyRevisionInput>,
     pub idempotency_key: String,
     pub runtime: ReviewedGqlPagePublishRuntimeInput,
+}
+
+#[derive(InputObject)]
+pub struct RollbackGqlPageInput {
+    pub expected_version: i32,
+    pub idempotency_key: String,
 }
 
 #[derive(InputObject)]
@@ -244,6 +263,22 @@ impl From<crate::PublishPageResult> for GqlPublishPageResult {
             artifact_set_hash: result.artifact_set_hash,
             replayed: result.replayed,
             published_at: result.published_at,
+        }
+    }
+}
+
+impl From<crate::RollbackPageResult> for GqlRollbackPageResult {
+    fn from(result: crate::RollbackPageResult) -> Self {
+        Self {
+            operation_id: result.operation_id,
+            page_id: result.page_id,
+            version: result.version,
+            idempotency_key: result.idempotency_key,
+            target_publish_operation_id: result.target_publish_operation_id,
+            source_artifact_set_hash: result.source_artifact_set_hash,
+            target_artifact_set_hash: result.target_artifact_set_hash,
+            replayed: result.replayed,
+            rolled_back_at: result.rolled_back_at,
         }
     }
 }
