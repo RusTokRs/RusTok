@@ -17,14 +17,16 @@ persistence seam public and does not call Notifications.
 
 ## Command semantics
 
-- `SetForumQuotesInput` carries an exact source locale and at most 32 unique
-  typed quote references.
-- The submitted list is a full replacement for that source revision projection.
-- An empty list clears all quote relations while preserving mentions extracted
-  from the unchanged canonical body.
-- Duplicate quote references are normalized deterministically before the bound
-  is enforced.
-- Topic and reply targets require their corresponding update owner scope.
+- `SetForumQuotesInput` carries an exact source locale and a required quote list
+  containing at most 32 typed references.
+- The submitted list is a full replacement for that source revision projection;
+  omitting the list is rejected rather than interpreted as destructive clear.
+- An explicit empty list clears all quote relations while preserving mentions
+  extracted from the unchanged canonical body.
+- Exact duplicate quote references within the raw bound are normalized
+  deterministically.
+- Topic and reply sources require their corresponding update owner scope and
+  soft-deleted sources reject new relation revisions.
 - Missing, foreign-tenant, kind-mismatched or target-mismatched revisions fail
   with the existing safe `FORUM_QUOTE_TARGET_UNAVAILABLE` class.
 
@@ -36,8 +38,10 @@ through `MentionRelationService::persist_in_tx`. The new immutable relation
 revision, mention targets, quote targets, mention events, transactional outbox
 rows and Forum event journal rows commit or roll back together.
 
-An identical replacement replays the current relation revision. Unchanged or
-removed mentions do not produce mention events.
+The bounded response is materialized from the exact persisted revision before
+commit, so a post-commit read failure cannot turn a successful write into a
+reported error. An identical replacement replays the current relation revision.
+Unchanged or removed mentions do not produce mention events.
 
 ## Transport
 
