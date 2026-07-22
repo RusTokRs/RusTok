@@ -1,0 +1,72 @@
+name: Pages Menu Layout Slots Main Publish
+
+on:
+  pull_request:
+    paths:
+      - "scripts/temporary/apply_pages_menu_layout_slots.py"
+      - ".github/workflows/pages-menu-layout-slots-main-publish.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Prepare publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/temporary/apply_pages_menu_layout_slots.py /tmp/apply_pages_menu_layout_slots.py
+      - name: Apply and commit directly to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          product_files=(
+            apps/storefront/build.rs
+            apps/storefront/src/app/mod.rs
+            apps/storefront/src/modules/registry.rs
+            apps/storefront/src/widgets/header/mod.rs
+            apps/storefront/src/widgets/footer/mod.rs
+            apps/storefront/tests/pages_menu_layout_slots_contract.rs
+            crates/rustok-pages/rustok-module.toml
+            crates/rustok-pages/storefront/src/lib.rs
+            crates/rustok-pages/storefront/src/model.rs
+            crates/rustok-pages/storefront/src/transport/graphql_adapter.rs
+            crates/rustok-pages/storefront/src/transport/mod.rs
+            crates/rustok-pages/storefront/src/transport/native_server_adapter.rs
+            crates/rustok-pages/storefront/src/ui/menu.rs
+            crates/rustok-pages/storefront/src/ui/mod.rs
+            crates/rustok-pages/storefront/tests/active_menu_transport_contract.rs
+            docs/modules/manifest.md
+            xtask/src/module_ui_metadata_contracts.rs
+            xtask/src/xtask_types.rs
+          )
+          expected=$(printf '%s\n' "${product_files[@]}" | sort)
+
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git checkout -B pages-menu-layout-publish origin/main
+            python /tmp/apply_pages_menu_layout_slots.py
+            git diff --check
+            git add "${product_files[@]}"
+            actual=$(git diff --cached --name-only --diff-filter=ACMR | sort)
+            if [[ "$actual" != "$expected" ]]; then
+              echo "Unexpected staged files"
+              diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "feat(pages-storefront): mount active menus in layout slots"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "main moved during publish attempt ${attempt}; retrying"
+          done
+          exit 1
