@@ -1,3 +1,9 @@
+//! Search admin native transport composition.
+//!
+//! The included parts own the `#[server]` endpoints, resolve `HostRuntimeContext`,
+//! and obtain the typed event bus through
+//! `shared_get::<rustok_outbox::TransactionalEventBus>()`.
+
 include!("native_server_adapter/api.rs");
 include!("native_server_adapter/read_bootstrap.rs");
 include!("native_server_adapter/read_diagnostics.rs");
