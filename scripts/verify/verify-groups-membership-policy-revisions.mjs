@@ -104,8 +104,11 @@ requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
 ]);
 requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsBaseQueryRoot",
-  "GroupsBaseMutationRoot",
+  "GroupsPreApplicationMutationRoot",
   "GroupsApplicationCasMutation",
+]);
+forbidMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+  "GroupsMutationRoot as GroupsBaseMutationRoot",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
   'query = "graphql_application_cas::GroupsQueryRoot"',
@@ -262,6 +265,9 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
     if (applications?.atomic_expected_revision_guard !== "implemented_source") {
       failures.push("Groups atomic expected-revision guard must be source-complete");
     }
+    if (applications?.final_graphql_legacy_application_mutations !== "not_exposed") {
+      failures.push("Groups final GraphQL root must not expose legacy application mutations");
+    }
     if (
       registry?.evidence?.membership_policy_revision_static_boundary !==
       "scripts/verify/verify-groups-membership-policy-revisions.mjs"
@@ -292,4 +298,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups membership policy revision, exact-locale CAS transport, editor, and append-only boundary checks passed.");
+console.log("Groups membership policy revision, exact-locale CAS, GraphQL no-bypass, editor, and append-only boundary checks passed.");
