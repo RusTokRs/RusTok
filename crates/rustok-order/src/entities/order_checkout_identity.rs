@@ -9,6 +9,8 @@ pub struct Model {
     pub tenant_id: Uuid,
     pub order_id: Uuid,
     pub source_cart_id: Option<Uuid>,
+    pub payment_collection_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
     pub snapshot_hash: Option<String>,
     pub request_hash: Option<String>,
     pub created_at: DateTimeWithTimeZone,
