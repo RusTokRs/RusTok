@@ -133,7 +133,7 @@ for (const marker of [
   "pub struct ForumRelationReadService",
   "pub async fn get(",
   "Action::Read",
-  "RelationRevisionUnavailable",
+  "relation_revision_unavailable",
   "MAX_MENTIONS_PER_REVISION",
   "MAX_QUOTES_PER_REVISION",
   "order_by_desc",
