@@ -35,9 +35,27 @@ pub struct GroupsAdminApplicationPolicyQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyPrecondition {
+    pub policy_id: String,
+    pub revision: u64,
+    pub locale: String,
+}
+
+impl From<&GroupsAdminApplicationPolicy> for GroupsAdminApplicationPolicyPrecondition {
+    fn from(value: &GroupsAdminApplicationPolicy) -> Self {
+        Self {
+            policy_id: value.id.clone(),
+            revision: value.revision,
+            locale: value.locale.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpsertGroupApplicationPolicyCommand {
     pub idempotency_key: String,
     pub group_id: String,
+    pub expected_policy: Option<GroupsAdminApplicationPolicyPrecondition>,
     pub locale: String,
     pub enabled: bool,
     pub questions: Vec<GroupsAdminApplicationQuestion>,
