@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MenuLocation {
     Header,
@@ -57,4 +57,13 @@ pub struct MenuItemResponse {
     pub url: String,
     pub icon: Option<String>,
     pub children: Vec<MenuItemResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ActiveMenuBindingResponse {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub channel_id: Uuid,
+    pub location: MenuLocation,
+    pub menu_id: Uuid,
 }
