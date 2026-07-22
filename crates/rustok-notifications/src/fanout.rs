@@ -80,7 +80,7 @@ impl NotificationFanoutService {
             return Ok(receipt(existing, true));
         }
 
-        let now = now();
+        let timestamp = now();
         let candidate = source_inbox::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(event.tenant_id()),
@@ -97,8 +97,8 @@ impl NotificationFanoutService {
             last_error_code: Set(None),
             last_error_message: Set(None),
             completed_at: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
+            created_at: Set(timestamp),
+            updated_at: Set(timestamp),
         };
 
         match candidate.insert(&self.db).await {
@@ -291,6 +291,13 @@ impl NotificationFanoutService {
         };
         let (recipients, next_cursor) = page.into_parts();
         let next_cursor = next_cursor.map(|cursor| cursor.as_str().to_string());
+        if recipients.len() > usize::from(limit)
+            || (recipients.is_empty() && next_cursor.is_some())
+        {
+            return self
+                .fail_job(&claimed, worker_id, NotificationError::ProviderRejected)
+                .await;
+        }
         if next_cursor.is_some() && next_cursor == claimed.audience_cursor {
             return self
                 .fail_job(&claimed, worker_id, NotificationError::CursorDidNotAdvance)
@@ -356,15 +363,17 @@ impl NotificationFanoutService {
             return Ok(current);
         }
 
-        let now = now();
+        let timestamp = now();
         let result = source_inbox::Entity::update_many()
             .set(source_inbox::ActiveModel {
                 status: Set(NotificationSourceInboxStatus::Processing),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(now + Duration::seconds(DEFAULT_LEASE_SECONDS))),
+                lease_expires_at: Set(Some(
+                    timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS),
+                )),
                 next_attempt_at: Set(None),
                 completed_at: Set(None),
-                updated_at: Set(now),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(inbox_id))
@@ -380,7 +389,7 @@ impl NotificationFanoutService {
                             .add(
                                 Condition::any()
                                     .add(source_inbox::Column::NextAttemptAt.is_null())
-                                    .add(source_inbox::Column::NextAttemptAt.lte(now)),
+                                    .add(source_inbox::Column::NextAttemptAt.lte(timestamp)),
                             ),
                     )
                     .add(
@@ -389,7 +398,7 @@ impl NotificationFanoutService {
                                 source_inbox::Column::Status
                                     .eq(NotificationSourceInboxStatus::Processing),
                             )
-                            .add(source_inbox::Column::LeaseExpiresAt.lt(now)),
+                            .add(source_inbox::Column::LeaseExpiresAt.lt(timestamp)),
                     ),
             )
             .exec(&self.db)
@@ -427,7 +436,7 @@ impl NotificationFanoutService {
         status: NotificationSourceInboxStatus,
         fanout_job_id: Option<Uuid>,
     ) -> NotificationResult<source_inbox::Model> {
-        let now = now();
+        let timestamp = now();
         let result = source_inbox::Entity::update_many()
             .set(source_inbox::ActiveModel {
                 status: Set(status),
@@ -437,13 +446,14 @@ impl NotificationFanoutService {
                 next_attempt_at: Set(None),
                 last_error_code: Set(None),
                 last_error_message: Set(None),
-                completed_at: Set(Some(now)),
-                updated_at: Set(now),
+                completed_at: Set(Some(timestamp)),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(inbox.id))
             .filter(source_inbox::Column::Status.eq(NotificationSourceInboxStatus::Processing))
             .filter(source_inbox::Column::LeaseOwner.eq(worker_id))
+            .filter(source_inbox::Column::LeaseExpiresAt.gt(timestamp))
             .exec(&self.db)
             .await?;
         if result.rows_affected != 1 {
@@ -462,7 +472,7 @@ impl NotificationFanoutService {
         error: &NotificationError,
     ) -> NotificationResult<()> {
         let retryable = error.is_retryable();
-        let now = now();
+        let timestamp = now();
         let result = source_inbox::Entity::update_many()
             .set(source_inbox::ActiveModel {
                 status: Set(if retryable {
@@ -472,7 +482,7 @@ impl NotificationFanoutService {
                 }),
                 attempt_count: Set(inbox.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(
-                    retryable.then_some(now + Duration::seconds(RETRY_DELAY_SECONDS)),
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
                 ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
@@ -481,13 +491,14 @@ impl NotificationFanoutService {
                     &error.to_string(),
                     MAX_ERROR_MESSAGE_BYTES,
                 ))),
-                completed_at: Set((!retryable).then_some(now)),
-                updated_at: Set(now),
+                completed_at: Set((!retryable).then_some(timestamp)),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(inbox.id))
             .filter(source_inbox::Column::Status.eq(NotificationSourceInboxStatus::Processing))
             .filter(source_inbox::Column::LeaseOwner.eq(worker_id))
+            .filter(source_inbox::Column::LeaseExpiresAt.gt(timestamp))
             .exec(&self.db)
             .await?;
         if result.rows_affected != 1 {
@@ -502,11 +513,16 @@ impl NotificationFanoutService {
         notification_type: &str,
         descriptor_json: serde_json::Value,
     ) -> NotificationResult<fanout_job::Model> {
-        if let Some(existing) = self.find_job(event, notification_type).await? {
-            ensure_job_identity(&existing, event, &descriptor_json)?;
+        if let Some(existing) = self.find_job(event).await? {
+            ensure_job_identity(
+                &existing,
+                event,
+                notification_type,
+                &descriptor_json,
+            )?;
             return Ok(existing);
         }
-        let now = now();
+        let timestamp = now();
         let candidate = fanout_job::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(event.tenant_id()),
@@ -524,14 +540,19 @@ impl NotificationFanoutService {
             last_error_code: Set(None),
             last_error_message: Set(None),
             completed_at: Set(None),
-            created_at: Set(now),
-            updated_at: Set(now),
+            created_at: Set(timestamp),
+            updated_at: Set(timestamp),
         };
         match candidate.insert(&self.db).await {
             Ok(inserted) => Ok(inserted),
             Err(insert_error) => {
-                if let Some(existing) = self.find_job(event, notification_type).await? {
-                    ensure_job_identity(&existing, event, &descriptor_json)?;
+                if let Some(existing) = self.find_job(event).await? {
+                    ensure_job_identity(
+                        &existing,
+                        event,
+                        notification_type,
+                        &descriptor_json,
+                    )?;
                     Ok(existing)
                 } else {
                     Err(insert_error.into())
@@ -543,13 +564,11 @@ impl NotificationFanoutService {
     async fn find_job(
         &self,
         event: &NotificationSourceEventRef,
-        notification_type: &str,
     ) -> NotificationResult<Option<fanout_job::Model>> {
         Ok(fanout_job::Entity::find()
             .filter(fanout_job::Column::TenantId.eq(event.tenant_id()))
             .filter(fanout_job::Column::SourceSlug.eq(event.source().as_str()))
             .filter(fanout_job::Column::SourceEventId.eq(event.event_id()))
-            .filter(fanout_job::Column::NotificationType.eq(notification_type))
             .one(&self.db)
             .await?)
     }
@@ -566,15 +585,17 @@ impl NotificationFanoutService {
         if existing.status == NotificationJobStatus::Completed {
             return Ok(existing);
         }
-        let now = now();
+        let timestamp = now();
         let result = fanout_job::Entity::update_many()
             .set(fanout_job::ActiveModel {
                 status: Set(NotificationJobStatus::Leased),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(now + Duration::seconds(DEFAULT_LEASE_SECONDS))),
+                lease_expires_at: Set(Some(
+                    timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS),
+                )),
                 next_attempt_at: Set(None),
                 completed_at: Set(None),
-                updated_at: Set(now),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(fanout_job::Column::Id.eq(job_id))
@@ -590,13 +611,13 @@ impl NotificationFanoutService {
                             .add(
                                 Condition::any()
                                     .add(fanout_job::Column::NextAttemptAt.is_null())
-                                    .add(fanout_job::Column::NextAttemptAt.lte(now)),
+                                    .add(fanout_job::Column::NextAttemptAt.lte(timestamp)),
                             ),
                     )
                     .add(
                         Condition::all()
                             .add(fanout_job::Column::Status.eq(NotificationJobStatus::Leased))
-                            .add(fanout_job::Column::LeaseExpiresAt.lt(now)),
+                            .add(fanout_job::Column::LeaseExpiresAt.lt(timestamp)),
                     ),
             )
             .exec(&self.db)
@@ -742,6 +763,7 @@ impl NotificationFanoutService {
             .filter(fanout_job::Column::Id.eq(job.id))
             .filter(fanout_job::Column::Status.eq(NotificationJobStatus::Leased))
             .filter(fanout_job::Column::LeaseOwner.eq(worker_id))
+            .filter(fanout_job::Column::LeaseExpiresAt.gt(timestamp))
             .exec(&self.db)
             .await?;
         if result.rows_affected != 1 {
@@ -812,9 +834,13 @@ fn ensure_inbox_identity(
 fn ensure_job_identity(
     job: &fanout_job::Model,
     event: &NotificationSourceEventRef,
+    notification_type: &str,
     descriptor_json: &serde_json::Value,
 ) -> NotificationResult<()> {
-    if job.source_revision != source_revision_i64(event)? || &job.descriptor_json != descriptor_json {
+    if job.source_revision != source_revision_i64(event)?
+        || job.notification_type != notification_type
+        || &job.descriptor_json != descriptor_json
+    {
         return Err(NotificationError::SourceIdentityConflict);
     }
     Ok(())
@@ -823,6 +849,10 @@ fn ensure_job_identity(
 fn ensure_job_lease(job: &fanout_job::Model, worker_id: &str) -> NotificationResult<()> {
     if job.status != NotificationJobStatus::Leased
         || job.lease_owner.as_deref() != Some(worker_id)
+        || job
+            .lease_expires_at
+            .as_ref()
+            .is_none_or(|expires_at| expires_at <= &now())
     {
         return Err(NotificationError::LeaseUnavailable);
     }
