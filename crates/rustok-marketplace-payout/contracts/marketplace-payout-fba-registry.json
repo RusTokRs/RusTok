@@ -85,15 +85,26 @@
     "provider_scoped_idempotency": true,
     "lease_revision_attempt_state": true,
     "safe_error_code_only": true,
-    "runtime_submission_ready": false,
+    "runtime_submission_ready": true,
     "host_provider_registry_ready": false,
     "verified_webhook_inbox_ready": false,
-    "settlement_ready": false
+    "settlement_ready": false,
+    "journal_admission_replay_ready": true,
+    "cas_lease_claim_ready": true,
+    "provider_result_checkpoint_ready": true,
+    "confirmed_failed_result_checkpoint_ready": true,
+    "unknown_result_policy": "reconciliation_without_resubmit",
+    "expired_execution_policy": "reconciliation_without_resubmit",
+    "local_payout_commit_ready": false,
+    "unknown_result_evidence_persisted": true
   },
   "execution": {
-    "included_in_this_slice": false,
+    "included_in_this_slice": true,
     "external_reference_initially_null": true,
-    "paid_at_initially_null": true
+    "paid_at_initially_null": true,
+    "provider_submission_ready": true,
+    "payout_state_commit_ready": false,
+    "ledger_settlement_ready": false
   },
   "composition": {
     "modules_manifest": true,
@@ -108,7 +119,6 @@
     "ledger_read_and_command_owner_identity": "same_process_instance"
   },
   "known_gaps": [
-    "journaled provider submit executor",
     "provider registry host composition",
     "provider account and destination ownership",
     "verified provider webhook inbox",

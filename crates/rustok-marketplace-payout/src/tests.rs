@@ -12,9 +12,7 @@ use rustok_marketplace_ledger::{
     MarketplaceLedgerEntryResponse, MarketplaceLedgerReadPort,
     MarketplaceLedgerTransactionResponse, ReadMarketplaceOrderLedgerRequest,
 };
-use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
-};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
@@ -70,7 +68,11 @@ async fn payout_schedule_is_atomic_replay_safe_and_entry_unique() {
         .await
         .unwrap();
     assert_eq!(replayed, scheduled);
-    assert_eq!(provider.read_count(), 1, "receipt replay must precede ledger reads");
+    assert_eq!(
+        provider.read_count(),
+        1,
+        "receipt replay must precede ledger reads"
+    );
 
     let conflict = service
         .schedule_with_receipt(
@@ -106,7 +108,10 @@ async fn payout_schedule_is_atomic_replay_safe_and_entry_unique() {
     assert_eq!(provider.read_count(), 2);
     assert_eq!(payout::Entity::find().count(&db).await.unwrap(), 1);
     assert_eq!(item::Entity::find().count(&db).await.unwrap(), 2);
-    assert_eq!(schedule_receipt::Entity::find().count(&db).await.unwrap(), 1);
+    assert_eq!(
+        schedule_receipt::Entity::find().count(&db).await.unwrap(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -140,7 +145,10 @@ async fn non_credit_seller_payable_entry_is_rejected_before_receipt_admission() 
     assert!(matches!(result, Err(MarketplacePayoutError::Validation(_))));
     assert_eq!(provider.read_count(), 1);
     assert_eq!(payout::Entity::find().count(&db).await.unwrap(), 0);
-    assert_eq!(schedule_receipt::Entity::find().count(&db).await.unwrap(), 0);
+    assert_eq!(
+        schedule_receipt::Entity::find().count(&db).await.unwrap(),
+        0
+    );
 }
 
 async fn setup_database() -> DatabaseConnection {
@@ -249,7 +257,9 @@ impl MarketplaceLedgerReadPort for FakeLedgerReader {
             .max(1)
             .saturating_sub(1)
             .saturating_mul(request.per_page) as usize;
-        let end = start.saturating_add(request.per_page as usize).min(filtered.len());
+        let end = start
+            .saturating_add(request.per_page as usize)
+            .min(filtered.len());
         let items = if start >= filtered.len() {
             Vec::new()
         } else {

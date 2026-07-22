@@ -34,7 +34,7 @@ through a payout provider SPI and journal before changing payout state.
 - [x] Durable provider operation journal schema with tenant-scoped payout ownership.
 - [ ] Cancellation and reservation release workflow.
 - [ ] Payout provider accounts and destination ownership.
-- [ ] Journaled provider submission runtime.
+- [x] Journaled provider submission admission, lease, checkpoint, and replay runtime.
 - [ ] Provider lookup recovery and verified webhook inbox.
 - [ ] `payout_settlement` and `payout_reversal` ledger posting.
 - [ ] Accounting, operator, and seller surfaces.
@@ -101,15 +101,16 @@ The manual baseline exists for operator-driven flows. A manual submit produces
 `submitted`, not `paid`; an operator or later verified fact must explicitly advance
 the payout. This prevents the baseline adapter from fabricating external completion.
 
-This slice intentionally does not call a provider. Runtime execution must first:
+The submit runtime now:
 
-1. admit or replay a provider operation by provider-scoped idempotency key;
-2. claim the row through revision and lease semantics;
-3. execute the provider with the persisted request;
-4. checkpoint the normalized provider result;
-5. reconcile unknown outcomes through lookup or operator review;
-6. commit payout state only from a confirmed result;
-7. post Reserved-to-Paid settlement only after confirmed `paid` state.
+1. replays a completed provider checkpoint before reading mutable payout state;
+2. admits one immutable `submit` operation per payout and provider-scoped key;
+3. claims pending or retryable work through revision and lease CAS;
+4. executes the provider from the persisted request snapshot;
+5. checkpoints submitted, processing, paid, and confirmed failed results before payout mutation;
+6. routes invalid responses, unknown results, unknown outcomes, and expired executing leases to
+   `reconciliation_required` without automatic resubmission;
+7. leaves payout state and Reserved-to-Paid settlement unchanged for a later commit slice.
 
 ## Host composition contract
 
@@ -164,7 +165,7 @@ Required evidence:
 9. [x] Compose ledger read/command and payout services in the server host.
 10. [x] Add payout provider SPI, registry, and durable provider-operation schema.
 11. [ ] Add provider account and destination ownership.
-12. [ ] Add journaled provider submit execution.
+12. [x] Add journaled provider submit execution and durable result replay.
 13. [ ] Add lookup recovery and verified webhook inbox.
 14. [ ] Add settlement/reversal ledger transfers.
 15. [ ] Add cancellation and reservation release workflow.
@@ -200,4 +201,17 @@ reconciliation, mounted transports, and operator workflows.
 - lease/revision/attempt and provider/local completion checkpoints
 - safe provider boundary errors and source/schema regression tests
 
-External provider execution and Reserved-to-Paid settlement remain separate follow-up slices.
+
+## Implemented provider-submission slice
+
+- provider-scoped admission and immutable request-hash replay
+- one submit operation per payout
+- revision/lease claim before the external side effect
+- persisted normalized provider result before local payout mutation
+- confirmed failed results stored as `provider_failed`, not `provider_succeeded`
+- unknown/invalid outcomes routed to durable reconciliation
+- normalized `unknown` results retain provider reference, result JSON, and completion time
+- expired executing leases never automatically resubmit
+- payout status, `paid_at`, and ledger settlement remain unchanged
+
+Provider host composition, lookup recovery, local payout commit, and Reserved-to-Paid settlement remain separate follow-up slices.

@@ -4,6 +4,8 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod operation_orchestration;
+pub mod provider_operation_journal;
+pub mod provider_submission;
 mod receipts;
 #[cfg(test)]
 mod tests;
@@ -19,6 +21,8 @@ pub mod service;
 pub use dto::*;
 pub use error::{MarketplacePayoutError, MarketplacePayoutResult};
 pub use ports::*;
+pub use provider_operation_journal::*;
+pub use provider_submission::*;
 pub use providers::*;
 pub use service::MarketplacePayoutService;
 
