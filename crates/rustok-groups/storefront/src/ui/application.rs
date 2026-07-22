@@ -7,18 +7,21 @@ use leptos_ui_routing::use_route_query_writer;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
-    is_application_policy_changed, prepare_group_application_policy_query,
+    is_application_policy_changed, prepare_cancel_group_membership_application,
+    prepare_group_application_policy_query, prepare_my_group_membership_application_query,
     prepare_submit_group_membership_application, GroupsStorefrontApplicationInputError,
     GROUP_APPLICATION_QUERY_KEY,
 };
 use crate::application_model::{
-    GroupsStorefrontApplicationPolicy, GroupsStorefrontSubmitApplicationResult,
+    GroupsStorefrontApplicationPolicy, GroupsStorefrontMembershipApplication,
+    GroupsStorefrontSubmitApplicationResult,
 };
 use crate::core::groups_storefront_error;
 use crate::i18n::t;
 use crate::transport::{
-    load_groups_storefront_application_policy, submit_groups_storefront_membership_application,
-    GroupsStorefrontTransportContext,
+    cancel_groups_storefront_membership_application,
+    load_groups_storefront_application_policy, load_groups_storefront_my_application,
+    submit_groups_storefront_membership_application, GroupsStorefrontTransportContext,
 };
 
 #[derive(Clone)]
@@ -32,14 +35,21 @@ struct ApplicationCopy {
     rules: String,
     acknowledge: String,
     submit: String,
+    cancel: String,
     busy: String,
     error: String,
     success: String,
     pending: String,
+    pending_existing: String,
+    approved_existing: String,
+    rejected_existing: String,
+    cancelled_existing: String,
+    cancelled_success: String,
     policy_changed: String,
     policy_changed_hint: String,
     reload_policy: String,
     invalid_group_id: String,
+    invalid_application_id: String,
     invalid_locale: String,
     invalid_policy: String,
     unknown_question: String,
@@ -67,26 +77,37 @@ pub fn GroupsMembershipApplication(
     let (acknowledged_rules, set_acknowledged_rules) = signal(BTreeSet::<String>::new());
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
+    let (notice, set_notice) = signal(Option::<String>::None);
     let (policy_changed, set_policy_changed) = signal(false);
     let (result, set_result) = signal(Option::<GroupsStorefrontSubmitApplicationResult>::None);
 
     let load_transport = transport.clone();
     let group_id_for_load = application_group_id.clone();
     let locale_for_load = application_locale.clone();
-    let policy = LocalResource::new(move || {
+    let page_state = LocalResource::new(move || {
         let context = load_transport.clone();
         let group_id = group_id_for_load.clone();
         let locale = locale_for_load.clone();
         async move {
             if group_id.trim().is_empty() {
-                return Ok(None);
+                return Ok((None, None));
             }
-            let query = prepare_group_application_policy_query(&group_id, &locale)
-                .map_err(|_| "invalid application group UUID or locale".to_string())?;
-            load_groups_storefront_application_policy(context, query)
+            let my_query = prepare_my_group_membership_application_query(&group_id)
+                .map_err(|_| "invalid application group UUID".to_string())?;
+            let current = load_groups_storefront_my_application(context.clone(), my_query)
                 .await
-                .map(Some)
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            if current.as_ref().is_some_and(|application| {
+                matches!(application.status.as_str(), "pending" | "approved")
+            }) {
+                return Ok((current, None));
+            }
+            let policy_query = prepare_group_application_policy_query(&group_id, &locale)
+                .map_err(|_| "invalid application group UUID or locale".to_string())?;
+            let policy = load_groups_storefront_application_policy(context, policy_query)
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok((current, Some(policy)))
         }
     });
 
@@ -97,7 +118,7 @@ pub fn GroupsMembershipApplication(
         if policy_changed.get_untracked() {
             return;
         }
-        let Some(loaded_policy) = policy.get().and_then(Result::ok).flatten() else {
+        let Some((_, Some(loaded_policy))) = page_state.get().and_then(Result::ok) else {
             set_error.set(Some(submit_copy.unavailable.clone()));
             set_result.set(None);
             return;
@@ -122,6 +143,7 @@ pub fn GroupsMembershipApplication(
         let query_writer = query_writer.clone();
         set_busy.set(true);
         set_error.set(None);
+        set_notice.set(None);
         set_policy_changed.set(false);
         set_result.set(None);
         spawn_local(async move {
@@ -144,13 +166,57 @@ pub fn GroupsMembershipApplication(
         });
     });
 
+    let cancel_transport = transport.clone();
+    let cancel_copy = copy.clone();
+    let on_cancel = Callback::new(move |_: ()| {
+        let Some((Some(current), _)) = page_state.get().and_then(Result::ok) else {
+            set_error.set(Some(cancel_copy.unavailable.clone()));
+            return;
+        };
+        let command = match prepare_cancel_group_membership_application(&current.id) {
+            Ok(command) => command,
+            Err(input_error) => {
+                set_error.set(Some(application_input_error_message(
+                    input_error,
+                    &cancel_copy,
+                )));
+                return;
+            }
+        };
+        let context = cancel_transport.clone();
+        let copy = cancel_copy.clone();
+        set_busy.set(true);
+        set_error.set(None);
+        set_notice.set(None);
+        set_result.set(None);
+        spawn_local(async move {
+            match cancel_groups_storefront_membership_application(context, command).await {
+                Ok(cancelled) => {
+                    set_answers.set(BTreeMap::new());
+                    set_acknowledged_rules.set(BTreeSet::new());
+                    set_notice.set(Some(format!(
+                        "{} · group version {}",
+                        copy.cancelled_success, cancelled.group_version
+                    )));
+                    page_state.refetch();
+                }
+                Err(cancel_error) => set_error.set(Some(groups_storefront_error(
+                    &copy.error,
+                    &cancel_error.to_string(),
+                ))),
+            }
+            set_busy.set(false);
+        });
+    });
+
     let reload_policy = Callback::new(move |_: ()| {
         set_answers.set(BTreeMap::new());
         set_acknowledged_rules.set(BTreeSet::new());
         set_error.set(None);
+        set_notice.set(None);
         set_result.set(None);
         set_policy_changed.set(false);
-        policy.refetch();
+        page_state.refetch();
     });
 
     if application_group_id.trim().is_empty() {
@@ -162,11 +228,6 @@ pub fn GroupsMembershipApplication(
         body,
         loading,
         unavailable,
-        required,
-        optional,
-        rules: rules_label,
-        acknowledge,
-        submit,
         busy: busy_label,
         success,
         pending,
@@ -174,7 +235,7 @@ pub fn GroupsMembershipApplication(
         policy_changed_hint,
         reload_policy: reload_policy_label,
         ..
-    } = copy;
+    } = copy.clone();
 
     view! {
         <section class="groups-storefront__application rounded-3xl border border-border bg-card p-6 shadow-sm">
@@ -182,8 +243,9 @@ pub fn GroupsMembershipApplication(
             <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{body}</p>
 
             <Suspense fallback=move || view! { <p class="mt-4 text-sm text-muted-foreground">{loading.clone()}</p> }>
-                {move || policy.get().map(|loaded| match loaded {
-                    Ok(Some(policy)) if policy.enabled => render_policy_form(
+                {move || page_state.get().map(|loaded| match loaded {
+                    Ok((current, policy)) => render_application_content(
+                        current,
                         policy,
                         answers,
                         set_answers,
@@ -191,13 +253,9 @@ pub fn GroupsMembershipApplication(
                         set_acknowledged_rules,
                         policy_changed,
                         on_submit,
-                        &required,
-                        &optional,
-                        &rules_label,
-                        &acknowledge,
-                        &submit,
-                    ).into_any(),
-                    Ok(Some(_)) | Ok(None) => view! { <p class="mt-4 text-sm text-muted-foreground">{unavailable.clone()}</p> }.into_any(),
+                        on_cancel,
+                        copy.clone(),
+                    ),
                     Err(load_error) => view! {
                         <p class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">{groups_storefront_error(&unavailable, &load_error)}</p>
                     }.into_any(),
@@ -217,6 +275,9 @@ pub fn GroupsMembershipApplication(
             <Show when=move || error.get().is_some()>
                 <p class="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">{move || error.get().unwrap_or_default()}</p>
             </Show>
+            <Show when=move || notice.get().is_some()>
+                <p class="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-foreground" role="status">{move || notice.get().unwrap_or_default()}</p>
+            </Show>
             <Show when=move || result.get().is_some()>
                 {move || result.get().map(|submitted| view! {
                     <div class="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3" role="status">
@@ -226,6 +287,83 @@ pub fn GroupsMembershipApplication(
                 })}
             </Show>
         </section>
+    }
+    .into_any()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_application_content(
+    current: Option<GroupsStorefrontMembershipApplication>,
+    policy: Option<GroupsStorefrontApplicationPolicy>,
+    answers: ReadSignal<BTreeMap<String, String>>,
+    set_answers: WriteSignal<BTreeMap<String, String>>,
+    acknowledged_rules: ReadSignal<BTreeSet<String>>,
+    set_acknowledged_rules: WriteSignal<BTreeSet<String>>,
+    policy_changed: ReadSignal<bool>,
+    on_submit: Callback<SubmitEvent>,
+    on_cancel: Callback<()>,
+    copy: ApplicationCopy,
+) -> AnyView {
+    if let Some(application) = current.as_ref() {
+        match application.status.as_str() {
+            "pending" => {
+                return view! {
+                    <div class="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
+                        <p class="font-medium text-foreground">{copy.pending_existing}</p>
+                        <p class="mt-1 break-all text-xs text-muted-foreground">{application.id.clone()}</p>
+                        <button class="mt-4 rounded-xl border border-border bg-background px-4 py-2 text-sm font-medium" type="button" on:click=move |_| on_cancel.run(())>{copy.cancel}</button>
+                    </div>
+                }.into_any();
+            }
+            "approved" => {
+                return view! {
+                    <div class="mt-6 rounded-2xl border border-primary/30 bg-primary/5 p-5" role="status">
+                        <p class="font-medium text-foreground">{copy.approved_existing}</p>
+                        <p class="mt-1 break-all text-xs text-muted-foreground">{application.id.clone()}</p>
+                    </div>
+                }.into_any();
+            }
+            _ => {}
+        }
+    }
+
+    let status_notice = current.map(|application| {
+        let message = if application.status == "rejected" {
+            copy.rejected_existing.clone()
+        } else {
+            copy.cancelled_existing.clone()
+        };
+        view! {
+            <div class="mt-6 rounded-2xl border border-border bg-muted p-4" role="status">
+                <p class="text-sm text-foreground">{message}</p>
+                <p class="mt-1 break-all text-xs text-muted-foreground">{application.id}</p>
+            </div>
+        }
+    });
+
+    let form = match policy {
+        Some(policy) if policy.enabled => render_policy_form(
+            policy,
+            answers,
+            set_answers,
+            acknowledged_rules,
+            set_acknowledged_rules,
+            policy_changed,
+            on_submit,
+            &copy.required,
+            &copy.optional,
+            &copy.rules,
+            &copy.acknowledge,
+            &copy.submit,
+        )
+        .into_any(),
+        _ => view! { <p class="mt-4 text-sm text-muted-foreground">{copy.unavailable}</p> }
+            .into_any(),
+    };
+
+    view! {
+        {status_notice}
+        {form}
     }
     .into_any()
 }
@@ -323,6 +461,9 @@ fn application_input_error_message(
 ) -> String {
     match error {
         GroupsStorefrontApplicationInputError::InvalidGroupId => copy.invalid_group_id.clone(),
+        GroupsStorefrontApplicationInputError::InvalidApplicationId => {
+            copy.invalid_application_id.clone()
+        }
         GroupsStorefrontApplicationInputError::InvalidLocale => copy.invalid_locale.clone(),
         GroupsStorefrontApplicationInputError::InvalidPolicy => copy.invalid_policy.clone(),
         GroupsStorefrontApplicationInputError::UnknownQuestion => copy.unknown_question.clone(),
@@ -337,21 +478,28 @@ fn application_copy(locale: Option<&str>) -> ApplicationCopy {
     ApplicationCopy {
         title: t(locale, "groups.storefront.application.title", "Apply to join this group"),
         body: t(locale, "groups.storefront.application.body", "Answer the current membership questions and acknowledge required rules. Your submission keeps an immutable snapshot for review."),
-        loading: t(locale, "groups.storefront.application.loading", "Loading membership policy..."),
+        loading: t(locale, "groups.storefront.application.loading", "Loading membership application..."),
         unavailable: t(locale, "groups.storefront.application.unavailable", "Membership applications are unavailable for this group or locale."),
         required: t(locale, "groups.storefront.application.required", "Required"),
         optional: t(locale, "groups.storefront.application.optional", "Optional"),
         rules: t(locale, "groups.storefront.application.rules", "Group rules"),
         acknowledge: t(locale, "groups.storefront.application.acknowledge", "I acknowledge this rule"),
         submit: t(locale, "groups.storefront.application.submit", "Submit application"),
-        busy: t(locale, "groups.storefront.application.busy", "Submitting application..."),
-        error: t(locale, "groups.storefront.application.error", "Membership application could not be submitted"),
+        cancel: t(locale, "groups.storefront.application.cancel", "Cancel application"),
+        busy: t(locale, "groups.storefront.application.busy", "Applying membership application command..."),
+        error: t(locale, "groups.storefront.application.error", "Membership application command failed"),
         success: t(locale, "groups.storefront.application.success", "Application submitted for review."),
         pending: t(locale, "groups.storefront.application.pending", "Pending"),
+        pending_existing: t(locale, "groups.storefront.application.pendingExisting", "Your membership application is pending review."),
+        approved_existing: t(locale, "groups.storefront.application.approvedExisting", "Your membership application was approved."),
+        rejected_existing: t(locale, "groups.storefront.application.rejectedExisting", "Your previous application was rejected. You may submit a fresh application using the current policy."),
+        cancelled_existing: t(locale, "groups.storefront.application.cancelledExisting", "Your previous application was cancelled. You may submit a fresh application using the current policy."),
+        cancelled_success: t(locale, "groups.storefront.application.cancelledSuccess", "Application cancelled. A fresh application may now be submitted."),
         policy_changed: t(locale, "groups.storefront.application.policyChanged", "The membership policy changed before your application was submitted."),
         policy_changed_hint: t(locale, "groups.storefront.application.policyChangedHint", "Reload the current questions and rules, review them, and submit a new application."),
         reload_policy: t(locale, "groups.storefront.application.reloadPolicy", "Reload current policy"),
         invalid_group_id: t(locale, "groups.storefront.application.invalidGroupId", "The application link contains an invalid group UUID."),
+        invalid_application_id: t(locale, "groups.storefront.application.invalidApplicationId", "The membership application identifier is invalid."),
         invalid_locale: t(locale, "groups.storefront.application.invalidLocale", "The application locale is unavailable."),
         invalid_policy: t(locale, "groups.storefront.application.invalidPolicy", "The loaded membership policy is invalid. Reload the current policy."),
         unknown_question: t(locale, "groups.storefront.application.unknownQuestion", "The application contains an unknown question."),
