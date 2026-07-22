@@ -9,6 +9,7 @@ pub mod event;
 mod mention_relation;
 #[cfg(test)]
 mod mention_relation_tests;
+mod relation_read;
 pub mod moderation;
 mod rbac;
 pub mod read_model;
@@ -31,6 +32,7 @@ pub(crate) use mention_relation::{
 };
 pub use moderation::ModerationService;
 pub use read_model::ForumReadModelService;
+pub use relation_read::ForumRelationReadService;
 pub use reply_facade::ReplyService;
 pub use revision::RevisionService;
 pub use subscription::SubscriptionService;
