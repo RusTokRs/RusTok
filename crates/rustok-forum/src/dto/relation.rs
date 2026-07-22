@@ -19,7 +19,6 @@ pub struct ForumQuoteReferenceInput {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SetForumQuotesInput {
     pub locale: String,
-    #[serde(default)]
     pub quotes: Vec<ForumQuoteReferenceInput>,
 }
 
