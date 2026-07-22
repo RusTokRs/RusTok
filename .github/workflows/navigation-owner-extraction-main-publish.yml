@@ -1,0 +1,63 @@
+name: Navigation Owner Extraction Main Publish
+
+on:
+  pull_request:
+    paths:
+      - "scripts/temporary/extract_navigation.py.gz.b64"
+      - ".github/workflows/navigation-owner-extraction-main-publish.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Prepare owner extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode scripts/temporary/extract_navigation.py.gz.b64 | gzip -d > /tmp/extract_navigation.py
+          python -m py_compile /tmp/extract_navigation.py
+      - name: Apply and commit directly to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee /tmp/navigation-owner-extraction.log) 2>&1
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git checkout -B navigation-owner-publish origin/main
+            python /tmp/extract_navigation.py
+            git diff --check
+            git add -A
+            actual=$(git diff --cached --name-only)
+            if printf '%s\n' "$actual" | grep -Eq '^(\.github/workflows|scripts/temporary)/'; then
+              echo "technical publisher files must not enter product commit"
+              printf '%s\n' "$actual"
+              exit 1
+            fi
+            if ! printf '%s\n' "$actual" | grep -q '^crates/rustok-navigation/'; then
+              echo "navigation owner files were not staged"
+              exit 1
+            fi
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "feat(navigation): extract menu ownership from pages"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "main moved during publish attempt ${attempt}; retrying"
+          done
+          exit 1
+      - name: Upload publisher diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: navigation-owner-extraction-log
+          path: /tmp/navigation-owner-extraction.log
+          if-no-files-found: error
