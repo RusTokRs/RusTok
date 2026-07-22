@@ -6,6 +6,9 @@ const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const files = {
+  applications: "crates/rustok-groups/src/applications.rs",
+  reviewPort: "crates/rustok-groups/src/applications_review.rs",
+  capabilityPorts: "crates/rustok-groups/src/ports.rs",
   legacyNative: "crates/rustok-groups/admin/src/transport/native_applications_adapter.rs",
   casNative: "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
   adminTransport: "crates/rustok-groups/admin/src/transport.rs",
@@ -19,10 +22,29 @@ for (const relative of Object.values(files)) {
 }
 
 if (failures.length === 0) {
+  const applications = read(files.applications);
+  const reviewPort = read(files.reviewPort);
+  const capabilityPorts = read(files.capabilityPorts);
   const legacyNative = read(files.legacyNative);
   const casNative = read(files.casNative);
   const adminTransport = read(files.adminTransport);
   const finalGraphql = read(files.finalGraphql);
+
+  if (!applications.includes('include!("applications_review.rs")')) {
+    failures.push(`${files.applications}: focused review port is not composed`);
+  }
+  for (const marker of [
+    "GroupApplicationReviewCommandPort",
+    "review_group_membership_application",
+    "review_application_owned",
+  ]) {
+    if (!reviewPort.includes(marker)) {
+      failures.push(`${files.reviewPort}: missing focused review marker ${JSON.stringify(marker)}`);
+    }
+  }
+  if (!capabilityPorts.includes('"GroupApplicationReviewCommandPort"')) {
+    failures.push(`${files.capabilityPorts}: focused review port is missing from the capability descriptor`);
+  }
 
   for (const marker of [
     'endpoint = "groups/admin/applications/policy/upsert"',
@@ -32,6 +54,15 @@ if (failures.length === 0) {
   ]) {
     if (legacyNative.includes(marker)) {
       failures.push(`${files.legacyNative}: forbidden legacy native write marker ${JSON.stringify(marker)}`);
+    }
+  }
+  for (const relative of [files.legacyNative, files.finalGraphql]) {
+    const source = read(relative);
+    if (!source.includes("GroupApplicationReviewCommandPort")) {
+      failures.push(`${relative}: safe review surface must use GroupApplicationReviewCommandPort`);
+    }
+    if (source.includes("GroupApplicationCommandPort")) {
+      failures.push(`${relative}: safe review surface imports the broad legacy command port`);
     }
   }
 
@@ -78,4 +109,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups application native and GraphQL policy writes are CAS-only; legacy native policy write endpoint is absent.");
+console.log("Groups application policy writes are CAS-only and safe review surfaces use the focused review port.");
