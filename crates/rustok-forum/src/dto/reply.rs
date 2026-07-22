@@ -5,6 +5,8 @@ use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use super::ForumQuoteReferenceInput;
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateReplyInput {
     pub locale: String,
@@ -15,12 +17,87 @@ pub struct CreateReplyInput {
     pub parent_reply_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateReplyCommandInput {
+    pub locale: String,
+    pub content: String,
+    #[serde(default = "default_content_format")]
+    pub content_format: String,
+    pub content_json: Option<Value>,
+    pub parent_reply_id: Option<Uuid>,
+    #[serde(default)]
+    pub quotes: Vec<ForumQuoteReferenceInput>,
+}
+
+impl CreateReplyCommandInput {
+    pub fn into_parts(self) -> (CreateReplyInput, Vec<ForumQuoteReferenceInput>) {
+        (
+            CreateReplyInput {
+                locale: self.locale,
+                content: self.content,
+                content_format: self.content_format,
+                content_json: self.content_json,
+                parent_reply_id: self.parent_reply_id,
+            },
+            self.quotes,
+        )
+    }
+}
+
+impl From<CreateReplyInput> for CreateReplyCommandInput {
+    fn from(input: CreateReplyInput) -> Self {
+        Self {
+            locale: input.locale,
+            content: input.content,
+            content_format: input.content_format,
+            content_json: input.content_json,
+            parent_reply_id: input.parent_reply_id,
+            quotes: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdateReplyInput {
     pub locale: String,
     pub content: Option<String>,
     pub content_format: Option<String>,
     pub content_json: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
+pub struct UpdateReplyCommandInput {
+    pub locale: String,
+    pub content: Option<String>,
+    pub content_format: Option<String>,
+    pub content_json: Option<Value>,
+    pub quotes: Option<Vec<ForumQuoteReferenceInput>>,
+}
+
+impl UpdateReplyCommandInput {
+    pub fn into_parts(self) -> (UpdateReplyInput, Option<Vec<ForumQuoteReferenceInput>>) {
+        (
+            UpdateReplyInput {
+                locale: self.locale,
+                content: self.content,
+                content_format: self.content_format,
+                content_json: self.content_json,
+            },
+            self.quotes,
+        )
+    }
+}
+
+impl From<UpdateReplyInput> for UpdateReplyCommandInput {
+    fn from(input: UpdateReplyInput) -> Self {
+        Self {
+            locale: input.locale,
+            content: input.content,
+            content_format: input.content_format,
+            content_json: input.content_json,
+            quotes: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
@@ -95,7 +172,7 @@ pub struct ReplyListItem {
 
 #[cfg(test)]
 mod tests {
-    use super::{ListRepliesFilter, ReplyResponse};
+    use super::{ListRepliesFilter, ReplyResponse, UpdateReplyCommandInput};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -129,6 +206,18 @@ mod tests {
         let filter: ListRepliesFilter =
             serde_json::from_value(json!({"per_page": 50_000})).expect("deserialize page size");
         assert_eq!(filter.per_page, crate::dto::MAX_FORUM_READ_LIMIT);
+    }
+
+    #[test]
+    fn update_command_distinguishes_omitted_quotes_from_explicit_clear() {
+        let omitted: UpdateReplyCommandInput = serde_json::from_value(json!({"locale": "en"}))
+            .expect("omitted quotes should deserialize");
+        assert!(omitted.quotes.is_none());
+
+        let clear: UpdateReplyCommandInput =
+            serde_json::from_value(json!({"locale": "en", "quotes": []}))
+                .expect("explicit clear should deserialize");
+        assert_eq!(clear.quotes, Some(Vec::new()));
     }
 
     #[test]
