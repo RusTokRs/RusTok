@@ -5,12 +5,10 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use crate::dto::{
-    AllocateMarketplaceOrderLineInput, AllocateMarketplaceOrderLinesInput,
-};
+use crate::MarketplaceAllocationService;
+use crate::dto::{AllocateMarketplaceOrderLineInput, AllocateMarketplaceOrderLinesInput};
 use crate::entities::{allocation, allocation_receipt};
 use crate::error::MarketplaceAllocationError;
-use crate::MarketplaceAllocationService;
 
 #[tokio::test]
 async fn allocation_batch_commits_once_and_replays_saved_response() {
@@ -31,12 +29,7 @@ async fn allocation_batch_commits_once_and_replays_saved_response() {
         .await
         .unwrap();
     let replayed = service
-        .allocate_order_lines_with_receipt(
-            tenant_id,
-            actor_id,
-            "allocate-order-lines",
-            request,
-        )
+        .allocate_order_lines_with_receipt(tenant_id, actor_id, "allocate-order-lines", request)
         .await
         .unwrap();
 
@@ -70,24 +63,14 @@ async fn conflicting_receipt_and_reallocation_are_rejected_without_partial_rows(
     let service = MarketplaceAllocationService::new(db.clone());
 
     service
-        .allocate_order_lines_with_receipt(
-            tenant_id,
-            actor_id,
-            "first-allocation",
-            request.clone(),
-        )
+        .allocate_order_lines_with_receipt(tenant_id, actor_id, "first-allocation", request.clone())
         .await
         .unwrap();
 
     let mut conflicting = request.clone();
     conflicting.lines[0].seller_id = Uuid::new_v4();
     let conflict = service
-        .allocate_order_lines_with_receipt(
-            tenant_id,
-            actor_id,
-            "first-allocation",
-            conflicting,
-        )
+        .allocate_order_lines_with_receipt(tenant_id, actor_id, "first-allocation", conflicting)
         .await;
     assert!(matches!(
         conflict,
@@ -95,12 +78,7 @@ async fn conflicting_receipt_and_reallocation_are_rejected_without_partial_rows(
     ));
 
     let second_key = service
-        .allocate_order_lines_with_receipt(
-            tenant_id,
-            actor_id,
-            "different-key",
-            request,
-        )
+        .allocate_order_lines_with_receipt(tenant_id, actor_id, "different-key", request)
         .await;
     assert!(matches!(
         second_key,

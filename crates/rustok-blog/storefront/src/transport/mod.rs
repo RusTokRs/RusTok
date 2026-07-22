@@ -4,7 +4,7 @@ pub mod native_server_adapter;
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::StorefrontBlogData;
 use leptos::prelude::ServerFnError;
-use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
+use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 

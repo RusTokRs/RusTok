@@ -69,9 +69,11 @@ impl MigrationTrait for Migration {
                     PRIMARY KEY (tenant_id, module_slug, data_contract_revision, idempotency_key)\
                 )",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact data broker migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact data broker migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

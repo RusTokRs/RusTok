@@ -27,15 +27,15 @@ pub mod state_machine;
 #[cfg(test)]
 mod state_machine_proptest;
 
-pub use analytics::{load_post_stats_snapshot, ContentCountSnapshot};
+pub use analytics::{ContentCountSnapshot, load_post_stats_snapshot};
 pub use dto::*;
 pub use entities::{
     Body, CanonicalUrl, Category, CategoryTranslation, Node, NodeTranslation, UrlAlias,
 };
 pub use error::{ContentError, ContentResult};
 pub use locale::{
-    available_locales_from, normalize_locale_code, resolve_by_locale,
-    resolve_by_locale_with_fallback, ResolvedLocale,
+    ResolvedLocale, available_locales_from, normalize_locale_code, resolve_by_locale,
+    resolve_by_locale_with_fallback,
 };
 pub use services::{
     CanonicalUrlMutation, CanonicalUrlService, CategoryService, ContentOrchestrationBridge,

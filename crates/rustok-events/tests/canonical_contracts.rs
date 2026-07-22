@@ -1,6 +1,6 @@
 use rustok_events::{
-    event_schema, DomainEvent, EventEnvelope, RootDomainEvent, RootEventEnvelope, ValidateEvent,
-    EVENT_SCHEMAS,
+    DomainEvent, EVENT_SCHEMAS, EventEnvelope, RootDomainEvent, RootEventEnvelope, ValidateEvent,
+    event_schema,
 };
 use uuid::Uuid;
 

@@ -17,7 +17,11 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE rbac_artifact_permission_catalog (id TEXT PRIMARY KEY, scope_key TEXT NOT NULL, installation_id TEXT NOT NULL, module_slug TEXT NOT NULL, release_digest TEXT NOT NULL, permission_key TEXT NOT NULL, locale TEXT NOT NULL, label TEXT NOT NULL, description TEXT NOT NULL, registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (scope_key, installation_id, permission_key, locale))",
                 "CREATE INDEX rbac_artifact_permission_catalog_lookup_idx ON rbac_artifact_permission_catalog (scope_key, module_slug, permission_key)",
             ],
-            backend => return Err(DbErr::Migration(format!("artifact permission catalog migration does not support {backend:?}"))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact permission catalog migration does not support {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

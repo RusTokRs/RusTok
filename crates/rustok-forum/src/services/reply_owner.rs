@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::normalize_locale_code;
-use rustok_core::{prepare_content_payload, SecurityContext};
+use rustok_core::{SecurityContext, prepare_content_payload};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 

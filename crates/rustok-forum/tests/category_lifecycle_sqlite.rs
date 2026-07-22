@@ -8,8 +8,8 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use support::category_lifecycle::exercise_category_subtree_lifecycle;
 use support::TestResult;
+use support::category_lifecycle::exercise_category_subtree_lifecycle;
 
 #[tokio::test]
 async fn sqlite_category_subtree_archive_and_restore_are_atomic() -> TestResult<()> {

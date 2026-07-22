@@ -8,8 +8,8 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use support::read_model::exercise_bounded_cursor_read_models;
 use support::TestResult;
+use support::read_model::exercise_bounded_cursor_read_models;
 
 #[tokio::test]
 async fn sqlite_forum_read_models_are_bounded_and_cursor_stable() -> TestResult<()> {

@@ -199,7 +199,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     let db = runtime_ctx.db_clone();
 
     #[cfg(all(feature = "mod-seo", feature = "mod-media"))]
-    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageService>() {
+    if let Some(storage) = runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
         let provider: Arc<dyn rustok_media::MediaAssetReadPort> =
             Arc::new(rustok_media::MediaService::new(db.clone(), storage));
         extensions.insert(rustok_seo::SeoMediaAssetReadProvider::new(provider));
@@ -222,8 +222,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
         let financial_runtime = runtime_ctx
             .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
             .unwrap_or_else(|| {
-                let runtime =
-                    rustok_commerce::MarketplaceFinancialRuntime::in_process(db.clone());
+                let runtime = rustok_commerce::MarketplaceFinancialRuntime::in_process(db.clone());
                 runtime_ctx.shared_insert(runtime.clone());
                 runtime
             });

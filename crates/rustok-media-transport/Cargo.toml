@@ -1,0 +1,32 @@
+[package]
+name = "rustok-media-transport"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Typed gRPC transport adapter for RusToK Media ports"
+
+[dependencies]
+async-trait.workspace = true
+bytes = "1.0"
+rustok-api.workspace = true
+rustok-media.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
+tonic-prost.workspace = true
+prost.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+tonic-prost-build.workspace = true
+protoc-bin-vendored.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+rustok-storage.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tempfile = "3.27"
+tokio.workspace = true
+tokio-stream = { version = "0.1", features = ["net"] }

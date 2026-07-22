@@ -179,7 +179,11 @@ pub fn build_payment_collection_card_data(
 pub fn build_payment_collection_card_labels(locale: Option<&str>) -> PaymentCollectionCardLabels {
     PaymentCollectionCardLabels {
         badge: t(locale, "commerce.payment.badge", "payment collection"),
-        module_ownership: t(locale, "commerce.payment.moduleOwnership", "Payment collection details stay in payment-owned UI; commerce only shows checkout orchestration handoff state."),
+        module_ownership: t(
+            locale,
+            "commerce.payment.moduleOwnership",
+            "Payment collection details stay in payment-owned UI; commerce only shows checkout orchestration handoff state.",
+        ),
         empty_id: t(locale, "commerce.payment.emptyId", "not attached"),
         empty_status: t(locale, "commerce.payment.emptyStatus", "pending"),
     }
@@ -197,8 +201,16 @@ pub fn build_order_checkout_result_data(
 pub fn build_order_checkout_result_labels(locale: Option<&str>) -> OrderCheckoutResultLabels {
     OrderCheckoutResultLabels {
         badge: t(locale, "commerce.checkout.result.badge", "checkout result"),
-        module_ownership: t(locale, "commerce.checkout.result.moduleOwnership", "Order, payment, fulfillment and adjustment details remain in their module-owned workspaces; commerce shows only the aggregate checkout outcome."),
-        order_status_label: t(locale, "commerce.checkout.result.orderStatus", "Order status"),
+        module_ownership: t(
+            locale,
+            "commerce.checkout.result.moduleOwnership",
+            "Order, payment, fulfillment and adjustment details remain in their module-owned workspaces; commerce shows only the aggregate checkout outcome.",
+        ),
+        order_status_label: t(
+            locale,
+            "commerce.checkout.result.orderStatus",
+            "Order status",
+        ),
     }
 }
 

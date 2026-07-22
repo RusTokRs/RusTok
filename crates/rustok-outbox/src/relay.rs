@@ -1,13 +1,13 @@
 use std::cmp;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::{LockBehavior, LockType},
     ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::{LockBehavior, LockType},
 };
 use serde_json::from_value;
 use uuid::Uuid;
@@ -613,10 +613,12 @@ mod tests {
         assert_eq!(event.retry_count, 1);
         assert!(event.claimed_by.is_none());
         assert!(event.claimed_at.is_none());
-        assert!(event
-            .last_error
-            .as_deref()
-            .is_some_and(|message| message.contains("Serialization error")));
+        assert!(
+            event
+                .last_error
+                .as_deref()
+                .is_some_and(|message| message.contains("Serialization error"))
+        );
     }
 
     #[tokio::test]

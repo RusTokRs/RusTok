@@ -19,7 +19,11 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE module_artifact_installations ADD COLUMN migration_checkpoint JSON NULL",
                 "ALTER TABLE module_artifact_installations ADD COLUMN has_irreversible_migration INTEGER NOT NULL DEFAULT 0 CHECK (has_irreversible_migration IN (0, 1))",
             ],
-            backend => return Err(DbErr::Migration(format!("artifact migration checkpoint does not support database backend {backend:?}"))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact migration checkpoint does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

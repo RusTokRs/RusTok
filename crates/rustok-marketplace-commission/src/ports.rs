@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::dto::{
     AssessMarketplaceOrderCommissionsInput, AssessMarketplaceOrderCommissionsResponse,
-    CreateMarketplaceCommissionRuleVersionInput, ListMarketplaceCommissionAssessmentsByOrderRequest,
+    CreateMarketplaceCommissionRuleVersionInput,
+    ListMarketplaceCommissionAssessmentsByOrderRequest,
     ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
     MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,
     MarketplaceCommissionRuleListResponse, MarketplaceCommissionRuleResponse,
@@ -128,15 +129,9 @@ impl MarketplaceCommissionCommandPort for crate::MarketplaceCommissionService {
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
-        self.assess_order_with_receipt(
-            context,
-            tenant_id,
-            actor_id,
-            idempotency_key,
-            request,
-        )
-        .await
-        .map_err(map_owner_error)
+        self.assess_order_with_receipt(context, tenant_id, actor_id, idempotency_key, request)
+            .await
+            .map_err(map_owner_error)
     }
 }
 

@@ -141,11 +141,11 @@ requireMarkers("crates/rustok-module-build-worker/src/runner.rs", [
 
 for (const subprocessFile of [
   "crates/rustok-module-build-worker/src/artifact.rs",
-  "crates/rustok-module-build-worker/src/credentials.rs",
   "crates/rustok-module-build-worker/src/materializer.rs",
   "crates/rustok-module-build-worker/src/policy.rs",
   "crates/rustok-module-build-worker/src/runner.rs",
-  "crates/rustok-module-build-worker/src/signing.rs",
+  "crates/rustok-build-publication/src/credentials.rs",
+  "crates/rustok-build-publication/src/signing.rs",
 ]) {
   requireMatchedCount(subprocessFile, "Command::new(", "kill_on_drop(true)");
 }

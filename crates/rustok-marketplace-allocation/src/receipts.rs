@@ -4,7 +4,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -56,9 +56,7 @@ pub(crate) fn allocation_request_hash<T: Serialize>(
         "request": canonical_json(&request),
     });
     let encoded = serde_json::to_vec(&payload).map_err(|_| {
-        MarketplaceAllocationError::Validation(
-            "allocation request could not be hashed".to_string(),
-        )
+        MarketplaceAllocationError::Validation("allocation request could not be hashed".to_string())
     })?;
     Ok(hex::encode(Sha256::digest(encoded)))
 }

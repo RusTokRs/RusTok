@@ -1,6 +1,6 @@
 use crate::{
-    preflight_runtime_context, ProjectDocument, RuntimeContextPreflight,
-    RuntimeContextPreflightPolicy, ValidationDiagnostic, ValidationSeverity,
+    ProjectDocument, RuntimeContextPreflight, RuntimeContextPreflightPolicy, ValidationDiagnostic,
+    ValidationSeverity, preflight_runtime_context,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -195,8 +195,10 @@ mod tests {
             RuntimeContextScenario::new("same", "Two", json!({})),
         ];
         let diagnostics = validate_runtime_context_scenarios(&scenarios);
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "duplicate_runtime_scenario_id"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "duplicate_runtime_scenario_id")
+        );
     }
 }

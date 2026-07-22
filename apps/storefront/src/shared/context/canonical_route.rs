@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
-use crate::shared::api::{configured_tenant_slug, ApiError};
+use crate::shared::api::{ApiError, configured_tenant_slug};
 
 fn selected_transport_path() -> UiTransportPath {
     if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {

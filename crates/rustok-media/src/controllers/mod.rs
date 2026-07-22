@@ -1,22 +1,22 @@
 use anyhow::Context;
 use axum::{
+    Json,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::{
-    has_effective_permission, Action, AuthContext, HostRuntimeContext, Permission, Resource,
-    TenantContext,
+    Action, AuthContext, HostRuntimeContext, Permission, Resource, TenantContext,
+    has_effective_permission,
 };
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    dto::{MediaItem, MediaTranslationItem, UpsertTranslationInput, DEFAULT_MAX_SIZE},
     MediaError, MediaService, UploadInput,
+    dto::{DEFAULT_MAX_SIZE, MediaItem, MediaTranslationItem, UpsertTranslationInput},
 };
 
 const MULTIPART_OVERHEAD_BYTES: u64 = 1024 * 1024;
@@ -24,7 +24,7 @@ const MULTIPART_OVERHEAD_BYTES: u64 = 1024 * 1024;
 #[derive(Clone)]
 pub struct MediaHttpRuntime {
     db: sea_orm::DatabaseConnection,
-    storage: StorageService,
+    storage: StorageRuntime,
 }
 
 impl MediaHttpRuntime {
@@ -32,7 +32,7 @@ impl MediaHttpRuntime {
         self.db.clone()
     }
 
-    fn storage(&self) -> StorageService {
+    fn storage(&self) -> StorageRuntime {
         self.storage.clone()
     }
 }
@@ -40,8 +40,8 @@ impl MediaHttpRuntime {
 impl MediaHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
         let storage = runtime
-            .shared_get::<StorageService>()
-            .context("media HTTP routes require StorageService in HostRuntimeContext")?;
+            .shared_get::<StorageRuntime>()
+            .context("media HTTP routes require StorageRuntime in HostRuntimeContext")?;
         Ok(Self {
             db: runtime.db_clone(),
             storage,
@@ -66,10 +66,34 @@ fn media_error(error: MediaError) -> HttpError {
             format!("File too large: {size} bytes (max {max} bytes)"),
         ),
         MediaError::Storage(error) => HttpError::internal(error.to_string()),
+        MediaError::StorageKey(error) => HttpError::internal(error.to_string()),
         MediaError::Db(error) => HttpError::internal(error.to_string()),
         MediaError::InvalidLocale(locale) => {
             HttpError::bad_request("invalid_media_locale", format!("Invalid locale: {locale}"))
         }
+        MediaError::InvalidRenditionPurpose(purpose) => HttpError::bad_request(
+            "invalid_rendition_purpose",
+            format!("Invalid rendition purpose: {purpose}"),
+        ),
+        MediaError::RenditionInProgress(id) => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_rendition_in_progress",
+            format!("Rendition is already being processed: {id}"),
+        ),
+        MediaError::UploadSessionExpired(id) => HttpError::new(
+            StatusCode::CONFLICT,
+            "media_upload_session_expired",
+            format!("Upload session has expired: {id}"),
+        ),
+        MediaError::PresignedUploadUnavailable => HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "media_presigned_upload_unavailable",
+            "Presigned upload is unavailable for the configured storage backend",
+        ),
+        MediaError::ImageProcessing(error) => {
+            HttpError::bad_request("media_image_processing_failed", error.to_string())
+        }
+        MediaError::Json(error) => HttpError::internal(error.to_string()),
     }
 }
 
@@ -279,23 +303,29 @@ mod tests {
     fn media_rest_requires_effective_permission_and_matching_tenant() {
         let tenant_id = Uuid::new_v4();
         let manage = Permission::new(Resource::Media, Action::Manage);
-        assert!(require_media_permission(
-            &tenant(tenant_id),
-            &auth(tenant_id, vec![manage]),
-            Action::Delete,
-        )
-        .is_ok());
-        assert!(require_media_permission(
-            &tenant(tenant_id),
-            &auth(tenant_id, Vec::new()),
-            Action::Read,
-        )
-        .is_err());
-        assert!(require_media_permission(
-            &tenant(tenant_id),
-            &auth(Uuid::new_v4(), vec![manage]),
-            Action::Read,
-        )
-        .is_err());
+        assert!(
+            require_media_permission(
+                &tenant(tenant_id),
+                &auth(tenant_id, vec![manage]),
+                Action::Delete,
+            )
+            .is_ok()
+        );
+        assert!(
+            require_media_permission(
+                &tenant(tenant_id),
+                &auth(tenant_id, Vec::new()),
+                Action::Read,
+            )
+            .is_err()
+        );
+        assert!(
+            require_media_permission(
+                &tenant(tenant_id),
+                &auth(Uuid::new_v4(), vec![manage]),
+                Action::Read,
+            )
+            .is_err()
+        );
     }
 }

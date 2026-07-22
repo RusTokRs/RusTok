@@ -2,12 +2,12 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::locale_tags_match;
-use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteContext};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
 
 use crate::core::{
-    apply_variant_quantity_update, apply_variant_reservation_release_update,
+    InventoryHealthState, apply_variant_quantity_update, apply_variant_reservation_release_update,
     apply_variant_reservation_update, inventory_health_state, parse_availability_quantity,
-    parse_reserve_quantity, parse_set_quantity, summarize_inventory, InventoryHealthState,
+    parse_reserve_quantity, parse_set_quantity, summarize_inventory,
 };
 use crate::i18n::t;
 use crate::model::{
@@ -915,7 +915,7 @@ fn status_badge(status: &str) -> &'static str {
 mod tests {
     use super::*;
     use crate::core::{
-        summarize_inventory_health_counts, InventoryHealthCounts, LOW_STOCK_THRESHOLD,
+        InventoryHealthCounts, LOW_STOCK_THRESHOLD, summarize_inventory_health_counts,
     };
     use crate::model::InventoryVariant;
 

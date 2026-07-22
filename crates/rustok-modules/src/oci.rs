@@ -311,6 +311,23 @@ pub struct OciArtifactPublicationReceipt {
     pub provenance_referrer: OciArtifactReference,
 }
 
+/// One bounded digest-verified blob used by the generic build-publication
+/// primitive. Domain publishers own the media type and byte contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciBuildPublicationBlob {
+    pub media_type: String,
+    pub digest: String,
+    pub bytes: Vec<u8>,
+}
+
+/// Generic OCI artifact input for trusted build publishers that do not use the
+/// sandbox-module descriptor contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OciBuildPublicationArtifact {
+    pub config: OciBuildPublicationBlob,
+    pub layer: OciBuildPublicationBlob,
+}
+
 /// Publication port. Implementations must never return write tags as artifact
 /// identity; consumers resolve only the receipt's digest references.
 #[async_trait]
@@ -454,6 +471,127 @@ impl OciDistributionArtifactPublisher {
         }
         let signature_tag = cosign_signature_tag(&artifact.digest)?;
         let write_reference = target.tag_reference(signature_tag);
+        self.resolve_published_reference(target, &write_reference)
+            .await
+    }
+
+    /// Publishes one generic digest-verified build artifact using the current
+    /// domain-owned config and layer media types. The derived write tag is an
+    /// implementation detail; only the resolved manifest digest is returned.
+    pub async fn publish_build_artifact(
+        &self,
+        target: &OciArtifactPublicationTarget,
+        artifact: OciBuildPublicationArtifact,
+        maximum_blob_bytes: u64,
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
+        target.validate()?;
+        validate_build_blob("config", &artifact.config, maximum_blob_bytes)?;
+        validate_build_blob("layer", &artifact.layer, maximum_blob_bytes)?;
+        let write_reference = target.tag_reference(derived_current_tag(
+            "build",
+            &[
+                &artifact.config.digest,
+                &artifact.config.media_type,
+                &artifact.layer.digest,
+                &artifact.layer.media_type,
+            ],
+        ));
+        let layer = ImageLayer::new(
+            artifact.layer.bytes,
+            artifact.layer.media_type.clone(),
+            None,
+        );
+        let config = Config::new(artifact.config.bytes, artifact.config.media_type, None);
+        let mut manifest = OciImageManifest::build(&[layer.clone()], &config, None);
+        manifest.media_type = Some(OCI_IMAGE_MEDIA_TYPE.to_string());
+        manifest.artifact_type = Some(artifact.layer.media_type);
+        self.client
+            .push(
+                &write_reference,
+                &[layer],
+                config,
+                &self.auth,
+                Some(manifest),
+            )
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        self.resolve_published_reference(target, &write_reference)
+            .await
+    }
+
+    /// Publishes one generic evidence referrer for an exact digest-pinned
+    /// subject. Evidence type and bytes are validated by the domain publisher
+    /// before this registry primitive is called and rechecked here.
+    pub async fn publish_build_referrer(
+        &self,
+        target: &OciArtifactPublicationTarget,
+        subject: &OciArtifactReference,
+        evidence: OciBuildPublicationBlob,
+        maximum_blob_bytes: u64,
+    ) -> Result<OciArtifactReference, OciArtifactPublicationError> {
+        target.validate()?;
+        subject
+            .validate()
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        if subject.registry != target.registry || subject.repository != target.repository {
+            return Err(OciArtifactPublicationError::InvalidBundle(
+                "build evidence subject does not belong to the publication target".to_string(),
+            ));
+        }
+        validate_build_blob("evidence", &evidence, maximum_blob_bytes)?;
+        let write_reference = target.tag_reference(derived_current_tag(
+            "evidence",
+            &[&subject.digest, &evidence.media_type, &evidence.digest],
+        ));
+        let empty_config_digest = sha256_digest(OCI_EMPTY_CONFIG_BYTES);
+        self.client
+            .push_blob(
+                &write_reference,
+                OCI_EMPTY_CONFIG_BYTES,
+                &empty_config_digest,
+            )
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        self.client
+            .push_blob(&write_reference, &evidence.bytes, &evidence.digest)
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
+        let manifest = OciReferrerManifest {
+            schema_version: 2,
+            media_type: OCI_IMAGE_MEDIA_TYPE.to_string(),
+            artifact_type: evidence.media_type.clone(),
+            config: OciDescriptor {
+                media_type: OCI_EMPTY_CONFIG_MEDIA_TYPE.to_string(),
+                digest: empty_config_digest,
+                size: OCI_EMPTY_CONFIG_BYTES.len() as i64,
+                urls: None,
+                annotations: None,
+            },
+            layers: vec![OciDescriptor {
+                media_type: evidence.media_type,
+                digest: evidence.digest,
+                size: evidence.bytes.len() as i64,
+                urls: None,
+                annotations: None,
+            }],
+            subject: OciDescriptor {
+                media_type: OCI_IMAGE_MEDIA_TYPE.to_string(),
+                digest: subject.digest.clone(),
+                size: self.published_manifest_size(subject).await?,
+                urls: None,
+                annotations: None,
+            },
+        };
+        let body = serde_json::to_vec(&manifest)
+            .map_err(|error| OciArtifactPublicationError::InvalidBundle(error.to_string()))?;
+        self.client
+            .push_manifest_raw(
+                &write_reference,
+                body,
+                HeaderValue::from_static(OCI_IMAGE_MEDIA_TYPE),
+            )
+            .await
+            .map_err(|error| OciArtifactPublicationError::Registry(error.to_string()))?;
         self.resolve_published_reference(target, &write_reference)
             .await
     }
@@ -603,6 +741,24 @@ fn validate_publication_bytes(
     Ok(())
 }
 
+fn validate_build_blob(
+    kind: &str,
+    blob: &OciBuildPublicationBlob,
+    maximum_bytes: u64,
+) -> Result<(), OciArtifactPublicationError> {
+    if maximum_bytes == 0
+        || blob.media_type.is_empty()
+        || blob.media_type.len() > 255
+        || !blob.media_type.contains('/')
+        || blob.media_type.chars().any(char::is_control)
+    {
+        return Err(OciArtifactPublicationError::InvalidBundle(format!(
+            "{kind} media type or publication limit is invalid"
+        )));
+    }
+    validate_publication_bytes(kind, &blob.bytes, &blob.digest, maximum_bytes)
+}
+
 fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
@@ -610,6 +766,17 @@ fn sha256_digest(bytes: &[u8]) -> String {
 fn derived_tag(kind: &str, fields: &[&str]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"rustok.oci.publication.v1");
+    hasher.update(kind.as_bytes());
+    for field in fields {
+        hasher.update([0]);
+        hasher.update(field.as_bytes());
+    }
+    format!("rustok-{kind}-{}", hex::encode(hasher.finalize()))
+}
+
+fn derived_current_tag(kind: &str, fields: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rustok.oci.publication");
     hasher.update(kind.as_bytes());
     for field in fields {
         hasher.update([0]);

@@ -146,8 +146,8 @@ pub fn denied_reason_for_denial(
 #[cfg(test)]
 mod tests {
     use super::{
-        check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
-        has_effective_permission_in_set, missing_permissions, DeniedReasonKind,
+        DeniedReasonKind, check_all_permissions, check_any_permission, check_permission,
+        denied_reason_for_denial, has_effective_permission_in_set, missing_permissions,
     };
     use rustok_api::{Action, Permission, Resource};
 

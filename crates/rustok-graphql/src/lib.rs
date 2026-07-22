@@ -8,7 +8,7 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::str::FromStr;
 
@@ -150,7 +150,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{persisted_query_extension, GraphqlHttpError, GraphqlRequest};
+    use super::{GraphqlHttpError, GraphqlRequest, persisted_query_extension};
     use serde_json::json;
     use std::str::FromStr;
 

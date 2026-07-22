@@ -8,8 +8,8 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use support::event_contract::exercise_forum_event_contract;
 use support::TestResult;
+use support::event_contract::exercise_forum_event_contract;
 
 #[tokio::test]
 async fn sqlite_captures_complete_forum_domain_event_contract() -> TestResult<()> {

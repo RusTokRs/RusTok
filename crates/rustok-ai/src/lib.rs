@@ -40,69 +40,69 @@ pub use direct::{
 };
 #[cfg(feature = "server")]
 pub use engine::{
-    embed, rerank, EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest, RerankResponse,
-    RigAgentDriver,
-};
-#[cfg(feature = "server")]
-pub use engine::{inference_for_slug, InferenceEngine};
-pub use engine::{
-    provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
-    ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetAuth,
-    ProviderTargetId,
+    AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy, provider_factory_supports,
 };
 #[cfg(feature = "server")]
 pub use engine::{
-    provider_factory_supports, AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy,
+    EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest, RerankResponse, RigAgentDriver,
+    embed, rerank,
+};
+#[cfg(feature = "server")]
+pub use engine::{InferenceEngine, inference_for_slug};
+pub use engine::{
+    ProviderCatalogEntry, ProviderConfigField, ProviderDefaultSetting, ProviderFeature,
+    ProviderFieldKind, ProviderSlug, ProviderTargetAuth, ProviderTargetId, provider_catalog,
+    provider_catalog_entry,
 };
 pub use error::{AiError, AiResult};
 #[cfg(feature = "graphql")]
 pub use graphql_runtime::AI_GRAPHQL_CONTRIBUTION;
 #[cfg(all(feature = "graphql", feature = "server"))]
-pub use graphql_runtime::{attach_schema_data, AiGraphqlRuntimeData};
+pub use graphql_runtime::{AiGraphqlRuntimeData, attach_schema_data};
 pub use mcp::{McpClientAdapter, ToolExecutionResult};
 #[cfg(feature = "server")]
 pub use metrics::{AiMetricBucket, AiRuntimeMetricsSnapshot};
 #[cfg(feature = "server")]
 pub use migrations::AiMigrationSource;
 pub use model::{
-    default_provider_capabilities, AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput,
-    AiProductCopyTaskInput, AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage,
-    ChatMessageRole, DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval,
-    ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderImageRequest,
-    ProviderImageResponse, ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest,
-    ProviderTestResult, ProviderUsage, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest,
-    TaskProfile, ToolCall, ToolDefinition, ToolTrace,
+    AiAlloyTaskInput, AiBlogDraftTaskInput, AiImageAssetTaskInput, AiProductCopyTaskInput,
+    AiProviderConfig, AiRunDecisionTrace, AiRunRequest, ChatMessage, ChatMessageRole,
+    DirectExecutionTarget, ExecutionMode, ExecutionOverride, PendingApproval, ProviderCapability,
+    ProviderChatRequest, ProviderChatResponse, ProviderImageRequest, ProviderImageResponse,
+    ProviderStreamEmitter, ProviderStreamEvent, ProviderStructuredRequest, ProviderTestResult,
+    ProviderUsage, ProviderUsagePolicy, RuntimeOutcome, RuntimeRequest, TaskProfile, ToolCall,
+    ToolDefinition, ToolTrace, default_provider_capabilities,
 };
 pub use policy::ToolExecutionPolicy;
 #[cfg(feature = "server")]
 pub use rag::RigRagEmbeddingProvider;
 pub use rag::{
-    chunk_document, RagAtom, RagCandidate, RagChunk, RagChunkingPolicy, RagCitation, RagContext,
-    RagCoordinator, RagDocument, RagEmbedding, RagEmbeddingCoordinator, RagEmbeddingPort,
-    RagEmbeddingRequest, RagError, RagExpandRequest, RagIngestRequest, RagIngestResult,
-    RagIngestionCoordinator, RagIngestionPort, RagResult, RagRetrievalPort, RagRetrievalStrategy,
-    RagSearchRequest, RagSourceRef,
+    RagAtom, RagCandidate, RagChunk, RagChunkingPolicy, RagCitation, RagContext, RagCoordinator,
+    RagDocument, RagEmbedding, RagEmbeddingCoordinator, RagEmbeddingPort, RagEmbeddingRequest,
+    RagError, RagExpandRequest, RagIngestRequest, RagIngestResult, RagIngestionCoordinator,
+    RagIngestionPort, RagResult, RagRetrievalPort, RagRetrievalStrategy, RagSearchRequest,
+    RagSourceRef, chunk_document,
 };
 pub use router::{AiRouter, ResolvedExecutionPlan, RouterProviderProfile};
 #[cfg(feature = "server")]
-pub use scheduler::{AiAgentWorkflowWorkAdapter, AGENT_WORKFLOW_STAGE_WORKER};
+pub use scheduler::{AGENT_WORKFLOW_STAGE_WORKER, AiAgentWorkflowWorkAdapter};
 #[cfg(feature = "server")]
 pub use service::{
-    ai_host_runtime_from_context, AiAgentModelAssignmentRecord, AiAgentPrincipalRecord,
-    AiApprovalRequestRecord, AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail,
-    AiChatSessionSummary, AiHostRuntime, AiManagementService, AiOperatorContext,
-    AiProviderProfileRecord, AiRecentRunRecord, AiSendMessageResult, AiTaskProfileRecord,
-    AiToolProfileRecord, CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput,
-    CreateAiAgentWorkflowRunInput, CreateAiProviderProfileInput, CreateAiTaskProfileInput,
-    CreateAiToolProfileInput, ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput,
-    RunAiTaskJobInput, SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiOrderStatusPort,
+    AiAgentModelAssignmentRecord, AiAgentPrincipalRecord, AiApprovalRequestRecord,
+    AiChatMessageRecord, AiChatRunRecord, AiChatSessionDetail, AiChatSessionSummary, AiHostRuntime,
+    AiManagementService, AiOperatorContext, AiProviderProfileRecord, AiRecentRunRecord,
+    AiSendMessageResult, AiTaskProfileRecord, AiToolProfileRecord,
+    CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput, CreateAiAgentWorkflowRunInput,
+    CreateAiProviderProfileInput, CreateAiTaskProfileInput, CreateAiToolProfileInput,
+    ResolveAiAgentWorkflowStageApprovalInput, ResumeAiApprovalInput, RunAiTaskJobInput,
+    SendAiChatMessageInput, SharedAiEgressPolicy, SharedAiOrderStatusPort,
     SharedAiProductCatalogReadPort, SharedAiProviderTargetCatalog, SharedAiRagRetrievalPort,
     SharedAiSecretResolverRegistry, StartAiChatSessionInput, UpdateAiAgentModelAssignmentInput,
     UpdateAiAgentPrincipalInput, UpdateAiProviderProfileInput, UpdateAiTaskProfileInput,
-    UpdateAiToolProfileInput,
+    UpdateAiToolProfileInput, ai_host_runtime_from_context,
 };
 #[cfg(feature = "server")]
-pub use streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub};
+pub use streaming::{AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub, ai_run_stream_hub};
 
 #[cfg(feature = "server")]
 pub struct AiModule;

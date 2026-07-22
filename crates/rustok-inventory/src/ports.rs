@@ -5,9 +5,9 @@ use rustok_commerce_foundation::entities::{
     inventory_item, inventory_level, product_variant, reservation_item, stock_location,
 };
 use sea_orm::{
-    sea_query::{Expr, ExprTrait},
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    sea_query::{Expr, ExprTrait},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -1,8 +1,8 @@
 use crate::dto::{BuilderTreeNode, PageBuilderCapabilityRequest};
 use crate::transport::{PageBuilderTransportError, PageBuilderTransportSuccess};
 use fly::{
-    validate_project, ComponentNode, GrapesJsCodec, ProjectDocument, RegistrySet,
-    ValidationDiagnostic, ValidationLimits, ValidationReport,
+    ComponentNode, GrapesJsCodec, ProjectDocument, RegistrySet, ValidationDiagnostic,
+    ValidationLimits, ValidationReport, validate_project,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

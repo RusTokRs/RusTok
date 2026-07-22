@@ -1,10 +1,10 @@
 use crate::ProjectDocument;
 use crate::{
-    evaluate_landing_readiness_with_context, extract_runtime_context_contract,
-    preflight_runtime_context, preflight_runtime_context_scenarios, LandingReadinessPolicy,
-    LandingReadinessReport, RuntimeContextPreflight, RuntimeContextPreflightPolicy,
-    RuntimeContextScenario, RuntimeContextScenarioSuiteResult, ValidationDiagnostic,
-    ValidationSeverity,
+    LandingReadinessPolicy, LandingReadinessReport, RuntimeContextPreflight,
+    RuntimeContextPreflightPolicy, RuntimeContextScenario, RuntimeContextScenarioSuiteResult,
+    ValidationDiagnostic, ValidationSeverity, evaluate_landing_readiness_with_context,
+    extract_runtime_context_contract, preflight_runtime_context,
+    preflight_runtime_context_scenarios,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -309,10 +309,12 @@ mod tests {
             },
         );
         assert!(!evaluation.allowed);
-        assert!(evaluation
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_publish_context_rejected"));
+        assert!(
+            evaluation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_publish_context_rejected")
+        );
     }
 
     #[test]
@@ -384,10 +386,12 @@ mod tests {
             },
         );
         assert!(!evaluation.allowed);
-        assert!(evaluation
-            .diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.code == "runtime_publish_named_scenario_missing" }));
+        assert!(
+            evaluation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == "runtime_publish_named_scenario_missing" })
+        );
     }
 
     #[test]
@@ -414,14 +418,18 @@ mod tests {
             },
         );
         assert!(!evaluation.allowed);
-        assert!(evaluation
-            .readiness
-            .as_ref()
-            .is_some_and(|report| !report.ready));
-        assert!(evaluation
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_publish_readiness_rejected"));
+        assert!(
+            evaluation
+                .readiness
+                .as_ref()
+                .is_some_and(|report| !report.ready)
+        );
+        assert!(
+            evaluation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_publish_readiness_rejected")
+        );
     }
 
     #[test]
@@ -438,10 +446,12 @@ mod tests {
             },
         );
         assert!(evaluation.allowed, "{:?}", evaluation.diagnostics);
-        assert!(evaluation
-            .readiness
-            .as_ref()
-            .is_some_and(|report| report.ready));
+        assert!(
+            evaluation
+                .readiness
+                .as_ref()
+                .is_some_and(|report| report.ready)
+        );
         assert_eq!(document, original);
     }
 

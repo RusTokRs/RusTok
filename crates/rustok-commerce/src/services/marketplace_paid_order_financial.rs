@@ -38,11 +38,7 @@ impl MarketplacePaidOrderFinancialHandler {
         }
     }
 
-    async fn dispatch(
-        &self,
-        envelope: &EventEnvelope,
-        order_id: Uuid,
-    ) -> HandlerResult {
+    async fn dispatch(&self, envelope: &EventEnvelope, order_id: Uuid) -> HandlerResult {
         let operation = checkout_operation::Entity::find()
             .filter(checkout_operation::Column::TenantId.eq(envelope.tenant_id))
             .filter(checkout_operation::Column::OrderId.eq(order_id))

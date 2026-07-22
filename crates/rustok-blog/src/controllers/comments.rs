@@ -1,13 +1,13 @@
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, TenantContext};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use super::{posts::ensure_blog_permission, BlogHttpRuntime};
+use super::{BlogHttpRuntime, posts::ensure_blog_permission};
 use crate::{CommentResponse, CommentService, ModerateCommentInput};
 
 #[utoipa::path(

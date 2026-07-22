@@ -115,8 +115,8 @@ mod tenant_validation_tests {
 
 #[cfg(test)]
 mod event_validation_tests {
-    use crate::events::validation::{validators, EventValidationError, ValidateEvent};
     use crate::DomainEvent;
+    use crate::events::validation::{EventValidationError, ValidateEvent, validators};
     use proptest::prelude::*;
     use uuid::Uuid;
 

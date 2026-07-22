@@ -6,7 +6,7 @@ use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 const FORUM_TEST_DATABASE_ENV: &str = "RUSTOK_FORUM_TEST_DATABASE_URL";
 

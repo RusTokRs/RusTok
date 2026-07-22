@@ -3,7 +3,7 @@ mod native_server_adapter;
 
 use crate::core::StorefrontPricingQuery;
 use crate::model::StorefrontPricingData;
-use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
+use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 
 pub(crate) type TransportResult<T> = UiTransportResult<T>;
 

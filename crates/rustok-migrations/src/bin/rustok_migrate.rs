@@ -32,9 +32,8 @@ fn parse_command(arguments: &[String]) -> Result<Command, Box<dyn Error + Send +
 async fn run() -> Result<(), Box<dyn Error + Send + Sync>> {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     let command = parse_command(&arguments)?;
-    let database_url = env::var("DATABASE_URL").map_err(|_| {
-        invalid_input("DATABASE_URL must be set for rustok-migrate")
-    })?;
+    let database_url = env::var("DATABASE_URL")
+        .map_err(|_| invalid_input("DATABASE_URL must be set for rustok-migrate"))?;
     if database_url.trim().is_empty() {
         return Err(invalid_input("DATABASE_URL must not be empty"));
     }

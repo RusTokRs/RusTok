@@ -1,8 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
-    has_any_effective_permission, AuthContext, TenantContext,
+    AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
+    has_any_effective_permission,
 };
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;

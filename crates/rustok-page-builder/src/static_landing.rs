@@ -1,8 +1,8 @@
 use crate::landing::{LandingProjectError, LandingProjectInspection, LandingProjectResult};
 use fly::{
-    build_static_landing_artifact_with_renderer, FlyHtmlLandingRenderer, LandingReadinessPolicy,
-    LandingRenderer, ProjectDocument, RegistrySet, RenderPolicy, SequentialIdGenerator,
-    StaticLandingArtifact, ValidationDiagnostic, ValidationLimits, ValidationSeverity,
+    FlyHtmlLandingRenderer, LandingReadinessPolicy, LandingRenderer, ProjectDocument, RegistrySet,
+    RenderPolicy, SequentialIdGenerator, StaticLandingArtifact, ValidationDiagnostic,
+    ValidationLimits, ValidationSeverity, build_static_landing_artifact_with_renderer,
 };
 use serde_json::Value;
 
@@ -245,12 +245,14 @@ mod tests {
         assert_eq!(first.identity, second.identity);
         assert_eq!(first.artifact_hash, second.artifact_hash);
         let page = &first.pages[0];
-        assert!(page
-            .body_html
-            .contains("data-fly-style-id=\"fly-static-heading-1\""));
-        assert!(page
-            .css
-            .contains("[data-fly-style-id=\"fly-static-heading-1\"]{margin-top:12px}"));
+        assert!(
+            page.body_html
+                .contains("data-fly-style-id=\"fly-static-heading-1\"")
+        );
+        assert!(
+            page.css
+                .contains("[data-fly-style-id=\"fly-static-heading-1\"]{margin-top:12px}")
+        );
         assert!(!page.body_html.contains(" style=\""));
         first.verify_integrity().expect("artifact integrity");
     }

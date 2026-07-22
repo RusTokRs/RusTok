@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use leptos::prelude::*;
-use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use leptos_router::NavigateOptions;
+use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 use rustok_ui_core::{UiRouteContext, UiRouteQueryIntent, UiRouteQueryUpdate, UiRouteQueryWrite};
 
 type RouteQuerySanitizeFn = dyn Fn(Option<&str>, Option<&str>, &BTreeMap<String, String>) -> BTreeMap<String, String>

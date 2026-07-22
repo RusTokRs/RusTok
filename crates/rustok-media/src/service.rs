@@ -1,44 +1,62 @@
 use chrono::Utc;
+use object_store::{ObjectStoreExt, path::Path};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use rustok_core::generate_id;
-use rustok_storage::{StorageError, StorageService};
+use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
     dto::{
-        MediaAssetSummary, MediaItem, MediaTranslationItem, UploadInput, UpsertTranslationInput,
-        DEFAULT_MAX_SIZE,
+        CreateRenditionInput, DEFAULT_MAX_SIZE, MediaAssetSummary, MediaItem, MediaRenditionItem,
+        MediaTranslationItem, PrepareUploadSessionInput, PreparedUploadSession, UploadInput,
+        UpsertTranslationInput,
     },
     entities::{
-        media::{self, ActiveModel as MediaActiveModel, Column as MediaCol, Entity as MediaEntity},
+        asset::{ActiveModel as AssetActiveModel, Column as AssetCol, Entity as AssetEntity},
+        blob::{self, ActiveModel as BlobActiveModel, Column as BlobCol, Entity as BlobEntity},
         media_translation::{
             ActiveModel as TranslationActiveModel, Column as TransCol, Entity as TransEntity,
         },
+        rendition::{
+            ActiveModel as RenditionActiveModel, Column as RenditionCol, Entity as RenditionEntity,
+        },
+        upload_session::{
+            ActiveModel as UploadSessionActiveModel, Column as UploadSessionCol,
+            Entity as UploadSessionEntity,
+        },
     },
     error::{MediaError, Result},
+    image::ImageWorker,
+    lifecycle::{AssetState, BlobState, RenditionState, UploadState},
 };
 
 pub struct MediaService {
     db: DatabaseConnection,
-    storage: StorageService,
+    storage: StorageRuntime,
+    image_worker: ImageWorker,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MediaStorageCleanupDecision {
-    KeepRecord,
-    DeleteRecord,
+pub enum MediaReconciliationDecision {
+    Healthy,
+    MarkMissing,
     RetryLater,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct MediaStorageCleanupReport {
+pub struct MediaReconciliationReport {
     pub inspected: u64,
-    pub deleted_records: u64,
-    pub kept_records: u64,
+    pub healthy: u64,
+    pub missing_marked: u64,
+    pub deletions_completed: u64,
+    pub upload_sessions_inspected: u64,
+    pub upload_sessions_expired: u64,
+    pub staging_objects_deleted: u64,
     pub retry_later: u64,
 }
 
@@ -55,13 +73,16 @@ struct VerifiedMediaType {
     extension: &'static str,
 }
 
-impl MediaStorageCleanupReport {
+impl MediaReconciliationReport {
     pub fn is_empty(&self) -> bool {
-        self.inspected == 0
+        self.inspected == 0 && self.upload_sessions_inspected == 0
     }
 
     pub fn changed_records(&self) -> u64 {
-        self.deleted_records
+        self.missing_marked
+            + self.deletions_completed
+            + self.upload_sessions_expired
+            + self.staging_objects_deleted
     }
 
     pub fn completed_without_retry(&self) -> bool {
@@ -71,21 +92,34 @@ impl MediaStorageCleanupReport {
     pub fn should_retry(&self) -> bool {
         self.retry_later > 0
     }
+
+    fn merge(&mut self, other: Self) {
+        self.inspected += other.inspected;
+        self.healthy += other.healthy;
+        self.missing_marked += other.missing_marked;
+        self.deletions_completed += other.deletions_completed;
+        self.upload_sessions_inspected += other.upload_sessions_inspected;
+        self.upload_sessions_expired += other.upload_sessions_expired;
+        self.staging_objects_deleted += other.staging_objects_deleted;
+        self.retry_later += other.retry_later;
+    }
 }
 
 pub async fn load_media_usage_snapshot(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> Result<MediaUsageSnapshot> {
-    let file_count = MediaEntity::find()
-        .filter(MediaCol::TenantId.eq(tenant_id))
+    let file_count = AssetEntity::find()
+        .filter(AssetCol::TenantId.eq(tenant_id))
+        .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
         .count(db)
         .await? as i64;
 
-    let total_bytes = MediaEntity::find()
-        .filter(MediaCol::TenantId.eq(tenant_id))
+    let total_bytes = BlobEntity::find()
+        .filter(BlobCol::TenantId.eq(tenant_id))
+        .filter(BlobCol::State.eq(BlobState::Ready.as_str()))
         .select_only()
-        .column_as(sea_orm::sea_query::Expr::col(MediaCol::Size).sum(), "total")
+        .column_as(sea_orm::sea_query::Expr::col(BlobCol::Size).sum(), "total")
         .into_tuple::<Option<i64>>()
         .one(db)
         .await?
@@ -99,16 +133,27 @@ pub async fn load_media_usage_snapshot(
     })
 }
 
-fn classify_cleanup_probe(
-    result: &std::result::Result<bytes::Bytes, StorageError>,
-) -> MediaStorageCleanupDecision {
+fn classify_reconciliation_probe(
+    result: &std::result::Result<object_store::ObjectMeta, object_store::Error>,
+) -> MediaReconciliationDecision {
     match result {
-        Ok(_) => MediaStorageCleanupDecision::KeepRecord,
-        Err(StorageError::NotFound(_)) | Err(StorageError::InvalidPath(_)) => {
-            MediaStorageCleanupDecision::DeleteRecord
-        }
-        Err(StorageError::Io(_)) | Err(StorageError::Backend(_)) => {
-            MediaStorageCleanupDecision::RetryLater
+        Ok(_) => MediaReconciliationDecision::Healthy,
+        Err(object_store::Error::NotFound { .. }) => MediaReconciliationDecision::MarkMissing,
+        Err(_) => MediaReconciliationDecision::RetryLater,
+    }
+}
+
+fn record_reconciliation_metrics(report: &MediaReconciliationReport) {
+    for (outcome, count) in [
+        ("healthy", report.healthy),
+        ("missing_marked", report.missing_marked),
+        ("deletions_completed", report.deletions_completed),
+        ("upload_sessions_expired", report.upload_sessions_expired),
+        ("staging_objects_deleted", report.staging_objects_deleted),
+        ("retry_later", report.retry_later),
+    ] {
+        if count > 0 {
+            rustok_telemetry::metrics::record_media_reconciliation(outcome, count);
         }
     }
 }
@@ -311,68 +356,748 @@ fn normalize_original_name(value: &str, extension: &str) -> String {
     }
 }
 
+fn normalize_rendition_purpose(value: &str) -> Result<String> {
+    let purpose = value.trim().to_ascii_lowercase().replace('_', "-");
+    let valid = !purpose.is_empty()
+        && purpose.len() <= 64
+        && !purpose.starts_with('-')
+        && !purpose.ends_with('-')
+        && purpose
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    valid
+        .then_some(purpose)
+        .ok_or_else(|| MediaError::InvalidRenditionPurpose(value.to_string()))
+}
+
 impl MediaService {
-    pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
-        Self { db, storage }
+    pub fn new(db: DatabaseConnection, storage: StorageRuntime) -> Self {
+        Self {
+            db,
+            storage,
+            image_worker: ImageWorker::production(),
+        }
+    }
+
+    pub fn with_image_worker(mut self, image_worker: ImageWorker) -> Self {
+        self.image_worker = image_worker;
+        self
+    }
+
+    pub async fn usage_snapshot(&self, tenant_id: Uuid) -> Result<MediaUsageSnapshot> {
+        load_media_usage_snapshot(&self.db, tenant_id).await
     }
 
     /// Validate, store, and record a new media upload.
     pub async fn upload(&self, input: UploadInput) -> Result<MediaItem> {
-        let (_, verified) = validate_upload_policy(&input)?;
+        self.persist_upload(input, None).await
+    }
+
+    async fn persist_upload(
+        &self,
+        input: UploadInput,
+        upload_session_id: Option<Uuid>,
+    ) -> Result<MediaItem> {
+        if let Some(upload_session_id) = upload_session_id
+            && let Some(existing) = AssetEntity::find()
+                .filter(AssetCol::TenantId.eq(input.tenant_id))
+                .filter(AssetCol::UploadSessionId.eq(upload_session_id))
+                .one(&self.db)
+                .await?
+        {
+            return self.get(input.tenant_id, existing.id).await;
+        }
+        let (size, verified) = validate_upload_policy(&input)?;
         let original_name = normalize_original_name(&input.original_name, verified.extension);
-        let canonical_name = format!("upload.{}", verified.extension);
-        let path = StorageService::generate_path(input.tenant_id, &canonical_name);
-        let uploaded = self
-            .storage
-            .store(&path, input.data, verified.mime_type)
+        let asset_id = generate_id();
+        let blob_id = generate_id();
+        let now = Utc::now();
+        let key = ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(input.tenant_id),
+            now,
+            blob_id,
+            verified.extension,
+        )?;
+        let checksum_sha256 = hex::encode(Sha256::digest(input.data.as_ref()));
+        self.storage
+            .objects
+            .put_opts(
+                key.as_path(),
+                input.data.clone().into(),
+                self.storage.put_options(verified.mime_type),
+            )
             .await?;
+        let path = key.to_string();
 
-        let filename = std::path::Path::new(&path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&path)
-            .to_string();
-        let id = generate_id();
-        let now = Utc::now().fixed_offset();
-        let active = MediaActiveModel {
-            id: Set(id),
-            tenant_id: Set(input.tenant_id),
-            uploaded_by: Set(input.uploaded_by),
-            filename: Set(filename),
-            original_name: Set(original_name),
-            mime_type: Set(verified.mime_type.to_string()),
-            size: Set(uploaded.size as i64),
-            storage_path: Set(path.clone()),
-            storage_driver: Set(self.storage.backend_name().to_string()),
-            width: Set(None),
-            height: Set(None),
-            metadata: Set(serde_json::json!({})),
-            created_at: Set(now),
-        };
+        let timestamp = now.fixed_offset();
+        let persistence = async {
+            let transaction = self.db.begin().await?;
+            AssetActiveModel {
+                id: Set(asset_id),
+                tenant_id: Set(input.tenant_id),
+                uploaded_by: Set(input.uploaded_by),
+                upload_session_id: Set(upload_session_id),
+                active_blob_id: Set(None),
+                original_name: Set(original_name),
+                lifecycle_state: Set(AssetState::Active.as_str().to_string()),
+                metadata: Set(serde_json::json!({})),
+                created_at: Set(timestamp),
+                updated_at: Set(timestamp),
+                delete_requested_at: Set(None),
+                deleted_at: Set(None),
+            }
+            .insert(&transaction)
+            .await?;
+            BlobActiveModel {
+                id: Set(blob_id),
+                tenant_id: Set(input.tenant_id),
+                asset_id: Set(asset_id),
+                object_key: Set(path.clone()),
+                mime_type: Set(verified.mime_type.to_string()),
+                size: Set(size as i64),
+                checksum_sha256: Set(checksum_sha256),
+                width: Set(None),
+                height: Set(None),
+                state: Set(BlobState::Ready.as_str().to_string()),
+                created_at: Set(timestamp),
+                ready_at: Set(Some(timestamp)),
+                delete_requested_at: Set(None),
+                deleted_at: Set(None),
+                reconcile_attempts: Set(0),
+                last_error: Set(None),
+            }
+            .insert(&transaction)
+            .await?;
+            AssetEntity::update_many()
+                .col_expr(
+                    AssetCol::ActiveBlobId,
+                    sea_orm::sea_query::Expr::value(blob_id),
+                )
+                .filter(AssetCol::Id.eq(asset_id))
+                .exec(&transaction)
+                .await?;
+            transaction.commit().await
+        }
+        .await;
 
-        let model = match active.insert(&self.db).await {
-            Ok(model) => model,
+        match persistence {
+            Ok(()) => self.get(input.tenant_id, asset_id).await,
             Err(error) => {
-                if let Err(cleanup_error) = self.storage.delete(&path).await {
+                if let Err(cleanup_error) = self.storage.objects.delete(key.as_path()).await {
                     tracing::error!(
                         path = %path,
                         error = %cleanup_error,
                         "Failed to compensate media storage after database insert failure"
                     );
                 }
+                if let Some(upload_session_id) = upload_session_id
+                    && let Some(existing) = AssetEntity::find()
+                        .filter(AssetCol::TenantId.eq(input.tenant_id))
+                        .filter(AssetCol::UploadSessionId.eq(upload_session_id))
+                        .one(&self.db)
+                        .await?
+                {
+                    return self.get(input.tenant_id, existing.id).await;
+                }
+                Err(error.into())
+            }
+        }
+    }
+
+    pub fn supports_presigned_upload(&self) -> bool {
+        self.storage.signer.is_some()
+    }
+
+    pub async fn prepare_upload_session(
+        &self,
+        input: PrepareUploadSessionInput,
+    ) -> Result<PreparedUploadSession> {
+        if !self.supports_presigned_upload() {
+            return Err(MediaError::PresignedUploadUnavailable);
+        }
+        if input.expires_in.is_zero() || input.expires_in > std::time::Duration::from_secs(900) {
+            return Err(MediaError::InvalidMediaContent {
+                declared: input.content_type,
+                reason: "upload session expiry must be between 1 second and 15 minutes".to_string(),
+            });
+        }
+        if input.content_length == Some(0)
+            || input
+                .content_length
+                .is_some_and(|size| size > DEFAULT_MAX_SIZE)
+        {
+            return Err(MediaError::FileTooLarge {
+                size: input.content_length.unwrap_or_default(),
+                max: DEFAULT_MAX_SIZE,
+            });
+        }
+        let content_type = input
+            .content_type
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        if !is_supported_declared_type(&content_type) {
+            return Err(MediaError::UnsupportedMimeType(content_type));
+        }
+
+        let id = generate_id();
+        let created_at = Utc::now();
+        let expires_at = created_at
+            + chrono::Duration::from_std(input.expires_in).map_err(|error| {
+                MediaError::InvalidMediaContent {
+                    declared: content_type.clone(),
+                    reason: error.to_string(),
+                }
+            })?;
+        let key = ObjectKey::chronological(
+            "media",
+            ObjectZone::Staging,
+            ObjectScope::Tenant(input.tenant_id),
+            created_at,
+            id,
+            "upload",
+        )?;
+        let timestamp = created_at.fixed_offset();
+        UploadSessionActiveModel {
+            id: Set(id),
+            tenant_id: Set(input.tenant_id),
+            actor_id: Set(input.actor_id),
+            staging_key: Set(key.to_string()),
+            original_name: Set(normalize_original_name(&input.original_name, "bin")),
+            expected_mime_type: Set(content_type),
+            expected_size: Set(input.content_length.map(|size| size as i64)),
+            state: Set(UploadState::Pending.as_str().to_string()),
+            created_at: Set(timestamp),
+            updated_at: Set(timestamp),
+            expires_at: Set(expires_at.fixed_offset()),
+            completed_at: Set(None),
+            staging_deleted_at: Set(None),
+            last_error: Set(None),
+        }
+        .insert(&self.db)
+        .await?;
+
+        match self
+            .storage
+            .signed_upload_url(key.as_path(), input.expires_in)
+            .await
+        {
+            Ok(Some(endpoint)) => {
+                rustok_telemetry::metrics::record_media_upload_session("prepared");
+                Ok(PreparedUploadSession {
+                    id,
+                    endpoint,
+                    expires_at,
+                })
+            }
+            Ok(None) => {
+                rustok_telemetry::metrics::record_media_upload_session("prepare_failed");
+                self.mark_upload_session_failed(id, "storage signer is unavailable")
+                    .await;
+                Err(MediaError::PresignedUploadUnavailable)
+            }
+            Err(error) => {
+                rustok_telemetry::metrics::record_media_upload_session("prepare_failed");
+                self.mark_upload_session_failed(id, &error.to_string())
+                    .await;
+                Err(error.into())
+            }
+        }
+    }
+
+    pub async fn complete_upload_session(
+        &self,
+        tenant_id: Uuid,
+        session_id: Uuid,
+    ) -> Result<MediaItem> {
+        let session = UploadSessionEntity::find_by_id(session_id)
+            .filter(UploadSessionCol::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(MediaError::NotFound(session_id))?;
+        if let Some(asset) = AssetEntity::find()
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::UploadSessionId.eq(session_id))
+            .one(&self.db)
+            .await?
+        {
+            self.complete_upload_session_row(&session).await;
+            rustok_telemetry::metrics::record_media_upload_session("reused");
+            return self.get(tenant_id, asset.id).await;
+        }
+        if session.expires_at <= Utc::now().fixed_offset() {
+            UploadSessionEntity::update_many()
+                .col_expr(
+                    UploadSessionCol::State,
+                    sea_orm::sea_query::Expr::value(UploadState::Expired.as_str()),
+                )
+                .col_expr(
+                    UploadSessionCol::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+                )
+                .filter(UploadSessionCol::Id.eq(session_id))
+                .exec(&self.db)
+                .await?;
+            return Err(MediaError::UploadSessionExpired(session_id));
+        }
+        UploadSessionEntity::update_many()
+            .col_expr(
+                UploadSessionCol::State,
+                sea_orm::sea_query::Expr::value(UploadState::Finalizing.as_str()),
+            )
+            .col_expr(
+                UploadSessionCol::UpdatedAt,
+                sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+            )
+            .filter(UploadSessionCol::Id.eq(session_id))
+            .exec(&self.db)
+            .await?;
+
+        let data = match self
+            .storage
+            .objects
+            .get(&Path::from(session.staging_key.as_str()))
+            .await
+        {
+            Ok(result) => match result.bytes().await {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    self.mark_upload_session_failed(session_id, &error.to_string())
+                        .await;
+                    return Err(error.into());
+                }
+            },
+            Err(error) => {
+                self.mark_upload_session_failed(session_id, &error.to_string())
+                    .await;
                 return Err(error.into());
             }
         };
-        Ok(self.to_item(model))
+        if session
+            .expected_size
+            .is_some_and(|expected| expected != data.len() as i64)
+        {
+            let reason = format!(
+                "staged object has {} bytes; expected {}",
+                data.len(),
+                session.expected_size.unwrap_or_default()
+            );
+            self.mark_upload_session_failed(session_id, &reason).await;
+            return Err(MediaError::InvalidMediaContent {
+                declared: session.expected_mime_type,
+                reason,
+            });
+        }
+
+        let item = match self
+            .persist_upload(
+                UploadInput {
+                    tenant_id,
+                    uploaded_by: session.actor_id,
+                    original_name: session.original_name.clone(),
+                    content_type: session.expected_mime_type.clone(),
+                    data,
+                },
+                Some(session_id),
+            )
+            .await
+        {
+            Ok(item) => item,
+            Err(error) => {
+                self.mark_upload_session_failed(session_id, &error.to_string())
+                    .await;
+                return Err(error);
+            }
+        };
+        self.complete_upload_session_row(&session).await;
+        rustok_telemetry::metrics::record_media_upload_session("completed");
+        Ok(item)
+    }
+
+    async fn complete_upload_session_row(&self, session: &crate::entities::upload_session::Model) {
+        let now = Utc::now().fixed_offset();
+        let path = Path::from(session.staging_key.as_str());
+        let deletion = self.storage.objects.delete(&path).await;
+        let (staging_deleted_at, last_error) = match deletion {
+            Ok(()) | Err(object_store::Error::NotFound { .. }) => (Some(now), None),
+            Err(error) => (None, Some(error.to_string())),
+        };
+        let result = UploadSessionEntity::update_many()
+            .col_expr(
+                UploadSessionCol::State,
+                sea_orm::sea_query::Expr::value(UploadState::Completed.as_str()),
+            )
+            .col_expr(
+                UploadSessionCol::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .col_expr(
+                UploadSessionCol::CompletedAt,
+                sea_orm::sea_query::Expr::value(Some(now)),
+            )
+            .col_expr(
+                UploadSessionCol::StagingDeletedAt,
+                sea_orm::sea_query::Expr::value(staging_deleted_at),
+            )
+            .col_expr(
+                UploadSessionCol::LastError,
+                sea_orm::sea_query::Expr::value(last_error),
+            )
+            .filter(UploadSessionCol::Id.eq(session.id))
+            .exec(&self.db)
+            .await;
+        if let Err(error) = result {
+            tracing::error!(
+                upload_session_id = %session.id,
+                error = %error,
+                "Failed to persist completed upload session state"
+            );
+        }
+    }
+
+    async fn mark_upload_session_failed(&self, session_id: Uuid, error: &str) {
+        let result = UploadSessionEntity::update_many()
+            .col_expr(
+                UploadSessionCol::State,
+                sea_orm::sea_query::Expr::value(UploadState::Failed.as_str()),
+            )
+            .col_expr(
+                UploadSessionCol::UpdatedAt,
+                sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+            )
+            .col_expr(
+                UploadSessionCol::LastError,
+                sea_orm::sea_query::Expr::value(error.chars().take(4_096).collect::<String>()),
+            )
+            .filter(UploadSessionCol::Id.eq(session_id))
+            .exec(&self.db)
+            .await;
+        if let Err(database_error) = result {
+            tracing::error!(
+                upload_session_id = %session_id,
+                error = %database_error,
+                "Failed to persist upload session failure state"
+            );
+        }
+    }
+
+    /// Build or return the immutable rendition identified by source blob and recipe digest.
+    pub async fn create_rendition(
+        &self,
+        input: CreateRenditionInput,
+    ) -> Result<MediaRenditionItem> {
+        let purpose = normalize_rendition_purpose(&input.purpose)?;
+        input
+            .recipe
+            .validate(crate::image::ImageProcessingLimits::default())?;
+        let recipe_hash = input.recipe.digest()?;
+        let (asset, source_blob) = AssetEntity::find_by_id(input.asset_id)
+            .filter(AssetCol::TenantId.eq(input.tenant_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .find_also_related(BlobEntity)
+            .one(&self.db)
+            .await?
+            .ok_or(MediaError::NotFound(input.asset_id))?;
+        let source_blob = source_blob.ok_or(MediaError::NotFound(input.asset_id))?;
+        if !source_blob.mime_type.starts_with("image/") {
+            return Err(MediaError::UnsupportedMimeType(source_blob.mime_type));
+        }
+
+        let now = Utc::now().fixed_offset();
+        let existing = RenditionEntity::find()
+            .filter(RenditionCol::SourceBlobId.eq(source_blob.id))
+            .filter(RenditionCol::RecipeHash.eq(&recipe_hash))
+            .one(&self.db)
+            .await?;
+        let rendition_id = if let Some(existing) = existing {
+            if existing.state == RenditionState::Ready.as_str()
+                && let Some(item) = self.ready_rendition_item(&existing).await?
+            {
+                return Ok(item);
+            }
+            let stale_before = now - chrono::Duration::minutes(5);
+            if matches!(
+                existing.state.as_str(),
+                state if state == RenditionState::Pending.as_str()
+                    || state == RenditionState::Processing.as_str()
+            ) && existing.updated_at > stale_before
+            {
+                return Err(MediaError::RenditionInProgress(existing.id));
+            }
+            existing.id
+        } else {
+            let rendition_id = generate_id();
+            let insert = RenditionActiveModel {
+                id: Set(rendition_id),
+                tenant_id: Set(input.tenant_id),
+                asset_id: Set(asset.id),
+                source_blob_id: Set(source_blob.id),
+                result_blob_id: Set(None),
+                recipe_hash: Set(recipe_hash.clone()),
+                recipe: Set(serde_json::to_value(&input.recipe)?),
+                purpose: Set(purpose.clone()),
+                state: Set(RenditionState::Pending.as_str().to_string()),
+                created_at: Set(now),
+                updated_at: Set(now),
+                last_error: Set(None),
+            }
+            .insert(&self.db)
+            .await;
+            if let Err(error) = insert {
+                if let Some(concurrent) = RenditionEntity::find()
+                    .filter(RenditionCol::SourceBlobId.eq(source_blob.id))
+                    .filter(RenditionCol::RecipeHash.eq(&recipe_hash))
+                    .one(&self.db)
+                    .await?
+                {
+                    return Err(MediaError::RenditionInProgress(concurrent.id));
+                }
+                return Err(error.into());
+            }
+            rendition_id
+        };
+
+        RenditionEntity::update_many()
+            .col_expr(
+                RenditionCol::State,
+                sea_orm::sea_query::Expr::value(RenditionState::Processing.as_str()),
+            )
+            .col_expr(
+                RenditionCol::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .col_expr(
+                RenditionCol::LastError,
+                sea_orm::sea_query::Expr::value(Option::<String>::None),
+            )
+            .filter(RenditionCol::Id.eq(rendition_id))
+            .exec(&self.db)
+            .await?;
+
+        let source = match self
+            .storage
+            .objects
+            .get(&Path::from(source_blob.object_key.as_str()))
+            .await
+        {
+            Ok(result) => match result.bytes().await {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    self.mark_rendition_failed(rendition_id, &error.to_string())
+                        .await;
+                    return Err(error.into());
+                }
+            },
+            Err(error) => {
+                self.mark_rendition_failed(rendition_id, &error.to_string())
+                    .await;
+                return Err(error.into());
+            }
+        };
+        let output_format = input.recipe.output.extension();
+        let processing_started = std::time::Instant::now();
+        let output = match self
+            .image_worker
+            .process(source.to_vec(), input.recipe)
+            .await
+        {
+            Ok(output) => {
+                rustok_telemetry::metrics::record_media_rendition(
+                    output_format,
+                    "ready",
+                    processing_started.elapsed().as_secs_f64(),
+                );
+                output
+            }
+            Err(error) => {
+                rustok_telemetry::metrics::record_media_rendition(
+                    output_format,
+                    "failed",
+                    processing_started.elapsed().as_secs_f64(),
+                );
+                self.mark_rendition_failed(rendition_id, &error.to_string())
+                    .await;
+                return Err(error.into());
+            }
+        };
+
+        let result_blob_id = generate_id();
+        let created_at = Utc::now();
+        let key = ObjectKey::chronological(
+            "media",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(input.tenant_id),
+            created_at,
+            result_blob_id,
+            output.extension,
+        )?;
+        let object_key = key.to_string();
+        let size = output.bytes.len() as i64;
+        let checksum_sha256 = hex::encode(Sha256::digest(&output.bytes));
+        if let Err(error) = self
+            .storage
+            .objects
+            .put_opts(
+                key.as_path(),
+                output.bytes.into(),
+                self.storage.put_options(output.mime_type),
+            )
+            .await
+        {
+            self.mark_rendition_failed(rendition_id, &error.to_string())
+                .await;
+            return Err(error.into());
+        }
+
+        let timestamp = created_at.fixed_offset();
+        let persistence = async {
+            let transaction = self.db.begin().await?;
+            BlobActiveModel {
+                id: Set(result_blob_id),
+                tenant_id: Set(input.tenant_id),
+                asset_id: Set(asset.id),
+                object_key: Set(object_key.clone()),
+                mime_type: Set(output.mime_type.to_string()),
+                size: Set(size),
+                checksum_sha256: Set(checksum_sha256),
+                width: Set(Some(output.width as i32)),
+                height: Set(Some(output.height as i32)),
+                state: Set(BlobState::Ready.as_str().to_string()),
+                created_at: Set(timestamp),
+                ready_at: Set(Some(timestamp)),
+                delete_requested_at: Set(None),
+                deleted_at: Set(None),
+                reconcile_attempts: Set(0),
+                last_error: Set(None),
+            }
+            .insert(&transaction)
+            .await?;
+            RenditionEntity::update_many()
+                .col_expr(
+                    RenditionCol::ResultBlobId,
+                    sea_orm::sea_query::Expr::value(result_blob_id),
+                )
+                .col_expr(
+                    RenditionCol::State,
+                    sea_orm::sea_query::Expr::value(RenditionState::Ready.as_str()),
+                )
+                .col_expr(
+                    RenditionCol::UpdatedAt,
+                    sea_orm::sea_query::Expr::value(timestamp),
+                )
+                .filter(RenditionCol::Id.eq(rendition_id))
+                .exec(&transaction)
+                .await?;
+            transaction.commit().await
+        }
+        .await;
+
+        if let Err(error) = persistence {
+            if let Err(cleanup_error) = self.storage.objects.delete(key.as_path()).await {
+                tracing::error!(
+                    path = %object_key,
+                    error = %cleanup_error,
+                    "Failed to compensate rendition storage after database failure"
+                );
+            }
+            self.mark_rendition_failed(rendition_id, &error.to_string())
+                .await;
+            return Err(error.into());
+        }
+
+        Ok(MediaRenditionItem {
+            id: rendition_id,
+            asset_id: asset.id,
+            source_blob_id: source_blob.id,
+            result_blob_id,
+            purpose,
+            recipe_hash,
+            mime_type: output.mime_type.to_string(),
+            size,
+            width: output.width as i32,
+            height: output.height as i32,
+            public_url: self
+                .storage
+                .public_url(key.as_path())
+                .unwrap_or_else(|| object_key.clone()),
+            storage_path: object_key,
+        })
+    }
+
+    async fn ready_rendition_item(
+        &self,
+        rendition: &crate::entities::rendition::Model,
+    ) -> Result<Option<MediaRenditionItem>> {
+        let Some(result_blob_id) = rendition.result_blob_id else {
+            return Ok(None);
+        };
+        let Some(blob) = BlobEntity::find_by_id(result_blob_id)
+            .filter(BlobCol::State.eq(BlobState::Ready.as_str()))
+            .one(&self.db)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let path = Path::from(blob.object_key.as_str());
+        Ok(Some(MediaRenditionItem {
+            id: rendition.id,
+            asset_id: rendition.asset_id,
+            source_blob_id: rendition.source_blob_id,
+            result_blob_id,
+            purpose: rendition.purpose.clone(),
+            recipe_hash: rendition.recipe_hash.clone(),
+            mime_type: blob.mime_type,
+            size: blob.size,
+            width: blob.width.unwrap_or_default(),
+            height: blob.height.unwrap_or_default(),
+            public_url: self
+                .storage
+                .public_url(&path)
+                .unwrap_or_else(|| blob.object_key.clone()),
+            storage_path: blob.object_key,
+        }))
+    }
+
+    async fn mark_rendition_failed(&self, rendition_id: Uuid, error: &str) {
+        let result = RenditionEntity::update_many()
+            .col_expr(
+                RenditionCol::State,
+                sea_orm::sea_query::Expr::value(RenditionState::Failed.as_str()),
+            )
+            .col_expr(
+                RenditionCol::UpdatedAt,
+                sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+            )
+            .col_expr(
+                RenditionCol::LastError,
+                sea_orm::sea_query::Expr::value(error.chars().take(4_096).collect::<String>()),
+            )
+            .filter(RenditionCol::Id.eq(rendition_id))
+            .exec(&self.db)
+            .await;
+        if let Err(database_error) = result {
+            tracing::error!(
+                rendition_id = %rendition_id,
+                error = %database_error,
+                "Failed to persist rendition failure state"
+            );
+        }
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<MediaItem> {
-        let model = MediaEntity::find_by_id(id)
-            .filter(MediaCol::TenantId.eq(tenant_id))
+        let (asset, blob) = AssetEntity::find_by_id(id)
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .find_also_related(BlobEntity)
             .one(&self.db)
             .await?
             .ok_or(MediaError::NotFound(id))?;
-        Ok(self.to_item(model))
+        let blob = blob.ok_or(MediaError::NotFound(id))?;
+        Ok(self.to_item(asset, blob))
     }
 
     pub async fn list(
@@ -381,15 +1106,22 @@ impl MediaService {
         limit: u64,
         offset: u64,
     ) -> Result<(Vec<MediaItem>, u64)> {
-        let query = MediaEntity::find()
-            .filter(MediaCol::TenantId.eq(tenant_id))
-            .order_by_desc(MediaCol::CreatedAt);
+        let query = AssetEntity::find()
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+            .order_by_desc(AssetCol::CreatedAt);
 
         let total = query.clone().count(&self.db).await?;
-        let items: Vec<crate::entities::media::Model> =
-            query.limit(limit).offset(offset).all(&self.db).await?;
+        let rows = query
+            .find_also_related(BlobEntity)
+            .limit(limit)
+            .offset(offset)
+            .all(&self.db)
+            .await?;
         Ok((
-            items.into_iter().map(|model| self.to_item(model)).collect(),
+            rows.into_iter()
+                .filter_map(|(asset, blob)| blob.map(|blob| self.to_item(asset, blob)))
+                .collect(),
             total,
         ))
     }
@@ -421,22 +1153,35 @@ impl MediaService {
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
-        let model = MediaEntity::find_by_id(id)
-            .filter(MediaCol::TenantId.eq(tenant_id))
+        let asset = AssetEntity::find_by_id(id)
+            .filter(AssetCol::TenantId.eq(tenant_id))
+            .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
             .one(&self.db)
             .await?
             .ok_or(MediaError::NotFound(id))?;
-
-        if let Err(error) = self.storage.delete(&model.storage_path).await {
-            tracing::warn!(
-                media_id = %id,
-                path = %model.storage_path,
-                error = %error,
-                "Failed to delete media object from storage; DB record will still be removed"
-            );
-        }
-
-        MediaEntity::delete_by_id(id).exec(&self.db).await?;
+        let now = Utc::now().fixed_offset();
+        let transaction = self.db.begin().await?;
+        let mut active: AssetActiveModel = asset.into();
+        active.lifecycle_state = Set(AssetState::DeletePending.as_str().to_string());
+        active.active_blob_id = Set(None);
+        active.updated_at = Set(now);
+        active.delete_requested_at = Set(Some(now));
+        active.update(&transaction).await?;
+        BlobEntity::update_many()
+            .col_expr(
+                BlobCol::State,
+                sea_orm::sea_query::Expr::value(BlobState::DeletePending.as_str()),
+            )
+            .col_expr(
+                BlobCol::DeleteRequestedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(BlobCol::AssetId.eq(id))
+            .filter(BlobCol::State.ne(BlobState::Deleted.as_str()))
+            .exec(&transaction)
+            .await?;
+        transaction.commit().await?;
+        self.reconcile_asset_deletion(tenant_id, id).await?;
         Ok(())
     }
 
@@ -450,7 +1195,7 @@ impl MediaService {
         let input = input.normalize().map_err(MediaError::InvalidLocale)?;
 
         let existing = TransEntity::find()
-            .filter(TransCol::MediaId.eq(media_id))
+            .filter(TransCol::AssetId.eq(media_id))
             .filter(TransCol::Locale.eq(&input.locale))
             .one(&self.db)
             .await?;
@@ -464,7 +1209,7 @@ impl MediaService {
         } else {
             TranslationActiveModel {
                 id: Set(generate_id()),
-                media_id: Set(media_id),
+                asset_id: Set(media_id),
                 locale: Set(input.locale),
                 title: Set(input.title),
                 alt_text: Set(input.alt_text),
@@ -476,7 +1221,7 @@ impl MediaService {
 
         Ok(MediaTranslationItem {
             id: model.id,
-            media_id: model.media_id,
+            media_id: model.asset_id,
             locale: model.locale,
             title: model.title,
             alt_text: model.alt_text,
@@ -491,7 +1236,7 @@ impl MediaService {
     ) -> Result<Vec<MediaTranslationItem>> {
         let _ = self.get(tenant_id, media_id).await?;
         let rows = TransEntity::find()
-            .filter(TransCol::MediaId.eq(media_id))
+            .filter(TransCol::AssetId.eq(media_id))
             .order_by_asc(TransCol::Locale)
             .all(&self.db)
             .await?;
@@ -499,7 +1244,7 @@ impl MediaService {
             .into_iter()
             .map(|model| MediaTranslationItem {
                 id: model.id,
-                media_id: model.media_id,
+                media_id: model.asset_id,
                 locale: model.locale,
                 title: model.title,
                 alt_text: model.alt_text,
@@ -508,61 +1253,274 @@ impl MediaService {
             .collect())
     }
 
-    pub async fn cleanup_storage_orphans(
+    pub async fn reconcile_storage(
         &self,
         tenant_id: Uuid,
         limit: u64,
-    ) -> Result<MediaStorageCleanupReport> {
-        let rows = MediaEntity::find()
-            .filter(MediaCol::TenantId.eq(tenant_id))
-            .order_by_asc(MediaCol::CreatedAt)
+    ) -> Result<MediaReconciliationReport> {
+        let rows = BlobEntity::find()
+            .filter(BlobCol::TenantId.eq(tenant_id))
+            .filter(
+                BlobCol::State
+                    .is_in([BlobState::Ready.as_str(), BlobState::DeletePending.as_str()]),
+            )
+            .order_by_asc(BlobCol::CreatedAt)
             .limit(limit)
             .all(&self.db)
             .await?;
 
-        self.cleanup_storage_rows(rows).await
+        let mut report = self.reconcile_storage_rows(rows).await?;
+        report.merge(
+            self.reconcile_upload_sessions(Some(tenant_id), limit)
+                .await?,
+        );
+        record_reconciliation_metrics(&report);
+        Ok(report)
     }
 
-    pub async fn cleanup_storage_orphans_all_tenants(
+    pub async fn reconcile_storage_all_tenants(
         &self,
         limit: u64,
-    ) -> Result<MediaStorageCleanupReport> {
-        let rows = MediaEntity::find()
-            .order_by_asc(MediaCol::CreatedAt)
+    ) -> Result<MediaReconciliationReport> {
+        let rows = BlobEntity::find()
+            .filter(
+                BlobCol::State
+                    .is_in([BlobState::Ready.as_str(), BlobState::DeletePending.as_str()]),
+            )
+            .order_by_asc(BlobCol::CreatedAt)
             .limit(limit)
             .all(&self.db)
             .await?;
 
-        self.cleanup_storage_rows(rows).await
+        let mut report = self.reconcile_storage_rows(rows).await?;
+        report.merge(self.reconcile_upload_sessions(None, limit).await?);
+        record_reconciliation_metrics(&report);
+        Ok(report)
     }
 
-    async fn cleanup_storage_rows(
+    async fn reconcile_asset_deletion(&self, tenant_id: Uuid, asset_id: Uuid) -> Result<()> {
+        let rows = BlobEntity::find()
+            .filter(BlobCol::TenantId.eq(tenant_id))
+            .filter(BlobCol::AssetId.eq(asset_id))
+            .filter(BlobCol::State.eq(BlobState::DeletePending.as_str()))
+            .all(&self.db)
+            .await?;
+        self.reconcile_storage_rows(rows).await?;
+        Ok(())
+    }
+
+    async fn reconcile_storage_rows(
         &self,
-        rows: Vec<media::Model>,
-    ) -> Result<MediaStorageCleanupReport> {
-        let mut report = MediaStorageCleanupReport::default();
+        rows: Vec<blob::Model>,
+    ) -> Result<MediaReconciliationReport> {
+        let mut report = MediaReconciliationReport::default();
+        let mut delete_assets = std::collections::HashSet::new();
 
         for row in rows {
             report.inspected += 1;
-            let probe = self.storage.read(&row.storage_path).await;
-            match classify_cleanup_probe(&probe) {
-                MediaStorageCleanupDecision::KeepRecord => {
-                    report.kept_records += 1;
-                }
-                MediaStorageCleanupDecision::DeleteRecord => {
-                    MediaEntity::delete_by_id(row.id).exec(&self.db).await?;
-                    report.deleted_records += 1;
-                }
-                MediaStorageCleanupDecision::RetryLater => {
-                    report.retry_later += 1;
-                    if let Err(error) = probe {
+            let path = Path::from(row.object_key.as_str());
+            if row.state == BlobState::DeletePending.as_str() {
+                delete_assets.insert(row.asset_id);
+                match self.storage.objects.delete(&path).await {
+                    Ok(()) | Err(object_store::Error::NotFound { .. }) => {
+                        let mut active: BlobActiveModel = row.into();
+                        let now = Utc::now().fixed_offset();
+                        active.state = Set(BlobState::Deleted.as_str().to_string());
+                        active.deleted_at = Set(Some(now));
+                        active.last_error = Set(None);
+                        active.update(&self.db).await?;
+                        report.deletions_completed += 1;
+                    }
+                    Err(error) => {
+                        let object_key = row.object_key.clone();
+                        let mut active: BlobActiveModel = row.into();
+                        active.reconcile_attempts = Set(active
+                            .reconcile_attempts
+                            .as_ref()
+                            .to_owned()
+                            .saturating_add(1));
+                        active.last_error = Set(Some(error.to_string()));
+                        active.update(&self.db).await?;
+                        report.retry_later += 1;
                         tracing::warn!(
-                            media_id = %row.id,
-                            path = %row.storage_path,
+                            path = %object_key,
                             error = %error,
-                            "Storage cleanup probe failed transiently; media record kept for retry"
+                            "Media object deletion remains pending"
                         );
                     }
+                }
+                continue;
+            }
+
+            let probe = self.storage.objects.head(&path).await;
+            match classify_reconciliation_probe(&probe) {
+                MediaReconciliationDecision::Healthy => {
+                    report.healthy += 1;
+                }
+                MediaReconciliationDecision::MarkMissing => {
+                    let asset_id = row.asset_id;
+                    let mut active: BlobActiveModel = row.into();
+                    active.state = Set(BlobState::Failed.as_str().to_string());
+                    active.reconcile_attempts = Set(active
+                        .reconcile_attempts
+                        .as_ref()
+                        .to_owned()
+                        .saturating_add(1));
+                    active.last_error = Set(Some("object missing from storage".to_string()));
+                    active.update(&self.db).await?;
+                    AssetEntity::update_many()
+                        .col_expr(
+                            AssetCol::LifecycleState,
+                            sea_orm::sea_query::Expr::value(AssetState::Failed.as_str()),
+                        )
+                        .col_expr(
+                            AssetCol::UpdatedAt,
+                            sea_orm::sea_query::Expr::value(Utc::now().fixed_offset()),
+                        )
+                        .filter(AssetCol::Id.eq(asset_id))
+                        .filter(AssetCol::LifecycleState.eq(AssetState::Active.as_str()))
+                        .exec(&self.db)
+                        .await?;
+                    report.missing_marked += 1;
+                }
+                MediaReconciliationDecision::RetryLater => {
+                    report.retry_later += 1;
+                    if let Err(error) = probe {
+                        let object_key = row.object_key.clone();
+                        let mut active: BlobActiveModel = row.into();
+                        active.reconcile_attempts = Set(active
+                            .reconcile_attempts
+                            .as_ref()
+                            .to_owned()
+                            .saturating_add(1));
+                        active.last_error = Set(Some(error.to_string()));
+                        active.update(&self.db).await?;
+                        tracing::warn!(
+                            path = %object_key,
+                            error = %error,
+                            "Media storage reconciliation will retry"
+                        );
+                    }
+                }
+            }
+        }
+
+        for asset_id in delete_assets {
+            let remaining = BlobEntity::find()
+                .filter(BlobCol::AssetId.eq(asset_id))
+                .filter(BlobCol::State.ne(BlobState::Deleted.as_str()))
+                .count(&self.db)
+                .await?;
+            if remaining == 0 {
+                let now = Utc::now().fixed_offset();
+                AssetEntity::update_many()
+                    .col_expr(
+                        AssetCol::LifecycleState,
+                        sea_orm::sea_query::Expr::value(AssetState::Deleted.as_str()),
+                    )
+                    .col_expr(AssetCol::DeletedAt, sea_orm::sea_query::Expr::value(now))
+                    .col_expr(AssetCol::UpdatedAt, sea_orm::sea_query::Expr::value(now))
+                    .filter(AssetCol::Id.eq(asset_id))
+                    .exec(&self.db)
+                    .await?;
+            }
+        }
+
+        Ok(report)
+    }
+
+    async fn reconcile_upload_sessions(
+        &self,
+        tenant_id: Option<Uuid>,
+        limit: u64,
+    ) -> Result<MediaReconciliationReport> {
+        let mut query = UploadSessionEntity::find()
+            .filter(UploadSessionCol::StagingDeletedAt.is_null())
+            .filter(UploadSessionCol::State.is_in([
+                UploadState::Pending.as_str(),
+                UploadState::Finalizing.as_str(),
+                UploadState::Completed.as_str(),
+                UploadState::Failed.as_str(),
+            ]))
+            .order_by_asc(UploadSessionCol::CreatedAt)
+            .limit(limit);
+        if let Some(tenant_id) = tenant_id {
+            query = query.filter(UploadSessionCol::TenantId.eq(tenant_id));
+        }
+        let sessions = query.all(&self.db).await?;
+        let now = Utc::now().fixed_offset();
+        let mut report = MediaReconciliationReport::default();
+
+        for session in sessions {
+            report.upload_sessions_inspected += 1;
+            let completed_asset = AssetEntity::find()
+                .filter(AssetCol::TenantId.eq(session.tenant_id))
+                .filter(AssetCol::UploadSessionId.eq(session.id))
+                .one(&self.db)
+                .await?;
+            let completed =
+                completed_asset.is_some() || session.state == UploadState::Completed.as_str();
+            if !completed && session.expires_at > now {
+                continue;
+            }
+
+            match self
+                .storage
+                .objects
+                .delete(&Path::from(session.staging_key.as_str()))
+                .await
+            {
+                Ok(()) | Err(object_store::Error::NotFound { .. }) => {
+                    let state = if completed {
+                        UploadState::Completed
+                    } else {
+                        UploadState::Expired
+                    };
+                    UploadSessionEntity::update_many()
+                        .col_expr(
+                            UploadSessionCol::State,
+                            sea_orm::sea_query::Expr::value(state.as_str()),
+                        )
+                        .col_expr(
+                            UploadSessionCol::UpdatedAt,
+                            sea_orm::sea_query::Expr::value(now),
+                        )
+                        .col_expr(
+                            UploadSessionCol::CompletedAt,
+                            sea_orm::sea_query::Expr::value(
+                                completed.then_some(session.completed_at.unwrap_or(now)),
+                            ),
+                        )
+                        .col_expr(
+                            UploadSessionCol::StagingDeletedAt,
+                            sea_orm::sea_query::Expr::value(Some(now)),
+                        )
+                        .col_expr(
+                            UploadSessionCol::LastError,
+                            sea_orm::sea_query::Expr::value(Option::<String>::None),
+                        )
+                        .filter(UploadSessionCol::Id.eq(session.id))
+                        .exec(&self.db)
+                        .await?;
+                    report.staging_objects_deleted += 1;
+                    if !completed {
+                        report.upload_sessions_expired += 1;
+                    }
+                }
+                Err(error) => {
+                    UploadSessionEntity::update_many()
+                        .col_expr(
+                            UploadSessionCol::UpdatedAt,
+                            sea_orm::sea_query::Expr::value(now),
+                        )
+                        .col_expr(
+                            UploadSessionCol::LastError,
+                            sea_orm::sea_query::Expr::value(error.to_string()),
+                        )
+                        .filter(UploadSessionCol::Id.eq(session.id))
+                        .exec(&self.db)
+                        .await?;
+                    report.retry_later += 1;
                 }
             }
         }
@@ -570,43 +1528,50 @@ impl MediaService {
         Ok(report)
     }
 
-    fn to_item(&self, model: media::Model) -> MediaItem {
-        let public_url = self.storage.public_url(&model.storage_path);
+    fn to_item(&self, asset: crate::entities::asset::Model, blob: blob::Model) -> MediaItem {
+        let path = Path::from(blob.object_key.as_str());
+        let public_url = self
+            .storage
+            .public_url(&path)
+            .unwrap_or_else(|| blob.object_key.clone());
+        let filename = std::path::Path::new(&blob.object_key)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&blob.object_key)
+            .to_string();
         MediaItem {
-            id: model.id,
-            tenant_id: model.tenant_id,
-            uploaded_by: model.uploaded_by,
-            filename: model.filename,
-            original_name: model.original_name,
-            mime_type: model.mime_type,
-            size: model.size,
-            storage_path: model.storage_path,
-            storage_driver: model.storage_driver,
+            id: asset.id,
+            tenant_id: asset.tenant_id,
+            uploaded_by: asset.uploaded_by,
+            filename,
+            original_name: asset.original_name,
+            mime_type: blob.mime_type,
+            size: blob.size,
+            storage_path: blob.object_key,
+            storage_driver: self.storage.kind.as_str().to_string(),
             public_url,
-            width: model.width,
-            height: model.height,
-            metadata: model.metadata,
-            created_at: model.created_at.with_timezone(&Utc),
+            width: blob.width,
+            height: blob.height,
+            metadata: asset.metadata,
+            created_at: asset.created_at.with_timezone(&Utc),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-
     use bytes::Bytes;
+    use chrono::Utc;
     use uuid::Uuid;
 
     use super::{
-        classify_cleanup_probe, normalize_original_name, validate_upload_policy, verify_media_type,
-        MediaStorageCleanupDecision, MediaStorageCleanupReport,
+        MediaReconciliationDecision, MediaReconciliationReport, classify_reconciliation_probe,
+        normalize_original_name, validate_upload_policy, verify_media_type,
     };
     use crate::{
-        dto::{UploadInput, DEFAULT_MAX_SIZE},
+        dto::{DEFAULT_MAX_SIZE, UploadInput},
         error::MediaError,
     };
-    use rustok_storage::StorageError;
 
     fn upload_input(content_type: &str, data: Vec<u8>) -> UploadInput {
         UploadInput {
@@ -619,18 +1584,20 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_report_helpers_expose_operability_state() {
-        let empty = MediaStorageCleanupReport::default();
+    fn reconciliation_report_helpers_expose_operability_state() {
+        let empty = MediaReconciliationReport::default();
         assert!(empty.is_empty());
         assert!(empty.completed_without_retry());
         assert!(!empty.should_retry());
         assert_eq!(empty.changed_records(), 0);
 
-        let report = MediaStorageCleanupReport {
+        let report = MediaReconciliationReport {
             inspected: 3,
-            deleted_records: 1,
-            kept_records: 1,
+            healthy: 1,
+            missing_marked: 1,
+            deletions_completed: 0,
             retry_later: 1,
+            ..MediaReconciliationReport::default()
         };
 
         assert!(!report.is_empty());
@@ -692,33 +1659,34 @@ mod tests {
     }
 
     #[test]
-    fn classify_cleanup_probe_deletes_only_missing_or_invalid_paths() {
+    fn reconciliation_marks_missing_objects_without_deleting_evidence() {
         assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::NotFound("missing".to_string()))),
-            MediaStorageCleanupDecision::DeleteRecord
-        );
-        assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::InvalidPath("../bad".to_string()))),
-            MediaStorageCleanupDecision::DeleteRecord
+            classify_reconciliation_probe(&Err(object_store::Error::NotFound {
+                path: "missing".to_string(),
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "missing",)),
+            })),
+            MediaReconciliationDecision::MarkMissing
         );
     }
 
     #[test]
-    fn classify_cleanup_probe_keeps_readable_objects_and_retries_transient_errors() {
+    fn reconciliation_keeps_readable_objects_and_retries_transient_errors() {
         assert_eq!(
-            classify_cleanup_probe(&Ok(Bytes::from_static(b"object"))),
-            MediaStorageCleanupDecision::KeepRecord
+            classify_reconciliation_probe(&Ok(object_store::ObjectMeta {
+                location: object_store::path::Path::from("media/object"),
+                last_modified: Utc::now(),
+                size: 6,
+                e_tag: None,
+                version: None,
+            })),
+            MediaReconciliationDecision::Healthy
         );
         assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::Backend("timeout".to_string()))),
-            MediaStorageCleanupDecision::RetryLater
-        );
-        assert_eq!(
-            classify_cleanup_probe(&Err(StorageError::Io(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "timeout",
-            )))),
-            MediaStorageCleanupDecision::RetryLater
+            classify_reconciliation_probe(&Err(object_store::Error::Generic {
+                store: "test",
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout",)),
+            })),
+            MediaReconciliationDecision::RetryLater
         );
     }
 }

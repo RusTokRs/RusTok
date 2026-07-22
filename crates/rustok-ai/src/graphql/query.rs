@@ -2,8 +2,8 @@ use async_graphql::{Context, FieldError, Object, Result};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use rustok_api::graphql::GraphQLError;
 use rustok_api::AuthContext;
+use rustok_api::graphql::GraphQLError;
 
 use super::{
     ensure_ai_overview_read, ensure_ai_provider_read, ensure_ai_session_read,

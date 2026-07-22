@@ -828,8 +828,8 @@ fn read_f64(row: &sea_orm::QueryResult, column: &str) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        intelligence_score, normalize_query_text, recommend_action, SearchAnalyticsInsightRow,
-        SearchAnalyticsQueryRow, SLOW_QUERY_THRESHOLD_MS,
+        SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
+        intelligence_score, normalize_query_text, recommend_action,
     };
     use chrono::Utc;
 

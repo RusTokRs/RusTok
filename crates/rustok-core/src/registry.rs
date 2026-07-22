@@ -269,9 +269,11 @@ mod tests {
         let handlers = registry.build_event_listeners(&ctx);
 
         assert_eq!(handlers.len(), 2);
-        assert!(handlers
-            .iter()
-            .all(|handler| handler.name() == "demo_handler"));
+        assert!(
+            handlers
+                .iter()
+                .all(|handler| handler.name() == "demo_handler")
+        );
     }
 
     async fn in_memory_db() -> DatabaseConnection {

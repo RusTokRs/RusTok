@@ -42,9 +42,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_data_object_gc_candidates_tenant_idx \
                  ON module_artifact_data_object_gc_candidates (tenant_id, queued_at, candidate_id)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact data object GC candidate migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact data object GC candidate migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

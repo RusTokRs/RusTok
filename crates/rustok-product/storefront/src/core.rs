@@ -374,11 +374,7 @@ pub fn build_selected_product_view_model(
         pricing_context,
         inventory: variant.map(|item| item.inventory_quantity).unwrap_or(0),
         pricing_href,
-        preview_context_label: t(
-            locale,
-            "product.selected.previewContext",
-            "pricing preview",
-        ),
+        preview_context_label: t(locale, "product.selected.previewContext", "pricing preview"),
         pricing_ownership_note: t(
             locale,
             "product.selected.pricingOwnershipNote",

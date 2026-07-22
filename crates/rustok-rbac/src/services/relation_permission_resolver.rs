@@ -154,14 +154,14 @@ pub async fn invalidate_cached_permissions<C: PermissionCache + Sync>(
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_permissions_from_relations, resolve_permissions_with_cache, PermissionCache,
-        PermissionCacheLookup, RelationPermissionStore,
+        PermissionCache, PermissionCacheLookup, RelationPermissionStore,
+        resolve_permissions_from_relations, resolve_permissions_with_cache,
     };
     use async_trait::async_trait;
     use rustok_api::Permission;
     use std::collections::HashMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Mutex;
 
     type PermissionCacheKey = (uuid::Uuid, uuid::Uuid);

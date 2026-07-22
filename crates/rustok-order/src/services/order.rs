@@ -1,7 +1,7 @@
 use chrono::Utc;
 use flex::{persist_localized_values, prepare_attached_values_create, resolve_attached_payload};
-use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
@@ -12,7 +12,7 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;

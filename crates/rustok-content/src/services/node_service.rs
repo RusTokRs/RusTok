@@ -1,16 +1,15 @@
 use chrono::Utc;
 use sea_orm::{
-    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, Set,
-    TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, PaginatorTrait, QueryFilter, Set, TransactionTrait, prelude::DateTimeWithTimeZone,
 };
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 use validator::Validate;
 
-use rustok_core::{prepare_content_payload, DomainEvent, PermissionScope, SecurityContext};
+use rustok_core::{DomainEvent, PermissionScope, SecurityContext, prepare_content_payload};
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{

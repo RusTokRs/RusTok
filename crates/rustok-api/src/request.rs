@@ -1,7 +1,7 @@
-use crate::{extract_locale_tag_from_header, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use crate::{PLATFORM_FALLBACK_LOCALE, extract_locale_tag_from_header, normalize_locale_tag};
 use axum::{
     extract::FromRequestParts,
-    http::{header, request::Parts, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header, request::Parts},
 };
 use uuid::Uuid;
 

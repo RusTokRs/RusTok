@@ -14,7 +14,8 @@ authenticated readiness and no accidental in-process fallback.
 ## Decision
 
 Use a dedicated `rustok-module-build-transport` support crate. It maps the
-owner-owned `ModuleBuildWorker` port onto versioned tonic gRPC methods whose
+owner-owned `ModuleBuildWorker` port onto the single current tonic gRPC service
+whose
 bodies are canonical JSON serializations of `ModuleBuildRequest` and
 `ModuleBuildResult`. `rustok-worker-transport` owns the shared mTLS listener
 baseline used by both verification and build workers. Production callers use
@@ -47,6 +48,9 @@ operational requirements.
 ## Consequences
 
 - The owner protocol remains independent of tonic and worker runtime details.
+- The protobuf package has no generation suffix or compatibility service; a
+  contract change replaces callers and workers atomically in this initial
+  implementation.
 - A worker binary can be deployed and supervised independently of the server.
 - Verification and build workers share one mTLS listener implementation rather
   than drifting into separate TLS/limit defaults.
@@ -54,7 +58,14 @@ operational requirements.
   acknowledge another consumer's event stream position.
 - The `module-build` topic must be provisioned before the dispatcher starts;
   unexpected or malformed queue payloads remain unacknowledged and require
-  operator remediation rather than being silently skipped.
+operator remediation rather than being silently skipped.
+
+The same support crate also maps the owner-owned
+`ModuleStaticDistributionExecutor` port onto a separate current-only
+`rustok.static_distribution` service. Static-distribution queue ownership,
+lease renewal, and terminal persistence remain in `rustok-modules`; the remote
+service receives only an already claimed immutable work item and returns one
+terminal outcome. Its client exposes only the mTLS connection constructor.
 - The legacy server-local `rustok-build` executor cannot be retained as a
   fallback; its removal follows when remote dispatch and the worker deployment
   are wired.

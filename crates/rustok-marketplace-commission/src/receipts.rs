@@ -4,7 +4,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -57,9 +57,7 @@ pub(crate) fn command_request_hash<T: Serialize>(
         "request": canonical_json(&request),
     });
     let encoded = serde_json::to_vec(&payload).map_err(|_| {
-        MarketplaceCommissionError::Validation(
-            "commission command could not be hashed".to_string(),
-        )
+        MarketplaceCommissionError::Validation("commission command could not be hashed".to_string())
     })?;
     Ok(hex::encode(Sha256::digest(encoded)))
 }
@@ -73,13 +71,9 @@ pub(crate) async fn replay_existing<R: DeserializeOwned>(
     response_kind: &str,
 ) -> MarketplaceCommissionResult<Option<R>> {
     match find_receipt(db, tenant_id, idempotency_key).await? {
-        Some(receipt) => replay_receipt(
-            receipt,
-            command_kind,
-            request_hash,
-            response_kind,
-        )
-        .map(Some),
+        Some(receipt) => {
+            replay_receipt(receipt, command_kind, request_hash, response_kind).map(Some)
+        }
         None => Ok(None),
     }
 }

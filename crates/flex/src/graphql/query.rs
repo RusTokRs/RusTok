@@ -1,10 +1,10 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::{graphql::PaginationInput, Permission};
+use rustok_api::{Permission, graphql::PaginationInput};
 use uuid::Uuid;
 
 use super::{
-    map_flex_error, require_access, resolve_entity_type, runtime::runtime, FieldDefinitionObject,
-    FlexEntryObject, FlexSchemaObject,
+    FieldDefinitionObject, FlexEntryObject, FlexSchemaObject, map_flex_error, require_access,
+    resolve_entity_type, runtime::runtime,
 };
 use crate::FieldDefinitionView;
 

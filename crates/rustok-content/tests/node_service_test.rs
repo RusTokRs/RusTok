@@ -2,12 +2,12 @@
 // These tests verify CRUD operations, validation, RBAC enforcement,
 // and multi-language support for content nodes.
 
+use rustok_content::ContentError;
 use rustok_content::dto::{
     BodyInput, CreateNodeInput, ListNodesFilter, NodeTranslationInput, UpdateNodeInput,
 };
 use rustok_content::entities::node::ContentStatus;
 use rustok_content::services::NodeService;
-use rustok_content::ContentError;
 use rustok_test_utils::{
     db::setup_test_db, helpers::admin_context, helpers::customer_context, helpers::manager_context,
     helpers::unique_slug, mock_transactional_event_bus,
@@ -132,11 +132,13 @@ async fn test_create_node_success() {
     assert_eq!(node.translations.len(), 1);
     assert_eq!(node.translations[0].title, Some("Test Post".to_string()));
     assert_eq!(node.bodies.len(), 1);
-    assert!(node.bodies[0]
-        .body
-        .as_deref()
-        .unwrap_or("")
-        .contains("Test Content"));
+    assert!(
+        node.bodies[0]
+            .body
+            .as_deref()
+            .unwrap_or("")
+            .contains("Test Content")
+    );
 }
 
 #[tokio::test]
@@ -838,18 +840,22 @@ async fn test_node_with_multiple_body_locales() {
 
     assert!(en_body.is_some());
     assert!(ru_body.is_some());
-    assert!(en_body
-        .unwrap()
-        .body
-        .as_deref()
-        .unwrap_or("")
-        .contains("Test Content"));
-    assert!(ru_body
-        .unwrap()
-        .body
-        .as_deref()
-        .unwrap_or("")
-        .contains("Русский контент"));
+    assert!(
+        en_body
+            .unwrap()
+            .body
+            .as_deref()
+            .unwrap_or("")
+            .contains("Test Content")
+    );
+    assert!(
+        ru_body
+            .unwrap()
+            .body
+            .as_deref()
+            .unwrap_or("")
+            .contains("Русский контент")
+    );
 }
 
 // =============================================================================

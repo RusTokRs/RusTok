@@ -15,11 +15,11 @@ pub use build::{BuildStage, BuildStatus, DeploymentProfile};
 pub use events::{
     BuildEvent, BuildEventPublisher, EventBusBuildEventPublisher, NoopBuildEventPublisher,
 };
-pub use execution::{build_manifest_snapshot_path, run_build_command, BuildCommandSpec};
+pub use execution::{BuildCommandSpec, build_manifest_snapshot_path, run_build_command};
 pub use executor::BuildExecutionService;
 pub use plan::{
-    parse_execution_plan, BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind,
-    FrontendBuildPlan, FrontendBuildTool, RoleBuildPlan,
+    BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind, FrontendBuildPlan,
+    FrontendBuildTool, RoleBuildPlan, parse_execution_plan,
 };
 pub use release::ReleaseStatus;
 pub use report::BuildExecutionReport;

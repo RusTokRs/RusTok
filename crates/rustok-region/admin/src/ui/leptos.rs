@@ -5,14 +5,14 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    RegionAdminDetailHeaderLabels, RegionAdminDetailLabels, RegionAdminDetailPanelLabels,
-    RegionAdminDetailPanelViewModel, RegionAdminEditorFieldLabels, RegionAdminEditorFormState,
-    RegionAdminEditorLabels, RegionAdminListHeaderLabels, RegionAdminListLabels,
-    RegionAdminListStateLabels, RegionAdminListStateViewModel, RegionAdminOpenDetailViewModel,
-    RegionAdminPolicyLabels, RegionAdminRawSectionLabels, RegionAdminRouteQueryIntent,
-    RegionAdminSaveMode, RegionAdminSaveSuccessViewModel, RegionAdminShellLabels,
-    RegionAdminSubmitErrorLabels, RegionAdminSubmitInput, RegionAdminTransportErrorLabels,
-    RegionRequiredFieldLabels, REGION_ADMIN_SELECTED_QUERY_KEY,
+    REGION_ADMIN_SELECTED_QUERY_KEY, RegionAdminDetailHeaderLabels, RegionAdminDetailLabels,
+    RegionAdminDetailPanelLabels, RegionAdminDetailPanelViewModel, RegionAdminEditorFieldLabels,
+    RegionAdminEditorFormState, RegionAdminEditorLabels, RegionAdminListHeaderLabels,
+    RegionAdminListLabels, RegionAdminListStateLabels, RegionAdminListStateViewModel,
+    RegionAdminOpenDetailViewModel, RegionAdminPolicyLabels, RegionAdminRawSectionLabels,
+    RegionAdminRouteQueryIntent, RegionAdminSaveMode, RegionAdminSaveSuccessViewModel,
+    RegionAdminShellLabels, RegionAdminSubmitErrorLabels, RegionAdminSubmitInput,
+    RegionAdminTransportErrorLabels, RegionRequiredFieldLabels,
 };
 use crate::i18n::t;
 use crate::model::RegionDetail;
@@ -109,7 +109,11 @@ pub fn RegionAdmin() -> impl IntoView {
         &RegionAdminShellLabels {
             badge: t(ui_locale.as_deref(), "region.badge", "region"),
             title: t(ui_locale.as_deref(), "region.title", "Region Operations"),
-            subtitle: t(ui_locale.as_deref(), "region.subtitle", "Module-owned region workspace for tenant-scoped country, currency and tax baseline management without routing operator CRUD back through the commerce umbrella."),
+            subtitle: t(
+                ui_locale.as_deref(),
+                "region.subtitle",
+                "Module-owned region workspace for tenant-scoped country, currency and tax baseline management without routing operator CRUD back through the commerce umbrella.",
+            ),
         },
     );
     let list_header_labels = RegionAdminListHeaderLabels {

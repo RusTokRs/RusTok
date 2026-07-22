@@ -9,7 +9,7 @@ use async_graphql::parser::types::{ExecutableDocument, OperationType, Selection,
 use async_graphql::{ErrorExtensions, FieldError, Pos, Request, Response, ServerResult};
 use async_trait::async_trait;
 use axum::http::HeaderMap;
-use rustok_api::{has_any_effective_permission, AuthContext, Permission, TenantContext};
+use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
 use rustok_telemetry::metrics;
 
 const TRUSTED_CLIENT_IP_HEADER: &str = "x-rustok-trusted-client-ip";
@@ -266,9 +266,7 @@ impl Extension for BlogGraphqlRateLimitPolicyExtension {
         for surface in &policy.0 {
             // Authentication and RBAC stay authoritative. Unauthorized writes reach
             // their resolver and preserve the existing unauthenticated/forbidden error.
-            if surface.is_write()
-                && auth.is_none_or(|auth| !surface.actor_is_authorized(auth))
-            {
+            if surface.is_write() && auth.is_none_or(|auth| !surface.actor_is_authorized(auth)) {
                 continue;
             }
 
@@ -300,11 +298,7 @@ impl Extension for BlogGraphqlRateLimitPolicyExtension {
                 }
                 Err(BlogGraphqlRateLimitError::BackendUnavailable(reason)) => {
                     metrics::record_rate_limit_backend_unavailable(limiter.0.namespace());
-                    metrics::record_module_error(
-                        "blog",
-                        "rate_limit_backend_unavailable",
-                        "error",
-                    );
+                    metrics::record_module_error("blog", "rate_limit_backend_unavailable", "error");
                     tracing::error!(
                         operation_name = ?operation_name,
                         surface = surface.name(),
@@ -391,12 +385,8 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let tenant = tenant(tenant_id);
         let auth = auth(tenant_id, vec![Permission::BLOG_POSTS_CREATE]);
-        let user_key = build_rate_limit_key(
-            &tenant,
-            Some(&auth),
-            None,
-            BlogGraphqlSurface::CreatePost,
-        );
+        let user_key =
+            build_rate_limit_key(&tenant, Some(&auth), None, BlogGraphqlSurface::CreatePost);
         assert_eq!(
             user_key,
             format!(
@@ -407,12 +397,7 @@ mod tests {
 
         let mut headers = HeaderMap::new();
         headers.insert(TRUSTED_CLIENT_IP_HEADER, "203.0.113.7".parse().unwrap());
-        let ip_key = build_rate_limit_key(
-            &tenant,
-            None,
-            Some(&headers),
-            BlogGraphqlSurface::Posts,
-        );
+        let ip_key = build_rate_limit_key(&tenant, None, Some(&headers), BlogGraphqlSurface::Posts);
         assert_eq!(
             ip_key,
             format!("tenant:{tenant_id}:blog:graphql:read:posts:ip:203.0.113.7")
@@ -427,12 +412,7 @@ mod tests {
         headers.insert("x-forwarded-for", "203.0.113.99".parse().unwrap());
 
         assert_eq!(
-            build_rate_limit_key(
-                &tenant,
-                None,
-                Some(&headers),
-                BlogGraphqlSurface::Posts,
-            ),
+            build_rate_limit_key(&tenant, None, Some(&headers), BlogGraphqlSurface::Posts,),
             format!("tenant:{tenant_id}:blog:graphql:read:posts:anonymous")
         );
     }

@@ -426,7 +426,7 @@ impl SecurityContext {
                 return Err(PortError::forbidden(
                     "port.role_required",
                     "user and service actors require a role claim",
-                ))
+                ));
             }
             [role] => UserRole::from_str(role).map_err(|_| {
                 PortError::validation("port.role_invalid", format!("invalid role claim: {role}"))
@@ -435,7 +435,7 @@ impl SecurityContext {
                 return Err(PortError::validation(
                     "port.role_ambiguous",
                     "at most one role claim is allowed",
-                ))
+                ));
             }
         };
 
@@ -649,9 +649,11 @@ mod tests {
 
         assert_eq!(security.actor_kind, SecurityActorKind::User);
         assert_eq!(security.user_id, Some(user_id));
-        assert!(security
-            .permissions()
-            .contains(&Permission::BLOG_POSTS_READ));
+        assert!(
+            security
+                .permissions()
+                .contains(&Permission::BLOG_POSTS_READ)
+        );
     }
 
     #[test]
@@ -662,19 +664,27 @@ mod tests {
         assert!(security.is_public_read());
         assert_eq!(security.user_id, None);
         assert_eq!(security.role, UserRole::Customer);
-        assert!(security
-            .permissions()
-            .contains(&Permission::BLOG_POSTS_READ));
+        assert!(
+            security
+                .permissions()
+                .contains(&Permission::BLOG_POSTS_READ)
+        );
         assert!(security.permissions().contains(&Permission::PAGES_LIST));
-        assert!(security
-            .permissions()
-            .contains(&Permission::new(Resource::ForumTopics, Action::Read,)));
-        assert!(!security
-            .permissions()
-            .contains(&Permission::new(Resource::BlogPosts, Action::Manage)));
-        assert!(!security
-            .permissions()
-            .contains(&Permission::BLOG_POSTS_UPDATE));
+        assert!(
+            security
+                .permissions()
+                .contains(&Permission::new(Resource::ForumTopics, Action::Read,))
+        );
+        assert!(
+            !security
+                .permissions()
+                .contains(&Permission::new(Resource::BlogPosts, Action::Manage))
+        );
+        assert!(
+            !security
+                .permissions()
+                .contains(&Permission::BLOG_POSTS_UPDATE)
+        );
     }
 
     #[test]
@@ -684,9 +694,11 @@ mod tests {
         assert_eq!(security.actor_kind, SecurityActorKind::System);
         assert_eq!(security.user_id, None);
         assert_eq!(security.role, UserRole::SuperAdmin);
-        assert!(security
-            .permissions()
-            .contains(&Permission::new(Resource::BlogPosts, Action::Manage)));
+        assert!(
+            security
+                .permissions()
+                .contains(&Permission::new(Resource::BlogPosts, Action::Manage))
+        );
     }
 
     #[test]

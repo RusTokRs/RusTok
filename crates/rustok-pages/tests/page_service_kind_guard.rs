@@ -1,15 +1,13 @@
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::dto::{
-    CreatePageInput, PageBodyInput, PageTranslationInput, UpdatePageInput,
-};
+use rustok_pages::PagesModule;
+use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput, UpdatePageInput};
 use rustok_pages::error::{
-    PagesError, FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED,
-    FEATURE_BUILDER_PROPERTIES_ENABLED, FEATURE_BUILDER_PUBLISH_ENABLED,
+    FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED, FEATURE_BUILDER_PROPERTIES_ENABLED,
+    FEATURE_BUILDER_PUBLISH_ENABLED, PagesError,
 };
 use rustok_pages::services::PageService;
-use rustok_pages::PagesModule;
 use rustok_tenant::entities::tenant_module;
 use rustok_test_utils::{
     db::setup_test_db,

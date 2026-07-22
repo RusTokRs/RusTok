@@ -1,8 +1,8 @@
 use crate::{
-    clear_project_locale_policy, materialize_runtime_locale_context, normalize_locale_tag,
-    set_project_locale_policy, FlyError, FlyResult, ProjectDocument, ProjectLocalePolicy,
-    ValidationDiagnostic, ValidationSeverity, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD,
-    RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
+    FlyError, FlyResult, LOCALIZED_FALLBACK_FIELD, LOCALIZED_VALUES_FIELD, ProjectDocument,
+    ProjectLocalePolicy, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
+    ValidationDiagnostic, ValidationSeverity, clear_project_locale_policy,
+    materialize_runtime_locale_context, normalize_locale_tag, set_project_locale_policy,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -378,7 +378,7 @@ fn translation_diagnostic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GrapesJsCodec, FLY_LOCALES_FIELD};
+    use crate::{FLY_LOCALES_FIELD, GrapesJsCodec};
     use serde_json::json;
 
     fn document() -> ProjectDocument {
@@ -424,9 +424,11 @@ mod tests {
             },
         )
         .expect("remove");
-        assert!(TranslationCatalog::from_document(&document)
-            .entries
-            .is_empty());
+        assert!(
+            TranslationCatalog::from_document(&document)
+                .entries
+                .is_empty()
+        );
     }
 
     #[test]
@@ -503,14 +505,20 @@ mod tests {
             }]),
         );
         let diagnostics = validate_translation_definitions(&document);
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "translation_locale_invalid"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "duplicate_translation_id"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "translation_fallback_locale_missing"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "translation_locale_invalid")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "duplicate_translation_id")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "translation_fallback_locale_missing")
+        );
     }
 }

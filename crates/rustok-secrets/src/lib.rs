@@ -277,8 +277,8 @@ impl SecretResolver for MountedFileResolver {
 #[cfg(test)]
 mod tests {
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     use super::*;
@@ -353,15 +353,17 @@ mod tests {
                 },
             )
             .build();
-        assert!(registry
-            .validate_reference_for_tenant(
-                tenant,
-                &SecretRef {
-                    resolver: "missing".to_string(),
-                    key: "tenants/ignored/key".to_string(),
-                },
-            )
-            .is_err());
+        assert!(
+            registry
+                .validate_reference_for_tenant(
+                    tenant,
+                    &SecretRef {
+                        resolver: "missing".to_string(),
+                        key: "tenants/ignored/key".to_string(),
+                    },
+                )
+                .is_err()
+        );
         let error = registry
             .validate_reference_for_tenant(
                 other,

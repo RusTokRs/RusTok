@@ -64,9 +64,7 @@ impl From<sea_orm::DbErr> for ForumError {
     fn from(error: sea_orm::DbErr) -> Self {
         let message = error.to_string();
         if message.contains("forum category does not allow topic creation") {
-            return Self::Validation(
-                "Forum category does not allow topic creation".to_string(),
-            );
+            return Self::Validation("Forum category does not allow topic creation".to_string());
         }
         if message.contains("active forum category cannot have archived parent")
             || message.contains("archived forum category cannot have active child")

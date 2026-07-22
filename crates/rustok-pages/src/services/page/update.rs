@@ -1,23 +1,21 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS};
+use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_tenant::TenantService;
 
 use crate::dto::{PageResponse, UpdatePageInput};
 use crate::entities::{page, page_body, page_translation};
 use crate::error::{
-    PagesError, PagesResult, FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED,
-    FEATURE_BUILDER_PROPERTIES_ENABLED, FEATURE_BUILDER_PUBLISH_ENABLED,
+    FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED, FEATURE_BUILDER_PROPERTIES_ENABLED,
+    FEATURE_BUILDER_PUBLISH_ENABLED, PagesError, PagesResult,
 };
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::{enforce_owned_scope, enforce_scope};
@@ -30,7 +28,7 @@ use super::helpers::{
     is_builder_publish_enabled, normalize_channel_slugs, normalize_page_body_input, normalize_slug,
     storage_to_status, transition_event, validate_page_translations,
 };
-use super::{PageService, PageTransition, PAGE_KIND};
+use super::{PAGE_KIND, PageService, PageTransition};
 
 impl PageService {
     #[instrument(skip(self, input))]
@@ -452,10 +450,7 @@ impl PageService {
         self.get(tenant_id, security, page_id).await
     }
 
-    pub(super) async fn ensure_builder_publish_enabled(
-        &self,
-        tenant_id: Uuid,
-    ) -> PagesResult<()> {
+    pub(super) async fn ensure_builder_publish_enabled(&self, tenant_id: Uuid) -> PagesResult<()> {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module
             .as_ref()

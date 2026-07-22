@@ -77,9 +77,11 @@ mod tests {
     async fn reservation_requires_the_durable_generation_schema() {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         let tx = db.begin().await.unwrap();
-        assert!(reserve_permission_invalidation_generation(&tx)
-            .await
-            .is_err());
+        assert!(
+            reserve_permission_invalidation_generation(&tx)
+                .await
+                .is_err()
+        );
         tx.rollback().await.unwrap();
     }
 

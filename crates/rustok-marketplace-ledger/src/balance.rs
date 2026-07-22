@@ -7,6 +7,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::MarketplaceLedgerService;
 use crate::dto::{
     MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
     MarketplaceLedgerTransactionResponse, MarketplaceSellerBalanceBucket,
@@ -15,7 +16,6 @@ use crate::dto::{
 };
 use crate::entities::{entry, reversal_line, seller_balance};
 use crate::error::{MarketplaceLedgerError, MarketplaceLedgerResult};
-use crate::MarketplaceLedgerService;
 
 impl MarketplaceLedgerService {
     pub async fn read_seller_balance_projection(
@@ -49,8 +49,7 @@ impl MarketplaceLedgerService {
             .filter(entry::Column::TenantId.eq(tenant_id))
             .filter(entry::Column::SellerId.eq(request.seller_id))
             .filter(
-                entry::Column::AccountCode
-                    .eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
+                entry::Column::AccountCode.eq(MarketplaceLedgerAccountCode::SellerPayable.as_str()),
             )
             .filter(entry::Column::CurrencyCode.eq(currency_code.clone()))
             .order_by_asc(entry::Column::CreatedAt)
@@ -161,9 +160,7 @@ impl MarketplaceLedgerService {
                         let model = seller_balance::Entity::find()
                             .filter(seller_balance::Column::TenantId.eq(tenant_id))
                             .filter(seller_balance::Column::SellerId.eq(request.seller_id))
-                            .filter(
-                                seller_balance::Column::CurrencyCode.eq(currency_code.clone()),
-                            )
+                            .filter(seller_balance::Column::CurrencyCode.eq(currency_code.clone()))
                             .one(self.database())
                             .await?
                             .ok_or(error)?;
@@ -250,9 +247,7 @@ impl BalanceTotals {
             MarketplaceLedgerEntryDirection::Debit => target.checked_sub(amount),
         }
         .ok_or_else(|| {
-            MarketplaceLedgerError::Validation(
-                "seller balance overflow during rebuild".to_string(),
-            )
+            MarketplaceLedgerError::Validation("seller balance overflow during rebuild".to_string())
         })?;
         Ok(())
     }
@@ -287,9 +282,7 @@ fn map_balance(
 
 fn parse_bucket(value: &str) -> MarketplaceLedgerResult<MarketplaceSellerBalanceBucket> {
     MarketplaceSellerBalanceBucket::parse(value).ok_or_else(|| {
-        MarketplaceLedgerError::Validation(format!(
-            "unknown seller balance bucket `{value}`"
-        ))
+        MarketplaceLedgerError::Validation(format!("unknown seller balance bucket `{value}`"))
     })
 }
 

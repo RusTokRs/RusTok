@@ -1,14 +1,15 @@
-use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext, TenantContext,
+    AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
+    has_any_effective_permission,
 };
 use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
-    graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
-    ProfilesReader,
+    ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
+    graphql::GqlProfileSummary,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rustok_installer::{redact_install_plan, InstallPlan, InstallReceipt, InstallState};
+use rustok_installer::{InstallPlan, InstallReceipt, InstallState, redact_install_plan};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder,

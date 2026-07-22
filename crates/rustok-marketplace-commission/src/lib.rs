@@ -4,13 +4,13 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod allocation_filter;
+#[cfg(test)]
+mod cancelled_allocation_tests;
 mod commission_service;
 mod receipts;
 mod service;
 #[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod cancelled_allocation_tests;
 
 pub mod dto;
 pub mod entities;

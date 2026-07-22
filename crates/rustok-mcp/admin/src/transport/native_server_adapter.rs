@@ -389,8 +389,8 @@ pub async fn mcp_apply_scaffold_draft_native(
 }
 
 #[cfg(feature = "ssr")]
-async fn mcp_native_context(
-) -> Result<(sea_orm::DatabaseConnection, rustok_api::AuthContext), ServerFnError> {
+async fn mcp_native_context()
+-> Result<(sea_orm::DatabaseConnection, rustok_api::AuthContext), ServerFnError> {
     let auth = leptos_axum::extract::<rustok_api::AuthContext>()
         .await
         .map_err(ServerFnError::new)?;

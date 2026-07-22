@@ -1,11 +1,11 @@
 use async_graphql::Json;
 use rustok_seo::{
-    seo_builtin_slug, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkBoolFieldPatch,
-    SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkJsonFieldPatch,
-    SeoBulkListInput, SeoBulkMetaPatchInput, SeoBulkSelectionInput, SeoBulkSelectionMode,
-    SeoBulkSource, SeoBulkStringFieldPatch, SeoIndexRepairReplayInput,
-    SeoIndexRepairReplayResultRecord, SeoModuleSettings, SeoRedirectInput, SeoRedirectMatchType,
-    SeoSitemapStatusRecord, SeoTargetSlug, SeoTemplateRuleSet,
+    SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkBoolFieldPatch, SeoBulkExportInput,
+    SeoBulkFieldPatchMode, SeoBulkImportInput, SeoBulkJsonFieldPatch, SeoBulkListInput,
+    SeoBulkMetaPatchInput, SeoBulkSelectionInput, SeoBulkSelectionMode, SeoBulkSource,
+    SeoBulkStringFieldPatch, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
+    SeoModuleSettings, SeoRedirectInput, SeoRedirectMatchType, SeoSitemapStatusRecord,
+    SeoTargetSlug, SeoTemplateRuleSet, seo_builtin_slug,
 };
 use rustok_ui_core::normalize_ui_text;
 use serde_json::Value;
@@ -739,12 +739,12 @@ fn trim_to_option(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_seo_settings_snapshot_items, validate_sitemap_generation_enabled, SeoAdminBusyKey,
-        SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm, SeoSettingsForm,
+        SeoAdminBusyKey, SeoAdminTab, SeoBulkActionForm, SeoBulkFilterForm, SeoIndexReplayForm,
+        SeoSettingsForm, build_seo_settings_snapshot_items, validate_sitemap_generation_enabled,
     };
     use rustok_seo::{
-        seo_builtin_slug, SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings,
-        SeoSitemapStatusRecord, SeoTargetSlug,
+        SeoBulkApplyMode, SeoBulkFieldPatchMode, SeoModuleSettings, SeoSitemapStatusRecord,
+        SeoTargetSlug, seo_builtin_slug,
     };
 
     #[test]
@@ -812,18 +812,26 @@ mod tests {
 
         let items = build_seo_settings_snapshot_items(&settings);
 
-        assert!(items
-            .iter()
-            .any(|item| item.label == "Default robots" && item.value == "index, follow"));
-        assert!(items
-            .iter()
-            .any(|item| item.label == "Allowed redirect hosts" && item.value == "none"));
-        assert!(items
-            .iter()
-            .any(|item| item.label == "x-default locale" && item.value == "unset"));
-        assert!(items
-            .iter()
-            .any(|item| item.label == "Template override targets" && item.value == "none"));
+        assert!(
+            items
+                .iter()
+                .any(|item| item.label == "Default robots" && item.value == "index, follow")
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| item.label == "Allowed redirect hosts" && item.value == "none")
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| item.label == "x-default locale" && item.value == "unset")
+        );
+        assert!(
+            items
+                .iter()
+                .any(|item| item.label == "Template override targets" && item.value == "none")
+        );
     }
 
     #[test]
@@ -875,11 +883,12 @@ mod tests {
         form.structured_data.mode = SeoBulkFieldPatchMode::Set;
         form.structured_data.value = "{".to_string();
 
-        assert!(form
-            .structured_data
-            .build_patch()
-            .expect_err("invalid json must fail")
-            .contains("Invalid structured data JSON"));
+        assert!(
+            form.structured_data
+                .build_patch()
+                .expect_err("invalid json must fail")
+                .contains("Invalid structured data JSON")
+        );
     }
 
     #[test]

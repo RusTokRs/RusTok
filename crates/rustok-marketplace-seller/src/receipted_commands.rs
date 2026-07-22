@@ -4,9 +4,10 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::MarketplaceSellerService;
 use crate::command_receipts::{
-    admit_command, command_request_hash, complete_command, normalize_idempotency_key,
-    replay_command, rollback_command, CommandReceiptAdmission,
+    CommandReceiptAdmission, admit_command, command_request_hash, complete_command,
+    normalize_idempotency_key, replay_command, rollback_command,
 };
 use crate::dto::{
     AddMarketplaceSellerMemberInput, CreateMarketplaceSellerInput, MarketplaceSellerMemberResponse,
@@ -23,7 +24,6 @@ use crate::service::{
     normalize_seller_locale, object_or_empty, optional_text, required_text, upsert_translation,
     validate_owner_membership_update,
 };
-use crate::MarketplaceSellerService;
 
 const RESPONSE_KIND_SELLER: &str = "seller";
 const RESPONSE_KIND_MEMBER: &str = "member";

@@ -3,12 +3,9 @@ use std::sync::Arc;
 use rustok_api::{PortContext, PortError};
 use rustok_marketplace_commission::{
     ListMarketplaceCommissionAssessmentsByOrderRequest,
-    ListMarketplaceCommissionAssessmentsBySellerRequest,
-    ListMarketplaceCommissionRulesRequest,
-    MarketplaceCommissionAssessmentListResponse,
-    MarketplaceCommissionAssessmentResponse,
-    MarketplaceCommissionReadPort,
-    MarketplaceCommissionRuleListResponse,
+    ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
+    MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,
+    MarketplaceCommissionReadPort, MarketplaceCommissionRuleListResponse,
     ReadMarketplaceCommissionAssessmentRequest,
 };
 use uuid::Uuid;

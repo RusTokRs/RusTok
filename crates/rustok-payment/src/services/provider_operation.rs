@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -348,15 +348,19 @@ mod tests {
 
     #[test]
     fn uncertain_executing_outcome_requires_reconciliation() {
-        assert!(ensure_transition(
-            PROVIDER_OPERATION_EXECUTING,
-            PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-        )
-        .is_ok());
-        assert!(ensure_transition(
-            PROVIDER_OPERATION_PENDING,
-            PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
-        )
-        .is_err());
+        assert!(
+            ensure_transition(
+                PROVIDER_OPERATION_EXECUTING,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+            )
+            .is_ok()
+        );
+        assert!(
+            ensure_transition(
+                PROVIDER_OPERATION_PENDING,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
+            )
+            .is_err()
+        );
     }
 }

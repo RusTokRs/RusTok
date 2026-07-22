@@ -1,15 +1,16 @@
 use super::model::{
-    ActionMaterialization, ComponentAction, ComponentForm, FormMethod, FLY_ACTION_DATA_ATTRIBUTE,
-    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, GENERATED_INTERACTION_ATTRIBUTES,
+    ActionMaterialization, ComponentAction, ComponentForm, FLY_ACTION_DATA_ATTRIBUTE,
+    FLY_ACTION_FIELD, FLY_ACTION_KIND_ATTRIBUTE, FLY_FORM_FIELD, FormMethod,
+    GENERATED_INTERACTION_ATTRIBUTES,
 };
-use super::validation::{action_diagnostic, collect_form_ids, decode_form, FormIndex};
+use super::validation::{FormIndex, action_diagnostic, collect_form_ids, decode_form};
 use crate::{
-    component_visit::visit_project_components_mut,
-    interaction_route::{
-        build_interaction_href, interaction_locale_candidates, InteractionRouteCatalog,
-    },
     ComponentObject, ProjectDocument, RuntimeLocaleSelection, ValidationDiagnostic,
     ValidationSeverity,
+    component_visit::visit_project_components_mut,
+    interaction_route::{
+        InteractionRouteCatalog, build_interaction_href, interaction_locale_candidates,
+    },
 };
 use serde_json::Value;
 

@@ -1,10 +1,10 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use rustok_api::Permission;
-use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
 use serde::Deserialize;
@@ -115,7 +115,7 @@ pub async fn list_topics(
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_per_page, PaginationParams};
+    use super::{PaginationParams, clamp_per_page};
 
     #[test]
     fn pagination_params_limit_clamps_large_page_size() {

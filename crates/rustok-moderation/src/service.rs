@@ -489,11 +489,13 @@ mod tests {
 
     #[test]
     fn platform_scope_rejects_an_id() {
-        assert!(validate_scope(&ModerationScopeRef {
-            kind: ModerationScopeKind::Platform,
-            id: Some(Uuid::new_v4()),
-        })
-        .is_err());
+        assert!(
+            validate_scope(&ModerationScopeRef {
+                kind: ModerationScopeKind::Platform,
+                id: Some(Uuid::new_v4()),
+            })
+            .is_err()
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ mod native_server_adapter;
 use crate::core::{CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMutationRequest};
 use crate::model::StorefrontCartData;
 use rustok_ui_transport::{
-    execute_selected_transport, UiTransportError, UiTransportPath, UiTransportResult,
+    UiTransportError, UiTransportPath, UiTransportResult, execute_selected_transport,
 };
 
 pub type CartTransportError = UiTransportError;
@@ -115,9 +115,11 @@ mod tests {
             Some("server function unavailable".to_string())
         );
         assert_eq!(error.graphql_error, Some("network unavailable".to_string()));
-        assert!(error
-            .to_string()
-            .contains("native_server=server function unavailable"));
+        assert!(
+            error
+                .to_string()
+                .contains("native_server=server function unavailable")
+        );
         assert!(error.to_string().contains("graphql=network unavailable"));
     }
 }

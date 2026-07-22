@@ -8,8 +8,8 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use support::category_tree::exercise_category_tree_read_model;
 use support::TestResult;
+use support::category_tree::exercise_category_tree_read_model;
 
 #[tokio::test]
 async fn sqlite_forum_category_tree_is_nested_bounded_and_tenant_scoped() -> TestResult<()> {

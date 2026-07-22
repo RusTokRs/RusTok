@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use async_trait::async_trait;
@@ -8,18 +8,17 @@ use chrono::Utc;
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_marketplace_allocation::{
     ListMarketplaceAllocationsByOrderRequest, ListMarketplaceAllocationsBySellerRequest,
-    MarketplaceAllocationListResponse, MarketplaceAllocationReadPort,
-    MarketplaceAllocationStatus, MarketplaceOrderAllocationResponse,
-    ReadMarketplaceAllocationByLineRequest,
+    MarketplaceAllocationListResponse, MarketplaceAllocationReadPort, MarketplaceAllocationStatus,
+    MarketplaceOrderAllocationResponse, ReadMarketplaceAllocationByLineRequest,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::MarketplaceCommissionService;
 use crate::dto::AssessMarketplaceOrderCommissionsInput;
 use crate::entities::{assessment, receipt};
 use crate::error::MarketplaceCommissionError;
-use crate::MarketplaceCommissionService;
 
 #[tokio::test]
 async fn cancelled_allocation_is_rejected_before_receipt_admission() {
@@ -84,10 +83,7 @@ async fn setup_database() -> DatabaseConnection {
     db
 }
 
-fn cancelled_allocation(
-    tenant_id: Uuid,
-    order_id: Uuid,
-) -> MarketplaceOrderAllocationResponse {
+fn cancelled_allocation(tenant_id: Uuid, order_id: Uuid) -> MarketplaceOrderAllocationResponse {
     let now = Utc::now().fixed_offset();
     MarketplaceOrderAllocationResponse {
         id: Uuid::new_v4(),

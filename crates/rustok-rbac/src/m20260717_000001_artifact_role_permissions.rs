@@ -19,7 +19,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX rbac_artifact_role_permissions_authorize_idx ON rbac_artifact_role_permissions (tenant_id, role_id, installation_id, permission_key)",
                 "CREATE TABLE rbac_artifact_role_permission_operations (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, role_id TEXT NOT NULL, installation_id TEXT NOT NULL, permission_key TEXT NOT NULL, actor_id TEXT NOT NULL, granted BOOLEAN NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (tenant_id, idempotency_key))",
             ],
-            backend => return Err(DbErr::Migration(format!("artifact role permission migration does not support {backend:?}"))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact role permission migration does not support {backend:?}"
+                )));
+            }
         };
 
         for statement in statements {

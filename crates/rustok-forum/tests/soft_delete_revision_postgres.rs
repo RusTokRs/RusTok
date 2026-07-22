@@ -5,8 +5,8 @@ use rustok_forum::RevisionService;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use uuid::Uuid;
 
-use support::postgres::{execute, expect_rejected, PostgresForumTestDb};
-use support::{test_error, TestResult};
+use support::postgres::{PostgresForumTestDb, execute, expect_rejected};
+use support::{TestResult, test_error};
 
 #[tokio::test]
 async fn postgres_preserves_forum_tombstones_and_revision_history() -> TestResult<()> {

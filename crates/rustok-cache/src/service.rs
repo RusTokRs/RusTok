@@ -3,7 +3,7 @@ use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
-use tokio::sync::{broadcast, Mutex as AsyncMutex};
+use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
 #[cfg(feature = "redis-cache")]
 use rustok_core::CircuitBreakerConfig;
@@ -877,7 +877,7 @@ fn resolve_redis_url() -> Option<String> {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
-    use tokio::sync::{oneshot, Barrier};
+    use tokio::sync::{Barrier, oneshot};
 
     struct FailingInvalidationBackend;
 
@@ -1333,7 +1333,9 @@ mod tests {
     #[ignore = "requires a live Redis instance; set RUSTOK_CACHE_REAL_REDIS_URL"]
     async fn real_redis_publish_and_subscription_share_validated_channel_contract() {
         let Ok(redis_url) = std::env::var("RUSTOK_CACHE_REAL_REDIS_URL") else {
-            eprintln!("skipping real Redis cache invalidation test: RUSTOK_CACHE_REAL_REDIS_URL is not set");
+            eprintln!(
+                "skipping real Redis cache invalidation test: RUSTOK_CACHE_REAL_REDIS_URL is not set"
+            );
             return;
         };
         let service = CacheService::from_url(Some(&redis_url));

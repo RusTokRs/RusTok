@@ -4,8 +4,8 @@ use flex::attached;
 use rustok_core::field_schema::FieldType;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    forum_topic, CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumModule,
-    ListTopicsFilter, TopicService, UpdateCategoryInput, UpdateTopicInput,
+    CategoryService, CreateCategoryInput, CreateTopicInput, ForumError, ForumModule,
+    ListTopicsFilter, TopicService, UpdateCategoryInput, UpdateTopicInput, forum_topic,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;

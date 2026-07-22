@@ -2,23 +2,32 @@ use sea_orm::DatabaseConnection;
 use std::collections::HashSet;
 
 use rustok_core::ModuleRegistry;
+use rustok_secrets::SecretResolverRegistry;
 
 use crate::{
-    ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactEventDeliveryConfig,
-    ArtifactEventDeliveryError, ArtifactLifecycleExecutor, ArtifactScheduleDeliveryConfig,
-    ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer, ArtifactSecretHandleAuthorizer,
+    ArtifactDataExportAuthorizer, ArtifactDataPurgeAuthorizer, ArtifactDataSnapshotAuthorizer,
+    ArtifactDataSnapshotCollectionAuthorizer, ArtifactDataSnapshotRetentionAuthorizer,
+    ArtifactEventDeliveryConfig, ArtifactEventDeliveryError, ArtifactLifecycleExecutor,
+    ArtifactScheduleDeliveryConfig, ArtifactScheduleDeliveryError, ArtifactSecretAuthorizer,
+    ArtifactSecretHandleAuthorizer, ArtifactSecretUseAuthorizer, ArtifactSecretValueConsumer,
     ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
-    ModuleLifecycleDbWriter, SeaOrmArtifactBindingIdempotencyStore,
-    SeaOrmArtifactDataCapabilityBrokerResolver, SeaOrmArtifactDataExportService,
-    SeaOrmArtifactDataObjectCapabilityBrokerResolver, SeaOrmArtifactDataObjectGcService,
-    SeaOrmArtifactDataPurgeService, SeaOrmArtifactEventSubscriptionProjector,
+    ModuleLifecycleDbWriter, ModuleStaticDistributionAuthorizer,
+    ModuleStaticDistributionReleaseAuthorizer, ModuleStaticDistributionReleaseVerifier,
+    ModuleStaticDistributionWorkerAuthorizer, ModuleStaticPromotionAuthorizer,
+    SeaOrmArtifactBindingIdempotencyStore, SeaOrmArtifactDataCapabilityBrokerResolver,
+    SeaOrmArtifactDataExportService, SeaOrmArtifactDataObjectCapabilityBrokerResolver,
+    SeaOrmArtifactDataObjectGcService, SeaOrmArtifactDataPurgeService,
+    SeaOrmArtifactDataSnapshotCollectionService, SeaOrmArtifactDataSnapshotRetentionService,
+    SeaOrmArtifactDataSnapshotService, SeaOrmArtifactEventSubscriptionProjector,
     SeaOrmArtifactExecutionObserver, SeaOrmArtifactInstallationStore,
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmArtifactScheduleDeliveryQueue,
     SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretService,
-    SeaOrmModuleBuildService, SeaOrmModuleCompositionService, SeaOrmModuleGovernanceService,
-    StorageArtifactBlobStore,
+    SeaOrmArtifactSecretUseService, SeaOrmModuleBuildService, SeaOrmModuleCompositionService,
+    SeaOrmModuleGovernanceService, SeaOrmModulePromotionService,
+    SeaOrmModuleStaticDistributionReleaseService, SeaOrmModuleStaticDistributionService,
+    SeaOrmModuleStaticDistributionWorkerService, StorageArtifactBlobStore,
 };
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 
 /// Owner composition root for module control-plane services backed by one
 /// database connection. Hosts obtain domain services through this facade rather
@@ -94,6 +103,70 @@ impl ModuleControlPlane {
         )
     }
 
+    /// Returns the platform-scoped owner service for reviewed static promotion.
+    /// It records evidence for distribution tooling and cannot compile or load
+    /// native code in the running server.
+    pub fn promotion<A>(&self, authorizer: A) -> SeaOrmModulePromotionService<A>
+    where
+        A: ModuleStaticPromotionAuthorizer,
+    {
+        SeaOrmModulePromotionService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the platform-scoped owner for immutable reviewed native-module
+    /// composition snapshots. Every accepted change queues a new distribution
+    /// build intent and cannot mutate the running server composition.
+    pub fn static_distribution<A>(&self, authorizer: A) -> SeaOrmModuleStaticDistributionService<A>
+    where
+        A: ModuleStaticDistributionAuthorizer,
+    {
+        SeaOrmModuleStaticDistributionService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the separately authorized worker boundary for claiming,
+    /// heartbeating, and completing immutable static distribution build intents.
+    pub fn static_distribution_worker<A>(
+        &self,
+        authorizer: A,
+    ) -> SeaOrmModuleStaticDistributionWorkerService<A>
+    where
+        A: ModuleStaticDistributionWorkerAuthorizer,
+    {
+        SeaOrmModuleStaticDistributionWorkerService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the separately authorized release owner for admitting one
+    /// successfully completed immutable distribution build. Activation records
+    /// a verified release head and never mutates the running server composition.
+    pub fn static_distribution_release<A, V>(
+        &self,
+        authorizer: A,
+        verifier: V,
+    ) -> SeaOrmModuleStaticDistributionReleaseService<A, V>
+    where
+        A: ModuleStaticDistributionReleaseAuthorizer,
+        V: ModuleStaticDistributionReleaseVerifier,
+    {
+        SeaOrmModuleStaticDistributionReleaseService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            verifier,
+            self.infrastructure.clone(),
+        )
+    }
+
     pub fn installation(&self) -> SeaOrmArtifactInstallationStore {
         SeaOrmArtifactInstallationStore::with_infrastructure(
             self.db.clone(),
@@ -107,7 +180,7 @@ impl ModuleControlPlane {
 
     /// Returns the platform-storage-backed admitted artifact CAS using this
     /// facade's identity source for private staging objects.
-    pub fn artifact_blob_store(&self, storage: StorageService) -> StorageArtifactBlobStore {
+    pub fn artifact_blob_store(&self, storage: StorageRuntime) -> StorageArtifactBlobStore {
         StorageArtifactBlobStore::with_infrastructure(storage, self.infrastructure.clone())
     }
 
@@ -122,7 +195,7 @@ impl ModuleControlPlane {
     /// sandbox guest.
     pub fn artifact_data_object_capability(
         &self,
-        storage: StorageService,
+        storage: StorageRuntime,
     ) -> SeaOrmArtifactDataObjectCapabilityBrokerResolver {
         SeaOrmArtifactDataObjectCapabilityBrokerResolver::with_infrastructure(
             self.db.clone(),
@@ -189,7 +262,7 @@ impl ModuleControlPlane {
     /// object bytes. The retention decision remains an explicit operation input.
     pub fn artifact_data_object_gc(
         &self,
-        storage: StorageService,
+        storage: StorageRuntime,
     ) -> SeaOrmArtifactDataObjectGcService {
         SeaOrmArtifactDataObjectGcService::new(self.db.clone(), storage)
     }
@@ -201,6 +274,60 @@ impl ModuleControlPlane {
     {
         SeaOrmArtifactDataPurgeService::with_infrastructure(
             self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the owner-only durable namespace snapshot/restore service.
+    /// Snapshot object bytes remain private platform storage and restore cannot
+    /// clear a purge tombstone or replace a non-empty namespace.
+    pub fn artifact_data_snapshot<A>(
+        &self,
+        storage: StorageRuntime,
+        authorizer: A,
+    ) -> SeaOrmArtifactDataSnapshotService<A>
+    where
+        A: ArtifactDataSnapshotAuthorizer,
+    {
+        SeaOrmArtifactDataSnapshotService::with_infrastructure(
+            self.db.clone(),
+            storage,
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the CAS-guarded owner service for extending snapshot retention
+    /// or applying/releasing legal hold. Retention can never be shortened.
+    pub fn artifact_data_snapshot_retention<A>(
+        &self,
+        authorizer: A,
+    ) -> SeaOrmArtifactDataSnapshotRetentionService<A>
+    where
+        A: ArtifactDataSnapshotRetentionAuthorizer,
+    {
+        SeaOrmArtifactDataSnapshotRetentionService::with_infrastructure(
+            self.db.clone(),
+            authorizer,
+            self.infrastructure.clone(),
+        )
+    }
+
+    /// Returns the bounded snapshot collector. Each pass still requires an
+    /// explicit fail-closed policy snapshot before ready data can enter the
+    /// durable collecting state.
+    pub fn artifact_data_snapshot_collection<A>(
+        &self,
+        storage: StorageRuntime,
+        authorizer: A,
+    ) -> SeaOrmArtifactDataSnapshotCollectionService<A>
+    where
+        A: ArtifactDataSnapshotCollectionAuthorizer,
+    {
+        SeaOrmArtifactDataSnapshotCollectionService::with_infrastructure(
+            self.db.clone(),
+            storage,
             authorizer,
             self.infrastructure.clone(),
         )
@@ -231,6 +358,22 @@ impl ModuleControlPlane {
         A: ArtifactSecretHandleAuthorizer + Clone,
     {
         SeaOrmArtifactSecretCapabilityBrokerResolver::new(self.db.clone(), authorizer)
+    }
+
+    /// Composes a host-only secret value-use boundary. The selected consumer is
+    /// fixed here and receives a `SecretString` borrow; callers receive only the
+    /// redacted owner receipt.
+    pub fn artifact_secret_use<A, C>(
+        &self,
+        resolvers: SecretResolverRegistry,
+        authorizer: A,
+        consumer: C,
+    ) -> SeaOrmArtifactSecretUseService<A, C>
+    where
+        A: ArtifactSecretUseAuthorizer,
+        C: ArtifactSecretValueConsumer,
+    {
+        SeaOrmArtifactSecretUseService::new(self.db.clone(), resolvers, authorizer, consumer)
     }
 
     pub fn lifecycle<'a>(

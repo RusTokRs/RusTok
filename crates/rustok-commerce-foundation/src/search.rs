@@ -1,4 +1,4 @@
-use sea_orm::{sea_query::Expr, Condition, DbBackend, Value};
+use sea_orm::{Condition, DbBackend, Value, sea_query::Expr};
 
 pub fn product_translation_title_search_condition(
     backend: DbBackend,

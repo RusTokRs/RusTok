@@ -95,7 +95,7 @@ assertContains(nativeAdapter, "#[server", `${nativeAdapterPath}: native adapter 
 assertContains(nativeAdapter, "media_library_native", `${nativeAdapterPath}: native adapter must expose library endpoint`);
 assertContains(nativeAdapter, "MediaService", `${nativeAdapterPath}: native adapter must call module-owned service layer`);
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
-assertContains(nativeAdapter, "shared_get::<rustok_storage::StorageService>()", `${nativeAdapterPath}: native adapter must receive storage through neutral host runtime context`);
+assertContains(nativeAdapter, "shared_get::<rustok_storage::StorageRuntime>()", `${nativeAdapterPath}: native adapter must receive storage through neutral host runtime context`);
 assertContains(graphqlAdapter, "query MediaLibrary", `${graphqlAdapterPath}: GraphQL adapter must retain media library headless contract`);
 assertContains(restAdapter, "/api/media", `${restAdapterPath}: REST adapter must retain upload endpoint`);
 

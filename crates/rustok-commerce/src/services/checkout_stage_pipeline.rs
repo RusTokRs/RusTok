@@ -292,14 +292,12 @@ impl CheckoutStagePipeline {
 
         let allocation_stage = self.marketplace_allocation_stage.as_ref().ok_or_else(|| {
             CheckoutStagePipelineError::Conflict(
-                "marketplace checkout lines require a composed allocation command port"
-                    .to_string(),
+                "marketplace checkout lines require a composed allocation command port".to_string(),
             )
         })?;
         let commission_stage = self.marketplace_commission_stage.as_ref().ok_or_else(|| {
             CheckoutStagePipelineError::Conflict(
-                "marketplace checkout lines require a composed commission command port"
-                    .to_string(),
+                "marketplace checkout lines require a composed commission command port".to_string(),
             )
         })?;
 
@@ -373,12 +371,7 @@ impl CheckoutStagePipeline {
             )
         })?;
         stage
-            .post_after_capture_if_present(
-                tenant_id,
-                actor_id,
-                lease_owner,
-                payment_captured,
-            )
+            .post_after_capture_if_present(tenant_id, actor_id, lease_owner, payment_captured)
             .await?;
         Ok(())
     }

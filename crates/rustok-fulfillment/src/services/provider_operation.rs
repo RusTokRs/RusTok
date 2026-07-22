@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+    sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;
@@ -400,11 +400,13 @@ mod tests {
         assert!(
             ensure_transition(PROVIDER_OPERATION_SUCCEEDED, PROVIDER_OPERATION_COMMITTED).is_ok()
         );
-        assert!(ensure_transition(
-            PROVIDER_OPERATION_SUCCEEDED,
-            PROVIDER_OPERATION_RECONCILIATION_REQUIRED
-        )
-        .is_ok());
+        assert!(
+            ensure_transition(
+                PROVIDER_OPERATION_SUCCEEDED,
+                PROVIDER_OPERATION_RECONCILIATION_REQUIRED
+            )
+            .is_ok()
+        );
         assert!(
             ensure_transition(PROVIDER_OPERATION_PENDING, PROVIDER_OPERATION_SUCCEEDED).is_err()
         );

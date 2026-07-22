@@ -4,8 +4,8 @@ use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration};
 use sea_orm::{
     ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait, TransactionTrait,
 };
-use sea_orm_migration::prelude::SchemaManager;
 use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
 
 async fn setup_test_db() -> DatabaseConnection {

@@ -16,8 +16,8 @@ use crate::entities::{marketplace_financial_operation, marketplace_paid_event_in
 
 use super::{
     MarketplaceFinancialOperationStatus, MarketplacePaidEventInboxError,
-    MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
-    MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
+    MarketplacePaidEventInboxService, MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
+    MarketplacePaidEventSweepReport,
 };
 
 const MAX_OPERATOR_ITEMS: u64 = 100;
@@ -75,8 +75,7 @@ pub enum MarketplaceFinancialOperatorError {
     Inbox(#[from] MarketplacePaidEventInboxError),
 }
 
-pub type MarketplaceFinancialOperatorResult<T> =
-    Result<T, MarketplaceFinancialOperatorError>;
+pub type MarketplaceFinancialOperatorResult<T> = Result<T, MarketplaceFinancialOperatorError>;
 
 pub struct MarketplaceFinancialOperatorService {
     db: DatabaseConnection,
@@ -90,11 +89,7 @@ impl MarketplaceFinancialOperatorService {
         ledger_port: Arc<dyn MarketplaceLedgerCommandPort>,
     ) -> Self {
         Self {
-            inbox: MarketplacePaidEventInboxService::new(
-                db.clone(),
-                event_bus,
-                ledger_port,
-            ),
+            inbox: MarketplacePaidEventInboxService::new(db.clone(), event_bus, ledger_port),
             db,
         }
     }
@@ -189,12 +184,10 @@ impl MarketplaceFinancialOperatorService {
         }
         let now = Utc::now().fixed_offset();
         let recoverable = Condition::any()
-            .add(
-                marketplace_paid_event_inbox::Column::Status.is_in([
-                    MarketplacePaidEventStatus::Received.as_str(),
-                    MarketplacePaidEventStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_paid_event_inbox::Column::Status.is_in([
+                MarketplacePaidEventStatus::Received.as_str(),
+                MarketplacePaidEventStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(

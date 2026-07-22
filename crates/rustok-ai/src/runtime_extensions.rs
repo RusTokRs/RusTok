@@ -246,7 +246,7 @@ fn vault_auth(
         _ => {
             return Err(
                 "Vault configuration accepts exactly one token_env or token_file".to_string(),
-            )
+            );
         }
     };
     if let Some(token) = token {
@@ -339,9 +339,8 @@ fn environment_bool(name: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        environment_bool, policy, register_deployment_resolver, secret_prefixes,
-        secret_registry_from_environment, validate_config_aliases, vault_auth,
-        DeploymentSecretResolverConfig,
+        DeploymentSecretResolverConfig, environment_bool, policy, register_deployment_resolver,
+        secret_prefixes, secret_registry_from_environment, validate_config_aliases, vault_auth,
     };
 
     static DEPLOYMENT_RESOLVER_CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -390,14 +389,16 @@ mod tests {
     #[test]
     fn vault_auth_rejects_ambiguous_token_and_kubernetes_configuration() {
         unsafe { std::env::set_var("RUSTOK_AI_TEST_VAULT_TOKEN", "test-token") };
-        assert!(vault_auth(
-            Some("RUSTOK_AI_TEST_VAULT_TOKEN".to_string()),
-            None,
-            Some("role".to_string()),
-            Some("kubernetes".to_string()),
-            Some(std::path::PathBuf::from("/token")),
-        )
-        .is_err());
+        assert!(
+            vault_auth(
+                Some("RUSTOK_AI_TEST_VAULT_TOKEN".to_string()),
+                None,
+                Some("role".to_string()),
+                Some("kubernetes".to_string()),
+                Some(std::path::PathBuf::from("/token")),
+            )
+            .is_err()
+        );
         unsafe { std::env::remove_var("RUSTOK_AI_TEST_VAULT_TOKEN") };
     }
 

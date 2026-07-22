@@ -1,13 +1,13 @@
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::future::Future;
 use std::sync::Arc;
 
 use rustok_core::CacheBackend;
 
 use crate::{
-    clock::unix_time_millis, CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness,
-    CacheLoadPolicy, CacheLoadSource, CacheService, DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+    CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource,
+    CacheService, DEFAULT_MAX_CACHE_ENVELOPE_BYTES, clock::unix_time_millis,
 };
 
 pub const MAX_TYPED_CACHE_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
@@ -222,8 +222,8 @@ mod tests {
     use super::*;
     use crate::CacheTtlPolicy;
     use async_trait::async_trait;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     fn policy() -> CacheLoadPolicy {
         CacheLoadPolicy::new(CacheTtlPolicy::fixed(std::time::Duration::from_secs(60)))

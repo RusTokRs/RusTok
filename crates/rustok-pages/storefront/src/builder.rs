@@ -117,10 +117,9 @@ mod tests {
 
     #[test]
     fn invalid_builder_json_is_rejected() {
-        assert!(decode_page_builder_body(&body(
-            GRAPESJS_FORMAT_BODY_FORMAT,
-            "{invalid".to_string(),
-        ))
-        .is_err());
+        assert!(
+            decode_page_builder_body(&body(GRAPESJS_FORMAT_BODY_FORMAT, "{invalid".to_string(),))
+                .is_err()
+        );
     }
 }

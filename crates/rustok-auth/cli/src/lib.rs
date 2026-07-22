@@ -7,7 +7,7 @@ use rustok_auth::{generate_refresh_token, hash_password};
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
-use rustok_runtime::{db_clone, RuntimeComposition};
+use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantService};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
@@ -119,7 +119,21 @@ async fn create_development_app(
     };
     let sql = format!(
         "INSERT INTO oauth_apps (id, tenant_id, name, slug, description, app_type, client_id, client_secret_hash, redirect_uris, scopes, grant_types, granted_permissions, auto_created, is_active, metadata) VALUES ({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
-        placeholders.0, placeholders.1, placeholders.2, placeholders.3, placeholders.4, placeholders.5, placeholders.6, placeholders.7, placeholders.8, placeholders.9, placeholders.10, placeholders.11, placeholders.12, placeholders.13, placeholders.14,
+        placeholders.0,
+        placeholders.1,
+        placeholders.2,
+        placeholders.3,
+        placeholders.4,
+        placeholders.5,
+        placeholders.6,
+        placeholders.7,
+        placeholders.8,
+        placeholders.9,
+        placeholders.10,
+        placeholders.11,
+        placeholders.12,
+        placeholders.13,
+        placeholders.14,
     );
     db.execute(Statement::from_sql_and_values(
         backend,

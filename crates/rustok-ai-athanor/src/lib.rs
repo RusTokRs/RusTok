@@ -9,4 +9,4 @@
 mod adapter;
 
 #[cfg(feature = "athanor")]
-pub use adapter::{AthanorRagAdapter, AthanorRagConfig, ATHANOR_SOURCE_ID};
+pub use adapter::{ATHANOR_SOURCE_ID, AthanorRagAdapter, AthanorRagConfig};

@@ -25,7 +25,7 @@ mod tests {
     use crate::services::registry_principal::{RegistryAuthority, RegistryPrincipalRef};
     use chrono::{Duration, Utc};
     use rustok_migrations::Migrator;
-    use rustok_storage::{local::LocalStorage, StorageService};
+    use rustok_storage::{LocalStorageConfig, StorageRuntime};
     use rustok_test_utils::db::{setup_test_db, setup_test_db_with_migrations};
     use sea_orm::{
         ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
@@ -52,13 +52,18 @@ mod tests {
         }
     }
 
-    fn temp_storage_service() -> StorageService {
+    fn temp_storage_service() -> StorageRuntime {
         let base_dir = std::env::temp_dir().join(format!(
             "rustok-registry-storage-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&base_dir).unwrap();
-        StorageService::new(LocalStorage::new(base_dir, "/media"))
+        StorageRuntime::local(&LocalStorageConfig {
+            base_dir: base_dir.to_string_lossy().into_owned(),
+            base_url: "/media".to_string(),
+            fsync: false,
+        })
+        .expect("local storage runtime")
     }
 
     async fn setup_registry_metadata_db() -> DatabaseConnection {
@@ -242,14 +247,18 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(validation
-            .errors
-            .iter()
-            .any(|error| error == "Artifact bundle type is unsupported."));
-        assert!(validation
-            .errors
-            .iter()
-            .all(|error| !error.contains("untrusted-artifact-type")));
+        assert!(
+            validation
+                .errors
+                .iter()
+                .any(|error| error == "Artifact bundle type is unsupported.")
+        );
+        assert!(
+            validation
+                .errors
+                .iter()
+                .all(|error| !error.contains("untrusted-artifact-type"))
+        );
     }
 
     #[test]
@@ -277,9 +286,11 @@ mod tests {
         let error = normalize_required_reason("   ", "Registry publish reject")
             .expect_err("blank reason should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("Registry publish reject requires a non-empty reason"));
+        assert!(
+            error
+                .to_string()
+                .contains("Registry publish reject requires a non-empty reason")
+        );
     }
 
     #[test]
@@ -349,9 +360,11 @@ mod tests {
                 .map(|gate| gate.status.as_str()),
             Some("failed")
         );
-        assert!(snapshots
-            .iter()
-            .all(|gate| gate.key != "security_policy_review"));
+        assert!(
+            snapshots
+                .iter()
+                .all(|gate| gate.key != "security_policy_review")
+        );
     }
 
     #[test]
@@ -518,9 +531,11 @@ mod tests {
             .await
             .expect_err("platform build evidence must not be replaced by a manual report");
 
-        assert!(error
-            .to_string()
-            .contains("cannot be changed by a manual report"));
+        assert!(
+            error
+                .to_string()
+                .contains("cannot be changed by a manual report")
+        );
     }
 
     #[tokio::test]
@@ -599,9 +614,11 @@ mod tests {
             .await
             .expect_err("expired claim should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("Remote validation claim 'rvc_expired' has expired"));
+        assert!(
+            error
+                .to_string()
+                .contains("Remote validation claim 'rvc_expired' has expired")
+        );
     }
 
     #[tokio::test]
@@ -643,9 +660,11 @@ mod tests {
             .await
             .expect_err("duplicate completion should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("Remote validation claim 'rvc_duplicate' was not found"));
+        assert!(
+            error
+                .to_string()
+                .contains("Remote validation claim 'rvc_duplicate' was not found")
+        );
     }
 
     #[tokio::test]
@@ -668,9 +687,11 @@ mod tests {
             .await
             .expect_err("review governance actor should not manage published releases");
 
-        assert!(error
-            .to_string()
-            .contains("is not allowed to yank published release"));
+        assert!(
+            error
+                .to_string()
+                .contains("is not allowed to yank published release")
+        );
 
         let release = RegistryModuleReleaseEntity::find()
             .filter(registry_module_release::Column::Slug.eq(request.slug))
@@ -826,23 +847,29 @@ mod tests {
 
     async fn insert_publish_request_with_artifact(
         db: &DatabaseConnection,
-        storage: &StorageService,
+        storage: &StorageRuntime,
         status: RegistryPublishRequestStatus,
         artifact_json: String,
     ) -> registry_publish_request::Model {
         let mut request = insert_publish_request(db, status).await;
         let artifact_storage_key =
-            registry_artifact_storage_key(&request.id, &request.slug, &request.version);
+            registry_artifact_storage_key(&request.id, request.created_at).unwrap();
         let artifact_bytes = bytes::Bytes::from(artifact_json.into_bytes());
         let artifact_checksum_sha256 = hex::encode(sha2::Sha256::digest(&artifact_bytes));
-        let uploaded = storage
-            .store(&artifact_storage_key, artifact_bytes, "application/json")
+        use object_store::ObjectStoreExt;
+        storage
+            .objects
+            .put_opts(
+                &object_store::path::Path::from(artifact_storage_key.as_str()),
+                artifact_bytes.clone().into(),
+                storage.put_options("application/json"),
+            )
             .await
             .unwrap();
         let mut active: RegistryPublishRequestActiveModel = request.clone().into();
-        active.artifact_storage_key = Set(Some(uploaded.path));
+        active.artifact_storage_key = Set(Some(artifact_storage_key));
         active.artifact_checksum_sha256 = Set(Some(artifact_checksum_sha256));
-        active.artifact_size = Set(Some(uploaded.size as i64));
+        active.artifact_size = Set(Some(artifact_bytes.len() as i64));
         active.artifact_content_type = Set(Some("application/json".to_string()));
         active.updated_at = Set(Utc::now());
         request = active.update(db).await.unwrap();
@@ -1030,7 +1057,10 @@ mod tests {
             ui_packages: Set(request.ui_packages.clone()),
             status: Set(RegistryModuleReleaseStatus::Active),
             publisher: Set(principal_json(publisher)),
-            artifact_storage_key: Set(Some("registry/artifacts/test/blog-0.1.0.crate".to_string())),
+            artifact_storage_key: Set(Some(
+                "registry-artifact/objects/platform/2026/07/22/00/00000000-0000-0000-0000-000000000000.crate"
+                    .to_string(),
+            )),
             checksum_sha256: Set(Some("checksum".to_string())),
             artifact_size: Set(Some(1024)),
             yanked_reason: Set(None),

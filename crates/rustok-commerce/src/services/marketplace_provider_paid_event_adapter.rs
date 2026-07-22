@@ -3,17 +3,14 @@ use std::{str::FromStr, sync::Arc};
 use rust_decimal::Decimal;
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
 use rustok_outbox::TransactionalEventBus;
-use rustok_payment::{
-    PaymentService, PROVIDER_EVENT_PROCESSED, entities::provider_event,
-};
+use rustok_payment::{PROVIDER_EVENT_PROCESSED, PaymentService, entities::provider_event};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
 
 use super::{
-    IngestMarketplacePaidEvent, MarketplacePaidEventInboxError,
-    MarketplacePaidEventInboxService,
+    IngestMarketplacePaidEvent, MarketplacePaidEventInboxError, MarketplacePaidEventInboxService,
 };
 
 const PAYMENT_CAPTURED_EVENT: &str = "payment.captured";
@@ -63,10 +60,12 @@ impl MarketplaceProviderPaidEventAdapter {
             return Ok(None);
         }
         if !event.signature_verified || event.status != PROVIDER_EVENT_PROCESSED {
-            return Err(MarketplaceProviderPaidEventAdapterError::Ineligible(format!(
-                "provider event {} must be signature verified and processed, status={}",
-                event.id, event.status
-            )));
+            return Err(MarketplaceProviderPaidEventAdapterError::Ineligible(
+                format!(
+                    "provider event {} must be signature verified and processed, status={}",
+                    event.id, event.status
+                ),
+            ));
         }
         let metadata = event.event_metadata.as_ref().ok_or_else(|| {
             MarketplaceProviderPaidEventAdapterError::Validation(format!(
@@ -120,10 +119,12 @@ impl MarketplaceProviderPaidEventAdapter {
                 .currency_code
                 .eq_ignore_ascii_case(normalized_currency.as_str())
         {
-            return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
-                "provider event {} does not match authoritative captured payment collection {}",
-                event.id, payment.id
-            )));
+            return Err(MarketplaceProviderPaidEventAdapterError::Validation(
+                format!(
+                    "provider event {} does not match authoritative captured payment collection {}",
+                    event.id, payment.id
+                ),
+            ));
         }
 
         self.inbox
@@ -148,10 +149,7 @@ impl MarketplaceProviderPaidEventAdapter {
     }
 }
 
-fn parse_uuid(
-    metadata: &Value,
-    field: &str,
-) -> MarketplaceProviderPaidEventAdapterResult<Uuid> {
+fn parse_uuid(metadata: &Value, field: &str) -> MarketplaceProviderPaidEventAdapterResult<Uuid> {
     metadata
         .get(field)
         .and_then(Value::as_str)
@@ -178,9 +176,9 @@ fn parse_decimal(
         ))
     })?;
     if amount <= Decimal::ZERO {
-        return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
-            "normalized provider event field `{field}` must be positive"
-        )));
+        return Err(MarketplaceProviderPaidEventAdapterError::Validation(
+            format!("normalized provider event field `{field}` must be positive"),
+        ));
     }
     Ok(amount)
 }
@@ -200,9 +198,9 @@ fn parse_currency(
             ))
         })?;
     if value.len() != 3 || !value.bytes().all(|byte| byte.is_ascii_alphabetic()) {
-        return Err(MarketplaceProviderPaidEventAdapterError::Validation(format!(
-            "normalized provider event field `{field}` must be a three-letter code"
-        )));
+        return Err(MarketplaceProviderPaidEventAdapterError::Validation(
+            format!("normalized provider event field `{field}` must be a three-letter code"),
+        ));
     }
     Ok(value)
 }

@@ -7,16 +7,16 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::direct::{
-    direct_operator_port_context, explain_result, generate_order_analytics,
-    generate_order_ops_assistant, DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler,
+    DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler, direct_operator_port_context,
+    explain_result, generate_order_analytics, generate_order_ops_assistant,
 };
 use crate::model::{AiOrderAnalyticsTaskInput, AiOrderOpsAssistantTaskInput};
 use crate::model::{DirectExecutionTarget, ToolTrace};
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_ai_order::{
-    order_ai_execution_policy, ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME,
-    ORDER_OPS_ASSISTANT_TASK_SLUG, ORDER_OPS_ASSISTANT_TOOL_NAME,
+    ORDER_ANALYTICS_TASK_SLUG, ORDER_ANALYTICS_TOOL_NAME, ORDER_OPS_ASSISTANT_TASK_SLUG,
+    ORDER_OPS_ASSISTANT_TOOL_NAME, order_ai_execution_policy,
 };
 use rustok_order::OrderStatusRequest;
 

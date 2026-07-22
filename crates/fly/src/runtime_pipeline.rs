@@ -1,11 +1,11 @@
 use crate::{
+    ActionMaterialization, BindingMaterialization, ContextMaterialization,
+    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
+    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
     extract_runtime_context_contract, materialize_bindings, materialize_component_actions,
     materialize_context, materialize_internal_page_links, materialize_localized_page_metadata,
     materialize_project_locale_context, materialize_project_translations, materialize_runtime,
     materialize_runtime_locale_context, validate_component_actions, validate_internal_page_links,
-    ActionMaterialization, BindingMaterialization, ContextMaterialization,
-    InternalLinkMaterialization, LocalePolicyMaterialization, LocalizedPageMetadataMaterialization,
-    ProjectDocument, RuntimeMaterialization, TranslationMaterialization, ValidationDiagnostic,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -329,12 +329,14 @@ mod tests {
                 .attributes["href"],
             "/o-nas"
         );
-        assert!(document
-            .component("about-link")
-            .unwrap()
-            .attributes
-            .get("href")
-            .is_none());
+        assert!(
+            document
+                .component("about-link")
+                .unwrap()
+                .attributes
+                .get("href")
+                .is_none()
+        );
     }
 
     #[test]
@@ -403,12 +405,14 @@ mod tests {
             materialized.document.component("about").unwrap().attributes["href"],
             "/o-nas"
         );
-        assert!(document
-            .component("contact-form")
-            .unwrap()
-            .attributes
-            .get("data-fly-form-provider")
-            .is_none());
+        assert!(
+            document
+                .component("contact-form")
+                .unwrap()
+                .attributes
+                .get("data-fly-form-provider")
+                .is_none()
+        );
     }
 
     #[test]
@@ -561,10 +565,12 @@ mod tests {
                 .and_then(Value::as_str),
             Some("Привет мир")
         );
-        assert!(materialized
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback"));
+        assert!(
+            materialized
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_localized_value_fallback")
+        );
     }
 
     #[test]
@@ -679,9 +685,11 @@ mod tests {
         let materialized = materialize_project_with_runtime_context(&document, &input);
         assert_eq!(materialized.effective_context["safe"], "безопасно");
         assert_eq!(materialized.defaults_applied, 0);
-        assert!(materialized
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
+        assert!(
+            materialized
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
+        );
     }
 }

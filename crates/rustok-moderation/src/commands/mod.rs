@@ -6,7 +6,7 @@ mod report;
 use serde::Serialize;
 
 use crate::error::ModerationResult;
-use crate::receipts::{complete, rollback, NewModerationReceipt};
+use crate::receipts::{NewModerationReceipt, complete, rollback};
 
 pub(crate) async fn finish<R>(
     receipt: NewModerationReceipt,

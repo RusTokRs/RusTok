@@ -36,7 +36,7 @@ pub async fn tenant_bootstrap_native() -> Result<TenantAdminBootstrap, ServerFnE
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{
-            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+            AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
         };
         use rustok_core::ModuleRegistry;
         use rustok_tenant::TenantService;

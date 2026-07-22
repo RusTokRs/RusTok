@@ -356,7 +356,9 @@ pub enum ArtifactRuntimeError {
     DispatchEnvelope(#[from] ArtifactBindingDispatchEnvelopeError),
     #[error("artifact descriptor is invalid: {0}")]
     Descriptor(#[source] ModuleArtifactError),
-    #[error("artifact binding `{binding}` references a schema not admitted by its descriptor: `{schema_digest}`")]
+    #[error(
+        "artifact binding `{binding}` references a schema not admitted by its descriptor: `{schema_digest}`"
+    )]
     BindingSchemaNotAdmitted {
         binding: String,
         schema_digest: String,

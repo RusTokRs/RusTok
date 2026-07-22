@@ -8,7 +8,7 @@ use crate::{
     SearchModule, SearchSettingsService,
 };
 use rustok_api::{
-    graphql::GraphQLError, has_effective_permission, AuthContext, Permission, TenantContext,
+    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_effective_permission,
 };
 use rustok_events::DomainEvent;
 use rustok_telemetry::metrics;

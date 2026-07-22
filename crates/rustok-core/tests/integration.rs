@@ -1,5 +1,5 @@
-use rustok_core::events::{DomainEvent, EventEnvelope};
 use rustok_core::EventBus;
+use rustok_core::events::{DomainEvent, EventEnvelope};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 

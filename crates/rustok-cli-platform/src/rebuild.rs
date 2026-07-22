@@ -68,9 +68,11 @@ mod tests {
 
     #[test]
     fn parses_optional_build_id() {
-        assert!(build_id(&serde_json::json!({ "options": {} }))
-            .unwrap()
-            .is_none());
+        assert!(
+            build_id(&serde_json::json!({ "options": {} }))
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(
             build_id(
                 &serde_json::json!({ "options": { "build_id": uuid::Uuid::nil().to_string() } })

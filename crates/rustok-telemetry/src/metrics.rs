@@ -727,6 +727,16 @@ pub fn register_all(registry: &Registry) -> Result<(), prometheus::Error> {
     registry.register(Box::new(RATE_LIMIT_BACKEND_UNAVAILABLE_TOTAL.clone()))?;
     registry.register(Box::new(RATE_LIMIT_EXCEEDED_TOTAL.clone()))?;
 
+    // Media
+    registry.register(Box::new(MEDIA_UPLOADS_TOTAL.clone()))?;
+    registry.register(Box::new(MEDIA_UPLOAD_BYTES_TOTAL.clone()))?;
+    registry.register(Box::new(MEDIA_DELETES_TOTAL.clone()))?;
+    registry.register(Box::new(MEDIA_STORAGE_HEALTH.clone()))?;
+    registry.register(Box::new(MEDIA_RENDITIONS_TOTAL.clone()))?;
+    registry.register(Box::new(MEDIA_RENDITION_DURATION_SECONDS.clone()))?;
+    registry.register(Box::new(MEDIA_RECONCILIATION_OBJECTS_TOTAL.clone()))?;
+    registry.register(Box::new(MEDIA_UPLOAD_SESSIONS_TOTAL.clone()))?;
+
     Ok(())
 }
 
@@ -1133,6 +1143,40 @@ lazy_static! {
         &["driver"],
     )
     .expect("Failed to create media_storage_health");
+
+    pub static ref MEDIA_RENDITIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new("rustok_media_renditions_total", "Total Media rendition attempts"),
+        &["format", "result"],
+    )
+    .expect("Failed to create media_renditions_total");
+
+    pub static ref MEDIA_RENDITION_DURATION_SECONDS: HistogramVec = HistogramVec::new(
+        HistogramOpts::new(
+            "rustok_media_rendition_duration_seconds",
+            "Media rendition processing duration in seconds",
+        )
+        .buckets(vec![0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 15.0, 60.0]),
+        &["format", "result"],
+    )
+    .expect("Failed to create media_rendition_duration_seconds");
+
+    pub static ref MEDIA_RECONCILIATION_OBJECTS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_media_reconciliation_objects_total",
+            "Media reconciliation outcomes",
+        ),
+        &["outcome"],
+    )
+    .expect("Failed to create media_reconciliation_objects_total");
+
+    pub static ref MEDIA_UPLOAD_SESSIONS_TOTAL: IntCounterVec = IntCounterVec::new(
+        Opts::new(
+            "rustok_media_upload_sessions_total",
+            "Media upload session lifecycle outcomes",
+        ),
+        &["outcome"],
+    )
+    .expect("Failed to create media_upload_sessions_total");
 }
 
 /// Record a successful media upload.
@@ -1156,4 +1200,25 @@ pub fn update_storage_health(driver: &str, healthy: bool) {
     MEDIA_STORAGE_HEALTH
         .with_label_values(&[driver])
         .set(if healthy { 1 } else { 0 });
+}
+
+pub fn record_media_rendition(format: &str, result: &str, duration_secs: f64) {
+    MEDIA_RENDITIONS_TOTAL
+        .with_label_values(&[format, result])
+        .inc();
+    MEDIA_RENDITION_DURATION_SECONDS
+        .with_label_values(&[format, result])
+        .observe(duration_secs);
+}
+
+pub fn record_media_reconciliation(outcome: &str, count: u64) {
+    MEDIA_RECONCILIATION_OBJECTS_TOTAL
+        .with_label_values(&[outcome])
+        .inc_by(count);
+}
+
+pub fn record_media_upload_session(outcome: &str) {
+    MEDIA_UPLOAD_SESSIONS_TOTAL
+        .with_label_values(&[outcome])
+        .inc();
 }

@@ -4,13 +4,18 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_seo_admin_support::SeoEntityPanel;
-use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    category_card_view_model, category_select_options, category_sidebar_total_count,
-    category_sidebar_view_model, format_count, forum_admin_action_button_class,
-    forum_admin_busy_key, forum_admin_category_form_labels, forum_admin_category_matrix_labels,
+    CategoryFormSnapshot, ForumAdminActionButtonKind, ForumAdminBusyAction, ForumAdminBusySurface,
+    ForumAdminCategoryRenderLabels, ForumAdminCollectionState, ForumAdminFormError,
+    ForumAdminFormErrorLabels, ForumAdminHeaderLabels, ForumAdminMetricSurface,
+    ForumAdminQuerySurface, ForumAdminSeoSurface, ForumAdminTitleEnvelopeLabels,
+    ForumAdminTopicRenderLabels, TopicFormSnapshot, category_card_view_model,
+    category_select_options, category_sidebar_total_count, category_sidebar_view_model,
+    format_count, forum_admin_action_button_class, forum_admin_busy_key,
+    forum_admin_category_form_labels, forum_admin_category_matrix_labels,
     forum_admin_collection_state, forum_admin_delete_outcome, forum_admin_editing_thread_label,
     forum_admin_form_error_message, forum_admin_header_view_model, forum_admin_metric_accent_class,
     forum_admin_moderator_notes_copy_labels, forum_admin_open_query_intent,
@@ -21,11 +26,7 @@ use crate::core::{
     forum_admin_topic_form_labels, forum_admin_topic_stream_labels,
     forum_admin_topic_tag_count_label, forum_admin_transport_error_message, reply_card_view_model,
     reply_count_label, result_item_count, selected_category_filter_label, selected_query_id,
-    topic_card_view_model, topic_category_filter, CategoryFormSnapshot, ForumAdminActionButtonKind,
-    ForumAdminBusyAction, ForumAdminBusySurface, ForumAdminCategoryRenderLabels,
-    ForumAdminCollectionState, ForumAdminFormError, ForumAdminFormErrorLabels,
-    ForumAdminHeaderLabels, ForumAdminMetricSurface, ForumAdminQuerySurface, ForumAdminSeoSurface,
-    ForumAdminTitleEnvelopeLabels, ForumAdminTopicRenderLabels, TopicFormSnapshot,
+    topic_card_view_model, topic_category_filter,
 };
 use crate::i18n::t;
 use crate::model::{CategoryListItem, ReplyListItem, TopicListItem};

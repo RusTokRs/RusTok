@@ -71,7 +71,7 @@ pub trait CommentsThreadPort: Send + Sync {
     ) -> Result<CommentRecord, PortError>;
 
     async fn delete_comment(&self, context: PortContext, comment_id: Uuid)
-        -> Result<(), PortError>;
+    -> Result<(), PortError>;
 }
 
 struct InProcessCommentsThreadProvider {

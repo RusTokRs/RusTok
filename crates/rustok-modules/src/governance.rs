@@ -4684,7 +4684,11 @@ impl SeaOrmModuleGovernanceService {
             let request_status: String = stage
                 .try_get("", "request_status")
                 .map_err(|e| ModuleGovernanceError::Store(e.to_string()))?;
-            let detail = format!("Remote validation lease expired for runner '{}' (claim '{}'); stage attempt will be requeued.", claimed_by.as_deref().unwrap_or("unknown"), claim_id.as_deref().unwrap_or("unknown"));
+            let detail = format!(
+                "Remote validation lease expired for runner '{}' (claim '{}'); stage attempt will be requeued.",
+                claimed_by.as_deref().unwrap_or("unknown"),
+                claim_id.as_deref().unwrap_or("unknown")
+            );
             let blocked = tx.execute(Statement::from_sql_and_values(
                 backend,
                 format!("UPDATE registry_validation_stages SET status = 'blocked', detail = {}, last_error = NULL, finished_at = {now}, claim_id = NULL, claimed_by = NULL, claim_expires_at = NULL, last_heartbeat_at = NULL, runner_kind = NULL, updated_at = {now} WHERE id = {} AND status = 'running' AND runner_kind = 'remote' AND claim_expires_at < {now}", mark(1), mark(2)),
@@ -7096,7 +7100,10 @@ mod tests {
                      '2026-07-20 10:04:00', '2026-07-20 10:04:00')",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }
@@ -7220,7 +7227,10 @@ mod tests {
                      '2026-07-20 10:04:00', '2026-07-20 10:04:00')",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }
@@ -7537,7 +7547,10 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }
@@ -7637,7 +7650,10 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }
@@ -7732,7 +7748,10 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }
@@ -7865,7 +7884,10 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }
@@ -8252,7 +8274,10 @@ mod tests {
              VALUES ('request-1', 'sample_module', 'platform_built', 'approved')",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("schema or fixture");
         }

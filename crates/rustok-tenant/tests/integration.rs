@@ -454,15 +454,21 @@ async fn tenant_mutations_publish_outbox_events() {
         .expect("outbox events should load");
 
     assert_eq!(events.len(), 3);
-    assert!(events
-        .iter()
-        .any(|event| event.event_type == "tenant.created"));
-    assert!(events
-        .iter()
-        .any(|event| event.event_type == "tenant.updated"));
-    assert!(events
-        .iter()
-        .any(|event| event.event_type == "tenant.module.toggled"));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.created")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.updated")
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| event.event_type == "tenant.module.toggled")
+    );
 
     let module_toggle_payload = events
         .iter()

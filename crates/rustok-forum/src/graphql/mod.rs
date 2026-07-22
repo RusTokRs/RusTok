@@ -14,9 +14,7 @@ pub use category_command_mutation::{
     MoveForumCategoryInput, ReorderForumCategorySiblingsInput,
 };
 pub use category_lifecycle_mutation::GqlForumCategorySubtreeLifecycle;
-pub use category_policy::{
-    GqlForumCategoryTopicPolicy, UpdateForumCategoryTopicPolicyInput,
-};
+pub use category_policy::{GqlForumCategoryTopicPolicy, UpdateForumCategoryTopicPolicyInput};
 pub use category_tree_query::{
     GqlForumCategoryBreadcrumb, GqlForumCategoryTree, GqlForumCategoryTreeNode,
 };

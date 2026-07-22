@@ -910,14 +910,16 @@ mod tests {
             )]),
         };
         assert!(AiProviderTargetCatalog::new(vec![local.clone()]).is_err());
-        assert!(AiProviderTargetCatalog::new_with_egress_policy(
-            vec![local],
-            &ProviderEgressPolicy {
-                allowed_origins: Vec::new(),
-                allow_local_origins: true,
-            },
-        )
-        .is_ok());
+        assert!(
+            AiProviderTargetCatalog::new_with_egress_policy(
+                vec![local],
+                &ProviderEgressPolicy {
+                    allowed_origins: Vec::new(),
+                    allow_local_origins: true,
+                },
+            )
+            .is_ok()
+        );
 
         let malformed_vertex = AiProviderTarget {
             id: ProviderTargetId::new("vertex").unwrap(),
@@ -1021,19 +1023,25 @@ mod tests {
     #[test]
     fn egress_policy_rejects_private_origins_without_explicit_local_setting() {
         let policy = ProviderEgressPolicy::default();
-        assert!(policy
-            .validate_egress_url("http://127.0.0.1:11434")
-            .is_err());
-        assert!(policy
-            .validate_egress_url("https://api.openai.com/v1")
-            .is_err());
+        assert!(
+            policy
+                .validate_egress_url("http://127.0.0.1:11434")
+                .is_err()
+        );
+        assert!(
+            policy
+                .validate_egress_url("https://api.openai.com/v1")
+                .is_err()
+        );
         let policy = ProviderEgressPolicy {
             allowed_origins: vec!["api.openai.com".to_string()],
             allow_local_origins: true,
         };
-        assert!(policy
-            .validate_egress_url("https://api.openai.com/v1")
-            .is_ok());
+        assert!(
+            policy
+                .validate_egress_url("https://api.openai.com/v1")
+                .is_ok()
+        );
         assert!(policy.validate_egress_url("http://127.0.0.1:11434").is_ok());
     }
 }

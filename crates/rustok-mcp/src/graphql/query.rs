@@ -3,8 +3,8 @@ use rustok_api::Permission;
 use uuid::Uuid;
 
 use super::{
-    ensure_permission, management_context, map_error, require_auth_context, runtime,
     McpAuditEventGql, McpClientDetailsGql, McpClientGql, McpModuleScaffoldDraftGql,
+    ensure_permission, management_context, map_error, require_auth_context, runtime,
 };
 
 #[derive(Default)]

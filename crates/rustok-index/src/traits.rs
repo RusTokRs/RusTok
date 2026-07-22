@@ -318,9 +318,11 @@ mod tests {
                 ..ReindexRunStats::default()
             },
         ] {
-            assert!(stats
-                .strict_completed("test_indexer", "reindex_all")
-                .is_err());
+            assert!(
+                stats
+                    .strict_completed("test_indexer", "reindex_all")
+                    .is_err()
+            );
         }
     }
 

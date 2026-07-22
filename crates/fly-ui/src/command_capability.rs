@@ -99,7 +99,7 @@ impl CommandCapabilityRequirement {
 mod tests {
     use super::*;
     use fly::{AssetCommand, EditorCommand, PageLocator, PagePatch};
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
 
     #[test]
     fn property_and_style_patches_require_independent_capabilities() {

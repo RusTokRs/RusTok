@@ -563,12 +563,16 @@ async fn customer_read_port_lists_tenant_scoped_projections_for_checkout_fallbac
 
     assert_eq!(response.total, 2);
     assert_eq!(response.items.len(), 2);
-    assert!(response
-        .items
-        .iter()
-        .all(|customer| customer.email.ends_with("@example.com")));
-    assert!(!response
-        .items
-        .iter()
-        .any(|customer| customer.email == "fallback-other@example.com"));
+    assert!(
+        response
+            .items
+            .iter()
+            .all(|customer| customer.email.ends_with("@example.com"))
+    );
+    assert!(
+        !response
+            .items
+            .iter()
+            .any(|customer| customer.email == "fallback-other@example.com")
+    );
 }

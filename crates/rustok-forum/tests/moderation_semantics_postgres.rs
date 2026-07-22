@@ -8,8 +8,8 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use uuid::Uuid;
 
-use support::postgres::{execute, PostgresForumTestDb};
-use support::{test_error, TestResult};
+use support::postgres::{PostgresForumTestDb, execute};
+use support::{TestResult, test_error};
 
 #[tokio::test]
 async fn postgres_enforces_locked_and_moderated_reply_semantics() -> TestResult<()> {

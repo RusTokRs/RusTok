@@ -86,9 +86,11 @@ impl MigrationTrait for Migration {
                     PRIMARY KEY (tenant_id, session_id, sequence)\
                 )",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact data object upload session migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact data object upload session migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

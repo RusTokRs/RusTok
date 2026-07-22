@@ -413,10 +413,12 @@ mod tests {
         let result = consumed.validate_connector_metadata();
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("connector metadata mismatch"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("connector metadata mismatch")
+        );
     }
 
     #[tokio::test]

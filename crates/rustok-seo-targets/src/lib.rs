@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 pub mod schema {
     use super::SeoTargetImageRecord;
-    use serde_json::{json, Map, Value};
+    use serde_json::{Map, Value, json};
 
     pub fn web_page(name: &str, description: Option<&str>, in_language: &str) -> Value {
         web_page_with_image(name, description, None, in_language)
@@ -1055,9 +1055,11 @@ mod tests {
         let offer_with_no_currency = schema::offer(10.0, "XXX", None);
         assert!(offer_with_no_currency.get("priceCurrency").is_none());
         let offer_with_invalid_availability = schema::offer(10.0, "USD", Some("InStock"));
-        assert!(offer_with_invalid_availability
-            .get("availability")
-            .is_none());
+        assert!(
+            offer_with_invalid_availability
+                .get("availability")
+                .is_none()
+        );
         let offer_with_http_availability =
             schema::offer(10.0, "USD", Some("http://schema.org/InStock"));
         assert_eq!(
@@ -1066,9 +1068,11 @@ mod tests {
         );
         let offer_with_unknown_availability =
             schema::offer(10.0, "USD", Some("https://schema.org/UnknownAvailability"));
-        assert!(offer_with_unknown_availability
-            .get("availability")
-            .is_none());
+        assert!(
+            offer_with_unknown_availability
+                .get("availability")
+                .is_none()
+        );
 
         let review = schema::review(Some("Jane"), Some("Great"), Some(5.0), Some(5.0));
         assert_eq!(review["@type"], json!("Review"));

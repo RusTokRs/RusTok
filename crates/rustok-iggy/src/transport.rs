@@ -9,8 +9,8 @@ use crate::contract_consumer::PersistentContractConsumerGroup;
 use crate::producer;
 use crate::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
 use crate::topology::TopologyManager;
-use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_core::Result;
+use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use rustok_iggy_connector::{ConnectorConfig, EmbeddedConnector, IggyConnector, RemoteConnector};
 

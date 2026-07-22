@@ -1,11 +1,11 @@
 use axum::{
+    Json, Router,
     body::Bytes,
     extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode},
-    Json, Router,
 };
 use rustok_api::{
-    has_any_effective_permission, AuthContext, HostRuntimeContext, Permission, TenantContext,
+    AuthContext, HostRuntimeContext, Permission, TenantContext, has_any_effective_permission,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -437,12 +437,13 @@ fn map_admin_payment_error(error: PaymentError) -> (StatusCode, Json<Value>) {
             "payment_provider_outcome_unknown",
             "Payment provider operation requires reconciliation",
         ),
-        PaymentError::ProviderRejected { .. }
-        | PaymentError::ProviderInvalidResponse { .. } => safe_error(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "payment_provider_event_invalid",
-            "Payment provider event cannot be applied",
-        ),
+        PaymentError::ProviderRejected { .. } | PaymentError::ProviderInvalidResponse { .. } => {
+            safe_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "payment_provider_event_invalid",
+                "Payment provider event cannot be applied",
+            )
+        }
         PaymentError::PaymentCollectionNotFound(_)
         | PaymentError::PaymentNotFound(_)
         | PaymentError::RefundNotFound(_) => safe_error(

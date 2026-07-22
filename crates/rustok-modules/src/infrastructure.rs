@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rustok_events::EventEnvelope;
+use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_outbox::{OutboxTransport, TransactionalEventWriter};
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use std::sync::Arc;
@@ -69,6 +69,23 @@ impl ControlPlaneInfrastructure {
         envelope: EventEnvelope,
     ) -> rustok_core::Result<()> {
         self.events.write_event(transaction, envelope).await
+    }
+
+    /// Builds a root event envelope with owner-injected identity and time.
+    /// `None` is the canonical platform scope and is encoded as the nil tenant
+    /// identity used by the root event contract.
+    pub(crate) fn event_envelope(
+        &self,
+        tenant_id: Option<Uuid>,
+        actor_id: Option<Uuid>,
+        event: DomainEvent,
+    ) -> EventEnvelope {
+        let mut envelope = EventEnvelope::new(tenant_id.unwrap_or_default(), actor_id, event);
+        let event_id = self.new_id();
+        envelope.id = event_id;
+        envelope.correlation_id = event_id;
+        envelope.timestamp = self.now();
+        envelope
     }
 }
 
@@ -142,5 +159,38 @@ mod tests {
 
         assert_eq!(infrastructure.now(), now);
         assert_eq!(infrastructure.new_id(), id);
+    }
+
+    #[test]
+    fn event_envelope_uses_owner_identity_time_and_scope() {
+        let now = DateTime::parse_from_rfc3339("2026-07-20T12:00:00Z")
+            .expect("fixed time")
+            .with_timezone(&Utc);
+        let event_id = Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").expect("fixed UUID");
+        let tenant_id =
+            Uuid::parse_str("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb").expect("tenant UUID");
+        let actor_id = Uuid::parse_str("cccccccc-cccc-4ccc-8ccc-cccccccccccc").expect("actor UUID");
+        let infrastructure = ControlPlaneInfrastructure::new(
+            Arc::new(FixedClock(now.to_owned())),
+            Arc::new(FixedId(event_id)),
+        );
+
+        let envelope = infrastructure.event_envelope(
+            Some(tenant_id),
+            Some(actor_id),
+            DomainEvent::ModuleBuildQueued {
+                request_id: Uuid::parse_str("dddddddd-dddd-4ddd-8ddd-dddddddddddd")
+                    .expect("request UUID"),
+                tenant_id,
+                project_id: "fixture".to_string(),
+                attempt: 1,
+            },
+        );
+
+        assert_eq!(envelope.id, event_id);
+        assert_eq!(envelope.correlation_id, event_id);
+        assert_eq!(envelope.tenant_id, tenant_id);
+        assert_eq!(envelope.actor_id, Some(actor_id));
+        assert_eq!(envelope.timestamp, now);
     }
 }

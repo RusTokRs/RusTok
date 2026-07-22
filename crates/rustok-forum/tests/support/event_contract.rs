@@ -5,7 +5,7 @@ use rustok_forum::{ForumDomainEventQuery, ForumEventService};
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 pub const EXPECTED_FORUM_EVENT_TYPES: &[&str] = &[
     "forum.category.created",

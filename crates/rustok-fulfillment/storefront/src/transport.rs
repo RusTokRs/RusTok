@@ -4,7 +4,7 @@ mod native_server_adapter;
 use std::fmt::{Display, Formatter};
 
 use rustok_ui_core::{normalize_optional_ui_text, normalize_required_ui_text};
-use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
+use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

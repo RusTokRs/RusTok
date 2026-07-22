@@ -9,6 +9,47 @@ pub struct UploadInput {
     pub data: bytes::Bytes,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateRenditionInput {
+    pub tenant_id: Uuid,
+    pub asset_id: Uuid,
+    pub purpose: String,
+    pub recipe: crate::image::ImageRecipe,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaRenditionItem {
+    pub id: Uuid,
+    pub asset_id: Uuid,
+    pub source_blob_id: Uuid,
+    pub result_blob_id: Uuid,
+    pub purpose: String,
+    pub recipe_hash: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub width: i32,
+    pub height: i32,
+    pub storage_path: String,
+    pub public_url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PrepareUploadSessionInput {
+    pub tenant_id: Uuid,
+    pub actor_id: Option<Uuid>,
+    pub original_name: String,
+    pub content_type: String,
+    pub content_length: Option<u64>,
+    pub expires_in: std::time::Duration,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedUploadSession {
+    pub id: Uuid,
+    pub endpoint: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaItem {
     pub id: Uuid,

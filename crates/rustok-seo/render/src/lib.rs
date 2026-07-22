@@ -466,7 +466,9 @@ mod tests {
         assert!(head.contains(r#"<link rel="alternate" hreflang="en-US" href="https://example.com/en-US/products/demo" />"#));
         assert!(head.contains(r#"<meta property="og:title" content="OG Demo" />"#));
         assert!(head.contains(r#"<meta name="twitter:card" content="summary_large_image" />"#));
-        assert!(head.contains(r#"<meta name="google-site-verification" content="google-token" />"#));
+        assert!(
+            head.contains(r#"<meta name="google-site-verification" content="google-token" />"#)
+        );
         assert!(head.contains(r#"<meta name="author" content="RusToK" />"#));
         assert!(head.contains(
             r#"<link rel="preload" href="https://cdn.example.com/font.woff2" type="font/woff2" />"#

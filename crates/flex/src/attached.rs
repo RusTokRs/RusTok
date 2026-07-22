@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use rustok_api::{
-    build_locale_candidates, locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE,
+    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match, normalize_locale_tag,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FlexError};
 
@@ -454,14 +454,14 @@ mod tests {
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, DatabaseBackend, EntityTrait, Set, Statement,
     };
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
     use uuid::Uuid;
 
     use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType};
 
     use super::{
-        delete_attached_localized_values, first_available_localized_values,
-        prepare_attached_values_create, split_existing_metadata, ActiveModel, Entity,
+        ActiveModel, Entity, delete_attached_localized_values, first_available_localized_values,
+        prepare_attached_values_create, split_existing_metadata,
     };
 
     fn definition(field_key: &str, is_localized: bool) -> FieldDefinition {

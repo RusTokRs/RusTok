@@ -701,9 +701,11 @@ mod tests {
         assert!(first.len() > 1);
         assert!(first.iter().all(|chunk| chunk.text.chars().count() <= 18));
         assert_eq!(first[0].chunk_id, "athanor-doc:doc-1:rev-1:0");
-        assert!(first
-            .iter()
-            .all(|chunk| input.text[chunk.start_byte..chunk.end_byte].contains(&chunk.text)));
+        assert!(
+            first
+                .iter()
+                .all(|chunk| input.text[chunk.start_byte..chunk.end_byte].contains(&chunk.text))
+        );
         assert!(first.windows(2).any(|chunks| {
             chunks[0]
                 .text
@@ -726,9 +728,11 @@ mod tests {
         )
         .expect("unicode chunking succeeds");
         assert!(chunks.iter().all(|chunk| chunk.text.chars().count() <= 10));
-        assert!(chunks
-            .iter()
-            .all(|chunk| input.text.is_char_boundary(chunk.start_byte)));
+        assert!(
+            chunks
+                .iter()
+                .all(|chunk| input.text.is_char_boundary(chunk.start_byte))
+        );
 
         assert!(matches!(
             chunk_document(

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_core::Error;
+use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use sea_orm::{

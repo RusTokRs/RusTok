@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
 use support::postgres::PostgresForumTestDb;
-use support::{test_error, TestResult};
+use support::{TestResult, test_error};
 
 const REQUIRED_TENANT_CONSTRAINTS: &[&str] = &[
     "fk_forum_categories_parent_tenant",

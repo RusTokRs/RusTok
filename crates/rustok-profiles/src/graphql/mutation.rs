@@ -1,7 +1,7 @@
 use async_graphql::{Context, FieldError, Object, Result};
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
     AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
 };
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -9,7 +9,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::{ProfileError, ProfileService};
 
-use super::{types::*, MODULE_SLUG};
+use super::{MODULE_SLUG, types::*};
 
 #[derive(Default)]
 pub struct ProfilesMutation;

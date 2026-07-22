@@ -1,5 +1,5 @@
 use rustok_api::locale_tags_match;
-use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent};
+use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 use std::collections::HashMap;
 
 use crate::i18n::t;
@@ -760,7 +760,7 @@ impl ProductAttributeEditorState {
                         return Err(validation_message(
                             "product.attributes.unsupportedType",
                             "Unsupported attribute type",
-                        ))
+                        ));
                     }
                 }
                 Ok(patch)
@@ -1755,9 +1755,15 @@ pub(crate) fn parse_product_admin_inventory_quantity_input(value: &str) -> i32 {
 
 pub(crate) fn product_admin_status_badge_container_class(status: &str) -> &'static str {
     match status {
-        "ACTIVE" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-emerald-200 bg-emerald-50 text-emerald-700",
-        "ARCHIVED" => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-slate-200 bg-slate-100 text-slate-700",
-        _ => "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-amber-200 bg-amber-50 text-amber-700",
+        "ACTIVE" => {
+            "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-emerald-200 bg-emerald-50 text-emerald-700"
+        }
+        "ARCHIVED" => {
+            "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-slate-200 bg-slate-100 text-slate-700"
+        }
+        _ => {
+            "inline-flex rounded-full border px-3 py-1 text-xs font-semibold border-amber-200 bg-amber-50 text-amber-700"
+        }
     }
 }
 

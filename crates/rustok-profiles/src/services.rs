@@ -967,11 +967,7 @@ fn slugify_handle_seed(seed: &str) -> Option<String> {
     }
 
     let slug = slug.trim_matches('-').to_string();
-    if slug.is_empty() {
-        None
-    } else {
-        Some(slug)
-    }
+    if slug.is_empty() { None } else { Some(slug) }
 }
 
 fn build_handle_candidate(base: &str, suffix: usize) -> Option<String> {

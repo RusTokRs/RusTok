@@ -6,10 +6,10 @@ use rustok_comments::{CommentStatus, CommentThreadStatus};
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
+    COMMENTS_ADMIN_LOCALE_QUERY_KEY, COMMENTS_ADMIN_THREAD_QUERY_KEY, CommentRowViewModel,
+    CommentThreadDetailRequest, CommentThreadDetailViewModel, CommentThreadListItemViewModel,
+    CommentThreadsRequest, SetCommentStatusCommand, SetThreadStatusCommand,
     comments_admin_locale_query_intent, comments_admin_select_thread_query_intent,
-    CommentRowViewModel, CommentThreadDetailRequest, CommentThreadDetailViewModel,
-    CommentThreadListItemViewModel, CommentThreadsRequest, SetCommentStatusCommand,
-    SetThreadStatusCommand, COMMENTS_ADMIN_LOCALE_QUERY_KEY, COMMENTS_ADMIN_THREAD_QUERY_KEY,
 };
 use crate::i18n::t;
 use crate::transport;

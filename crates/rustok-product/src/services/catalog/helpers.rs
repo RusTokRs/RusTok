@@ -1,5 +1,5 @@
 use rust_decimal::prelude::ToPrimitive;
-use rustok_api::{locale_tags_match, normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match, normalize_locale_tag};
 use rustok_commerce_foundation::dto::{
     ProductOptionTranslationInput, ProductOptionTranslationResponse,
     ProductOptionTranslationResponse as ProductOptionTranslationResponseDto, ProductResponse,
@@ -9,8 +9,8 @@ use rustok_commerce_foundation::entities;
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition, FieldType, ValidationRule};
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend,
-    EntityTrait, QueryFilter, QueryOrder, Value as SqlValue,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, Value as SqlValue, sea_query::Expr,
 };
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap, HashSet};

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use rustok_modules::{ModuleBuildRequest, ModuleBuildWorker, ModuleBuildWorkerReadiness};
 use tonic::{Request, Response, Status};
 
-use crate::proto::module_build_service_server::ModuleBuildService;
-use crate::proto::{
+use crate::module_build_proto::module_build_service_server::ModuleBuildService;
+use crate::module_build_proto::{
     ExecuteBuildRequest, ExecuteBuildResponse, ReadinessRequest, ReadinessResponse,
 };
 

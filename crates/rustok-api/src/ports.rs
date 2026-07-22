@@ -320,11 +320,13 @@ mod tests {
                 .kind,
             PortErrorKind::Timeout
         );
-        assert!(context
-            .clone()
-            .with_deadline(Duration::from_secs(3))
-            .require_policy(PortCallPolicy::read())
-            .is_ok());
+        assert!(
+            context
+                .clone()
+                .with_deadline(Duration::from_secs(3))
+                .require_policy(PortCallPolicy::read())
+                .is_ok()
+        );
         assert_eq!(
             context
                 .clone()
@@ -334,9 +336,11 @@ mod tests {
                 .kind,
             PortErrorKind::Validation
         );
-        assert!(context
-            .require_policy(PortCallPolicy::best_effort_read())
-            .is_ok());
+        assert!(
+            context
+                .require_policy(PortCallPolicy::best_effort_read())
+                .is_ok()
+        );
     }
 
     #[test]

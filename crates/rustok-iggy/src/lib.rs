@@ -76,7 +76,7 @@ pub use config::{
 pub use consumer::{ConsumedEvent, ConsumerGroup, ConsumerGroupManager, PersistentConsumerGroup};
 pub use contract_consumer::{ConsumedContractEvent, PersistentContractConsumerGroup};
 pub use dlq::{DlqEntry, DlqManager};
-pub use health::{health_check, HealthCheckResult, HealthStatus};
+pub use health::{HealthCheckResult, HealthStatus, health_check};
 pub use partitioning::{calculate_partition, partition_key};
 pub use replay::{ActiveReplay, ReplayConfig, ReplayManager, ReplayStatus};
 pub use serialization::{EventSerializer, JsonSerializer, PostcardSerializer};

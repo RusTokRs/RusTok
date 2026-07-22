@@ -27,8 +27,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
-                "CREATE TABLE module_artifact_schedule_cursors (\
+            DbBackend::Sqlite => &["CREATE TABLE module_artifact_schedule_cursors (\
                     tenant_id TEXT NOT NULL,\
                     installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     binding_id TEXT NOT NULL CHECK (length(trim(binding_id)) BETWEEN 1 AND 128),\
@@ -36,12 +35,11 @@ impl MigrationTrait for Migration {
                     materialized_through TEXT NOT NULL,\
                     updated_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, installation_id, binding_id)\
-                )",
-            ],
+                )"],
             backend => {
                 return Err(DbErr::Migration(format!(
                     "artifact schedule-cursor migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

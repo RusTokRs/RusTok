@@ -19,9 +19,9 @@ use uuid::Uuid;
 use crate::entities::marketplace_paid_event_inbox;
 
 use super::{
-    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialStage,
-    CheckoutOperationError, CheckoutOperationJournal, CheckoutOperationStage,
-    CheckoutOrderPlanError, CheckoutOrderPlanJournal, CheckoutPaymentCapturedState,
+    CheckoutMarketplaceFinancialError, CheckoutMarketplaceFinancialStage, CheckoutOperationError,
+    CheckoutOperationJournal, CheckoutOperationStage, CheckoutOrderPlanError,
+    CheckoutOrderPlanJournal, CheckoutPaymentCapturedState,
 };
 
 const INBOX_LEASE_SECONDS: i64 = 60;
@@ -237,12 +237,10 @@ impl MarketplacePaidEventInboxJournal {
         let now = Utc::now().fixed_offset();
         let expires_at = now + Duration::seconds(INBOX_LEASE_SECONDS);
         let claimable = Condition::any()
-            .add(
-                marketplace_paid_event_inbox::Column::Status.is_in([
-                    MarketplacePaidEventStatus::Received.as_str(),
-                    MarketplacePaidEventStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_paid_event_inbox::Column::Status.is_in([
+                MarketplacePaidEventStatus::Received.as_str(),
+                MarketplacePaidEventStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(
@@ -416,12 +414,10 @@ impl MarketplacePaidEventInboxJournal {
     ) -> MarketplacePaidEventInboxResult<Vec<marketplace_paid_event_inbox::Model>> {
         let now = Utc::now().fixed_offset();
         let recoverable = Condition::any()
-            .add(
-                marketplace_paid_event_inbox::Column::Status.is_in([
-                    MarketplacePaidEventStatus::Received.as_str(),
-                    MarketplacePaidEventStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_paid_event_inbox::Column::Status.is_in([
+                MarketplacePaidEventStatus::Received.as_str(),
+                MarketplacePaidEventStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(
@@ -525,23 +521,17 @@ impl MarketplacePaidEventInboxService {
             .load_and_post(tenant_id, lease_owner.as_str(), &claimed)
             .await
         {
-            Ok(()) => self
-                .journal
-                .mark_processed(tenant_id, inbox_id, lease_owner)
-                .await,
+            Ok(()) => {
+                self.journal
+                    .mark_processed(tenant_id, inbox_id, lease_owner)
+                    .await
+            }
             Err(error) => {
                 let retryable = error.retryable();
                 let code = error.code();
                 let message = error.to_string();
                 self.journal
-                    .mark_failure(
-                        tenant_id,
-                        inbox_id,
-                        lease_owner,
-                        retryable,
-                        code,
-                        message,
-                    )
+                    .mark_failure(tenant_id, inbox_id, lease_owner, retryable, code, message)
                     .await?;
                 Err(error)
             }
@@ -677,13 +667,11 @@ fn normalize_input(
             "tenant, checkout operation, order, and payment identities must not be nil".to_string(),
         ));
     }
-    let event_source = normalize_text(input.event_source, 100, "event_source")?
-        .to_ascii_lowercase();
+    let event_source =
+        normalize_text(input.event_source, 100, "event_source")?.to_ascii_lowercase();
     let event_id = normalize_text(input.event_id, 191, "event_id")?;
     let currency_code = input.currency_code.trim().to_ascii_uppercase();
-    if currency_code.len() != 3
-        || !currency_code.bytes().all(|byte| byte.is_ascii_alphabetic())
-    {
+    if currency_code.len() != 3 || !currency_code.bytes().all(|byte| byte.is_ascii_alphabetic()) {
         return Err(MarketplacePaidEventInboxError::Validation(
             "currency_code must be a three-letter alphabetic code".to_string(),
         ));

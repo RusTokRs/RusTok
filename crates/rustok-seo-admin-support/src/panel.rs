@@ -11,8 +11,8 @@ use crate::i18n::{
     recommendation, recommendations_count_label, source_label, tr, validation_error, working_label,
 };
 use crate::model::{
-    derive_control_plane_widget_state, validate_target_id, SeoCompletenessReport, SeoEntityForm,
-    SeoEventDeliverySummary, SeoMetaView,
+    SeoCompletenessReport, SeoEntityForm, SeoEventDeliverySummary, SeoMetaView,
+    derive_control_plane_widget_state, validate_target_id,
 };
 use crate::transport;
 use rustok_api::normalize_locale_tag;

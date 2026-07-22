@@ -178,17 +178,51 @@ fn reversals_table() -> TableCreateStatement {
     Table::create()
         .table(LedgerReversals::Table)
         .if_not_exists()
-        .col(ColumnDef::new(LedgerReversals::Id).uuid().not_null().primary_key())
+        .col(
+            ColumnDef::new(LedgerReversals::Id)
+                .uuid()
+                .not_null()
+                .primary_key(),
+        )
         .col(ColumnDef::new(LedgerReversals::TenantId).uuid().not_null())
-        .col(ColumnDef::new(LedgerReversals::TransactionId).uuid().not_null())
-        .col(ColumnDef::new(LedgerReversals::ReversedTransactionId).uuid().not_null())
-        .col(ColumnDef::new(LedgerReversals::ReversalKind).string_len(32).not_null())
+        .col(
+            ColumnDef::new(LedgerReversals::TransactionId)
+                .uuid()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(LedgerReversals::ReversedTransactionId)
+                .uuid()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(LedgerReversals::ReversalKind)
+                .string_len(32)
+                .not_null(),
+        )
         .col(ColumnDef::new(LedgerReversals::SourceId).uuid().not_null())
         .col(ColumnDef::new(LedgerReversals::OrderId).uuid().not_null())
-        .col(ColumnDef::new(LedgerReversals::CurrencyCode).string_len(3).not_null())
-        .col(ColumnDef::new(LedgerReversals::TotalAmount).big_integer().not_null())
-        .col(ColumnDef::new(LedgerReversals::ReversedAt).timestamp_with_time_zone().not_null())
-        .col(ColumnDef::new(LedgerReversals::Metadata).json_binary().not_null().default("{}"))
+        .col(
+            ColumnDef::new(LedgerReversals::CurrencyCode)
+                .string_len(3)
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(LedgerReversals::TotalAmount)
+                .big_integer()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(LedgerReversals::ReversedAt)
+                .timestamp_with_time_zone()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(LedgerReversals::Metadata)
+                .json_binary()
+                .not_null()
+                .default("{}"),
+        )
         .col(
             ColumnDef::new(LedgerReversals::CreatedAt)
                 .timestamp_with_time_zone()
@@ -287,18 +321,67 @@ fn seller_balances_table() -> TableCreateStatement {
     Table::create()
         .table(SellerBalanceProjections::Table)
         .if_not_exists()
-        .col(ColumnDef::new(SellerBalanceProjections::Id).uuid().not_null().primary_key())
-        .col(ColumnDef::new(SellerBalanceProjections::TenantId).uuid().not_null())
-        .col(ColumnDef::new(SellerBalanceProjections::SellerId).uuid().not_null())
-        .col(ColumnDef::new(SellerBalanceProjections::CurrencyCode).string_len(3).not_null())
-        .col(ColumnDef::new(SellerBalanceProjections::PendingAmount).big_integer().not_null().default(0))
-        .col(ColumnDef::new(SellerBalanceProjections::AvailableAmount).big_integer().not_null().default(0))
-        .col(ColumnDef::new(SellerBalanceProjections::ReservedAmount).big_integer().not_null().default(0))
-        .col(ColumnDef::new(SellerBalanceProjections::PaidAmount).big_integer().not_null().default(0))
-        .col(ColumnDef::new(SellerBalanceProjections::NegativeAmount).big_integer().not_null().default(0))
-        .col(ColumnDef::new(SellerBalanceProjections::SourceEntryCount).big_integer().not_null().default(0))
+        .col(
+            ColumnDef::new(SellerBalanceProjections::Id)
+                .uuid()
+                .not_null()
+                .primary_key(),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::TenantId)
+                .uuid()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::SellerId)
+                .uuid()
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::CurrencyCode)
+                .string_len(3)
+                .not_null(),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::PendingAmount)
+                .big_integer()
+                .not_null()
+                .default(0),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::AvailableAmount)
+                .big_integer()
+                .not_null()
+                .default(0),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::ReservedAmount)
+                .big_integer()
+                .not_null()
+                .default(0),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::PaidAmount)
+                .big_integer()
+                .not_null()
+                .default(0),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::NegativeAmount)
+                .big_integer()
+                .not_null()
+                .default(0),
+        )
+        .col(
+            ColumnDef::new(SellerBalanceProjections::SourceEntryCount)
+                .big_integer()
+                .not_null()
+                .default(0),
+        )
         .col(ColumnDef::new(SellerBalanceProjections::LastEntryId).uuid())
-        .col(ColumnDef::new(SellerBalanceProjections::LastEntryCreatedAt).timestamp_with_time_zone())
+        .col(
+            ColumnDef::new(SellerBalanceProjections::LastEntryCreatedAt).timestamp_with_time_zone(),
+        )
         .col(
             ColumnDef::new(SellerBalanceProjections::RebuiltAt)
                 .timestamp_with_time_zone()

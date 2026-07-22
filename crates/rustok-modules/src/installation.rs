@@ -17,7 +17,7 @@ use rustok_api::{
     ArtifactPermissionRegistration, ArtifactPermissionRegistrationPort,
     ArtifactPermissionRegistrationRequest, ArtifactPermissionScope,
 };
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::DomainEvent;
 use rustok_sandbox::{
     RhaiBindingInput, SandboxContext, SandboxPayload, SandboxPolicy, SandboxRequest, SandboxSubject,
 };
@@ -443,6 +443,8 @@ pub struct StagedArtifactBlob {
     pub digest: String,
     pub media_type: String,
     pub size_bytes: u64,
+    #[serde(default)]
+    pub staging_object_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -944,6 +946,7 @@ impl DurableArtifactBlobStore for InMemoryArtifactBlobStore {
             digest: expected_digest.to_string(),
             media_type: expected_media_type.to_string(),
             size_bytes: bytes.len() as u64,
+            staging_object_key: None,
         };
         self.staged
             .lock()
@@ -1157,8 +1160,12 @@ impl SeaOrmArtifactInstallationStore {
         let checkpoint = serde_json::to_value(&request.checkpoint)
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
         let update_installation = match backend {
-            DbBackend::Postgres => "UPDATE module_artifact_installations SET migration_checkpoint = $1, has_irreversible_migration = has_irreversible_migration OR $2 WHERE installation_id = $3",
-            _ => "UPDATE module_artifact_installations SET migration_checkpoint = ?1, has_irreversible_migration = MAX(has_irreversible_migration, ?2) WHERE installation_id = ?3",
+            DbBackend::Postgres => {
+                "UPDATE module_artifact_installations SET migration_checkpoint = $1, has_irreversible_migration = has_irreversible_migration OR $2 WHERE installation_id = $3"
+            }
+            _ => {
+                "UPDATE module_artifact_installations SET migration_checkpoint = ?1, has_irreversible_migration = MAX(has_irreversible_migration, ?2) WHERE installation_id = ?3"
+            }
         };
         transaction
             .execute(Statement::from_sql_and_values(
@@ -1172,7 +1179,19 @@ impl SeaOrmArtifactInstallationStore {
             ))
             .await
             .map_err(|error| ModuleInstallationError::Store(error.to_string()))?;
-        let update_admission = format!("UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {}", if backend == DbBackend::Postgres { "$1" } else { "?1" }, if backend == DbBackend::Postgres { "$2" } else { "?2" });
+        let update_admission = format!(
+            "UPDATE module_artifact_admissions SET revision = revision + 1 WHERE installation_id = {} AND revision = {}",
+            if backend == DbBackend::Postgres {
+                "$1"
+            } else {
+                "?1"
+            },
+            if backend == DbBackend::Postgres {
+                "$2"
+            } else {
+                "?2"
+            }
+        );
         if transaction
             .execute(Statement::from_sql_and_values(
                 backend,
@@ -1198,9 +1217,9 @@ impl SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     tenant_id,
+                    None,
                     DomainEvent::ModuleArtifactMigrationCheckpointed {
                         installation_id: request.installation_id,
                         revision: request.expected_revision + 1,
@@ -1411,9 +1430,9 @@ impl SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     tenant_id,
+                    Some(request.actor_id),
                     DomainEvent::ModuleArtifactDeactivated {
                         installation_id: request.installation_id,
                         revision: request.expected_revision + 1,
@@ -1692,9 +1711,9 @@ impl SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     Some(request.tenant_id),
+                    Some(request.actor_id),
                     if request.enabled {
                         DomainEvent::ModuleArtifactTenantEnabled {
                             installation_id: request.installation_id,
@@ -1860,9 +1879,9 @@ impl SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     tenant_id,
+                    Some(request.actor_id),
                     DomainEvent::ModuleArtifactUninstalled {
                         installation_id: request.installation_id,
                         revision: request.expected_revision + 1,
@@ -2144,9 +2163,9 @@ impl SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     tenant_id,
+                    Some(request.actor_id),
                     DomainEvent::ModuleArtifactRolledBack {
                         installation_id: request.installation_id,
                         target_installation_id,
@@ -2245,9 +2264,9 @@ impl SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     tenant_id,
+                    None,
                     DomainEvent::ModuleArtifactReverified {
                         installation_id: request.installation_id,
                         status: status.as_str().to_string(),
@@ -2784,9 +2803,9 @@ impl ArtifactAdmissionStore for SeaOrmArtifactInstallationStore {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     tenant_id,
+                    Some(command.actor_id),
                     DomainEvent::ModuleArtifactAdmitted {
                         installation_id: artifact.installation_id,
                         artifact_digest: artifact.descriptor.artifact_digest.clone(),

@@ -22,9 +22,7 @@ pub fn Button(
     };
 
     let variant_cls = match variant {
-        ButtonVariant::Default => {
-            "bg-primary text-primary-foreground shadow hover:bg-primary/90"
-        }
+        ButtonVariant::Default => "bg-primary text-primary-foreground shadow hover:bg-primary/90",
         ButtonVariant::Destructive => {
             "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"
         }

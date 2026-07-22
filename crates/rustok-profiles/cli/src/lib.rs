@@ -15,7 +15,7 @@ use rustok_customer::CustomerService;
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_profiles::{ProfileService, ProfileVisibility, ProfilesReader};
-use rustok_runtime::{db_clone, RuntimeComposition};
+use rustok_runtime::{RuntimeComposition, db_clone};
 use rustok_tenant::{TenantReadPort, TenantReadRequest, TenantReadSelector, TenantService};
 use uuid::Uuid;
 
@@ -26,12 +26,14 @@ pub struct ProfilesCommandProvider {
 #[async_trait::async_trait]
 impl CommandProvider for ProfilesCommandProvider {
     fn commands(&self) -> Vec<CommandDescriptor> {
-        vec![CommandDescriptor::new(
-            "profiles",
-            "backfill",
-            "Backfill missing public profiles for tenant users",
-        )
-        .with_dry_run()]
+        vec![
+            CommandDescriptor::new(
+                "profiles",
+                "backfill",
+                "Backfill missing public profiles for tenant users",
+            )
+            .with_dry_run(),
+        ]
     }
 
     async fn execute(&self, request: CommandRequest) -> CliCoreResult<CommandOutcome> {

@@ -1,15 +1,15 @@
 use anyhow::Context;
 use axum::{
+    Json,
     body::Body,
     extract::{Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header},
     response::Response,
-    Json,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use rustok_api::HostRuntimeContext;
-use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
 use rustok_api::{Action, Permission, Resource};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_channel::ChannelService;
 use rustok_outbox::TransactionalEventBus;
 use rustok_web::{HttpError, HttpResult};
@@ -217,10 +217,7 @@ pub async fn create_page(
 ) -> HttpResult<(StatusCode, Json<PageResponse>)> {
     ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
     if input.publish {
-        ensure_pages_permission(
-            &auth,
-            Permission::new(Resource::Pages, Action::Publish),
-        )?;
+        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
     }
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
@@ -253,10 +250,7 @@ pub async fn update_page(
 ) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
     if input.status.is_some() {
-        ensure_pages_permission(
-            &auth,
-            Permission::new(Resource::Pages, Action::Publish),
-        )?;
+        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
     }
 
     let service = PageService::new(runtime.db_clone(), runtime.event_bus());
@@ -380,7 +374,7 @@ fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpRe
 
 #[cfg(test)]
 mod tests {
-    use super::{artifact_content_security_policy, etag_matches, ARTIFACT_VARY};
+    use super::{ARTIFACT_VARY, artifact_content_security_policy, etag_matches};
 
     #[test]
     fn artifact_csp_hashes_exact_css() {

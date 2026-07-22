@@ -33,7 +33,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Migration(format!(
                     "artifact tenant lifecycle idempotency migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         for statement in statements {
@@ -56,7 +56,10 @@ impl MigrationTrait for Migration {
                      DROP CONSTRAINT module_artifact_tenant_lifecycle_expected_revision_positive",
                     "ALTER TABLE module_artifact_tenant_lifecycle DROP COLUMN expected_revision",
                 ] {
-                    manager.get_connection().execute_unprepared(statement).await?;
+                    manager
+                        .get_connection()
+                        .execute_unprepared(statement)
+                        .await?;
                 }
             }
             DbBackend::Sqlite => {
@@ -70,7 +73,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Migration(format!(
                     "artifact tenant lifecycle idempotency migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         }
         Ok(())

@@ -41,9 +41,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_data_indexes_lookup_idx \
                  ON module_artifact_data_indexes (tenant_id, module_slug, data_contract_revision, index_name, index_value, data_key)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact data index migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact data index migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

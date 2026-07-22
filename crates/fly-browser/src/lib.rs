@@ -13,8 +13,7 @@ pub const DEFAULT_MAX_BROWSER_MESSAGE_BYTES: usize = 1024 * 1024;
 pub const DEFAULT_MAX_BROWSER_GEOMETRY_COMPONENTS: usize = 4096;
 pub const DEFAULT_MAX_PENDING_INTENT_REQUESTS: usize = 8;
 pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MS: u64 = 30_000;
-pub const DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE: &str =
-    "Editor canvas resource limit reached.";
+pub const DEFAULT_BROWSER_RESOURCE_LIMIT_MESSAGE: &str = "Editor canvas resource limit reached.";
 pub const DEFAULT_PENDING_INTENT_LIMIT_MESSAGE: &str = "Editor action limit reached.";
 pub const DEFAULT_INTENT_REQUEST_TIMEOUT_MESSAGE: &str = "Editor action timed out";
 pub const FLY_BROWSER_ADAPTER_JS: &str = include_str!("../assets/fly-browser.js");
@@ -565,10 +564,12 @@ mod tests {
         assert_eq!(value["intentRequestTimeoutMs"], 1_500);
         assert_eq!(value["pendingIntentLimitMessage"], "Pending limit");
         assert_eq!(value["intentRequestTimeoutMessage"], "Request timeout");
-        assert!(serde_json::from_value::<BrowserAdapterConfig>(json!({
-            "root_selector": "#unsupported"
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<BrowserAdapterConfig>(json!({
+                "root_selector": "#unsupported"
+            }))
+            .is_err()
+        );
     }
 
     #[test]

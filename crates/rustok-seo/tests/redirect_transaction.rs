@@ -64,9 +64,11 @@ async fn redirect_write_rolls_back_when_transactional_event_fails() {
         .await
         .expect_err("event failure must abort the redirect transaction");
 
-    assert!(error
-        .to_string()
-        .contains("failed to enqueue redirect event transactionally"));
+    assert!(
+        error
+            .to_string()
+            .contains("failed to enqueue redirect event transactionally")
+    );
     assert_eq!(
         seo_redirect::Entity::find()
             .count(&db)

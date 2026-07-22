@@ -6,7 +6,7 @@ use rustok_forum::{
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 pub async fn exercise_category_commands(db: &DatabaseConnection) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();

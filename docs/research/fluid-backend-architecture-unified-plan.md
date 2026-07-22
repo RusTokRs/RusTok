@@ -105,7 +105,7 @@ of `provider/consumer metadata + neutral ports + typed errors + locked contract-
 | `tax` | provider tax calculation for cart tax-line consumers | `in_progress` | Close runtime contract tests/fallback smoke for `TaxCalculationPort`, confirm cart/order tax snapshot parity before status promotion | `crates/rustok-tax/src/ports.rs`, `crates/rustok-tax/contracts/tax-fba-registry.json`, `crates/rustok-tax/docs/implementation-plan.md` |
 | `comments` | provider generic comment thread boundary for blog/commentable-surface consumers | `boundary_ready` | Execute provider runtime contract/fallback evidence and prove atomic lifecycle-event publication, Blog delivery, retry, and recovery before `transport_verified` | `crates/rustok-comments/src/ports.rs`, `crates/rustok-comments/contracts/comments-fba-registry.json`, `crates/rustok-comments/docs/implementation-plan.md` |
 | `blog` | consumer generic comment thread boundary and reply-count projection from `comments` | `boundary_ready` | Execute real consumer/projection runtime delivery, duplicate-event, missing-post, retry, and recovery evidence before `transport_verified` | `crates/rustok-blog/contracts/blog-fba-registry.json`, `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`, `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`, `crates/rustok-blog/docs/implementation-plan.md` |
-| `media` | provider asset read/image descriptor boundary for SEO/AI media consumers, plus owner write/control boundary | `in_progress` | Run executable runtime contract tests/fallback smoke for `MediaAssetReadPort`; `MediaAssetWritePort` now owns upload target preparation, delete, translation, and tenant-scoped cleanup. Source-locked degraded modes and public URL proxy policy are fixed in `media-runtime-fallback-smoke.json`, but status is not promoted without runtime execution | `crates/rustok-media/src/ports.rs`, `crates/rustok-media/contracts/media-fba-registry.json`, `crates/rustok-media/docs/implementation-plan.md` |
+| `media` | provider asset read/image descriptor boundary for SEO/AI media consumers, plus owner write/control boundary | `boundary_ready` | One compiled suite verifies every read/write port operation against embedded and loopback gRPC providers, including deadlines, typed errors, owner normalization, upload-control transport, reconciliation, and delete. Isolated process/database/storage operational evidence remains required before `transport_verified` | `crates/rustok-media/src/ports.rs`, `crates/rustok-media-transport/tests/port_conformance.rs`, `crates/rustok-media/contracts/media-fba-registry.json` |
 | `seo` | Media image descriptor consumer boundary | `in_progress` | Product forwards its media asset UUIDs and SEO composes `MediaAssetReadPort`; remaining target providers, tenant/degraded media execution, and public URL/proxy evidence are required before promotion | `crates/rustok-seo/contracts/seo-fba-registry.json`, `crates/rustok-seo/docs/implementation-plan.md` |
 | `ai-media` | support consumer image asset descriptor boundary from `media` | `boundary_ready` | Next step: provider-side media runtime execution evidence; support-adapter fallback smoke already verified by `cargo test -p rustok-ai-media --lib` | `crates/rustok-ai-media/contracts/ai-media-fba-registry.json`, `crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json`, `crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`, `crates/rustok-ai-media/docs/implementation-plan.md` |
 | `ai-alloy` | support adapter script execution policy boundary for Alloy vertical | `in_progress` | Source-level policy registry captures `alloy_script_execution_policy`, `allowed_operations` and descriptor `runtime_operation`; next step — targeted Rust tests when compilations are allowed | `crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`, `crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`, `crates/rustok-ai-alloy/docs/implementation-plan.md` |
@@ -130,8 +130,9 @@ Uniformity rules:
 
 The first distributed FBA pilots are whole-module deployments, not splits of
 one module into multiple microservices. `media` is the storage/read pilot and
-`search` is the query/connector pilot. Both remain in-process in the modular
-monolith until loopback transport and isolated-runtime evidence is accepted.
+`search` is the query/connector pilot. The modular monolith remains the default.
+Media loopback transport conformance is accepted; an actual process split still
+requires isolated-runtime evidence.
 
 `rustok-search` owns the `SearchEngine` connector abstraction. PostgreSQL,
 Meilisearch, Typesense, and Algolia connectors are internal adapters selected
@@ -155,12 +156,12 @@ The authoritative decision and acceptance evidence are recorded in
 `DECISIONS/2026-07-16-media-search-extraction-boundaries.md`. No other module
 is promoted to a remote deployment class by this plan.
 
-### Deferred execution plan (frozen pending platform stabilization)
+### Extraction execution status
 
-Remote-extraction implementation is frozen while the platform and its public
-API contracts are stabilized. The deployment default remains the modular
-monolith. This pause does not change any FFA/FBA status and does not authorize
-new remote adapters, service processes, or database splits.
+The deployment default remains the modular monolith. Media now has its bounded
+metadata/control gRPC adapter and compiled loopback conformance. This does not
+authorize a production process/database split without the remaining operational
+evidence.
 
 Resume only after the platform baseline has explicit evidence for the affected
 scope: reproducible targeted compilation/tests, a resolved `Cargo.lock`
@@ -173,7 +174,7 @@ When the freeze is lifted, implement and verify the following order:
    conformance primitive only after two real module consumers demonstrate the
    same need.
 2. Complete Media owner write/control coverage for upload, delete,
-   translations, and cleanup. Keep large binary data on Media-owned streaming
+   translations, and reconciliation. Keep large binary data on Media-owned streaming
    REST or a presigned upload flow; do not put blobs in generic gRPC DTOs.
 3. Implement the internal Search connector writer and owner ingestion/control
    contract for schema synchronization, document upsert/delete, rebuild, and
@@ -182,8 +183,8 @@ When the freeze is lifted, implement and verify the following order:
    `index_product_attribute_values`. Populate the needed category and facet
    fields in Search-owned projections during ingestion; use
    `IndexReadModelPort` only for optional enrichment.
-5. Add loopback gRPC conformance and isolated database/storage evidence for
-   Media first, then add the isolated Search query-service profile.
+5. Media loopback gRPC conformance is complete. Add isolated database/storage
+   evidence for Media, then add the isolated Search query-service profile.
 6. Promote no readiness status without compiled and live evidence for tenant,
    authorization, retry/restart, health/metrics, degraded behavior, and
    rollback/recovery.
@@ -244,7 +245,7 @@ As of 2026-06-19 `search` added as a provider track for search query/suggestions
 
 As of 2026-06-19 `blog` added as a consumer track for `comments.thread.v1`: registry `crates/rustok-blog/contracts/blog-fba-registry.json`, static evidence `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`, no-compile source-smoke `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`, manifest `[fba.consumer]` and fast gate `npm run verify:blog:fba` capture `CommentsThreadPort` dependency, fallback profiles and degraded modes without promotion to `boundary_ready` until real runtime execution.
 
-As of 2026-06-19 `media` added as a provider track for asset read/image descriptor boundary: `MediaAssetReadPort`/`media.asset_read.v1`, registry `crates/rustok-media/contracts/media-fba-registry.json` and static evidence `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json` and source-locked fallback smoke `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json` are checked by the fast gate `npm run verify:media:fba` without promotion to `boundary_ready` until executable runtime execution/fallback smoke.
+As of 2026-07-22 `media` has compiled embedded/loopback runtime conformance for every `MediaAssetReadPort` and `MediaAssetWritePort` operation in `crates/rustok-media-transport/tests/port_conformance.rs`. The fast `npm run verify:media:fba` gate locks this runtime evidence to the provider registry and static matrix; FBA remains `boundary_ready` until isolated deployment evidence supports `transport_verified`.
 
 As of 2026-06-19 `seo` added as a consumer track for `media.asset_read.v1`: registry `crates/rustok-seo/contracts/seo-fba-registry.json`, static evidence `crates/rustok-seo/contracts/evidence/seo-media-consumer-static-matrix.json`, manifest `[fba.consumer]` and fast gate `npm run verify:seo:fba` capture `MediaAssetReadPort` dependency, provider fallback-smoke source, fallback profiles and degraded modes in `source_locked_pending_consumer_runtime` state without promotion to `boundary_ready` until consumer runtime execution/fallback smoke.
 

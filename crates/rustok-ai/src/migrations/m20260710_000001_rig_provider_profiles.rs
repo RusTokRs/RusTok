@@ -46,7 +46,7 @@ impl MigrationTrait for Migration {
             other => {
                 return Err(DbErr::Migration(format!(
                     "AI Rig provider migration does not support database backend {other:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

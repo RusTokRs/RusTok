@@ -8,7 +8,7 @@ use crate::model::{
     CurrentTenant, PricingAdminBootstrap, PricingChannelOption, PricingPriceListOption,
     PricingProductDetail, PricingProductList,
 };
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 const BOOTSTRAP_QUERY: &str = "query PricingAdminBootstrap { currentTenant { id slug name } storefrontPricingChannels { id slug name isActive isDefault status } storefrontActivePriceLists { id name listType channelId channelSlug ruleKind adjustmentPercent } }";

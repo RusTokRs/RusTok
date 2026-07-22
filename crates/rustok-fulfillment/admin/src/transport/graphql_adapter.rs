@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_ui_core::normalize_ui_text as optional_text;
 use serde::{Deserialize, Serialize};
 
@@ -400,11 +400,7 @@ fn build_update_shipping_option_input(draft: ShippingOptionDraft) -> UpdateShipp
 
 fn vec_or_none(value: Vec<String>) -> Option<Vec<String>> {
     let items = vec_or_empty(value);
-    if items.is_empty() {
-        None
-    } else {
-        Some(items)
-    }
+    if items.is_empty() { None } else { Some(items) }
 }
 
 fn vec_or_empty(value: Vec<String>) -> Vec<String> {

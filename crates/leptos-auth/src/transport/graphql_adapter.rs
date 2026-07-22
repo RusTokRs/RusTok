@@ -1,11 +1,11 @@
-use rustok_graphql::{execute, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute};
 use serde_json::json;
 
 use super::{
-    auth_payload_to_session, get_graphql_url, map_graphql_auth_error, CurrentUserResponse,
-    ForgotPasswordResponse, RefreshTokenResponse, SignInResponse, SignOutResponse, SignUpResponse,
-    CURRENT_USER_QUERY, FORGOT_PASSWORD_MUTATION, REFRESH_TOKEN_MUTATION, SIGN_IN_MUTATION,
-    SIGN_OUT_MUTATION, SIGN_UP_MUTATION,
+    CURRENT_USER_QUERY, CurrentUserResponse, FORGOT_PASSWORD_MUTATION, ForgotPasswordResponse,
+    REFRESH_TOKEN_MUTATION, RefreshTokenResponse, SIGN_IN_MUTATION, SIGN_OUT_MUTATION,
+    SIGN_UP_MUTATION, SignInResponse, SignOutResponse, SignUpResponse, auth_payload_to_session,
+    get_graphql_url, map_graphql_auth_error,
 };
 use crate::{AuthError, AuthSession, AuthUser};
 

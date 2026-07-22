@@ -1,8 +1,6 @@
-use async_graphql::{
-    ComplexObject, Context, Enum, FieldError, InputObject, Result, SimpleObject,
-};
+use async_graphql::{ComplexObject, Context, Enum, FieldError, InputObject, Result, SimpleObject};
 use rustok_api::{
-    graphql::GraphQLError, has_any_effective_permission, AuthContext, Permission, TenantContext,
+    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use ulid::Ulid;
 use uuid::Uuid;
 
-use super::validation::{validators, EventValidationError, ValidateEvent};
+use super::validation::{EventValidationError, ValidateEvent, validators};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EventEnvelope {
@@ -560,6 +560,41 @@ pub enum DomainEvent {
         namespace_revision: u64,
         exported_records: u64,
     },
+    ModuleArtifactDataSnapshotCreated {
+        snapshot_id: Uuid,
+        tenant_id: Uuid,
+        module_slug: String,
+        data_contract_revision: u64,
+        namespace_revision: u64,
+        manifest_digest: String,
+        structured_records: u64,
+        objects: u64,
+    },
+    ModuleArtifactDataSnapshotRestored {
+        snapshot_id: Uuid,
+        tenant_id: Uuid,
+        module_slug: String,
+        data_contract_revision: u64,
+        namespace_revision: u64,
+        restored_records: u64,
+        restored_objects: u64,
+    },
+    ModuleArtifactDataSnapshotRetentionUpdated {
+        snapshot_id: Uuid,
+        tenant_id: Uuid,
+        retention_revision: u64,
+        retain_until: DateTime<Utc>,
+        legal_hold: bool,
+    },
+    ModuleArtifactDataSnapshotCollected {
+        collection_id: Uuid,
+        snapshot_id: Uuid,
+        tenant_id: Uuid,
+        module_slug: String,
+        data_contract_revision: u64,
+        policy_snapshot_id: String,
+        deleted_objects: u64,
+    },
     ModuleArtifactSecretBound {
         tenant_id: Uuid,
         module_slug: String,
@@ -577,6 +612,70 @@ pub enum DomainEvent {
         tenant_id: Uuid,
         outcome: String,
         retryable: bool,
+    },
+    ModuleStaticPromotionRequested {
+        promotion_id: Uuid,
+        release_id: String,
+        module_slug: String,
+        module_version: String,
+        source_digest: String,
+    },
+    ModuleStaticPromotionApproved {
+        promotion_id: Uuid,
+        release_id: String,
+        module_slug: String,
+        module_version: String,
+        revision: u64,
+        policy_revision: String,
+    },
+    ModuleStaticDistributionBuildQueued {
+        distribution_build_id: Uuid,
+        predecessor_build_id: Option<Uuid>,
+        composition_revision: u64,
+        composition_digest: String,
+        selected_promotions: u32,
+    },
+    ModuleStaticDistributionBuildClaimed {
+        distribution_build_id: Uuid,
+        claim_id: Uuid,
+        attempt_number: u32,
+        runner_id: String,
+        reclaimed_expired_lease: bool,
+    },
+    ModuleStaticDistributionBuildCompleted {
+        distribution_build_id: Uuid,
+        claim_id: Uuid,
+        composition_revision: u64,
+        composition_digest: String,
+        outcome: String,
+        result_digest: Option<String>,
+        completion_digest: String,
+    },
+    ModuleStaticDistributionReleaseActivated {
+        distribution_release_id: Uuid,
+        predecessor_release_id: Option<Uuid>,
+        distribution_build_id: Uuid,
+        release_revision: u64,
+        composition_revision: u64,
+        composition_digest: String,
+        artifact_digest: String,
+        policy_revision: String,
+    },
+    ModuleStaticDistributionRollbackBuildQueued {
+        rollback_id: Uuid,
+        from_release_id: Uuid,
+        target_release_id: Uuid,
+        distribution_build_id: Uuid,
+        composition_revision: u64,
+        composition_digest: String,
+        policy_revision: String,
+    },
+    ModuleStaticDistributionReleaseRevoked {
+        distribution_release_id: Uuid,
+        distribution_build_id: Uuid,
+        release_state_revision: u64,
+        was_active: bool,
+        policy_revision: String,
     },
     LocaleEnabled {
         tenant_id: Uuid,
@@ -772,9 +871,41 @@ impl DomainEvent {
             Self::ModuleArtifactTenantEnabled { .. } => "module.artifact.tenant_enabled",
             Self::ModuleArtifactDataPurged { .. } => "module.artifact.data_purged",
             Self::ModuleArtifactDataExported { .. } => "module.artifact.data_exported",
+            Self::ModuleArtifactDataSnapshotCreated { .. } => {
+                "module.artifact.data_snapshot_created"
+            }
+            Self::ModuleArtifactDataSnapshotRestored { .. } => {
+                "module.artifact.data_snapshot_restored"
+            }
+            Self::ModuleArtifactDataSnapshotRetentionUpdated { .. } => {
+                "module.artifact.data_snapshot_retention_updated"
+            }
+            Self::ModuleArtifactDataSnapshotCollected { .. } => {
+                "module.artifact.data_snapshot_collected"
+            }
             Self::ModuleArtifactSecretBound { .. } => "module.artifact.secret_bound",
             Self::ModuleBuildQueued { .. } => "module.build.queued",
             Self::ModuleBuildCompleted { .. } => "module.build.completed",
+            Self::ModuleStaticPromotionRequested { .. } => "module.static_promotion.requested",
+            Self::ModuleStaticPromotionApproved { .. } => "module.static_promotion.approved",
+            Self::ModuleStaticDistributionBuildQueued { .. } => {
+                "module.static_distribution.build_queued"
+            }
+            Self::ModuleStaticDistributionBuildClaimed { .. } => {
+                "module.static_distribution.build_claimed"
+            }
+            Self::ModuleStaticDistributionBuildCompleted { .. } => {
+                "module.static_distribution.build_completed"
+            }
+            Self::ModuleStaticDistributionReleaseActivated { .. } => {
+                "module.static_distribution.release_activated"
+            }
+            Self::ModuleStaticDistributionRollbackBuildQueued { .. } => {
+                "module.static_distribution.rollback_build_queued"
+            }
+            Self::ModuleStaticDistributionReleaseRevoked { .. } => {
+                "module.static_distribution.release_revoked"
+            }
             Self::LocaleEnabled { .. } => "locale.enabled",
             Self::LocaleDisabled { .. } => "locale.disabled",
             Self::PlatformSettingsChanged { .. } => "platform_settings.changed",
@@ -922,9 +1053,21 @@ impl DomainEvent {
             Self::ModuleArtifactTenantEnabled { .. } => 1,
             Self::ModuleArtifactDataPurged { .. } => 1,
             Self::ModuleArtifactDataExported { .. } => 1,
+            Self::ModuleArtifactDataSnapshotCreated { .. } => 1,
+            Self::ModuleArtifactDataSnapshotRestored { .. } => 1,
+            Self::ModuleArtifactDataSnapshotRetentionUpdated { .. } => 1,
+            Self::ModuleArtifactDataSnapshotCollected { .. } => 1,
             Self::ModuleArtifactSecretBound { .. } => 1,
             Self::ModuleBuildQueued { .. } => 1,
             Self::ModuleBuildCompleted { .. } => 1,
+            Self::ModuleStaticPromotionRequested { .. } => 1,
+            Self::ModuleStaticPromotionApproved { .. } => 1,
+            Self::ModuleStaticDistributionBuildQueued { .. } => 1,
+            Self::ModuleStaticDistributionBuildClaimed { .. } => 1,
+            Self::ModuleStaticDistributionBuildCompleted { .. } => 1,
+            Self::ModuleStaticDistributionReleaseActivated { .. } => 1,
+            Self::ModuleStaticDistributionRollbackBuildQueued { .. } => 1,
+            Self::ModuleStaticDistributionReleaseRevoked { .. } => 1,
             Self::LocaleEnabled { .. } => 1,
             Self::LocaleDisabled { .. } => 1,
             Self::PlatformSettingsChanged { .. } => 1,
@@ -1956,6 +2099,98 @@ impl ValidateEvent for DomainEvent {
                 }
                 Ok(())
             }
+            Self::ModuleArtifactDataSnapshotCreated {
+                snapshot_id,
+                tenant_id,
+                module_slug,
+                data_contract_revision,
+                namespace_revision,
+                manifest_digest,
+                structured_records: _,
+                objects: _,
+            } => {
+                validators::validate_not_nil_uuid("snapshot_id", snapshot_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 48)?;
+                validators::validate_not_empty("manifest_digest", manifest_digest)?;
+                if *data_contract_revision == 0
+                    || *namespace_revision == 0
+                    || manifest_digest.len() != 71
+                    || !manifest_digest.starts_with("sha256:")
+                    || !manifest_digest[7..]
+                        .bytes()
+                        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "data snapshot identity",
+                        "must contain positive revisions and a sha256 digest".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactDataSnapshotRestored {
+                snapshot_id,
+                tenant_id,
+                module_slug,
+                data_contract_revision,
+                namespace_revision,
+                restored_records: _,
+                restored_objects: _,
+            } => {
+                validators::validate_not_nil_uuid("snapshot_id", snapshot_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 48)?;
+                if *data_contract_revision == 0 || *namespace_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "data or namespace revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactDataSnapshotRetentionUpdated {
+                snapshot_id,
+                tenant_id,
+                retention_revision,
+                retain_until: _,
+                legal_hold: _,
+            } => {
+                validators::validate_not_nil_uuid("snapshot_id", snapshot_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                if *retention_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "retention_revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleArtifactDataSnapshotCollected {
+                collection_id,
+                snapshot_id,
+                tenant_id,
+                module_slug,
+                data_contract_revision,
+                policy_snapshot_id,
+                deleted_objects: _,
+            } => {
+                validators::validate_not_nil_uuid("collection_id", collection_id)?;
+                validators::validate_not_nil_uuid("snapshot_id", snapshot_id)?;
+                validators::validate_not_nil_uuid("tenant_id", tenant_id)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 48)?;
+                validators::validate_not_empty("policy_snapshot_id", policy_snapshot_id)?;
+                validators::validate_max_length("policy_snapshot_id", policy_snapshot_id, 128)?;
+                if *data_contract_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "data_contract_revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
             Self::ModuleArtifactSecretBound {
                 tenant_id,
                 module_slug,
@@ -2009,6 +2244,203 @@ impl ValidateEvent for DomainEvent {
                     ));
                 }
                 Ok(())
+            }
+            Self::ModuleStaticPromotionRequested {
+                promotion_id,
+                release_id,
+                module_slug,
+                module_version,
+                source_digest,
+            } => {
+                validators::validate_not_nil_uuid("promotion_id", promotion_id)?;
+                validators::validate_not_empty("release_id", release_id)?;
+                validators::validate_max_length("release_id", release_id, 256)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
+                validators::validate_not_empty("module_version", module_version)?;
+                validators::validate_max_length("module_version", module_version, 128)?;
+                validate_sha256_digest("source_digest", source_digest)
+            }
+            Self::ModuleStaticPromotionApproved {
+                promotion_id,
+                release_id,
+                module_slug,
+                module_version,
+                revision,
+                policy_revision,
+            } => {
+                validators::validate_not_nil_uuid("promotion_id", promotion_id)?;
+                validators::validate_not_empty("release_id", release_id)?;
+                validators::validate_max_length("release_id", release_id, 256)?;
+                validators::validate_not_empty("module_slug", module_slug)?;
+                validators::validate_max_length("module_slug", module_slug, 128)?;
+                validators::validate_not_empty("module_version", module_version)?;
+                validators::validate_max_length("module_version", module_version, 128)?;
+                validators::validate_not_empty("policy_revision", policy_revision)?;
+                validators::validate_max_length("policy_revision", policy_revision, 128)?;
+                if *revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleStaticDistributionBuildQueued {
+                distribution_build_id,
+                predecessor_build_id,
+                composition_revision,
+                composition_digest,
+                selected_promotions,
+            } => {
+                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
+                if predecessor_build_id
+                    .is_some_and(|value| value.is_nil() || value == *distribution_build_id)
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "predecessor_build_id",
+                        "must be absent or a distinct non-nil UUID".to_string(),
+                    ));
+                }
+                if *composition_revision == 0 || *selected_promotions > 256 {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution build identity",
+                        "must contain a positive revision and at most 256 promotions".to_string(),
+                    ));
+                }
+                validate_sha256_digest("composition_digest", composition_digest)
+            }
+            Self::ModuleStaticDistributionBuildClaimed {
+                distribution_build_id,
+                claim_id,
+                attempt_number,
+                runner_id,
+                reclaimed_expired_lease: _,
+            } => {
+                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
+                validators::validate_not_nil_uuid("claim_id", claim_id)?;
+                validators::validate_not_empty("runner_id", runner_id)?;
+                validators::validate_max_length("runner_id", runner_id, 128)?;
+                if *attempt_number == 0 || runner_id.chars().any(char::is_control) {
+                    return Err(EventValidationError::InvalidValue(
+                        "distribution claim",
+                        "must contain a positive attempt and a safe runner identity".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::ModuleStaticDistributionBuildCompleted {
+                distribution_build_id,
+                claim_id,
+                composition_revision,
+                composition_digest,
+                outcome,
+                result_digest,
+                completion_digest,
+            } => {
+                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
+                validators::validate_not_nil_uuid("claim_id", claim_id)?;
+                if *composition_revision == 0
+                    || !matches!(outcome.as_str(), "succeeded" | "failed" | "cancelled")
+                    || (outcome == "succeeded") != result_digest.is_some()
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution completion",
+                        "must contain a positive revision and canonical terminal evidence"
+                            .to_string(),
+                    ));
+                }
+                validate_sha256_digest("composition_digest", composition_digest)?;
+                validate_sha256_digest("completion_digest", completion_digest)?;
+                if let Some(result_digest) = result_digest {
+                    validate_sha256_digest("result_digest", result_digest)?;
+                }
+                Ok(())
+            }
+            Self::ModuleStaticDistributionReleaseActivated {
+                distribution_release_id,
+                predecessor_release_id,
+                distribution_build_id,
+                release_revision,
+                composition_revision,
+                composition_digest,
+                artifact_digest,
+                policy_revision,
+            } => {
+                validators::validate_not_nil_uuid(
+                    "distribution_release_id",
+                    distribution_release_id,
+                )?;
+                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
+                if predecessor_release_id
+                    .is_some_and(|value| value.is_nil() || value == *distribution_release_id)
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "predecessor_release_id",
+                        "must be absent or a distinct non-nil UUID".to_string(),
+                    ));
+                }
+                if *release_revision == 0 || *composition_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution release identity",
+                        "must contain positive release and composition revisions".to_string(),
+                    ));
+                }
+                validators::validate_not_empty("policy_revision", policy_revision)?;
+                validators::validate_max_length("policy_revision", policy_revision, 128)?;
+                if policy_revision.trim() != policy_revision
+                    || policy_revision.chars().any(char::is_control)
+                {
+                    return Err(EventValidationError::InvalidValue(
+                        "policy_revision",
+                        "must be a canonical printable value".to_string(),
+                    ));
+                }
+                validate_sha256_digest("composition_digest", composition_digest)?;
+                validate_sha256_digest("artifact_digest", artifact_digest)
+            }
+            Self::ModuleStaticDistributionRollbackBuildQueued {
+                rollback_id,
+                from_release_id,
+                target_release_id,
+                distribution_build_id,
+                composition_revision,
+                composition_digest,
+                policy_revision,
+            } => {
+                validators::validate_not_nil_uuid("rollback_id", rollback_id)?;
+                validators::validate_not_nil_uuid("from_release_id", from_release_id)?;
+                validators::validate_not_nil_uuid("target_release_id", target_release_id)?;
+                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
+                if from_release_id == target_release_id || *composition_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "static distribution rollback identity",
+                        "must contain distinct releases and a positive composition revision"
+                            .to_string(),
+                    ));
+                }
+                validate_policy_revision(policy_revision)?;
+                validate_sha256_digest("composition_digest", composition_digest)
+            }
+            Self::ModuleStaticDistributionReleaseRevoked {
+                distribution_release_id,
+                distribution_build_id,
+                release_state_revision,
+                was_active: _,
+                policy_revision,
+            } => {
+                validators::validate_not_nil_uuid(
+                    "distribution_release_id",
+                    distribution_release_id,
+                )?;
+                validators::validate_not_nil_uuid("distribution_build_id", distribution_build_id)?;
+                if *release_state_revision == 0 {
+                    return Err(EventValidationError::InvalidValue(
+                        "release_state_revision",
+                        "must be positive".to_string(),
+                    ));
+                }
+                validate_policy_revision(policy_revision)
             }
             Self::LocaleEnabled { tenant_id, locale }
             | Self::LocaleDisabled { tenant_id, locale } => {
@@ -2153,6 +2585,33 @@ impl ValidateEvent for DomainEvent {
             }
         }
     }
+}
+
+fn validate_sha256_digest(field: &'static str, value: &str) -> Result<(), EventValidationError> {
+    if value.len() != 71
+        || !value.starts_with("sha256:")
+        || !value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(EventValidationError::InvalidValue(
+            field,
+            "must be a canonical lowercase sha256 digest".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_policy_revision(value: &str) -> Result<(), EventValidationError> {
+    validators::validate_not_empty("policy_revision", value)?;
+    validators::validate_max_length("policy_revision", value, 128)?;
+    if value.trim() != value || value.chars().any(char::is_control) {
+        return Err(EventValidationError::InvalidValue(
+            "policy_revision",
+            "must be a canonical printable value".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -10,15 +10,21 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let statement = match manager.get_database_backend() {
-            DbBackend::Postgres => "ALTER TABLE module_artifact_installations \
+            DbBackend::Postgres => {
+                "ALTER TABLE module_artifact_installations \
                 ADD COLUMN capability_grant_revision BIGINT NOT NULL DEFAULT 1 \
-                CHECK (capability_grant_revision > 0)",
-            DbBackend::Sqlite => "ALTER TABLE module_artifact_installations \
+                CHECK (capability_grant_revision > 0)"
+            }
+            DbBackend::Sqlite => {
+                "ALTER TABLE module_artifact_installations \
                 ADD COLUMN capability_grant_revision INTEGER NOT NULL DEFAULT 1 \
-                CHECK (capability_grant_revision > 0)",
-            backend => return Err(DbErr::Migration(format!(
-                "module artifact capability-grant migration does not support database backend {backend:?}"
-            ))),
+                CHECK (capability_grant_revision > 0)"
+            }
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "module artifact capability-grant migration does not support database backend {backend:?}"
+                )));
+            }
         };
         manager
             .get_connection()

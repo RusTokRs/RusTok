@@ -762,7 +762,9 @@ pub enum ModuleArtifactError {
     InvalidBinding(String),
     #[error("artifact binding `{0}` must declare sha256 input/output schemas")]
     InvalidBindingSchemaDigest(String),
-    #[error("artifact binding or selector `{0}` references a schema document absent from the descriptor")]
+    #[error(
+        "artifact binding or selector `{0}` references a schema document absent from the descriptor"
+    )]
     MissingSchemaDocument(String),
     #[error("artifact binding `{0}` is declared more than once")]
     DuplicateBinding(String),

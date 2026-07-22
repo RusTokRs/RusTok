@@ -166,7 +166,10 @@ pub fn category_drop_move_request(
                 .iter()
                 .filter(|item| item.parent_id.is_none() && item.id != dragged_id)
                 .count();
-            (None, u32::try_from(roots_after_move).map_err(|_| "Too many root categories")?)
+            (
+                None,
+                u32::try_from(roots_after_move).map_err(|_| "Too many root categories")?,
+            )
         }
         CategoryDropPlacement::Before => {
             let target_id = target_id.ok_or_else(|| "Drop target is required".to_string())?;
@@ -194,11 +197,15 @@ pub fn category_drop_move_request(
                 return Err("A category cannot be nested inside itself".to_string());
             }
             if target.is_archived && !dragged.is_archived {
-                return Err("An active category cannot be moved beneath an archived category".to_string());
+                return Err(
+                    "An active category cannot be moved beneath an archived category".to_string(),
+                );
             }
             let child_count_after_move = items
                 .iter()
-                .filter(|item| item.parent_id.as_deref() == Some(target.id.as_str()) && item.id != dragged_id)
+                .filter(|item| {
+                    item.parent_id.as_deref() == Some(target.id.as_str()) && item.id != dragged_id
+                })
                 .count();
             (
                 Some(target.id.clone()),
@@ -208,12 +215,16 @@ pub fn category_drop_move_request(
     };
 
     if let Some(destination_parent_id) = parent_id.as_deref() {
-        if destination_parent_id == dragged.id || is_descendant(&by_id, destination_parent_id, dragged.id.as_str()) {
+        if destination_parent_id == dragged.id
+            || is_descendant(&by_id, destination_parent_id, dragged.id.as_str())
+        {
             return Err("A category cannot be moved into its own subtree".to_string());
         }
         if let Some(parent) = by_id.get(destination_parent_id).copied() {
             if parent.is_archived && !dragged.is_archived {
-                return Err("An active category cannot be moved beneath an archived category".to_string());
+                return Err(
+                    "An active category cannot be moved beneath an archived category".to_string(),
+                );
             }
         }
     }
@@ -340,8 +351,8 @@ pub struct TopicDraft {
 #[cfg(test)]
 mod tests {
     use super::{
-        category_drop_move_request, CategoryDropPlacement, CategoryListItem, CategoryTreeNode,
-        CategoryTreeResponse,
+        CategoryDropPlacement, CategoryListItem, CategoryTreeNode, CategoryTreeResponse,
+        category_drop_move_request,
     };
 
     fn category(id: &str, parent_id: Option<&str>, position: i32, depth: u16) -> CategoryListItem {

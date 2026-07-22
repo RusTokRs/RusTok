@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    sea_query::Expr, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::Expr,
 };
 use serde_json::Value;
 use uuid::Uuid;

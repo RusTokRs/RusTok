@@ -1,9 +1,9 @@
 use crate::{
-    extract_runtime_context_contract, materialize_context, set_context_path, ContextSchemaCatalog,
-    ContextValueKind, ProjectDocument, ProjectHash, ValidationDiagnostic, ValidationSeverity,
+    ContextSchemaCatalog, ContextValueKind, ProjectDocument, ProjectHash, ValidationDiagnostic,
+    ValidationSeverity, extract_runtime_context_contract, materialize_context, set_context_path,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RuntimeContextJsonSchema {

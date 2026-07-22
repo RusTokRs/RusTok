@@ -1,15 +1,15 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::graphql::{require_module_enabled, GraphQLError, PaginationInput};
+use rustok_api::graphql::{GraphQLError, PaginationInput, require_module_enabled};
 use rustok_api::{
-    has_effective_permission, Action, AuthContext, Permission, Resource, TenantContext,
+    Action, AuthContext, Permission, Resource, TenantContext, has_effective_permission,
 };
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{load_media_usage_snapshot, MediaService};
+use crate::{MediaService, load_media_usage_snapshot};
 
-use super::{GqlMediaItem, GqlMediaList, GqlMediaTranslation, MediaUsageStats, MODULE_SLUG};
+use super::{GqlMediaItem, GqlMediaList, GqlMediaTranslation, MODULE_SLUG, MediaUsageStats};
 
 #[derive(Default)]
 pub struct MediaQuery;
@@ -42,7 +42,7 @@ impl MediaQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::List)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let storage = ctx.data::<StorageService>()?;
+        let storage = ctx.data::<StorageRuntime>()?;
 
         let service = MediaService::new(db.clone(), storage.clone());
         let (offset, limit) = pagination.normalize()?;
@@ -67,7 +67,7 @@ impl MediaQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Read)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let storage = ctx.data::<StorageService>()?;
+        let storage = ctx.data::<StorageRuntime>()?;
 
         let service = MediaService::new(db.clone(), storage.clone());
         match service.get(tenant_id, id).await {
@@ -87,7 +87,7 @@ impl MediaQuery {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Read)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let storage = ctx.data::<StorageService>()?;
+        let storage = ctx.data::<StorageRuntime>()?;
 
         let service = MediaService::new(db.clone(), storage.clone());
         let translations = service

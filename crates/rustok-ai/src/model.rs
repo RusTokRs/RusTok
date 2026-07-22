@@ -141,7 +141,7 @@ impl ProviderUsage {
 
 #[cfg(test)]
 mod provider_usage_tests {
-    use super::{default_provider_capabilities, ProviderCapability, ProviderUsage};
+    use super::{ProviderCapability, ProviderUsage, default_provider_capabilities};
     use crate::ProviderSlug;
 
     #[test]

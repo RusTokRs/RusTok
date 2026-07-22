@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_core::{
-    module::HealthStatus, MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
-    ModuleKind, RusToKModule,
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
+    RusToKModule, module::HealthStatus,
 };
 use sea_orm_migration::MigrationTrait;
 
@@ -24,9 +24,9 @@ pub mod search_settings;
 pub mod suggestions;
 
 pub use analytics::{
-    SearchAnalyticsInsightRow, SearchAnalyticsQueryRow, SearchAnalyticsService,
-    SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchClickRecord, SearchQueryLogRecord,
-    SLOW_QUERY_THRESHOLD_MS,
+    SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsInsightRow, SearchAnalyticsQueryRow,
+    SearchAnalyticsService, SearchAnalyticsSnapshot, SearchAnalyticsSummary, SearchClickRecord,
+    SearchQueryLogRecord,
 };
 pub use diagnostics::{
     LaggingSearchDocument, SearchConsistencyIssue, SearchDiagnosticsService,

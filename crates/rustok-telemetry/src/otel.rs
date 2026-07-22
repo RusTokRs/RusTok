@@ -9,11 +9,11 @@
 /// - Resource attributes (service info)
 /// - Batch span processor
 use once_cell::sync::OnceCell;
-use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry::{KeyValue, global, trace::TracerProvider as _};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
-    trace::{BatchConfigBuilder, RandomIdGenerator, Sampler, SdkTracerProvider},
     Resource,
+    trace::{BatchConfigBuilder, RandomIdGenerator, Sampler, SdkTracerProvider},
 };
 
 static TRACER_PROVIDER: OnceCell<SdkTracerProvider> = OnceCell::new();

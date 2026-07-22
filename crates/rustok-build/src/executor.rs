@@ -5,14 +5,15 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
+    BuildCommandSpec, BuildEventPublisher, BuildExecutionReport, BuildService,
+    ReleaseActivationHook,
     build::{BuildStage, BuildStatus, Model as Build},
-    build_manifest_snapshot_path, parse_execution_plan, run_build_command, BuildCommandSpec,
-    BuildEventPublisher, BuildExecutionReport, BuildService, ReleaseActivationHook,
+    build_manifest_snapshot_path, parse_execution_plan, run_build_command,
 };
 
 pub struct BuildExecutionService {

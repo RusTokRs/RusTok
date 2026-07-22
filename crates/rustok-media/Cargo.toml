@@ -5,11 +5,23 @@ edition.workspace = true
 license.workspace = true
 description = "Media asset management for RusTok — uploads, metadata, translations"
 
+[features]
+default = []
+s3 = ["rustok-storage/s3"]
+
 [dependencies]
 anyhow.workspace = true
 async-graphql.workspace = true
 rustok-core.workspace = true
 rustok-storage.workspace = true
+object_store.workspace = true
+image.workspace = true
+fast_image_resize.workspace = true
+mozjpeg-rs.workspace = true
+oxipng.workspace = true
+zenwebp.workspace = true
+sha2.workspace = true
+hex.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 bytes = "1.0"
@@ -22,6 +34,12 @@ sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 mime_guess = "2.0"
+
+[dev-dependencies]
+tempfile = "3.27"
+url.workspace = true
+reqwest.workspace = true

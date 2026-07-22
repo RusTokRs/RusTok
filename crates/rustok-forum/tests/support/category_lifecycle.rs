@@ -3,7 +3,7 @@ use rustok_forum::{CategoryService, CategoryTreeQuery, ForumError};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
@@ -24,7 +24,10 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
         .archive_subtree(tenant_id, child_id, security.clone())
         .await?;
     assert!(archived.archived);
-    assert_eq!(archived.affected_category_ids, vec![child_id, grandchild_id]);
+    assert_eq!(
+        archived.affected_category_ids,
+        vec![child_id, grandchild_id]
+    );
     assert_eq!(archived.changed_count, 2);
 
     let tree = service
@@ -72,7 +75,7 @@ pub async fn exercise_category_subtree_lifecycle(db: &DatabaseConnection) -> Tes
         Err(error) => {
             return Err(test_error(format!(
                 "expected tenant-scoped category not found, got {error}"
-            )))
+            )));
         }
         Ok(_) => return Err(test_error("foreign tenant category was archived")),
     }

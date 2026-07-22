@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use async_trait::async_trait;
@@ -8,28 +8,21 @@ use chrono::{Duration, Utc};
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_marketplace_commission::{
     ListMarketplaceCommissionAssessmentsByOrderRequest,
-    ListMarketplaceCommissionAssessmentsBySellerRequest,
-    ListMarketplaceCommissionRulesRequest,
-    MarketplaceCommissionAssessmentListResponse,
-    MarketplaceCommissionAssessmentResponse,
-    MarketplaceCommissionAssessmentStatus,
-    MarketplaceCommissionReadPort,
-    MarketplaceCommissionRuleListResponse,
-    ReadMarketplaceCommissionAssessmentRequest,
+    ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
+    MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,
+    MarketplaceCommissionAssessmentStatus, MarketplaceCommissionReadPort,
+    MarketplaceCommissionRuleListResponse, ReadMarketplaceCommissionAssessmentRequest,
 };
-use sea_orm::{
-    ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait,
-};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait, PaginatorTrait};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::MarketplaceLedgerService;
 use crate::dto::{
-    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
-    PostMarketplaceOrderLedgerInput,
+    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection, PostMarketplaceOrderLedgerInput,
 };
 use crate::entities::{entry, receipt, transaction};
 use crate::error::MarketplaceLedgerError;
-use crate::MarketplaceLedgerService;
 
 #[tokio::test]
 async fn order_posting_is_balanced_atomic_and_replay_safe() {
@@ -79,8 +72,7 @@ async fn order_posting_is_balanced_atomic_and_replay_safe() {
             .entries
             .iter()
             .filter(|entry| {
-                entry.account_code
-                    == MarketplaceLedgerAccountCode::PlatformCommissionRevenue
+                entry.account_code == MarketplaceLedgerAccountCode::PlatformCommissionRevenue
                     && entry.direction == MarketplaceLedgerEntryDirection::Credit
             })
             .map(|entry| entry.amount)
@@ -112,7 +104,11 @@ async fn order_posting_is_balanced_atomic_and_replay_safe() {
         .await
         .unwrap();
     assert_eq!(replayed, posted);
-    assert_eq!(provider.read_count(), 1, "receipt replay must precede provider reads");
+    assert_eq!(
+        provider.read_count(),
+        1,
+        "receipt replay must precede provider reads"
+    );
 
     let conflict = service
         .post_order_with_receipt(

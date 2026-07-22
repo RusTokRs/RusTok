@@ -3,9 +3,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    parse_field_definitions_config, CreateFlexEntryCommand, CreateFlexSchemaCommand,
-    FieldDefinitionsConfigParseError, FlexEntryView, FlexSchemaView, UpdateFlexEntryCommand,
-    UpdateFlexSchemaCommand,
+    CreateFlexEntryCommand, CreateFlexSchemaCommand, FieldDefinitionsConfigParseError,
+    FlexEntryView, FlexSchemaView, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
+    parse_field_definitions_config,
 };
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]

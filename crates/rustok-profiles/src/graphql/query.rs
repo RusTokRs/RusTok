@@ -1,14 +1,14 @@
-use async_graphql::{dataloader::DataLoader, Context, FieldError, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
     AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{ProfileError, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey};
 
-use super::{types::*, MODULE_SLUG};
+use super::{MODULE_SLUG, types::*};
 
 #[derive(Default)]
 pub struct ProfilesQuery;

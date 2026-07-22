@@ -1,8 +1,8 @@
 use crate::{
-    analyze_runtime_context_dependencies, extract_runtime_context_contract,
-    validate_binding_definitions, validate_component_actions, validate_dynamic_definitions,
-    validate_internal_page_links, validate_localized_page_routes, validate_project_locale_policy,
-    validate_translation_definitions, ProjectDocument, ValidationDiagnostic, ValidationReport,
+    ProjectDocument, ValidationDiagnostic, ValidationReport, analyze_runtime_context_dependencies,
+    extract_runtime_context_contract, validate_binding_definitions, validate_component_actions,
+    validate_dynamic_definitions, validate_internal_page_links, validate_localized_page_routes,
+    validate_project_locale_policy, validate_translation_definitions,
 };
 use std::collections::BTreeSet;
 
@@ -54,7 +54,7 @@ fn diagnostic_identity(diagnostic: &ValidationDiagnostic) -> (u8, String, String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{validate_project, GrapesJsCodec, RegistrySet, ValidationLimits};
+    use crate::{GrapesJsCodec, RegistrySet, ValidationLimits, validate_project};
     use serde_json::json;
 
     fn invalid_runtime_document() -> ProjectDocument {
@@ -105,31 +105,45 @@ mod tests {
     }
 
     #[test]
-    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics(
-    ) {
+    fn runtime_validation_combines_locale_translation_contract_dependency_binding_and_dynamic_diagnostics()
+     {
         let document = invalid_runtime_document();
         let diagnostics = validate_runtime_extensions(&document);
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "translation_locale_invalid"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "duplicate_translation_id"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| { diagnostic.code == "runtime_context_path_shadowed_by_computed" }));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_repeater_targets_page_root"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "translation_locale_invalid")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "duplicate_translation_id")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
+        );
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == "runtime_context_path_shadowed_by_computed"
+            })
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_binding_target_missing")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_repeater_targets_page_root")
+        );
     }
 
     #[test]
@@ -241,12 +255,16 @@ mod tests {
         }))
         .expect("document");
         let diagnostics = validate_runtime_extensions(&document);
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "form_definition_invalid"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "action_definition_invalid"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "form_definition_invalid")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "action_definition_invalid")
+        );
     }
 
     #[test]

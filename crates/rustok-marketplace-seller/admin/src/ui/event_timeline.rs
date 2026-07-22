@@ -41,7 +41,9 @@ pub fn MarketplaceSellerEventTimeline(
 }
 
 fn event_row(event: MarketplaceSellerAdminEvent) -> impl IntoView {
-    let actor = event.actor_id.unwrap_or_else(|| "unknown actor".to_string());
+    let actor = event
+        .actor_id
+        .unwrap_or_else(|| "unknown actor".to_string());
     let locale = event.locale.unwrap_or_else(|| "unknown locale".to_string());
     let note = event.note.filter(|value| !value.trim().is_empty());
     let legacy = event.provenance == "legacy_snapshot";

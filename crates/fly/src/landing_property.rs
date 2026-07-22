@@ -1,7 +1,7 @@
 use crate::{
-    ComponentNode, ComponentObject, ComponentPatch, EditorCommand, FlyError, LandingSectionKind,
-    ProjectDocument, TraitOption, TraitSchema, TraitTarget, TraitValueKind,
-    FLY_LANDING_SECTION_FIELD,
+    ComponentNode, ComponentObject, ComponentPatch, EditorCommand, FLY_LANDING_SECTION_FIELD,
+    FlyError, LandingSectionKind, ProjectDocument, TraitOption, TraitSchema, TraitTarget,
+    TraitValueKind,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -859,10 +859,12 @@ mod tests {
             let report = LandingPropertyValidationReport::for_document(&document(kind));
             assert!(report.valid, "{kind}: {:?}", report.issues);
             assert_eq!(report.sections.len(), 1);
-            assert!(report.sections[0]
-                .properties
-                .iter()
-                .all(|property| property.target.is_some()));
+            assert!(
+                report.sections[0]
+                    .properties
+                    .iter()
+                    .all(|property| property.target.is_some())
+            );
         }
     }
 
@@ -920,13 +922,17 @@ mod tests {
         .expect("document");
         let report = LandingPropertyValidationReport::for_document(&document);
         assert!(!report.valid);
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.kind == LandingPropertyIssueKind::MissingRole));
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.kind == LandingPropertyIssueKind::UnknownRole));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == LandingPropertyIssueKind::MissingRole)
+        );
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.kind == LandingPropertyIssueKind::UnknownRole)
+        );
     }
 }

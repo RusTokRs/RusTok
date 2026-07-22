@@ -34,7 +34,7 @@ pub use policy::{SandboxLimits, SandboxPolicy};
 #[cfg(feature = "rhai")]
 pub use rhai::RhaiCapabilityBridge;
 pub use rhai_binding::{
-    RhaiBindingError, RhaiBindingInput, RhaiBindingOutput, RHAI_BINDING_VERSION,
+    RHAI_BINDING_VERSION, RhaiBindingError, RhaiBindingInput, RhaiBindingOutput,
 };
 pub use runtime::{ExecutionObserver, NoopExecutionObserver, SandboxRuntime};
 pub use types::{

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package rustok.media;
+
+// Media owns the canonical Rust DTOs. Protobuf owns RPC method identity,
+// framing, deadlines, and status semantics; JSON preserves the owner contract.
+// Binary media bodies intentionally never cross this service.
+service MediaService {
+  rpc GetAsset(IdRequest) returns (JsonResponse);
+  rpc ListAssets(ListRequest) returns (JsonResponse);
+  rpc GetImageDescriptor(ImageDescriptorRequest) returns (JsonResponse);
+  rpc GetTranslations(IdRequest) returns (JsonResponse);
+  rpc PrepareUpload(JsonRequest) returns (JsonResponse);
+  rpc CompleteUpload(IdRequest) returns (JsonResponse);
+  rpc DeleteAsset(IdRequest) returns (EmptyResponse);
+  rpc UpsertTranslation(IdJsonRequest) returns (JsonResponse);
+  rpc ReconcileStorage(JsonRequest) returns (JsonResponse);
+}
+
+message IdRequest {
+  bytes context_json = 1;
+  string id = 2;
+}
+
+message ListRequest {
+  bytes context_json = 1;
+  uint64 limit = 2;
+  uint64 offset = 3;
+}
+
+message ImageDescriptorRequest {
+  bytes context_json = 1;
+  string id = 2;
+  optional string alt = 3;
+}
+
+message JsonRequest {
+  bytes context_json = 1;
+  bytes input_json = 2;
+}
+
+message IdJsonRequest {
+  bytes context_json = 1;
+  string id = 2;
+  bytes input_json = 3;
+}
+
+message JsonResponse {
+  bytes output_json = 1;
+}
+
+message EmptyResponse {}

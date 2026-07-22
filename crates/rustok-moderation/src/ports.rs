@@ -9,7 +9,7 @@ use crate::domain::{
     SubmitModerationReportCommand,
 };
 use crate::error::ModerationError;
-use crate::service::{parse_tenant_id, ModerationService};
+use crate::service::{ModerationService, parse_tenant_id};
 
 #[async_trait]
 pub trait ModerationCommandPort: Send + Sync {

@@ -477,9 +477,10 @@ mod tests {
                 .code,
             "port.idempotency_key_required"
         );
-        assert!(read
-            .with_idempotency_key("marketplace-seller-command")
-            .require_policy(PortCallPolicy::write())
-            .is_ok());
+        assert!(
+            read.with_idempotency_key("marketplace-seller-command")
+                .require_policy(PortCallPolicy::write())
+                .is_ok()
+        );
     }
 }

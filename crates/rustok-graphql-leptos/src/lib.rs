@@ -13,11 +13,11 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 pub use rustok_graphql::{
-    execute, persisted_query_extension, GraphqlError, GraphqlHttpError, GraphqlRequest,
-    GraphqlResponse, ACCEPT_LANGUAGE_HEADER, AUTH_HEADER, GRAPHQL_ENDPOINT, TENANT_HEADER,
+    ACCEPT_LANGUAGE_HEADER, AUTH_HEADER, GRAPHQL_ENDPOINT, GraphqlError, GraphqlHttpError,
+    GraphqlRequest, GraphqlResponse, TENANT_HEADER, execute, persisted_query_extension,
 };
 use rustok_ui_core::UiRouteContext;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 fn get_locale() -> Option<String> {

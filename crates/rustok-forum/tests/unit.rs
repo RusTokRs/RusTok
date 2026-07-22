@@ -2,7 +2,7 @@
 ///
 /// These tests cover module-level invariants: constants, DTO defaults, and error
 /// message formatting.  They run in CI without any external dependencies.
-use rustok_forum::constants::{reply_status, topic_status, KIND_CATEGORY, KIND_REPLY, KIND_TOPIC};
+use rustok_forum::constants::{KIND_CATEGORY, KIND_REPLY, KIND_TOPIC, reply_status, topic_status};
 use rustok_forum::dto::{
     CreateCategoryInput, CreateReplyInput, CreateTopicInput, ListTopicsFilter,
 };

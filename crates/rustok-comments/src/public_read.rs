@@ -48,9 +48,7 @@ pub(crate) async fn list_public_comments_for_target(
         .paginate(db, per_page);
 
     let total = paginator.num_items().await?;
-    let comments = paginator
-        .fetch_page(filter.page.saturating_sub(1))
-        .await?;
+    let comments = paginator.fetch_page(filter.page.saturating_sub(1)).await?;
     let comment_ids = comments.iter().map(|item| item.id).collect::<Vec<_>>();
 
     let mut bodies_by_comment: HashMap<Uuid, Vec<comment_body::Model>> = HashMap::new();
@@ -118,12 +116,10 @@ fn resolve_body(
         ));
     }
 
-    let resolved = resolve_by_locale_with_fallback(
-        &bodies,
-        requested_locale,
-        fallback_locale,
-        |body| body.locale.as_str(),
-    );
+    let resolved =
+        resolve_by_locale_with_fallback(&bodies, requested_locale, fallback_locale, |body| {
+            body.locale.as_str()
+        });
     let chosen = resolved.item.cloned().unwrap_or_else(|| bodies[0].clone());
 
     Ok(ResolvedBody {

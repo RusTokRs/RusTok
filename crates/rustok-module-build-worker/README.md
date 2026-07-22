@@ -9,9 +9,11 @@ image, while deployment evidence must still demonstrate that the launcher
 enforces the attested job controls. The server and module runtime never invoke
 Cargo through this package.
 
-The worker has no database or CAS dependency. It receives immutable request
-facts and returns a typed terminal result; `rustok-modules` validates and
-persists that result against the queued request.
+The worker has no database or CAS service client. It receives immutable request
+facts, materializes only the exact archive from a deployment-mounted read-only
+CAS root through shared `rustok-build-source`, and returns a typed terminal
+result; `rustok-modules` validates and persists that result against the queued
+request.
 
 See [local documentation](./docs/README.md) and the
 [control-plane plan](../../docs/modules/module-control-plane-consolidation-plan.md).

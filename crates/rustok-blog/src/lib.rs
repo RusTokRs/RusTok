@@ -158,15 +158,21 @@ mod tests {
         let module = BlogModule;
         let permissions = module.permissions();
 
-        assert!(permissions
-            .iter()
-            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Create }));
-        assert!(permissions
-            .iter()
-            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Publish }));
-        assert!(permissions
-            .iter()
-            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage }));
+        assert!(
+            permissions
+                .iter()
+                .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Create })
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Publish })
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage })
+        );
     }
 
     #[test]

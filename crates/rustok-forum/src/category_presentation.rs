@@ -125,8 +125,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        normalize_category_icon_key, validate_category_cover_candidate,
-        CategoryCoverMediaCandidate,
+        CategoryCoverMediaCandidate, normalize_category_icon_key, validate_category_cover_candidate,
     };
 
     fn image_candidate(tenant_id: Uuid) -> CategoryCoverMediaCandidate {
@@ -158,7 +157,10 @@ mod tests {
             normalize_category_icon_key("  Message-Square  ").as_deref(),
             Some("message-square")
         );
-        assert_eq!(normalize_category_icon_key("support2").as_deref(), Some("support2"));
+        assert_eq!(
+            normalize_category_icon_key("support2").as_deref(),
+            Some("support2")
+        );
     }
 
     #[test]
@@ -173,7 +175,11 @@ mod tests {
             "-message",
             "message-",
         ] {
-            assert_eq!(normalize_category_icon_key(value), None, "accepted {value:?}");
+            assert_eq!(
+                normalize_category_icon_key(value),
+                None,
+                "accepted {value:?}"
+            );
         }
     }
 

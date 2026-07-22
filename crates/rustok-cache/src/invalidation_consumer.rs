@@ -6,8 +6,8 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{
     BoundedCacheInvalidationGapTracker, BoundedInvalidationTrackerError,
-    CacheInvalidationObservation, DurableCacheInvalidationError, DurableCacheInvalidationRecord,
-    DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
+    CacheInvalidationObservation, DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS,
+    DurableCacheInvalidationError, DurableCacheInvalidationRecord,
 };
 
 /// Consumer decision for one durable invalidation record.

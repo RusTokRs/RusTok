@@ -17,8 +17,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(MarketplaceListings::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(MarketplaceListings::SellerId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(MarketplaceListings::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MarketplaceListings::SellerId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(MarketplaceListings::MasterProductId)
                             .uuid()
@@ -68,13 +76,9 @@ impl MigrationTrait for Migration {
                             .default("{}"),
                     )
                     .col(
-                        ColumnDef::new(MarketplaceListings::PublishedAt)
-                            .timestamp_with_time_zone(),
+                        ColumnDef::new(MarketplaceListings::PublishedAt).timestamp_with_time_zone(),
                     )
-                    .col(
-                        ColumnDef::new(MarketplaceListings::ApprovedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(MarketplaceListings::ApprovedAt).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(MarketplaceListings::CreatedAt)
                             .timestamp_with_time_zone()
@@ -156,13 +160,9 @@ impl MigrationTrait for Migration {
                             .integer()
                             .not_null(),
                     )
+                    .col(ColumnDef::new(MarketplaceListingTerms::PricingReference).string_len(191))
                     .col(
-                        ColumnDef::new(MarketplaceListingTerms::PricingReference)
-                            .string_len(191),
-                    )
-                    .col(
-                        ColumnDef::new(MarketplaceListingTerms::InventoryReference)
-                            .string_len(191),
+                        ColumnDef::new(MarketplaceListingTerms::InventoryReference).string_len(191),
                     )
                     .col(
                         ColumnDef::new(MarketplaceListingTerms::FulfillmentProfileSlug)
@@ -183,7 +183,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_marketplace_listing_terms_tenant_listing")
-                            .from(MarketplaceListingTerms::Table, MarketplaceListingTerms::TenantId)
+                            .from(
+                                MarketplaceListingTerms::Table,
+                                MarketplaceListingTerms::TenantId,
+                            )
                             .from_col(MarketplaceListingTerms::ListingId)
                             .to(MarketplaceListings::Table, MarketplaceListings::TenantId)
                             .to_col(MarketplaceListings::Id)
@@ -289,7 +292,11 @@ impl MigrationTrait for Migration {
             )
             .await?;
         manager
-            .drop_table(Table::drop().table(MarketplaceListingTerms::Table).to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(MarketplaceListingTerms::Table)
+                    .to_owned(),
+            )
             .await?;
         manager
             .drop_table(Table::drop().table(MarketplaceListings::Table).to_owned())

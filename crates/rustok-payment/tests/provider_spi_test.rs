@@ -195,7 +195,9 @@ async fn test_manual_provider_refund_invalid_amount() {
         metadata: json!({}),
     };
     let error = provider.refund(request).await.unwrap_err();
-    assert!(matches!(error, PaymentError::Validation(message) if message.contains("refund amount must be greater than zero")));
+    assert!(
+        matches!(error, PaymentError::Validation(message) if message.contains("refund amount must be greater than zero"))
+    );
 }
 
 #[tokio::test]
@@ -224,7 +226,9 @@ async fn test_mock_provider_idempotency_and_error_mapping() {
         error_message: "Gateway connection timeout".to_string(),
     };
     let error = failing_provider.authorize(request).await.unwrap_err();
-    assert!(matches!(error, PaymentError::Validation(message) if message == "Gateway connection timeout"));
+    assert!(
+        matches!(error, PaymentError::Validation(message) if message == "Gateway connection timeout")
+    );
 }
 
 #[test]
@@ -268,10 +272,17 @@ fn test_payment_provider_runtime_mode_maps_degraded_and_capability_guards() {
 
     let mode = registry.runtime_mode("slow-gateway", "authorize").unwrap();
     assert!(mode.can_execute);
-    assert_eq!(mode.degraded_mode.unwrap().fallback_profile, "manual_review");
+    assert_eq!(
+        mode.degraded_mode.unwrap().fallback_profile,
+        "manual_review"
+    );
     assert!(registry.runtime_mode("slow-gateway", "refund").is_err());
     assert!(registry.runtime_mode("slow-gateway", "unknown").is_err());
-    assert!(registry.runtime_mode("missing-gateway", "authorize").is_err());
+    assert!(
+        registry
+            .runtime_mode("missing-gateway", "authorize")
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -312,5 +323,7 @@ async fn verified_webhook_identity_rejects_conflicting_transport_hint() {
         )
         .await
         .unwrap_err();
-    assert!(matches!(error, PaymentError::Validation(message) if message.contains("delivery identity")));
+    assert!(
+        matches!(error, PaymentError::Validation(message) if message.contains("delivery identity"))
+    );
 }

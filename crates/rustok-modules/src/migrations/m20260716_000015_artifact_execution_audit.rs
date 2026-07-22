@@ -59,9 +59,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_execution_audit_subject_idx \
                  ON module_artifact_execution_audit (tenant_id, module_slug, started_at DESC)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact execution-audit migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact execution-audit migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

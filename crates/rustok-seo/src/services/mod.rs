@@ -70,9 +70,7 @@ pub async fn redirect_cache_changes_after(
         let created_at = cursor.created_at.clone();
         query = query.filter(
             Condition::any()
-                .add(
-                    crate::entities::seo_event_delivery::Column::CreatedAt.gt(created_at.clone()),
-                )
+                .add(crate::entities::seo_event_delivery::Column::CreatedAt.gt(created_at.clone()))
                 .add(
                     Condition::all()
                         .add(crate::entities::seo_event_delivery::Column::CreatedAt.eq(created_at))

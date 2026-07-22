@@ -1,5 +1,5 @@
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::collections::HashSet;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -9,9 +9,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use rustok_core::{CacheBackend, CacheCompareAndSetOutcome};
 
 use crate::{
-    clock::unix_time_millis, CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy,
-    CacheLoadSource, CacheService, TypedCacheLoadOptions, TypedCacheLoadResult,
-    DEFAULT_MAX_CACHE_ENVELOPE_BYTES,
+    CacheEnvelope, CacheEnvelopeFreshness, CacheLoadPolicy, CacheLoadSource, CacheService,
+    DEFAULT_MAX_CACHE_ENVELOPE_BYTES, TypedCacheLoadOptions, TypedCacheLoadResult,
+    clock::unix_time_millis,
 };
 
 pub const MAX_CACHE_REFRESH_KEY_BYTES: usize = crate::service::MAX_CACHE_LOAD_KEY_BYTES;
@@ -598,10 +598,12 @@ mod tests {
         };
 
         drop(future);
-        assert!(in_flight
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_empty());
+        assert!(
+            in_flight
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty()
+        );
         let stats = coordinator.stats();
         assert_eq!(stats.started, 1);
         assert_eq!(stats.failed, 1);

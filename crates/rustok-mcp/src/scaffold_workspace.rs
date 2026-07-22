@@ -115,11 +115,13 @@ mod tests {
             PathBuf::from(authorized),
             std::fs::canonicalize(&configured).unwrap()
         );
-        assert!(authorize_scaffold_workspace_with_config(
-            other.to_str().unwrap(),
-            configured.to_str().unwrap(),
-        )
-        .is_err());
+        assert!(
+            authorize_scaffold_workspace_with_config(
+                other.to_str().unwrap(),
+                configured.to_str().unwrap(),
+            )
+            .is_err()
+        );
 
         let _ = std::fs::remove_dir_all(configured);
         let _ = std::fs::remove_dir_all(other);

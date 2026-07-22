@@ -8,9 +8,9 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
-use rustok_core::{prepare_content_payload, SecurityContext};
+use rustok_core::{SecurityContext, prepare_content_payload};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
@@ -649,8 +649,8 @@ fn resolve_reply_body<'a>(
 mod tests {
     use super::ReplyService;
     use crate::{
-        migrations, CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-        ListRepliesFilter, TopicService,
+        CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
+        ListRepliesFilter, TopicService, migrations,
     };
     use rustok_core::SecurityContext;
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};

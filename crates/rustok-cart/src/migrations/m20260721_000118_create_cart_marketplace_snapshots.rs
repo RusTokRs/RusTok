@@ -90,11 +90,9 @@ impl MigrationTrait for Migration {
                             .null(),
                     )
                     .col(
-                        ColumnDef::new(
-                            CartLineItemMarketplaceSnapshots::FulfillmentProfileSlug,
-                        )
-                        .string_len(100)
-                        .null(),
+                        ColumnDef::new(CartLineItemMarketplaceSnapshots::FulfillmentProfileSlug)
+                            .string_len(100)
+                            .null(),
                     )
                     .col(
                         ColumnDef::new(CartLineItemMarketplaceSnapshots::CreatedAt)

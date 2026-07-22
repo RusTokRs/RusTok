@@ -299,7 +299,7 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        merge_suggestions, normalize_suggestion_query, SearchSuggestion, SearchSuggestionKind,
+        SearchSuggestion, SearchSuggestionKind, merge_suggestions, normalize_suggestion_query,
     };
 
     #[test]

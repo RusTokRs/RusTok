@@ -1,12 +1,12 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_api::{graphql::require_module_enabled, TenantContext};
+use rustok_api::{TenantContext, graphql::require_module_enabled};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::WorkflowService;
 
-use super::{require_workflow_permission, types::*, MODULE_SLUG};
+use super::{MODULE_SLUG, require_workflow_permission, types::*};
 
 #[derive(Default)]
 pub struct WorkflowQuery;

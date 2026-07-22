@@ -1,10 +1,10 @@
-use crate::comments_pagination::{bounded_comments_request_page, COMMENTS_PAGE_SIZE};
+use crate::comments_pagination::{COMMENTS_PAGE_SIZE, bounded_comments_request_page};
 use crate::core::BlogStorefrontFetchRequest;
 use crate::model::{BlogPostDetail, BlogPostList, StorefrontBlogData};
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
-use super::{configured_tenant_slug, ApiError};
+use super::{ApiError, configured_tenant_slug};
 
 const STOREFRONT_BLOG_QUERY: &str = "query StorefrontBlog($postSlug: String!, $filter: PostsFilter, $locale: String, $commentsPage: Int!, $commentsPerPage: Int!) { selectedPost: postBySlug(slug: $postSlug, locale: $locale) { id effectiveLocale title slug excerpt body bodyFormat status publishedAt tags featuredImageUrl publicComments(locale: $locale, page: $commentsPage, perPage: $commentsPerPage) { total items { id effectiveLocale authorId contentPreview parentCommentId createdAt } } } posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status publishedAt } } }";
 

@@ -7,7 +7,7 @@ use tracing::{error, info};
 
 use rustok_core::events::{EventEnvelope, EventHandler, HandlerResult};
 
-use crate::entities::{workflow, WorkflowEntity, WorkflowStatus};
+use crate::entities::{WorkflowEntity, WorkflowStatus, workflow};
 use crate::services::{WorkflowEngine, WorkflowService};
 
 /// Subscribes to all domain events and triggers matching active workflows.
@@ -137,7 +137,7 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use uuid::Uuid;
 
-    use crate::entities::{workflow, workflow_execution, WorkflowStatus};
+    use crate::entities::{WorkflowStatus, workflow, workflow_execution};
 
     use super::WorkflowTriggerHandler;
 

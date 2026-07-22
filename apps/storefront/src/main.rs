@@ -10,7 +10,7 @@
 
 #[cfg(all(feature = "ssr", not(feature = "csr")))]
 use axum::{
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::IntoResponse,
     routing::get,
 };

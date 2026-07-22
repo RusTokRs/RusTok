@@ -1,13 +1,13 @@
 use super::native_server_adapter::ApiError;
 use crate::core::{
-    parse_adjustment_scope, parse_cart_id, parse_line_item_id, CartFetchRequest,
-    CartLineItemDecrementRequest, CartLineItemMutationRequest, CartLineItemQuantityCommand,
+    CartFetchRequest, CartLineItemDecrementRequest, CartLineItemMutationRequest,
+    CartLineItemQuantityCommand, parse_adjustment_scope, parse_cart_id, parse_line_item_id,
 };
 use crate::model::{
     StorefrontCart, StorefrontCartAdjustment, StorefrontCartData, StorefrontCartDeliveryGroup,
     StorefrontCartLineItem, StorefrontCartShippingOption,
 };
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

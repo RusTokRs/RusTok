@@ -27,8 +27,7 @@ impl MigrationTrait for Migration {
                         WHERE installation.installation_id = module_artifact_uninstall_operations.installation_id \
                         AND (installation.scope_kind = 'platform' OR installation.tenant_id::text = current_setting('rustok.tenant_id', true))))",
             ],
-            DbBackend::Sqlite => &[
-                "CREATE TABLE module_artifact_uninstall_operations (\
+            DbBackend::Sqlite => &["CREATE TABLE module_artifact_uninstall_operations (\
                     operation_id TEXT PRIMARY KEY NOT NULL,\
                     installation_id TEXT NOT NULL UNIQUE REFERENCES module_artifact_installations(installation_id),\
                     expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),\
@@ -36,11 +35,12 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     idempotency_key TEXT NOT NULL UNIQUE,\
                     committed_at TEXT NOT NULL\
-                )",
-            ],
-            backend => return Err(DbErr::Migration(format!(
-                "module artifact uninstall-operation migration does not support database backend {backend:?}"
-            ))),
+                )"],
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "module artifact uninstall-operation migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

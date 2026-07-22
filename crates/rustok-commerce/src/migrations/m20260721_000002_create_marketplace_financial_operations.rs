@@ -69,28 +69,19 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .col(
-                        ColumnDef::new(MarketplaceFinancialOperations::LeaseOwner)
-                            .string_len(191),
-                    )
+                    .col(ColumnDef::new(MarketplaceFinancialOperations::LeaseOwner).string_len(191))
                     .col(
                         ColumnDef::new(MarketplaceFinancialOperations::LeaseExpiresAt)
                             .timestamp_with_time_zone(),
                     )
+                    .col(ColumnDef::new(MarketplaceFinancialOperations::LedgerTransactionId).uuid())
                     .col(
-                        ColumnDef::new(MarketplaceFinancialOperations::LedgerTransactionId).uuid(),
+                        ColumnDef::new(MarketplaceFinancialOperations::LedgerDebitTotalAmount)
+                            .big_integer(),
                     )
                     .col(
-                        ColumnDef::new(
-                            MarketplaceFinancialOperations::LedgerDebitTotalAmount,
-                        )
-                        .big_integer(),
-                    )
-                    .col(
-                        ColumnDef::new(
-                            MarketplaceFinancialOperations::LedgerCreditTotalAmount,
-                        )
-                        .big_integer(),
+                        ColumnDef::new(MarketplaceFinancialOperations::LedgerCreditTotalAmount)
+                            .big_integer(),
                     )
                     .col(
                         ColumnDef::new(MarketplaceFinancialOperations::LastErrorCode)

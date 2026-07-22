@@ -5,7 +5,7 @@
 `rustok-cli-registry` owns selected-distribution provider aggregation outside
 the runner and server. Generated source currently composes the platform
 provider and `rustok-media-cli`; the latter exposes the owner-local
-`media cleanup` workflow through `RuntimeComposition`. The generator checks
+`media reconcile` workflow through `RuntimeComposition`. The generator checks
 manifest selection and required registry dependencies.
 
 ## FFA/FBA boundary
@@ -24,12 +24,12 @@ manifest selection and required registry dependencies.
    **Depends on:** an approved workflow owner and adapter crate.
    **Verification:** `node scripts/generate/generate-cli-registry.mjs --check`
    and `cargo test -p rustok-cli-registry --quiet`.
-2. **Collect runtime evidence for the selected media cleanup command.** Done
+2. **Collect runtime evidence for the selected media reconciliation command.** Done
    when a database-backed run proves settings parsing, bounded cleanup, typed
    failure output, and structured outcome data through the generated registry.
    **Depends on:** an approved non-production runtime environment and media
    storage configuration. **Verification:** targeted provider integration test
-   plus `rustok-cli media cleanup --limit <n>` in that environment.
+   plus `rustok-cli media reconcile --limit <n>` in that environment.
 
 ## Verification
 

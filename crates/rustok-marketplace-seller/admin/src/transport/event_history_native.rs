@@ -1,9 +1,7 @@
 use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
-use crate::model::{
-    MarketplaceSellerAdminEvent, MarketplaceSellerAdminEventHistory,
-};
+use crate::model::{MarketplaceSellerAdminEvent, MarketplaceSellerAdminEventHistory};
 
 #[derive(Debug, Clone)]
 pub struct NativeMarketplaceSellerEventHistoryError(pub String);
@@ -40,11 +38,10 @@ async fn marketplace_seller_event_history_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, Permission, TenantContext,
+            AuthContext, HostRuntimeContext, Permission, TenantContext, request::RequestContext,
         };
         use rustok_marketplace_seller::{
-            ListMarketplaceSellerEventsRequest, MarketplaceSellerReadPort,
-            MarketplaceSellerService,
+            ListMarketplaceSellerEventsRequest, MarketplaceSellerReadPort, MarketplaceSellerService,
         };
 
         let runtime = expect_context::<HostRuntimeContext>();
@@ -146,8 +143,7 @@ fn port_context(
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field}")))
+    uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new(format!("Invalid {field}")))
 }
 
 #[cfg(feature = "ssr")]

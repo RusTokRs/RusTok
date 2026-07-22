@@ -8,8 +8,8 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
 };
 use std::thread;
 use std::time::Duration;
@@ -412,11 +412,9 @@ impl WasmComponentExecutor {
             let instance = ModuleRuntime::instantiate(&mut store, &component, &linker)
                 .map_err(|error| SandboxError::Trap(error.to_string()))?;
             if request.payload.entrypoint != WASM_COMPONENT_ENTRYPOINT {
-                return Err(SandboxError::InvalidRequest(
-                    format!(
-                        "Wasm Component {WASM_COMPONENT_ABI_VERSION} entrypoint must be `{WASM_COMPONENT_ENTRYPOINT}`"
-                    ),
-                ));
+                return Err(SandboxError::InvalidRequest(format!(
+                    "Wasm Component {WASM_COMPONENT_ABI_VERSION} entrypoint must be `{WASM_COMPONENT_ENTRYPOINT}`"
+                )));
             }
             let input = serde_json::to_string(&request.input)
                 .map_err(|error| SandboxError::Internal(error.to_string()))?;
@@ -494,12 +492,12 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use chrono::Utc;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use uuid::Uuid;
 
     use super::{
-        SerializedComponentCache, WasmComponentCacheKey, WasmComponentCachePolicy,
-        WasmComponentExecutor, WasmStoreLimits, WASMTIME_ENGINE_VERSION,
+        SerializedComponentCache, WASMTIME_ENGINE_VERSION, WasmComponentCacheKey,
+        WasmComponentCachePolicy, WasmComponentExecutor, WasmStoreLimits,
     };
     use crate::{
         ExecutionPhase, SandboxContext, SandboxError, SandboxExecutorKind, SandboxPayload,
@@ -591,17 +589,23 @@ mod tests {
     #[test]
     fn peak_memory_tracks_permitted_growth_and_discards_failed_growth() {
         let mut limits = WasmStoreLimits::new(wasmtime::StoreLimitsBuilder::new().build());
-        assert!(limits
-            .memory_growing(0, 64 * 1024, None)
-            .expect("permit initial memory"));
-        assert!(limits
-            .memory_growing(64 * 1024, 128 * 1024, None)
-            .expect("permit memory growth"));
+        assert!(
+            limits
+                .memory_growing(0, 64 * 1024, None)
+                .expect("permit initial memory")
+        );
+        assert!(
+            limits
+                .memory_growing(64 * 1024, 128 * 1024, None)
+                .expect("permit memory growth")
+        );
         assert_eq!(limits.peak_linear_memory_bytes(), 128 * 1024);
 
-        assert!(limits
-            .memory_growing(128 * 1024, 192 * 1024, None)
-            .expect("permit pending memory growth"));
+        assert!(
+            limits
+                .memory_growing(128 * 1024, 192 * 1024, None)
+                .expect("permit pending memory growth")
+        );
         limits
             .memory_grow_failed(wasmtime::Error::msg("synthetic allocation failure"))
             .expect("record failed memory growth");
@@ -738,9 +742,11 @@ mod tests {
             "read".to_string(),
             "{}".to_string(),
         );
-        assert!(denied
-            .expect_err("denied capability")
-            .contains("CAPABILITY_DENIED"));
+        assert!(
+            denied
+                .expect_err("denied capability")
+                .contains("CAPABILITY_DENIED")
+        );
         assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
     }
 }

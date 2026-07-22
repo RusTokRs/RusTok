@@ -9,6 +9,10 @@ use std::{
 };
 
 use async_trait::async_trait;
+use rustok_build_publication::{
+    CommandRegistryCredentialBroker, CosignArtifactSigner, CosignSigningError,
+    RegistryCredentialBroker, RegistryCredentialError,
+};
 use rustok_modules::{
     ArtifactAdmissionLimits, ModuleBuildDiagnostic, ModuleBuildEvidence, ModuleBuildFailureCode,
     ModuleBuildMetrics, ModuleBuildNextAction, ModuleBuildOutcome, ModuleBuildProtocolError,
@@ -26,12 +30,10 @@ use tokio::{
 
 use crate::{
     BuildEvidenceError, BuildEvidenceInspector, CargoMetadataError, CargoMetadataInspector,
-    CommandRegistryCredentialBroker, ComponentArtifactError, ComponentArtifactInspector,
-    CosignArtifactSigner, CosignSigningError, DependencyMaterializationError,
+    ComponentArtifactError, ComponentArtifactInspector, DependencyMaterializationError,
     OciScopedDependencyMaterializer, PublicationBundleCollector, PublicationBundleError,
-    RegistryCredentialBroker, RegistryCredentialError, SourceMaterializationError,
-    SourceMaterializer, SourcePolicyError, SourcePolicyPreflight, WitContractError,
-    WitContractInspector,
+    SourceMaterializationError, SourceMaterializer, SourcePolicyError, SourcePolicyPreflight,
+    WitContractError, WitContractInspector,
 };
 
 const MAX_PUBLICATION_WINDOW: Duration = Duration::from_secs(14 * 60);
@@ -148,8 +150,34 @@ impl OciJobBuildWorker {
         publication_target
             .validate()
             .map_err(|error| error.to_string())?;
-        let registry_credentials = Arc::new(CommandRegistryCredentialBroker::from_env()?);
-        let signer = CosignArtifactSigner::from_env()?;
+        let credential_broker_path = PathBuf::from(
+            std::env::var("RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER").map_err(|_| {
+                "RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER must be configured".to_string()
+            })?,
+        );
+        let credential_broker_digest = std::env::var(
+            "RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER_DIGEST",
+        )
+        .map_err(|_| {
+            "RUSTOK_MODULE_BUILD_REGISTRY_CREDENTIAL_BROKER_DIGEST must be configured".to_string()
+        })?;
+        let registry_credentials = Arc::new(CommandRegistryCredentialBroker::new(
+            credential_broker_path,
+            credential_broker_digest,
+        )?);
+        let cosign_path = PathBuf::from(
+            std::env::var("RUSTOK_MODULE_BUILD_COSIGN_PROGRAM")
+                .map_err(|_| "RUSTOK_MODULE_BUILD_COSIGN_PROGRAM must be configured".to_string())?,
+        );
+        let cosign_digest =
+            std::env::var("RUSTOK_MODULE_BUILD_COSIGN_PROGRAM_DIGEST").map_err(|_| {
+                "RUSTOK_MODULE_BUILD_COSIGN_PROGRAM_DIGEST must be configured".to_string()
+            })?;
+        let cosign_key_reference = std::env::var("RUSTOK_MODULE_BUILD_COSIGN_KEY_REFERENCE")
+            .map_err(|_| {
+                "RUSTOK_MODULE_BUILD_COSIGN_KEY_REFERENCE must be configured".to_string()
+            })?;
+        let signer = CosignArtifactSigner::new(cosign_path, cosign_digest, cosign_key_reference)?;
         let isolation_attestation_path = std::env::var("RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION")
             .map_err(|_| {
                 "RUSTOK_MODULE_BUILD_ISOLATION_ATTESTATION must be configured".to_string()
@@ -822,6 +850,8 @@ impl ModuleBuildWorkerReadiness for OciJobBuildWorker {
                     OciJobRuntime::Gvisor | OciJobRuntime::Kata
                 )
                 && is_sha256_digest(&self.job_image_digest)
+                && self.registry_credentials.is_ready()
+                && self.signer.is_ready()
                 && self
                     .isolation_attestation
                     .as_ref()

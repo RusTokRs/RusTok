@@ -247,7 +247,7 @@ impl FulfillmentProviderRegistry {
                 return Err(FulfillmentError::Validation(format!(
                     "unknown fulfillment provider operation `{}`",
                     other
-                )))
+                )));
             }
         };
 

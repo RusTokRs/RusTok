@@ -1,5 +1,5 @@
 use super::model::ProjectDiffSummary;
-use crate::{visit_project_components, AssetCatalog, ProjectDocument, StyleRuleCatalog};
+use crate::{AssetCatalog, ProjectDocument, StyleRuleCatalog, visit_project_components};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 

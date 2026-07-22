@@ -1,9 +1,9 @@
 use super::{
-    load_attribute_write_definition, map_schema_resolution_error, uuid_filter_values,
-    validate_locale, AttributeValueType, CreateProductAttributeInput,
-    CreateProductAttributeOptionInput, ProductAttributeListRecord, ProductAttributeListRow,
-    ProductAttributeOptionListRecord, ProductAttributeOptionListRow, ProductAttributeOptionRecord,
-    ProductAttributeRecord, ProductCatalogSchemaService,
+    AttributeValueType, CreateProductAttributeInput, CreateProductAttributeOptionInput,
+    ProductAttributeListRecord, ProductAttributeListRow, ProductAttributeOptionListRecord,
+    ProductAttributeOptionListRow, ProductAttributeOptionRecord, ProductAttributeRecord,
+    ProductCatalogSchemaService, load_attribute_write_definition, map_schema_resolution_error,
+    uuid_filter_values, validate_locale,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, Statement, TransactionTrait};
 use uuid::Uuid;

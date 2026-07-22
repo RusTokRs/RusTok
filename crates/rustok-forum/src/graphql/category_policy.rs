@@ -1,8 +1,9 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext, TenantContext,
+    AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
+    has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

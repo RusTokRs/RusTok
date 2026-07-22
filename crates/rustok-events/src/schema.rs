@@ -307,6 +307,70 @@ const MODULE_ARTIFACT_REVERIFIED_FIELDS: &[FieldSchema] = &[
     field!("status", "string"),
     field!("revision", "uint64"),
 ];
+const MODULE_STATIC_PROMOTION_REQUESTED_FIELDS: &[FieldSchema] = &[
+    field!("promotion_id", "uuid"),
+    field!("release_id", "string"),
+    field!("module_slug", "string"),
+    field!("module_version", "string"),
+    field!("source_digest", "string"),
+];
+const MODULE_STATIC_PROMOTION_APPROVED_FIELDS: &[FieldSchema] = &[
+    field!("promotion_id", "uuid"),
+    field!("release_id", "string"),
+    field!("module_slug", "string"),
+    field!("module_version", "string"),
+    field!("revision", "uint64"),
+    field!("policy_revision", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_BUILD_QUEUED_FIELDS: &[FieldSchema] = &[
+    field!("distribution_build_id", "uuid"),
+    field!("predecessor_build_id", "uuid", optional),
+    field!("composition_revision", "uint64"),
+    field!("composition_digest", "string"),
+    field!("selected_promotions", "uint64"),
+];
+const MODULE_STATIC_DISTRIBUTION_BUILD_CLAIMED_FIELDS: &[FieldSchema] = &[
+    field!("distribution_build_id", "uuid"),
+    field!("claim_id", "uuid"),
+    field!("attempt_number", "uint64"),
+    field!("runner_id", "string"),
+    field!("reclaimed_expired_lease", "bool"),
+];
+const MODULE_STATIC_DISTRIBUTION_BUILD_COMPLETED_FIELDS: &[FieldSchema] = &[
+    field!("distribution_build_id", "uuid"),
+    field!("claim_id", "uuid"),
+    field!("composition_revision", "uint64"),
+    field!("composition_digest", "string"),
+    field!("outcome", "string"),
+    field!("result_digest", "string", optional),
+    field!("completion_digest", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS: &[FieldSchema] = &[
+    field!("distribution_release_id", "uuid"),
+    field!("predecessor_release_id", "uuid", optional),
+    field!("distribution_build_id", "uuid"),
+    field!("release_revision", "uint64"),
+    field!("composition_revision", "uint64"),
+    field!("composition_digest", "string"),
+    field!("artifact_digest", "string"),
+    field!("policy_revision", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_ROLLBACK_BUILD_QUEUED_FIELDS: &[FieldSchema] = &[
+    field!("rollback_id", "uuid"),
+    field!("from_release_id", "uuid"),
+    field!("target_release_id", "uuid"),
+    field!("distribution_build_id", "uuid"),
+    field!("composition_revision", "uint64"),
+    field!("composition_digest", "string"),
+    field!("policy_revision", "string"),
+];
+const MODULE_STATIC_DISTRIBUTION_RELEASE_REVOKED_FIELDS: &[FieldSchema] = &[
+    field!("distribution_release_id", "uuid"),
+    field!("distribution_build_id", "uuid"),
+    field!("release_state_revision", "uint64"),
+    field!("was_active", "bool"),
+    field!("policy_revision", "string"),
+];
 const LOCALE_FIELDS: &[FieldSchema] = &[field!("tenant_id", "uuid"), field!("locale", "string")];
 
 pub const EVENT_SCHEMAS: &[EventSchema] = &[
@@ -723,6 +787,54 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         version: 1,
         description: "Module artifact trust evidence was reverified.",
         fields: MODULE_ARTIFACT_REVERIFIED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_promotion.requested",
+        version: 1,
+        description: "A platform-built module release was submitted for static promotion review.",
+        fields: MODULE_STATIC_PROMOTION_REQUESTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_promotion.approved",
+        version: 1,
+        description: "A reviewed static promotion was approved under an immutable policy.",
+        fields: MODULE_STATIC_PROMOTION_APPROVED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.build_queued",
+        version: 1,
+        description: "An immutable static distribution composition build was queued.",
+        fields: MODULE_STATIC_DISTRIBUTION_BUILD_QUEUED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.build_claimed",
+        version: 1,
+        description: "A static distribution build attempt acquired its bounded worker lease.",
+        fields: MODULE_STATIC_DISTRIBUTION_BUILD_CLAIMED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.build_completed",
+        version: 1,
+        description: "A static distribution build recorded immutable terminal evidence.",
+        fields: MODULE_STATIC_DISTRIBUTION_BUILD_COMPLETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.release_activated",
+        version: 1,
+        description: "A verified static distribution build became the current release head.",
+        fields: MODULE_STATIC_DISTRIBUTION_RELEASE_ACTIVATED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.rollback_build_queued",
+        version: 1,
+        description: "A direct-predecessor rollback queued a new immutable distribution build.",
+        fields: MODULE_STATIC_DISTRIBUTION_ROLLBACK_BUILD_QUEUED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.static_distribution.release_revoked",
+        version: 1,
+        description: "A static distribution release was revoked under an immutable policy.",
+        fields: MODULE_STATIC_DISTRIBUTION_RELEASE_REVOKED_FIELDS,
     },
     EventSchema {
         event_type: "locale.enabled",

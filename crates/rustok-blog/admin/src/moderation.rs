@@ -68,19 +68,11 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
             set_busy_comment_id.set(Some(comment_id.clone()));
 
             spawn_local(async move {
-                match transport::moderate_comment(
-                    token,
-                    tenant,
-                    comment_id,
-                    status,
-                    locale,
-                )
-                .await
-                {
+                match transport::moderate_comment(token, tenant, comment_id, status, locale).await {
                     Ok(true) => set_refresh_nonce.update(|value| *value += 1),
-                    Ok(false) => set_action_error.set(Some(
-                        "Comment moderation returned false".to_string(),
-                    )),
+                    Ok(false) => {
+                        set_action_error.set(Some("Comment moderation returned false".to_string()))
+                    }
                     Err(error) => set_action_error.set(Some(error.to_string())),
                 }
                 set_busy_comment_id.set(None);
@@ -269,13 +261,10 @@ fn ModerationCommentCard(
     let approve_id = comment.id.clone();
     let spam_id = comment.id.clone();
     let trash_id = comment.id.clone();
-    let reply_label = comment.parent_comment_id.is_some().then(|| {
-        t(
-            locale.as_deref(),
-            "blog.moderation.reply",
-            "reply",
-        )
-    });
+    let reply_label = comment
+        .parent_comment_id
+        .is_some()
+        .then(|| t(locale.as_deref(), "blog.moderation.reply", "reply"));
 
     view! {
         <article class="rounded-xl border border-border bg-background p-4">

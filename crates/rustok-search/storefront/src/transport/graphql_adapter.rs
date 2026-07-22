@@ -2,10 +2,10 @@ use crate::model::{
     SearchAttributeFilter, SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload,
     SearchSuggestion, TrackSearchClickPayload,
 };
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
-use super::{configured_tenant_slug, ApiError};
+use super::{ApiError, configured_tenant_slug};
 
 const STOREFRONT_SEARCH_QUERY: &str = "query StorefrontSearch($input: SearchPreviewInput!) { storefrontSearch(input: $input) { queryLogId presetKey total tookMs engine rankingProfile items { id entityType sourceModule title snippet score locale url payload } facets { name buckets { value label count } } } }";
 const STOREFRONT_FILTER_PRESETS_QUERY: &str = "query StorefrontSearchFilterPresets { storefrontSearchFilterPresets { key label entityTypes sourceModules statuses rankingProfile } }";

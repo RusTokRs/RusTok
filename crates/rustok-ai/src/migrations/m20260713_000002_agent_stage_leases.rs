@@ -18,7 +18,7 @@ impl MigrationTrait for Migration {
             other => {
                 return Err(DbErr::Migration(format!(
                     "AI agent stage lease migration does not support database backend {other:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

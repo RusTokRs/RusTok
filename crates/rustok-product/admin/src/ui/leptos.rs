@@ -2,13 +2,17 @@ use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
-use leptos_ui_routing::{use_route_query_value, use_route_query_writer, RouteQueryWriter};
+use leptos_ui_routing::{RouteQueryWriter, use_route_query_value, use_route_query_writer};
 use rustok_seo_admin_support::SeoEntityPanel;
-use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    build_delete_command, build_delete_result_view_model, build_product_admin_editor_copy,
+    DeleteOutcome, DraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
+    ProductAdminOpenProductViewModel, ProductAdminProductsLoadViewModel,
+    ProductAdminSelectedProductQueryState, ProductAttributeEditorState, SaveMode,
+    SelectedProductSummaryViewModel, StatusOutcome, StatusTarget, build_delete_command,
+    build_delete_result_view_model, build_product_admin_editor_copy,
     build_product_admin_editor_form_state, build_product_admin_editor_view_model,
     build_product_admin_error_copy, build_product_admin_list_action_labels,
     build_product_admin_list_controls_view_model, build_product_admin_list_item_view_model,
@@ -22,10 +26,7 @@ use crate::core::{
     product_admin_list_actions_disabled, product_admin_open_product_query_intent,
     product_admin_products_load_view_from_result, product_admin_saved_product_query_intent,
     product_admin_selected_product_query_state, shipping_profiles_load_view_from_result,
-    text_or_none, DeleteOutcome, DraftForm, ProductAdminEditorFormState, ProductAdminErrorCopy,
-    ProductAdminOpenProductViewModel, ProductAdminProductsLoadViewModel,
-    ProductAdminSelectedProductQueryState, ProductAttributeEditorState, SaveMode,
-    SelectedProductSummaryViewModel, StatusOutcome, StatusTarget,
+    text_or_none,
 };
 use crate::model::{
     ProductAdminBootstrap, ProductDetail, ProductEffectiveFormAttribute, ProductPricingDetail,

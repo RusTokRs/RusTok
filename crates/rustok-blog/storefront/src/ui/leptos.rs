@@ -1,7 +1,5 @@
 use leptos::prelude::*;
-use leptos_ui_routing::{
-    read_route_query_value, use_route_query_value, use_route_query_writer,
-};
+use leptos_ui_routing::{read_route_query_value, use_route_query_value, use_route_query_writer};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -14,8 +12,7 @@ use crate::{comments_pagination, core, transport};
 pub fn BlogView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let selected_locale = route_context.locale.clone();
-    let comments_page_query =
-        use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
+    let comments_page_query = use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
     let route_state = core::build_storefront_route_state(
         read_route_query_value(&route_context, core::SELECTED_POST_QUERY_KEY),
         route_context.route_segment.as_ref().cloned(),
@@ -105,7 +102,11 @@ fn SelectedPostCard(post: Option<BlogPostDetail>, comments_page: u64) -> impl In
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let Some(post) = post else {
         let empty_state = core::selected_post_empty_state_typed_view(
-            t(locale.as_deref(), "blog.selected.emptyTitle", "Pick a published post"),
+            t(
+                locale.as_deref(),
+                "blog.selected.emptyTitle",
+                "Pick a published post",
+            ),
             t(
                 locale.as_deref(),
                 "blog.selected.emptyBody",

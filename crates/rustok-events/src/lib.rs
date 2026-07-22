@@ -11,12 +11,12 @@ pub use contract::{
     ContractEventEnvelope, ContractEventPayload, EventContract, EventContractEnvelopeError,
 };
 pub use marketplace_listing::{
-    marketplace_listing_event_schema, MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS,
+    MARKETPLACE_LISTING_EVENT_SCHEMAS, MarketplaceListingEvent, marketplace_listing_event_schema,
 };
 pub use marketplace_seller::{
-    marketplace_seller_event_schema, MarketplaceSellerEvent, MARKETPLACE_SELLER_EVENT_SCHEMAS,
+    MARKETPLACE_SELLER_EVENT_SCHEMAS, MarketplaceSellerEvent, marketplace_seller_event_schema,
 };
-pub use schema::{EventSchema, FieldSchema, EVENT_SCHEMAS};
+pub use schema::{EVENT_SCHEMAS, EventSchema, FieldSchema};
 pub use types::{DomainEvent, EventEnvelope};
 pub use validation::{EventValidationError, ValidateEvent};
 

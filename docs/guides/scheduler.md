@@ -20,7 +20,7 @@ cron or job runner. Each invocation must receive `RUSTOK_DATABASE_URL` (or
 |---|---|---|---|
 | Expired session cleanup | `rustok-cli auth sessions-cleanup` | hourly | `rustok-auth` |
 | Build queue execution | `rustok-cli core rebuild` | deployment-defined polling cadence | `rustok-build` |
-| Media orphan cleanup | `rustok-cli media cleanup --limit <count>` | deployment-defined | `rustok-media` |
+| Media storage reconciliation | `rustok-cli media reconcile --limit <count>` | deployment-defined | `rustok-media` |
 
 Use `rustok-cli list --json` to obtain the currently enabled command inventory.
 Module-owned operations must declare their provider through `[provides.cli]`;

@@ -2,8 +2,8 @@ use thiserror::Error;
 
 use rustok_modules::{
     ArtifactAdmissionLimits, ArtifactOrigin, ArtifactPayloadKind, ArtifactRelease,
-    ArtifactReleaseDraft, ArtifactSourceLineage, ModuleArtifactDescriptor, ModuleArtifactError,
-    ModuleArtifactPackage, OciArtifactReference, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    ArtifactReleaseDraft, ArtifactSourceLineage, MODULE_ARTIFACT_DESCRIPTOR_SCHEMA_VERSION,
+    ModuleArtifactDescriptor, ModuleArtifactError, ModuleArtifactPackage, OciArtifactReference,
 };
 use rustok_sandbox::CapabilityName;
 

@@ -1,12 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::native_server_adapter::ApiError;
-use crate::core::{build_pricing_context, FetchRequest};
+use crate::core::{FetchRequest, build_pricing_context};
 use crate::model::{
     ProductCatalogSearchOptions, ProductDetail, ProductList, ProductPricingDetail,
     StorefrontProductsData,
 };
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 const STOREFRONT_PRODUCTS_QUERY: &str = "query StorefrontCommerceProducts($locale: String, $filter: StorefrontProductsFilter) { storefrontProducts(locale: $locale, filter: $filter) { total page perPage hasNext items { id status title handle sellerId vendor productType tags createdAt publishedAt } } }";

@@ -81,17 +81,17 @@ impl MigrationSource for PageBuilderModule {
 mod tests {
     use super::*;
     use crate::dto::{
-        BuilderCapabilityKind, BuilderNodePropertiesInput, PageBuilderCapabilityRequest,
+        BuilderCapabilityKind, BuilderNodePropertiesInput, PAGE_BUILDER_ERROR_CATALOG,
+        PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE, PageBuilderCapabilityRequest,
         PageBuilderCapabilityResponse, PageBuilderErrorKind, PageBuilderModuleMetadata,
-        PublishPageBuilderInput, PublishPageBuilderResult, PAGE_BUILDER_ERROR_CATALOG,
-        PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE,
+        PublishPageBuilderInput, PublishPageBuilderResult,
     };
     use crate::health::{
         ProviderDegradationReason, ProviderHealthEvidence, ProviderHealthSnapshot,
         ProviderHealthState, ProviderSloObservations, ProviderSloStatus,
     };
     use crate::rollout::{
-        ensure_capability, fallback_matrix, BuilderRolloutError, BuilderToggleProfile,
+        BuilderRolloutError, BuilderToggleProfile, ensure_capability, fallback_matrix,
     };
 
     #[test]

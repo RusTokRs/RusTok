@@ -8,8 +8,8 @@ pub mod types;
 use std::sync::Arc;
 
 use async_graphql::{Context, ErrorExtensions, FieldError, Result};
-use rustok_api::{graphql::GraphQLError, AuthContext, TenantContext};
-use rustok_core::{i18n::translate, Locale, ModuleRuntimeExtensions};
+use rustok_api::{AuthContext, TenantContext, graphql::GraphQLError};
+use rustok_core::{Locale, ModuleRuntimeExtensions, i18n::translate};
 
 use crate::{
     AuthAdminMutationContext, AuthAdminMutationError, AuthLifecycleContext,

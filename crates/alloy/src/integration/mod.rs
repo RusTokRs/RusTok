@@ -12,12 +12,12 @@ mod tests {
     use rhai::Dynamic;
     use uuid::Uuid;
 
+    use crate::EntityProxy;
     use crate::create_default_alloy_draft_runtime;
     use crate::integration::ScriptableEntity;
     use crate::model::{AlloyWorkspace, EventType, Script, ScriptTrigger};
     use crate::runner::{ExecutionOutcome, ScriptOrchestrator};
     use crate::storage::{InMemoryStorage, ScriptRegistry};
-    use crate::EntityProxy;
 
     #[derive(Debug, Clone)]
     struct Deal {

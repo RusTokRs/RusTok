@@ -1,6 +1,6 @@
 use crate::*;
 use proptest::prelude::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 fn baseline() -> ProjectDocument {
@@ -70,10 +70,12 @@ fn validation_preserves_missing_provider_nodes() {
         ValidationLimits::default(),
     );
     assert!(report.is_valid());
-    assert!(report
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == "missing_component_provider"));
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "missing_component_provider")
+    );
     assert!(document.contains_component("widget-1"));
 }
 

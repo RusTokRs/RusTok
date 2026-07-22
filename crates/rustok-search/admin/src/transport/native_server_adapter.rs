@@ -616,8 +616,8 @@ async fn search_admin_analytics_native(
 }
 
 #[server(prefix = "/api/fn", endpoint = "search/dictionary-snapshot")]
-async fn search_admin_dictionary_snapshot_native(
-) -> Result<SearchDictionarySnapshotPayload, ServerFnError> {
+async fn search_admin_dictionary_snapshot_native()
+-> Result<SearchDictionarySnapshotPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;

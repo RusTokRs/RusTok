@@ -189,11 +189,11 @@ pub fn validate_moderation_decision(
 #[cfg(test)]
 mod tests {
     use super::{
-        blog_draft_must_remain_unpublished, content_ai_policy_matrix, content_ai_sensitive_tools,
-        content_ai_verticals, normalize_moderation_decision, validate_moderation_decision,
+        BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG, CONTENT_MODERATION_TOOL_NAME,
         ContentAiApprovalMode, ContentAiDegradedMode, GeneratedBlogDraft,
-        GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, CONTENT_MODERATION_TASK_SLUG,
-        CONTENT_MODERATION_TOOL_NAME,
+        GeneratedModerationDecision, blog_draft_must_remain_unpublished, content_ai_policy_matrix,
+        content_ai_sensitive_tools, content_ai_verticals, normalize_moderation_decision,
+        validate_moderation_decision,
     };
 
     #[test]

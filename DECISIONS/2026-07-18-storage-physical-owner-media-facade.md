@@ -1,7 +1,7 @@
 # Storage as the physical file owner and Media as the media facade
 
 - Date: 2026-07-18
-- Status: Accepted
+- Status: Superseded by [Direct object-store runtime and owner-local lifecycle](./2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
 
 ## Context
 

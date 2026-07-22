@@ -21,7 +21,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Migration(format!(
                     "AI approval batch migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

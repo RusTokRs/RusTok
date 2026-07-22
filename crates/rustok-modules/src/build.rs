@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::DomainEvent;
 
 use crate::OciArtifactReference;
 
@@ -505,9 +505,9 @@ impl SeaOrmModuleBuildService {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     Some(tenant_id),
+                    None,
                     DomainEvent::ModuleBuildQueued {
                         request_id: request.request_id,
                         tenant_id,
@@ -608,9 +608,9 @@ impl SeaOrmModuleBuildService {
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     Some(result.tenant_id),
+                    None,
                     DomainEvent::ModuleBuildCompleted {
                         request_id: result.request_id,
                         tenant_id: result.tenant_id,

@@ -254,9 +254,11 @@ async fn owner_reads_are_tenant_scoped() {
         .await
         .unwrap();
 
-    assert!(service
-        .get_report(Uuid::new_v4(), report.id)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        service
+            .get_report(Uuid::new_v4(), report.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }

@@ -740,7 +740,7 @@ fn empty_facets() -> Vec<SearchFacetGroup> {
 #[cfg(test)]
 mod tests {
     use super::{build_filter_clause, should_run_typo_fallback};
-    use crate::{engine::SearchQuery, SearchRankingProfile};
+    use crate::{SearchRankingProfile, engine::SearchQuery};
 
     #[test]
     fn filter_clause_uses_bound_parameters() {

@@ -10,18 +10,18 @@ mod vectors;
 pub use agent_driver::RigAgentDriver;
 #[cfg(feature = "server")]
 pub use catalog::provider_factory_supports;
-pub use catalog::{
-    provider_catalog, provider_catalog_entry, ProviderCatalogEntry, ProviderConfigField,
-    ProviderDefaultSetting, ProviderFeature, ProviderFieldKind, ProviderSlug, ProviderTargetAuth,
-    ProviderTargetId,
-};
 #[cfg(feature = "server")]
 pub use catalog::{AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy};
+pub use catalog::{
+    ProviderCatalogEntry, ProviderConfigField, ProviderDefaultSetting, ProviderFeature,
+    ProviderFieldKind, ProviderSlug, ProviderTargetAuth, ProviderTargetId, provider_catalog,
+    provider_catalog_entry,
+};
+#[cfg(feature = "server")]
+pub use inference::{InferenceEngine, inference_for_slug};
 #[cfg(feature = "server")]
 pub(crate) use inference::{assistant_choice, map_message, map_rig_message};
 #[cfg(feature = "server")]
-pub use inference::{inference_for_slug, InferenceEngine};
-#[cfg(feature = "server")]
 pub use vectors::{
-    embed, rerank, EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest, RerankResponse,
+    EmbeddingRequest, EmbeddingResponse, RerankItem, RerankRequest, RerankResponse, embed, rerank,
 };

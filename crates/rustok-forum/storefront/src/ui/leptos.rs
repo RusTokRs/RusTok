@@ -3,9 +3,9 @@ use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    forum_storefront_category_card_view_model, forum_storefront_count_label,
-    forum_storefront_status_badge_class, forum_storefront_topic_card_view_model,
-    summarize_rich_content, topic_status_class, ForumStorefrontCategoryRailLabels,
+    ForumStorefrontCategoryRailLabels, forum_storefront_category_card_view_model,
+    forum_storefront_count_label, forum_storefront_status_badge_class,
+    forum_storefront_topic_card_view_model, summarize_rich_content, topic_status_class,
 };
 use crate::i18n::t;
 use crate::model::{

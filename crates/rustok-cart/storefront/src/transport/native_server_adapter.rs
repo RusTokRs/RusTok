@@ -6,9 +6,9 @@ use std::fmt::{Display, Formatter};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 
+use crate::core::CartCoreError;
 #[cfg(feature = "ssr")]
 use crate::core::normalize_public_channel_slug;
-use crate::core::CartCoreError;
 #[cfg(feature = "ssr")]
 use crate::core::{parse_cart_id, parse_line_item_id};
 use crate::model::StorefrontCartData;

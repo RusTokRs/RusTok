@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
 use serde_json::Value;
 use tokio::process::Command;
 
-use crate::{policy::vulnerability_severity_rank, VerificationPolicy, VerificationTrustRoot};
+use crate::{VerificationPolicy, VerificationTrustRoot, policy::vulnerability_severity_rank};
 
 /// Concrete worker-only Cosign adapter. Values are passed as process arguments,
 /// never through a shell; trust-root flags derive exclusively from mounted
@@ -352,7 +352,7 @@ fn requires_transparency_bundle(trust_root: &VerificationTrustRoot) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     use serde_json::json;
 
     use super::{attestation_statements, validate_cyclonedx, validate_slsa};
@@ -399,12 +399,14 @@ mod tests {
     fn slsa_fixture_requires_exact_subject_digest() {
         let output = cosign_output(include_str!("../fixtures/slsa-statement.json"));
         assert!(validate_slsa(&output, DIGEST, &policy()).is_ok());
-        assert!(validate_slsa(
-            &output,
-            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            &policy()
-        )
-        .is_err());
+        assert!(
+            validate_slsa(
+                &output,
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                &policy()
+            )
+            .is_err()
+        );
     }
 
     #[test]

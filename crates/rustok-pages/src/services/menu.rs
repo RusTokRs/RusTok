@@ -8,7 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
@@ -240,7 +240,7 @@ fn menu_location_from_storage(value: &str) -> PagesResult<MenuLocation> {
         other => {
             return Err(PagesError::validation(format!(
                 "Unknown menu location in storage: {other}"
-            )))
+            )));
         }
     })
 }

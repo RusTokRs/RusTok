@@ -15,7 +15,7 @@ use crate::localized_sellers::{load_seller_responses, localized_seller_ids_for_s
 use crate::seller_events::list_seller_events;
 
 pub(crate) use crate::localized_sellers::{
-    load_seller_response, normalize_seller_locale, upsert_translation, MISSING_TRANSLATION_PREFIX,
+    MISSING_TRANSLATION_PREFIX, load_seller_response, normalize_seller_locale, upsert_translation,
 };
 
 pub struct MarketplaceSellerService {

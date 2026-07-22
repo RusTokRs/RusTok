@@ -720,7 +720,7 @@ async fn product_admin_effective_form_native(
             (None, None) => {
                 return Err(ServerFnError::new(
                     "Either product_id or category_id is required",
-                ))
+                ));
             }
         };
         let Some(form) = form else {

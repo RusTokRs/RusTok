@@ -6,8 +6,8 @@ use crate::error::{PaymentError, PaymentResult};
 use crate::providers::PaymentProviderWebhookResult;
 
 use super::{
-    CompleteProviderEvent, FailProviderEvent, PaymentProviderEventApplier,
-    PaymentProviderEventJournal, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
+    CompleteProviderEvent, FailProviderEvent, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
+    PaymentProviderEventApplier, PaymentProviderEventJournal,
 };
 
 const DEFAULT_RECOVERY_LEASE_SECONDS: i64 = 30;
@@ -241,9 +241,7 @@ fn safe_recovery_error_code(error: &PaymentError) -> &'static str {
         PaymentError::Database(_) => "payment.webhook_recovery_storage_unavailable",
         PaymentError::InvalidTransition { .. } => "payment.webhook_recovery_state_conflict",
         PaymentError::Validation(_) => "payment.webhook_recovery_validation_failed",
-        PaymentError::ProviderUnavailable { .. } => {
-            "payment.webhook_recovery_provider_unavailable"
-        }
+        PaymentError::ProviderUnavailable { .. } => "payment.webhook_recovery_provider_unavailable",
         PaymentError::ProviderRejected { .. } => "payment.webhook_recovery_provider_rejected",
         PaymentError::ProviderInvalidResponse { .. } => {
             "payment.webhook_recovery_provider_invalid_response"

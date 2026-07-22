@@ -34,8 +34,10 @@ from that allowlist and one declared operation. Resolver aliases, resolver keys,
 and secret values are not guest inputs. The module data owner durably binds a
 logical reference to a host-authorized `SecretRef`. The owner-provided
 `acquire_handle` broker can return only that logical reference and its revision;
-the future value-consuming secret-use broker must still never serialize a
-secret value in a capability response.
+value consumption uses a separate host-only exact-revision service with a
+fixed-purpose consumer. It is intentionally not a sandbox `get_value` operation
+and cannot serialize resolver details, secret values, or arbitrary consumer
+output in a capability response.
 
 The `platform.events` grant requires typed non-empty `topics` and `operations`
 lists. A call may contain only `topic` and optional `payload`; the topic must

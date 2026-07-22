@@ -95,18 +95,12 @@ pub fn axum_router() -> axum::Router<CommerceHttpRuntime> {
             "/paid-events/operator-review",
             axum::routing::get(list_paid_event_operator_review),
         )
-        .route(
-            "/paid-events/{id}",
-            axum::routing::get(show_paid_event),
-        )
+        .route("/paid-events/{id}", axum::routing::get(show_paid_event))
         .route(
             "/paid-events/{id}/retry",
             axum::routing::post(retry_paid_event),
         )
-        .route(
-            "/recovery-sweep",
-            axum::routing::post(run_recovery_sweep),
-        )
+        .route("/recovery-sweep", axum::routing::post(run_recovery_sweep))
 }
 
 #[utoipa::path(

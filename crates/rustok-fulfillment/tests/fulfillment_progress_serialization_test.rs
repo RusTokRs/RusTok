@@ -1,9 +1,9 @@
+use rustok_fulfillment::FulfillmentService;
 use rustok_fulfillment::dto::{
     CreateFulfillmentInput, CreateFulfillmentItemInput, DeliverFulfillmentInput,
     FulfillmentItemQuantityInput, ReopenFulfillmentInput, ShipFulfillmentInput,
 };
 use rustok_fulfillment::migrations;
-use rustok_fulfillment::FulfillmentService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;

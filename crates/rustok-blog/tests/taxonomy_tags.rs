@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use rustok_blog::{
-    entities::blog_post_tag, BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService,
+    BlogModule, CreatePostInput, ListTagsFilter, PostService, TagService, entities::blog_post_tag,
 };
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    entities::taxonomy_term, CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType,
-    TaxonomyService, TaxonomyTermKind,
+    CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::taxonomy_term,
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
@@ -118,9 +118,11 @@ async fn post_tags_create_blog_scoped_taxonomy_terms_and_usage_counts() {
         .await
         .expect("taxonomy terms should load");
     assert_eq!(terms.len(), 2);
-    assert!(terms
-        .iter()
-        .all(|term| term.scope_type == TaxonomyScopeType::Module));
+    assert!(
+        terms
+            .iter()
+            .all(|term| term.scope_type == TaxonomyScopeType::Module)
+    );
     assert!(terms.iter().all(|term| term.scope_value == "blog"));
 
     let (tags, total) = tag_service

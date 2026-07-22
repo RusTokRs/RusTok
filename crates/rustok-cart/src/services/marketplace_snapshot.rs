@@ -81,14 +81,12 @@ impl CartMarketplaceSnapshotService {
             Some(locale) => locale,
             None => load_tenant_default_locale(&transaction, tenant_id).await?,
         };
-        let shipping_profile_slug = normalize_shipping_profile_slug(
-            input.line_item.shipping_profile_slug.as_deref(),
-        );
+        let shipping_profile_slug =
+            normalize_shipping_profile_slug(input.line_item.shipping_profile_slug.as_deref());
         if let Some(profile) = snapshot.fulfillment_profile_slug.as_deref() {
             if profile != shipping_profile_slug {
                 return Err(CartError::Validation(
-                    "marketplace snapshot fulfillment profile does not match cart line"
-                        .to_string(),
+                    "marketplace snapshot fulfillment profile does not match cart line".to_string(),
                 ));
             }
         } else {
@@ -106,9 +104,7 @@ impl CartMarketplaceSnapshotService {
             sku: Set(input.line_item.sku),
             quantity: Set(input.line_item.quantity),
             unit_price: Set(input.line_item.unit_price),
-            total_price: Set(
-                input.line_item.unit_price * Decimal::from(input.line_item.quantity),
-            ),
+            total_price: Set(input.line_item.unit_price * Decimal::from(input.line_item.quantity)),
             currency_code: Set(cart.currency_code.clone()),
             metadata: Set(compatibility_metadata(
                 input.line_item.metadata,
@@ -131,12 +127,7 @@ impl CartMarketplaceSnapshotService {
         .await?;
         let snapshot_model = insert_snapshot(&transaction, line_item_id, snapshot).await?;
 
-        recalculate_totals(
-            &transaction,
-            self.tax_calculation_port.as_ref(),
-            cart,
-        )
-        .await?;
+        recalculate_totals(&transaction, self.tax_calculation_port.as_ref(), cart).await?;
         reconcile_cart_shipping_state(&transaction, cart_id).await?;
         transaction.commit().await?;
 
@@ -330,8 +321,7 @@ fn validate_line_input_identity(
         || line.variant_id != Some(snapshot.master_variant_id)
     {
         return Err(CartError::Validation(
-            "marketplace cart line product and variant must match the typed snapshot"
-                .to_string(),
+            "marketplace cart line product and variant must match the typed snapshot".to_string(),
         ));
     }
     Ok(())
@@ -371,12 +361,11 @@ fn validate_decimal_unit_price(
     unit_price: Decimal,
     input: &MarketplaceCartLineSnapshotInput,
 ) -> CartResult<()> {
-    let exponent = u32::try_from(input.currency_exponent).map_err(|_| {
-        CartError::Validation("currency exponent must be non-negative".to_string())
-    })?;
-    let factor = 10_i64.checked_pow(exponent).ok_or_else(|| {
-        CartError::Validation("currency exponent is too large".to_string())
-    })?;
+    let exponent = u32::try_from(input.currency_exponent)
+        .map_err(|_| CartError::Validation("currency exponent must be non-negative".to_string()))?;
+    let factor = 10_i64
+        .checked_pow(exponent)
+        .ok_or_else(|| CartError::Validation("currency exponent is too large".to_string()))?;
     let scaled = unit_price
         .checked_mul(Decimal::from(factor))
         .ok_or_else(|| CartError::Validation("marketplace unit price overflow".to_string()))?;
@@ -428,7 +417,10 @@ fn compatibility_metadata(metadata: Value, seller_id: Uuid) -> Value {
     };
     metadata.remove("marketplace");
     metadata.remove("seller");
-    metadata.insert("seller_id".to_string(), Value::String(seller_id.to_string()));
+    metadata.insert(
+        "seller_id".to_string(),
+        Value::String(seller_id.to_string()),
+    );
     Value::Object(metadata)
 }
 
@@ -459,9 +451,7 @@ fn snapshot_matches(
         && existing.fulfillment_profile_slug == input.fulfillment_profile_slug
 }
 
-fn map_snapshot(
-    model: cart_line_item_marketplace_snapshot::Model,
-) -> CartMarketplaceLineSnapshot {
+fn map_snapshot(model: cart_line_item_marketplace_snapshot::Model) -> CartMarketplaceLineSnapshot {
     CartMarketplaceLineSnapshot {
         cart_line_item_id: model.cart_line_item_id,
         seller_id: model.seller_id,

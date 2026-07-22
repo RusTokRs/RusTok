@@ -9,11 +9,11 @@ use uuid::Uuid;
 use rustok_mcp::alloy_tools::{
     self, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest, DeleteScriptRequest,
     GetScriptRequest, ListScriptsRequest, ReviewModuleScaffoldRequest, RunScriptRequest,
-    UpdateScriptRequest, ValidateScriptRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
-    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
-    TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
-    TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
-    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
+    TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS,
+    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE,
+    TOOL_ALLOY_SCRIPT_HELPERS, TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+    UpdateScriptRequest, ValidateScriptRequest,
 };
 use rustok_mcp::tools::{
     self, McpHealthResponse, McpState, McpToolResponse, ModuleLookupRequest, ModuleQueryRequest,
@@ -22,8 +22,8 @@ use rustok_mcp::tools::{
     TOOL_QUERY_MODULES,
 };
 use rustok_mcp::{
-    default_tool_requirement, McpAccessContext, McpAccessPolicy, McpActorType, McpIdentity,
-    StagedModuleScaffold,
+    McpAccessContext, McpAccessPolicy, McpActorType, McpIdentity, StagedModuleScaffold,
+    default_tool_requirement,
 };
 
 use crate::mcp::{McpClientAdapter, ToolExecutionResult};

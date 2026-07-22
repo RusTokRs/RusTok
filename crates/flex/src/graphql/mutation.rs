@@ -1,15 +1,15 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_core::field_schema::FieldType;
 use rustok_core::EventBus;
+use rustok_core::field_schema::FieldType;
 use rustok_events::EventEnvelope;
 use uuid::Uuid;
 
 use super::{
-    bad_user_input, map_flex_error, require_access, resolve_entity_type, runtime::runtime,
     CreateFieldDefinitionInput, CreateFlexEntryInput, CreateFlexSchemaInput,
     DeleteFieldDefinitionPayload, DeleteFlexPayload, FieldDefinitionObject, FlexEntryObject,
     FlexSchemaObject, UpdateFieldDefinitionInput, UpdateFlexEntryInput, UpdateFlexSchemaInput,
+    bad_user_input, map_flex_error, require_access, resolve_entity_type, runtime::runtime,
 };
 use crate::{
     CreateFieldDefinitionCommand, CreateFlexEntryCommand, CreateFlexSchemaCommand,

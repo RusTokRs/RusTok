@@ -41,7 +41,7 @@ impl MigrationTrait for Migration {
             other => {
                 return Err(DbErr::Migration(format!(
                     "marketplace listing event provenance migration does not support {other:?}"
-                )))
+                )));
             }
         }
 

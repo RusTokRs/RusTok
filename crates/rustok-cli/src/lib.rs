@@ -414,8 +414,8 @@ fn render_list_command(registry: &CommandRegistry<'_>, args: &[String]) -> CliEx
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_commands, render_command_list, render_command_list_json, run_with_args,
-        BuiltInProvider, CommandRegistry,
+        BuiltInProvider, CommandRegistry, collect_commands, render_command_list,
+        render_command_list_json, run_with_args,
     };
     use rustok_cli_core::{CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest};
 
@@ -476,9 +476,11 @@ mod tests {
         assert!(exit.stderr.is_empty());
 
         let commands: Vec<CommandDescriptor> = serde_json::from_str(&exit.stdout).unwrap();
-        assert!(commands
-            .iter()
-            .any(|command| command.namespace == "core" && command.name == "list"));
+        assert!(
+            commands
+                .iter()
+                .any(|command| command.namespace == "core" && command.name == "list")
+        );
     }
 
     #[tokio::test]

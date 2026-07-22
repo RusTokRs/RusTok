@@ -11,11 +11,10 @@ use rustok_marketplace_commission::{
     MarketplaceCommissionRuleListResponse, ReadMarketplaceCommissionAssessmentRequest,
 };
 use rustok_marketplace_ledger::dto::{
-    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
-    MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
-    MarketplaceSellerBalanceBucket, PostMarketplaceLedgerReversalInput,
-    PostMarketplaceOrderLedgerInput, ReadMarketplaceSellerBalanceRequest,
-    RebuildMarketplaceSellerBalanceInput,
+    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection, MarketplaceLedgerReversalKind,
+    MarketplaceLedgerReversalLineInput, MarketplaceSellerBalanceBucket,
+    PostMarketplaceLedgerReversalInput, PostMarketplaceOrderLedgerInput,
+    ReadMarketplaceSellerBalanceRequest, RebuildMarketplaceSellerBalanceInput,
 };
 use rustok_marketplace_ledger::entities::{entry, reversal, seller_balance, transaction};
 use rustok_marketplace_ledger::{MarketplaceLedgerError, MarketplaceLedgerService};
@@ -87,8 +86,7 @@ async fn refund_and_chargeback_reversals_are_append_only_and_rebuildable() {
             .entries
             .iter()
             .filter(|item| {
-                item.entry.account_code
-                    == MarketplaceLedgerAccountCode::PlatformCommissionRevenue
+                item.entry.account_code == MarketplaceLedgerAccountCode::PlatformCommissionRevenue
                     && item.entry.direction == MarketplaceLedgerEntryDirection::Debit
             })
             .map(|item| item.entry.amount)

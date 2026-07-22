@@ -79,18 +79,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .col(
-                        ColumnDef::new(MarketplacePaidEventInbox::LeaseOwner)
-                            .string_len(191),
-                    )
+                    .col(ColumnDef::new(MarketplacePaidEventInbox::LeaseOwner).string_len(191))
                     .col(
                         ColumnDef::new(MarketplacePaidEventInbox::LeaseExpiresAt)
                             .timestamp_with_time_zone(),
                     )
-                    .col(
-                        ColumnDef::new(MarketplacePaidEventInbox::LastErrorCode)
-                            .string_len(100),
-                    )
+                    .col(ColumnDef::new(MarketplacePaidEventInbox::LastErrorCode).string_len(100))
                     .col(
                         ColumnDef::new(MarketplacePaidEventInbox::LastErrorMessage)
                             .string_len(2000),

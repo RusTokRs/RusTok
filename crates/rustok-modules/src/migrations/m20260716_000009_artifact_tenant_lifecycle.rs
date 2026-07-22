@@ -27,8 +27,7 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
-                "CREATE TABLE module_artifact_tenant_lifecycle (\
+            DbBackend::Sqlite => &["CREATE TABLE module_artifact_tenant_lifecycle (\
                     installation_id TEXT NOT NULL REFERENCES module_artifact_installations(installation_id),\
                     tenant_id TEXT NOT NULL,\
                     enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),\
@@ -38,11 +37,12 @@ impl MigrationTrait for Migration {
                     reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),\
                     updated_at TEXT NOT NULL,\
                     PRIMARY KEY (installation_id, tenant_id)\
-                )",
-            ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact tenant lifecycle migration does not support database backend {backend:?}"
-            ))),
+                )"],
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact tenant lifecycle migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

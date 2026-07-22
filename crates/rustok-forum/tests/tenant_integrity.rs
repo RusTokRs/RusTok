@@ -3,8 +3,8 @@ mod support;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use support::postgres::{execute, expect_rejected as assert_rejected, PostgresForumTestDb};
 use support::TestResult;
+use support::postgres::{PostgresForumTestDb, execute, expect_rejected as assert_rejected};
 
 #[tokio::test]
 async fn postgres_rejects_cross_tenant_forum_core_relations() -> TestResult<()> {

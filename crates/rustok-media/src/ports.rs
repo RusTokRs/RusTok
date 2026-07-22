@@ -4,16 +4,16 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    MediaError, MediaImageDescriptor, MediaItem, MediaService, MediaStorageCleanupReport,
-    MediaTranslationItem, UpsertTranslationInput, DEFAULT_MAX_SIZE,
+    DEFAULT_MAX_SIZE, MediaError, MediaImageDescriptor, MediaItem, MediaReconciliationReport,
+    MediaService, MediaTranslationItem, PrepareUploadSessionInput, UpsertTranslationInput,
 };
 
 const MAX_MEDIA_LIST_LIMIT: u64 = 100;
-const MAX_MEDIA_CLEANUP_LIMIT: u64 = 1_000;
+const MAX_MEDIA_RECONCILIATION_LIMIT: u64 = 1_000;
 
 /// Owner-controlled streaming upload endpoint used by the embedded Media deployment.
 ///
-/// Upload bytes do not cross a generic port DTO. A future remote provider can replace this
+/// Upload bytes do not cross a generic port DTO. An S3-compatible provider replaces this
 /// target with a Media-issued presigned upload target without changing consumer ownership.
 pub const MEDIA_OWNER_STREAMING_UPLOAD_PATH: &str = "/api/media";
 
@@ -41,11 +41,13 @@ pub enum MediaUploadTransport {
 pub struct MediaUploadTarget {
     pub transport: MediaUploadTransport,
     pub endpoint: String,
+    pub session_id: Option<Uuid>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-/// Bounded request for tenant-scoped orphan cleanup.
+/// Bounded request for owner-local storage reconciliation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MediaStorageCleanupRequest {
+pub struct MediaReconciliationRequest {
     pub limit: u64,
 }
 
@@ -53,7 +55,7 @@ pub struct MediaStorageCleanupRequest {
 #[async_trait]
 pub trait MediaAssetReadPort: Send + Sync {
     async fn get_asset(&self, context: PortContext, media_id: Uuid)
-        -> Result<MediaItem, PortError>;
+    -> Result<MediaItem, PortError>;
 
     async fn list_assets(
         &self,
@@ -78,8 +80,8 @@ pub trait MediaAssetReadPort: Send + Sync {
 
 /// Transport-neutral owner boundary for Media write and control operations.
 ///
-/// The binary body of an upload stays on a Media-owned streaming REST endpoint or a future
-/// presigned object-store flow. gRPC is reserved for the metadata/control operations below.
+/// The binary body of an upload stays on a Media-owned streaming REST endpoint or a presigned
+/// object-store flow. gRPC is reserved for the metadata/control operations below.
 #[async_trait]
 pub trait MediaAssetWritePort: Send + Sync {
     async fn prepare_upload(
@@ -87,6 +89,12 @@ pub trait MediaAssetWritePort: Send + Sync {
         context: PortContext,
         request: MediaUploadRequest,
     ) -> Result<MediaUploadTarget, PortError>;
+
+    async fn complete_upload(
+        &self,
+        context: PortContext,
+        session_id: Uuid,
+    ) -> Result<MediaItem, PortError>;
 
     async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError>;
 
@@ -97,11 +105,11 @@ pub trait MediaAssetWritePort: Send + Sync {
         input: UpsertTranslationInput,
     ) -> Result<MediaTranslationItem, PortError>;
 
-    async fn cleanup_storage_orphans(
+    async fn reconcile_storage(
         &self,
         context: PortContext,
-        request: MediaStorageCleanupRequest,
-    ) -> Result<MediaStorageCleanupReport, PortError>;
+        request: MediaReconciliationRequest,
+    ) -> Result<MediaReconciliationReport, PortError>;
 }
 
 #[async_trait]
@@ -168,13 +176,50 @@ impl MediaAssetWritePort for MediaService {
         request: MediaUploadRequest,
     ) -> Result<MediaUploadTarget, PortError> {
         require_media_write_policy(&context)?;
-        let _tenant_id = parse_tenant_id(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
         validate_upload_request(&request)?;
+
+        if self.supports_presigned_upload() {
+            let expiry = std::time::Duration::from_millis(
+                context.deadline_ms.unwrap_or(600_000).clamp(1_000, 900_000),
+            );
+            let prepared = self
+                .prepare_upload_session(PrepareUploadSessionInput {
+                    tenant_id,
+                    actor_id: Uuid::parse_str(&context.actor.id).ok(),
+                    original_name: request.original_name,
+                    content_type: request.content_type,
+                    content_length: request.content_length,
+                    expires_in: expiry,
+                })
+                .await
+                .map_err(media_error_to_port_error)?;
+            return Ok(MediaUploadTarget {
+                transport: MediaUploadTransport::PresignedObjectStore,
+                endpoint: prepared.endpoint,
+                session_id: Some(prepared.id),
+                expires_at: Some(prepared.expires_at),
+            });
+        }
 
         Ok(MediaUploadTarget {
             transport: MediaUploadTransport::OwnerStreamingRest,
             endpoint: MEDIA_OWNER_STREAMING_UPLOAD_PATH.to_string(),
+            session_id: None,
+            expires_at: None,
         })
+    }
+
+    async fn complete_upload(
+        &self,
+        context: PortContext,
+        session_id: Uuid,
+    ) -> Result<MediaItem, PortError> {
+        require_media_write_policy(&context)?;
+        let tenant_id = parse_tenant_id(&context)?;
+        self.complete_upload_session(tenant_id, session_id)
+            .await
+            .map_err(media_error_to_port_error)
     }
 
     async fn delete_asset(&self, context: PortContext, media_id: Uuid) -> Result<(), PortError> {
@@ -198,15 +243,15 @@ impl MediaAssetWritePort for MediaService {
             .map_err(media_error_to_port_error)
     }
 
-    async fn cleanup_storage_orphans(
+    async fn reconcile_storage(
         &self,
         context: PortContext,
-        request: MediaStorageCleanupRequest,
-    ) -> Result<MediaStorageCleanupReport, PortError> {
+        request: MediaReconciliationRequest,
+    ) -> Result<MediaReconciliationReport, PortError> {
         require_media_write_policy(&context)?;
         let tenant_id = parse_tenant_id(&context)?;
-        validate_cleanup_request(&request)?;
-        self.cleanup_storage_orphans(tenant_id, request.limit)
+        validate_reconciliation_request(&request)?;
+        self.reconcile_storage(tenant_id, request.limit)
             .await
             .map_err(media_error_to_port_error)
     }
@@ -261,11 +306,13 @@ fn validate_upload_request(request: &MediaUploadRequest) -> Result<(), PortError
     Ok(())
 }
 
-fn validate_cleanup_request(request: &MediaStorageCleanupRequest) -> Result<(), PortError> {
-    if !(1..=MAX_MEDIA_CLEANUP_LIMIT).contains(&request.limit) {
+fn validate_reconciliation_request(request: &MediaReconciliationRequest) -> Result<(), PortError> {
+    if !(1..=MAX_MEDIA_RECONCILIATION_LIMIT).contains(&request.limit) {
         return Err(PortError::validation(
-            "media.cleanup_limit_invalid",
-            format!("media cleanup limit must be between 1 and {MAX_MEDIA_CLEANUP_LIMIT}"),
+            "media.reconciliation_limit_invalid",
+            format!(
+                "media reconciliation limit must be between 1 and {MAX_MEDIA_RECONCILIATION_LIMIT}"
+            ),
         ));
     }
     Ok(())
@@ -309,7 +356,32 @@ fn media_error_to_port_error(error: MediaError) -> PortError {
         MediaError::InvalidLocale(locale) => {
             PortError::validation("media.invalid_locale", format!("invalid locale: {locale}"))
         }
+        MediaError::InvalidRenditionPurpose(purpose) => PortError::validation(
+            "media.invalid_rendition_purpose",
+            format!("invalid rendition purpose: {purpose}"),
+        ),
+        MediaError::RenditionInProgress(id) => PortError::conflict(
+            "media.rendition_in_progress",
+            format!("rendition is already being processed: {id}"),
+        ),
+        MediaError::UploadSessionExpired(id) => PortError::conflict(
+            "media.upload_session_expired",
+            format!("upload session has expired: {id}"),
+        ),
+        MediaError::PresignedUploadUnavailable => PortError::unavailable(
+            "media.presigned_upload_unavailable",
+            "presigned upload is unavailable for the configured storage backend",
+        ),
+        MediaError::ImageProcessing(source) => {
+            PortError::validation("media.image_processing", source.to_string())
+        }
+        MediaError::Json(source) => {
+            PortError::unavailable("media.json_encoding", source.to_string())
+        }
         MediaError::Storage(source) => PortError::unavailable("media.storage", source.to_string()),
+        MediaError::StorageKey(source) => {
+            PortError::unavailable("media.storage_key", source.to_string())
+        }
         MediaError::Db(source) => PortError::unavailable("media.database", source.to_string()),
     }
 }
@@ -322,10 +394,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        media_error_to_port_error, parse_tenant_id, require_media_read_policy,
-        require_media_write_policy, validate_cleanup_request, validate_upload_request,
-        MediaStorageCleanupRequest, MediaUploadRequest, MediaUploadTransport,
-        MEDIA_OWNER_STREAMING_UPLOAD_PATH,
+        MEDIA_OWNER_STREAMING_UPLOAD_PATH, MediaReconciliationRequest, MediaUploadRequest,
+        MediaUploadTransport, media_error_to_port_error, parse_tenant_id,
+        require_media_read_policy, require_media_write_policy, validate_reconciliation_request,
+        validate_upload_request,
     };
     use crate::MediaError;
 
@@ -374,12 +446,14 @@ mod tests {
         assert_eq!(target, MediaUploadTransport::OwnerStreamingRest);
         assert_eq!(MEDIA_OWNER_STREAMING_UPLOAD_PATH, "/api/media");
 
-        assert!(validate_upload_request(&MediaUploadRequest {
-            original_name: "hero.webp".to_string(),
-            content_type: "image/webp".to_string(),
-            content_length: Some(1024),
-        })
-        .is_ok());
+        assert!(
+            validate_upload_request(&MediaUploadRequest {
+                original_name: "hero.webp".to_string(),
+                content_type: "image/webp".to_string(),
+                content_length: Some(1024),
+            })
+            .is_ok()
+        );
 
         let error = validate_upload_request(&MediaUploadRequest {
             original_name: " ".to_string(),
@@ -391,11 +465,13 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_control_validation_bounds_tenant_scoped_work() {
-        assert!(validate_cleanup_request(&MediaStorageCleanupRequest { limit: 100 }).is_ok());
-        let error = validate_cleanup_request(&MediaStorageCleanupRequest { limit: 0 })
+    fn reconciliation_control_validation_bounds_tenant_scoped_work() {
+        assert!(
+            validate_reconciliation_request(&MediaReconciliationRequest { limit: 100 }).is_ok()
+        );
+        let error = validate_reconciliation_request(&MediaReconciliationRequest { limit: 0 })
             .expect_err("zero cleanup limit must fail");
-        assert_eq!(error.code, "media.cleanup_limit_invalid");
+        assert_eq!(error.code, "media.reconciliation_limit_invalid");
     }
 
     #[test]
@@ -450,9 +526,11 @@ mod tests {
 
     #[test]
     fn media_error_to_port_error_marks_storage_and_database_failures_retryable() {
-        let storage = media_error_to_port_error(MediaError::Storage(
-            rustok_storage::StorageError::Backend("timeout".to_string()),
-        ));
+        let storage =
+            media_error_to_port_error(MediaError::Storage(object_store::Error::Generic {
+                store: "test",
+                source: Box::new(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")),
+            }));
         let database = media_error_to_port_error(MediaError::Db(sea_orm::DbErr::Conn(
             sea_orm::RuntimeErr::Internal("database unavailable".to_string()),
         )));

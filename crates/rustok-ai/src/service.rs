@@ -5,9 +5,8 @@ pub mod types;
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition,
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,7 +19,7 @@ use rustok_api::TenantRbacCatalog;
 
 use crate::direct::{DirectExecutionRegistry, DirectExecutionRequest};
 use crate::engine::RigAgentDriver;
-use crate::engine::{inference_for_slug, InferenceEngine};
+use crate::engine::{InferenceEngine, inference_for_slug};
 use crate::entities::{
     ai_agent_model_assignments, ai_agent_principals, ai_agent_workflow_runs,
     ai_agent_workflow_stages, ai_approval_requests, ai_chat_messages, ai_chat_runs,
@@ -32,7 +31,7 @@ use crate::model::{
     ProviderTestResult, RuntimeOutcome, ToolTrace,
 };
 use crate::router::AiRouter;
-use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent};
+use crate::streaming::{AiRunStreamEvent, ai_run_stream_hub};
 use crate::{AiError, AiResult, McpClientAdapter, ProviderSlug};
 use crate::{RagCoordinator, RagRetrievalStrategy, RagSearchRequest};
 
@@ -1557,7 +1556,7 @@ fn validate_approval_resolution_policy(
 
 #[cfg(test)]
 mod approval_outcome_tests {
-    use super::{approval_execution_outcome, ApprovalExecutionOutcome};
+    use super::{ApprovalExecutionOutcome, approval_execution_outcome};
     use crate::entities::{ai_approval_requests, ai_chat_runs, ai_tool_traces};
     use crate::model::ToolTrace;
     use chrono::Utc;
@@ -1656,13 +1655,17 @@ mod approval_outcome_tests {
                 .content,
             "done"
         );
-        assert!(approval_execution_outcome(&serde_json::json!({}))
-            .unwrap()
-            .is_none());
-        assert!(approval_execution_outcome(&serde_json::json!({
-            "execution_outcome": { "content": "missing fields" }
-        }))
-        .is_err());
+        assert!(
+            approval_execution_outcome(&serde_json::json!({}))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            approval_execution_outcome(&serde_json::json!({
+                "execution_outcome": { "content": "missing fields" }
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -1673,13 +1676,10 @@ mod approval_outcome_tests {
         assert!(stale_policy.to_string().contains("no longer allowed"));
         super::validate_approval_resolution_policy("executed", true, false, "catalog.write")
             .expect("staged external outcome may be finalized after a policy change");
-        assert!(super::validate_approval_resolution_policy(
-            "executed",
-            false,
-            false,
-            "catalog.write",
-        )
-        .is_err());
+        assert!(
+            super::validate_approval_resolution_policy("executed", false, false, "catalog.write",)
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1737,14 +1737,11 @@ mod approval_outcome_tests {
                 .await
                 .expect("first resolver claims staged approval")
         );
-        assert!(!super::claim_approval_resolution(
-            &db,
-            approval.tenant_id,
-            approval.id,
-            "executed",
-        )
-        .await
-        .expect("second resolver sees compare-and-set miss"));
+        assert!(
+            !super::claim_approval_resolution(&db, approval.tenant_id, approval.id, "executed",)
+                .await
+                .expect("second resolver sees compare-and-set miss")
+        );
     }
 
     #[tokio::test]
@@ -1860,19 +1857,23 @@ mod approval_outcome_tests {
         )
         .await
         .expect("insert trace before later finalization step");
-        assert!(transaction
-            .execute(Statement::from_string(
-                DbBackend::Sqlite,
-                "INSERT INTO ai_chat_messages (id) VALUES ('missing-table')".to_string(),
-            ))
-            .await
-            .is_err());
+        assert!(
+            transaction
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    "INSERT INTO ai_chat_messages (id) VALUES ('missing-table')".to_string(),
+                ))
+                .await
+                .is_err()
+        );
         drop(transaction);
-        assert!(ai_tool_traces::Entity::find()
-            .all(&db)
-            .await
-            .expect("read rolled-back traces")
-            .is_empty());
+        assert!(
+            ai_tool_traces::Entity::find()
+                .all(&db)
+                .await
+                .expect("read rolled-back traces")
+                .is_empty()
+        );
     }
 }
 
@@ -1957,20 +1958,24 @@ mod agent_principal_rbac_tests {
                 vec!["product.read".to_string(), "product.write".to_string()],
             )
         );
-        assert!(resolve_agent_principal_rbac(
-            &catalog,
-            tenant_id,
-            vec!["catalog-reader".to_string()],
-            &descriptor(),
-        )
-        .is_err());
-        assert!(resolve_agent_principal_rbac(
-            &catalog,
-            tenant_id,
-            vec!["unknown".to_string()],
-            &descriptor(),
-        )
-        .is_err());
+        assert!(
+            resolve_agent_principal_rbac(
+                &catalog,
+                tenant_id,
+                vec!["catalog-reader".to_string()],
+                &descriptor(),
+            )
+            .is_err()
+        );
+        assert!(
+            resolve_agent_principal_rbac(
+                &catalog,
+                tenant_id,
+                vec!["unknown".to_string()],
+                &descriptor(),
+            )
+            .is_err()
+        );
     }
 }
 
@@ -1989,16 +1994,15 @@ mod product_agent_workflow_persistence_tests {
     use uuid::Uuid;
 
     use super::{
-        ai_agent_workflow_stages, AiManagementService, AiOperatorContext,
-        CreateAiAgentModelAssignmentInput, CreateAiAgentPrincipalInput,
-        CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput, ExecutionMode,
-        ResolveAiAgentWorkflowStageApprovalInput,
+        AiManagementService, AiOperatorContext, CreateAiAgentModelAssignmentInput,
+        CreateAiAgentPrincipalInput, CreateAiAgentWorkflowRunInput, CreateAiTaskProfileInput,
+        ExecutionMode, ResolveAiAgentWorkflowStageApprovalInput, ai_agent_workflow_stages,
     };
     use crate::{
-        engine::InferenceEngine, entities::ai_provider_profiles, AiHostRuntime, AiProviderConfig,
-        AiProviderTarget, AiProviderTargetCatalog, ChatMessage, ChatMessageRole,
-        ProviderCapability, ProviderChatRequest, ProviderChatResponse, ProviderEgressPolicy,
-        ProviderStructuredRequest, ProviderTargetAuth, ProviderTestResult,
+        AiHostRuntime, AiProviderConfig, AiProviderTarget, AiProviderTargetCatalog, ChatMessage,
+        ChatMessageRole, ProviderCapability, ProviderChatRequest, ProviderChatResponse,
+        ProviderEgressPolicy, ProviderStructuredRequest, ProviderTargetAuth, ProviderTestResult,
+        engine::InferenceEngine, entities::ai_provider_profiles,
     };
     use rustok_api::{Permission, TenantRbacCatalog, TenantRbacPermission, TenantRbacRole};
     use rustok_core::registry::ModuleRegistry;
@@ -2168,7 +2172,10 @@ mod product_agent_workflow_persistence_tests {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("product agent workflow schema");
         }
@@ -2363,61 +2370,71 @@ mod product_agent_workflow_persistence_tests {
         assert_eq!(copy_stage.status, "waiting_approval");
         assert_eq!(attributes_stage.status, "pending");
 
-        assert!(AiManagementService::resolve_agent_workflow_stage_approval(
-            &database,
-            &operator,
-            copy_stage.id,
-            ResolveAiAgentWorkflowStageApprovalInput {
-                approved: true,
-                reason: Some("copy reviewed".to_string()),
-            },
-        )
-        .await
-        .expect("copy stage approval"));
+        assert!(
+            AiManagementService::resolve_agent_workflow_stage_approval(
+                &database,
+                &operator,
+                copy_stage.id,
+                ResolveAiAgentWorkflowStageApprovalInput {
+                    approved: true,
+                    reason: Some("copy reviewed".to_string()),
+                },
+            )
+            .await
+            .expect("copy stage approval")
+        );
         let copy_lease = Uuid::new_v4();
-        assert!(AiManagementService::claim_agent_workflow_stage(
-            &database,
-            operator.tenant_id,
-            copy_stage.id,
-            copy_lease,
-            Utc::now() + Duration::minutes(1),
-        )
-        .await
-        .expect("copy stage claim"));
-        assert!(AiManagementService::complete_agent_workflow_stage(
-            &database,
-            operator.tenant_id,
-            copy_stage.id,
-            copy_lease,
-            json!({"ai_run_id": Uuid::new_v4()}),
-        )
-        .await
-        .expect("copy stage completion"));
+        assert!(
+            AiManagementService::claim_agent_workflow_stage(
+                &database,
+                operator.tenant_id,
+                copy_stage.id,
+                copy_lease,
+                Utc::now() + Duration::minutes(1),
+            )
+            .await
+            .expect("copy stage claim")
+        );
+        assert!(
+            AiManagementService::complete_agent_workflow_stage(
+                &database,
+                operator.tenant_id,
+                copy_stage.id,
+                copy_lease,
+                json!({"ai_run_id": Uuid::new_v4()}),
+            )
+            .await
+            .expect("copy stage completion")
+        );
 
         let attributes_stage =
             stage(&database, operator.tenant_id, workflow_run_id, "attributes").await;
         assert_eq!(attributes_stage.status, "waiting_approval");
-        assert!(AiManagementService::resolve_agent_workflow_stage_approval(
-            &database,
-            &operator,
-            attributes_stage.id,
-            ResolveAiAgentWorkflowStageApprovalInput {
-                approved: true,
-                reason: Some("attributes reviewed".to_string()),
-            },
-        )
-        .await
-        .expect("attributes stage approval"));
+        assert!(
+            AiManagementService::resolve_agent_workflow_stage_approval(
+                &database,
+                &operator,
+                attributes_stage.id,
+                ResolveAiAgentWorkflowStageApprovalInput {
+                    approved: true,
+                    reason: Some("attributes reviewed".to_string()),
+                },
+            )
+            .await
+            .expect("attributes stage approval")
+        );
         let attributes_lease = Uuid::new_v4();
-        assert!(AiManagementService::claim_agent_workflow_stage(
-            &database,
-            operator.tenant_id,
-            attributes_stage.id,
-            attributes_lease,
-            Utc::now() + Duration::minutes(1),
-        )
-        .await
-        .expect("attributes stage claim"));
+        assert!(
+            AiManagementService::claim_agent_workflow_stage(
+                &database,
+                operator.tenant_id,
+                attributes_stage.id,
+                attributes_lease,
+                Utc::now() + Duration::minutes(1),
+            )
+            .await
+            .expect("attributes stage claim")
+        );
         let egress_policy = ProviderEgressPolicy {
             allowed_origins: vec!["provider.example.test".to_string()],
             allow_local_origins: false,

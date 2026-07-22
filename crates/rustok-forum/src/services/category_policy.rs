@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    sea_query::OnConflict,
 };
 use uuid::Uuid;
 

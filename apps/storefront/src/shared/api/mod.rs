@@ -1,6 +1,6 @@
 use leptos::prelude::ServerFnError;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use serde::{de::DeserializeOwned, Serialize};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use serde::{Serialize, de::DeserializeOwned};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -18,11 +18,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(Alias::new("tenant_id"))
-                            .uuid()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Alias::new("tenant_id")).uuid().not_null())
                     .col(
                         ColumnDef::new(Alias::new("archived_at"))
                             .timestamp_with_time_zone()
@@ -72,7 +68,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Custom(format!(
                     "rustok-forum category subtree lifecycle migration does not support {backend:?}"
-                )))
+                )));
             }
         }
 

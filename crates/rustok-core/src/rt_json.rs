@@ -1,4 +1,4 @@
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use url::Url;
 
 const SUPPORTED_VERSION: &str = "rt_json_v1";

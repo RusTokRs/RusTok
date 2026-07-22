@@ -245,7 +245,7 @@ impl SsrfProtection {
             Err(_) => {
                 return ValidationResult::Invalid {
                     reason: "Invalid URL format".to_string(),
-                }
+                };
             }
         };
 

@@ -53,11 +53,9 @@ impl MigrationTrait for Migration {
                         .not_null(),
                     )
                     .col(
-                        ColumnDef::new(
-                            CheckoutMarketplaceEconomicsCheckpoints::AllocationSetHash,
-                        )
-                        .string_len(64)
-                        .not_null(),
+                        ColumnDef::new(CheckoutMarketplaceEconomicsCheckpoints::AllocationSetHash)
+                            .string_len(64)
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(CheckoutMarketplaceEconomicsCheckpoints::AssessmentCount)
@@ -79,11 +77,9 @@ impl MigrationTrait for Migration {
                         .not_null(),
                     )
                     .col(
-                        ColumnDef::new(
-                            CheckoutMarketplaceEconomicsCheckpoints::AssessmentSetHash,
-                        )
-                        .string_len(64)
-                        .not_null(),
+                        ColumnDef::new(CheckoutMarketplaceEconomicsCheckpoints::AssessmentSetHash)
+                            .string_len(64)
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(CheckoutMarketplaceEconomicsCheckpoints::CreatedAt)

@@ -1,6 +1,4 @@
-use sea_orm_migration::sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement,
-};
+use sea_orm_migration::sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::error::Error;

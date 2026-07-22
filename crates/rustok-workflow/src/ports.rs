@@ -8,7 +8,7 @@ use crate::{WorkflowError, WorkflowResponse, WorkflowService, WorkflowSummary};
 #[async_trait]
 pub trait WorkflowReadPort: Send + Sync {
     async fn list_workflows(&self, context: PortContext)
-        -> Result<Vec<WorkflowSummary>, PortError>;
+    -> Result<Vec<WorkflowSummary>, PortError>;
 
     async fn get_workflow(
         &self,

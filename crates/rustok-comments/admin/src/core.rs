@@ -6,7 +6,7 @@
 use rustok_comments::{
     CommentRecord, CommentStatus, CommentThreadDetail, CommentThreadStatus, CommentThreadSummary,
 };
-use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteQueryIntent};
+use rustok_ui_core::{AdminQueryKey, UiRouteQueryIntent, normalize_ui_text};
 
 pub(crate) const COMMENTS_ADMIN_THREAD_QUERY_KEY: &str = AdminQueryKey::ThreadId.as_str();
 pub(crate) const COMMENTS_ADMIN_LOCALE_QUERY_KEY: &str = AdminQueryKey::Locale.as_str();

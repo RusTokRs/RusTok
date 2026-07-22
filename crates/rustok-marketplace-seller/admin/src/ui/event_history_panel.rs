@@ -2,7 +2,7 @@ use leptos::prelude::*;
 
 use crate::event_timeline::MarketplaceSellerEventTimeline;
 use crate::transport::{
-    load_marketplace_seller_event_history, MarketplaceSellerAdminTransportContext,
+    MarketplaceSellerAdminTransportContext, load_marketplace_seller_event_history,
 };
 
 #[component]

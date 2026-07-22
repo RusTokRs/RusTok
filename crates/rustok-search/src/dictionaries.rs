@@ -742,7 +742,7 @@ pub fn normalize_query_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_synonym_map, normalize_query_text, normalize_unique_tokens, SearchSynonymRecord,
+        SearchSynonymRecord, build_synonym_map, normalize_query_text, normalize_unique_tokens,
     };
     use chrono::Utc;
     use uuid::Uuid;

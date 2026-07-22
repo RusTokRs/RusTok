@@ -218,10 +218,10 @@ pub fn validate_product_copy_payload(payload: &GeneratedProductCopy) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::{
-        product_ai_agents, product_ai_verticals, product_ai_workflows,
-        validate_product_agent_stage_input, validate_product_attributes_payload,
-        validate_product_copy_payload, GeneratedFlexAttribute, GeneratedProductAttributes,
-        GeneratedProductCopy, PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_COPY_TASK_SLUG,
+        GeneratedFlexAttribute, GeneratedProductAttributes, GeneratedProductCopy,
+        PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_COPY_TASK_SLUG, product_ai_agents,
+        product_ai_verticals, product_ai_workflows, validate_product_agent_stage_input,
+        validate_product_attributes_payload, validate_product_copy_payload,
     };
 
     #[test]

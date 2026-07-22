@@ -1,8 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -185,7 +185,8 @@ impl HttpCapabilityConstraints {
 /// Guests may name only an admitted logical reference and operation. Resolver
 /// aliases, resolver keys, and secret values never appear in the guest input
 /// contract. The owner-provided handle broker returns only the logical reference
-/// and revision; a value-consuming broker remains separate work.
+/// and revision. Value consumption remains a separate host-only owner service,
+/// never a sandbox `get_value` response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SecretReferenceCapabilityConstraints {
@@ -1500,24 +1501,32 @@ mod tests {
         let constraints =
             SecretReferenceCapabilityConstraints::from_grant(&grant).expect("valid constraints");
 
-        assert!(constraints
-            .validate(&call(
-                "acquire_handle",
-                json!({ "reference": "payment_api" })
-            ))
-            .is_ok());
-        assert!(constraints
-            .validate(&call("read", json!({ "reference": "payment_api" })))
-            .is_err());
-        assert!(constraints
-            .validate(&call("acquire_handle", json!({ "reference": "other" })))
-            .is_err());
-        assert!(constraints
-            .validate(&call(
-                "acquire_handle",
-                json!({ "reference": "payment_api", "resolver": "env" }),
-            ))
-            .is_err());
+        assert!(
+            constraints
+                .validate(&call(
+                    "acquire_handle",
+                    json!({ "reference": "payment_api" })
+                ))
+                .is_ok()
+        );
+        assert!(
+            constraints
+                .validate(&call("read", json!({ "reference": "payment_api" })))
+                .is_err()
+        );
+        assert!(
+            constraints
+                .validate(&call("acquire_handle", json!({ "reference": "other" })))
+                .is_err()
+        );
+        assert!(
+            constraints
+                .validate(&call(
+                    "acquire_handle",
+                    json!({ "reference": "payment_api", "resolver": "env" }),
+                ))
+                .is_err()
+        );
     }
 
     #[test]

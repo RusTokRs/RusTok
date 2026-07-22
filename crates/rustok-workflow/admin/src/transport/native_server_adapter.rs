@@ -11,7 +11,7 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{
-            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+            AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
         };
 
         let auth = leptos_axum::extract::<AuthContext>()
@@ -44,7 +44,7 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
 pub async fn fetch_templates_native() -> Result<Vec<WorkflowTemplateDto>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{has_any_effective_permission, AuthContext, Permission};
+        use rustok_api::{AuthContext, Permission, has_any_effective_permission};
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -91,7 +91,7 @@ pub async fn create_from_template_native(
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
         use rustok_api::{
-            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+            AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
         };
 
         let auth = leptos_axum::extract::<AuthContext>()

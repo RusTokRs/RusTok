@@ -1,15 +1,16 @@
-use async_graphql::{dataloader::DataLoader, Context, ErrorExtensions, FieldError, Object, Result};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result, dataloader::DataLoader};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError, PaginationInput},
-    has_any_effective_permission, AuthContext, RequestContext, TenantContext,
+    AuthContext, RequestContext, TenantContext,
+    graphql::{GraphQLError, PaginationInput, require_module_enabled, resolve_graphql_locale},
+    has_any_effective_permission,
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
-    graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
-    ProfilesReader,
+    ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
+    graphql::GqlProfileSummary,
 };
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
@@ -1078,12 +1079,12 @@ async fn list_public_storefront_topics(
 #[cfg(test)]
 mod tests {
     use super::{
-        is_storefront_topic_visible, is_topic_visible_for_channel, list_public_storefront_topics,
-        ForumQuery,
+        ForumQuery, is_storefront_topic_visible, is_topic_visible_for_channel,
+        list_public_storefront_topics,
     };
     use crate::{
-        migrations, CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-        ModerationService, ReplyService, TopicService,
+        CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
+        ModerationService, ReplyService, TopicService, migrations,
     };
     use async_graphql::{EmptyMutation, EmptySubscription, Schema};
     use rustok_api::{RequestContext, TenantContext};

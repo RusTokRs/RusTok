@@ -1,9 +1,9 @@
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 use rustok_api::Permission;
-use rustok_api::{has_any_effective_permission, AuthContext, TenantContext};
+use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -86,10 +86,7 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
 }
 
 fn ensure_manage_permission(auth: &AuthContext) -> HttpResult<()> {
-    if !has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::FORUM_CATEGORIES_MANAGE],
-    ) {
+    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]) {
         return Err(HttpError::forbidden(
             "forum_permission_denied",
             "Permission denied: forum_categories:manage required".to_string(),

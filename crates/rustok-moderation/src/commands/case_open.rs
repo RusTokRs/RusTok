@@ -2,8 +2,8 @@ use chrono::Utc;
 use rustok_api::PortContext;
 use rustok_core::generate_id;
 use sea_orm::{
-    prelude::DateTimeWithTimeZone, sea_query::OnConflict, ColumnTrait, EntityTrait, QueryFilter,
-    Set,
+    ColumnTrait, EntityTrait, QueryFilter, Set, prelude::DateTimeWithTimeZone,
+    sea_query::OnConflict,
 };
 use uuid::Uuid;
 
@@ -14,12 +14,12 @@ use crate::domain::{
 use crate::entities::{moderation_case, moderation_case_report, moderation_report};
 use crate::error::{ModerationError, ModerationResult};
 use crate::receipts::{
-    admit, replay, replay_existing, request_hash, required_idempotency_key,
-    ModerationReceiptAdmission, NewModerationReceipt,
+    ModerationReceiptAdmission, NewModerationReceipt, admit, replay, replay_existing, request_hash,
+    required_idempotency_key,
 };
 use crate::service::{
-    active_case_deduplication_key, append_event, find_active_case_by_key, map_case,
-    normalize_case_command, parse_tenant_id, report_matches_case, ModerationService,
+    ModerationService, active_case_deduplication_key, append_event, find_active_case_by_key,
+    map_case, normalize_case_command, parse_tenant_id, report_matches_case,
 };
 
 const OP_OPEN_CASE: &str = "open_case";

@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 #[cfg(feature = "ssr")]
 use uuid::Uuid;
 

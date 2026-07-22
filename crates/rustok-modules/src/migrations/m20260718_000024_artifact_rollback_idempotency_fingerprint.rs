@@ -37,7 +37,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Migration(format!(
                     "artifact rollback idempotency migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

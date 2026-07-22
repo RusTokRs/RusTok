@@ -196,7 +196,7 @@ async fn initialize_module_work_runtime(
             .with_shared_value(transactional_event_bus_from_context(ctx))
             .with_shared_value(registry.clone()),
     );
-    let host = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
+    let host = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
         host.with_shared_value(storage)
     } else {
         host
@@ -207,7 +207,7 @@ async fn initialize_module_work_runtime(
         ),
     );
     let host = host.with_shared_value(artifact_delivery_tenants);
-    let host = if ctx.shared_get::<rustok_storage::StorageService>().is_some() {
+    let host = if ctx.shared_get::<rustok_storage::StorageRuntime>().is_some() {
         let executor = ctx
             .shared_get::<rustok_modules::SharedArtifactBindingExecutor>()
             .unwrap_or(crate::services::artifact_runtime::compose_artifact_binding_executor(ctx)?);
@@ -259,10 +259,10 @@ pub fn module_runtime_extensions_from_ctx(
 }
 
 async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
-    use rustok_storage::StorageService;
+    use rustok_storage::StorageRuntime;
 
     let settings = ctx.settings();
-    let service = StorageService::from_config(&settings.storage)
+    let service = StorageRuntime::from_config(&settings.storage)
         .await
         .map_err(|error| {
             Error::Message(format!("Failed to initialize storage backend: {error}"))

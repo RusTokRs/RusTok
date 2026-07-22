@@ -23,8 +23,8 @@ const runtimeOrderSmoke = json(registry.evidence.runtime_order_smoke);
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'media' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
 if (registry.contract_version !== 'media.asset_read.v1') fail('contract_version drift');
-if (registry.deployment_topology?.current_class !== 'modular_monolith' || registry.deployment_topology?.extraction_class !== 'whole_module_service' || registry.deployment_topology?.remote_transport !== 'grpc' || registry.deployment_topology?.remote_status !== 'planned') fail('media extraction topology drift');
-sameSet(registry.deployment_topology.split_blockers, ['grpc_conformance', 'isolated_database_storage_evidence'], 'media split blockers');
+if (registry.deployment_topology?.current_class !== 'modular_monolith' || registry.deployment_topology?.extraction_class !== 'whole_module_service' || registry.deployment_topology?.remote_transport !== 'grpc' || registry.deployment_topology?.remote_status !== 'loopback_verified') fail('media extraction topology drift');
+sameSet(registry.deployment_topology.split_blockers, ['isolated_database_storage_evidence'], 'media split blockers');
 if (registry.evidence?.runtime_fallback_smoke !== fallbackSmokePath) fail('runtime fallback smoke evidence drift');
 if (registry.evidence?.port_error_matrix !== portErrorMatrixPath) fail('port error matrix evidence drift');
 const port = registry.ports?.find((candidate) => candidate.name === 'MediaAssetReadPort');
@@ -35,10 +35,10 @@ if ((port.write_operations ?? []).length !== 0 || port.idempotency_required !== 
 if (port.context !== 'rustok_api::ports::PortContext' || port.error !== 'rustok_api::ports::PortError') fail('port context/error drift');
 const writePort = registry.ports?.find((candidate) => candidate.name === 'MediaAssetWritePort');
 if (!writePort || writePort.contract_version !== 'media.asset_write.v1') fail('write port identity/version drift');
-sameSet(writePort.operations, ['prepare_upload', 'delete_asset', 'upsert_translation', 'cleanup_storage_orphans'], 'write port operations');
+sameSet(writePort.operations, ['prepare_upload', 'complete_upload', 'delete_asset', 'upsert_translation', 'reconcile_storage'], 'write port operations');
 sameSet(writePort.write_operations, writePort.operations, 'write operations');
 if ((writePort.read_operations ?? []).length !== 0 || writePort.idempotency_required !== true || writePort.deadline_required !== true) fail('media write port policy drift');
-sameSet(writePort.upload_body_transport, ['media_owned_streaming_rest', 'future_presigned_upload'], 'upload body transport');
+sameSet(writePort.upload_body_transport, ['media_owned_streaming_rest', 'presigned_object_store'], 'upload body transport');
 
 const manifest = read('crates/rustok-media/rustok-module.toml');
 hasAll(manifest, ['[fba.provider]', 'registry = "contracts/media-fba-registry.json"', 'contract_version = "media.asset_read.v1"'], 'manifest');
@@ -80,6 +80,9 @@ hasAll(dto, ['pub enum MediaAssetKind', 'pub enum MediaAssetUsageProfile', 'pub 
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 sameSet(evidence.cases.map(c => c.operation), registry.contract_tests.cases.map(c => c.operation), 'evidence/registry cases');
+if (registry.contract_tests.status !== 'runtime_verified' || registry.contract_tests.runner !== 'cargo test -p rustok-media-transport --test port_conformance') fail('runtime conformance evidence drift');
+sameSet(registry.contract_tests.profiles, ['in_process', 'loopback_grpc'], 'runtime conformance profiles');
+for (const testCase of evidence.cases) if (testCase.runtime_evidence !== 'crates/rustok-media-transport/tests/port_conformance.rs') fail(`${testCase.operation} runtime evidence drift`);
 sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles, 'fallback profiles');
 sameSet(evidence.fallback_smoke.degraded_modes, registry.contract_tests.fallback_smoke.degraded_modes, 'degraded modes');
 if (registry.contract_tests.fallback_smoke.status !== 'source_locked' || evidence.fallback_smoke.status !== 'source_locked') fail('fallback smoke status is not source_locked');

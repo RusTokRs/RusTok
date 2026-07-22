@@ -1,9 +1,9 @@
 use super::{
-    ensure_attribute, ensure_schema, insert_schema_group_translation, load_schema_group_id,
     BindSchemaAttributeInput, CreateProductAttributeSchemaGroupInput,
     CreateProductAttributeSchemaInput, ProductAttributeGroupRecord,
     ProductAttributeSchemaListRecord, ProductAttributeSchemaListRow, ProductAttributeSchemaRecord,
-    ProductCatalogSchemaService,
+    ProductCatalogSchemaService, ensure_attribute, ensure_schema, insert_schema_group_translation,
+    load_schema_group_id,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, Statement, TransactionTrait};
 use uuid::Uuid;

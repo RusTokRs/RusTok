@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
@@ -13,9 +13,7 @@ use crate::dto::{
     CategoryBreadcrumb, CategoryTreeNode, CategoryTreeQuery, CategoryTreeResponse,
     MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
 };
-use crate::entities::{
-    forum_category, forum_category_lifecycle, forum_category_translation,
-};
+use crate::entities::{forum_category, forum_category_lifecycle, forum_category_translation};
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::rbac::enforce_scope;

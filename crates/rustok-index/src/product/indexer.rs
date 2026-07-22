@@ -3,8 +3,8 @@ use rust_decimal::Decimal;
 use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_product::services::{
-    load_effective_product_form_from_storage, parse_virtual_category_rule_v1,
     VirtualCategoryAttributeCondition, VirtualCategoryRuleV1,
+    load_effective_product_form_from_storage, parse_virtual_category_rule_v1,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::error::IndexResult;
 use crate::traits::{
-    run_bounded_reindex, Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer,
+    Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer, run_bounded_reindex,
 };
 
 #[derive(Debug, FromQueryResult)]

@@ -1,7 +1,7 @@
 use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
-use rustok_runtime::{db_clone, RuntimeComposition};
+use rustok_runtime::{RuntimeComposition, db_clone};
 use sea_orm_migration::MigratorTrait;
 
 mod db_baseline;
@@ -87,7 +87,7 @@ fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_provider, RuntimeComposition};
+    use super::{RuntimeComposition, command_provider};
     use rustok_cli_core::CommandRequest;
 
     #[test]

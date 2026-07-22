@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use bytes::Bytes;
+use object_store::{path::Path, ObjectStoreExt};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
@@ -15,12 +16,12 @@ use std::{
 use thiserror::Error;
 use uuid::Uuid;
 
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::DomainEvent;
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityResponse, ExecutionPhase,
     SandboxError, SandboxResult, SandboxSubject,
 };
-use rustok_storage::StorageService;
+use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
@@ -1468,7 +1469,7 @@ where
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataObjectBroker<A> {
     db: DatabaseConnection,
-    storage: StorageService,
+    storage: StorageRuntime,
     authorizer: A,
     infrastructure: ControlPlaneInfrastructure,
 }
@@ -1477,7 +1478,7 @@ impl<A> SeaOrmArtifactDataObjectBroker<A>
 where
     A: ArtifactDataAuthorizer,
 {
-    pub fn new(db: DatabaseConnection, storage: StorageService, authorizer: A) -> Self {
+    pub fn new(db: DatabaseConnection, storage: StorageRuntime, authorizer: A) -> Self {
         Self::with_infrastructure(
             db,
             storage,
@@ -1488,7 +1489,7 @@ where
 
     pub fn with_infrastructure(
         db: DatabaseConnection,
-        storage: StorageService,
+        storage: StorageRuntime,
         authorizer: A,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
@@ -1507,7 +1508,7 @@ where
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataObjectUploadService<A> {
     db: DatabaseConnection,
-    storage: StorageService,
+    storage: StorageRuntime,
     objects: SeaOrmArtifactDataObjectBroker<A>,
     authorizer: A,
     infrastructure: ControlPlaneInfrastructure,
@@ -1517,7 +1518,7 @@ impl<A> SeaOrmArtifactDataObjectUploadService<A>
 where
     A: ArtifactDataAuthorizer + Clone,
 {
-    pub fn new(db: DatabaseConnection, storage: StorageService, authorizer: A) -> Self {
+    pub fn new(db: DatabaseConnection, storage: StorageRuntime, authorizer: A) -> Self {
         Self::with_infrastructure(
             db,
             storage,
@@ -1528,7 +1529,7 @@ where
 
     pub fn with_infrastructure(
         db: DatabaseConnection,
-        storage: StorageService,
+        storage: StorageRuntime,
         authorizer: A,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
@@ -1718,25 +1719,35 @@ where
             let _ = transaction.rollback().await;
             return Err(ArtifactDataError::InvalidObject);
         }
-        let key = private_artifact_data_upload_chunk_key(
-            &self.infrastructure,
-            scope,
-            chunk.session_id,
-            chunk.sequence,
-        );
-        let stored = self
-            .storage
-            .store(&key, chunk.data, "application/octet-stream")
+        let key = ObjectKey::chronological(
+            "module-artifact-data",
+            ObjectZone::Staging,
+            ObjectScope::Tenant(scope.tenant_id),
+            self.infrastructure.now(),
+            self.infrastructure.new_id(),
+            "chunk",
+        )
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
+        .to_string();
+        let stored_path = key.clone();
+        self.storage
+            .objects
+            .put_opts(
+                &Path::from(key),
+                chunk.data.clone().into(),
+                self.storage.put_options("application/octet-stream"),
+            )
             .await
             .map_err(storage_error)?;
+        let stored_size = chunk.data.len() as u64;
         let inserted = transaction.execute(Statement::from_sql_and_values(
             backend,
             format!("INSERT INTO module_artifact_data_object_upload_chunks (tenant_id, session_id, sequence, storage_key, size_bytes, digest_sha256, created_at) VALUES ({}, {}, {}, {}, {}, {}, {})", placeholder(backend,1), placeholder(backend,2), placeholder(backend,3), placeholder(backend,4), placeholder(backend,5), placeholder(backend,6), now_expression(backend)),
-            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?, stored.path.clone().into(), i64::try_from(stored.size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
+            vec![uuid_value(scope.tenant_id, backend), uuid_value(chunk.session_id, backend), revision_value(chunk.sequence)?, stored_path.clone().into(), i64::try_from(stored_size).map_err(|_| ArtifactDataError::InvalidObject)?.into(), digest_sha256.into()],
         )).await;
         if let Err(error) = inserted {
             let _ = transaction.rollback().await;
-            let _ = self.storage.delete(&stored.path).await;
+            let _ = self.storage.objects.delete(&Path::from(stored_path)).await;
             return Err(storage_error(error));
         }
         if let Err(error) = transaction.commit().await.map_err(storage_error) {
@@ -1808,7 +1819,15 @@ where
             let key: String = row.try_get("", "storage_key").map_err(storage_error)?;
             let size: i64 = row.try_get("", "size_bytes").map_err(storage_error)?;
             let digest: String = row.try_get("", "digest_sha256").map_err(storage_error)?;
-            let bytes = self.storage.read(&key).await.map_err(storage_error)?;
+            let bytes = self
+                .storage
+                .objects
+                .get(&Path::from(key))
+                .await
+                .map_err(storage_error)?
+                .bytes()
+                .await
+                .map_err(storage_error)?;
             if u64::try_from(size).ok() != Some(bytes.len() as u64)
                 || format!("sha256:{}", hex::encode(Sha256::digest(&bytes))) != digest
             {
@@ -2169,21 +2188,6 @@ fn upload_session_request_digest(
     Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
 }
 
-fn private_artifact_data_upload_chunk_key(
-    infrastructure: &ControlPlaneInfrastructure,
-    scope: &ArtifactDataScope,
-    session_id: Uuid,
-    sequence: u64,
-) -> String {
-    format!(
-        "module-artifact-data-staging/{}/{}/{}/{session_id}/{sequence}/{}",
-        scope.tenant_id,
-        scope.module_slug,
-        scope.data_contract_revision,
-        infrastructure.new_id(),
-    )
-}
-
 fn upload_expiry_expression(backend: DbBackend) -> &'static str {
     match backend {
         DbBackend::Postgres => "NOW() + INTERVAL '3600 seconds'",
@@ -2197,11 +2201,11 @@ fn upload_expiry_expression(backend: DbBackend) -> &'static str {
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataObjectGcService {
     db: DatabaseConnection,
-    storage: StorageService,
+    storage: StorageRuntime,
 }
 
 impl SeaOrmArtifactDataObjectGcService {
-    pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
+    pub fn new(db: DatabaseConnection, storage: StorageRuntime) -> Self {
         Self { db, storage }
     }
 
@@ -2246,13 +2250,66 @@ impl SeaOrmArtifactDataObjectGcService {
                     .ok_or(ArtifactDataError::Storage("GC result overflow".to_string()))?;
                 continue;
             }
-            self.storage
-                .delete(&candidate.storage_key)
-                .await
-                .map_err(storage_error)?;
             let transaction = self.db.begin().await.map_err(storage_error)?;
             configure_tenant_scope(&transaction, tenant_id).await?;
             let backend = transaction.get_database_backend();
+            transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT namespace_revision FROM module_artifact_data_namespaces
+                         WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}{}",
+                        placeholder(backend, 1),
+                        placeholder(backend, 2),
+                        placeholder(backend, 3),
+                        namespace_lock_clause(backend),
+                    ),
+                    namespace_values(&candidate.scope, backend)?,
+                ))
+                .await
+                .map_err(storage_error)?;
+            let snapshot_reference = transaction
+                .query_one(Statement::from_sql_and_values(
+                    backend,
+                    format!(
+                        "SELECT COUNT(*) AS reference_count
+                         FROM module_artifact_data_snapshot_objects snapshot_object
+                         JOIN module_artifact_data_snapshots snapshot
+                           ON snapshot.snapshot_id = snapshot_object.snapshot_id
+                         WHERE snapshot_object.tenant_id = {}
+                           AND snapshot_object.source_storage_key = {}
+                           AND snapshot.status = 'staging'",
+                        placeholder(backend, 1),
+                        placeholder(backend, 2),
+                    ),
+                    vec![
+                        uuid_value(tenant_id, backend),
+                        candidate.storage_key.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(storage_error)?
+                .ok_or_else(|| {
+                    ArtifactDataError::Storage(
+                        "snapshot reference query returned no row".to_string(),
+                    )
+                })?;
+            let reference_count: i64 = snapshot_reference
+                .try_get("", "reference_count")
+                .map_err(storage_error)?;
+            if reference_count != 0 {
+                transaction.commit().await.map_err(storage_error)?;
+                result.retained = result
+                    .retained
+                    .checked_add(1)
+                    .ok_or(ArtifactDataError::Storage("GC result overflow".to_string()))?;
+                continue;
+            }
+            self.storage
+                .objects
+                .delete(&Path::from(candidate.storage_key.as_str()))
+                .await
+                .map_err(storage_error)?;
             transaction
                 .execute(Statement::from_sql_and_values(
                     backend,
@@ -2362,7 +2419,11 @@ where
         };
         let data = self
             .storage
-            .read(&stored.storage_key)
+            .objects
+            .get(&Path::from(stored.storage_key.as_str()))
+            .await
+            .map_err(storage_error)?
+            .bytes()
             .await
             .map_err(storage_error)?;
         if u64::try_from(data.len()).ok() != Some(stored.object.size_bytes)
@@ -2400,26 +2461,52 @@ where
             return Ok(existing);
         }
 
-        let generated_key = private_artifact_data_object_key(&self.infrastructure, scope);
-        let uploaded = self
-            .storage
-            .store(&generated_key, upload.data.clone(), &requested.content_type)
+        let generated_key = ObjectKey::chronological(
+            "module-artifact-data",
+            ObjectZone::Objects,
+            ObjectScope::Tenant(scope.tenant_id),
+            self.infrastructure.now(),
+            self.infrastructure.new_id(),
+            "bin",
+        )
+        .map_err(|error| ArtifactDataError::Storage(error.to_string()))?
+        .to_string();
+        self.storage
+            .objects
+            .put_opts(
+                &Path::from(generated_key.as_str()),
+                upload.data.clone().into(),
+                self.storage.put_options(&requested.content_type),
+            )
             .await
             .map_err(storage_error)?;
-        if uploaded.size != requested.size_bytes {
-            let _ = self.storage.delete(&uploaded.path).await;
+        let uploaded_path = generated_key;
+        if upload.data.len() as u64 != requested.size_bytes {
+            let _ = self
+                .storage
+                .objects
+                .delete(&Path::from(uploaded_path.as_str()))
+                .await;
             return Err(ArtifactDataError::ObjectIntegrity);
         }
 
         let transaction = match self.db.begin().await.map_err(storage_error) {
             Ok(transaction) => transaction,
             Err(error) => {
-                let _ = self.storage.delete(&uploaded.path).await;
+                let _ = self
+                    .storage
+                    .objects
+                    .delete(&Path::from(uploaded_path.as_str()))
+                    .await;
                 return Err(error);
             }
         };
         if let Err(error) = configure_tenant_scope(&transaction, scope.tenant_id).await {
-            let _ = self.storage.delete(&uploaded.path).await;
+            let _ = self
+                .storage
+                .objects
+                .delete(&Path::from(uploaded_path.as_str()))
+                .await;
             return Err(error);
         }
         let stored = match persist_artifact_data_object(
@@ -2428,13 +2515,17 @@ where
             scope,
             &upload,
             &requested,
-            &uploaded.path,
+            &uploaded_path,
         )
         .await
         {
             Ok(stored) => stored,
             Err(error) => {
-                let _ = self.storage.delete(&uploaded.path).await;
+                let _ = self
+                    .storage
+                    .objects
+                    .delete(&Path::from(uploaded_path.as_str()))
+                    .await;
                 return Err(error);
             }
         };
@@ -2444,8 +2535,12 @@ where
             // of risking a delete of a now-committed object.
             return Err(error);
         }
-        if stored.storage_key != uploaded.path {
-            let _ = self.storage.delete(&uploaded.path).await;
+        if stored.storage_key != uploaded_path {
+            let _ = self
+                .storage
+                .objects
+                .delete(&Path::from(uploaded_path))
+                .await;
         }
         Ok(stored.object)
     }
@@ -2823,19 +2918,6 @@ fn stored_artifact_data_object_from_row(
         object,
         storage_key: row.try_get("", "storage_key").map_err(storage_error)?,
     })
-}
-
-fn private_artifact_data_object_key(
-    infrastructure: &ControlPlaneInfrastructure,
-    scope: &ArtifactDataScope,
-) -> String {
-    format!(
-        "module-artifact-data/{}/{}/{}/{}",
-        scope.tenant_id,
-        scope.module_slug,
-        scope.data_contract_revision,
-        infrastructure.new_id(),
-    )
 }
 
 async fn persist_artifact_data_write(
@@ -3301,7 +3383,7 @@ where
 {
     pub fn new(
         db: DatabaseConnection,
-        storage: StorageService,
+        storage: StorageRuntime,
         authorizer: A,
         scope: ArtifactDataScope,
     ) -> Self {
@@ -3316,7 +3398,7 @@ where
 
     pub fn with_infrastructure(
         db: DatabaseConnection,
-        storage: StorageService,
+        storage: StorageRuntime,
         authorizer: A,
         scope: ArtifactDataScope,
         infrastructure: ControlPlaneInfrastructure,
@@ -3452,18 +3534,18 @@ where
 #[derive(Clone)]
 pub struct SeaOrmArtifactDataObjectCapabilityBrokerResolver {
     db: DatabaseConnection,
-    storage: StorageService,
+    storage: StorageRuntime,
     infrastructure: ControlPlaneInfrastructure,
 }
 
 impl SeaOrmArtifactDataObjectCapabilityBrokerResolver {
-    pub fn new(db: DatabaseConnection, storage: StorageService) -> Self {
+    pub fn new(db: DatabaseConnection, storage: StorageRuntime) -> Self {
         Self::with_infrastructure(db, storage, ControlPlaneInfrastructure::default())
     }
 
     pub fn with_infrastructure(
         db: DatabaseConnection,
-        storage: StorageService,
+        storage: StorageRuntime,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
         Self {
@@ -3952,6 +4034,11 @@ fn data_capability_error(
         | ArtifactDataError::NamespacePurged
         | ArtifactDataError::PurgePrecondition
         | ArtifactDataError::ExportPrecondition
+        | ArtifactDataError::SnapshotPrecondition
+        | ArtifactDataError::SnapshotLimitExceeded
+        | ArtifactDataError::RestorePrecondition
+        | ArtifactDataError::SnapshotRetentionPrecondition
+        | ArtifactDataError::SnapshotCollectionPrecondition
         | ArtifactDataError::InvalidIdempotencyKey
         | ArtifactDataError::IdempotencyConflict
         | ArtifactDataError::ValueTooLarge { .. }
@@ -3964,6 +4051,7 @@ fn data_capability_error(
         | ArtifactDataError::DataContractUnavailable
         | ArtifactDataError::DataContractSchemaInvalid
         | ArtifactDataError::ObjectIntegrity
+        | ArtifactDataError::SnapshotIntegrity
         | ArtifactDataError::Storage(_) => SandboxError::HostCapability {
             capability: capability.clone(),
             message: "artifact data capability is unavailable".to_string(),
@@ -4128,9 +4216,9 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     Some(request.scope.tenant_id),
+                    Some(request.actor_id),
                     DomainEvent::ModuleArtifactDataExported {
                         export_id,
                         tenant_id: request.scope.tenant_id,
@@ -4454,9 +4542,9 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     Some(request.scope.tenant_id),
+                    Some(request.actor_id),
                     DomainEvent::ModuleArtifactDataPurged {
                         tenant_id: request.scope.tenant_id,
                         module_slug: request.scope.module_slug.clone(),
@@ -4838,6 +4926,18 @@ pub enum ArtifactDataError {
     PurgePrecondition,
     #[error("artifact data export precondition failed")]
     ExportPrecondition,
+    #[error("artifact data snapshot precondition failed")]
+    SnapshotPrecondition,
+    #[error("artifact data snapshot exceeds the bounded owner limits")]
+    SnapshotLimitExceeded,
+    #[error("artifact data snapshot integrity check failed")]
+    SnapshotIntegrity,
+    #[error("artifact data restore precondition failed")]
+    RestorePrecondition,
+    #[error("artifact data snapshot retention precondition failed")]
+    SnapshotRetentionPrecondition,
+    #[error("artifact data snapshot collection precondition failed")]
+    SnapshotCollectionPrecondition,
     #[error("artifact data idempotency key is invalid")]
     InvalidIdempotencyKey,
     #[error("artifact data idempotency key was reused for a different key")]

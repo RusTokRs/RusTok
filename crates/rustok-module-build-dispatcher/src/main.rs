@@ -1,4 +1,4 @@
-use rustok_module_build_dispatcher::{run_dispatcher, ModuleBuildDispatcherConfig};
+use rustok_module_build_dispatcher::{ModuleBuildDispatcherConfig, run_dispatcher};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,12 +1,12 @@
 use chrono::Utc;
 use rustok_page_builder::{
-    static_landing::StaticLandingCompiler, ComponentRegistryManifest, LandingSectionSnapshot,
-    PageHead, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
+    ComponentRegistryManifest, LandingSectionSnapshot, PageHead, StaticLandingArtifact,
+    StaticLandingBuildIdentity, StaticLandingPage, static_landing::StaticLandingCompiler,
 };
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
-    DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect,
-    TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+    sea_query::OnConflict,
 };
 use serde_json::Value;
 use uuid::Uuid;

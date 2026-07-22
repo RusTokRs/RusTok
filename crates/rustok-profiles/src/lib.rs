@@ -85,14 +85,18 @@ mod tests {
         let module = ProfilesModule;
         let permissions = module.permissions();
 
-        assert!(permissions
-            .iter()
-            .any(|permission| permission.resource == Resource::Profiles
-                && permission.action == Action::Read));
-        assert!(permissions
-            .iter()
-            .any(|permission| permission.resource == Resource::Profiles
-                && permission.action == Action::Manage));
+        assert!(
+            permissions
+                .iter()
+                .any(|permission| permission.resource == Resource::Profiles
+                    && permission.action == Action::Read)
+        );
+        assert!(
+            permissions
+                .iter()
+                .any(|permission| permission.resource == Resource::Profiles
+                    && permission.action == Action::Manage)
+        );
     }
 
     #[test]

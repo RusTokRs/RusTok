@@ -342,9 +342,11 @@ mod tests {
         )
         .expect("remove");
         assert_eq!(document.project.pages.len(), 2);
-        assert!(StyleRuleCatalog::from_document(&document)
-            .component_rule("hero-a", &StyleRuleScope::Base)
-            .is_none());
+        assert!(
+            StyleRuleCatalog::from_document(&document)
+                .component_rule("hero-a", &StyleRuleScope::Base)
+                .is_none()
+        );
     }
 
     #[test]

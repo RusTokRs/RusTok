@@ -1,8 +1,8 @@
 mod support;
 
+use support::TestResult;
 use support::category_commands::exercise_category_commands;
 use support::postgres::PostgresForumTestDb;
-use support::TestResult;
 
 #[tokio::test]
 async fn postgres_category_move_and_reorder_are_atomic_and_tenant_scoped() -> TestResult<()> {

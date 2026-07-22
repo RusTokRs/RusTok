@@ -1,7 +1,7 @@
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
-use super::{configured_tenant_slug, ApiError};
+use super::{ApiError, configured_tenant_slug};
 use crate::model::{PageDetail, PageList, StorefrontPagesData};
 
 const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } } pages(filter: $filter) { total items { id title slug status template } } }";

@@ -46,7 +46,7 @@ pub use services::{
     WorkflowCronScheduler, WorkflowEngine, WorkflowService, WorkflowTriggerHandler,
 };
 pub use steps::{AlloyScriptStep, NotificationSender, NotifyStep, ScriptRunner};
-pub use templates::{WorkflowTemplate, BUILTIN_TEMPLATES};
+pub use templates::{BUILTIN_TEMPLATES, WorkflowTemplate};
 
 pub struct WorkflowModule;
 
@@ -113,11 +113,15 @@ mod tests {
     fn module_permissions() {
         let module = WorkflowModule;
         let perms = module.permissions();
-        assert!(perms
-            .iter()
-            .any(|p| p.resource == Resource::Workflows && p.action == Action::Execute));
-        assert!(perms
-            .iter()
-            .any(|p| p.resource == Resource::WorkflowExecutions && p.action == Action::List));
+        assert!(
+            perms
+                .iter()
+                .any(|p| p.resource == Resource::Workflows && p.action == Action::Execute)
+        );
+        assert!(
+            perms
+                .iter()
+                .any(|p| p.resource == Resource::WorkflowExecutions && p.action == Action::List)
+        );
     }
 }

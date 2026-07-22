@@ -14,7 +14,7 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            has_effective_permission, AuthContext, HostRuntimeContext, OptionalTenant, Permission,
+            AuthContext, HostRuntimeContext, OptionalTenant, Permission, has_effective_permission,
         };
         use rustok_core::{HealthStatus, RusToKModule};
 

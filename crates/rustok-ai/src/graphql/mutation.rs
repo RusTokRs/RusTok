@@ -10,15 +10,15 @@ use super::{
     ensure_ai_approval_resolve, ensure_ai_provider_manage, ensure_ai_run_cancel,
     ensure_ai_session_run, ensure_ai_task_profile_manage,
     types::{
-        parse_metadata, AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiChatRunGql,
-        AiProviderProfileGql, AiProviderTestResultGql, AiSendMessageResultGql, AiTaskProfileGql,
-        AiToolProfileGql, CreateAiAgentModelAssignmentInputGql, CreateAiAgentPrincipalInputGql,
+        AiAgentModelAssignmentGql, AiAgentPrincipalGql, AiChatRunGql, AiProviderProfileGql,
+        AiProviderTestResultGql, AiSendMessageResultGql, AiTaskProfileGql, AiToolProfileGql,
+        CreateAiAgentModelAssignmentInputGql, CreateAiAgentPrincipalInputGql,
         CreateAiAgentWorkflowRunInputGql, CreateAiProviderProfileInputGql,
         CreateAiTaskProfileInputGql, CreateAiToolProfileInputGql,
         ResolveAiAgentWorkflowStageApprovalInputGql, ResumeAiApprovalInputGql,
         RunAiTaskJobInputGql, StartAiChatSessionInputGql, UpdateAiAgentModelAssignmentInputGql,
         UpdateAiAgentPrincipalInputGql, UpdateAiProviderProfileInputGql,
-        UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql,
+        UpdateAiTaskProfileInputGql, UpdateAiToolProfileInputGql, parse_metadata,
     },
 };
 

@@ -1,15 +1,15 @@
 use crate::core::{
-    apply_selected_channel_option, build_discount_draft, build_price_draft,
-    build_price_list_rule_draft, build_price_list_scope_draft, build_product_admin_href,
-    build_product_detail_header_view_model, build_product_list_item_view_model,
-    build_resolution_context, build_variant_card_view_model, clear_price_list_rule_draft,
-    default_variant_price_editor_currency, empty_price_draft, format_adjustment_preview,
-    format_channel_option_label, format_channel_scope_text, format_effective_context,
-    format_price_list_option_label, format_variant_count_label, format_variant_price_editor_title,
-    normalize_channel_value, normalized_currency_code, normalized_price_list_id,
-    normalized_quantity, normalized_region_id, price_draft_from_price,
+    GLOBAL_CHANNEL_KEY, PriceDraftForm, UNLISTED_CHANNEL_KEY, apply_selected_channel_option,
+    build_discount_draft, build_price_draft, build_price_list_rule_draft,
+    build_price_list_scope_draft, build_product_admin_href, build_product_detail_header_view_model,
+    build_product_list_item_view_model, build_resolution_context, build_variant_card_view_model,
+    clear_price_list_rule_draft, default_variant_price_editor_currency, empty_price_draft,
+    format_adjustment_preview, format_channel_option_label, format_channel_scope_text,
+    format_effective_context, format_price_list_option_label, format_variant_count_label,
+    format_variant_price_editor_title, normalize_channel_value, normalized_currency_code,
+    normalized_price_list_id, normalized_quantity, normalized_region_id, price_draft_from_price,
     pricing_product_list_item_class, selected_channel_key, summarize_pricing, text_or_none,
-    unlisted_channel_option_label, PriceDraftForm, GLOBAL_CHANNEL_KEY, UNLISTED_CHANNEL_KEY,
+    unlisted_channel_option_label,
 };
 use crate::i18n::t;
 use crate::model::{

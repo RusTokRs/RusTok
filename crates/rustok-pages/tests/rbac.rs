@@ -1,12 +1,12 @@
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{
     CreateMenuInput, CreatePageInput, ListPagesFilter, MenuLocation, PageTranslationInput,
     UpdatePageInput,
 };
 use rustok_pages::error::PagesError;
 use rustok_pages::services::{MenuService, PageService};
-use rustok_pages::PagesModule;
 use rustok_test_utils::{
     db::setup_test_db,
     helpers::{admin_context, customer_context, manager_context},

@@ -8,9 +8,9 @@ use sea_orm::{
 
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    validate_transition, AlloyWorkspace, EventType, HttpMethod, ReviewCommand, ReviewDecision,
-    ReviewStatus, Script, ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand,
-    TestRun, TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus,
+    AlloyWorkspace, EventType, HttpMethod, ReviewCommand, ReviewDecision, ReviewStatus, Script,
+    ScriptId, ScriptSourceRevision, ScriptStatus, ScriptTrigger, TestCommand, TestRun,
+    TestRunClaim, TestRunCompletion, TestRunLease, TestRunStatus, validate_transition,
 };
 use crate::storage::{ScriptPage, ScriptQuery, ScriptRegistry};
 
@@ -1485,10 +1485,12 @@ mod tests {
             other.get_source_revision(script.id, 1).await,
             Err(ScriptError::NotFound { .. })
         ));
-        assert!(other
-            .list_source_revisions(script.id)
-            .await
-            .expect("other tenant revision list should be empty")
-            .is_empty());
+        assert!(
+            other
+                .list_source_revisions(script.id)
+                .await
+                .expect("other tenant revision list should be empty")
+                .is_empty()
+        );
     }
 }

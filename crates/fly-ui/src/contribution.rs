@@ -476,12 +476,16 @@ mod tests {
             .resolve_property_editor("rustok.pages", "hero", &capabilities)
             .expect("property editor");
         assert_eq!(editor.property_editor.id, "rustok.pages.hero.properties");
-        assert!(registry
-            .resolve_renderer("rustok.pages", "hero", Presentation::Inline, &capabilities,)
-            .is_none());
-        assert!(registry
-            .resolve_renderer("rustok.pages", "hero", Presentation::Full, &BTreeSet::new(),)
-            .is_none());
+        assert!(
+            registry
+                .resolve_renderer("rustok.pages", "hero", Presentation::Inline, &capabilities,)
+                .is_none()
+        );
+        assert!(
+            registry
+                .resolve_renderer("rustok.pages", "hero", Presentation::Full, &BTreeSet::new(),)
+                .is_none()
+        );
     }
 
     #[test]
@@ -544,9 +548,11 @@ mod tests {
         registry.register(descriptor).expect("register");
         let stored = registry.get("rustok.pages.hero").expect("stored");
         assert_eq!(stored.provider, "rustok.pages");
-        assert!(stored.renderers[0]
-            .accessibility
-            .description_message_id
-            .is_none());
+        assert!(
+            stored.renderers[0]
+                .accessibility
+                .description_message_id
+                .is_none()
+        );
     }
 }

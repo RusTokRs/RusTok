@@ -10,9 +10,9 @@ use crate::providers::{
 };
 
 use super::{
-    CompleteProviderEvent, FailProviderEvent, PaymentProviderEventJournal, ReceiveProviderEvent,
-    VerifiedProviderEvent, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
-    PROVIDER_EVENT_PROCESSING,
+    CompleteProviderEvent, FailProviderEvent, PROVIDER_EVENT_DEAD_LETTER, PROVIDER_EVENT_PROCESSED,
+    PROVIDER_EVENT_PROCESSING, PaymentProviderEventJournal, ReceiveProviderEvent,
+    VerifiedProviderEvent,
 };
 
 const DEFAULT_WEBHOOK_LEASE_SECONDS: i64 = 30;

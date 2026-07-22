@@ -35,7 +35,9 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        self.inner.create(tenant_id, security, topic_id, input).await
+        self.inner
+            .create(tenant_id, security, topic_id, input)
+            .await
     }
 
     pub async fn get(
@@ -68,7 +70,9 @@ impl ReplyService {
         security: SecurityContext,
         input: UpdateReplyInput,
     ) -> ForumResult<ReplyResponse> {
-        self.inner.update(tenant_id, reply_id, security, input).await
+        self.inner
+            .update(tenant_id, reply_id, security, input)
+            .await
     }
 
     pub async fn delete(

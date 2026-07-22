@@ -19,7 +19,7 @@ use crate::model::{
     PendingApproval, ProviderCapability, ProviderStreamEvent, ProviderUsagePolicy, ToolTrace,
 };
 use crate::policy::ToolExecutionPolicy;
-use crate::streaming::{ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind};
+use crate::streaming::{AiRunStreamEvent, AiRunStreamEventKind, ai_run_stream_hub};
 use crate::{AiError, AiResult, ProviderEgressPolicy, ProviderSlug};
 
 use super::mapping::role_slug;
@@ -292,11 +292,7 @@ pub fn capability_json_array(values: Vec<ProviderCapability>) -> serde_json::Val
 }
 
 pub fn normalize_metadata(value: serde_json::Value) -> serde_json::Value {
-    if value.is_object() {
-        value
-    } else {
-        json!({})
-    }
+    if value.is_object() { value } else { json!({}) }
 }
 
 pub fn normalize_nonempty(value: String, fallback: &str) -> String {
@@ -946,7 +942,7 @@ mod tests {
         AiRunDecisionTrace, ExecutionMode, ProviderStreamEvent, ProviderUsage, ToolCall,
     };
     use crate::streaming::{
-        ai_run_stream_hub, AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub,
+        AiRunStreamEvent, AiRunStreamEventKind, AiRunStreamHub, ai_run_stream_hub,
     };
     use crate::{
         AiProviderTarget, AiProviderTargetCatalog, ProviderEgressPolicy, ProviderSlug,
@@ -1111,17 +1107,23 @@ mod tests {
             let events = (0..=cassette.events.len())
                 .map(|_| receiver.try_recv().expect("normalized stream event"))
                 .collect::<Vec<_>>();
-            assert!(events
-                .iter()
-                .enumerate()
-                .all(|(index, event)| event.sequence == (index + 1) as u64));
-            assert!(events
-                .iter()
-                .all(|event| event.session_id == session_id && event.run_id == run_id));
-            assert!(events
-                .iter()
-                .any(|event| event.event_kind == AiRunStreamEventKind::Delta
-                    && event.accumulated_content.is_some()));
+            assert!(
+                events
+                    .iter()
+                    .enumerate()
+                    .all(|(index, event)| event.sequence == (index + 1) as u64)
+            );
+            assert!(
+                events
+                    .iter()
+                    .all(|event| event.session_id == session_id && event.run_id == run_id)
+            );
+            assert!(
+                events
+                    .iter()
+                    .any(|event| event.event_kind == AiRunStreamEventKind::Delta
+                        && event.accumulated_content.is_some())
+            );
             let terminal = events.last().expect("terminal event");
             assert_eq!(terminal.event_kind, terminal_kind);
             assert_eq!(terminal.error_message, cassette.terminal.error);
@@ -1149,10 +1151,12 @@ mod tests {
             "de",
             &serde_json::json!({ "title": "Hallo" }),
         );
-        assert!(message
-            .content
-            .as_deref()
-            .is_some_and(|content| content.contains("blog_draft")));
+        assert!(
+            message
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("blog_draft"))
+        );
         assert_eq!(message.metadata["requested_locale"], "de");
         assert_eq!(message.metadata["resolved_locale"], "de");
     }
@@ -1229,13 +1233,15 @@ mod tests {
         .unwrap();
         let policy = ProviderEgressPolicy::default();
         let unknown = ProviderTargetId::new("not_catalogued").unwrap();
-        assert!(validate_provider_target_profile_contract(
-            &targets,
-            &unknown,
-            &BTreeMap::new(),
-            &policy,
-        )
-        .is_err());
+        assert!(
+            validate_provider_target_profile_contract(
+                &targets,
+                &unknown,
+                &BTreeMap::new(),
+                &policy,
+            )
+            .is_err()
+        );
         let credentials = BTreeMap::from([(
             "api_key".to_string(),
             rustok_secrets::SecretRef {
@@ -1246,8 +1252,10 @@ mod tests {
         let error =
             validate_provider_target_profile_contract(&targets, &target_id, &credentials, &policy)
                 .expect_err("workload identity target must reject tenant credential refs");
-        assert!(error
-            .to_string()
-            .contains("does not accept tenant credential references"));
+        assert!(
+            error
+                .to_string()
+                .contains("does not accept tenant credential references")
+        );
     }
 }

@@ -5,7 +5,7 @@ use reqwest::{Client, StatusCode, Url};
 use rust_decimal::Decimal;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use sha2::Sha256;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use uuid::Uuid;
@@ -255,8 +255,8 @@ impl StripePaymentProvider {
         request: &PaymentProviderWebhookRequest,
     ) -> PaymentResult<PaymentProviderWebhookResult> {
         self.verify_webhook_signature(credentials, request)?;
-        let event: StripeEvent = serde_json::from_slice(&request.raw_payload)
-            .map_err(|_| webhook_invalid_response())?;
+        let event: StripeEvent =
+            serde_json::from_slice(&request.raw_payload).map_err(|_| webhook_invalid_response())?;
         validate_webhook_id(&event.id)?;
         let object = event.data.object;
         let object_id = required_webhook_value(&object, "id")?;
@@ -288,11 +288,14 @@ impl StripePaymentProvider {
                 required_webhook_metadata(&object_metadata, "rustok_collection_id")?,
             ),
             "refund.updated" | "refund.created"
-                if object.get("status").and_then(Value::as_str) == Some("succeeded") => (
+                if object.get("status").and_then(Value::as_str) == Some("succeeded") =>
+            {
+                (
                     "refund.completed",
                     "refund_id",
                     required_webhook_metadata(&object_metadata, "rustok_refund_id")?,
-                ),
+                )
+            }
             _ => return Err(webhook_rejected()),
         };
         let mut metadata = Map::new();
@@ -381,10 +384,7 @@ impl PaymentProvider for StripePaymentProvider {
         };
         let authorized_amount = from_minor_units(authorized_minor, intent.currency.as_str())
             .map_err(|_| {
-                PaymentError::provider_outcome_unknown(
-                    STRIPE_PAYMENT_PROVIDER_ID,
-                    "authorize",
-                )
+                PaymentError::provider_outcome_unknown(STRIPE_PAYMENT_PROVIDER_ID, "authorize")
             })?;
         let provider_payment_id = intent.id.clone();
         Ok(PaymentProviderOperationResult {
@@ -423,10 +423,7 @@ impl PaymentProvider for StripePaymentProvider {
         }
         let captured_amount = from_minor_units(intent.amount_received, intent.currency.as_str())
             .map_err(|_| {
-                PaymentError::provider_outcome_unknown(
-                    STRIPE_PAYMENT_PROVIDER_ID,
-                    "capture",
-                )
+                PaymentError::provider_outcome_unknown(STRIPE_PAYMENT_PROVIDER_ID, "capture")
             })?;
         Ok(PaymentProviderOperationResult {
             provider_id: STRIPE_PAYMENT_PROVIDER_ID.to_string(),
@@ -596,8 +593,8 @@ fn validate_api_base(value: &str) -> PaymentResult<()> {
             STRIPE_PAYMENT_PROVIDER_ID,
         ));
     }
-    let local_http = url.scheme() == "http"
-        && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
+    let local_http =
+        url.scheme() == "http" && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1"));
     if url.scheme() != "https" && !local_http {
         return Err(PaymentError::provider_configuration(
             STRIPE_PAYMENT_PROVIDER_ID,
@@ -630,9 +627,7 @@ fn required_metadata_string(metadata: &Value, key: &str) -> PaymentResult<String
         .filter(|value| !value.is_empty())
         .map(str::to_string)
         .ok_or_else(|| {
-            PaymentError::Validation(format!(
-                "stripe operation metadata requires `{key}`"
-            ))
+            PaymentError::Validation(format!("stripe operation metadata requires `{key}`"))
         })
 }
 
@@ -696,8 +691,8 @@ fn stripe_event_amount_minor(event_type: &str, object: &Value) -> PaymentResult<
 
 fn currency_exponent(currency: &str) -> u32 {
     match currency.to_ascii_uppercase().as_str() {
-        "BIF" | "CLP" | "DJF" | "GNF" | "JPY" | "KMF" | "KRW" | "MGA"
-        | "PYG" | "RWF" | "UGX" | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
+        "BIF" | "CLP" | "DJF" | "GNF" | "JPY" | "KMF" | "KRW" | "MGA" | "PYG" | "RWF" | "UGX"
+        | "VND" | "VUV" | "XAF" | "XOF" | "XPF" => 0,
         "BHD" | "JOD" | "KWD" | "OMR" | "TND" => 3,
         _ => 2,
     }
@@ -716,9 +711,8 @@ fn to_minor_units(amount: Decimal, currency: &str) -> PaymentResult<i64> {
             "stripe amount has unsupported fractional precision".to_string(),
         ));
     }
-    i64::from_str(scaled.normalize().to_string().as_str()).map_err(|_| {
-        PaymentError::Validation("stripe amount exceeds supported range".to_string())
-    })
+    i64::from_str(scaled.normalize().to_string().as_str())
+        .map_err(|_| PaymentError::Validation("stripe amount exceeds supported range".to_string()))
 }
 
 fn from_minor_units(amount: i64, currency: &str) -> PaymentResult<Decimal> {

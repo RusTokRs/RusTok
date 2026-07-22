@@ -478,15 +478,19 @@ mod tests {
 
     #[test]
     fn typed_style_patch_rejects_urls_and_invalid_lengths() {
-        assert!(style_patch([StyleEntry {
-            property: "background".to_string(),
-            value: "url(https://example.com/a.png)".to_string()
-        }])
-        .is_err());
-        assert!(style_patch([StyleEntry {
-            property: "width".to_string(),
-            value: "wide".to_string()
-        }])
-        .is_err());
+        assert!(
+            style_patch([StyleEntry {
+                property: "background".to_string(),
+                value: "url(https://example.com/a.png)".to_string()
+            }])
+            .is_err()
+        );
+        assert!(
+            style_patch([StyleEntry {
+                property: "width".to_string(),
+                value: "wide".to_string()
+            }])
+            .is_err()
+        );
     }
 }

@@ -163,9 +163,8 @@ async fn storefront_payment_create_collection_native(
 }
 
 #[cfg(feature = "ssr")]
-fn checkout_runtime(
-) -> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError>
-{
+fn checkout_runtime()
+-> Result<rustok_commerce::storefront_checkout_runtime::StorefrontCheckoutRuntime, ServerFnError> {
     use leptos::prelude::expect_context;
     use rustok_api::HostRuntimeContext;
     use rustok_outbox::TransactionalEventBus;

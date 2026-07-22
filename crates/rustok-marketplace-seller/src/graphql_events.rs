@@ -4,8 +4,8 @@ use async_graphql::{Context, FieldError, Json, Object, Result, SimpleObject};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
-    has_any_effective_permission, AuthContext, ChannelContext, HostRuntimeContext, Permission,
-    PortActor, PortContext, PortError, PortErrorKind, TenantContext,
+    AuthContext, ChannelContext, HostRuntimeContext, Permission, PortActor, PortContext, PortError,
+    PortErrorKind, TenantContext, has_any_effective_permission,
 };
 use uuid::Uuid;
 
@@ -75,9 +75,7 @@ impl From<crate::MarketplaceSellerEventResponse> for MarketplaceSellerEventGql {
 
 fn service(ctx: &Context<'_>) -> Result<MarketplaceSellerService> {
     let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
-        <FieldError as GraphQLError>::internal_error(
-            "Marketplace seller runtime is not registered",
-        )
+        <FieldError as GraphQLError>::internal_error("Marketplace seller runtime is not registered")
     })?;
     Ok(MarketplaceSellerService::new(runtime.db_clone()))
 }
@@ -141,9 +139,7 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Marketplace seller history is temporarily unavailable",

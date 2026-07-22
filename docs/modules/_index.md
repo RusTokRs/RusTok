@@ -53,9 +53,13 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-runtime` | [docs](../../crates/rustok-runtime/docs/README.md) | [plan](../../crates/rustok-runtime/docs/implementation-plan.md) |
 | `rustok-modules` | [docs](../../crates/rustok-modules/docs/README.md) | [plan](../../crates/rustok-modules/docs/implementation-plan.md) |
 | `rustok-verification-transport` | [docs](../../crates/rustok-verification-transport/docs/README.md) | gRPC transport contract is recorded in the crate README. |
+| `rustok-media-transport` | [docs](../../crates/rustok-media-transport/docs/README.md) | Loopback-verified gRPC adapter for Media-owned read/write ports. |
 | `rustok-verification-worker` | [docs](../../crates/rustok-verification-worker/docs/README.md) | Worker rollout is recorded in the module control-plane plan. |
-| `rustok-module-build-transport` | [docs](../../crates/rustok-module-build-transport/docs/README.md) | mTLS build-worker transport is recorded in the module control-plane plan. |
+| `rustok-module-build-transport` | [docs](../../crates/rustok-module-build-transport/docs/README.md) | Current-only mTLS module and static-distribution build-worker transport is recorded in the module control-plane plan. |
 | `rustok-module-build-worker` | [docs](../../crates/rustok-module-build-worker/docs/README.md) | Isolated build-worker rollout is recorded in the module control-plane plan. |
+| `rustok-build-publication` | [docs](../../crates/rustok-build-publication/docs/README.md) | Shared current-only registry credential and Cosign publication boundary for isolated build workers. |
+| `rustok-build-source` | [docs](../../crates/rustok-build-source/docs/README.md) | Shared strict immutable CAS source-archive materialization for build workers. |
+| `rustok-static-distribution-worker` | [docs](../../crates/rustok-static-distribution-worker/docs/README.md) | Trusted native-distribution CI worker rollout is recorded in the module control-plane plan. |
 | `rustok-module-build-dispatcher` | [docs](../../crates/rustok-module-build-dispatcher/docs/README.md) | Broker-neutral build-delivery contract is recorded in the module control-plane plan. |
 | `rustok-worker-transport` | [docs](../../crates/rustok-worker-transport/docs/README.md) | Shared mutually authenticated worker-listener foundation. |
 | `rustok-sandbox` | [docs](../../crates/rustok-sandbox/docs/README.md) | [plan](../../crates/rustok-sandbox/docs/implementation-plan.md) |
@@ -69,7 +73,7 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-installer-persistence` | [README](../../crates/rustok-installer-persistence/README.md) | - |
 | `rustok-build` | [docs](../../crates/rustok-build/docs/README.md) | [plan](../../crates/rustok-build/docs/implementation-plan.md) |
 | `rustok-cli-registry` | [docs](../../crates/rustok-cli-registry/docs/README.md) | [plan](../../crates/rustok-cli-registry/docs/implementation-plan.md) |
-| `rustok-distribution` | [docs](../../crates/rustok-distribution/docs/README.md) | Registry composition is documented in its README. |
+| `rustok-distribution` | [docs](../../crates/rustok-distribution/docs/README.md) | Registry composition and deterministic static-promotion build output are documented locally. |
 | `rustok-cli` | [docs](../../crates/rustok-cli/docs/README.md) | [plan](../../crates/rustok-cli/docs/implementation-plan.md) |
 | `rustok-graphql` | [docs](../../crates/rustok-graphql/docs/README.md) | [plan](../../crates/rustok-graphql/docs/implementation-plan.md) |
 | `rustok-graphql-leptos` | [docs](../../crates/rustok-graphql-leptos/docs/README.md) | - |

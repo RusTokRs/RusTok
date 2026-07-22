@@ -1,6 +1,7 @@
 use crate::{
-    render_runtime_scenario_matrix, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
-    RuntimeContextScenario, RuntimeScenarioRenderMatrix, ValidationDiagnostic, ValidationSeverity,
+    PageSelection, ProjectDocument, ProjectHash, RenderPolicy, RuntimeContextScenario,
+    RuntimeScenarioRenderMatrix, ValidationDiagnostic, ValidationSeverity,
+    render_runtime_scenario_matrix,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -392,10 +393,11 @@ mod tests {
         );
         let diff = diff_runtime_scenario_render_snapshots(&previous, &next);
         assert_eq!(diff.status, RuntimeScenarioRegressionStatus::RequiresReview);
-        assert!(diff
-            .changes
-            .iter()
-            .any(|change| matches!(change, RuntimeScenarioRenderChange::HtmlChanged { .. })));
+        assert!(
+            diff.changes
+                .iter()
+                .any(|change| matches!(change, RuntimeScenarioRenderChange::HtmlChanged { .. }))
+        );
     }
 
     #[test]

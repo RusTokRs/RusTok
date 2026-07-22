@@ -20,6 +20,10 @@ shapes, schema metadata, and validation rules.
 - `EventSchema`, `FieldSchema`, schema lookup, and combined schema iteration;
 - validation and versioning policy for every public event payload;
 - transport-independent contracts only; persistence and delivery remain owned by `rustok-outbox` and streaming adapters.
+- root static-distribution events expose immutable queue identity, lease-claim
+  audit, terminal result digest, and verified release-head activation identity
+  plus rebuild-only rollback and release revocation identity without carrying
+  build logs, operator reasons, or evidence payloads inline.
 
 ## Sealed event-family contract
 

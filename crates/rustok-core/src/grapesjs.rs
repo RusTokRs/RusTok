@@ -33,28 +33,36 @@ mod tests {
     #[test]
     fn accepts_minimal_project_object() {
         assert!(validate_grapesjs_project(&serde_json::json!({})).is_ok());
-        assert!(validate_grapesjs_project(&serde_json::json!({
-            "pages": [],
-            "styles": [],
-            "assets": [],
-        }))
-        .is_ok());
+        assert!(
+            validate_grapesjs_project(&serde_json::json!({
+                "pages": [],
+                "styles": [],
+                "assets": [],
+            }))
+            .is_ok()
+        );
     }
 
     #[test]
     fn rejects_non_object_or_invalid_known_collections() {
         assert!(validate_grapesjs_project(&serde_json::json!(["bad"])).is_err());
-        assert!(validate_grapesjs_project(&serde_json::json!({
-            "pages": {}
-        }))
-        .is_err());
-        assert!(validate_grapesjs_project(&serde_json::json!({
-            "styles": {}
-        }))
-        .is_err());
-        assert!(validate_grapesjs_project(&serde_json::json!({
-            "assets": {}
-        }))
-        .is_err());
+        assert!(
+            validate_grapesjs_project(&serde_json::json!({
+                "pages": {}
+            }))
+            .is_err()
+        );
+        assert!(
+            validate_grapesjs_project(&serde_json::json!({
+                "styles": {}
+            }))
+            .is_err()
+        );
+        assert!(
+            validate_grapesjs_project(&serde_json::json!({
+                "assets": {}
+            }))
+            .is_err()
+        );
     }
 }

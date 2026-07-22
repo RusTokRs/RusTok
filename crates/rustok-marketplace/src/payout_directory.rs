@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use rustok_api::{PortContext, PortError};
 use rustok_marketplace_payout::{
-    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutListResponse,
-    MarketplacePayoutReadPort, MarketplacePayoutResponse, ReadMarketplacePayoutRequest,
+    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutListResponse, MarketplacePayoutReadPort,
+    MarketplacePayoutResponse, ReadMarketplacePayoutRequest,
 };
 use uuid::Uuid;
 

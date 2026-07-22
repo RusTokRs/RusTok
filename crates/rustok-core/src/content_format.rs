@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::grapesjs::validate_grapesjs_project;
-use crate::rt_json::{validate_and_sanitize_rt_json, RtJsonValidationConfig};
+use crate::rt_json::{RtJsonValidationConfig, validate_and_sanitize_rt_json};
 
 pub const CONTENT_FORMAT_MARKDOWN: &str = "markdown";
 pub const CONTENT_FORMAT_RT_JSON_V1: &str = "rt_json_v1";
@@ -121,13 +121,15 @@ mod tests {
 
     #[test]
     fn prepare_grapesjs_payload_requires_object() {
-        assert!(prepare_content_payload(
-            Some(CONTENT_FORMAT_GRAPESJS),
-            None,
-            Some(&serde_json::json!(["bad"])),
-            "en",
-            "Body",
-        )
-        .is_err());
+        assert!(
+            prepare_content_payload(
+                Some(CONTENT_FORMAT_GRAPESJS),
+                None,
+                Some(&serde_json::json!(["bad"])),
+                "en",
+                "Body",
+            )
+            .is_err()
+        );
     }
 }

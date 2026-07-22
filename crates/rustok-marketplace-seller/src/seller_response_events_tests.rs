@@ -2,13 +2,13 @@ use sea_orm::{ColumnTrait, ConnectOptions, Database, EntityTrait, QueryFilter};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::MarketplaceSellerService;
 use crate::dto::{
     CreateMarketplaceSellerInput, MarketplaceSellerEventKind, MarketplaceSellerEventProvenance,
     MarketplaceSellerOnboardingStatus, SubmitMarketplaceSellerOnboardingInput,
     UpdateMarketplaceSellerProfileInput,
 };
 use crate::entities::seller_command_receipt;
-use crate::MarketplaceSellerService;
 
 #[tokio::test]
 async fn create_profile_and_submit_commit_one_event_per_receipt() {

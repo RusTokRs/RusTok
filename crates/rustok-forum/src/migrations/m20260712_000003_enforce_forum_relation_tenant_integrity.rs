@@ -377,7 +377,10 @@ async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         "DROP INDEX IF EXISTS idx_forum_topic_tags_topic_term",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_forum_topic_tags_tenant_topic_term ON forum_topic_tags (tenant_id, topic_id, term_id)",
     ] {
-        manager.get_connection().execute_unprepared(statement).await?;
+        manager
+            .get_connection()
+            .execute_unprepared(statement)
+            .await?;
     }
 
     for statement in sqlite_triggers() {
@@ -420,7 +423,10 @@ async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         "DROP INDEX IF EXISTS uq_forum_topic_tags_tenant_topic_term",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_forum_topic_tags_topic_term ON forum_topic_tags (topic_id, term_id)",
     ] {
-        manager.get_connection().execute_unprepared(statement).await?;
+        manager
+            .get_connection()
+            .execute_unprepared(statement)
+            .await?;
     }
     Ok(())
 }

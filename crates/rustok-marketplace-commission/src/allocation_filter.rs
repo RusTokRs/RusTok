@@ -4,9 +4,8 @@ use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use rustok_marketplace_allocation::{
     ListMarketplaceAllocationsByOrderRequest, ListMarketplaceAllocationsBySellerRequest,
-    MarketplaceAllocationListResponse, MarketplaceAllocationReadPort,
-    MarketplaceAllocationStatus, MarketplaceOrderAllocationResponse,
-    ReadMarketplaceAllocationByLineRequest,
+    MarketplaceAllocationListResponse, MarketplaceAllocationReadPort, MarketplaceAllocationStatus,
+    MarketplaceOrderAllocationResponse, ReadMarketplaceAllocationByLineRequest,
 };
 
 pub(crate) struct AssessableAllocationReader {

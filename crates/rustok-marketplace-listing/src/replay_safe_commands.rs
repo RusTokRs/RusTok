@@ -6,9 +6,10 @@ use sea_orm::{ActiveModelTrait, Set};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::MarketplaceListingService;
 use crate::command_receipts::{
-    admit, complete, normalize_idempotency_key, replay, replay_existing, request_hash, rollback,
-    ListingCommandAdmission, NewListingCommandReceipt,
+    ListingCommandAdmission, NewListingCommandReceipt, admit, complete, normalize_idempotency_key,
+    replay, replay_existing, request_hash, rollback,
 };
 use crate::dto::{
     CreateMarketplaceListingInput, MarketplaceListingApprovalStatus, MarketplaceListingEventKind,
@@ -22,7 +23,6 @@ use crate::service::{
     load_response_for_model, map_listing, map_listing_insert_error, map_product_port_error,
     map_seller_port_error,
 };
-use crate::MarketplaceListingService;
 
 impl MarketplaceListingService {
     pub async fn create_listing_replay_safe(

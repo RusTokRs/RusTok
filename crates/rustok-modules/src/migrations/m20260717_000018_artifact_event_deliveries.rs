@@ -72,9 +72,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX module_artifact_event_deliveries_claim_idx \
                  ON module_artifact_event_deliveries (tenant_id, status, available_at, delivery_id)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact event-delivery migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact event-delivery migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

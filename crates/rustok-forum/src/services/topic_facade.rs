@@ -67,7 +67,9 @@ impl TopicService {
         security: SecurityContext,
         input: UpdateTopicInput,
     ) -> ForumResult<TopicResponse> {
-        self.inner.update(tenant_id, topic_id, security, input).await
+        self.inner
+            .update(tenant_id, topic_id, security, input)
+            .await
     }
 
     pub async fn delete(

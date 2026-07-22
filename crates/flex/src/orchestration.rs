@@ -117,8 +117,8 @@ pub async fn deactivate_field_definition(
 #[cfg(test)]
 mod tests {
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     use async_trait::async_trait;
@@ -134,7 +134,7 @@ mod tests {
         FieldDefinitionView, UpdateFieldDefinitionCommand,
     };
 
-    use super::{list_field_definitions_with_cache, FieldDefinitionCachePort};
+    use super::{FieldDefinitionCachePort, list_field_definitions_with_cache};
 
     #[derive(Default)]
     struct InMemoryCache {

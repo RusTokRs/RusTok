@@ -6,17 +6,15 @@ use uuid::Uuid;
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    bounded_forum_read_limit, CategoryListItem, CategoryResponse,
-    CategorySubtreeLifecycleResponse, CategoryTopicPolicyResponse, CategoryTreeQuery,
-    CategoryTreeResponse, MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
+    CategoryListItem, CategoryResponse, CategorySubtreeLifecycleResponse,
+    CategoryTopicPolicyResponse, CategoryTreeQuery, CategoryTreeResponse, MAX_FORUM_READ_LIMIT,
+    MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
     ReorderCategorySiblingsResponse, UpdateCategoryInput, UpdateCategoryTopicPolicyInput,
-    MAX_FORUM_READ_LIMIT,
+    bounded_forum_read_limit,
 };
 use crate::error::{ForumError, ForumResult};
 
-use super::{
-    category, category_command, category_lifecycle, category_policy, category_tree,
-};
+use super::{category, category_command, category_lifecycle, category_policy, category_tree};
 
 pub struct CategoryService {
     inner: category::CategoryService,

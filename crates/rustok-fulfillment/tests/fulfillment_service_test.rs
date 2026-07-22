@@ -153,11 +153,13 @@ async fn deactivate_and_reactivate_shipping_option_changes_admin_visibility() {
         .await
         .expect("shipping option should be deactivated");
     assert!(!deactivated.active);
-    assert!(service
-        .list_shipping_options(tenant_id, Some("en"), Some("en"))
-        .await
-        .expect("active shipping options should load")
-        .is_empty());
+    assert!(
+        service
+            .list_shipping_options(tenant_id, Some("en"), Some("en"))
+            .await
+            .expect("active shipping options should load")
+            .is_empty()
+    );
     let all_options = service
         .list_all_shipping_options(tenant_id, Some("en"), Some("en"))
         .await
@@ -489,9 +491,11 @@ async fn ship_and_deliver_fulfillment_support_partial_item_progress_and_audit() 
         delivered_full.metadata["audit"]["events"][2]["type"],
         serde_json::json!("deliver")
     );
-    assert!(delivered_full.metadata["audit"]["events"][2]
-        .get("delivered_note")
-        .is_none());
+    assert!(
+        delivered_full.metadata["audit"]["events"][2]
+            .get("delivered_note")
+            .is_none()
+    );
 }
 
 #[tokio::test]

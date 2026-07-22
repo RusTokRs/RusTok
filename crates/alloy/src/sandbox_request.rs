@@ -17,10 +17,9 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    register_entity_proxy,
-    utils::{dynamic_to_json, json_to_dynamic},
     AlloyWorkspace, Bridge, EntityProxy, ExecutionContext, ExecutionPhase, Script, ScriptError,
-    ScriptResult,
+    ScriptResult, register_entity_proxy,
+    utils::{dynamic_to_json, json_to_dynamic},
 };
 
 /// Stable media type for canonical Alloy workspace bytes before they become a

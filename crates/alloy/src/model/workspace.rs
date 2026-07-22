@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use rhai::{module_resolvers::StaticModuleResolver, Engine, Module, Scope};
+use rhai::{Engine, Module, Scope, module_resolvers::StaticModuleResolver};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -487,8 +487,8 @@ mod tests {
     use rhai::Engine;
 
     use super::{
-        AlloyWorkspace, WorkspaceError, WorkspaceFile, WorkspaceFileKind,
-        MAX_WORKSPACE_IMPORT_DEPTH,
+        AlloyWorkspace, MAX_WORKSPACE_IMPORT_DEPTH, WorkspaceError, WorkspaceFile,
+        WorkspaceFileKind,
     };
 
     #[test]
@@ -618,13 +618,15 @@ mod tests {
             .validate_rhai_test("tests/live.rhai")
             .expect("test should validate");
 
-        assert!(engine
-            .eval::<bool>(
-                workspace
-                    .test_source("tests/live.rhai")
-                    .expect("test source")
-            )
-            .expect("test import should resolve"));
+        assert!(
+            engine
+                .eval::<bool>(
+                    workspace
+                        .test_source("tests/live.rhai")
+                        .expect("test source")
+                )
+                .expect("test import should resolve")
+        );
         assert!(matches!(
             workspace.test_source("src/main.rhai"),
             Err(WorkspaceError::TestEntrypointMustBeTest(_))

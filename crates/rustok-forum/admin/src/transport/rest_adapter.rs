@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use reqwest::Method;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::model::{
     CategoryDetail, CategoryDraft, CategoryListItem, ReplyListItem, TopicDetail, TopicDraft,

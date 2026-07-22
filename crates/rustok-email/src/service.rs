@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use lettre::{
-    message::{header::ContentType, Mailbox, MultiPart, SinglePart},
-    transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{Mailbox, MultiPart, SinglePart, header::ContentType},
+    transport::smtp::authentication::Credentials,
 };
 
 use crate::config::EmailConfig;

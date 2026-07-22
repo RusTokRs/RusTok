@@ -30,6 +30,8 @@ mod m20260718_000029_artifact_data_indexes;
 mod m20260718_000030_artifact_data_index_contracts;
 mod m20260718_000031_artifact_data_exports;
 mod m20260720_000032_artifact_binding_operation_rls;
+mod m20260722_000033_artifact_data_snapshots;
+mod m20260722_000034_static_promotions;
 
 use sea_orm_migration::prelude::MigrationTrait;
 
@@ -67,5 +69,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260718_000030_artifact_data_index_contracts::Migration),
         Box::new(m20260718_000031_artifact_data_exports::Migration),
         Box::new(m20260720_000032_artifact_binding_operation_rls::Migration),
+        Box::new(m20260722_000033_artifact_data_snapshots::Migration),
+        Box::new(m20260722_000034_static_promotions::Migration),
     ]
 }

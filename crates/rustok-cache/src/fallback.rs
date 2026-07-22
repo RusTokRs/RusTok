@@ -1,4 +1,4 @@
-use std::collections::{hash_map::DefaultHasher, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Duration;
@@ -490,8 +490,8 @@ impl CacheBackend for DegradationAwareFallbackBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex as StdMutex;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::sync::Notify;
 
     struct HealthControlledBackend {
@@ -837,10 +837,12 @@ mod tests {
             .unwrap();
         let backend = backend(primary, Arc::clone(&fallback));
 
-        assert!(backend
-            .compare_and_set("key", b"local", b"new".to_vec(), None)
-            .await
-            .is_err());
+        assert!(
+            backend
+                .compare_and_set("key", b"local", b"new".to_vec(), None)
+                .await
+                .is_err()
+        );
         assert_eq!(fallback.get("key").await.unwrap(), Some(b"local".to_vec()));
     }
 
@@ -973,11 +975,13 @@ mod tests {
 
         backend.invalidate("key").await.unwrap();
         assert!(!backend.pending_invalidations.contains("key").await);
-        assert!(primary
-            .value
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_none());
+        assert!(
+            primary
+                .value
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1058,10 +1062,12 @@ mod tests {
         let fallback = Arc::new(InMemoryCacheBackend::new(Duration::from_secs(30), 16));
         let backend = backend(primary, fallback);
 
-        assert!(backend
-            .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
-            .await
-            .is_err());
+        assert!(
+            backend
+                .set_with_ttl("key".to_string(), Vec::new(), Duration::ZERO)
+                .await
+                .is_err()
+        );
         assert!(backend.pending_invalidations.contains("key").await);
         assert_eq!(backend.get("key").await.unwrap(), None);
     }

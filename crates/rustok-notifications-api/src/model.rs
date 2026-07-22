@@ -6,8 +6,7 @@ use uuid::Uuid;
 
 use crate::keys::{
     NotificationAudienceCursor, NotificationKeyError, NotificationSourceSlug,
-    NotificationTargetKind, NotificationTargetRoute, NotificationTemplateKey,
-    NotificationTypeKey,
+    NotificationTargetKind, NotificationTargetRoute, NotificationTemplateKey, NotificationTypeKey,
 };
 
 pub const MAX_NOTIFICATION_TEMPLATE_FIELDS: usize = 32;
@@ -24,9 +23,13 @@ pub enum NotificationContractError {
     TooManyTemplateFields,
     #[error("notification template data key exceeds {MAX_NOTIFICATION_TEMPLATE_KEY_BYTES} bytes")]
     TemplateKeyTooLong,
-    #[error("notification template data value exceeds {MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES} bytes")]
+    #[error(
+        "notification template data value exceeds {MAX_NOTIFICATION_TEMPLATE_VALUE_BYTES} bytes"
+    )]
     TemplateValueTooLong,
-    #[error("notification template data exceeds {MAX_NOTIFICATION_TEMPLATE_DATA_BYTES} total bytes")]
+    #[error(
+        "notification template data exceeds {MAX_NOTIFICATION_TEMPLATE_DATA_BYTES} total bytes"
+    )]
     TemplateDataTooLarge,
     #[error("notification template data contains an invalid key")]
     InvalidTemplateDataKey,

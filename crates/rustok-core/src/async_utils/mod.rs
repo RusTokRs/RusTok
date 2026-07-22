@@ -408,8 +408,8 @@ impl<T> Coalescer<T> {
 mod tests {
     use super::*;
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     #[tokio::test]

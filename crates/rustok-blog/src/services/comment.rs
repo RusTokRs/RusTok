@@ -3,14 +3,15 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
-use rustok_api::{PortActor, PortContext, PortError, PortErrorKind, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use rustok_comments::{
-    in_process_comments_thread_port, CommentListItem as DomainCommentListItem,
-    CommentRecord as DomainCommentRecord, CommentStatus as DomainCommentStatus, CommentsThreadPort,
+    CommentListItem as DomainCommentListItem, CommentRecord as DomainCommentRecord,
+    CommentStatus as DomainCommentStatus, CommentsThreadPort,
     CreateCommentInput as DomainCreateCommentInput, ListCommentsFilter as DomainListCommentsFilter,
     SetCommentStatusRequest, UpdateCommentInput as DomainUpdateCommentInput,
+    in_process_comments_thread_port,
 };
-use rustok_core::{prepare_content_payload, SecurityActorKind, SecurityContext};
+use rustok_core::{SecurityActorKind, SecurityContext, prepare_content_payload};
 use rustok_outbox::TransactionalEventBus;
 use std::sync::Arc;
 
@@ -440,21 +441,10 @@ fn comments_read_port_context(
     locale: &str,
     resource_id: Uuid,
 ) -> BlogResult<PortContext> {
-    comments_port_context(
-        tenant_id,
-        security,
-        locale,
-        "read",
-        resource_id,
-        None,
-    )
+    comments_port_context(tenant_id, security, locale, "read", resource_id, None)
 }
 
-fn comments_public_read_port_context(
-    tenant_id: Uuid,
-    locale: &str,
-    post_id: Uuid,
-) -> PortContext {
+fn comments_public_read_port_context(tenant_id: Uuid, locale: &str, post_id: Uuid) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
         PortActor::service(PUBLIC_COMMENTS_PORT_ACTOR),
@@ -494,17 +484,11 @@ fn comments_port_context(
     };
 
     let correlation_id = format!("blog-comment:{operation}:{resource_id}");
-    let mut context = PortContext::new(
-        tenant_id.to_string(),
-        actor,
-        locale,
-        correlation_id.clone(),
-    )
-    .with_deadline(std::time::Duration::from_secs(2));
+    let mut context =
+        PortContext::new(tenant_id.to_string(), actor, locale, correlation_id.clone())
+            .with_deadline(std::time::Duration::from_secs(2));
     if let Some(command_id) = command_id {
-        context = context.with_idempotency_key(format!(
-            "{correlation_id}:command:{command_id}"
-        ));
+        context = context.with_idempotency_key(format!("{correlation_id}:command:{command_id}"));
     }
 
     if security.actor_kind != SecurityActorKind::System {

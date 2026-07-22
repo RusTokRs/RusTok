@@ -17,7 +17,11 @@ impl MigrationTrait for Migration {
                 "CREATE TABLE module_artifact_binding_operations (operation_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, actor_id TEXT NOT NULL, installation_id TEXT NOT NULL, binding_id TEXT NOT NULL, idempotency_key TEXT NOT NULL, request_digest TEXT NOT NULL, status TEXT NOT NULL, response TEXT NULL, lease_expires_at TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, completed_at TEXT NULL, UNIQUE (tenant_id, actor_id, installation_id, binding_id, idempotency_key))",
                 "CREATE INDEX module_artifact_binding_operations_recovery_idx ON module_artifact_binding_operations (status, lease_expires_at)",
             ],
-            backend => return Err(DbErr::Migration(format!("artifact binding operation migration does not support {backend:?}"))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact binding operation migration does not support {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

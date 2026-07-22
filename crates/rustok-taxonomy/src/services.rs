@@ -9,7 +9,7 @@ use sea_orm::{
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };

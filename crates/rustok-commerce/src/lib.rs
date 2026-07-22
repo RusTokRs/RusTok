@@ -79,16 +79,14 @@ pub use services::{
     MarketplaceFinancialOperatorService, MarketplaceFinancialRuntime,
     MarketplacePaidEventInboxError, MarketplacePaidEventInboxJournal,
     MarketplacePaidEventInboxResult, MarketplacePaidEventInboxService,
-    MarketplacePaidEventOperatorView, MarketplacePaidEventStatus,
-    MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
-    MarketplaceProviderPaidEventAdapter, MarketplaceProviderPaidEventAdapterError,
-    MarketplaceProviderPaidEventAdapterResult, OrderChangeOrchestrationService,
-    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
-    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
-    PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, RecoveringStagedCheckoutError,
-    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
-    RefundReconciliationService, ReturnClaimDecisionInput,
+    MarketplacePaidEventOperatorView, MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
+    MarketplacePaidEventSweepReport, MarketplaceProviderPaidEventAdapter,
+    MarketplaceProviderPaidEventAdapterError, MarketplaceProviderPaidEventAdapterResult,
+    OrderChangeOrchestrationService, PaidOrderCreateLabelSweepReport,
+    PaidOrderCreateLabelSweepService, PaymentOrchestrationError, PaymentOrchestrationResult,
+    PaymentOrchestrationService, PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
+    PostOrderOrchestrationService, RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult,
+    RecoveringStagedCheckoutService, RefundReconciliationService, ReturnClaimDecisionInput,
     ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
     ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
@@ -162,9 +160,7 @@ impl RusToKModule for CommerceModule {
             .extensions
             .get::<TransactionalEventBus>()
             .cloned()
-            .expect(
-                "commerce module requires TransactionalEventBus in ModuleRuntimeExtensions",
-            );
+            .expect("commerce module requires TransactionalEventBus in ModuleRuntimeExtensions");
         registry.register(services::MarketplacePaidOrderFinancialHandler::new(
             ctx.db.clone(),
             event_bus,

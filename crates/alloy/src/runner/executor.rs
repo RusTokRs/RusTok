@@ -1,13 +1,13 @@
 use chrono::Utc;
 use std::sync::Arc;
-use tracing::{debug, warn, Instrument};
+use tracing::{Instrument, debug, warn};
 
+use crate::AlloyDraftRuntime;
 use crate::context::ExecutionContext;
 use crate::error::ScriptError;
 use crate::execution_log::ExecutionLogSink;
 use crate::model::{EntityProxy, Script};
 use crate::storage::ScriptRegistry;
-use crate::AlloyDraftRuntime;
 
 use super::result::{ExecutionOutcome, ExecutionResult};
 

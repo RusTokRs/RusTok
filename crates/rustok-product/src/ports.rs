@@ -4,8 +4,8 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::product_variant;
 use crate::StorefrontProductList;
+use crate::entities::product_variant;
 use rustok_commerce_foundation::dto::ProductResponse;
 
 const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48;
@@ -238,10 +238,12 @@ mod tests {
         assert_eq!(error.code, "port.deadline_required");
         assert!(error.retryable);
 
-        assert!(base_context()
-            .with_deadline(Duration::from_secs(3))
-            .require_policy(PortCallPolicy::read())
-            .is_ok());
+        assert!(
+            base_context()
+                .with_deadline(Duration::from_secs(3))
+                .require_policy(PortCallPolicy::read())
+                .is_ok()
+        );
     }
 
     #[test]

@@ -21,9 +21,11 @@ impl MigrationTrait for Migration {
                 "ALTER TABLE module_artifact_execution_audit \
                  ADD COLUMN capability_calls INTEGER NULL CHECK (capability_calls >= 0)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact execution-audit metrics migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact execution-audit metrics migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

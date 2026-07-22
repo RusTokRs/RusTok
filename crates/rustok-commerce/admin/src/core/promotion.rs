@@ -88,27 +88,31 @@ mod tests {
 
     #[test]
     fn cart_promotion_command_requires_cart_and_source() {
-        assert!(prepare_cart_promotion_command(CartPromotionForm {
-            cart_id: "",
-            kind: DEFAULT_PROMOTION_KIND,
-            scope: DEFAULT_PROMOTION_SCOPE,
-            line_item_id: "",
-            source_id: "source",
-            discount_percent: "",
-            amount: DEFAULT_PROMOTION_AMOUNT,
-            metadata_json: "",
-        })
-        .is_none());
-        assert!(prepare_cart_promotion_command(CartPromotionForm {
-            cart_id: "cart",
-            kind: DEFAULT_PROMOTION_KIND,
-            scope: DEFAULT_PROMOTION_SCOPE,
-            line_item_id: "",
-            source_id: "  ",
-            discount_percent: "",
-            amount: DEFAULT_PROMOTION_AMOUNT,
-            metadata_json: "",
-        })
-        .is_none());
+        assert!(
+            prepare_cart_promotion_command(CartPromotionForm {
+                cart_id: "",
+                kind: DEFAULT_PROMOTION_KIND,
+                scope: DEFAULT_PROMOTION_SCOPE,
+                line_item_id: "",
+                source_id: "source",
+                discount_percent: "",
+                amount: DEFAULT_PROMOTION_AMOUNT,
+                metadata_json: "",
+            })
+            .is_none()
+        );
+        assert!(
+            prepare_cart_promotion_command(CartPromotionForm {
+                cart_id: "cart",
+                kind: DEFAULT_PROMOTION_KIND,
+                scope: DEFAULT_PROMOTION_SCOPE,
+                line_item_id: "",
+                source_id: "  ",
+                discount_percent: "",
+                amount: DEFAULT_PROMOTION_AMOUNT,
+                metadata_json: "",
+            })
+            .is_none()
+        );
     }
 }

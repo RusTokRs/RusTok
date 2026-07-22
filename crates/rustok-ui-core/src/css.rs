@@ -8,7 +8,9 @@ pub fn normalize_css_hex_color(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let digits = trimmed.strip_prefix('#')?;
     if !matches!(digits.len(), 3 | 4 | 6 | 8)
-        || !digits.chars().all(|character| character.is_ascii_hexdigit())
+        || !digits
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
     {
         return None;
     }
@@ -93,9 +95,7 @@ fn css_hex_rgb(value: &str) -> Option<(u8, u8, u8)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        css_background_accent_class, css_hex_accent_class, normalize_css_hex_color,
-    };
+    use super::{css_background_accent_class, css_hex_accent_class, normalize_css_hex_color};
 
     #[test]
     fn accepts_only_bounded_hex_color_tokens() {

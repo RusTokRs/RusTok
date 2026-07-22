@@ -532,8 +532,8 @@ pub fn alloy_validate_script<R: ScriptRegistry>(
 mod tests {
     use super::*;
     use alloy::{
-        create_default_alloy_draft_runtime, create_default_engine, InMemoryStorage,
-        ScriptOrchestrator,
+        InMemoryStorage, ScriptOrchestrator, create_default_alloy_draft_runtime,
+        create_default_engine,
     };
     use anyhow::Result as AnyhowResult;
     use async_trait::async_trait;
@@ -752,11 +752,13 @@ mod tests {
         assert_eq!(draft_store.stage_calls.load(Ordering::SeqCst), 1);
         assert_eq!(draft_store.review_calls.load(Ordering::SeqCst), 1);
         assert_eq!(draft_store.apply_calls.load(Ordering::SeqCst), 1);
-        assert!(state
-            .staged_scaffolds
-            .lock()
-            .expect("in-memory store lock")
-            .is_empty());
+        assert!(
+            state
+                .staged_scaffolds
+                .lock()
+                .expect("in-memory store lock")
+                .is_empty()
+        );
     }
 }
 

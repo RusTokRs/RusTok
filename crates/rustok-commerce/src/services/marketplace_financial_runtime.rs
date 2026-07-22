@@ -23,9 +23,8 @@ impl MarketplaceFinancialRuntime {
     }
 
     pub fn in_process(db: DatabaseConnection) -> Self {
-        let allocation = Arc::new(
-            rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()),
-        );
+        let allocation =
+            Arc::new(rustok_marketplace_allocation::MarketplaceAllocationService::new(db.clone()));
         let commission = Arc::new(
             rustok_marketplace_commission::MarketplaceCommissionService::new(
                 db.clone(),
@@ -33,8 +32,7 @@ impl MarketplaceFinancialRuntime {
             ),
         );
         let ledger = Arc::new(rustok_marketplace_ledger::MarketplaceLedgerService::new(
-            db,
-            commission,
+            db, commission,
         ));
         Self::new(ledger)
     }

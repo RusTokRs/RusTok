@@ -392,25 +392,40 @@ pub async fn modules(Extension(registry): Extension<ModuleRegistry>) -> Result<R
 
 #[cfg(feature = "mod-media")]
 async fn check_storage_backend(ctx: &ServerRuntimeContext) -> std::result::Result<(), String> {
-    use rustok_storage::StorageService;
+    use object_store::ObjectStoreExt;
+    use rustok_storage::StorageRuntime;
 
-    let Some(storage) = ctx.shared_get::<StorageService>() else {
+    let Some(storage) = ctx.shared_get::<StorageRuntime>() else {
         return Ok(()); // not configured — skip
     };
 
-    let probe = ".health-probe";
+    let probe = rustok_storage::ObjectKey::chronological(
+        "platform-health",
+        rustok_storage::ObjectZone::Staging,
+        rustok_storage::ObjectScope::Platform,
+        chrono::Utc::now(),
+        uuid::Uuid::new_v4(),
+        "probe",
+    )
+    .expect("platform health key constants are valid")
+    .into_path();
     let data = bytes::Bytes::from_static(b"ok");
-    storage
-        .store(probe, data, "text/plain")
-        .await
-        .map_err(|e| format!("storage write failed: {e}"))?;
-    storage
-        .delete(probe)
-        .await
-        .map_err(|e| format!("storage delete failed: {e}"))?;
-
-    rustok_telemetry::metrics::update_storage_health(storage.backend_name(), true);
-    Ok(())
+    let result = async {
+        storage
+            .objects
+            .put_opts(&probe, data.into(), storage.put_options("text/plain"))
+            .await
+            .map_err(|e| format!("storage write failed: {e}"))?;
+        storage
+            .objects
+            .delete(&probe)
+            .await
+            .map_err(|e| format!("storage delete failed: {e}"))?;
+        Ok(())
+    }
+    .await;
+    rustok_telemetry::metrics::update_storage_health(storage.kind.as_str(), result.is_ok());
+    result
 }
 
 async fn check_database(db: &DatabaseConnection) -> std::result::Result<(), String> {

@@ -11,11 +11,11 @@ use crate::dto::{ForumSubscriptionPolicyResponse, UpdateForumSubscriptionPolicyI
 use crate::entities::forum_subscription_policy;
 use crate::error::{ForumError, ForumResult};
 
-use super::helpers::{
-    default_policy, enforce_policy_scope, ensure_revision_update, policy_response,
-    validate_expected_revision, validate_new_revision, validate_policy, INITIAL_REVISION,
-};
 use super::SubscriptionService;
+use super::helpers::{
+    INITIAL_REVISION, default_policy, enforce_policy_scope, ensure_revision_update,
+    policy_response, validate_expected_revision, validate_new_revision, validate_policy,
+};
 
 impl SubscriptionService {
     #[instrument(skip(self, security))]

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_core::Error;
+use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_events::{DomainEvent, EventEnvelope};
 use rustok_telemetry::metrics;
 use tracing::Instrument;
@@ -46,9 +46,7 @@ impl SearchIngestionHandler {
                 self.projector.upsert_product(tenant_id, product_id).await
             }
             ("product", None) => self.projector.rebuild_product_scope(tenant_id).await,
-            ("blog", Some(post_id)) => {
-                self.blog_projector.upsert_post(tenant_id, post_id).await
-            }
+            ("blog", Some(post_id)) => self.blog_projector.upsert_post(tenant_id, post_id).await,
             ("blog", None) => self.blog_projector.rebuild_tenant(tenant_id).await,
             _ => Ok(()),
         }

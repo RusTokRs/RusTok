@@ -3,9 +3,8 @@ use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
 use crate::dto::{
-    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutListResponse,
-    MarketplacePayoutResponse, ReadMarketplacePayoutRequest,
-    ScheduleMarketplacePayoutInput,
+    ListMarketplaceSellerPayoutsRequest, MarketplacePayoutListResponse, MarketplacePayoutResponse,
+    ReadMarketplacePayoutRequest, ScheduleMarketplacePayoutInput,
 };
 use crate::error::MarketplacePayoutError;
 
@@ -69,15 +68,9 @@ impl MarketplacePayoutCommandPort for crate::MarketplacePayoutService {
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
-        self.schedule_with_receipt(
-            context,
-            tenant_id,
-            actor_id,
-            idempotency_key,
-            request,
-        )
-        .await
-        .map_err(map_owner_error)
+        self.schedule_with_receipt(context, tenant_id, actor_id, idempotency_key, request)
+            .await
+            .map_err(map_owner_error)
     }
 }
 

@@ -65,7 +65,7 @@ impl WorkflowStep for HttpStep {
             value => {
                 return Err(WorkflowError::InvalidStepConfig(format!(
                     "http: unsupported method '{value}'"
-                )))
+                )));
             }
         };
 
@@ -223,12 +223,12 @@ async fn validate_target(raw_url: &str) -> WorkflowResult<ValidatedTarget> {
         "http" => {
             return Err(WorkflowError::InvalidStepConfig(format!(
                 "http: insecure HTTP is disabled; host may opt in with {ALLOW_HTTP_ENV}"
-            )))
+            )));
         }
         scheme => {
             return Err(WorkflowError::InvalidStepConfig(format!(
                 "http: unsupported URL scheme '{scheme}'"
-            )))
+            )));
         }
     }
 
@@ -389,9 +389,11 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_literal_metadata_endpoint_before_request() {
-        assert!(validate_target("http://169.254.169.254/latest/meta-data")
-            .await
-            .is_err());
+        assert!(
+            validate_target("http://169.254.169.254/latest/meta-data")
+                .await
+                .is_err()
+        );
         assert!(validate_target("file:///etc/passwd").await.is_err());
         assert!(validate_target("http://localhost:8080/hook").await.is_err());
     }

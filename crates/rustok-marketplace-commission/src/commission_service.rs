@@ -8,10 +8,10 @@ use uuid::Uuid;
 use crate::allocation_filter::AssessableAllocationReader;
 use crate::dto::{
     AssessMarketplaceOrderCommissionsInput, AssessMarketplaceOrderCommissionsResponse,
-    CreateMarketplaceCommissionRuleVersionInput, ListMarketplaceCommissionAssessmentsBySellerRequest,
-    ListMarketplaceCommissionRulesRequest, MarketplaceCommissionAssessmentListResponse,
-    MarketplaceCommissionAssessmentResponse, MarketplaceCommissionRuleListResponse,
-    MarketplaceCommissionRuleResponse,
+    CreateMarketplaceCommissionRuleVersionInput,
+    ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
+    MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,
+    MarketplaceCommissionRuleListResponse, MarketplaceCommissionRuleResponse,
 };
 use crate::error::MarketplaceCommissionResult;
 
@@ -42,12 +42,7 @@ impl MarketplaceCommissionService {
         input: CreateMarketplaceCommissionRuleVersionInput,
     ) -> MarketplaceCommissionResult<MarketplaceCommissionRuleResponse> {
         self.inner
-            .create_rule_version_with_receipt(
-                tenant_id,
-                actor_id,
-                idempotency_key,
-                input,
-            )
+            .create_rule_version_with_receipt(tenant_id, actor_id, idempotency_key, input)
             .await
     }
 
@@ -60,13 +55,7 @@ impl MarketplaceCommissionService {
         input: AssessMarketplaceOrderCommissionsInput,
     ) -> MarketplaceCommissionResult<AssessMarketplaceOrderCommissionsResponse> {
         self.inner
-            .assess_order_with_receipt(
-                context,
-                tenant_id,
-                actor_id,
-                idempotency_key,
-                input,
-            )
+            .assess_order_with_receipt(context, tenant_id, actor_id, idempotency_key, input)
             .await
     }
 

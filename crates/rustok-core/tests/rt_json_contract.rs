@@ -1,5 +1,5 @@
 use rustok_core::{
-    sanitize_rt_json_before_html_render, validate_and_sanitize_rt_json, RtJsonValidationConfig,
+    RtJsonValidationConfig, sanitize_rt_json_before_html_render, validate_and_sanitize_rt_json,
 };
 use serde_json::json;
 

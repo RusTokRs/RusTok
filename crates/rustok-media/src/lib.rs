@@ -3,25 +3,34 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod image;
+pub mod lifecycle;
+pub mod migrations;
 pub mod ports;
 pub mod service;
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, RusToKModule};
+use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub use dto::{
-    MediaImageDeliveryProfile, MediaImageDescriptor, MediaItem, MediaTranslationItem, UploadInput,
-    UpsertTranslationInput, ALLOWED_MIME_PREFIXES, DEFAULT_MAX_SIZE,
+    ALLOWED_MIME_PREFIXES, CreateRenditionInput, DEFAULT_MAX_SIZE, MediaImageDeliveryProfile,
+    MediaImageDescriptor, MediaItem, MediaRenditionItem, MediaTranslationItem,
+    PrepareUploadSessionInput, PreparedUploadSession, UploadInput, UpsertTranslationInput,
 };
 pub use entities::*;
 pub use error::{MediaError, Result};
 pub use graphql::{MediaMutation, MediaQuery};
+pub use image::{
+    CropRect, ImageBackground, ImageOutput, ImageOutputFormat, ImageProcessingError,
+    ImageProcessingLimits, ImageRecipe, ImageResize, ImageWorker, QuarterTurn,
+};
+pub use lifecycle::{AssetState, BlobState, RenditionState, UploadState};
 pub use ports::*;
 pub use service::{
-    load_media_usage_snapshot, MediaService, MediaStorageCleanupDecision,
-    MediaStorageCleanupReport, MediaUsageSnapshot,
+    MediaReconciliationDecision, MediaReconciliationReport, MediaService, MediaUsageSnapshot,
+    load_media_usage_snapshot,
 };
 
 pub struct MediaModule;
@@ -58,6 +67,10 @@ impl RusToKModule for MediaModule {
 
 impl MigrationSource for MediaModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        Vec::new()
+        migrations::migrations()
+    }
+
+    fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
     }
 }

@@ -5,7 +5,7 @@ pub mod types;
 use std::sync::Arc;
 
 use async_graphql::{Context, FieldError, Result};
-use rustok_api::{graphql::GraphQLError, has_effective_permission, AuthContext, Permission};
+use rustok_api::{AuthContext, Permission, graphql::GraphQLError, has_effective_permission};
 use rustok_core::ModuleRuntimeExtensions;
 
 use crate::{McpManagementContext, McpManagementMutationError, McpManagementRuntime};

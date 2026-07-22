@@ -8,22 +8,18 @@ description = "Storage driver abstraction for RusTok — local filesystem and S3
 [features]
 default = ["local"]
 local = []
-s3 = ["dep:aws-sdk-s3", "dep:aws-config"]
+s3 = ["object_store/aws"]
 
 [dependencies]
-async-trait.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 uuid.workspace = true
-tokio = { workspace = true, features = ["fs", "io-util"] }
-bytes = "1.0"
 chrono = { workspace = true }
-mime_guess = "2.0"
+object_store.workspace = true
+reqwest = { version = "0.13", default-features = false }
 
-# Optional S3 backend
-aws-sdk-s3 = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio", "sigv4a"] }
-aws-config  = { version = "1", optional = true, default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
-
-[package.metadata.cargo-udeps.ignore]
-normal = ["mime_guess"]
+[dev-dependencies]
+bytes = "1"
+futures-util.workspace = true
+tempfile = "3.27"
+tokio.workspace = true

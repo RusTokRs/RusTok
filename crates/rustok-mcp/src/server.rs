@@ -3,37 +3,38 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use rmcp::{
+    ServerHandler, ServiceExt,
     model::{CallToolRequestParams, CallToolResult, Implementation, ListToolsResult, ServerInfo},
     service::{RequestContext, RoleServer},
     transport::stdio,
-    ServerHandler, ServiceExt,
 };
 use rustok_core::registry::ModuleRegistry;
 
-use crate::access::{default_tool_requirement, McpAccessContext, McpWhoAmIResponse};
+use crate::access::{McpAccessContext, McpWhoAmIResponse, default_tool_requirement};
 use crate::alloy_tools::{
-    alloy_apply_module_scaffold, alloy_create_script, alloy_delete_script, alloy_get_script,
-    alloy_list_entity_types, alloy_list_scripts, alloy_review_module_scaffold, alloy_run_script,
-    alloy_scaffold_module, alloy_script_helpers, alloy_update_script, alloy_validate_script,
-    AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest, DeleteScriptRequest,
-    GetScriptRequest, ListScriptsRequest, ReviewModuleScaffoldRequest, RunScriptRequest,
-    ScaffoldModuleRequest, UpdateScriptRequest, ValidateScriptRequest, ALL_ALLOY_TOOLS,
-    TOOL_ALLOY_APPLY_MODULE_SCAFFOLD, TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT,
-    TOOL_ALLOY_GET_SCRIPT, TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS,
-    TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD, TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE,
-    TOOL_ALLOY_SCRIPT_HELPERS, TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT,
+    ALL_ALLOY_TOOLS, AlloyMcpState, ApplyModuleScaffoldRequest, CreateScriptRequest,
+    DeleteScriptRequest, GetScriptRequest, ListScriptsRequest, ReviewModuleScaffoldRequest,
+    RunScriptRequest, ScaffoldModuleRequest, TOOL_ALLOY_APPLY_MODULE_SCAFFOLD,
+    TOOL_ALLOY_CREATE_SCRIPT, TOOL_ALLOY_DELETE_SCRIPT, TOOL_ALLOY_GET_SCRIPT,
+    TOOL_ALLOY_LIST_ENTITY_TYPES, TOOL_ALLOY_LIST_SCRIPTS, TOOL_ALLOY_REVIEW_MODULE_SCAFFOLD,
+    TOOL_ALLOY_RUN_SCRIPT, TOOL_ALLOY_SCAFFOLD_MODULE, TOOL_ALLOY_SCRIPT_HELPERS,
+    TOOL_ALLOY_UPDATE_SCRIPT, TOOL_ALLOY_VALIDATE_SCRIPT, UpdateScriptRequest,
+    ValidateScriptRequest, alloy_apply_module_scaffold, alloy_create_script, alloy_delete_script,
+    alloy_get_script, alloy_list_entity_types, alloy_list_scripts, alloy_review_module_scaffold,
+    alloy_run_script, alloy_scaffold_module, alloy_script_helpers, alloy_update_script,
+    alloy_validate_script,
 };
 use crate::runtime::{
     McpRuntimeBinding, McpScaffoldDraftRuntimeContext, McpSessionContext, McpToolCallAuditEvent,
     SharedMcpAccessResolver, SharedMcpAuditSink,
 };
 use crate::tools::{
-    list_modules, list_modules_filtered, module_details, module_details_by_slug, module_exists,
-    McpHealthResponse, McpState, McpToolResponse, ModuleDetailsResponse, ModuleListResponse,
-    ModuleLookupRequest, ModuleLookupResponse, ModuleQueryRequest, MODULE_BLOG, MODULE_CONTENT,
-    MODULE_FORUM, MODULE_PAGES, TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE, TOOL_FORUM_MODULE,
-    TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS, TOOL_MODULE_EXISTS,
-    TOOL_PAGES_MODULE, TOOL_QUERY_MODULES,
+    MODULE_BLOG, MODULE_CONTENT, MODULE_FORUM, MODULE_PAGES, McpHealthResponse, McpState,
+    McpToolResponse, ModuleDetailsResponse, ModuleListResponse, ModuleLookupRequest,
+    ModuleLookupResponse, ModuleQueryRequest, TOOL_BLOG_MODULE, TOOL_CONTENT_MODULE,
+    TOOL_FORUM_MODULE, TOOL_LIST_MODULES, TOOL_MCP_HEALTH, TOOL_MCP_WHOAMI, TOOL_MODULE_DETAILS,
+    TOOL_MODULE_EXISTS, TOOL_PAGES_MODULE, TOOL_QUERY_MODULES, list_modules, list_modules_filtered,
+    module_details, module_details_by_slug, module_exists,
 };
 use alloy::storage::ScriptRegistry;
 

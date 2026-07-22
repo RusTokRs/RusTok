@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale, GraphQLError},
-    has_any_effective_permission, AuthContext, RequestContext, TenantContext,
+    AuthContext, RequestContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
+    has_any_effective_permission,
 };
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_outbox::TransactionalEventBus;
@@ -434,8 +435,8 @@ mod tests {
     use rustok_api::{AuthContext, RequestContext, TenantContext};
     use rustok_core::{MemoryTransport, ModuleRuntimeExtensions, RusToKModule};
     use rustok_forum::{
-        migrations as forum_migrations, CategoryService, CreateCategoryInput, CreateTopicInput,
-        TopicService,
+        CategoryService, CreateCategoryInput, CreateTopicInput, TopicService,
+        migrations as forum_migrations,
     };
     use rustok_outbox::TransactionalEventBus;
     use sea_orm::{
@@ -448,7 +449,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        entities::seo_redirect, migrations as seo_migrations, SeoModuleSettings, SeoService,
+        SeoModuleSettings, SeoService, entities::seo_redirect, migrations as seo_migrations,
     };
     use rustok_taxonomy::migrations as taxonomy_migrations;
 

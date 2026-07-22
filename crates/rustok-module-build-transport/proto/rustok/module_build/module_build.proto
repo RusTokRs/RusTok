@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package rustok.module_build.v1;
+package rustok.module_build;
 
-// The owner crate owns the versioned request and result contracts. Protobuf
-// supplies only framing, method identity, deadlines, cancellation, and status
-// semantics for the separately deployed build worker.
+// The owner crate owns the single current request and result contracts.
+// Protobuf supplies only framing, method identity, deadlines, cancellation,
+// and status semantics for the separately deployed build worker.
 service ModuleBuildService {
   rpc ExecuteBuild(ExecuteBuildRequest) returns (ExecuteBuildResponse);
   rpc GetReadiness(ReadinessRequest) returns (ReadinessResponse);

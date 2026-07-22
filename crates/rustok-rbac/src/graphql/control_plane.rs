@@ -1,5 +1,5 @@
 use async_graphql::{FieldError, Result};
-use rustok_api::{graphql::GraphQLError, AuthContext};
+use rustok_api::{AuthContext, graphql::GraphQLError};
 use uuid::Uuid;
 
 pub(super) fn require_direct_control_plane_user(auth: &AuthContext, tenant_id: Uuid) -> Result<()> {

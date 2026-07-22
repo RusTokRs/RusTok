@@ -2,7 +2,7 @@ use std::{env, time::Duration};
 
 use rustok_modules::ModuleControlPlane;
 use rustok_registry_validation_worker::RegistryValidationWorker;
-use rustok_storage::{StorageConfig, StorageService};
+use rustok_storage::{StorageConfig, StorageRuntime};
 use sea_orm::{ConnectOptions, Database};
 
 #[tokio::main]
@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut options = ConnectOptions::new(database_url);
     options.sqlx_logging(false);
     let database = Database::connect(options).await?;
-    let storage = StorageService::from_config(&storage_config).await?;
+    let storage = StorageRuntime::from_config(&storage_config).await?;
     let worker = RegistryValidationWorker::new(
         ModuleControlPlane::new(database).publication(),
         storage,

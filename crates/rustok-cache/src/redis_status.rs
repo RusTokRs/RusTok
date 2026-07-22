@@ -2,9 +2,9 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "redis-cache")]
 use std::time::Duration;
 
+use prometheus::IntGauge;
 use prometheus::core::{Collector, Desc};
 use prometheus::proto::MetricFamily;
-use prometheus::IntGauge;
 
 use crate::CacheService;
 
@@ -285,11 +285,13 @@ mod tests {
         assert!(!status.client_initialized);
         assert!(!status.connectivity_healthy);
         assert!(status.is_degraded());
-        assert!(status
-            .last_error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("could not be initialized"));
+        assert!(
+            status
+                .last_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains("could not be initialized")
+        );
     }
 
     #[test]

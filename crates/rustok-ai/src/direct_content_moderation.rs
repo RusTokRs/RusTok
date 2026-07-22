@@ -5,8 +5,8 @@ use chrono::Utc;
 use serde_json::json;
 
 use crate::direct::{
-    explain_result, generate_content_moderation, DirectExecutionRequest, DirectExecutionResult,
-    DirectTaskHandler,
+    DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler, explain_result,
+    generate_content_moderation,
 };
 use crate::model::{AiContentModerationTaskInput, DirectExecutionTarget, ToolTrace};
 use crate::service::{AiHostRuntime, AiOperatorContext};
@@ -90,10 +90,10 @@ mod tests {
 
     use super::execute_content_moderation;
     use crate::{
-        model::AiContentModerationTaskInput, AiProviderConfig, ChatMessage, ChatMessageRole,
-        DirectExecutionRequest, DirectExecutionTarget, InferenceEngine, ProviderChatRequest,
-        ProviderChatResponse, ProviderSlug, ProviderStructuredRequest, ProviderTargetAuth,
-        ProviderTestResult,
+        AiProviderConfig, ChatMessage, ChatMessageRole, DirectExecutionRequest,
+        DirectExecutionTarget, InferenceEngine, ProviderChatRequest, ProviderChatResponse,
+        ProviderSlug, ProviderStructuredRequest, ProviderTargetAuth, ProviderTestResult,
+        model::AiContentModerationTaskInput,
     };
 
     struct ModerationEngine;

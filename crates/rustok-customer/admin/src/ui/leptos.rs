@@ -5,17 +5,17 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
-    build_customer_admin_submit_command, customer_admin_detail_empty_view_model,
-    customer_admin_detail_header_view_model, customer_admin_detail_section_labels,
-    customer_admin_editor_view_model, customer_admin_field_labels,
-    customer_admin_list_header_view_model, customer_admin_list_state_view_model,
-    customer_admin_open_action_view_model, customer_admin_refresh_action_view_model,
-    customer_admin_shell_view_model, customer_admin_submit_error_message,
-    customer_admin_transport_error_message, customer_detail_form_snapshot,
-    customer_detail_view_model, customer_list_item_class, customer_list_item_view_model,
-    customer_list_request, empty_customer_admin_form_snapshot, CustomerAdminDisplayLabels,
-    CustomerAdminDraftInput, CustomerAdminErrorLabels, CustomerAdminFormSnapshot,
-    CustomerAdminListStateKind, CustomerAdminPageLabels, CustomerAdminSubmitCommandError,
+    CustomerAdminDisplayLabels, CustomerAdminDraftInput, CustomerAdminErrorLabels,
+    CustomerAdminFormSnapshot, CustomerAdminListStateKind, CustomerAdminPageLabels,
+    CustomerAdminSubmitCommandError, build_customer_admin_submit_command,
+    customer_admin_detail_empty_view_model, customer_admin_detail_header_view_model,
+    customer_admin_detail_section_labels, customer_admin_editor_view_model,
+    customer_admin_field_labels, customer_admin_list_header_view_model,
+    customer_admin_list_state_view_model, customer_admin_open_action_view_model,
+    customer_admin_refresh_action_view_model, customer_admin_shell_view_model,
+    customer_admin_submit_error_message, customer_admin_transport_error_message,
+    customer_detail_form_snapshot, customer_detail_view_model, customer_list_item_class,
+    customer_list_item_view_model, customer_list_request, empty_customer_admin_form_snapshot,
 };
 use crate::i18n::t;
 use crate::model::{CustomerAdminBootstrap, CustomerDetail};
@@ -536,10 +536,22 @@ fn customer_admin_page_labels(locale: Option<&str>) -> CustomerAdminPageLabels {
     CustomerAdminPageLabels {
         badge: t(locale, "customer.badge", "customer"),
         title: t(locale, "customer.title", "Customer Operations"),
-        subtitle: t(locale, "customer.subtitle", "Module-owned customer workspace for tenant-scoped customer records, optional user linkage and profile bridge visibility without routing admin traffic back through the commerce umbrella."),
+        subtitle: t(
+            locale,
+            "customer.subtitle",
+            "Module-owned customer workspace for tenant-scoped customer records, optional user linkage and profile bridge visibility without routing admin traffic back through the commerce umbrella.",
+        ),
         list_title: t(locale, "customer.list.title", "Customers"),
-        list_subtitle_template: t(locale, "customer.list.subtitle", "Tenant {tenant} customer records owned by the customer module."),
-        list_subtitle_fallback: t(locale, "customer.list.subtitleFallback", "Tenant-scoped customer records owned by the customer module."),
+        list_subtitle_template: t(
+            locale,
+            "customer.list.subtitle",
+            "Tenant {tenant} customer records owned by the customer module.",
+        ),
+        list_subtitle_fallback: t(
+            locale,
+            "customer.list.subtitleFallback",
+            "Tenant-scoped customer records owned by the customer module.",
+        ),
         list_loading: t(locale, "customer.loading", "Loading customers..."),
         list_empty: t(
             locale,
@@ -547,13 +559,21 @@ fn customer_admin_page_labels(locale: Option<&str>) -> CustomerAdminPageLabels {
             "No customers match the current filters.",
         ),
         detail_title: t(locale, "customer.detail.title", "Customer Detail"),
-        detail_subtitle: t(locale, "customer.detail.subtitle", "Inspect customer identity, optional user linkage and profile bridge state from the customer-owned route."),
+        detail_subtitle: t(
+            locale,
+            "customer.detail.subtitle",
+            "Inspect customer identity, optional user linkage and profile bridge state from the customer-owned route.",
+        ),
         detail_empty: t(
             locale,
             "customer.detail.empty",
             "Open a customer to inspect the record, linked user and profile bridge state.",
         ),
-        editor_subtitle: t(locale, "customer.editor.subtitle", "Native customer CRUD lives in the customer module package. User linkage is optional and can be set only during customer creation."),
+        editor_subtitle: t(
+            locale,
+            "customer.editor.subtitle",
+            "Native customer CRUD lives in the customer module package. User linkage is optional and can be set only during customer creation.",
+        ),
         edit_title: t(locale, "customer.editor.editTitle", "Edit Customer"),
         create_title: t(locale, "customer.editor.createTitle", "Create Customer"),
         refresh_action: t(locale, "customer.action.refresh", "Refresh"),

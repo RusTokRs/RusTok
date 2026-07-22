@@ -1,9 +1,9 @@
-use rustok_graphql::{execute, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{
-    build_shipping_selection_updates, SelectShippingOptionRequest, ShippingSelectionTransportError,
+    SelectShippingOptionRequest, ShippingSelectionTransportError, build_shipping_selection_updates,
 };
 
 const SELECT_STOREFRONT_SHIPPING_OPTION_MUTATION: &str = "mutation SelectStorefrontShippingOption($cartId: UUID!, $input: UpdateStorefrontCartContextInput!) { updateStorefrontCartContext(cartId: $cartId, input: $input) { cart { id } } }";

@@ -47,10 +47,10 @@ use rustok_comments::{comment, comment_body, comment_thread};
     feature = "mod-comments"
 ))]
 use rustok_content::{
-    normalize_locale_code, resolve_by_locale_with_fallback, CanonicalUrlMutation, ContentError,
-    ContentOrchestrationBridge, ContentOrchestrationService, ContentResult, DemotePostToTopicInput,
-    DemotePostToTopicOutput, MergeTopicsInput, MergeTopicsOutput, PromoteTopicToPostInput,
-    PromoteTopicToPostOutput, RetiredCanonicalTarget, SplitTopicInput, SplitTopicOutput,
+    CanonicalUrlMutation, ContentError, ContentOrchestrationBridge, ContentOrchestrationService,
+    ContentResult, DemotePostToTopicInput, DemotePostToTopicOutput, MergeTopicsInput,
+    MergeTopicsOutput, PromoteTopicToPostInput, PromoteTopicToPostOutput, RetiredCanonicalTarget,
+    SplitTopicInput, SplitTopicOutput, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -65,8 +65,8 @@ use rustok_content::{
     feature = "mod-comments"
 ))]
 use rustok_forum::{
-    forum_category, forum_reply, forum_reply_body, forum_topic, forum_topic_tag,
-    forum_topic_translation, ReplyStatus, TopicStatus,
+    ReplyStatus, TopicStatus, forum_category, forum_reply, forum_reply_body, forum_topic,
+    forum_topic_tag, forum_topic_translation,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -82,8 +82,8 @@ use rustok_outbox::TransactionalEventBus;
     feature = "mod-comments"
 ))]
 use rustok_taxonomy::{
-    entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
     TaxonomyScopeType, TaxonomyTermKind, TaxonomyTermStatus,
+    entities::{taxonomy_term, taxonomy_term_alias, taxonomy_term_translation},
 };
 #[cfg(all(
     feature = "mod-content",
@@ -1943,27 +1943,27 @@ fn unique_source_ids(target_topic_id: Uuid, source_ids: &[Uuid]) -> ContentResul
 mod tests {
     use super::*;
     use rustok_blog::{
-        entities::{blog_post, blog_post_tag, blog_post_translation},
         CommentService as BlogCommentService, CreateCommentInput as BlogCreateCommentInput,
         CreatePostInput, PostService,
+        entities::{blog_post, blog_post_tag, blog_post_translation},
     };
     use rustok_comments::{
-        entities::{comment, comment_body},
         CommentsModule, CommentsService, ListCommentsFilter,
+        entities::{comment, comment_body},
     };
     use rustok_content::{
         CanonicalUrlService, ContentModule, DemotePostToTopicInput, PromoteTopicToPostInput,
     };
     use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
     use rustok_forum::{
-        entities::{forum_reply, forum_reply_body, forum_topic, forum_topic_translation},
         CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
         ListRepliesFilter, ReplyService, TopicService,
+        entities::{forum_reply, forum_reply_body, forum_topic, forum_topic_translation},
     };
     use rustok_outbox::TransactionalEventBus;
     use rustok_taxonomy::{
-        entities::{taxonomy_term, taxonomy_term_translation},
         TaxonomyModule, TaxonomyScopeType,
+        entities::{taxonomy_term, taxonomy_term_translation},
     };
     use sea_orm::{
         ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
@@ -2470,9 +2470,11 @@ mod tests {
         assert_eq!(replies.len(), 2);
         assert_eq!(replies[0].content, "First blog comment");
         assert_eq!(replies[1].content, "Second blog comment");
-        assert!(replies
-            .iter()
-            .all(|reply| reply.status == ReplyStatus::Pending.as_str()));
+        assert!(
+            replies
+                .iter()
+                .all(|reply| reply.status == ReplyStatus::Pending.as_str())
+        );
 
         let stored_replies = forum_reply::Entity::find()
             .filter(forum_reply::Column::TopicId.eq(demoted.target_id))

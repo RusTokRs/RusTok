@@ -705,10 +705,10 @@ mod tests {
     use super::*;
     use rustok_api::Permission;
     use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
-    use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
     use rustok_cart::CartService;
-    use rustok_fulfillment::dto::CreateShippingOptionInput;
+    use rustok_cart::dto::{AddCartLineItemInput, CreateCartInput};
     use rustok_fulfillment::FulfillmentService;
+    use rustok_fulfillment::dto::CreateShippingOptionInput;
     use rustok_order::dto::{CreateOrderChangeInput, CreateOrderInput, CreateOrderLineItemInput};
     use rustok_test_utils::db::setup_test_db;
     use rustok_test_utils::mock_transactional_event_bus;
@@ -1137,9 +1137,11 @@ mod tests {
         assert_eq!(adjustment.scope.as_deref(), Some("shipping"));
         assert_eq!(adjustment.amount, "4.99");
         assert_eq!(adjustment.currency_code, "EUR");
-        assert!(adjustment
-            .metadata
-            .contains("\"campaign\":\"native-operator\""));
+        assert!(
+            adjustment
+                .metadata
+                .contains("\"campaign\":\"native-operator\"")
+        );
         assert!(adjustment.metadata.contains("\"scope\":\"shipping\""));
     }
 

@@ -24,7 +24,10 @@
 
 ## Interactions
 
-- Used by domain modules that publish or consume typed RusToK events (including tenant lifecycle contracts such as `tenant.created`, `tenant.updated`, `tenant.module.toggled`).
+- Used by domain modules that publish or consume typed RusToK events (including
+  tenant lifecycle contracts and static-distribution queue, claim, and terminal
+  completion evidence plus verified activation, rebuild-only rollback, and
+  revocation identity).
 - Works with `rustok-core`, which keeps compatibility re-exports during the transition.
 - Used by transport-oriented crates such as `rustok-outbox` and `rustok-iggy` through shared event contracts rather than transport-owned schemas.
 

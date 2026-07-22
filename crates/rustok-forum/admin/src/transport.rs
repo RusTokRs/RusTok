@@ -69,7 +69,8 @@ pub async fn create_category(
     let locale = draft.locale.clone();
     let requested_position = placement_position(draft.position)?;
 
-    match graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft.clone()).await {
+    match graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft.clone()).await
+    {
         Ok(category) => {
             move_category(
                 token.clone(),

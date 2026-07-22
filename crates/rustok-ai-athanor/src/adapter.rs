@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use athanor_app::{
-    entity_text, search_project_with_composition, ProjectConfig, RuntimeComposition, SearchOptions,
+    ProjectConfig, RuntimeComposition, SearchOptions, entity_text, search_project_with_composition,
 };
 use athanor_core::{
     AtomicSnapshotPublication, CanonicalSnapshot, CanonicalSnapshotStore, KnowledgeStore,
@@ -12,8 +12,8 @@ use athanor_domain::{
     Entity, EntityId, EntityKind, RepoId, SnapshotBase, SnapshotId, SourceLocation, StableKey,
 };
 use rustok_ai::{
-    chunk_document, RagAtom, RagCandidate, RagChunk, RagError, RagExpandRequest, RagIngestRequest,
-    RagIngestResult, RagIngestionPort, RagResult, RagRetrievalPort, RagSearchRequest, RagSourceRef,
+    RagAtom, RagCandidate, RagChunk, RagError, RagExpandRequest, RagIngestRequest, RagIngestResult,
+    RagIngestionPort, RagResult, RagRetrievalPort, RagSearchRequest, RagSourceRef, chunk_document,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -489,12 +489,16 @@ mod tests {
             .await
             .expect("chunk expansion works");
         assert!(!atoms.is_empty());
-        assert!(atoms
-            .iter()
-            .all(|atom| atom.source.external_id == "manual-doc"));
-        assert!(atoms
-            .iter()
-            .all(|atom| atom.path.iter().any(|path| path.starts_with("bytes:"))));
+        assert!(
+            atoms
+                .iter()
+                .all(|atom| atom.source.external_id == "manual-doc")
+        );
+        assert!(
+            atoms
+                .iter()
+                .all(|atom| atom.path.iter().any(|path| path.starts_with("bytes:")))
+        );
         assert!(atoms.iter().any(|atom| atom.text.contains("knowledge")));
 
         let mut replacement = request;

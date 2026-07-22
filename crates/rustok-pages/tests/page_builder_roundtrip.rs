@@ -1,10 +1,8 @@
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::dto::{
-    CreatePageInput, PageBodyInput, PageTranslationInput, UpdatePageInput,
-};
-use rustok_pages::services::PageService;
 use rustok_pages::PagesModule;
+use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput, UpdatePageInput};
+use rustok_pages::services::PageService;
 use rustok_test_utils::{db::setup_test_db, helpers::admin_context};
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use sea_orm_migration::{MigrationTrait, SchemaManager};

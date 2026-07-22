@@ -4,30 +4,28 @@ use chrono::Utc;
 use rustok_api::PortContext;
 use rustok_core::generate_id;
 use rustok_marketplace_commission::{
-    ListMarketplaceCommissionAssessmentsByOrderRequest,
-    MarketplaceCommissionAssessmentResponse,
-    MarketplaceCommissionAssessmentStatus,
-    MarketplaceCommissionReadPort,
+    ListMarketplaceCommissionAssessmentsByOrderRequest, MarketplaceCommissionAssessmentResponse,
+    MarketplaceCommissionAssessmentStatus, MarketplaceCommissionReadPort,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use uuid::Uuid;
 
 use crate::dto::{
-    ListMarketplaceSellerLedgerEntriesRequest, MarketplaceLedgerAccountCode,
-    MarketplaceLedgerEntryDirection, MarketplaceLedgerEntryListResponse,
-    MarketplaceLedgerEntryResponse, MarketplaceLedgerTransactionResponse,
-    MarketplaceLedgerTransactionStatus, PostMarketplaceOrderLedgerInput,
-    MAX_LEDGER_ENTRIES_PER_PAGE,
+    ListMarketplaceSellerLedgerEntriesRequest, MAX_LEDGER_ENTRIES_PER_PAGE,
+    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
+    MarketplaceLedgerEntryListResponse, MarketplaceLedgerEntryResponse,
+    MarketplaceLedgerTransactionResponse, MarketplaceLedgerTransactionStatus,
+    PostMarketplaceOrderLedgerInput,
 };
 use crate::entities::{entry, transaction};
 use crate::error::{MarketplaceLedgerError, MarketplaceLedgerResult};
 use crate::receipts::{
-    admit_receipt, complete_receipt, normalize_idempotency_key, posting_request_hash,
-    replay_existing, replay_receipt, rollback_receipt, LedgerReceiptAdmission,
-    NewLedgerReceipt,
+    LedgerReceiptAdmission, NewLedgerReceipt, admit_receipt, complete_receipt,
+    normalize_idempotency_key, posting_request_hash, replay_existing, replay_receipt,
+    rollback_receipt,
 };
 
 const SOURCE_KIND_COMMISSION_BATCH: &str = "commission_assessment_batch";
@@ -67,13 +65,8 @@ impl MarketplaceLedgerService {
         }
         let key = normalize_idempotency_key(idempotency_key)?;
         let hash = posting_request_hash(actor_id, &input)?;
-        if let Some(response) = replay_existing(
-            &self.db,
-            tenant_id,
-            key.as_str(),
-            hash.as_str(),
-        )
-        .await?
+        if let Some(response) =
+            replay_existing(&self.db, tenant_id, key.as_str(), hash.as_str()).await?
         {
             return Ok(response);
         }
@@ -90,15 +83,7 @@ impl MarketplaceLedgerService {
             .map_err(map_commission_port_error)?;
         let batch = validate_assessment_batch(tenant_id, input.order_id, assessments)?;
 
-        match admit_receipt(
-            &self.db,
-            tenant_id,
-            actor_id,
-            key,
-            hash.as_str(),
-        )
-        .await?
-        {
+        match admit_receipt(&self.db, tenant_id, actor_id, key, hash.as_str()).await? {
             LedgerReceiptAdmission::Replay(receipt) => replay_receipt(receipt, hash.as_str()),
             LedgerReceiptAdmission::New(receipt) => {
                 let result = post_in_transaction(
@@ -242,12 +227,12 @@ fn validate_assessment_batch(
             )));
         }
         for (amount, field) in [
-            (assessment.allocation_total_amount, "allocation_total_amount"),
-            (assessment.commission_amount, "commission_amount"),
             (
-                assessment.seller_proceeds_amount,
-                "seller_proceeds_amount",
+                assessment.allocation_total_amount,
+                "allocation_total_amount",
             ),
+            (assessment.commission_amount, "commission_amount"),
+            (assessment.seller_proceeds_amount, "seller_proceeds_amount"),
         ] {
             if amount < 0 {
                 return Err(MarketplaceLedgerError::Validation(format!(
@@ -459,12 +444,13 @@ fn map_transaction(
     model: transaction::Model,
     entries: Vec<MarketplaceLedgerEntryResponse>,
 ) -> MarketplaceLedgerResult<MarketplaceLedgerTransactionResponse> {
-    let status = MarketplaceLedgerTransactionStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceLedgerError::Validation(format!(
-            "unknown ledger transaction status `{}`",
-            model.status
-        ))
-    })?;
+    let status =
+        MarketplaceLedgerTransactionStatus::parse(model.status.as_str()).ok_or_else(|| {
+            MarketplaceLedgerError::Validation(format!(
+                "unknown ledger transaction status `{}`",
+                model.status
+            ))
+        })?;
     if model.debit_total_amount != model.credit_total_amount {
         return Err(MarketplaceLedgerError::Validation(format!(
             "ledger transaction {} is not balanced",
@@ -496,14 +482,13 @@ fn map_entry(model: entry::Model) -> MarketplaceLedgerResult<MarketplaceLedgerEn
                 model.account_code
             ))
         })?;
-    let direction = MarketplaceLedgerEntryDirection::parse(model.direction.as_str()).ok_or_else(
-        || {
+    let direction =
+        MarketplaceLedgerEntryDirection::parse(model.direction.as_str()).ok_or_else(|| {
             MarketplaceLedgerError::Validation(format!(
                 "unknown ledger entry direction `{}`",
                 model.direction
             ))
-        },
-    )?;
+        })?;
     if model.amount < 0 {
         return Err(MarketplaceLedgerError::Validation(format!(
             "ledger entry {} has a negative amount",

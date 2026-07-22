@@ -8,8 +8,8 @@ use crate::model::{RbacModulePermissionGroup, RbacRoleInfo};
 pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{has_effective_permission, AuthContext, Permission, TenantContext};
-        use rustok_core::{infer_user_role_from_permissions, ModuleRegistry, Rbac, UserRole};
+        use rustok_api::{AuthContext, Permission, TenantContext, has_effective_permission};
+        use rustok_core::{ModuleRegistry, Rbac, UserRole, infer_user_role_from_permissions};
 
         let registry = expect_context::<ModuleRegistry>();
         let auth = leptos_axum::extract::<AuthContext>()

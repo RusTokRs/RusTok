@@ -9,10 +9,10 @@ mod checkout_inventory_reservation_journal;
 mod checkout_marketplace_allocation;
 mod checkout_marketplace_commission;
 mod checkout_marketplace_economics;
-#[path = "checkout_marketplace_financial.rs"]
-mod checkout_marketplace_financial_legacy;
 #[path = "checkout_marketplace_financial_hardened.rs"]
 mod checkout_marketplace_financial;
+#[path = "checkout_marketplace_financial.rs"]
+mod checkout_marketplace_financial_legacy;
 mod checkout_operation;
 mod checkout_order_confirmation;
 mod checkout_order_creation;
@@ -80,16 +80,15 @@ pub use checkout_inventory_reservation_journal::{
     PlanCheckoutInventoryReservation,
 };
 pub use checkout_marketplace_allocation::{
-    order_contains_marketplace_lines, CheckoutMarketplaceAllocationError,
-    CheckoutMarketplaceAllocationResult, CheckoutMarketplaceAllocationStage,
+    CheckoutMarketplaceAllocationError, CheckoutMarketplaceAllocationResult,
+    CheckoutMarketplaceAllocationStage, order_contains_marketplace_lines,
 };
 pub use checkout_marketplace_commission::{
     CheckoutMarketplaceCommissionError, CheckoutMarketplaceCommissionResult,
     CheckoutMarketplaceCommissionStage,
 };
 pub use checkout_marketplace_economics::{
-    CheckoutMarketplaceEconomicsCheckpointError,
-    CheckoutMarketplaceEconomicsCheckpointJournal,
+    CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
     CheckoutMarketplaceEconomicsCheckpointResult, CheckoutMarketplaceEconomicsEvidence,
     RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
     validate_marketplace_economics_checkpoint,
@@ -147,9 +146,8 @@ pub use marketplace_financial_operator::{
 };
 pub use marketplace_financial_runtime::MarketplaceFinancialRuntime;
 pub use marketplace_paid_event_inbox::{
-    IngestMarketplacePaidEvent, MarketplacePaidEventInboxError,
-    MarketplacePaidEventInboxJournal, MarketplacePaidEventInboxResult,
-    MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
+    IngestMarketplacePaidEvent, MarketplacePaidEventInboxError, MarketplacePaidEventInboxJournal,
+    MarketplacePaidEventInboxResult, MarketplacePaidEventInboxService, MarketplacePaidEventStatus,
     MarketplacePaidEventSweepFailure, MarketplacePaidEventSweepReport,
 };
 pub(crate) use marketplace_paid_order_financial::MarketplacePaidOrderFinancialHandler;
@@ -176,11 +174,11 @@ pub use recovering_staged_checkout::{
 };
 pub use refund_reconciliation::RefundReconciliationService;
 pub use return_completion_operation::{
-    BeginReturnCompletionOperation, ReturnCompletionOperationCheckpoint,
+    BeginReturnCompletionOperation, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
+    MAX_RETURN_COMPLETION_LEASE_SECONDS, ReturnCompletionOperationCheckpoint,
     ReturnCompletionOperationError, ReturnCompletionOperationJournal,
     ReturnCompletionOperationResult, ReturnCompletionOperationStage,
-    ReturnCompletionOperationStatus, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
-    MAX_RETURN_COMPLETION_LEASE_SECONDS,
+    ReturnCompletionOperationStatus,
 };
 pub use return_completion_orchestration::{
     CompleteReturnClaimInput, CompleteReturnExchangeInput, CompleteReturnRefundInput,

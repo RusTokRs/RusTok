@@ -1,60 +1,57 @@
-# `rustok-storage` Documentation
+# `rustok-storage` documentation
 
-`rustok-storage` — shared storage abstraction layer of the platform. It provides a unified
-`StorageBackend` contract for domain modules that need to store files,
-regardless of the specific backend.
+`rustok-storage` constructs RusToK's direct `object_store` runtime and owns the
+canonical object-key policy. It is infrastructure support, not a domain service
+and not the owner of stored objects.
 
-## Purpose
+## Responsibilities
 
-- publish the canonical storage backend contract;
-- own the physical object lifecycle for all file-oriented capabilities;
-- isolate domain modules from the details of local/S3-compatible storage implementation;
-- maintain a unified high-level `StorageService` for file-oriented platform scenarios.
+- configure local and optional S3-compatible `object_store` implementations;
+- expose the direct object handle and optional native signer;
+- construct safe chronological and digest-addressed keys;
+- expose delivery-base and backend-kind diagnostics;
+- document backend durability, concurrency, and operational requirements.
 
-## Scope
+## Non-responsibilities
 
-- `StorageBackend`, `UploadedObject`, `StorageService`;
-- conditional object creation and trusted-prefix listing for durable
-  content-addressed storage reconciliation;
-- backend selection/configuration and path generation helpers;
-- local storage implementation and future backend seams;
-- storage errors, public URL construction and path-safety guarantees;
-- backend-level object metadata and content-addressed writes;
-- absence of domain-owned media, knowledge or artifact business logic.
+- no custom storage trait or CRUD facade;
+- no global object ledger;
+- no media, module, AI, snapshot, or knowledge-source lifecycle state;
+- no user-facing directory browser;
+- no persisted driver name or layout version.
 
-## Integration
+Owner modules call `ObjectStore` directly and keep their own metadata. Media
+queries its database, not object-store listings. Trusted reconciliation and CAS
+jobs may list only their controlled namespace prefix.
 
-- used by `rustok-media` and other file-oriented modules as a shared storage dependency;
-- `rustok-media` is a metadata/index facade over this layer for images, video and PDF assets;
-- AI knowledge sources and module artifacts reference storage objects but keep their own domain metadata;
-- `rustok-modules` uses the same contract for `StorageArtifactBlobStore`; its
-  production configuration must select durable object storage (for example
-  S3-compatible storage), never a node-local cache;
-- `apps/server` acts only as a wiring layer for registering `StorageService`;
-- storage health and basic observability must remain synchronized with host/runtime docs;
-- domain modules must not bypass `rustok-storage` with direct backend-specific code without a clear reason.
+## Production operations and recovery
 
-Storage is not a user-facing file browser. Domain facades discover and manage
-their objects through their own metadata and typed ports; storage listing is
-reserved for trusted-prefix reconciliation and content-addressed maintenance.
+- Readiness performs a bounded write/delete probe under
+  `platform-health/staging/platform/...` and exports backend kind plus health;
+  it never creates domain rows.
+- Alert on a failed storage readiness check, Media reconciliation `retry_later`,
+  growing `delete_pending` blobs, or staging sessions that remain uncleaned.
+- Treat the database as the authoritative index. Never repair an incident by
+  deleting rows or scanning all buckets into a new media catalog.
+- Run `rustok-cli media reconcile --limit <count>` repeatedly after transient
+  storage recovery. Missing objects become explicit failed evidence; pending
+  deletes and expired staging objects are retried safely.
+- Restore database and object storage from the same recovery point. If that is
+  impossible, restore objects first, then run reconciliation and review failed
+  assets before reopening writes.
+- For Local storage, coordinate filesystem snapshots with database snapshots and
+  choose `fsync=true` when the durability requirement outweighs throughput.
+- For S3-compatible storage, configure provider versioning/retention as required
+  and a lifecycle rule that aborts incomplete multipart uploads. RusToK still
+  calls multipart abort on controlled failure paths.
+- Rotate S3 credentials through host configuration. Presigned URLs are short
+  lived and scoped to one exact object key; they are not credentials to persist.
 
-## Verification
-
-- structural verification: local docs and the storage contract must remain synchronized;
-- targeted compile/tests when changing `StorageBackend`, path safety or backend configuration;
-- integration checks needed when changing backend implementations and health semantics.
-
-## Content-addressed storage guarantees
-
-`store_if_absent` provides conditional final-object publication. Callers must
-derive final paths from verified content digests and re-read an already-present
-object before accepting it. `list` is restricted to a trusted internal prefix
-and exists for reconciler jobs; it is not a user-facing file browser. The local
-backend is suitable for development only. Production CAS must use the durable
-object-storage driver and private staging/final prefixes.
+The Local/S3 conformance suite is the pre-deployment backend gate. Run it
+against the exact provider endpoint and bucket used by the environment.
 
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)
+- [Direct object-store ADR](../../../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
 - [`rustok-media` documentation](../../rustok-media/docs/README.md)
-- [Observability quickstart](../../../docs/guides/observability-quickstart.md)

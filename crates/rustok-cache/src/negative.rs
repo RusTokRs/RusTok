@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use rustok_core::CacheBackend;
 
 use crate::{
-    clock::unix_time_millis, CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness,
-    CachePolicyError, CacheService, CacheTtlPolicy,
+    CacheEnvelope, CacheEnvelopeError, CacheEnvelopeFreshness, CachePolicyError, CacheService,
+    CacheTtlPolicy, clock::unix_time_millis,
 };
 
 pub const DEFAULT_MAX_NEGATIVE_CACHE_BYTES: usize = 64 * 1024;
@@ -328,11 +328,13 @@ mod tests {
         assert_eq!(hit.reason, "not-found");
         assert_eq!(hit.source_revision.as_deref(), Some("users:42"));
 
-        assert!(service
-            .get_negative_at::<String>(backend.clone(), "missing-user", &policy, 6_000)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            service
+                .get_negative_at::<String>(backend.clone(), "missing-user", &policy, 6_000)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(backend.get("missing-user").await.unwrap().is_none());
     }
 
@@ -349,11 +351,13 @@ mod tests {
         backend.set("negative".to_string(), old).await.unwrap();
 
         let policy = NegativeCachePolicy::fixed(2, Duration::from_secs(5)).unwrap();
-        assert!(service
-            .get_negative_at::<String>(backend.clone(), "negative", &policy, 2_000)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            service
+                .get_negative_at::<String>(backend.clone(), "negative", &policy, 2_000)
+                .await
+                .unwrap()
+                .is_none()
+        );
         assert!(backend.get("negative").await.unwrap().is_none());
     }
 
@@ -364,25 +368,31 @@ mod tests {
         let policy = NegativeCachePolicy::fixed(1, Duration::from_secs(5)).unwrap();
 
         for key in ["".to_string(), "x".repeat(MAX_NEGATIVE_CACHE_KEY_BYTES + 1)] {
-            assert!(service
-                .store_negative(
-                    backend.clone(),
-                    key.clone(),
-                    "not-found".to_string(),
-                    1_000,
-                    None,
-                    &policy,
-                )
-                .await
-                .is_err());
-            assert!(service
-                .get_negative_at::<String>(backend.clone(), &key, &policy, 2_000)
-                .await
-                .is_err());
-            assert!(service
-                .invalidate_negative(backend.clone(), &key)
-                .await
-                .is_err());
+            assert!(
+                service
+                    .store_negative(
+                        backend.clone(),
+                        key.clone(),
+                        "not-found".to_string(),
+                        1_000,
+                        None,
+                        &policy,
+                    )
+                    .await
+                    .is_err()
+            );
+            assert!(
+                service
+                    .get_negative_at::<String>(backend.clone(), &key, &policy, 2_000)
+                    .await
+                    .is_err()
+            );
+            assert!(
+                service
+                    .invalidate_negative(backend.clone(), &key)
+                    .await
+                    .is_err()
+            );
         }
 
         let stats = backend.stats();

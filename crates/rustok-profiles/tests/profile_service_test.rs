@@ -1,10 +1,10 @@
 use async_graphql::dataloader::DataLoader;
 use chrono::Utc;
+use rustok_profiles::ProfilesReader;
 use rustok_profiles::dto::{ProfileVisibility, UpsertProfileInput};
 use rustok_profiles::entities;
 use rustok_profiles::error::ProfileError;
 use rustok_profiles::services::ProfileService;
-use rustok_profiles::ProfilesReader;
 use rustok_profiles::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use uuid::Uuid;

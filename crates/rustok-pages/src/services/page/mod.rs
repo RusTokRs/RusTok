@@ -4,9 +4,9 @@ mod persistence;
 mod read;
 mod update;
 
-use sea_orm::DatabaseConnection;
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
+use sea_orm::DatabaseConnection;
 
 use crate::entities::{page_body, page_translation};
 

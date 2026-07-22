@@ -1,6 +1,6 @@
 use chrono::Utc;
 use rustok_api::PortContext;
-use sea_orm::{prelude::DateTimeWithTimeZone, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, prelude::DateTimeWithTimeZone};
 use uuid::Uuid;
 
 use crate::commands::finish;
@@ -8,10 +8,10 @@ use crate::domain::{AssignModerationCaseCommand, ModerationCaseRecord, Moderatio
 use crate::entities::moderation_case;
 use crate::error::{ModerationError, ModerationResult};
 use crate::receipts::{
-    admit, replay, replay_existing, request_hash, required_idempotency_key,
-    ModerationReceiptAdmission, NewModerationReceipt,
+    ModerationReceiptAdmission, NewModerationReceipt, admit, replay, replay_existing, request_hash,
+    required_idempotency_key,
 };
-use crate::service::{append_event, find_case, map_case, parse_tenant_id, ModerationService};
+use crate::service::{ModerationService, append_event, find_case, map_case, parse_tenant_id};
 
 const OP_ASSIGN_CASE: &str = "assign_case";
 

@@ -32,19 +32,19 @@ pub use artifact_permissions::{
 };
 #[cfg(feature = "server")]
 pub use context::{
-    has_any_effective_permission, has_effective_permission, scope_matches, AuthContext,
-    AuthContextExtension, ChannelContextExt, ChannelContextExtension, OptionalAuthContext,
-    OptionalChannel, OptionalTenant, TenantContext, TenantContextExt, TenantContextExtension,
-    TenantError,
+    AuthContext, AuthContextExtension, ChannelContextExt, ChannelContextExtension,
+    OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
+    TenantContextExtension, TenantError, has_any_effective_permission, has_effective_permission,
+    scope_matches,
 };
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
     ChannelResolutionTraceStep,
 };
 pub use locale::{
-    build_locale_candidates, extract_locale_tag_from_header, is_valid_locale_tag,
-    locale_primary_language, locale_tags_match, normalize_locale_tag, push_locale_candidate,
-    PLATFORM_FALLBACK_LOCALE,
+    PLATFORM_FALLBACK_LOCALE, build_locale_candidates, extract_locale_tag_from_header,
+    is_valid_locale_tag, locale_primary_language, locale_tags_match, normalize_locale_tag,
+    push_locale_candidate,
 };
 pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
@@ -62,4 +62,4 @@ pub use tenant_rbac::{
     SharedTenantRbacCatalog, TenantRbacCatalog, TenantRbacCatalogError, TenantRbacPermission,
     TenantRbacRole,
 };
-pub use write_path_feedback::{classify_write_path_issue, WritePathIssue, WritePathIssueKind};
+pub use write_path_feedback::{WritePathIssue, WritePathIssueKind, classify_write_path_issue};

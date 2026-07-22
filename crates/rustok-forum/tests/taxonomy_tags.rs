@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    entities::{forum_topic, forum_topic_tag},
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, TopicService,
+    entities::{forum_topic, forum_topic_tag},
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    entities::taxonomy_term, CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType,
-    TaxonomyService, TaxonomyTermKind,
+    CreateTaxonomyTermInput, TaxonomyModule, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
+    entities::taxonomy_term,
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait, QueryFilter,
@@ -131,9 +131,11 @@ async fn topic_tags_are_synced_into_forum_topic_tags_without_legacy_json() {
         .await
         .expect("taxonomy terms should load");
     assert_eq!(terms.len(), 2);
-    assert!(terms
-        .iter()
-        .all(|term| term.scope_type == TaxonomyScopeType::Module));
+    assert!(
+        terms
+            .iter()
+            .all(|term| term.scope_type == TaxonomyScopeType::Module)
+    );
     assert!(terms.iter().all(|term| term.scope_value == "forum"));
 
     let stored_topic = forum_topic::Entity::find_by_id(topic.id)

@@ -1,6 +1,6 @@
 use super::FlyProjectInspection;
 use crate::runtime_scenario_release::{
-    release_gate_error, NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore,
+    NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore, release_gate_error,
 };
 use crate::runtime_telemetry::{
     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
@@ -11,8 +11,8 @@ use crate::service::{
 };
 use async_trait::async_trait;
 use fly::{
-    evaluate_runtime_scenario_release, RegistrySet, RuntimeScenarioReleaseMode,
-    RuntimeScenarioReleasePolicy, ValidationLimits,
+    RegistrySet, RuntimeScenarioReleaseMode, RuntimeScenarioReleasePolicy, ValidationLimits,
+    evaluate_runtime_scenario_release,
 };
 use rustok_api::PortContext;
 use serde_json::Value;

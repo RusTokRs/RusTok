@@ -1,8 +1,9 @@
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
 use rustok_api::Permission;
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext, TenantContext,
+    AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
+    has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
@@ -70,10 +71,7 @@ fn require_category_manage_permission(ctx: &Context<'_>) -> Result<AuthContext> 
         .data::<AuthContext>()
         .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?
         .clone();
-    if !has_any_effective_permission(
-        &auth.permissions,
-        &[Permission::FORUM_CATEGORIES_MANAGE],
-    ) {
+    if !has_any_effective_permission(&auth.permissions, &[Permission::FORUM_CATEGORIES_MANAGE]) {
         return Err(<FieldError as GraphQLError>::permission_denied(
             "Permission denied: forum_categories:manage required",
         ));

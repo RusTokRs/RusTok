@@ -5,20 +5,20 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::{SecurityContext, CONTENT_FORMAT_GRAPESJS};
+use rustok_core::{CONTENT_FORMAT_GRAPESJS, SecurityContext};
 use rustok_events::DomainEvent;
 
 use crate::dto::{CreatePageInput, PageResponse};
 use crate::entities::page;
 use crate::error::PagesResult;
-use crate::services::rbac::enforce_scope;
 use crate::services::PageBuilderArtifactService;
+use crate::services::rbac::enforce_scope;
 
 use super::helpers::{
     body_uses_builder_capability, build_page_metadata, normalize_channel_slugs,
     normalize_page_body_input, normalize_slug, status_to_storage, validate_page_translations,
 };
-use super::{PageService, PAGE_KIND};
+use super::{PAGE_KIND, PageService};
 
 impl PageService {
     #[instrument(skip(self, input))]

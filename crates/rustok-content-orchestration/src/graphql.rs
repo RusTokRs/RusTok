@@ -1,12 +1,12 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
     AuthContext, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
 };
 use rustok_content::ContentError;
 use uuid::Uuid;
 
-use crate::{content_orchestration_from_shared, SharedContentOrchestrationService};
+use crate::{SharedContentOrchestrationService, content_orchestration_from_shared};
 
 #[derive(Default)]
 pub struct ContentOrchestrationMutation;

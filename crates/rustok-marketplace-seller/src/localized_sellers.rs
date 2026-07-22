@@ -13,9 +13,7 @@ use crate::dto::{
 };
 use crate::entities::{seller, seller_translation};
 use crate::error::{MarketplaceSellerError, MarketplaceSellerResult};
-use crate::seller_prose::{
-    load_seller_prose, load_seller_prose_map, SellerProseProjection,
-};
+use crate::seller_prose::{SellerProseProjection, load_seller_prose, load_seller_prose_map};
 
 pub(crate) const MISSING_TRANSLATION_PREFIX: &str = "marketplace seller translation missing";
 
@@ -179,15 +177,15 @@ fn map_seller(
             model.status
         ))
     })?;
-    let onboarding_status =
-        MarketplaceSellerOnboardingStatus::parse(model.onboarding_status.as_str()).ok_or_else(
-            || {
-                MarketplaceSellerError::Validation(format!(
-                    "unknown marketplace seller onboarding status `{}`",
-                    model.onboarding_status
-                ))
-            },
-        )?;
+    let onboarding_status = MarketplaceSellerOnboardingStatus::parse(
+        model.onboarding_status.as_str(),
+    )
+    .ok_or_else(|| {
+        MarketplaceSellerError::Validation(format!(
+            "unknown marketplace seller onboarding status `{}`",
+            model.onboarding_status
+        ))
+    })?;
     let row_updated_at = model.updated_at;
     let onboarding_event_matches = matches!(
         (prose.onboarding_kind, onboarding_status),
@@ -200,7 +198,10 @@ fn map_seller(
         ) | (
             Some(MarketplaceSellerEventKind::OnboardingRejected),
             MarketplaceSellerOnboardingStatus::Rejected
-        ) | (Some(MarketplaceSellerEventKind::LegacyOnboardingSnapshot), _)
+        ) | (
+            Some(MarketplaceSellerEventKind::LegacyOnboardingSnapshot),
+            _
+        )
     );
     let suspension_event_matches = matches!(
         (prose.suspension_kind, status),
@@ -210,7 +211,10 @@ fn map_seller(
         ) | (
             Some(MarketplaceSellerEventKind::Reactivated),
             MarketplaceSellerStatus::Active
-        ) | (Some(MarketplaceSellerEventKind::LegacySuspensionSnapshot), _)
+        ) | (
+            Some(MarketplaceSellerEventKind::LegacySuspensionSnapshot),
+            _
+        )
     );
     let onboarding_note = if prose.onboarding_at.is_some_and(|event_at| {
         event_at > row_updated_at || (event_at == row_updated_at && onboarding_event_matches)

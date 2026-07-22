@@ -1,14 +1,14 @@
 use super::native_server_adapter::ApiError;
 use crate::core::{
-    parse_optional_uuid_string, sanitize_channel_slug, sanitize_resolution_context,
-    StorefrontPricingQuery,
+    StorefrontPricingQuery, parse_optional_uuid_string, sanitize_channel_slug,
+    sanitize_resolution_context,
 };
 use crate::model::{
     PricingChannelOption, PricingPriceListOption, PricingProductDetail, PricingProductList,
     PricingProductListItem, PricingProductTranslation, PricingVariant, StorefrontPricingData,
 };
 use futures::future::try_join_all;
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

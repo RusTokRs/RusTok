@@ -6,16 +6,15 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    bounded_forum_read_limit, CategoryCursorPage, CategoryCursorQuery, CategoryReadModel,
-    ReplyCursorPage, ReplyCursorQuery, ReplyReadModel, TopicCursorPage, TopicCursorQuery,
-    TopicReadModel,
+    CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, ReplyCursorPage, ReplyCursorQuery,
+    ReplyReadModel, TopicCursorPage, TopicCursorQuery, TopicReadModel, bounded_forum_read_limit,
 };
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply, forum_reply_body, forum_solution,

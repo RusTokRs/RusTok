@@ -11,8 +11,8 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 use rustok_core::field_schema::{
-    is_valid_field_key, is_valid_locale_key, CustomFieldsSchema, FieldDefinition, FieldType,
-    FlexError,
+    CustomFieldsSchema, FieldDefinition, FieldType, FlexError, is_valid_field_key,
+    is_valid_locale_key,
 };
 use rustok_events::EventEnvelope;
 
@@ -1000,15 +1000,15 @@ pub trait FlexStandaloneService: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_entry, create_entry_with_event, create_schema, create_schema_with_event,
-        delete_entry, delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry,
-        find_schema, list_entries, list_schemas, merge_standalone_entry_patch,
+        CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
+        FlexStandaloneService, UpdateFlexEntryCommand, UpdateFlexSchemaCommand, create_entry,
+        create_entry_with_event, create_schema, create_schema_with_event, delete_entry,
+        delete_entry_with_event, delete_schema, delete_schema_with_event, find_entry, find_schema,
+        list_entries, list_schemas, merge_standalone_entry_patch,
         normalize_and_validate_standalone_entry, split_standalone_entry_data, update_entry,
         update_entry_with_event, update_schema_with_event, validate_create_entry_command,
         validate_create_schema_command, validate_optional_standalone_uuid,
         validate_standalone_uuid, validate_update_entry_command, validate_update_schema_command,
-        CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
-        FlexStandaloneService, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
     };
     use async_trait::async_trait;
 
@@ -1017,8 +1017,8 @@ mod tests {
     };
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use uuid::Uuid;
 
     fn sample_definition(key: &str) -> FieldDefinition {

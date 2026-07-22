@@ -313,7 +313,9 @@ fn uuid_value(value: Uuid, backend: DbBackend) -> sea_orm::Value {
 
 fn select_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    format!("SELECT request_digest, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1")
+    format!(
+        "SELECT request_digest, status, CAST(response AS TEXT) AS response FROM module_artifact_binding_operations WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 LIMIT 1"
+    )
 }
 
 fn recover_operation_sql(backend: DbBackend) -> String {
@@ -323,22 +325,30 @@ fn recover_operation_sql(backend: DbBackend) -> String {
         DbBackend::Sqlite => "datetime(lease_expires_at) <= CURRENT_TIMESTAMP",
         _ => unreachable!("unsupported database backend was validated"),
     };
-    format!("UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND status = 'pending' AND {expired}")
+    format!(
+        "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND status = 'pending' AND {expired}"
+    )
 }
 
 fn insert_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    format!("INSERT INTO module_artifact_binding_operations (operation_id, tenant_id, actor_id, installation_id, binding_id, idempotency_key, request_digest, status, lease_expires_at) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, 'pending', {prefix}8) ON CONFLICT (tenant_id, actor_id, installation_id, binding_id, idempotency_key) DO NOTHING")
+    format!(
+        "INSERT INTO module_artifact_binding_operations (operation_id, tenant_id, actor_id, installation_id, binding_id, idempotency_key, request_digest, status, lease_expires_at) VALUES ({prefix}1, {prefix}2, {prefix}3, {prefix}4, {prefix}5, {prefix}6, {prefix}7, 'pending', {prefix}8) ON CONFLICT (tenant_id, actor_id, installation_id, binding_id, idempotency_key) DO NOTHING"
+    )
 }
 
 fn complete_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    format!("UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND status = 'pending'")
+    format!(
+        "UPDATE module_artifact_binding_operations SET status = 'completed', response = {prefix}1, completed_at = CURRENT_TIMESTAMP WHERE operation_id = {prefix}2 AND tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND request_digest = {prefix}8 AND status = 'pending'"
+    )
 }
 
 fn abandon_operation_sql(backend: DbBackend) -> String {
     let prefix = placeholder_prefix(backend);
-    format!("DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND status = 'pending'")
+    format!(
+        "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND status = 'pending'"
+    )
 }
 
 fn placeholder_prefix(backend: DbBackend) -> &'static str {

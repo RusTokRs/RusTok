@@ -1,7 +1,6 @@
 use crate::{
-    visit_project_components, ComponentAction, ComponentForm, ContextValueKind, FlyError,
-    FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity, FLY_ACTION_FIELD,
-    FLY_FORM_FIELD,
+    ComponentAction, ComponentForm, ContextValueKind, FLY_ACTION_FIELD, FLY_FORM_FIELD, FlyError,
+    FlyResult, ProjectDocument, ValidationDiagnostic, ValidationSeverity, visit_project_components,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -387,12 +386,14 @@ mod tests {
 
     #[test]
     fn permissive_policy_preserves_unknown_provider_compatibility() {
-        assert!(validate_interaction_capabilities(
-            &document(),
-            &InteractionCapabilityRegistry::default(),
-            InteractionCapabilityPolicy::default(),
-        )
-        .is_empty());
+        assert!(
+            validate_interaction_capabilities(
+                &document(),
+                &InteractionCapabilityRegistry::default(),
+                InteractionCapabilityPolicy::default(),
+            )
+            .is_empty()
+        );
     }
 
     #[test]

@@ -1,13 +1,10 @@
 use std::time::Duration;
 
 use rustok_channel::read_resolution_invalidation_generation;
-use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, TransactionTrait,
-};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, TransactionTrait};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 
-const GENERATION_MIGRATION: &str =
-    "m20260716_000009_create_channel_resolution_invalidation_state";
+const GENERATION_MIGRATION: &str = "m20260716_000009_create_channel_resolution_invalidation_state";
 const CHANNEL_TABLES: &[&str] = &[
     "channels",
     "channel_targets",
@@ -138,12 +135,16 @@ async fn postgres_generation_is_transactional_concurrent_and_recoverable() {
         .execute_unprepared("DROP TABLE channel_resolution_invalidation_state")
         .await
         .unwrap();
-    assert!(read_resolution_invalidation_generation(&writer)
-        .await
-        .is_err());
-    assert!(read_resolution_invalidation_generation(&replica)
-        .await
-        .is_err());
+    assert!(
+        read_resolution_invalidation_generation(&writer)
+            .await
+            .is_err()
+    );
+    assert!(
+        read_resolution_invalidation_generation(&replica)
+            .await
+            .is_err()
+    );
 
     migration.up(&manager).await.unwrap();
     assert_eq!(

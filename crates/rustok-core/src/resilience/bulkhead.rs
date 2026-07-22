@@ -1,3 +1,4 @@
+use std::sync::Arc;
 /// Bulkhead Pattern Implementation
 ///
 /// Isolates resources by limiting the number of concurrent calls to a downstream
@@ -29,7 +30,6 @@
 /// }
 /// ```
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 

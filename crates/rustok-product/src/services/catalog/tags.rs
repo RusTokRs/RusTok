@@ -1,6 +1,6 @@
 use super::{
+    CatalogService, PRODUCT_SCOPE_VALUE, ProductTagState,
     helpers::{extract_metadata_tags, metadata_has_tags_field, normalize_tag_names},
-    CatalogService, ProductTagState, PRODUCT_SCOPE_VALUE,
 };
 use chrono::Utc;
 use sea_orm::{

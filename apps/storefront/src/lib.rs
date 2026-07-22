@@ -20,7 +20,7 @@ pub mod widgets;
 #[cfg(feature = "ssr")]
 use axum::response::{Html, IntoResponse, Redirect, Response};
 #[cfg(feature = "ssr")]
-use axum::{extract::Path, routing::get, Extension, Router};
+use axum::{Extension, Router, extract::Path, routing::get};
 #[cfg(feature = "ssr")]
 use leptos::prelude::{Owner, RenderHtml};
 #[cfg(feature = "ssr")]
@@ -35,7 +35,7 @@ use crate::shared::context::canonical_route::{build_redirect_location, fetch_can
 #[cfg(feature = "ssr")]
 use crate::shared::context::enabled_modules::fetch_enabled_modules;
 #[cfg(feature = "ssr")]
-use crate::shared::context::seo_page_context::{fetch_seo_page_context, ResolvedSeoPageContext};
+use crate::shared::context::seo_page_context::{ResolvedSeoPageContext, fetch_seo_page_context};
 
 #[cfg(feature = "ssr")]
 const DEFAULT_STOREFRONT_LOCALE: &str = "en";
@@ -381,13 +381,15 @@ mod tests {
 
         let rendered = nonce_structured_data_scripts(head, Some(&nonce));
 
-        assert!(rendered.contains(
-            format!(
-                r#"<script nonce="{}" type="application/ld+json">"#,
-                nonce.as_str()
+        assert!(
+            rendered.contains(
+                format!(
+                    r#"<script nonce="{}" type="application/ld+json">"#,
+                    nonce.as_str()
+                )
+                .as_str()
             )
-            .as_str()
-        ));
+        );
         assert!(rendered.contains("<script>alert(1)</script>"));
     }
 }

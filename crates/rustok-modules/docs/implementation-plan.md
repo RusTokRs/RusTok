@@ -396,16 +396,19 @@ under tenant RLS and revalidates it before a later owner staging operation may
 consume it;
 RLS, then emits `module.build.completed`; duplicate results must match their
 stored digest. `rustok-module-build-transport` now maps the remote-worker port
-onto a versioned mTLS gRPC service with authenticated readiness and no
+onto the single current mTLS gRPC service with authenticated readiness, no
+generation suffix, and no
 in-process fallback. `load_queued` and `dispatch_queued` provide the owner-side
 outbox-consumer delivery path: they release tenant-scoped database state before
 the RPC and accept the terminal result only through immutable owner validation.
 `rustok-module-build-worker` is now a separately deployable mTLS process. It
 can invoke only a fixed image-owned non-symlink runner in a fixed workdir with
 a cleared environment, request-derived timeout, and aggregate streamed output
-cap. Its v1 source is a `cas://sha256/<hex>` archive from a deployment-mounted
-read-only root; the worker rehashes and safely materializes it under a
-request-scoped directory, without a CAS client. Digest, archive-safety, and
+cap. Its current source is a `cas://sha256:<hex>` archive from a
+deployment-mounted read-only root. The worker uses the shared
+`rustok-build-source` strict USTAR materializer; the former private parser was
+removed rather than retained as a second path. It materializes under a
+request-scoped directory without a CAS client. Digest, archive-safety, and
 extraction-limit violations become terminal owner-validated build results;
 only worker I/O faults remain retryable transport failures. The delivery host must consume
 `module.build.queued` through an external broker
@@ -469,7 +472,7 @@ The former server background `rustok-build` polling executor has been removed.
 installer/CLI operations and cannot consume `module.build.queued` or implement
 the module build-worker port.
 
-The v1 build result derives its toolchain and WIT digests from domain-separated
+The current build result derives its toolchain and WIT digests from domain-separated
 immutable request fields. The owner rejects a result that substitutes either
 contract, in addition to checking its source, dependency lock, attempt, tenant,
 resource bounds, and terminal outcome. `retryable` is true exactly when the
@@ -679,7 +682,8 @@ absence of a tenant identifier.
 ### M2 - Introduce the Facade
 
 - Expose explicit catalog, release, publication, installation, lifecycle,
-  composition, effective-policy, build, and promotion subservices.
+  composition, effective-policy, build, promotion, and static-distribution
+  subservices.
 - Define narrow infrastructure ports for database transactions, OCI, trust
   verification, build scheduling, events, audit, clock, and IDs.
 - Keep atomic boundaries inside owner operations.
@@ -726,6 +730,35 @@ were intentionally not run.
 
 ### M3 - Complete Server Ownership Cutover
 
+- The server no longer exposes its unused database-truncation helper. That
+  helper directly deleted owner-owned tenant-module rows, so the target runtime
+  boundary removes it instead of preserving a privileged reset backdoor.
+  The static write-path guard now detects direct SeaORM `Entity` mutation
+  methods in addition to raw SQL and protected `ActiveModel` construction.
+- Transactional module events now use the facade infrastructure for their
+  identity, correlation identity, timestamp, tenant scope, and available actor
+  identity. The former direct constructor calls confused the event identity
+  with the tenant field and the tenant identity with the actor field. A static
+  guard now reserves root-envelope construction to the infrastructure adapter.
+- `ModuleControlPlane::promotion` is the sole production composition root for
+  the current static-promotion request and approval owner. It admits only an
+  active platform-built release, revalidates the completed build request/result
+  and publication receipt under tenant RLS, and pins the exact source and
+  dependency-lock digests. Approval requires ownership, dependency-audit, test,
+  and static-review evidence with revision CAS, durable exact-replay
+  idempotency, and a distinct host authorization decision. Request and approval
+  authorization are separate fail-closed port methods, and the owner rejects an
+  approval from the persisted requester. `ModuleControlPlane::static_distribution`
+  is now the sole production composition root for complete approved-promotion
+  selections. It revalidates every pinned release/build pair, pins platform
+  source, toolchain and target identities, creates an immutable predecessor-linked
+  build intent under a separate CAS head, and records exact-replay idempotency
+  plus outbox evidence. `ModuleControlPlane::static_distribution_worker` is the
+  separate worker composition root for atomic claim/reclaim, bounded leases,
+  heartbeats, immutable attempts, and terminal completion evidence. Expired
+  claims are closed before reuse and completion replay requires the identical
+  command digest. None of these services can compile, mutate active composition,
+  activate a release, or load native code.
 - The owner now runs platform composition snapshot/bootstrap/revision-CAS and
   atomic build-request creation. The server validates its typed host manifest,
   supplies the build-record adapter, and publishes the build notification only
@@ -914,11 +947,20 @@ fact. The returned artifact handle contains only logical name and revision.
 at the sandbox boundary; resolver aliases, resolver keys, and secret values
 remain host-only. Its owner-provided `acquire_handle` broker additionally
 checks the injected artifact scope and host authorization before returning only
-the logical reference and revision. `ModuleControlPlane` is the only
-production composition root for both the binding service and the dynamic
-secret-capability resolver; the control-plane verifier rejects their direct
-SeaORM construction outside the owner crate. A value-consuming secret-use
-broker remains unfinished. The structured-value namespace now has a separate
+the logical reference and revision. `ModuleControlPlane` is the production
+composition root for the binding service, dynamic secret-capability resolver,
+and host-only value-use service; the control-plane verifier rejects direct
+SeaORM construction outside the owner crate. Value consumption is now a
+separate host-only service rather than a sandbox `get_value` operation.
+`SeaOrmArtifactSecretUseService` requires an exact handle revision and stronger
+`ArtifactSecretUseAuthorizer`, reloads the reference under tenant RLS, closes
+that transaction, resolves a redacted `SecretString`, and lends it to one
+host-composed fixed-purpose `ArtifactSecretValueConsumer`. The consumer returns
+no payload; the service exposes only logical reference, revision, and purpose
+in its receipt, while resolver/consumer failures remain content-free.
+`ModuleControlPlane::artifact_secret_use` is the composition entrypoint.
+Concrete consumers retain responsibility for their operation-specific
+idempotency and redacted audit evidence. The structured-value namespace now has a separate
 SeaOrmArtifactDataPurgeService:
 it serializes writes and purge through namespace state, permanently tombstones a
 purged revision, stores actor/reason/idempotency audit data, and emits an
@@ -931,8 +973,39 @@ Each bounded keyset page requires a host `ArtifactDataExportAuthorizer`, an
 expected active namespace revision, and actor/reason metadata. It holds the
 namespace lifecycle lock while it reads the page and records a redacted durable
 audit row plus `module.artifact.data_exported` outbox fact. Export is not a
-sandbox capability and is deliberately not described as a full backup snapshot;
-snapshot/restore remains a separate pending data-plane operation.
+sandbox capability and is deliberately not described as a full backup snapshot.
+
+Durable backup/restore is a separate owner boundary exposed only through
+`ModuleControlPlane::artifact_data_snapshot`. Snapshot creation locks an exact
+active namespace revision under tenant RLS and captures at most 1,000 structured
+records, 64 private objects, 8,192 materialized index rows, and 256 MiB of object
+bytes. Object metadata is staged transactionally, then each immutable source
+key is copied to a snapshot-owned private key and re-hashed. Retries resume the
+same idempotent `staging` snapshot; only complete copies publish a `ready`
+canonical logical manifest digest and outbox event. Object GC takes the same
+namespace lock and retains a source key while a staging snapshot references it.
+
+Restore requires separate host authorization, the same tenant/module/data
+contract identity, a ready manifest with verified digest, and an empty active
+target at the expected namespace revision. It copies and re-hashes snapshot
+objects before atomically restoring structured values, object metadata,
+materialized indexes, the index contract, namespace revision CAS, durable
+idempotency/audit data, and the restore outbox event. A purge tombstone is never
+cleared and live data is never replaced.
+
+Snapshot retention has its own optimistic revision and owner authorization.
+The idempotent retention command can only extend the deadline, while legal hold
+can be explicitly applied or released; the state, redacted operation, and
+outbox event commit together. `ModuleControlPlane::artifact_data_snapshot_collection`
+composes a bounded collector over private storage. A pass scans at most 1,000
+ready/collecting snapshots and completes at most 100. New collection requires
+a distinct host authorizer, deadline expiry, no legal hold, and an explicit policy-snapshot rule with no
+audit or rollback hold; missing rules fail closed. The owner records actor,
+reason, and policy identity before switching to `collecting`. Blob deletion is
+idempotent, so a crash resumes the durable decision, and final manifest deletion
+preserves independent retention, restore, and collection audit rows while
+publishing `module.artifact.data_snapshot_collected`. Full control-plane
+disaster recovery remains Phase 11.
 
 Structured values also expose an authorized keyset list operation. It accepts
 only a validated logical-key continuation and a bounded page size of 100, never
@@ -1017,7 +1090,63 @@ and installation lifecycle preconditions before that command may delete data.
 
 - Provide the owner operations used by GraphQL and native adapters.
 - Accept Alloy stage/fork/publish commands without owning Alloy workspaces.
-- Add static-promotion records and distribution-build selection.
+- Static-promotion request, review, approval, and idempotency records are now
+  owner-owned. Approved-record distribution selection is now owner-owned as a
+  full immutable snapshot and queued build intent. Worker claim, lease,
+  heartbeat, attempt audit, and terminal completion are also owner-owned.
+  Promotion and distribution items pin the registry-owned Cargo package and
+  normalized native entry type in addition to exact CAS source and dependency
+  digests. These fields participate in composition hashing and activation/
+  rollback revalidation; promotion callers cannot supply them.
+  Verified release activation now accepts only the current successful build,
+  revalidates its immutable selection, persists an admission decision and
+  predecessor-linked release CAS head, and emits outbox evidence without
+  deploying code. Direct-predecessor rollback now records an immutable request
+  and queues a fresh full-composition build only when no desired build is
+  pending; it reuses no old executable bytes. Revocation serializes through the
+  release CAS, clears an active head, cancels affected pending rollback
+  requests, and preserves immutable evidence. Rollback activation additionally
+  requires the rebuilt artifact digest to reproduce its target, while a
+  superseding selection or failed/cancelled build closes the pending request.
+  The current-only `ModuleStaticDistributionExecutor` port and owner
+  `dispatch_next` orchestration now claim before invoking the external
+  executor, heartbeat the durable lease while it runs, and persist its outcome
+  only through the existing completion validation. Transport failure remains
+  reclaimable and is not rewritten as a terminal build failure. The shared
+  build-worker transport now maps the port to the separate current-only
+  `rustok.static_distribution` mTLS service with authenticated readiness and
+  no plaintext constructor. `rustok-distribution` now generates deterministic
+  Cargo dependency, promoted registry source, and canonical manifest outputs
+  only from a fully validated running claim; its output digest binds every
+  immutable manifest field, output destination, and generated Cargo/Rust byte
+  sequence. `rustok-static-distribution-worker` now independently hosts the
+  current mTLS service, re-hashes its fixed launcher/config at
+  startup/readiness/execution, stages idempotent bounded claim inputs, clears
+  the launcher environment, bounds its lifetime, suppresses concurrent duplicate
+  execution, and accepts only a terminal receipt bound to every immutable job
+  identity. Its strict job config now pins and revalidates CAS, Cargo, Rustc,
+  publisher, toolchain, target, and resource identities. The launcher library
+  regenerates all inputs, materializes a new platform workspace through the
+  shared strict archive parser, verifies promoted Cargo package/version/lock
+  identity, rejects alias collisions, and applies generated files only there.
+  The fixed launcher binary now resolves the final workspace lock offline,
+  binds its digest to evidence, runs only locked tests and release compilation,
+  invokes the digest-pinned publisher, validates its fully bound receipt, and
+  writes the owner receipt. Infrastructure retries rebuild only the derived
+  workspace and reuse a valid publisher receipt; immutable attempt inputs are
+  never overwritten. Implement and deploy the concrete idempotent evidence
+  publisher, publish the evidence bundle, and deploy the worker independently.
+  Promotion reads the current release
+  `checksum_sha256` identity directly and does not retain a legacy checksum
+  alias or fallback query.
+- The build-worker transport exposes only the current `rustok.module_build` and
+  `rustok.static_distribution` services. The generation-suffixed module-build
+  package was deleted instead of retaining a compatibility service, plaintext
+  constructor, or fallback route.
+- The 2026-07-22 Phase 10 slices were checked only with
+  touched-file `rustfmt --edition 2021 --check`, `git diff --check`, and
+  `cargo metadata --no-deps`; no compile or test suite was run in the shared
+  worktree.
 - Keep static/native composition distinct from runtime installation.
 - Publish declarative UI contributions and bind actions to admitted runtime
   bindings; custom untrusted UI and native UI follow the central isolation and

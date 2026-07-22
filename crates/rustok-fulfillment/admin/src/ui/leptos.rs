@@ -737,10 +737,18 @@ fn localized_active_label(locale: Option<&str>, active: bool) -> String {
 
 fn profile_chip_class(selected: bool, inactive: bool) -> &'static str {
     match (selected, inactive) {
-        (true, false) => "inline-flex rounded-full border border-primary bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition hover:bg-primary/15",
-        (true, true) => "inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100",
-        (false, true) => "inline-flex rounded-full border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground opacity-60",
-        (false, false) => "inline-flex rounded-full border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent",
+        (true, false) => {
+            "inline-flex rounded-full border border-primary bg-primary/10 px-3 py-2 text-xs font-medium text-primary transition hover:bg-primary/15"
+        }
+        (true, true) => {
+            "inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100"
+        }
+        (false, true) => {
+            "inline-flex rounded-full border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground opacity-60"
+        }
+        (false, false) => {
+            "inline-flex rounded-full border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:bg-accent"
+        }
     }
 }
 

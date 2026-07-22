@@ -4,30 +4,30 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use alloy::utils::{dynamic_to_json, json_to_dynamic};
 use alloy::ScriptRegistry;
+use alloy::utils::{dynamic_to_json, json_to_dynamic};
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::Utc;
 use rustok_ai_alloy::AlloyOperation;
 use rustok_ai_content::{
+    BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME, GeneratedBlogDraft, GeneratedModerationDecision,
     blog_draft_must_remain_unpublished, validate_blog_draft_payload, validate_moderation_decision,
-    GeneratedBlogDraft, GeneratedModerationDecision, BLOG_DRAFT_TASK_SLUG, BLOG_DRAFT_TOOL_NAME,
 };
 use rustok_ai_product::{
-    validate_product_attributes_payload, validate_product_copy_payload, GeneratedProductAttributes,
-    GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG, PRODUCT_COPY_TOOL_NAME,
+    GeneratedProductAttributes, GeneratedProductCopy, PRODUCT_COPY_TASK_SLUG,
+    PRODUCT_COPY_TOOL_NAME, validate_product_attributes_payload, validate_product_copy_payload,
 };
 use rustok_api::{PortActor, PortContext};
 use rustok_blog::{CreatePostInput, PostService, UpdatePostInput};
 use rustok_core::infer_user_role_from_permissions;
-use rustok_mcp::alloy_tools::{alloy_validate_script, AlloyMcpState, ValidateScriptRequest};
+use rustok_mcp::alloy_tools::{AlloyMcpState, ValidateScriptRequest, alloy_validate_script};
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
-use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
 use rustok_product::CatalogService;
-use rustok_storage::StorageService;
+use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
+use rustok_storage::StorageRuntime;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::engine::InferenceEngine;
@@ -39,7 +39,7 @@ use crate::model::{
 };
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
-use rustok_core::{SecurityContext, CONTENT_FORMAT_MARKDOWN};
+use rustok_core::{CONTENT_FORMAT_MARKDOWN, SecurityContext};
 #[path = "direct_content_moderation.rs"]
 mod direct_content_moderation;
 #[path = "direct_domain_alloy.rs"]
@@ -1431,9 +1431,9 @@ fn build_image_provider_request(
     })
 }
 
-fn storage_from_runtime(runtime: &AiHostRuntime) -> AiResult<StorageService> {
+fn storage_from_runtime(runtime: &AiHostRuntime) -> AiResult<StorageRuntime> {
     runtime.storage().ok_or_else(|| {
-        AiError::Runtime("StorageService is not registered in AI runtime".to_string())
+        AiError::Runtime("StorageRuntime is not registered in AI runtime".to_string())
     })
 }
 
@@ -1646,11 +1646,13 @@ mod tests {
     use super::direct_order_tasks::{OrderAnalyticsHandler, OrderOpsAssistantHandler};
     use super::direct_product_attributes::ProductAttributesHandler;
     use super::{
-        build_blog_draft_create_input, build_generated_file_name, build_image_provider_request,
-        locale_matches, normalize_tag_list, BlogDraftHandler, DirectExecutionRequest,
-        DirectTaskHandler, MediaImageAssetHandler, ProductCopyHandler,
+        BlogDraftHandler, DirectExecutionRequest, DirectTaskHandler, MediaImageAssetHandler,
+        ProductCopyHandler, build_blog_draft_create_input, build_generated_file_name,
+        build_image_provider_request, locale_matches, normalize_tag_list,
     };
     use crate::{
+        AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
+        ProviderSlug, ProviderTargetAuth,
         engine::InferenceEngine,
         model::{
             AiBlogDraftTaskInput, AiImageAssetTaskInput, AiOrderAnalyticsTaskInput,
@@ -1659,17 +1661,15 @@ mod tests {
             ProviderChatRequest, ProviderChatResponse, ProviderImageRequest, ProviderImageResponse,
             ProviderStructuredRequest, ProviderTestResult,
         },
-        AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
-        ProviderSlug, ProviderTargetAuth,
     };
     use async_trait::async_trait;
     use rust_decimal::Decimal;
-    use rustok_ai_content::{content_ai_verticals, BLOG_DRAFT_TASK_SLUG};
+    use rustok_ai_content::{BLOG_DRAFT_TASK_SLUG, content_ai_verticals};
     use rustok_ai_media::{media_ai_verticals, normalize_image_size};
     use rustok_ai_order::order_ai_verticals;
     use rustok_ai_product::product_ai_verticals;
     use rustok_api::{PortContext, PortError};
-    use rustok_core::{registry::ModuleRegistry, Rbac, UserRole};
+    use rustok_core::{Rbac, UserRole, registry::ModuleRegistry};
     use rustok_order::{
         CheckoutCompletionPort, CheckoutCompletionSnapshot, CheckoutResultRequest,
         CompleteCheckoutPortRequest, OrderStatusRequest, OrderStatusSnapshot,
@@ -1677,7 +1677,7 @@ mod tests {
     use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
     use rustok_product::{CatalogService, ProductCatalogReadPort, ProductProjectionRequest};
     use rustok_secrets::SecretResolverRegistry;
-    use rustok_storage::{LocalStorageConfig, StorageConfig, StorageDriver, StorageService};
+    use rustok_storage::{LocalStorageConfig, StorageConfig, StorageDriver, StorageRuntime};
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde_json::json;
@@ -2144,7 +2144,7 @@ mod tests {
         (runtime, admin_operator())
     }
 
-    async fn media_runtime(storage: StorageService) -> (AiHostRuntime, AiOperatorContext) {
+    async fn media_runtime(storage: StorageRuntime) -> (AiHostRuntime, AiOperatorContext) {
         let database = Database::connect("sqlite::memory:")
             .await
             .expect("media image database");
@@ -2161,7 +2161,10 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("media fixture schema");
         }
@@ -2235,7 +2238,10 @@ mod tests {
              )",
         ] {
             database
-                .execute(Statement::from_string(DbBackend::Sqlite, statement.to_string()))
+                .execute(Statement::from_string(
+                    DbBackend::Sqlite,
+                    statement.to_string(),
+                ))
                 .await
                 .expect("product copy fixture schema");
         }
@@ -2376,9 +2382,11 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("prompt is required for image_asset"));
+        assert!(
+            error
+                .to_string()
+                .contains("prompt is required for image_asset")
+        );
     }
 
     #[test]
@@ -2476,11 +2484,12 @@ mod tests {
     async fn direct_image_asset_persists_media_and_localized_owner_translation() {
         let storage_dir =
             std::env::temp_dir().join(format!("rustok-ai-image-test-{}", Uuid::new_v4()));
-        let storage = StorageService::from_config(&StorageConfig {
+        let storage = StorageRuntime::from_config(&StorageConfig {
             driver: StorageDriver::Local,
             local: LocalStorageConfig {
                 base_dir: storage_dir.to_string_lossy().into_owned(),
                 base_url: "https://assets.example.test/media".to_string(),
+                fsync: false,
             },
             ..Default::default()
         })

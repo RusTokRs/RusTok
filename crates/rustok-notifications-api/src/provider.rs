@@ -9,8 +9,8 @@ use uuid::Uuid;
 
 use crate::keys::{NotificationAudienceCursor, NotificationSourceSlug, NotificationTypeKey};
 use crate::model::{
-    NotificationAudiencePage, NotificationOpenAuthorization, NotificationSemanticDescriptor,
-    NotificationSourceEventRef, NotificationTargetRef, MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE,
+    MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE, NotificationAudiencePage, NotificationOpenAuthorization,
+    NotificationSemanticDescriptor, NotificationSourceEventRef, NotificationTargetRef,
 };
 
 pub type NotificationProviderResult<T> = Result<T, NotificationProviderError>;
@@ -180,17 +180,14 @@ pub fn register_notification_source_provider<P>(
 where
     P: NotificationSourceProvider + 'static,
 {
-    let registry = extensions
-        .get_or_insert_with::<Arc<NotificationSourceRegistry>, _>(|| {
-            Arc::new(NotificationSourceRegistry::default())
-        });
+    let registry = extensions.get_or_insert_with::<Arc<NotificationSourceRegistry>, _>(|| {
+        Arc::new(NotificationSourceRegistry::default())
+    });
     Arc::make_mut(registry).register(provider)
 }
 
 pub fn notification_source_registry_from_extensions(
     extensions: &ModuleRuntimeExtensions,
 ) -> Option<Arc<NotificationSourceRegistry>> {
-    extensions
-        .get::<Arc<NotificationSourceRegistry>>()
-        .cloned()
+    extensions.get::<Arc<NotificationSourceRegistry>>().cloned()
 }

@@ -165,6 +165,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 async-trait = "0.1"
 futures-util = "0.3"
+object_store = { version = "0.14.1", default-features = false, features = ["fs", "tokio", "cloud-base"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "avif", "gif"] }
+fast_image_resize = { version = "6.0.0", features = ["image"] }
+mozjpeg-rs = "0.9.2"
+oxipng = { version = "10.1.1", default-features = false }
+zenwebp = "0.4.4"
 aws-config = "1.8"
 aws-sdk-secretsmanager = { version = "1.109", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 azure_identity = "1.0"
@@ -267,8 +273,11 @@ rustok-installer = { path = "crates/rustok-installer" }
 rustok-installer-persistence = { path = "crates/rustok-installer-persistence" }
 rustok-installer-cli = { path = "crates/rustok-installer-cli" }
 rustok-build = { path = "crates/rustok-build" }
+rustok-build-publication = { path = "crates/rustok-build-publication" }
+rustok-build-source = { path = "crates/rustok-build-source" }
 rustok-module-build-transport = { path = "crates/rustok-module-build-transport" }
 rustok-module-build-worker = { path = "crates/rustok-module-build-worker" }
+rustok-static-distribution-worker = { path = "crates/rustok-static-distribution-worker" }
 rustok-worker-transport = { path = "crates/rustok-worker-transport" }
 rustok-graphql = { path = "crates/rustok-graphql" }
 rustok-graphql-leptos = { path = "crates/rustok-graphql-leptos" }
@@ -304,6 +313,7 @@ rustok-test-utils = { path = "crates/rustok-test-utils" }
 rustok-storage = { path = "crates/rustok-storage" }
 rustok-secrets = { path = "crates/rustok-secrets" }
 rustok-media = { path = "crates/rustok-media" }
+rustok-media-transport = { path = "crates/rustok-media-transport" }
 rustok-media-cli = { path = "crates/rustok-media/cli" }
 rustok-profiles-cli = { path = "crates/rustok-profiles/cli" }
 rustok-auth-cli = { path = "crates/rustok-auth/cli" }

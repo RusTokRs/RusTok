@@ -1,6 +1,6 @@
 use anyhow::Context;
-use axum::routing::{get, post};
 use axum::Router;
+use axum::routing::{get, post};
 use rustok_api::HostRuntimeContext;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;

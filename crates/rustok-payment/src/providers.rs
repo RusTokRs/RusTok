@@ -224,7 +224,7 @@ impl PaymentProviderRegistry {
             other => {
                 return Err(PaymentError::Validation(format!(
                     "unknown payment provider operation `{other}`"
-                )))
+                )));
             }
         };
         if !supported {
@@ -655,13 +655,15 @@ mod boundary_tests {
     fn accepts_partial_authorization_within_request() {
         let mut result = valid_result();
         result.authorized_amount = Decimal::new(75, 0);
-        assert!(PaymentProviderRegistry::validate_operation_result(
-            "gateway",
-            "authorize",
-            Decimal::new(100, 0),
-            &result,
-        )
-        .is_ok());
+        assert!(
+            PaymentProviderRegistry::validate_operation_result(
+                "gateway",
+                "authorize",
+                Decimal::new(100, 0),
+                &result,
+            )
+            .is_ok()
+        );
     }
 
     #[test]

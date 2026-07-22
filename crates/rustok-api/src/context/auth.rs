@@ -1,7 +1,7 @@
 use crate::{Action, Permission, Resource};
 use axum::{
     extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
+    http::{StatusCode, request::Parts},
 };
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -103,7 +103,7 @@ fn scope_allows_permission(scope: &str, permission: &Permission) -> bool {
             return matches!(
                 permission.resource,
                 Resource::Users | Resource::Customers | Resource::Profiles
-            )
+            );
         }
         "admin:tenants" => return permission.resource == Resource::Tenants,
         "admin:modules" => return permission.resource == Resource::Modules,
@@ -112,7 +112,7 @@ fn scope_allows_permission(scope: &str, permission: &Permission) -> bool {
             return matches!(
                 permission.resource,
                 Resource::Workflows | Resource::WorkflowExecutions
-            )
+            );
         }
         "storefront:*" => return is_storefront_resource(permission.resource),
         _ => {}

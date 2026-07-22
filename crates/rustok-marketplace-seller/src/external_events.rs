@@ -17,8 +17,9 @@ pub(crate) fn event_for_completed_command(
 ) -> MarketplaceSellerResult<MarketplaceSellerEvent> {
     match response_kind {
         RESPONSE_KIND_SELLER => {
-            let seller: MarketplaceSellerResponse = serde_json::from_value(response_json.clone())
-                .map_err(|_| event_invariant("seller response could not be decoded"))?;
+            let seller: MarketplaceSellerResponse =
+                serde_json::from_value(response_json.clone())
+                    .map_err(|_| event_invariant("seller response could not be decoded"))?;
             seller_event(command_kind, &seller)
         }
         RESPONSE_KIND_MEMBER => {
@@ -69,7 +70,7 @@ fn seller_event(
                 return Err(event_invariant(format!(
                     "completed onboarding review has incompatible status `{}`",
                     status.as_str()
-                )))
+                )));
             }
         },
         "suspend_seller" => {
@@ -95,7 +96,7 @@ fn seller_event(
         other => {
             return Err(event_invariant(format!(
                 "seller response has no external event mapping for command `{other}`"
-            )))
+            )));
         }
     };
     Ok(event)
@@ -105,13 +106,15 @@ fn member_event(
     command_kind: &str,
     member: &MarketplaceSellerMemberResponse,
 ) -> MarketplaceSellerResult<MarketplaceSellerEvent> {
-    let fields = || (
-        member.seller_id,
-        member.id,
-        member.user_id,
-        member.role.as_str().to_string(),
-        member.status.as_str().to_string(),
-    );
+    let fields = || {
+        (
+            member.seller_id,
+            member.id,
+            member.user_id,
+            member.role.as_str().to_string(),
+            member.status.as_str().to_string(),
+        )
+    };
     let event = match command_kind {
         "add_seller_member" => {
             let (seller_id, member_id, user_id, role, status) = fields();
@@ -136,7 +139,7 @@ fn member_event(
         other => {
             return Err(event_invariant(format!(
                 "member response has no external event mapping for command `{other}`"
-            )))
+            )));
         }
     };
     Ok(event)

@@ -1,7 +1,8 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::{
-    graphql::{require_module_enabled, GraphQLError},
-    has_any_effective_permission, AuthContext, Permission, TenantContext,
+    AuthContext, Permission, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
+    has_any_effective_permission,
 };
 use rustok_page_builder::runtime_scenario_release::{
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseStatus,

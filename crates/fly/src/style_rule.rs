@@ -1,6 +1,6 @@
 use crate::{FlyError, FlyResult, ProjectDocument};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub const FLY_COMPONENT_RULE_FIELD: &str = "flyComponentId";
 pub const FLY_RULE_ID_FIELD: &str = "flyRuleId";

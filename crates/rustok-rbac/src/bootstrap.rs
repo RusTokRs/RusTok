@@ -271,8 +271,12 @@ where
         let action = permission.action.to_string();
         let backend = self.db.get_database_backend();
         let select = match backend {
-            DbBackend::Sqlite => "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1",
-            DbBackend::Postgres | DbBackend::MySql => "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1",
+            DbBackend::Sqlite => {
+                "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1"
+            }
+            DbBackend::Postgres | DbBackend::MySql => {
+                "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1"
+            }
         };
         if let Some(id) = self
             .query_id(
@@ -511,10 +515,8 @@ mod tests {
     use sea_orm::DbBackend;
     use uuid::Uuid;
 
-    const ROLE_PERMISSION_INSERT: &str =
-        "INSERT INTO role_permissions (id, role_id, permission_id) VALUES ({id}, {relation_role}, {permission}) ON CONFLICT (role_id, permission_id) DO NOTHING";
-    const USER_ROLE_INSERT: &str =
-        "INSERT INTO user_roles (id, user_id, role_id) VALUES ({id}, {user}, {role}) ON CONFLICT (user_id, role_id) DO NOTHING";
+    const ROLE_PERMISSION_INSERT: &str = "INSERT INTO role_permissions (id, role_id, permission_id) VALUES ({id}, {relation_role}, {permission}) ON CONFLICT (role_id, permission_id) DO NOTHING";
+    const USER_ROLE_INSERT: &str = "INSERT INTO user_roles (id, user_id, role_id) VALUES ({id}, {user}, {role}) ON CONFLICT (user_id, role_id) DO NOTHING";
 
     #[test]
     fn postgres_role_permission_markers_bind_distinct_ids() {
@@ -534,8 +536,10 @@ mod tests {
 
     #[test]
     fn user_role_markers_keep_user_and_role_positions() {
-        assert!(render_insert_sql(USER_ROLE_INSERT, DbBackend::Postgres)
-            .contains("VALUES ($1, $2, $3)"));
+        assert!(
+            render_insert_sql(USER_ROLE_INSERT, DbBackend::Postgres)
+                .contains("VALUES ($1, $2, $3)")
+        );
         assert!(
             render_insert_sql(USER_ROLE_INSERT, DbBackend::Sqlite).contains("VALUES (?1, ?2, ?3)")
         );

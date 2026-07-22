@@ -120,12 +120,11 @@ pub async fn complete_storefront_checkout(
             marketplace_allocation_service.clone(),
         ),
     );
-    let marketplace_ledger_service = Arc::new(
-        rustok_marketplace_ledger::MarketplaceLedgerService::new(
+    let marketplace_ledger_service =
+        Arc::new(rustok_marketplace_ledger::MarketplaceLedgerService::new(
             runtime.db_clone(),
             marketplace_commission_service.clone(),
-        ),
-    );
+        ));
     let pipeline = crate::CheckoutStagePipeline::new(
         runtime.db_clone(),
         event_bus.clone(),

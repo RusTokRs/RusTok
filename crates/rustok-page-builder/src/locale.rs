@@ -1,4 +1,4 @@
-use fly::{normalize_locale_tag, RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD};
+use fly::{RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, normalize_locale_tag};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::cmp::Ordering;

@@ -1,8 +1,8 @@
 mod support;
 
+use support::TestResult;
 use support::event_contract::exercise_forum_event_contract;
 use support::postgres::PostgresForumTestDb;
-use support::TestResult;
 
 #[tokio::test]
 async fn postgres_captures_complete_forum_domain_event_contract() -> TestResult<()> {

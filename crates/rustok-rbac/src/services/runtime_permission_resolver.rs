@@ -1,6 +1,6 @@
 use crate::{
-    resolve_permissions_with_cache, PermissionCache, PermissionResolution, PermissionResolver,
-    RelationPermissionStore,
+    PermissionCache, PermissionResolution, PermissionResolver, RelationPermissionStore,
+    resolve_permissions_with_cache,
 };
 use async_trait::async_trait;
 use rustok_core::UserRole;

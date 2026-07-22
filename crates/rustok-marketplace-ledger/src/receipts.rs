@@ -4,7 +4,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -183,7 +183,8 @@ pub(crate) fn replay_command_receipt<R: DeserializeOwned>(
     expected_command_kind: &str,
     expected_request_hash: &str,
 ) -> MarketplaceLedgerResult<R> {
-    if receipt.command_kind != expected_command_kind || receipt.request_hash != expected_request_hash
+    if receipt.command_kind != expected_command_kind
+        || receipt.request_hash != expected_request_hash
     {
         return Err(MarketplaceLedgerError::IdempotencyConflict);
     }

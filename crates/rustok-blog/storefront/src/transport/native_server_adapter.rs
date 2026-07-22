@@ -1,13 +1,13 @@
 use crate::comments_pagination::COMMENTS_PAGE_SIZE;
 use crate::core::BlogStorefrontFetchRequest;
 #[cfg(feature = "ssr")]
-use crate::model::{BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostList};
-#[cfg(feature = "ssr")]
 use crate::model::BlogPostListItem;
 use crate::model::StorefrontBlogData;
+#[cfg(feature = "ssr")]
+use crate::model::{BlogCommentList, BlogCommentListItem, BlogPostDetail, BlogPostList};
 use leptos::prelude::*;
 
-use super::{configured_tenant_slug, ApiError};
+use super::{ApiError, configured_tenant_slug};
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "blog";

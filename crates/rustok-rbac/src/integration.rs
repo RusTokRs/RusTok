@@ -87,8 +87,8 @@ impl RbacRoleAssignmentEvent {
 #[cfg(test)]
 mod tests {
     use super::{
-        RbacRoleAssignmentEvent, RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED,
-        RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED,
+        RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED, RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED,
+        RbacRoleAssignmentEvent,
     };
     use rustok_core::UserRole;
 

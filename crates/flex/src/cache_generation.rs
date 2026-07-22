@@ -1,8 +1,7 @@
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::{ConnectionTrait, DbBackend};
 
-pub const FIELD_DEFINITION_CACHE_GENERATION_TABLE: &str =
-    "flex_field_definition_cache_generation";
+pub const FIELD_DEFINITION_CACHE_GENERATION_TABLE: &str = "flex_field_definition_cache_generation";
 const FIELD_DEFINITION_CACHE_GENERATION_ID: i32 = 1;
 const POSTGRES_BUMP_FUNCTION: &str = "rustok_bump_flex_field_definition_cache_generation";
 
@@ -204,9 +203,7 @@ fn validate_identifier(value: &str) -> Result<(), DbErr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sea_orm_migration::sea_orm::{
-        Database, DatabaseConnection, Statement, TransactionTrait,
-    };
+    use sea_orm_migration::sea_orm::{Database, DatabaseConnection, Statement, TransactionTrait};
 
     const OWNERS: [(&str, &str); 4] = [
         ("user_field_definitions", "flex_user_fd_cache_generation"),
@@ -281,20 +278,16 @@ mod tests {
         assert_eq!(read_generation(&db).await, 4);
 
         for (table, _) in OWNERS {
-            db.execute_unprepared(&format!(
-                "UPDATE {table} SET position = position + 1"
-            ))
-            .await
-            .expect("owner reorder should commit");
+            db.execute_unprepared(&format!("UPDATE {table} SET position = position + 1"))
+                .await
+                .expect("owner reorder should commit");
         }
         assert_eq!(read_generation(&db).await, 8);
 
         for (table, _) in OWNERS {
-            db.execute_unprepared(&format!(
-                "UPDATE {table} SET is_active = 0"
-            ))
-            .await
-            .expect("owner soft delete should commit");
+            db.execute_unprepared(&format!("UPDATE {table} SET is_active = 0"))
+                .await
+                .expect("owner soft delete should commit");
         }
         assert_eq!(read_generation(&db).await, 12);
 

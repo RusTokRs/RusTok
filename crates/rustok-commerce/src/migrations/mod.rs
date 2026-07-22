@@ -55,9 +55,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260716_000004_create_return_completion_operations::Migration),
         Box::new(m20260716_000005_enforce_return_completion_resolution_identity::Migration),
         Box::new(m20260716_000006_create_return_completion_commands::Migration),
-        Box::new(
-            m20260721_000001_create_checkout_marketplace_economics_checkpoints::Migration,
-        ),
+        Box::new(m20260721_000001_create_checkout_marketplace_economics_checkpoints::Migration),
         Box::new(m20260721_000002_create_marketplace_financial_operations::Migration),
         Box::new(m20260721_000003_create_marketplace_paid_event_inbox::Migration),
     ]

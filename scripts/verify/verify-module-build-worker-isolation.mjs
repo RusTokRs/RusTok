@@ -11,7 +11,8 @@ const jobLauncherPath = path.join(workerRoot, 'src/runner.rs');
 const serverRoot = path.join(root, 'apps/server');
 const dispatcherRoot = path.join(root, 'crates/rustok-module-build-dispatcher');
 const transportServerPath = path.join(root, 'crates/rustok-module-build-transport/src/server.rs');
-const signingPath = path.join(workerRoot, 'src/signing.rs');
+const publicationRoot = path.join(root, 'crates/rustok-build-publication');
+const signingPath = path.join(publicationRoot, 'src/signing.rs');
 const forbiddenDependencies = [
   'sea-orm',
   'sea-orm-migration',
@@ -82,6 +83,17 @@ try {
     .map(relative);
   if (sourceViolations.length > 0) {
     fail(`worker source accesses forbidden tenant or general-secret APIs: ${sourceViolations.join(', ')}`);
+  }
+  const publicationSourceViolations = rustFiles(path.join(publicationRoot, 'src'))
+    .filter((filePath) => {
+      const source = fs.readFileSync(filePath, 'utf8');
+      return forbiddenSourcePatterns.some((pattern) => pattern.test(source));
+    })
+    .map(relative);
+  if (publicationSourceViolations.length > 0) {
+    fail(
+      `shared build publication source accesses forbidden tenant or general-secret APIs: ${publicationSourceViolations.join(', ')}`,
+    );
   }
 
   const serverManifest = fs.readFileSync(path.join(serverRoot, 'Cargo.toml'), 'utf8');

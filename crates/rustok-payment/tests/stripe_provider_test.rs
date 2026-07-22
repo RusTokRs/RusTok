@@ -33,7 +33,10 @@ fn signature(secret: &str, timestamp: i64, payload: &[u8]) -> String {
     signed.extend_from_slice(payload);
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(&signed);
-    format!("t={timestamp},v1={}", hex(mac.finalize().into_bytes().as_slice()))
+    format!(
+        "t={timestamp},v1={}",
+        hex(mac.finalize().into_bytes().as_slice())
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {

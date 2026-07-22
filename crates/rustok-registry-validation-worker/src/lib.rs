@@ -1,13 +1,14 @@
 //! Independent durable worker for origin-aware registry artifact validation.
 
+use object_store::ObjectStoreExt;
 use sha2::{Digest, Sha256};
 
 use rustok_modules::{
-    validate_module_publish_artifact,
     ModuleValidationJobResultCommand, ModuleValidationJobResultOutcome,
     ModuleValidationJobRetryCommand, SeaOrmModuleGovernanceService,
+    validate_module_publish_artifact,
 };
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 
 const ARTIFACT_LOAD_RETRY_DELAYS_SECONDS: &[u64] = &[1, 3, 5];
 
@@ -23,14 +24,14 @@ enum ArtifactLoadOutcome {
 #[derive(Clone)]
 pub struct RegistryValidationWorker {
     service: SeaOrmModuleGovernanceService,
-    storage: StorageService,
+    storage: StorageRuntime,
     actor_principal: serde_json::Value,
 }
 
 impl RegistryValidationWorker {
     pub fn new(
         service: SeaOrmModuleGovernanceService,
-        storage: StorageService,
+        storage: StorageRuntime,
         actor_id: impl Into<String>,
     ) -> Result<Self, String> {
         let actor_id = actor_id.into();
@@ -160,7 +161,13 @@ impl RegistryValidationWorker {
     ) -> Result<Vec<u8>, String> {
         let bytes = self
             .storage
-            .read(&work_item.artifact_storage_key)
+            .objects
+            .get(&object_store::path::Path::from(
+                work_item.artifact_storage_key.as_str(),
+            ))
+            .await
+            .map_err(|error| error.to_string())?
+            .bytes()
             .await
             .map_err(|error| error.to_string())?;
         if u64::try_from(bytes.len()).ok() != Some(work_item.artifact_size) {

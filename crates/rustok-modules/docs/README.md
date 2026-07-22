@@ -28,7 +28,8 @@ identity-allocating object-data operations use it for installation, operation,
 outbox, verification, commit-evidence, governance aggregate, validation-stage,
 claim, event, delivery, work-lease, upload-session, private-storage,
 GC-candidate, export, secret-event, lifecycle-correlation, CAS-stage,
-OCI-temporary-stage, and lease-time identities. Schedule materialization also
+OCI-temporary-stage, static-promotion operation, and lease-time identities.
+Schedule materialization also
 uses the injected owner time. Direct system clock and random UUID access is
 confined to the default infrastructure adapters outside test fixtures.
 Database-expression timestamps remain owned by the transactional storage
@@ -40,6 +41,16 @@ object-safe `rustok-outbox::TransactionalEventWriter`; owner commands append
 their envelope through that port in the same transaction as state and audit
 facts. Redacted runtime audit remains behind `ExecutionObserver`, and domain
 audit facts remain owner rows/outbox events rather than a second audit journal.
+
+Secret values never cross the artifact capability response. The sandbox-visible
+`platform.secrets.acquire_handle` operation returns only logical reference and
+revision. A host adapter that needs the value must use
+`ModuleControlPlane::artifact_secret_use`: the owner reauthorizes the immutable
+execution, reloads the exact binding revision under tenant RLS, closes the
+transaction, and lends the resolved `SecretString` only to a fixed-purpose host
+consumer whose result type is `()`. The resulting receipt contains only logical
+reference, revision, and purpose; resolver keys, values, and consumer output are
+not serializable through this boundary.
 
 `OciDistributionArtifactRegistry` resolves only digest-pinned references. It
 requires the returned manifest digest to match the requested reference, reads
@@ -110,7 +121,7 @@ Artifact persistence is limited to a revision plus a bundled schema digest for
 brokered namespaced values; descriptor decoding rejects unknown fields, so an
 artifact cannot attach SQL, DDL, native migrations, a bucket path, or a host
 storage handle.
-Dynamic artifact UI is similarly declarative-only: v1 accepts only
+Dynamic artifact UI is similarly declarative-only: the current contract accepts only
 `admin_settings` and `admin_actions` contribution surfaces with immutable
 localization and declared permissions. Descriptor fields cannot carry a
 component, URL, iframe, or native frontend package; native UI remains a static
@@ -119,6 +130,56 @@ Schemas are keyed by their canonical digest, compile into a bounded node-local
 LRU cache with linear-time regex limits, and use a `jsonschema` build without
 filesystem or HTTP resolver features. Non-local `$ref`, `$dynamicRef`, and
 `$recursiveRef` values are rejected during descriptor admission.
+
+`ModuleControlPlane::promotion` owns the only static-promotion request and
+approval path. A request is eligible only for an active platform-built release;
+the owner reloads its platform build staging row and completed tenant-scoped
+build request/result, then binds the exact source reference, source digest,
+dependency-lock digest, Cargo package, normalized crate-local native entry type,
+component digest, and OCI publication receipt. Source identity must be the exact
+`cas://sha256:<hex>` reference. Approval
+requires immutable ownership, dependency-audit, test, and static-review evidence
+plus revision CAS, exact-replay idempotency, and separate fail-closed host
+authorization for request and approval. The persisted requester cannot approve
+the same promotion. `ModuleControlPlane::static_distribution` is the only owner
+that can consume approved records. It replaces the complete selection under a
+separate CAS head, revalidates every release/build pair, pins platform source,
+toolchain and target identities, carries the Cargo package and native entry type
+into every distribution item and its composition digest, and records an
+immutable predecessor-linked
+build intent plus outbox evidence. Selection also requires its own fail-closed
+host authorization decision. These services have no compiler,
+active-composition mutation, native loader, compatibility alias, or alternate
+versioned path. `ModuleControlPlane::static_distribution_worker` separately
+owns bounded claim leases, heartbeats, expired-lease attempt closure, and exact
+terminal replay. Successful completion requires artifact, SBOM, provenance,
+signature-manifest, and test evidence, but still cannot activate a release.
+`ModuleControlPlane::static_distribution_release` is the only release-activation
+owner. It accepts only the current successfully completed build, calls a
+mandatory external verifier before opening the mutation transaction, then
+relocks and revalidates the exact build, every selected promotion, and its
+published build evidence. Signature, provenance, SBOM, test, and dependency
+policy decisions must all pass under the exact requested policy revision. The
+owner atomically supersedes the prior release, advances a dedicated release CAS
+head, stores immutable admission evidence and exact-replay idempotency, and
+publishes `module.static_distribution.release_activated`. This release ledger
+does not deploy code or mutate the running composition; deployment, explicit
+rollback, and revocation remain separate owner operations.
+`ModuleControlPlane::static_distribution_release` also owns those lifecycle
+commands. Rollback is limited to the active release's direct predecessor and is
+accepted only when the distribution head still matches the active release. It
+revalidates the target admission, terminal build digest, complete composition,
+promotion review, and publication evidence before queuing a new immutable build
+and publishing both build and rollback outbox facts. The old artifact is never
+reactivated, and the rebuilt artifact digest must reproduce the target before
+activation. A newer selection or failed/cancelled rollback build closes the
+pending request. Revocation uses release-head revision CAS and exact replay,
+records actor/reason/policy, cancels pending rollback requests involving that
+release, and clears the head when the revoked release was active. Neither
+operation mutates a running process; deployment consumes the resulting owner
+events.
+Activation, rollback, and revocation reserve one shared lifecycle idempotency
+key namespace, so a UUID cannot be reused across command kinds.
 
 Artifact permission descriptors carry immutable localized labels and
 descriptions. Admission sends them through the shared
@@ -138,6 +199,23 @@ Structured-data and object-data list calls validate bounded keyset continuation
 inside the requested logical prefix before invoking any capability broker. A
 custom broker therefore cannot receive a continuation that escapes the admitted
 namespace even if it does not repeat owner validation internally.
+
+Durable artifact-data backup is owner-only and separate from bounded export
+pages. `ModuleControlPlane::artifact_data_snapshot` creates a resumable,
+idempotent namespace snapshot under tenant RLS and an exact namespace revision
+lock. Structured values, logical object metadata, materialized indexes, and the
+index contract form the canonical manifest; object bytes are copied to private
+snapshot-owned keys and re-hashed before the snapshot becomes `ready`. Restore
+re-verifies that manifest and every object, then uses one transaction for the
+empty-target guard, namespace CAS, restored rows, audit operation, and outbox
+event. It cannot clear a purge tombstone, overwrite live data, or expose a
+physical storage key to an artifact. Snapshot retention is revision-CAS state:
+authorized commands can extend its deadline and apply or release legal hold,
+but cannot shorten retention. The bounded collector requires separate host
+authorization plus an explicit policy-snapshot rule with no audit or rollback hold before persisting a
+resumable `collecting` decision. Missing policy retains data; final collection
+preserves independent audit facts and emits an outbox event rather than using
+implicit age-only GC.
 
 Final registry publication revalidates localized rows loaded from the database.
 Every locale must already be canonical, names and descriptions must satisfy the
@@ -163,7 +241,7 @@ PostgreSQL migration enables RLS; tenant-scoped connections must set
 the installation, admission metadata, and `module.artifact.admitted` outbox
 envelope. It stores the reference and canonical descriptor, never artifact
 bytes. `StorageArtifactBlobStore` supplies the production CAS adapter over the
-platform `StorageService`: it uses private staging keys, conditional creation
+platform `ObjectStore` runtime: it uses private staging keys, conditional creation
 of digest-derived final keys with the admitted media type, and verified reads. CAS publication remains
 outside the database transaction; the reconciler removes an orphan only after
 it has no committed admission reference and an explicit durable retention

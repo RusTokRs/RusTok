@@ -153,7 +153,7 @@ Two public traits:
 
 ### `crates/rustok-storage`
 
-Infrastructure storage crate: `StorageBackend` trait, `LocalStorage`, `StorageService`. Initialized in `bootstrap_app_runtime` (feature `mod-media`), available via `ctx.shared_store.get::<StorageService>()`. S3 backend is declared in Cargo.toml features, but not implemented.
+Infrastructure support crate for direct `object_store` use. `StorageRuntime` exposes `Arc<dyn ObjectStore>`, an optional signer, runtime diagnostics, and canonical chronological/digest key constructors. It is initialized in `bootstrap_app_runtime`; domain owners call `ObjectStore` directly and own lifecycle metadata. Local storage is the development default and S3-compatible storage is optional through the `s3` feature.
 
 ### `crates/rustok-outbox`
 

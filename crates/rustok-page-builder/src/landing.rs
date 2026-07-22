@@ -1,9 +1,9 @@
 use fly::{
-    build_static_landing_artifact, build_static_landing_artifact_with_renderer, validate_project,
     ComponentRegistryManifest, FlyError, GrapesJsCodec, LandingPropertyValidationReport,
     LandingReadinessPolicy, LandingRenderer, ProjectDocument, RegistryCompatibilityIssue,
     RegistryCompatibilityIssueKind, RegistryCompatibilityReport, RegistrySet, RenderPolicy,
     StaticLandingBuildResult, ValidationDiagnostic, ValidationLimits, ValidationReport,
+    build_static_landing_artifact, build_static_landing_artifact_with_renderer, validate_project,
 };
 use serde_json::Value;
 
@@ -215,11 +215,13 @@ mod tests {
         project["pages"][0]["component"]["components"][0]["provider"] = json!("other.provider");
         let inspection = LandingProjectInspection::decode(&project).expect("structural inspection");
         assert!(!inspection.registry_compatibility().compatible);
-        assert!(inspection
-            .registry_compatibility()
-            .issues
-            .iter()
-            .any(|issue| issue.kind == RegistryCompatibilityIssueKind::ProviderMismatch));
+        assert!(
+            inspection
+                .registry_compatibility()
+                .issues
+                .iter()
+                .any(|issue| issue.kind == RegistryCompatibilityIssueKind::ProviderMismatch)
+        );
         assert!(matches!(
             inspection.require_contract_valid(),
             Err(LandingProjectError::RegistryIncompatible { .. })

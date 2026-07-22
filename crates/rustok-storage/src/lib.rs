@@ -1,13 +1,13 @@
-pub mod backend;
-pub mod error;
-pub mod local;
-#[cfg(feature = "s3")]
-pub mod s3;
-pub mod service;
+//! Runtime construction and canonical object-key policy for RusToK.
+//!
+//! Domain owners use [`object_store::ObjectStore`] directly. This crate does
+//! not wrap object CRUD or own any domain object's lifecycle.
 
-pub use backend::{StorageBackend, StoredObject, UploadedObject};
-pub use error::{Result, StorageError};
-pub use local::LocalStorageConfig;
-#[cfg(feature = "s3")]
-pub use s3::S3StorageConfig;
-pub use service::{StorageConfig, StorageDriver, StorageService};
+mod key;
+mod runtime;
+
+pub use key::{DigestObjectKey, KeyError, ObjectKey, ObjectScope, ObjectZone};
+pub use object_store;
+pub use runtime::{
+    LocalStorageConfig, S3StorageConfig, StorageConfig, StorageDriver, StorageKind, StorageRuntime,
+};

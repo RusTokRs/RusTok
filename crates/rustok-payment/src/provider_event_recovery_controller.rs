@@ -1,10 +1,10 @@
 use axum::{
+    Json, Router,
     extract::{Query, State},
     http::StatusCode,
-    Json, Router,
 };
 use rustok_api::{
-    has_any_effective_permission, AuthContext, HostRuntimeContext, Permission, TenantContext,
+    AuthContext, HostRuntimeContext, Permission, TenantContext, has_any_effective_permission,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -135,12 +135,13 @@ fn map_recovery_error(error: PaymentError) -> (StatusCode, Json<Value>) {
             "payment_provider_event_recovery_unavailable",
             "Payment provider event recovery is unavailable",
         ),
-        PaymentError::InvalidTransition { .. }
-        | PaymentError::ProviderOutcomeUnknown { .. } => safe_error(
-            StatusCode::CONFLICT,
-            "payment_provider_event_state_conflict",
-            "Payment provider event requires reconciliation",
-        ),
+        PaymentError::InvalidTransition { .. } | PaymentError::ProviderOutcomeUnknown { .. } => {
+            safe_error(
+                StatusCode::CONFLICT,
+                "payment_provider_event_state_conflict",
+                "Payment provider event requires reconciliation",
+            )
+        }
         PaymentError::Validation(_)
         | PaymentError::ProviderRejected { .. }
         | PaymentError::ProviderInvalidResponse { .. }

@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_payment_collection_card_view_model, payment_collection_action_label,
     PaymentCollectionActionLabels, PaymentCollectionCardData, PaymentCollectionCardLabels,
+    build_payment_collection_card_view_model, payment_collection_action_label,
 };
 use crate::i18n::t;
-use crate::transport::{build_payment_collection_create_request, PaymentCollectionCreateRequest};
+use crate::transport::{PaymentCollectionCreateRequest, build_payment_collection_create_request};
 
 #[component]
 pub fn PaymentView() -> impl IntoView {

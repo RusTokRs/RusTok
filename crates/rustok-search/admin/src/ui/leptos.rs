@@ -1028,7 +1028,11 @@ fn analytics_view(
     let locale = ui_locale.clone();
     let locale_ref = locale.as_deref();
     let analytics_title = t(locale_ref, "search.analytics.title", "Search Analytics");
-    let analytics_subtitle = t(locale_ref, "search.analytics.subtitle", "CTR, abandonment, zero-result, slow-query analysis, and query-intelligence candidates over the recent query log window.");
+    let analytics_subtitle = t(
+        locale_ref,
+        "search.analytics.subtitle",
+        "CTR, abandonment, zero-result, slow-query analysis, and query-intelligence candidates over the recent query log window.",
+    );
     let load_analytics_error = t(
         locale_ref,
         "search.error.loadAnalytics",
@@ -1054,7 +1058,11 @@ fn analytics_view(
         "search.analytics.consistencyTitle",
         "Consistency Issues",
     );
-    let consistency_subtitle = t(locale_ref, "search.analytics.consistencySubtitle", "Missing projections and orphaned search documents compared to current content/product source state.");
+    let consistency_subtitle = t(
+        locale_ref,
+        "search.analytics.consistencySubtitle",
+        "Missing projections and orphaned search documents compared to current content/product source state.",
+    );
     let load_consistency_error = t(
         locale_ref,
         "search.error.loadConsistency",

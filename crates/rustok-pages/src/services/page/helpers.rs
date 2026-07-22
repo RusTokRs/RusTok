@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use chrono::Utc;
 use sea_orm::{
-    sea_query::{Expr, Query, SelectStatement},
     ActiveValue::Set,
     Condition, QueryFilter, Select,
+    sea_query::{Expr, Query, SelectStatement},
 };
 use uuid::Uuid;
 
@@ -13,24 +13,20 @@ use rustok_content::{
     resolve_by_locale_with_fallback,
 };
 use rustok_core::{
-    normalize_content_format, prepare_content_payload, CONTENT_FORMAT_GRAPESJS,
-    CONTENT_FORMAT_RT_JSON_V1,
+    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_RT_JSON_V1, normalize_content_format,
+    prepare_content_payload,
 };
 use rustok_events::DomainEvent;
 
-use crate::dto::{
-    PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse,
-};
+use crate::dto::{PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse};
 use crate::entities::{page, page_body, page_channel_visibility, page_translation};
 use crate::error::{PagesError, PagesResult};
-use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::PageBuilderArtifactService;
+use crate::services::page_builder_artifact::CompiledLandingArtifact;
 
 use super::{PageTransition, PreparedPageBody, ResolvedBodyRecord, ResolvedTranslationRecord};
 
-pub(super) fn validate_page_translations(
-    translations: &[PageTranslationInput],
-) -> PagesResult<()> {
+pub(super) fn validate_page_translations(translations: &[PageTranslationInput]) -> PagesResult<()> {
     if translations.is_empty() {
         return Err(PagesError::validation(
             "At least one page translation is required",
@@ -284,7 +280,7 @@ pub(super) fn storage_to_status(status: &str) -> PagesResult<ContentStatus> {
         other => {
             return Err(PagesError::validation(format!(
                 "Unknown page status: {other}"
-            )))
+            )));
         }
     })
 }

@@ -171,11 +171,13 @@ profile with outcome `failed`. This checks production evidence before the
 worker publishes OCI referrers and signs the artifact; admission trust policy
 remains a separate stage.
 
-For v1, source reference must exactly be `cas://sha256/<hex>` and its matching
+The current source reference must exactly be `cas://sha256:<hex>` and its matching
 `<hex>.tar` file must exist in `RUSTOK_MODULE_BUILD_SOURCE_ROOT`. The worker
-rehashes the archive before use, accepts only checksummed USTAR regular
-files/directories, rejects links, devices, and escaping paths, and enforces the
-request disk limit while extracting,
+uses the shared `rustok-build-source` parser: it rehashes the archive before
+use, accepts only checksummed bounded USTAR regular files/directories, rejects
+links, devices, escaping/current-directory paths, duplicate entries,
+overwrites, malformed terminators, and non-zero trailing content, and enforces
+archive-byte, extracted-byte, and entry-count limits while extracting,
 and removes the request-scoped materialized directory after the runner exits.
 The runner receives the materialized paths through
 `RUSTOK_MODULE_BUILD_SOURCE_DIR` and `RUSTOK_MODULE_BUILD_OUTPUT_DIR`.

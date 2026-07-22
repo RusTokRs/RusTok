@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::{
-    graphql::require_module_enabled, graphql::resolve_graphql_locale, AuthContext, RequestContext,
-    TenantContext,
+    AuthContext, RequestContext, TenantContext, graphql::require_module_enabled,
+    graphql::resolve_graphql_locale,
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
@@ -11,8 +11,8 @@ use sea_orm::DatabaseConnection;
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::services::page::is_page_visible_for_channel;
 use crate::PageService;
+use crate::services::page::is_page_visible_for_channel;
 
 use super::types::*;
 
@@ -308,8 +308,8 @@ async fn ensure_public_pages_channel_enabled(
 mod tests {
     use super::{ensure_public_pages_channel_enabled, is_page_visible_for_request};
     use crate::services::page::is_page_visible_for_channel;
-    use rustok_api::{context::ChannelResolutionSource, RequestContext};
-    use rustok_channel::{migrations, BindChannelModuleInput, ChannelService, CreateChannelInput};
+    use rustok_api::{RequestContext, context::ChannelResolutionSource};
+    use rustok_channel::{BindChannelModuleInput, ChannelService, CreateChannelInput, migrations};
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;

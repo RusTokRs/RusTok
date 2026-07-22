@@ -1,8 +1,8 @@
 use rust_decimal::Decimal;
+use rustok_payment::PaymentService;
 use rustok_payment::dto::{AuthorizePaymentInput, CreatePaymentCollectionInput};
 use rustok_payment::entities::payment;
 use rustok_payment::migrations;
-use rustok_payment::PaymentService;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, Statement};
 use sea_orm_migration::SchemaManager;

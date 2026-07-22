@@ -1,8 +1,8 @@
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rustok_core::generate_id;
 use sea_orm::{
-    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};

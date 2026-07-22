@@ -1,4 +1,4 @@
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AuthError, Result};
@@ -419,33 +419,39 @@ mod tests {
                 ..AuthSettingsOverrides::default()
             },
         ] {
-            assert!(build_auth_config_with_env(secret(), 900, overrides, |_| {
-                panic!("env resolver should not be called")
-            })
-            .is_err());
+            assert!(
+                build_auth_config_with_env(secret(), 900, overrides, |_| {
+                    panic!("env resolver should not be called")
+                })
+                .is_err()
+            );
         }
     }
 
     #[test]
     fn build_auth_config_rejects_invalid_ttl_bounds() {
-        assert!(build_auth_config_with_env(
-            secret(),
-            MIN_ACCESS_EXPIRATION_SECS - 1,
-            AuthSettingsOverrides::default(),
-            |_| panic!("env resolver should not be called"),
-        )
-        .is_err());
+        assert!(
+            build_auth_config_with_env(
+                secret(),
+                MIN_ACCESS_EXPIRATION_SECS - 1,
+                AuthSettingsOverrides::default(),
+                |_| panic!("env resolver should not be called"),
+            )
+            .is_err()
+        );
 
-        assert!(build_auth_config_with_env(
-            secret(),
-            900,
-            AuthSettingsOverrides {
-                refresh_expiration: Some(300),
-                ..AuthSettingsOverrides::default()
-            },
-            |_| panic!("env resolver should not be called"),
-        )
-        .is_err());
+        assert!(
+            build_auth_config_with_env(
+                secret(),
+                900,
+                AuthSettingsOverrides {
+                    refresh_expiration: Some(300),
+                    ..AuthSettingsOverrides::default()
+                },
+                |_| panic!("env resolver should not be called"),
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -14,9 +14,11 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-07-22](./2026-07-22-static-promotion-review-boundary.md) | Static promotion review boundary | Accepted |
 | [2026-07-18](./2026-07-18-rag-postgres-capability-profiles.md) | Athanor-owned RAG data plane | Accepted |
 | [2026-07-18](./2026-07-18-repository-connector-module-github-first.md) | Repository connector module with GitHub as the first provider | Accepted |
-| [2026-07-18](./2026-07-18-storage-physical-owner-media-facade.md) | Storage as the physical file owner and Media as the media facade | Accepted |
+| [2026-07-22](./2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md) | Direct object-store runtime and owner-local lifecycle | Accepted |
+| [2026-07-18](./2026-07-18-storage-physical-owner-media-facade.md) | Storage as the physical file owner and Media as the media facade | Superseded |
 | [2026-07-17](./2026-07-17-sandbox-artifact-installation-identity.md) | Exact installation identity for sandboxed module artifacts | Accepted |
 | [2026-07-16](./2026-07-16-module-build-worker-transport.md) | Module build worker transport | Accepted |
 | [2026-07-16](./2026-07-16-media-search-extraction-boundaries.md) | Media and Search as whole-module extraction pilots | Proposed |

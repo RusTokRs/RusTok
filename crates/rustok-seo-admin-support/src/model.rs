@@ -310,7 +310,7 @@ impl SeoEntityForm {
                 return Err(
                     "Structured data payload must be a JSON object when schema type is set."
                         .to_string(),
-                )
+                );
             }
             None => Map::new(),
         };
@@ -610,11 +610,11 @@ fn non_empty_option(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        derive_control_plane_widget_state, remediation_hint_for_issue_code,
         SeoControlPlaneWidgetStateKind, SeoEntityForm, SeoEventDeliverySummary,
         SeoMetaTranslationView, SeoMetaView, SeoRecommendation, SeoRemediationAction,
+        derive_control_plane_widget_state, remediation_hint_for_issue_code,
     };
-    use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+    use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -651,12 +651,16 @@ mod tests {
         let form = SeoEntityForm::new("ru".to_string());
         let report = form.completeness_report();
 
-        assert!(report
-            .recommendations
-            .contains(&SeoRecommendation::AddSeoTitle));
-        assert!(report
-            .recommendations
-            .contains(&SeoRecommendation::AddMetaDescription));
+        assert!(
+            report
+                .recommendations
+                .contains(&SeoRecommendation::AddSeoTitle)
+        );
+        assert!(
+            report
+                .recommendations
+                .contains(&SeoRecommendation::AddMetaDescription)
+        );
     }
 
     #[test]

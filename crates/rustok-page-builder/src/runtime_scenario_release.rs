@@ -1,4 +1,4 @@
-use fly::{evaluate_runtime_scenario_release, FlyResult, GrapesJsCodec};
+use fly::{FlyResult, GrapesJsCodec, evaluate_runtime_scenario_release};
 pub use fly::{
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleaseMode,
     RuntimeScenarioReleasePolicy, RuntimeScenarioReleaseStatus, RuntimeScenarioRenderChange,

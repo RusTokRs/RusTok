@@ -3,11 +3,11 @@ use rustok_modules::{
     ModuleBuildProtocolError, ModuleBuildRequest, ModuleBuildResult, ModuleBuildWorker,
 };
 use tokio::sync::Mutex;
-use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tonic::Request;
+use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
-use crate::proto::module_build_service_client::ModuleBuildServiceClient;
-use crate::proto::{ExecuteBuildRequest, ReadinessRequest};
+use crate::module_build_proto::module_build_service_client::ModuleBuildServiceClient;
+use crate::module_build_proto::{ExecuteBuildRequest, ReadinessRequest};
 
 /// Owner-side adapter for the separately deployed build worker. Connection,
 /// deadline, protocol, and worker errors are returned to the caller; this
@@ -17,22 +17,14 @@ pub struct GrpcModuleBuildWorker {
 }
 
 impl GrpcModuleBuildWorker {
-    pub fn from_channel(channel: Channel) -> Self {
+    fn from_channel(channel: Channel) -> Self {
         Self {
             client: Mutex::new(ModuleBuildServiceClient::new(channel)),
         }
     }
 
-    pub async fn connect(endpoint: Endpoint) -> Result<Self, String> {
-        let channel = endpoint
-            .connect()
-            .await
-            .map_err(|error| error.to_string())?;
-        Ok(Self::from_channel(channel))
-    }
-
     /// Connects with deployment-provided mTLS identity, trust root, and worker
-    /// domain. Production callers must use this method rather than plaintext.
+    /// domain. This is the only connection constructor.
     pub async fn connect_with_tls(
         endpoint: Endpoint,
         tls_config: ClientTlsConfig,

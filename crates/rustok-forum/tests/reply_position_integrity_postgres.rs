@@ -9,8 +9,8 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use tokio::sync::Barrier;
 use uuid::Uuid;
 
-use support::postgres::{execute, expect_rejected, PostgresForumTestDb};
-use support::{test_error, TestResult};
+use support::postgres::{PostgresForumTestDb, execute, expect_rejected};
+use support::{TestResult, test_error};
 
 #[tokio::test]
 async fn postgres_allocates_unique_contiguous_reply_positions() -> TestResult<()> {

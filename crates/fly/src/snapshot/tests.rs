@@ -1,6 +1,6 @@
 use super::*;
 use crate::{FlyError, GrapesJsCodec, ProjectDocument};
-use serde_json::{json, Map};
+use serde_json::{Map, json};
 
 fn document(content: &str) -> ProjectDocument {
     GrapesJsCodec::decode_value(json!({
@@ -105,9 +105,10 @@ fn anonymous_components_use_canonical_paths_in_diffs() {
     .expect("after");
 
     let diff = compare_projects(&before, &after);
-    assert!(diff
-        .changed_components
-        .contains(&"@path:project.pages[0].component.components[0]".to_string()));
+    assert!(
+        diff.changed_components
+            .contains(&"@path:project.pages[0].component.components[0]".to_string())
+    );
 }
 
 #[test]

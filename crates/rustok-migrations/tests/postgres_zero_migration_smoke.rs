@@ -2,16 +2,16 @@ mod support;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use support::backfill_fixtures::{
-    apply_setup as apply_backfill_setup, assert_results as assert_backfill_results,
-    load_from_environment as load_backfill_fixtures, BackfillFixture,
-};
 use rustok_migrations::Migrator;
 use sea_orm_migration::{
     prelude::MigratorTrait,
     sea_orm::{
         ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
     },
+};
+use support::backfill_fixtures::{
+    apply_setup as apply_backfill_setup, assert_results as assert_backfill_results,
+    load_from_environment as load_backfill_fixtures, BackfillFixture,
 };
 
 #[tokio::test]
@@ -38,9 +38,7 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
     let rollback_latest = env_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST")?;
     let backfill_fixtures = load_backfill_fixtures()?;
     if !backfill_fixtures.is_empty() && !reuse_database {
-        return Err(
-            "backfill fixtures require RUSTOK_MIGRATION_SMOKE_REUSE_DB=1".into(),
-        );
+        return Err("backfill fixtures require RUSTOK_MIGRATION_SMOKE_REUSE_DB=1".into());
     }
 
     let admin = connect_postgres(&admin_url)
@@ -146,7 +144,9 @@ async fn assert_no_pending_migrations(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pending = Migrator::get_pending_migrations(db)
         .await
-        .map_err(|error| format!("pending migration list during {phase} must be readable: {error}"))?;
+        .map_err(|error| {
+            format!("pending migration list during {phase} must be readable: {error}")
+        })?;
     if !pending.is_empty() {
         let pending_names = pending
             .iter()
@@ -157,9 +157,7 @@ async fn assert_no_pending_migrations(
     Ok(())
 }
 
-async fn assert_schema_contract(
-    db: &DatabaseConnection,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn assert_schema_contract(db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
     for table in [
         "tenants",
         "users",

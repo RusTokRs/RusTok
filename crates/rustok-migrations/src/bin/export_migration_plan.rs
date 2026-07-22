@@ -23,7 +23,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         "schema_version": 1,
         "migrations": migrations,
     });
-    fs::write(&output, format!("{}\n", serde_json::to_string_pretty(&plan)?))?;
+    fs::write(
+        &output,
+        format!("{}\n", serde_json::to_string_pretty(&plan)?),
+    )?;
     println!("exported migration plan to {}", output.display());
     Ok(())
 }
@@ -35,11 +38,7 @@ fn parse_output_path() -> Result<PathBuf, Box<dyn Error>> {
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--output" => {
-                output = PathBuf::from(
-                    arguments
-                        .next()
-                        .ok_or("--output requires a file path")?,
-                );
+                output = PathBuf::from(arguments.next().ok_or("--output requires a file path")?);
             }
             "--help" | "-h" => {
                 println!("Usage: export_migration_plan [--output FILE]");

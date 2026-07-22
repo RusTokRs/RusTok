@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use rig::prelude::ImageGenerationClient;
 use rig::{
+    OneOrMany,
     client::CompletionClient,
     completion::{
         CompletionModel, CompletionRequest, Message, ToolDefinition as RigToolDefinition,
@@ -19,20 +20,19 @@ use rig::{
         perplexity, together, xai, xiaomimimo, zai,
     },
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
-    OneOrMany,
 };
 use secrecy::ExposeSecret;
 
 use crate::{
+    AiError, AiResult,
     model::{
         AiProviderConfig, ChatMessage, ChatMessageRole, ProviderChatRequest, ProviderChatResponse,
         ProviderImageRequest, ProviderImageResponse, ProviderStreamEmitter,
         ProviderStructuredRequest, ProviderTestResult, ProviderUsage, ToolCall,
     },
-    AiError, AiResult,
 };
 
-use super::{catalog::ProviderIntegration, ProviderSlug};
+use super::{ProviderSlug, catalog::ProviderIntegration};
 
 #[async_trait]
 pub trait InferenceEngine: Send + Sync {
@@ -366,7 +366,7 @@ pub async fn inference_for_slug(
         ProviderIntegration::VoyageAi | ProviderIntegration::Fastembed => {
             return Err(AiError::InvalidConfig(format!(
                 "Rig provider `{slug}` does not expose a chat runtime factory"
-            )))
+            )));
         }
     };
     Ok(engine)

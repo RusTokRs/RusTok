@@ -1,12 +1,12 @@
 use crate::core::{
-    oauth_app_list_item_view, oauth_app_type_defaults, prepare_create_oauth_app_input,
-    prepare_update_oauth_app_input, CreateOAuthAppForm, OAuthAppListItemViewModel,
+    CreateOAuthAppForm, OAuthAppListItemViewModel, oauth_app_list_item_view,
+    oauth_app_type_defaults, prepare_create_oauth_app_input, prepare_update_oauth_app_input,
 };
 use crate::i18n::t;
 use crate::model::{AppType, OAuthApp};
 use crate::transport::{
-    create_oauth_app, list_oauth_apps, revoke_oauth_app, rotate_oauth_app_secret, update_oauth_app,
-    CreateOAuthAppResult,
+    CreateOAuthAppResult, create_oauth_app, list_oauth_apps, revoke_oauth_app,
+    rotate_oauth_app_secret, update_oauth_app,
 };
 use crate::ui::components::{Button, Input};
 use leptos::prelude::*;

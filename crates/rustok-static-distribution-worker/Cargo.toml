@@ -1,0 +1,25 @@
+[package]
+name = "rustok-static-distribution-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Trusted static-distribution CI executor process for RusToK"
+
+[dependencies]
+async-trait.workspace = true
+hex.workspace = true
+rustok-build-publication.workspace = true
+rustok-build-source.workspace = true
+rustok-distribution.workspace = true
+rustok-module-build-transport.workspace = true
+rustok-modules.workspace = true
+rustok-worker-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
+tonic = { workspace = true, features = ["tls-ring"] }
+uuid.workspace = true

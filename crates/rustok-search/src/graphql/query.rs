@@ -5,14 +5,14 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    PgSearchEngine, SearchAnalyticsService, SearchAttributeFilter, SearchDiagnosticsService,
-    SearchDictionaryService, SearchEngine, SearchFilterPresetService, SearchModule, SearchQuery,
-    SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService, SearchSuggestionQuery,
-    SearchSuggestionService, SLOW_QUERY_THRESHOLD_MS,
+    PgSearchEngine, SLOW_QUERY_THRESHOLD_MS, SearchAnalyticsService, SearchAttributeFilter,
+    SearchDiagnosticsService, SearchDictionaryService, SearchEngine, SearchFilterPresetService,
+    SearchModule, SearchQuery, SearchQueryLogRecord, SearchRankingProfile, SearchSettingsService,
+    SearchSuggestionQuery, SearchSuggestionService,
 };
 use rustok_api::{
-    graphql::GraphQLError, has_effective_permission, AuthContext, Permission, RequestContext,
-    TenantContext,
+    AuthContext, Permission, RequestContext, TenantContext, graphql::GraphQLError,
+    has_effective_permission,
 };
 use rustok_telemetry::metrics;
 
@@ -1122,8 +1122,8 @@ fn map_search_module_error(error: rustok_core::Error) -> FieldError {
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_surface_tenant_scope, SearchSurfacePolicy, ADMIN_GLOBAL_SEARCH_SURFACE,
-        SEARCH_PREVIEW_SURFACE, STOREFRONT_SEARCH_SURFACE,
+        ADMIN_GLOBAL_SEARCH_SURFACE, SEARCH_PREVIEW_SURFACE, STOREFRONT_SEARCH_SURFACE,
+        SearchSurfacePolicy, resolve_surface_tenant_scope,
     };
     use rustok_api::TenantContext;
     use uuid::Uuid;
@@ -1181,12 +1181,14 @@ mod tests {
             current_tenant_id
         );
 
-        assert!(resolve_surface_tenant_scope(
-            &tenant,
-            Some(Uuid::new_v4()),
-            SearchSurfacePolicy::search_preview()
-        )
-        .is_err());
+        assert!(
+            resolve_surface_tenant_scope(
+                &tenant,
+                Some(Uuid::new_v4()),
+                SearchSurfacePolicy::search_preview()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -1200,11 +1202,13 @@ mod tests {
             current_tenant_id
         );
 
-        assert!(resolve_surface_tenant_scope(
-            &tenant,
-            Some(current_tenant_id),
-            SearchSurfacePolicy::storefront_search()
-        )
-        .is_err());
+        assert!(
+            resolve_surface_tenant_scope(
+                &tenant,
+                Some(current_tenant_id),
+                SearchSurfacePolicy::storefront_search()
+            )
+            .is_err()
+        );
     }
 }

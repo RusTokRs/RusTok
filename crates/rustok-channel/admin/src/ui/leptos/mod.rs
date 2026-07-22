@@ -5,12 +5,12 @@ use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::context::{
     ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
 };
-use rustok_ui_core::{normalize_ui_text, AdminQueryKey, UiRouteContext};
+use rustok_ui_core::{AdminQueryKey, UiRouteContext, normalize_ui_text};
 
 use crate::core::{
-    channel_policy_selection_cleanup, channel_selection_exists, policy_rule_active_update_payload,
-    policy_rule_create_form_state, policy_rule_edit_form_state, reorder_policy_rule_ids,
-    ChannelPolicySelectionCleanup, PolicyRuleFormState,
+    ChannelPolicySelectionCleanup, PolicyRuleFormState, channel_policy_selection_cleanup,
+    channel_selection_exists, policy_rule_active_update_payload, policy_rule_create_form_state,
+    policy_rule_edit_form_state, reorder_policy_rule_ids,
 };
 use crate::i18n::t;
 use crate::model::{

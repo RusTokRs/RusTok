@@ -1,7 +1,7 @@
 use rust_decimal::Decimal;
+use rustok_order::OrderService;
 use rustok_order::dto::{CreateOrderInput, CreateOrderLineItemInput};
 use rustok_order::migrations;
-use rustok_order::OrderService;
 use rustok_test_utils::{db::setup_test_db, mock_transactional_event_bus};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;

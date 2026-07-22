@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
-use crate::builder::{is_page_builder_body, PageBuilderPageBody};
+use crate::builder::{PageBuilderPageBody, is_page_builder_body};
 use crate::core;
 use crate::i18n::t;
 use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
@@ -274,7 +274,7 @@ fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> Strin
 
 #[cfg(test)]
 mod tests {
-    use super::{summarize_content, PageDetail};
+    use super::{PageDetail, summarize_content};
     use crate::core;
     use crate::model::PageBody;
 

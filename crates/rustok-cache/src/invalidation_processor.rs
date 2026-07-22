@@ -123,7 +123,9 @@ impl std::fmt::Display for DurableInvalidationProcessError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Record(error) => write!(formatter, "invalid durable cache record: {error}"),
-            Self::Tracker(error) => write!(formatter, "durable cache offset update failed: {error}"),
+            Self::Tracker(error) => {
+                write!(formatter, "durable cache offset update failed: {error}")
+            }
             Self::Saturated { count, maximum } => write!(
                 formatter,
                 "durable invalidation processor saturated at {maximum} channels; current count {count}"
@@ -147,8 +149,8 @@ impl std::error::Error for DurableInvalidationProcessError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use uuid::Uuid;
 
     fn record(generation: u64) -> DurableCacheInvalidationRecord {

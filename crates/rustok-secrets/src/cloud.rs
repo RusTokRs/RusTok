@@ -282,8 +282,8 @@ fn azure_error(error: impl std::fmt::Display) -> SecretError {
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_azure_secret_name, validate_gcp_project, validate_gcp_secret_id,
-        AzureKeyVaultResolver,
+        AzureKeyVaultResolver, validate_azure_secret_name, validate_gcp_project,
+        validate_gcp_secret_id,
     };
 
     #[test]
@@ -309,9 +309,11 @@ mod tests {
             AzureKeyVaultResolver::validate_endpoint("https://user@rustok.vault.azure.net")
                 .is_err()
         );
-        assert!(AzureKeyVaultResolver::validate_endpoint(
-            "https://rustok.vault.azure.net?token=forbidden"
-        )
-        .is_err());
+        assert!(
+            AzureKeyVaultResolver::validate_endpoint(
+                "https://rustok.vault.azure.net?token=forbidden"
+            )
+            .is_err()
+        );
     }
 }

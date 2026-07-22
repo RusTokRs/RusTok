@@ -1,13 +1,15 @@
 use async_trait::async_trait;
-use rustok_storage::StorageService;
+use futures_util::TryStreamExt;
+use object_store::{ObjectStoreExt, PutMode, path::Path};
+use rustok_storage::{DigestObjectKey, ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 use crate::{
-    installation::{sha256_digest, valid_digest},
     ArtifactBlobStore, ControlPlaneInfrastructure, DurableArtifactBlobStore,
     ModuleInstallationError, StagedArtifactBlob,
+    installation::{sha256_digest, valid_digest},
 };
 
 /// Durable artifact CAS backed by platform-controlled object storage. Final
@@ -15,40 +17,42 @@ use crate::{
 /// uploads stay in a separate private staging prefix.
 #[derive(Clone)]
 pub struct StorageArtifactBlobStore {
-    storage: StorageService,
+    storage: StorageRuntime,
     prefix: String,
     infrastructure: ControlPlaneInfrastructure,
 }
 
 impl StorageArtifactBlobStore {
-    pub fn new(storage: StorageService) -> Self {
+    pub fn new(storage: StorageRuntime) -> Self {
         Self::with_infrastructure(storage, ControlPlaneInfrastructure::default())
     }
 
     pub fn with_infrastructure(
-        storage: StorageService,
+        storage: StorageRuntime,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
-        Self::with_prefix_and_infrastructure(storage, "module-cas/v1", infrastructure)
+        Self::with_prefix_and_infrastructure(storage, "module-artifact", infrastructure)
             .expect("the built-in artifact CAS prefix is valid")
     }
 
     pub fn with_prefix(
-        storage: StorageService,
+        storage: StorageRuntime,
         prefix: impl Into<String>,
     ) -> Result<Self, ModuleInstallationError> {
         Self::with_prefix_and_infrastructure(storage, prefix, ControlPlaneInfrastructure::default())
     }
 
     pub fn with_prefix_and_infrastructure(
-        storage: StorageService,
+        storage: StorageRuntime,
         prefix: impl Into<String>,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Result<Self, ModuleInstallationError> {
         let prefix = prefix.into().trim_matches('/').to_string();
         if prefix.is_empty()
-            || prefix.contains("..")
-            || prefix.split('/').any(|segment| segment.is_empty())
+            || prefix.len() > 64
+            || !prefix
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
         {
             return Err(ModuleInstallationError::Blob(
                 "artifact CAS prefix must be a non-empty relative object prefix".into(),
@@ -61,8 +65,17 @@ impl StorageArtifactBlobStore {
         })
     }
 
-    fn stage_path(&self, stage_id: Uuid) -> String {
-        format!("{}/staging/{stage_id}", self.prefix)
+    fn stage_path(&self, stage_id: Uuid) -> Result<String, ModuleInstallationError> {
+        ObjectKey::chronological(
+            &self.prefix,
+            ObjectZone::Staging,
+            ObjectScope::Platform,
+            self.infrastructure.now(),
+            stage_id,
+            "upload",
+        )
+        .map(|key| key.to_string())
+        .map_err(|error| ModuleInstallationError::Blob(error.to_string()))
     }
 
     fn blob_path(&self, digest: &str) -> Result<String, ModuleInstallationError> {
@@ -71,10 +84,12 @@ impl StorageArtifactBlobStore {
                 "artifact CAS digest must be a sha256 digest".into(),
             ));
         }
-        Ok(format!("{}/blobs/sha256/{}", self.prefix, &digest[7..]))
+        DigestObjectKey::sha256(&self.prefix, ObjectScope::Platform, &digest[7..])
+            .map(|key| key.to_string())
+            .map_err(|error| ModuleInstallationError::Blob(error.to_string()))
     }
 
-    fn storage_error(error: rustok_storage::StorageError) -> ModuleInstallationError {
+    fn storage_error(error: object_store::Error) -> ModuleInstallationError {
         ModuleInstallationError::Blob(error.to_string())
     }
 
@@ -128,11 +143,22 @@ impl StorageArtifactBlobStore {
     ) -> Result<(), ModuleInstallationError> {
         Self::verify_bytes(digest, bytes)?;
         let path = self.blob_path(digest)?;
-        let created = self
+        let mut options = self.storage.put_options(media_type);
+        options.mode = PutMode::Create;
+        let created = match self
             .storage
-            .store_if_absent(&path, bytes::Bytes::copy_from_slice(bytes), media_type)
+            .objects
+            .put_opts(
+                &Path::from(path.as_str()),
+                bytes::Bytes::copy_from_slice(bytes).into(),
+                options,
+            )
             .await
-            .map_err(Self::storage_error)?;
+        {
+            Ok(_) => true,
+            Err(object_store::Error::AlreadyExists { .. }) => false,
+            Err(error) => return Err(Self::storage_error(error)),
+        };
         if !created {
             self.get_verified(digest).await?;
         }
@@ -153,16 +179,18 @@ impl ArtifactBlobStore for StorageArtifactBlobStore {
 
     async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError> {
         let path = self.blob_path(digest)?;
-        let bytes = self
+        let result = self
             .storage
-            .read(&path)
+            .objects
+            .get(&Path::from(path.as_str()))
             .await
             .map_err(|error| match error {
-                rustok_storage::StorageError::NotFound(_) => {
+                object_store::Error::NotFound { .. } => {
                     ModuleInstallationError::BlobNotFound(digest.to_string())
                 }
                 error => Self::storage_error(error),
             })?;
+        let bytes = result.bytes().await.map_err(Self::storage_error)?;
         Self::verify_bytes(digest, &bytes)?;
         Ok(bytes.to_vec())
     }
@@ -182,17 +210,21 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
             ));
         }
         Self::verify_bytes(expected_digest, bytes)?;
+        let stage_id = self.infrastructure.new_id();
+        let staging_object_key = self.stage_path(stage_id)?;
         let stage = StagedArtifactBlob {
-            stage_id: self.infrastructure.new_id(),
+            stage_id,
             digest: expected_digest.to_string(),
             media_type: expected_media_type.to_string(),
             size_bytes: bytes.len() as u64,
+            staging_object_key: Some(staging_object_key.clone()),
         };
         self.storage
-            .store(
-                &self.stage_path(stage.stage_id),
-                bytes::Bytes::copy_from_slice(bytes),
-                expected_media_type,
+            .objects
+            .put_opts(
+                &Path::from(staging_object_key),
+                bytes::Bytes::copy_from_slice(bytes).into(),
+                self.storage.put_options(expected_media_type),
             )
             .await
             .map_err(Self::storage_error)?;
@@ -211,17 +243,24 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
             ));
         }
         let size_bytes = Self::verify_file(expected_digest, source).await?;
+        let stage_id = self.infrastructure.new_id();
+        let staging_object_key = self.stage_path(stage_id)?;
         let stage = StagedArtifactBlob {
-            stage_id: self.infrastructure.new_id(),
+            stage_id,
             digest: expected_digest.to_string(),
             media_type: expected_media_type.to_string(),
             size_bytes,
+            staging_object_key: Some(staging_object_key.clone()),
         };
+        let bytes = tokio::fs::read(source)
+            .await
+            .map_err(|error| ModuleInstallationError::Blob(error.to_string()))?;
         self.storage
-            .store_file(
-                &self.stage_path(stage.stage_id),
-                source,
-                expected_media_type,
+            .objects
+            .put_opts(
+                &Path::from(staging_object_key),
+                bytes.into(),
+                self.storage.put_options(expected_media_type),
             )
             .await
             .map_err(Self::storage_error)?;
@@ -229,10 +268,16 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
     }
 
     async fn publish(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
-        let stage_path = self.stage_path(staged.stage_id);
+        let stage_path = staged.staging_object_key.as_deref().ok_or_else(|| {
+            ModuleInstallationError::Blob("staged artifact object key is unavailable".into())
+        })?;
         let bytes = self
             .storage
-            .read(&stage_path)
+            .objects
+            .get(&Path::from(stage_path))
+            .await
+            .map_err(Self::storage_error)?
+            .bytes()
             .await
             .map_err(Self::storage_error)?;
         if bytes.len() as u64 != staged.size_bytes {
@@ -244,36 +289,46 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
         self.publish_verified(&staged.digest, &bytes, &staged.media_type)
             .await?;
         self.storage
-            .delete(&stage_path)
+            .objects
+            .delete(&Path::from(stage_path))
             .await
             .map_err(Self::storage_error)
     }
 
     async fn discard(&self, staged: &StagedArtifactBlob) -> Result<(), ModuleInstallationError> {
         self.storage
-            .delete(&self.stage_path(staged.stage_id))
+            .objects
+            .delete(&Path::from(
+                staged.staging_object_key.as_deref().ok_or_else(|| {
+                    ModuleInstallationError::Blob(
+                        "staged artifact object key is unavailable".into(),
+                    )
+                })?,
+            ))
             .await
             .map_err(Self::storage_error)
     }
 
     async fn published_digests(&self) -> Result<Vec<String>, ModuleInstallationError> {
-        let prefix = format!("{}/blobs/sha256", self.prefix);
+        let prefix = format!("{}/objects/platform/sha256", self.prefix);
         let objects = self
             .storage
-            .list(&prefix)
+            .objects
+            .list(Some(&Path::from(prefix.as_str())))
+            .try_collect::<Vec<_>>()
             .await
             .map_err(Self::storage_error)?;
-        let expected_prefix = format!("{prefix}/");
         objects
             .into_iter()
             .map(|object| {
-                let hex = object.path.strip_prefix(&expected_prefix).ok_or_else(|| {
+                let path = object.location.to_string();
+                let hex = path.rsplit('/').next().ok_or_else(|| {
                     ModuleInstallationError::Blob(
                         "artifact CAS returned an object outside its prefix".into(),
                     )
                 })?;
                 let digest = format!("sha256:{hex}");
-                if !valid_digest(&digest) || hex.contains('/') {
+                if !valid_digest(&digest) {
                     return Err(ModuleInstallationError::Blob(
                         "artifact CAS contains an invalid content-addressed object key".into(),
                     ));
@@ -286,7 +341,8 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
     async fn delete(&self, digest: &str) -> Result<(), ModuleInstallationError> {
         let path = self.blob_path(digest)?;
         self.storage
-            .delete(&path)
+            .objects
+            .delete(&Path::from(path))
             .await
             .map_err(Self::storage_error)
     }
@@ -294,7 +350,7 @@ impl DurableArtifactBlobStore for StorageArtifactBlobStore {
 
 #[cfg(test)]
 mod tests {
-    use rustok_storage::{local::LocalStorage, StorageService};
+    use rustok_storage::{LocalStorageConfig, StorageRuntime};
     use uuid::Uuid;
 
     use super::*;
@@ -302,7 +358,12 @@ mod tests {
     fn store() -> (StorageArtifactBlobStore, std::path::PathBuf) {
         let directory =
             std::env::temp_dir().join(format!("rustok-artifact-cas-{}", Uuid::new_v4()));
-        let storage = StorageService::new(LocalStorage::new(&directory, "/private"));
+        let storage = StorageRuntime::local(&LocalStorageConfig {
+            base_dir: directory.to_string_lossy().into_owned(),
+            base_url: "/private".to_string(),
+            fsync: false,
+        })
+        .expect("local storage runtime");
         (StorageArtifactBlobStore::new(storage), directory)
     }
 
@@ -315,6 +376,12 @@ mod tests {
             .stage(&digest, "application/vnd.rustok.rhai.source.v1", payload)
             .await
             .expect("stage artifact");
+        let staging_key = staged
+            .staging_object_key
+            .as_deref()
+            .expect("durable staging key");
+        assert!(staging_key.starts_with("module-artifact/staging/platform/20"));
+        assert!(staging_key.ends_with(&format!("/{}.upload", staged.stage_id)));
         store.publish(&staged).await.expect("publish artifact");
 
         assert_eq!(

@@ -14,7 +14,7 @@ impl MigrationTrait for Migration {
             other => {
                 return Err(DbErr::Migration(format!(
                     "AI agent control-plane migration does not support database backend {other:?}"
-                )))
+                )));
             }
         };
         for statement in [

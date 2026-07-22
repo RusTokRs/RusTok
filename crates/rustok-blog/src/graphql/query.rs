@@ -1,14 +1,14 @@
-use async_graphql::{dataloader::DataLoader, Context, ErrorExtensions, Object, Result};
+use async_graphql::{Context, ErrorExtensions, Object, Result, dataloader::DataLoader};
 use rustok_api::{
-    graphql::{require_module_enabled, resolve_graphql_locale},
     AuthContext, RequestContext, TenantContext,
+    graphql::{require_module_enabled, resolve_graphql_locale},
 };
 use rustok_channel::ChannelService;
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::{
-    graphql::GqlProfileSummary, ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey,
-    ProfilesReader,
+    ProfileService, ProfileSummaryLoader, ProfileSummaryLoaderKey, ProfilesReader,
+    graphql::GqlProfileSummary,
 };
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
@@ -462,8 +462,8 @@ async fn ensure_public_blog_channel_enabled(
 #[cfg(test)]
 mod tests {
     use super::{ensure_public_blog_channel_enabled, is_post_visible_for_request};
-    use rustok_api::{context::ChannelResolutionSource, RequestContext};
-    use rustok_channel::{migrations, BindChannelModuleInput, ChannelService, CreateChannelInput};
+    use rustok_api::{RequestContext, context::ChannelResolutionSource};
+    use rustok_channel::{BindChannelModuleInput, ChannelService, CreateChannelInput, migrations};
     use rustok_test_utils::setup_test_db;
     use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
     use sea_orm_migration::SchemaManager;

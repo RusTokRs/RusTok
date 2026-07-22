@@ -11,7 +11,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_profiles::ProfileSummaryLoader;
 
 #[cfg(feature = "mod-media")]
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 
 mod schema_codegen {
     include!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"));
@@ -124,7 +124,7 @@ pub struct GraphqlSchemaDependencies {
     ))]
     pub content_orchestration: rustok_content_orchestration::SharedContentOrchestrationService,
     #[cfg(feature = "mod-media")]
-    pub storage: StorageService,
+    pub storage: StorageRuntime,
 }
 
 pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {

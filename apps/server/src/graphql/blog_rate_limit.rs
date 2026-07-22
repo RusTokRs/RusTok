@@ -42,8 +42,6 @@ pub fn blog_graphql_rate_limiter_from_context(
     ctx: &ServerRuntimeContext,
 ) -> Option<BlogGraphqlRateLimiterHandle> {
     ctx.shared_get::<SharedApiRateLimiter>().map(|shared| {
-        BlogGraphqlRateLimiterHandle(Arc::new(ServerBlogGraphqlRateLimiter {
-            limiter: shared.0,
-        }))
+        BlogGraphqlRateLimiterHandle(Arc::new(ServerBlogGraphqlRateLimiter { limiter: shared.0 }))
     })
 }

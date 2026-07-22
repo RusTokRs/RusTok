@@ -2,13 +2,13 @@ use std::collections::HashSet;
 
 use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryCursorQuery, ForumError, ForumReadModelService, ReplyCursorQuery, TopicCursorQuery,
-    MAX_FORUM_READ_LIMIT,
+    CategoryCursorQuery, ForumError, ForumReadModelService, MAX_FORUM_READ_LIMIT, ReplyCursorQuery,
+    TopicCursorQuery,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 pub async fn exercise_bounded_cursor_read_models(db: &DatabaseConnection) -> TestResult<()> {
     let tenant_a = Uuid::new_v4();

@@ -1,7 +1,7 @@
 use crate::{
-    normalize_locale_tag, FlyError, FlyResult, ProjectDocument, TranslationCatalog,
-    ValidationDiagnostic, ValidationSeverity, FLY_PAGE_METADATA_FIELD, LOCALIZED_VALUES_FIELD,
-    RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD,
+    FLY_PAGE_METADATA_FIELD, FlyError, FlyResult, LOCALIZED_VALUES_FIELD, ProjectDocument,
+    RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, TranslationCatalog, ValidationDiagnostic,
+    ValidationSeverity, normalize_locale_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -522,10 +522,12 @@ mod tests {
             materialize_project_locale_context(&document, &json!({ "$locale": "invalid locale" }));
         assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "en");
         assert!(result.default_locale_applied);
-        assert!(result
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_locale_invalid"));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_locale_invalid")
+        );
     }
 
     #[test]
@@ -581,9 +583,11 @@ mod tests {
         let result = materialize_project_locale_context(&document, &json!({ "$locale": "de" }));
         assert_eq!(result.context[RUNTIME_LOCALE_FIELD], "en");
         assert!(result.unsupported_locale_replaced);
-        assert!(result
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_locale_unsupported"));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_locale_unsupported")
+        );
     }
 }

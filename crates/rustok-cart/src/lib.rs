@@ -35,10 +35,10 @@ pub use ports::{
     CartStorefrontPort, CartStorefrontReadRequest, CartStorefrontRemoveLineItemRequest,
     CartStorefrontRepriceRequest, in_process_cart_promotion_port,
 };
-pub use services::{CartMarketplaceSnapshotService, CartService};
 pub use services::cart::{
     CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionPreview,
 };
+pub use services::{CartMarketplaceSnapshotService, CartService};
 
 pub struct CartModule;
 

@@ -2,15 +2,15 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use chrono::Utc;
 use rig::{
+    OneOrMany,
     agent::{AgentRun, AgentRunStep, InvalidToolCallHookAction, ModelTurn, ModelTurnOutcome},
     completion::Usage,
     message::UserContent,
-    OneOrMany,
 };
 use tokio::sync::watch;
 
 use crate::{
-    engine::{assistant_choice, map_message, map_rig_message, InferenceEngine},
+    engine::{InferenceEngine, assistant_choice, map_message, map_rig_message},
     error::{AiError, AiResult},
     mcp::McpClientAdapter,
     model::{
@@ -354,6 +354,7 @@ mod tests {
 
     use super::RigAgentDriver;
     use crate::{
+        AiResult, ProviderSlug, ToolExecutionPolicy,
         engine::InferenceEngine,
         mcp::{McpClientAdapter, ToolExecutionResult},
         model::{
@@ -361,7 +362,6 @@ mod tests {
             ProviderChatResponse, ProviderStructuredRequest, ProviderTestResult, RuntimeOutcome,
             RuntimeRequest, ToolCall, ToolDefinition,
         },
-        AiResult, ProviderSlug, ToolExecutionPolicy,
     };
 
     struct ScriptedEngine {
@@ -793,10 +793,12 @@ mod tests {
         };
         assert_eq!(traces.len(), 1);
         assert_eq!(traces[0].status, "failed");
-        assert!(traces[0]
-            .error_message
-            .as_deref()
-            .is_some_and(|message| message.contains("unavailable")));
+        assert!(
+            traces[0]
+                .error_message
+                .as_deref()
+                .is_some_and(|message| message.contains("unavailable"))
+        );
         assert!(error_message.contains("unavailable"));
     }
 

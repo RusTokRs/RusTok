@@ -1,20 +1,34 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{sealed, ContractEventPayload, EventContract};
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::contract::{ContractEventPayload, EventContract, sealed};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "data")]
 pub enum MarketplaceSellerEvent {
-    MarketplaceSellerCreated { seller_id: Uuid },
-    MarketplaceSellerProfileUpdated { seller_id: Uuid },
-    MarketplaceSellerOnboardingSubmitted { seller_id: Uuid },
-    MarketplaceSellerOnboardingApproved { seller_id: Uuid },
-    MarketplaceSellerOnboardingRejected { seller_id: Uuid },
-    MarketplaceSellerSuspended { seller_id: Uuid },
-    MarketplaceSellerReactivated { seller_id: Uuid },
+    MarketplaceSellerCreated {
+        seller_id: Uuid,
+    },
+    MarketplaceSellerProfileUpdated {
+        seller_id: Uuid,
+    },
+    MarketplaceSellerOnboardingSubmitted {
+        seller_id: Uuid,
+    },
+    MarketplaceSellerOnboardingApproved {
+        seller_id: Uuid,
+    },
+    MarketplaceSellerOnboardingRejected {
+        seller_id: Uuid,
+    },
+    MarketplaceSellerSuspended {
+        seller_id: Uuid,
+    },
+    MarketplaceSellerReactivated {
+        seller_id: Uuid,
+    },
     MarketplaceSellerMemberAdded {
         seller_id: Uuid,
         member_id: Uuid,

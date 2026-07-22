@@ -1,5 +1,5 @@
+use rustok_ui_core::{UiRouteQueryUpdate, route_query_update_for_text};
 pub use rustok_ui_core::{normalize_ui_text as optional_text, parse_ui_csv as parse_csv};
-use rustok_ui_core::{route_query_update_for_text, UiRouteQueryUpdate};
 
 use crate::model::{
     LaggingSearchDocumentPayload, SearchAnalyticsInsightRowPayload, SearchAnalyticsQueryRowPayload,

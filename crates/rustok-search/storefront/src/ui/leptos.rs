@@ -478,7 +478,11 @@ fn SearchResults(
                 "search.results.noResultsBody",
                 "Try a different query or relax the storefront filters in the query string.",
             ),
-            engine_title: t(locale_context.as_deref(), "search.features.engineTitle", "Engine"),
+            engine_title: t(
+                locale_context.as_deref(),
+                "search.features.engineTitle",
+                "Engine",
+            ),
             engine_body: t(
                 locale_context.as_deref(),
                 "search.features.engineBody",

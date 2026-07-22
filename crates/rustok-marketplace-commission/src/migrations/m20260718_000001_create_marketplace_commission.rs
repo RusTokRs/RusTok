@@ -11,25 +11,43 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(CommissionRules::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(CommissionRules::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(CommissionRules::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(CommissionRules::TenantId).uuid().not_null())
                     .col(ColumnDef::new(CommissionRules::RuleKey).uuid().not_null())
-                    .col(ColumnDef::new(CommissionRules::Version).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionRules::Version)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(CommissionRules::SellerId).uuid())
                     .col(ColumnDef::new(CommissionRules::ListingId).uuid())
-                    .col(ColumnDef::new(CommissionRules::RateBps).integer().not_null())
-                    .col(ColumnDef::new(CommissionRules::FixedAmount).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionRules::RateBps)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionRules::FixedAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(CommissionRules::CurrencyCode).string_len(3))
-                    .col(ColumnDef::new(CommissionRules::Priority).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionRules::Priority)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CommissionRules::EffectiveFrom)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(CommissionRules::EffectiveUntil)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(CommissionRules::EffectiveUntil).timestamp_with_time_zone())
                     .col(
                         ColumnDef::new(CommissionRules::Status)
                             .string_len(32)
@@ -97,19 +115,51 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(CommissionAssessments::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionAssessments::AllocationId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionAssessments::OrderId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(CommissionAssessments::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::AllocationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::OrderId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CommissionAssessments::OrderLineItemId)
                             .uuid()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CommissionAssessments::SellerId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionAssessments::ListingId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionAssessments::RuleId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionAssessments::RuleKey).uuid().not_null())
-                    .col(ColumnDef::new(CommissionAssessments::RuleVersion).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionAssessments::SellerId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::ListingId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::RuleId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::RuleKey)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionAssessments::RuleVersion)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CommissionAssessments::CurrencyCode)
                             .string_len(3)
@@ -120,7 +170,11 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(CommissionAssessments::RateBps).integer().not_null())
+                    .col(
+                        ColumnDef::new(CommissionAssessments::RateBps)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CommissionAssessments::FixedAmount)
                             .big_integer()
@@ -193,9 +247,22 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(CommissionReceipts::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(CommissionReceipts::Id).uuid().not_null().primary_key())
-                    .col(ColumnDef::new(CommissionReceipts::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(CommissionReceipts::ActorId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(CommissionReceipts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionReceipts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(CommissionReceipts::ActorId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(CommissionReceipts::IdempotencyKey)
                             .string_len(191)
@@ -224,10 +291,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(CommissionReceipts::CompletedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(CommissionReceipts::CompletedAt).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;
@@ -247,13 +311,28 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(CommissionReceipts::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(CommissionReceipts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(CommissionAssessments::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(CommissionAssessments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
         manager
-            .drop_table(Table::drop().table(CommissionRules::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(CommissionRules::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
         Ok(())
     }
@@ -261,19 +340,61 @@ impl MigrationTrait for Migration {
 
 #[derive(Iden)]
 enum CommissionRules {
-    Table, Id, TenantId, RuleKey, Version, SellerId, ListingId, RateBps, FixedAmount,
-    CurrencyCode, Priority, EffectiveFrom, EffectiveUntil, Status, Metadata, CreatedAt,
+    Table,
+    Id,
+    TenantId,
+    RuleKey,
+    Version,
+    SellerId,
+    ListingId,
+    RateBps,
+    FixedAmount,
+    CurrencyCode,
+    Priority,
+    EffectiveFrom,
+    EffectiveUntil,
+    Status,
+    Metadata,
+    CreatedAt,
 }
 
 #[derive(Iden)]
 enum CommissionAssessments {
-    Table, Id, TenantId, AllocationId, OrderId, OrderLineItemId, SellerId, ListingId,
-    RuleId, RuleKey, RuleVersion, CurrencyCode, AllocationTotalAmount, RateBps,
-    FixedAmount, CommissionAmount, SellerProceedsAmount, Status, Metadata, AssessedAt, CreatedAt,
+    Table,
+    Id,
+    TenantId,
+    AllocationId,
+    OrderId,
+    OrderLineItemId,
+    SellerId,
+    ListingId,
+    RuleId,
+    RuleKey,
+    RuleVersion,
+    CurrencyCode,
+    AllocationTotalAmount,
+    RateBps,
+    FixedAmount,
+    CommissionAmount,
+    SellerProceedsAmount,
+    Status,
+    Metadata,
+    AssessedAt,
+    CreatedAt,
 }
 
 #[derive(Iden)]
 enum CommissionReceipts {
-    Table, Id, TenantId, ActorId, IdempotencyKey, CommandKind, RequestHash, Status,
-    ResponseKind, ResponseJson, CreatedAt, CompletedAt,
+    Table,
+    Id,
+    TenantId,
+    ActorId,
+    IdempotencyKey,
+    CommandKind,
+    RequestHash,
+    Status,
+    ResponseKind,
+    ResponseJson,
+    CreatedAt,
+    CompletedAt,
 }

@@ -124,8 +124,7 @@ impl Deref for PaymentService {
 pub(crate) fn test_app_context(
     db: sea_orm::DatabaseConnection,
 ) -> crate::controllers::CommerceHttpRuntime {
-    let marketplace_financial_runtime =
-        crate::MarketplaceFinancialRuntime::in_process(db.clone());
+    let marketplace_financial_runtime = crate::MarketplaceFinancialRuntime::in_process(db.clone());
     crate::controllers::CommerceHttpRuntime {
         db,
         event_bus: mock_transactional_event_bus(),

@@ -9,8 +9,8 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use tokio::sync::Barrier;
 use uuid::Uuid;
 
-use support::postgres::{execute, PostgresForumTestDb};
-use support::{test_error, TestResult};
+use support::postgres::{PostgresForumTestDb, execute};
+use support::{TestResult, test_error};
 
 #[tokio::test]
 async fn concurrent_replies_preserve_atomic_counters() -> TestResult<()> {

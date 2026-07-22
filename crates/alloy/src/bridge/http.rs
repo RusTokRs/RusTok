@@ -6,7 +6,7 @@ use rustok_sandbox::{
     CapabilityCall, CapabilityCallContext, CapabilityName, SandboxError, SandboxHost,
     SandboxRequest, SandboxResult, SandboxSubject,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::utils::{dynamic_to_json, json_to_dynamic};
 

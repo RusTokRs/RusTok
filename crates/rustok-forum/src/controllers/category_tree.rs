@@ -1,9 +1,9 @@
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use rustok_api::Permission;
-use rustok_api::{has_any_effective_permission, AuthContext, RequestContext, TenantContext};
+use rustok_api::{AuthContext, RequestContext, TenantContext, has_any_effective_permission};
 use rustok_telemetry::metrics;
 use rustok_web::{HttpError, HttpResult};
 use serde::Deserialize;

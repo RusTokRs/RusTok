@@ -4,8 +4,8 @@ use rustok_iggy_connector::IggyConnector;
 use tokio::sync::RwLock;
 use tracing::info;
 
-use crate::config::IggyConfig;
 use crate::MODULE_BUILD_TOPIC;
+use crate::config::IggyConfig;
 
 #[derive(Debug)]
 pub struct TopologyManager {

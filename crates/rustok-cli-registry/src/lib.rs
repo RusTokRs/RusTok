@@ -51,7 +51,7 @@ pub fn selected_distribution_registry(
 
 #[cfg(test)]
 mod tests {
-    use super::{selected_distribution_registry, RuntimeComposition, SelectedDistributionRegistry};
+    use super::{RuntimeComposition, SelectedDistributionRegistry, selected_distribution_registry};
     use rustok_cli_core::{CommandDescriptor, CommandProvider};
 
     struct ModuleProvider;
@@ -74,14 +74,18 @@ mod tests {
 
         assert!(!registry.is_empty());
         assert_eq!(registry.providers().len(), 2);
-        assert!(registry
-            .commands()
-            .iter()
-            .any(|command| command.namespace == "core" && command.name == "version"));
-        assert!(registry
-            .commands()
-            .iter()
-            .any(|command| command.namespace == "media" && command.name == "cleanup"));
+        assert!(
+            registry
+                .commands()
+                .iter()
+                .any(|command| command.namespace == "core" && command.name == "version")
+        );
+        assert!(
+            registry
+                .commands()
+                .iter()
+                .any(|command| command.namespace == "media" && command.name == "cleanup")
+        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use super::*;
+use object_store::ObjectStoreExt;
 use rustok_modules::{
     ModuleExternalPrebuiltStageCommand, ModuleExternalPrebuiltStageResult,
     ModulePublicationArtifactOrigin, ModulePublishApprovalOverride,
@@ -94,7 +95,10 @@ impl RegistryGovernanceService {
             .filter(|value| value != &stored.artifact_storage_key)
         {
             self.require_storage()?
-                .delete(&previous_storage_key)
+                .objects
+                .delete(&object_store::path::Path::from(
+                    previous_storage_key.as_str(),
+                ))
                 .await
                 .with_context(|| {
                     format!(

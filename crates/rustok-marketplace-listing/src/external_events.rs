@@ -32,7 +32,7 @@ pub(crate) fn event_for_completed_command(
                 return Err(MarketplaceListingError::EventContractInvariant(format!(
                     "completed review_listing receipt has incompatible approval status `{}`",
                     status.as_str()
-                )))
+                )));
             }
         },
         "publish_listing" => event!(MarketplaceListingPublished),
@@ -42,7 +42,7 @@ pub(crate) fn event_for_completed_command(
         other => {
             return Err(MarketplaceListingError::EventContractInvariant(format!(
                 "completed marketplace listing receipt has unsupported command kind `{other}`"
-            )))
+            )));
         }
     };
 

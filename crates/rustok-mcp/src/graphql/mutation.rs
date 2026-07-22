@@ -1,5 +1,5 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::{graphql::GraphQLError, Permission};
+use rustok_api::{Permission, graphql::GraphQLError};
 use uuid::Uuid;
 
 use crate::{
@@ -8,10 +8,10 @@ use crate::{
 };
 
 use super::{
-    ensure_permission, management_context, map_error, parse_metadata, require_auth_context,
-    runtime, ApplyMcpModuleScaffoldDraftInput, CreateMcpClientInput, CreateMcpClientResultGql,
+    ApplyMcpModuleScaffoldDraftInput, CreateMcpClientInput, CreateMcpClientResultGql,
     McpModuleScaffoldDraftGql, McpPolicyGql, RotateMcpTokenInput, RotateMcpTokenResultGql,
-    StageMcpModuleScaffoldDraftInput, UpdateMcpPolicyInput,
+    StageMcpModuleScaffoldDraftInput, UpdateMcpPolicyInput, ensure_permission, management_context,
+    map_error, parse_metadata, require_auth_context, runtime,
 };
 
 #[derive(Default)]

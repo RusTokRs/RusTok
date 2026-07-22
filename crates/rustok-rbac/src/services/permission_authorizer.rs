@@ -1,4 +1,4 @@
-use crate::{denied_reason_for_denial, missing_permissions, AuthzEngine, PermissionResolver};
+use crate::{AuthzEngine, PermissionResolver, denied_reason_for_denial, missing_permissions};
 use rustok_api::Permission;
 
 use super::{permission_check::PermissionCheck, policy_evaluator::evaluate_policy_permissions};

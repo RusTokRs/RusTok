@@ -1,7 +1,7 @@
 use crate::{
-    ComponentChildren, ComponentNode, ComponentObject, FlyError, FlyResult, ProjectDocument,
-    StyleRuleDescriptor, ValidationDiagnostic, ValidationSeverity, FLY_COMPONENT_RULE_FIELD,
-    FLY_RULE_ID_FIELD,
+    ComponentChildren, ComponentNode, ComponentObject, FLY_COMPONENT_RULE_FIELD, FLY_RULE_ID_FIELD,
+    FlyError, FlyResult, ProjectDocument, StyleRuleDescriptor, ValidationDiagnostic,
+    ValidationSeverity,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
@@ -487,11 +487,7 @@ fn evaluate_condition(condition: &RuntimeCondition, context: &Value) -> bool {
             resolved.is_some_and(|value| contains(value, condition.expected.as_ref()))
         }
     };
-    if condition.invert {
-        !matched
-    } else {
-        matched
-    }
+    if condition.invert { !matched } else { matched }
 }
 
 fn contains(value: &Value, expected: Option<&Value>) -> bool {
@@ -955,9 +951,11 @@ mod tests {
         );
         assert_eq!(materialized.repeated_nodes, 2);
         assert!(materialized.document.contains_component("card--cards-0"));
-        assert!(materialized
-            .document
-            .contains_component("card-title--cards-1"));
+        assert!(
+            materialized
+                .document
+                .contains_component("card-title--cards-1")
+        );
         assert_eq!(
             materialized
                 .document
@@ -966,10 +964,12 @@ mod tests {
                 .and_then(Value::as_str),
             Some("Two #1")
         );
-        assert!(StyleRuleCatalog::from_document(&materialized.document)
-            .component_rules("card--cards-0")
-            .next()
-            .is_some());
+        assert!(
+            StyleRuleCatalog::from_document(&materialized.document)
+                .component_rules("card--cards-0")
+                .next()
+                .is_some()
+        );
         assert!(source.contains_component("card"));
     }
 
@@ -999,8 +999,10 @@ mod tests {
             .as_array()
             .expect("condition array");
         assert_eq!(entries.len(), 2);
-        assert!(entries
-            .iter()
-            .any(|entry| entry.get("providerCondition").is_some()));
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.get("providerCondition").is_some())
+        );
     }
 }

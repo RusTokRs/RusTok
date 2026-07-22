@@ -10,8 +10,8 @@ use crate::AuthUser;
 
 #[cfg(feature = "ssr")]
 use super::{
-    get_api_url, rest_payload_to_native, RestApiErrorPayload, RestAuthResponse, RestStatusResponse,
-    RestUserResponse,
+    RestApiErrorPayload, RestAuthResponse, RestStatusResponse, RestUserResponse, get_api_url,
+    rest_payload_to_native,
 };
 #[cfg(feature = "ssr")]
 use serde::Deserialize;

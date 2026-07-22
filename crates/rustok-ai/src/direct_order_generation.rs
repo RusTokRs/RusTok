@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::direct::complete_typed;
 use crate::engine::InferenceEngine;
@@ -12,8 +12,8 @@ use crate::model::{
 };
 use crate::{AiError, AiResult};
 use rustok_ai_order::{
-    validate_order_analytics_payload, validate_order_ops_assistant_payload,
-    GeneratedOrderAnalytics, GeneratedOrderOpsAssistant,
+    GeneratedOrderAnalytics, GeneratedOrderOpsAssistant, validate_order_analytics_payload,
+    validate_order_ops_assistant_payload,
 };
 
 async fn complete_direct_order<T>(

@@ -58,7 +58,7 @@ impl WorkflowStep for ConditionStep {
             op => {
                 return Err(WorkflowError::InvalidStepConfig(format!(
                     "condition: unknown operator '{op}'"
-                )))
+                )));
             }
         };
 

@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_seo_targets::SeoTargetSlug;
 use serde::{Deserialize, Serialize};
 
@@ -189,11 +189,11 @@ pub async fn publish_seo_revision(
 #[cfg(test)]
 mod tests {
     use super::{
-        publish_seo_revision_request, seo_meta_request, upsert_seo_meta_request,
         PUBLISH_REVISION_MUTATION, SEO_META_QUERY, UPSERT_SEO_META_MUTATION,
+        publish_seo_revision_request, seo_meta_request, upsert_seo_meta_request,
     };
     use crate::model::{SeoMetaMutationInput, SeoMetaTranslationMutationInput};
-    use rustok_seo_targets::{builtin_slug as seo_builtin_slug, SeoTargetSlug};
+    use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
     use serde_json::json;
     use uuid::Uuid;
 

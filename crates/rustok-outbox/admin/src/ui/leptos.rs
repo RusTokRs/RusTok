@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
-use crate::core::{outbox_info_cards, OutboxAdminShellText};
+use crate::core::{OutboxAdminShellText, outbox_info_cards};
 use crate::i18n::t;
 use crate::transport;
 

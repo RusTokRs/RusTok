@@ -2,10 +2,10 @@ use rustok_core::Result;
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
 use rustok_iggy_connector::PublishRequest;
 
+use crate::MODULE_BUILD_TOPIC;
 use crate::config::IggyConfig;
 use crate::partitioning::partition_key;
 use crate::serialization::EventSerializer;
-use crate::MODULE_BUILD_TOPIC;
 
 pub fn build_publish_request(
     config: &IggyConfig,

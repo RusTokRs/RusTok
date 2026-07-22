@@ -84,8 +84,10 @@ fn shared_redis_backend_connects_lazily_and_recovers_generation_through_monitor(
     );
     assert!(recovery_test.contains("RUSTOK_CACHE_REDIS_SERVER_BIN"));
     assert!(recovery_test.contains("service.redis_status().await.is_healthy()"));
-    assert!(recovery_test
-        .contains("Redis status monitor path did not recover shared generation after startup"));
+    assert!(
+        recovery_test
+            .contains("Redis status monitor path did not recover shared generation after startup")
+    );
     assert!(recovery_test.contains("format!(\"{prefix}:g-0:shared\")"));
 }
 
@@ -106,10 +108,14 @@ fn memory_only_cache_feature_matrix_remains_enforced() {
     assert!(weighted.contains(
         "#[cfg(feature = \"redis-cache\")]\nuse crate::fallback::DegradationAwareFallbackBackend;"
     ));
-    assert!(shared
-        .contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"));
-    assert!(weighted
-        .contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);"));
+    assert!(
+        shared
+            .contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);")
+    );
+    assert!(
+        weighted
+            .contains("#[cfg(not(feature = \"redis-cache\"))]\n        let _ = (prefix, options);")
+    );
     for target in ["fallback_cas_live", "real_redis_hardening"] {
         assert!(cache_manifest.contains(&format!("name = \"{target}\"")));
     }

@@ -126,6 +126,7 @@ rustok-pages     = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy  = { workspace = true, optional = true }
 rustok-storage   = { workspace = true, features = ["s3"] }
+object_store.workspace = true
 rustok-media     = { workspace = true, optional = true }
 rustok-seo       = { workspace = true, optional = true }
 rustok-index.workspace = true

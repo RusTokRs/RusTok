@@ -25,19 +25,19 @@ impl MigrationTrait for Migration {
                  USING (tenant_id::text = current_setting('rustok.tenant_id', true)) \
                  WITH CHECK (tenant_id::text = current_setting('rustok.tenant_id', true))",
             ],
-            DbBackend::Sqlite => &[
-                "CREATE TABLE module_artifact_data_index_contracts (\
+            DbBackend::Sqlite => &["CREATE TABLE module_artifact_data_index_contracts (\
                     tenant_id TEXT NOT NULL,\
                     module_slug TEXT NOT NULL,\
                     data_contract_revision INTEGER NOT NULL CHECK (data_contract_revision > 0),\
                     contract_digest TEXT NOT NULL CHECK (length(contract_digest) = 71 AND substr(contract_digest, 1, 7) = 'sha256:' AND substr(contract_digest, 8) NOT GLOB '*[^0-9a-f]*'),\
                     bound_at TEXT NOT NULL,\
                     PRIMARY KEY (tenant_id, module_slug, data_contract_revision)\
-                )",
-            ],
-            backend => return Err(DbErr::Migration(format!(
-                "artifact data index-contract migration does not support database backend {backend:?}"
-            ))),
+                )"],
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "artifact data index-contract migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

@@ -2,12 +2,12 @@ use async_trait::async_trait;
 use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_events::{DomainEvent, EventEnvelope};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
-use serde_json::{json, Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
 use crate::error::{IndexError, IndexResult};
-use crate::traits::{run_bounded_reindex, Indexer, IndexerContext, IndexerRuntimeConfig};
+use crate::traits::{Indexer, IndexerContext, IndexerRuntimeConfig, run_bounded_reindex};
 
 #[derive(Debug, FromQueryResult)]
 struct FlexEntryRow {
@@ -378,7 +378,7 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::{append_json_fragments, FlexIndexer};
+    use super::{FlexIndexer, append_json_fragments};
 
     #[test]
     fn append_json_fragments_flattens_nested_values() {

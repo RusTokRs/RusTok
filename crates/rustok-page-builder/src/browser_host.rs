@@ -173,14 +173,17 @@ mod tests {
 
     #[test]
     fn late_manual_mount_contract_is_framework_neutral() {
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("Symbol.for(\"fly.browser.ssr.controls\")"));
+        assert!(
+            PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("Symbol.for(\"fly.browser.ssr.controls\")")
+        );
         assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("adapters: new WeakSet()"));
         assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("fly:browser-ready"));
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("FlyBrowser?.bootstrap?.(__flyBrowserConfig)"));
-        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
-            .contains("adapter.abortController?.signal"));
+        assert!(
+            PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS
+                .contains("FlyBrowser?.bootstrap?.(__flyBrowserConfig)")
+        );
+        assert!(PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("adapter.abortController?.signal"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("autoMount === false"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("leptos"));
         assert!(!PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.contains("dioxus"));

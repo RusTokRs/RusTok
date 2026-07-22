@@ -50,7 +50,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Migration(format!(
                     "artifact data object operation migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

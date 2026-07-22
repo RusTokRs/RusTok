@@ -2,11 +2,11 @@ use async_graphql::{Context, FieldError, Object, Result};
 use uuid::Uuid;
 
 use super::{
-    auth_lifecycle_context, auth_runtime, optional_auth_context, AcceptInviteInput,
-    AcceptInvitePayload, AuthPayload, ChangePasswordInput, ChangePasswordPayload,
-    ForgotPasswordInput, ForgotPasswordPayload, RefreshTokenInput, ResetPasswordInput,
-    ResetPasswordPayload, RevokeAllSessionsPayload, RevokeSessionPayload, SignInInput,
-    SignOutPayload, SignUpInput, UpdateProfileInput,
+    AcceptInviteInput, AcceptInvitePayload, AuthPayload, ChangePasswordInput,
+    ChangePasswordPayload, ForgotPasswordInput, ForgotPasswordPayload, RefreshTokenInput,
+    ResetPasswordInput, ResetPasswordPayload, RevokeAllSessionsPayload, RevokeSessionPayload,
+    SignInInput, SignOutPayload, SignUpInput, UpdateProfileInput, auth_lifecycle_context,
+    auth_runtime, optional_auth_context,
 };
 
 #[derive(Default)]

@@ -12,7 +12,7 @@ use rustok_modules::{
     ModuleControlPlane, ResolvingArtifactCapabilityBroker, SharedArtifactBindingExecutor,
 };
 use rustok_sandbox::{CapabilityName, ExecutorRegistry, RhaiCapabilityBridge, SandboxRuntime};
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 
 use crate::error::{Error, Result};
 
@@ -24,7 +24,7 @@ use super::server_runtime_context::ServerRuntimeContext;
 pub fn compose_artifact_binding_executor(
     ctx: &ServerRuntimeContext,
 ) -> Result<SharedArtifactBindingExecutor> {
-    let storage = ctx.shared_get::<StorageService>().ok_or_else(|| {
+    let storage = ctx.shared_get::<StorageRuntime>().ok_or_else(|| {
         Error::Message("artifact runtime requires initialized durable storage".to_string())
     })?;
     let data_capability = CapabilityName::new("platform.data")

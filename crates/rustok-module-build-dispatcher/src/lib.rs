@@ -4,7 +4,7 @@ pub mod host;
 
 use async_trait::async_trait;
 use rustok_events::{DomainEvent, EventEnvelope, ValidateEvent};
-use rustok_iggy::{ConsumedEvent, IggyTransport, PersistentConsumerGroup, MODULE_BUILD_TOPIC};
+use rustok_iggy::{ConsumedEvent, IggyTransport, MODULE_BUILD_TOPIC, PersistentConsumerGroup};
 use rustok_modules::{
     ModuleBuildProtocolError, ModuleBuildResultRecord, ModuleBuildWorker, SeaOrmModuleBuildService,
 };
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-pub use host::{run_dispatcher, ModuleBuildDispatcherConfig};
+pub use host::{ModuleBuildDispatcherConfig, run_dispatcher};
 
 /// Dedicated external consumer group for immutable module-build queue events.
 pub const MODULE_BUILD_CONSUMER_GROUP: &str = "rustok-module-build-dispatcher";

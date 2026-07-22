@@ -8,8 +8,8 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use support::category_policy::exercise_category_topic_policy;
 use support::TestResult;
+use support::category_policy::exercise_category_topic_policy;
 
 #[tokio::test]
 async fn sqlite_category_topic_policy_blocks_and_restores_topic_writes() -> TestResult<()> {

@@ -116,13 +116,7 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
         let response = self
-            .post_order_with_receipt(
-                context,
-                tenant_id,
-                actor_id,
-                idempotency_key,
-                request,
-            )
+            .post_order_with_receipt(context, tenant_id, actor_id, idempotency_key, request)
             .await
             .map_err(map_owner_error)?;
         self.rebuild_seller_balances_for_transaction(tenant_id, &response)
@@ -140,15 +134,9 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
         let tenant_id = parse_tenant_id(&context)?;
         let actor_id = parse_actor_id(&context)?;
         let idempotency_key = parse_idempotency_key(&context)?;
-        self.post_reversal_with_receipt(
-            context,
-            tenant_id,
-            actor_id,
-            idempotency_key,
-            request,
-        )
-        .await
-        .map_err(map_owner_error)
+        self.post_reversal_with_receipt(context, tenant_id, actor_id, idempotency_key, request)
+            .await
+            .map_err(map_owner_error)
     }
 
     async fn rebuild_seller_balance(

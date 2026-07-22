@@ -122,7 +122,7 @@ fn visit_node_mut(
 mod tests {
     use super::*;
     use crate::GrapesJsCodec;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     #[test]
     fn immutable_and_mutable_walks_share_page_depth_and_path_contract() {

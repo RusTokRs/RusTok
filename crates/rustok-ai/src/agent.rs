@@ -531,9 +531,11 @@ mod tests {
                 "product.delete".to_string(),
             ]),
         };
-        assert!(catalog
-            .effective_permissions(&BTreeSet::from(["product.read".to_string()]), &principal)
-            .is_err());
+        assert!(
+            catalog
+                .effective_permissions(&BTreeSet::from(["product.read".to_string()]), &principal)
+                .is_err()
+        );
         assert_eq!(
             catalog
                 .effective_permissions(
@@ -630,18 +632,24 @@ mod tests {
         let catalog = agent_catalog().unwrap();
         assert_eq!(catalog.descriptors().len(), 6);
         assert_eq!(catalog.workflows()[0].owner, "rustok-ai-alloy");
-        assert!(catalog
-            .descriptor("alloy_code_reviewer")
-            .is_some_and(|descriptor| descriptor.kind == AgentKind::Review));
-        assert!(catalog
-            .descriptor("product_copywriter")
-            .is_some_and(|descriptor| descriptor.kind == AgentKind::Product));
-        assert!(catalog
-            .validate_stage_execution(
-                "product_copywriter",
-                &serde_json::json!({"product_id":"00000000-0000-0000-0000-000000000001"}),
-            )
-            .is_ok());
+        assert!(
+            catalog
+                .descriptor("alloy_code_reviewer")
+                .is_some_and(|descriptor| descriptor.kind == AgentKind::Review)
+        );
+        assert!(
+            catalog
+                .descriptor("product_copywriter")
+                .is_some_and(|descriptor| descriptor.kind == AgentKind::Product)
+        );
+        assert!(
+            catalog
+                .validate_stage_execution(
+                    "product_copywriter",
+                    &serde_json::json!({"product_id":"00000000-0000-0000-0000-000000000001"}),
+                )
+                .is_ok()
+        );
     }
 
     #[test]
@@ -672,12 +680,14 @@ mod tests {
             )
             .unwrap();
         assert!(handlers.handler(&alloy.task_slug).is_some());
-        assert!(catalog
-            .validate_stage_execution(
-                "alloy_code_verifier",
-                &serde_json::json!({"operation":"validate_script"}),
-            )
-            .is_err());
+        assert!(
+            catalog
+                .validate_stage_execution(
+                    "alloy_code_verifier",
+                    &serde_json::json!({"operation":"validate_script"}),
+                )
+                .is_err()
+        );
 
         let product = catalog
             .validate_stage_execution(

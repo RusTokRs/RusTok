@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rustok_modules::{TrustVerificationDecision, TrustVerificationRequest, TrustVerifier};
 use tokio::sync::Mutex;
-use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tonic::Request;
+use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
 use crate::proto::verification_service_client::VerificationServiceClient;
 use crate::proto::{ReadinessRequest, VerifyRequest};

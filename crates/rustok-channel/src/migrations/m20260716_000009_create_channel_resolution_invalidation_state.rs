@@ -72,7 +72,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Custom(format!(
                     "channel resolution invalidation migration does not support {backend:?}"
-                )))
+                )));
             }
         }
 
@@ -200,10 +200,10 @@ enum ChannelResolutionInvalidationState {
 
 #[cfg(test)]
 mod tests {
-    use super::{Migration, CHANNEL_RESOLUTION_TABLES};
+    use super::{CHANNEL_RESOLUTION_TABLES, Migration};
+    use sea_orm_migration::MigrationTrait;
     use sea_orm_migration::prelude::SchemaManager;
     use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
-    use sea_orm_migration::MigrationTrait;
 
     async fn generation(db: &sea_orm_migration::sea_orm::DatabaseConnection) -> i64 {
         db.query_one(Statement::from_string(

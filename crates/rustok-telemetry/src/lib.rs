@@ -6,7 +6,7 @@ use once_cell::sync::OnceCell;
 use prometheus::{Encoder, IntGauge, Registry, TextEncoder};
 use std::sync::Arc;
 use tracing_subscriber::{
-    fmt, layer::SubscriberExt, EnvFilter, Layer, Registry as TracingRegistry,
+    EnvFilter, Layer, Registry as TracingRegistry, fmt, layer::SubscriberExt,
 };
 
 static METRICS_HANDLE: OnceCell<Arc<MetricsHandle>> = OnceCell::new();

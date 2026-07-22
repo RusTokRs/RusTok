@@ -259,7 +259,7 @@ pub async fn rerank(
             return Err(AiError::InvalidConfig(format!(
                 "Rig provider `{}` does not expose reranking",
                 config.provider_slug
-            )))
+            )));
         }
     };
     let mut items = response.items;

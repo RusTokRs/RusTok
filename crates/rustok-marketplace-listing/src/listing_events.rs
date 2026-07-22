@@ -8,8 +8,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::dto::{
-    MarketplaceListingEventKind, MarketplaceListingEventProvenance,
-    MarketplaceListingEventResponse,
+    MarketplaceListingEventKind, MarketplaceListingEventProvenance, MarketplaceListingEventResponse,
 };
 use crate::entities::listing_event;
 use crate::error::{MarketplaceListingError, MarketplaceListingResult};
@@ -66,9 +65,7 @@ pub(crate) async fn list_listing_events<C: ConnectionTrait>(
         .collect()
 }
 
-pub(crate) fn normalize_listing_event_locale(
-    value: &str,
-) -> MarketplaceListingResult<String> {
+pub(crate) fn normalize_listing_event_locale(value: &str) -> MarketplaceListingResult<String> {
     normalize_locale_tag(value).ok_or_else(|| {
         MarketplaceListingError::Validation(
             "listing event locale must be a normalized BCP47-like tag with at most 32 bytes"
@@ -80,12 +77,13 @@ pub(crate) fn normalize_listing_event_locale(
 fn map_listing_event(
     model: listing_event::Model,
 ) -> MarketplaceListingResult<MarketplaceListingEventResponse> {
-    let event_kind = MarketplaceListingEventKind::parse(model.event_kind.as_str()).ok_or_else(|| {
-        MarketplaceListingError::Validation(format!(
-            "unknown marketplace listing event kind `{}`",
-            model.event_kind
-        ))
-    })?;
+    let event_kind =
+        MarketplaceListingEventKind::parse(model.event_kind.as_str()).ok_or_else(|| {
+            MarketplaceListingError::Validation(format!(
+                "unknown marketplace listing event kind `{}`",
+                model.event_kind
+            ))
+        })?;
     let provenance = MarketplaceListingEventProvenance::parse(model.provenance.as_str())
         .ok_or_else(|| {
             MarketplaceListingError::Validation(format!(

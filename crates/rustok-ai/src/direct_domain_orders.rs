@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use rustok_ai_order::{
-    register_order_ai_vertical_handlers, ORDER_ANALYTICS_TASK_SLUG, ORDER_OPS_ASSISTANT_TASK_SLUG,
+    ORDER_ANALYTICS_TASK_SLUG, ORDER_OPS_ASSISTANT_TASK_SLUG, register_order_ai_vertical_handlers,
 };
 
 use super::direct_order_tasks::{OrderAnalyticsHandler, OrderOpsAssistantHandler};

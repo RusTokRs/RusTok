@@ -345,13 +345,17 @@ mod tests {
             )
             .await
             .is_err());
-        assert!(db
-            .execute_unprepared("UPDATE oauth_apps SET tenant_id = 'tenant-2' WHERE id = 'app-1'")
+        assert!(
+            db.execute_unprepared(
+                "UPDATE oauth_apps SET tenant_id = 'tenant-2' WHERE id = 'app-1'"
+            )
             .await
-            .is_err());
-        assert!(db
-            .execute_unprepared("UPDATE users SET tenant_id = 'tenant-2' WHERE id = 'user-1'")
-            .await
-            .is_err());
+            .is_err()
+        );
+        assert!(
+            db.execute_unprepared("UPDATE users SET tenant_id = 'tenant-2' WHERE id = 'user-1'")
+                .await
+                .is_err()
+        );
     }
 }

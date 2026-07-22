@@ -5,6 +5,7 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::MarketplaceSellerService;
 use crate::dto::{
     MarketplaceSellerEventKind, MarketplaceSellerEventProvenance,
     MarketplaceSellerOnboardingStatus, MarketplaceSellerStatus,
@@ -12,7 +13,6 @@ use crate::dto::{
 };
 use crate::entities::{seller, seller_command_receipt, seller_event, seller_translation};
 use crate::error::MarketplaceSellerError;
-use crate::MarketplaceSellerService;
 
 #[tokio::test]
 async fn seller_event_timeline_is_bounded_newest_first_and_tenant_scoped() {

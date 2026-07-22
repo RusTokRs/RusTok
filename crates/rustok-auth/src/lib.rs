@@ -31,16 +31,16 @@ pub use admin_mutations::{
 pub use backfill::AuthUserBackfillDbReader;
 pub use bootstrap::{AuthUserBootstrapDbWriter, AuthUserBootstrapRecord, AuthUserBootstrapRequest};
 pub use config::{
-    build_auth_config, build_auth_config_with_env, validate_auth_config, AuthConfig,
-    AuthSettingsOverrides, JwtAlgorithm,
+    AuthConfig, AuthSettingsOverrides, JwtAlgorithm, build_auth_config, build_auth_config_with_env,
+    validate_auth_config,
 };
 pub use credentials::{generate_refresh_token, hash_password, hash_refresh_token, verify_password};
 pub use error::AuthError;
 pub use jwt::{
+    Claims, EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
     decode_access_token, decode_email_verification_token, decode_invite_token,
     decode_password_reset_token, encode_access_token, encode_email_verification_token,
-    encode_invite_token, encode_oauth_access_token, encode_password_reset_token, Claims,
-    EmailVerificationClaims, InviteClaims, OauthAccessTokenInput, PasswordResetClaims,
+    encode_invite_token, encode_oauth_access_token, encode_password_reset_token,
 };
 pub use lifecycle::{
     AcceptInviteRecord, AuthLifecycleContext, AuthLifecycleMutationError, AuthLifecyclePort,
@@ -127,7 +127,7 @@ impl RusToKModule for AuthModule {
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthModule, AUTH_USER_PERMISSIONS};
+    use super::{AUTH_USER_PERMISSIONS, AuthModule};
     use rustok_api::Permission;
     use rustok_core::module::{ModuleKind, RusToKModule};
 

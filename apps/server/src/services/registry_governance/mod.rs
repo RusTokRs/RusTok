@@ -1,9 +1,10 @@
 #![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
 
 use anyhow::{Context, anyhow};
+use object_store::{ObjectStoreExt, path::Path};
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
-use rustok_storage::StorageService;
+use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
@@ -121,7 +122,7 @@ pub struct RegistryPlatformBuildStageInput {
 #[derive(Clone)]
 pub struct RegistryGovernanceService {
     db: DatabaseConnection,
-    storage: Option<StorageService>,
+    storage: Option<StorageRuntime>,
 }
 
 #[derive(Debug, Clone)]
@@ -311,7 +312,7 @@ impl RegistryGovernanceService {
         Self { db, storage: None }
     }
 
-    pub fn with_storage(mut self, storage: StorageService) -> Self {
+    pub fn with_storage(mut self, storage: StorageRuntime) -> Self {
         self.storage = Some(storage);
         self
     }
@@ -324,10 +325,10 @@ impl RegistryGovernanceService {
         ModuleControlPlane::new(self.db.clone()).publication()
     }
 
-    fn require_storage(&self) -> anyhow::Result<&StorageService> {
+    fn require_storage(&self) -> anyhow::Result<&StorageRuntime> {
         self.storage
             .as_ref()
-            .ok_or_else(|| anyhow!("StorageService is required for registry artifact operations"))
+            .ok_or_else(|| anyhow!("StorageRuntime is required for registry artifact operations"))
     }
 
     async fn store_registry_artifact(
@@ -335,14 +336,13 @@ impl RegistryGovernanceService {
         request: &registry_publish_request::Model,
         artifact: &RegistryArtifactUpload,
     ) -> anyhow::Result<StoredRegistryArtifact> {
-        let artifact_storage_key =
-            registry_artifact_storage_key(&request.id, &request.slug, &request.version);
-        let uploaded = self
-            .require_storage()?
-            .store(
-                &artifact_storage_key,
-                artifact.bytes.clone(),
-                &artifact.content_type,
+        let artifact_storage_key = registry_artifact_storage_key(&request.id, request.created_at)?;
+        self.require_storage()?
+            .objects
+            .put_opts(
+                &Path::from(artifact_storage_key.as_str()),
+                artifact.bytes.clone().into(),
+                self.require_storage()?.put_options(&artifact.content_type),
             )
             .await
             .with_context(|| {
@@ -353,8 +353,8 @@ impl RegistryGovernanceService {
             })?;
 
         Ok(StoredRegistryArtifact {
-            artifact_storage_key: uploaded.path,
-            artifact_size: uploaded.size as i64,
+            artifact_storage_key,
+            artifact_size: artifact.bytes.len() as i64,
         })
     }
 }
@@ -365,8 +365,23 @@ pub(crate) struct StoredRegistryArtifact {
     artifact_size: i64,
 }
 
-fn registry_artifact_storage_key(request_id: &str, slug: &str, version: &str) -> String {
-    format!("registry/artifacts/{request_id}/{slug}-{version}.crate")
+fn registry_artifact_storage_key(
+    request_id: &str,
+    created_at: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<String> {
+    let digest = Sha256::digest(request_id.as_bytes());
+    let mut identity = [0_u8; 16];
+    identity.copy_from_slice(&digest[..16]);
+    ObjectKey::chronological(
+        "registry-artifact",
+        ObjectZone::Objects,
+        ObjectScope::Platform,
+        created_at,
+        Uuid::from_bytes(identity),
+        "crate",
+    )
+    .map(|key| key.to_string())
+    .map_err(Into::into)
 }
 
 fn registry_artifact_download_path(request_id: &str) -> String {

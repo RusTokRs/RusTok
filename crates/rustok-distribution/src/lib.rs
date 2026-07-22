@@ -4,6 +4,9 @@
 //! HTTP routing remains in `apps/server`; command providers remain in their
 //! module-local CLI adapters.
 
+mod generated_promotions;
+mod generation;
+
 use rustok_auth::AuthModule;
 use rustok_cache::CacheModule;
 use rustok_channel::ChannelModule;
@@ -16,6 +19,13 @@ use rustok_rbac::RbacModule;
 use rustok_search::SearchModule;
 use rustok_tenant::TenantModule;
 use serde::Serialize;
+
+pub use generation::{
+    generate_static_distribution, GeneratedStaticDistributionFiles,
+    GeneratedStaticDistributionManifest, GeneratedStaticDistributionSource,
+    StaticDistributionGenerationError, GENERATED_DISTRIBUTION_CARGO_MANIFEST_PATH,
+    GENERATED_DISTRIBUTION_MANIFEST_PATH, GENERATED_DISTRIBUTION_REGISTRY_PATH,
+};
 
 /// Immutable identity of the modules compiled into this distribution.
 ///
@@ -184,7 +194,7 @@ pub fn build_registry() -> ModuleRegistry {
         registry = registry.register(rustok_workflow::WorkflowModule);
     }
 
-    registry
+    generated_promotions::register_promoted_modules(registry)
 }
 
 /// Returns the deterministic identity of the selected compile-time module set.

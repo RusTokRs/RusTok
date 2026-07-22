@@ -8,9 +8,8 @@ mod search_composition;
 use std::sync::OnceLock;
 
 pub use registry::{
-    components_for_slot, page_for_route_segment, register_component, register_page,
     StorefrontComponentRegistration, StorefrontPageLookup, StorefrontPageRegistration,
-    StorefrontSlot,
+    StorefrontSlot, components_for_slot, page_for_route_segment, register_component, register_page,
 };
 pub use search_composition::SearchStorefrontComposition;
 

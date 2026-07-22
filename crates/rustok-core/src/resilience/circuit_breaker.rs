@@ -1,8 +1,8 @@
+use std::sync::Arc;
 /// Circuit Breaker Pattern Implementation
 ///
 /// Prevents cascading failures by failing fast while an upstream dependency is unavailable.
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;

@@ -6,7 +6,7 @@ use rustok_forum::{
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 pub async fn exercise_category_tree_read_model(db: &DatabaseConnection) -> TestResult<()> {
     let tenant_a = Uuid::new_v4();

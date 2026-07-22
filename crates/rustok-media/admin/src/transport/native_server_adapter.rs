@@ -29,8 +29,8 @@ fn media_service() -> Result<rustok_media::MediaService, ServerFnError> {
 
     let runtime = expect_context::<HostRuntimeContext>();
     let storage = runtime
-        .shared_get::<rustok_storage::StorageService>()
-        .ok_or_else(|| ServerFnError::new("StorageService not available"))?;
+        .shared_get::<rustok_storage::StorageRuntime>()
+        .ok_or_else(|| ServerFnError::new("StorageRuntime not available"))?;
     Ok(rustok_media::MediaService::new(runtime.db_clone(), storage))
 }
 
@@ -259,12 +259,8 @@ pub(super) async fn media_delete_native(media_id: String) -> Result<bool, Server
 pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
-        use rustok_api::HostRuntimeContext;
         use rustok_api::{Action, Permission, Resource};
-        use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QuerySelect};
 
-        let runtime = expect_context::<HostRuntimeContext>();
         let auth = leptos_axum::extract::<rustok_api::AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -274,30 +270,16 @@ pub(super) async fn media_usage_native() -> Result<MediaUsageSnapshot, ServerFnE
 
         require_permission(&auth, Permission::new(Resource::Media, Action::List))?;
 
-        let file_count = rustok_media::entities::media::Entity::find()
-            .filter(rustok_media::entities::media::Column::TenantId.eq(tenant.id))
-            .count(runtime.db())
+        let service = media_service()?;
+        let snapshot = service
+            .usage_snapshot(tenant.id)
             .await
-            .map_err(ServerFnError::new)? as i64;
-
-        let total_bytes = rustok_media::entities::media::Entity::find()
-            .filter(rustok_media::entities::media::Column::TenantId.eq(tenant.id))
-            .select_only()
-            .column_as(
-                sea_orm::sea_query::Expr::col(rustok_media::entities::media::Column::Size).sum(),
-                "total",
-            )
-            .into_tuple::<Option<i64>>()
-            .one(runtime.db())
-            .await
-            .map_err(ServerFnError::new)?
-            .flatten()
-            .unwrap_or(0);
+            .map_err(ServerFnError::new)?;
 
         Ok(MediaUsageSnapshot {
             tenant_id: tenant.id.to_string(),
-            file_count,
-            total_bytes,
+            file_count: snapshot.file_count,
+            total_bytes: snapshot.total_bytes,
         })
     }
     #[cfg(not(feature = "ssr"))]

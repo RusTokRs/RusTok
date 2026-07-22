@@ -10,6 +10,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post, put},
 };
+use object_store::ObjectStoreExt;
 
 /// Maximum allowed size for a registry publish-bundle upload (2 MiB).
 ///
@@ -419,8 +420,8 @@ async fn upload_publish_artifact(
     let auth = auth_ext.as_ref().map(|axum::Extension(a)| a);
     let authority = authority_from_auth(&headers, auth, "Registry artifact upload")?;
     let storage = ctx
-        .shared_get::<rustok_storage::StorageService>()
-        .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
+        .shared_get::<rustok_storage::StorageRuntime>()
+        .ok_or_else(|| Error::Message("StorageRuntime not initialized".to_string()))?;
 
     let request = RegistryGovernanceService::new(ctx.db_clone())
         .with_storage(storage)
@@ -715,11 +716,14 @@ async fn download_publish_artifact(
         .clone()
         .ok_or_else(|| Error::NotFound)?;
     let storage = ctx
-        .shared_get::<rustok_storage::StorageService>()
-        .ok_or_else(|| Error::Message("StorageService not initialized".to_string()))?;
+        .shared_get::<rustok_storage::StorageRuntime>()
+        .ok_or_else(|| Error::Message("StorageRuntime not initialized".to_string()))?;
 
     if let Some(download_url) = storage
-        .private_download_url(&storage_key, std::time::Duration::from_secs(300))
+        .signed_download_url(
+            &object_store::path::Path::from(storage_key.as_str()),
+            std::time::Duration::from_secs(300),
+        )
         .await
         .map_err(|error| {
             Error::Message(format!("Failed to create private download URL: {error}"))
@@ -729,9 +733,15 @@ async fn download_publish_artifact(
     }
 
     let bytes = storage
-        .read(&storage_key)
+        .objects
+        .get(&object_store::path::Path::from(storage_key.as_str()))
         .await
-        .map_err(|error| Error::Message(format!("Failed to read registry artifact: {error}")))?;
+        .map_err(|error| Error::Message(format!("Failed to read registry artifact: {error}")))?
+        .bytes()
+        .await
+        .map_err(|error| {
+            Error::Message(format!("Failed to read registry artifact body: {error}"))
+        })?;
     let content_type = request
         .artifact_content_type
         .as_deref()

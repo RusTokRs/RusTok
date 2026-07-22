@@ -1,7 +1,7 @@
 use chrono::Utc;
 use rustok_api::PortContext;
 use rustok_core::generate_id;
-use sea_orm::{prelude::DateTimeWithTimeZone, ActiveModelTrait, Set};
+use sea_orm::{ActiveModelTrait, Set, prelude::DateTimeWithTimeZone};
 use uuid::Uuid;
 
 use crate::commands::finish;
@@ -11,12 +11,12 @@ use crate::domain::{
 use crate::entities::moderation_report;
 use crate::error::ModerationResult;
 use crate::receipts::{
-    admit, replay, replay_existing, request_hash, required_idempotency_key,
-    ModerationReceiptAdmission, NewModerationReceipt,
+    ModerationReceiptAdmission, NewModerationReceipt, admit, replay, replay_existing, request_hash,
+    required_idempotency_key,
 };
 use crate::service::{
-    append_event, map_report, normalize_report_command, parse_tenant_id, validate_reporter,
-    ModerationService,
+    ModerationService, append_event, map_report, normalize_report_command, parse_tenant_id,
+    validate_reporter,
 };
 
 const OP_SUBMIT_REPORT: &str = "submit_report";

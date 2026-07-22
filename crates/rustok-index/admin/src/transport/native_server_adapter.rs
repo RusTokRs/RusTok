@@ -10,7 +10,7 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            has_effective_permission, AuthContext, HostRuntimeContext, Permission, TenantContext,
+            AuthContext, HostRuntimeContext, Permission, TenantContext, has_effective_permission,
         };
         use rustok_core::RusToKModule;
         use sea_orm::ConnectionTrait;

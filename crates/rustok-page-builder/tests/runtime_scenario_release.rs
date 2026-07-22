@@ -9,16 +9,16 @@ use rustok_api::{PortActor, PortContext};
 use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;
 use rustok_page_builder::dto::{PublishPageBuilderInput, PublishPageBuilderResult};
 use rustok_page_builder::runtime_scenario_release::{
-    PageBuilderScenarioBaselineStore, PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
+    PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE, PageBuilderScenarioBaselineStore,
 };
 use rustok_page_builder::service::{
     PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
     PageBuilderServiceResult,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 #[derive(Clone, Default)]
@@ -181,8 +181,10 @@ async fn broken_regression_blocks_before_project_write() {
     let error = publish(&service, project("other"))
         .await
         .expect_err("broken regression must be rejected");
-    assert!(error
-        .to_string()
-        .contains(PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE));
+    assert!(
+        error
+            .to_string()
+            .contains(PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE)
+    );
     assert_eq!(writes.load(Ordering::SeqCst), 0);
 }

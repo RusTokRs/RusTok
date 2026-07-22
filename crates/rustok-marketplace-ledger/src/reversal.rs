@@ -9,22 +9,22 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::MarketplaceLedgerService;
 use crate::dto::{
-    MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
+    MAX_LEDGER_REVERSAL_LINES, MarketplaceLedgerAccountCode, MarketplaceLedgerEntryDirection,
     MarketplaceLedgerEntryResponse, MarketplaceLedgerReversalEntryResponse,
     MarketplaceLedgerReversalKind, MarketplaceLedgerReversalLineInput,
     MarketplaceLedgerReversalResponse, MarketplaceLedgerTransactionResponse,
     MarketplaceLedgerTransactionStatus, MarketplaceSellerBalanceBucket,
-    PostMarketplaceLedgerReversalInput, MAX_LEDGER_REVERSAL_LINES,
+    PostMarketplaceLedgerReversalInput,
 };
 use crate::entities::{entry, reversal, reversal_line, transaction};
 use crate::error::{MarketplaceLedgerError, MarketplaceLedgerResult};
 use crate::receipts::{
-    admit_command_receipt, command_request_hash, complete_receipt, normalize_idempotency_key,
-    replay_command_receipt, replay_existing_command, rollback_receipt, LedgerReceiptAdmission,
-    NewLedgerReceipt,
+    LedgerReceiptAdmission, NewLedgerReceipt, admit_command_receipt, command_request_hash,
+    complete_receipt, normalize_idempotency_key, replay_command_receipt, replay_existing_command,
+    rollback_receipt,
 };
-use crate::MarketplaceLedgerService;
 
 const COMMAND_KIND: &str = "post_financial_reversal";
 const ORIGINAL_SOURCE_KIND: &str = "commission_assessment_batch";
@@ -114,7 +114,9 @@ async fn post_in_transaction(
         .await?
         .is_some()
     {
-        return Err(MarketplaceLedgerError::ReversalAlreadyPosted(input.source_id));
+        return Err(MarketplaceLedgerError::ReversalAlreadyPosted(
+            input.source_id,
+        ));
     }
 
     let mut query = entry::Entity::find()
@@ -140,7 +142,9 @@ async fn post_in_transaction(
         currency_code: Set(currency_code.clone()),
         debit_total_amount: Set(total_amount),
         credit_total_amount: Set(total_amount),
-        status: Set(MarketplaceLedgerTransactionStatus::Posted.as_str().to_string()),
+        status: Set(MarketplaceLedgerTransactionStatus::Posted
+            .as_str()
+            .to_string()),
         posted_at: Set(input.reversed_at.clone()),
         metadata: Set(transaction_metadata),
         created_at: Set(created_at.clone()),
@@ -179,9 +183,17 @@ async fn post_in_transaction(
         let clearing_amount = line
             .commission_amount
             .checked_add(line.seller_amount)
-            .ok_or_else(|| MarketplaceLedgerError::Validation("reversal line total overflow".to_string()))?;
+            .ok_or_else(|| {
+                MarketplaceLedgerError::Validation("reversal line total overflow".to_string())
+            })?;
         ensure_remaining(receipt, tenant_id, original.clearing()?, clearing_amount).await?;
-        ensure_remaining(receipt, tenant_id, original.commission()?, line.commission_amount).await?;
+        ensure_remaining(
+            receipt,
+            tenant_id,
+            original.commission()?,
+            line.commission_amount,
+        )
+        .await?;
         ensure_remaining(receipt, tenant_id, original.seller()?, line.seller_amount).await?;
 
         if line.commission_amount > 0 {
@@ -378,7 +390,9 @@ async fn ensure_remaining(
         .into_iter()
         .try_fold(0_i64, |total, line| {
             total.checked_add(line.amount).ok_or_else(|| {
-                MarketplaceLedgerError::Validation("cumulative reversal amount overflow".to_string())
+                MarketplaceLedgerError::Validation(
+                    "cumulative reversal amount overflow".to_string(),
+                )
             })
         })?;
     let remaining = original.amount.checked_sub(used).ok_or_else(|| {
@@ -423,7 +437,9 @@ impl OriginalAssessmentEntries {
     }
 
     fn clearing(&self) -> MarketplaceLedgerResult<&entry::Model> {
-        self.clearing.as_ref().ok_or_else(|| missing_original("marketplace_clearing"))
+        self.clearing
+            .as_ref()
+            .ok_or_else(|| missing_original("marketplace_clearing"))
     }
 
     fn commission(&self) -> MarketplaceLedgerResult<&entry::Model> {
@@ -433,7 +449,9 @@ impl OriginalAssessmentEntries {
     }
 
     fn seller(&self) -> MarketplaceLedgerResult<&entry::Model> {
-        self.seller.as_ref().ok_or_else(|| missing_original("seller_payable"))
+        self.seller
+            .as_ref()
+            .ok_or_else(|| missing_original("seller_payable"))
     }
 
     fn validate(
@@ -469,8 +487,8 @@ fn index_original_entries(
 ) -> MarketplaceLedgerResult<HashMap<Uuid, OriginalAssessmentEntries>> {
     let mut output = HashMap::new();
     for model in models {
-        let account = MarketplaceLedgerAccountCode::parse(model.account_code.as_str())
-            .ok_or_else(|| {
+        let account =
+            MarketplaceLedgerAccountCode::parse(model.account_code.as_str()).ok_or_else(|| {
                 MarketplaceLedgerError::Validation(format!(
                     "unknown original ledger account code `{}`",
                     model.account_code
@@ -552,7 +570,9 @@ fn reversal_total(lines: &[MarketplaceLedgerReversalLineInput]) -> MarketplaceLe
         total
             .checked_add(line.commission_amount)
             .and_then(|value| value.checked_add(line.seller_amount))
-            .ok_or_else(|| MarketplaceLedgerError::Validation("reversal total overflow".to_string()))
+            .ok_or_else(|| {
+                MarketplaceLedgerError::Validation("reversal total overflow".to_string())
+            })
     })?;
     if total <= 0 {
         return Err(MarketplaceLedgerError::Validation(
@@ -585,12 +605,13 @@ fn map_transaction(
     model: transaction::Model,
     entries: Vec<MarketplaceLedgerEntryResponse>,
 ) -> MarketplaceLedgerResult<MarketplaceLedgerTransactionResponse> {
-    let status = MarketplaceLedgerTransactionStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceLedgerError::Validation(format!(
-            "unknown ledger transaction status `{}`",
-            model.status
-        ))
-    })?;
+    let status =
+        MarketplaceLedgerTransactionStatus::parse(model.status.as_str()).ok_or_else(|| {
+            MarketplaceLedgerError::Validation(format!(
+                "unknown ledger transaction status `{}`",
+                model.status
+            ))
+        })?;
     if model.debit_total_amount != model.credit_total_amount {
         return Err(MarketplaceLedgerError::Validation(format!(
             "ledger transaction {} is not balanced",
@@ -616,15 +637,19 @@ fn map_transaction(
 
 fn map_entry(model: entry::Model) -> MarketplaceLedgerResult<MarketplaceLedgerEntryResponse> {
     let account_code = MarketplaceLedgerAccountCode::parse(model.account_code.as_str())
-        .ok_or_else(|| MarketplaceLedgerError::Validation(format!(
-            "unknown ledger account code `{}`",
-            model.account_code
-        )))?;
-    let direction = MarketplaceLedgerEntryDirection::parse(model.direction.as_str())
-        .ok_or_else(|| MarketplaceLedgerError::Validation(format!(
-            "unknown ledger entry direction `{}`",
-            model.direction
-        )))?;
+        .ok_or_else(|| {
+            MarketplaceLedgerError::Validation(format!(
+                "unknown ledger account code `{}`",
+                model.account_code
+            ))
+        })?;
+    let direction =
+        MarketplaceLedgerEntryDirection::parse(model.direction.as_str()).ok_or_else(|| {
+            MarketplaceLedgerError::Validation(format!(
+                "unknown ledger entry direction `{}`",
+                model.direction
+            ))
+        })?;
     if model.amount < 0 {
         return Err(MarketplaceLedgerError::Validation(format!(
             "ledger entry {} has a negative amount",
@@ -653,9 +678,7 @@ fn sort_entries(entries: &mut [MarketplaceLedgerEntryResponse]) {
     entries.sort_by_key(entry_sort_key);
 }
 
-fn entry_sort_key(
-    entry: &MarketplaceLedgerEntryResponse,
-) -> (Uuid, Uuid, String, String) {
+fn entry_sort_key(entry: &MarketplaceLedgerEntryResponse) -> (Uuid, Uuid, String, String) {
     (
         entry.order_line_item_id,
         entry.assessment_id,

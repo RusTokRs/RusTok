@@ -11,15 +11,14 @@ use uuid::Uuid;
 use crate::dto::{
     AllocateMarketplaceOrderLineInput, AllocateMarketplaceOrderLinesInput,
     AllocateMarketplaceOrderLinesResponse, ListMarketplaceAllocationsBySellerRequest,
-    MarketplaceAllocationListResponse, MarketplaceAllocationStatus,
-    MarketplaceOrderAllocationResponse, MAX_ALLOCATION_LINES_PER_COMMAND,
-    MAX_ALLOCATIONS_PER_PAGE,
+    MAX_ALLOCATION_LINES_PER_COMMAND, MAX_ALLOCATIONS_PER_PAGE, MarketplaceAllocationListResponse,
+    MarketplaceAllocationStatus, MarketplaceOrderAllocationResponse,
 };
 use crate::entities::allocation;
 use crate::error::{MarketplaceAllocationError, MarketplaceAllocationResult};
 use crate::receipts::{
-    admit_receipt, allocation_request_hash, complete_receipt, normalize_idempotency_key,
-    replay_receipt, rollback_receipt, AllocationReceiptAdmission, NewAllocationReceipt,
+    AllocationReceiptAdmission, NewAllocationReceipt, admit_receipt, allocation_request_hash,
+    complete_receipt, normalize_idempotency_key, replay_receipt, rollback_receipt,
 };
 
 pub struct MarketplaceAllocationService {
@@ -46,15 +45,7 @@ impl MarketplaceAllocationService {
         let key = normalize_idempotency_key(idempotency_key)?;
         let request_hash = allocation_request_hash(actor_id, &input)?;
 
-        match admit_receipt(
-            &self.db,
-            tenant_id,
-            actor_id,
-            key,
-            request_hash.as_str(),
-        )
-        .await?
-        {
+        match admit_receipt(&self.db, tenant_id, actor_id, key, request_hash.as_str()).await? {
             AllocationReceiptAdmission::Replay(receipt) => {
                 replay_receipt(receipt, request_hash.as_str())
             }
@@ -287,12 +278,10 @@ fn normalize_line(line: &mut AllocateMarketplaceOrderLineInput) -> MarketplaceAl
             line.order_line_item_id
         )));
     }
-    line.pricing_reference = normalize_optional_text(line.pricing_reference.take(), 191, "pricing_reference")?;
-    line.inventory_reference = normalize_optional_text(
-        line.inventory_reference.take(),
-        191,
-        "inventory_reference",
-    )?;
+    line.pricing_reference =
+        normalize_optional_text(line.pricing_reference.take(), 191, "pricing_reference")?;
+    line.inventory_reference =
+        normalize_optional_text(line.inventory_reference.take(), 191, "inventory_reference")?;
     line.fulfillment_profile_slug = normalize_optional_text(
         line.fulfillment_profile_slug.take(),
         120,

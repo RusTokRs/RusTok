@@ -114,12 +114,7 @@ async fn fallback_cas_fails_closed_during_redis_outage_and_recovers() {
     stop_redis(&mut redis_process).await;
 
     backend
-        .compare_and_set(
-            "primary-cas",
-            &original,
-            replacement.clone(),
-            None,
-        )
+        .compare_and_set("primary-cas", &original, replacement.clone(), None)
         .await
         .expect_err("CAS must fail while the shared primary is unavailable");
     assert_eq!(
@@ -145,9 +140,11 @@ async fn fallback_cas_fails_closed_during_redis_outage_and_recovers() {
         )
         .await
         .expect_err("CAS must reject unsynchronized local and shared state");
-    assert!(unsynchronized
-        .to_string()
-        .contains("local and shared state are unsynchronized"));
+    assert!(
+        unsynchronized
+            .to_string()
+            .contains("local and shared state are unsynchronized")
+    );
     assert_eq!(
         backend
             .get("degraded-write")

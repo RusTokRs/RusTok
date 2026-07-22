@@ -40,8 +40,8 @@ pub mod utils;
 #[cfg(test)]
 mod validation_proptest;
 pub use async_utils::{
-    batch, parallel, retry, timeout, BackoffConfig, Coalescer, Debouncer, RetryError, Throttler,
-    TimeoutError,
+    BackoffConfig, Coalescer, Debouncer, RetryError, Throttler, TimeoutError, batch, parallel,
+    retry, timeout,
 };
 pub use cache::CacheStats;
 pub use cache_atomic::InMemoryCacheBackend;
@@ -50,8 +50,8 @@ pub use config::{
     ServerConfig,
 };
 pub use content_format::{
-    is_grapesjs_content_format, normalize_content_format, prepare_content_payload, PreparedContent,
-    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1,
+    CONTENT_FORMAT_GRAPESJS, CONTENT_FORMAT_MARKDOWN, CONTENT_FORMAT_RT_JSON_V1, PreparedContent,
+    is_grapesjs_content_format, normalize_content_format, prepare_content_payload,
 };
 pub use context::{AppContext, CacheBackend, CacheCompareAndSetOutcome, SearchBackend};
 pub use error::{
@@ -59,25 +59,25 @@ pub use error::{
     ValidationErrorBuilder,
 };
 pub use events::{
-    event_schema, BackpressureConfig, BackpressureController, BackpressureError,
-    BackpressureMetrics, BackpressureState, DispatcherConfig, DomainEvent, EventBus, EventBusStats,
+    BackpressureConfig, BackpressureController, BackpressureError, BackpressureMetrics,
+    BackpressureState, DispatcherConfig, DomainEvent, EVENT_SCHEMAS, EventBus, EventBusStats,
     EventConsumerRuntime, EventDispatcher, EventEnvelope, EventHandler, EventSchema,
     EventTransport, FieldSchema, HandlerBuilder, HandlerResult, MemoryTransport, ReliabilityLevel,
-    RunningDispatcher, EVENT_SCHEMAS,
+    RunningDispatcher, event_schema,
 };
 pub use field_schema::{
+    CustomFieldsSchema, FieldDefinition, FieldErrorCode, FieldType, FieldValidationError,
+    FlexError, HasCustomFields, MAX_JSON_NESTING_DEPTH, SelectOption, ValidationRule,
     create_field_definitions_table, drop_field_definitions_table, is_valid_field_key,
     is_valid_locale_key, json_field_contains, json_field_eq, json_field_exists, json_field_extract,
-    json_object_depth, CustomFieldsSchema, FieldDefinition, FieldErrorCode, FieldType,
-    FieldValidationError, FlexError, HasCustomFields, SelectOption, ValidationRule,
-    MAX_JSON_NESTING_DEPTH,
+    json_object_depth,
 };
 pub use grapesjs::validate_grapesjs_project;
 pub use health::{
-    checks::{DatabaseHealthCheck, FnHealthCheck},
     HealthCheck, HealthRegistry, HealthResult, HealthStatus, OverallHealth,
+    checks::{DatabaseHealthCheck, FnHealthCheck},
 };
-pub use i18n::{extract_locale_from_header, translate, Locale};
+pub use i18n::{Locale, extract_locale_from_header, translate};
 pub use id::{generate_id, parse_id};
 pub use metrics::{Counter, Gauge, Histogram, MetricSnapshot, MetricValue, MetricsRegistry, Timer};
 pub use migrations::{MigrationDependencyDescriptor, ModuleMigration};
@@ -86,7 +86,7 @@ pub use module::{
     ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
 pub use rbac::{
-    infer_user_role_from_permissions, PermissionScope, Rbac, SecurityActorKind, SecurityContext,
+    PermissionScope, Rbac, SecurityActorKind, SecurityContext, infer_user_role_from_permissions,
 };
 pub use registry::ModuleRegistry;
 pub use resilience::{
@@ -94,14 +94,14 @@ pub use resilience::{
     RetryStrategy,
 };
 pub use rt_json::{
-    sanitize_rt_json_before_html_render, validate_and_sanitize_rt_json, RtJsonValidationConfig,
-    RtJsonValidationResult,
+    RtJsonValidationConfig, RtJsonValidationResult, sanitize_rt_json_before_html_render,
+    validate_and_sanitize_rt_json,
 };
 pub use security::{
-    audit::AuditEventType, headers::FrameOptions, run_security_audit, AuditEvent, AuditLogger,
-    InputValidator, RateLimitConfig, RateLimitResult, RateLimiter, SecurityAudit,
-    SecurityAuditResult, SecurityCategory, SecurityConfig, SecurityFinding, SecurityHeaders,
-    SecurityHeadersConfig, Severity, SsrfProtection, ValidationResult,
+    AuditEvent, AuditLogger, InputValidator, RateLimitConfig, RateLimitResult, RateLimiter,
+    SecurityAudit, SecurityAuditResult, SecurityCategory, SecurityConfig, SecurityFinding,
+    SecurityHeaders, SecurityHeadersConfig, Severity, SsrfProtection, ValidationResult,
+    audit::AuditEventType, headers::FrameOptions, run_security_audit,
 };
 pub use security_principal::security_context_from_access_token;
 pub use typed_error::{
@@ -117,16 +117,16 @@ pub use utils::{
 };
 
 pub mod prelude {
-    pub use crate::async_utils::{batch, parallel, retry, BackoffConfig, RetryError, Throttler};
+    pub use crate::async_utils::{BackoffConfig, RetryError, Throttler, batch, parallel, retry};
     pub use crate::config::{ConfigLoader, ConfigSource, Secret};
     pub use crate::domain_err;
     pub use crate::error::{Error, Result};
     pub use crate::events::{
-        event_schema, BackpressureConfig, BackpressureController, BackpressureError,
-        BackpressureMetrics, BackpressureState, DispatcherConfig, DomainEvent, EventBus,
-        EventBusStats, EventConsumerRuntime, EventDispatcher, EventEnvelope, EventHandler,
-        EventSchema, EventTransport, FieldSchema, HandlerBuilder, HandlerResult, MemoryTransport,
-        ReliabilityLevel, RunningDispatcher, EVENT_SCHEMAS,
+        BackpressureConfig, BackpressureController, BackpressureError, BackpressureMetrics,
+        BackpressureState, DispatcherConfig, DomainEvent, EVENT_SCHEMAS, EventBus, EventBusStats,
+        EventConsumerRuntime, EventDispatcher, EventEnvelope, EventHandler, EventSchema,
+        EventTransport, FieldSchema, HandlerBuilder, HandlerResult, MemoryTransport,
+        ReliabilityLevel, RunningDispatcher, event_schema,
     };
     pub use crate::field_schema::{
         CustomFieldsSchema, FieldDefinition, FieldType, HasCustomFields,

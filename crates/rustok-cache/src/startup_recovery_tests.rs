@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio::process::{Child, Command};
 
-use crate::{cache_backend_generation_snapshot, CacheService};
+use crate::{CacheService, cache_backend_generation_snapshot};
 
 fn reserve_loopback_port() -> u16 {
     TcpListener::bind(("127.0.0.1", 0))
@@ -68,9 +68,7 @@ async fn backend_created_during_startup_outage_recovers_shared_generation() {
     let url = format!("redis://127.0.0.1:{port}/");
     let prefix = format!("startup-recovery:{}", uuid::Uuid::new_v4().simple());
     let service = CacheService::from_url(Some(&url));
-    let backend = service
-        .backend(&prefix, Duration::from_secs(30), 16)
-        .await;
+    let backend = service.backend(&prefix, Duration::from_secs(30), 16).await;
 
     assert!(!cache_backend_generation_snapshot(&prefix).unwrap().trusted);
     assert!(backend.health().await.is_err());

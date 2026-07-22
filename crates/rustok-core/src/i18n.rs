@@ -227,35 +227,39 @@ fn translate_de(key: &str) -> Option<&'static str> {
 fn translate_fr(key: &str) -> Option<&'static str> {
     Some(match key {
         // Content validation
-        "invalid_kind"                      => "Type de contenu invalide",
-        "invalid_format"                    => "Format de corps invalide",
-        "invalid_locale_length"             => "La locale doit avoir 2 à 10 caractères",
-        "invalid_locale_format"             => "Format de locale invalide",
-        "position_must_be_non_negative"     => "La position doit être non négative",
-        "position_too_large"                => "La position est trop grande",
-        "depth_must_be_non_negative"        => "La profondeur doit être non négative",
-        "depth_too_large"                   => "La profondeur est trop grande (max. 100)",
-        "reply_count_must_be_non_negative"  => "Le nombre de réponses doit être non négatif",
-        "slug_empty"                        => "Le slug ne peut pas être vide",
-        "slug_too_long"                     => "Le slug est trop long (max. 255 caractères)",
-        "slug_invalid_characters"           => "Le slug ne peut contenir que des lettres minuscules, des chiffres et des traits d'union",
-        "slug_hyphen_boundary"              => "Le slug ne peut pas commencer ou se terminer par un trait d'union",
+        "invalid_kind" => "Type de contenu invalide",
+        "invalid_format" => "Format de corps invalide",
+        "invalid_locale_length" => "La locale doit avoir 2 à 10 caractères",
+        "invalid_locale_format" => "Format de locale invalide",
+        "position_must_be_non_negative" => "La position doit être non négative",
+        "position_too_large" => "La position est trop grande",
+        "depth_must_be_non_negative" => "La profondeur doit être non négative",
+        "depth_too_large" => "La profondeur est trop grande (max. 100)",
+        "reply_count_must_be_non_negative" => "Le nombre de réponses doit être non négatif",
+        "slug_empty" => "Le slug ne peut pas être vide",
+        "slug_too_long" => "Le slug est trop long (max. 255 caractères)",
+        "slug_invalid_characters" => {
+            "Le slug ne peut contenir que des lettres minuscules, des chiffres et des traits d'union"
+        }
+        "slug_hyphen_boundary" => {
+            "Le slug ne peut pas commencer ou se terminer par un trait d'union"
+        }
         // Auth
-        "auth.email_already_exists"         => "Un utilisateur avec cet email existe déjà",
-        "auth.invalid_credentials"          => "Identifiants invalides",
-        "auth.user_inactive"                => "L'utilisateur est inactif",
-        "auth.invalid_refresh_token"        => "Jeton d'actualisation invalide ou expiré",
-        "auth.session_expired"              => "La session a expiré",
-        "auth.user_not_found"              => "Utilisateur introuvable",
-        "auth.invalid_reset_token"          => "Jeton de réinitialisation invalide",
-        "auth.invalid_invite_token"         => "Jeton d'invitation invalide",
-        "auth.invalid_verification_token"   => "Jeton de vérification invalide",
-        "auth.invalid_or_expired_code"      => "Code invalide ou expiré",
+        "auth.email_already_exists" => "Un utilisateur avec cet email existe déjà",
+        "auth.invalid_credentials" => "Identifiants invalides",
+        "auth.user_inactive" => "L'utilisateur est inactif",
+        "auth.invalid_refresh_token" => "Jeton d'actualisation invalide ou expiré",
+        "auth.session_expired" => "La session a expiré",
+        "auth.user_not_found" => "Utilisateur introuvable",
+        "auth.invalid_reset_token" => "Jeton de réinitialisation invalide",
+        "auth.invalid_invite_token" => "Jeton d'invitation invalide",
+        "auth.invalid_verification_token" => "Jeton de vérification invalide",
+        "auth.invalid_or_expired_code" => "Code invalide ou expiré",
         // OAuth
-        "oauth.auth_config_error"           => "Erreur de configuration d'authentification",
-        "oauth.pkce_invalid"                => "Le vérificateur de code PKCE est invalide",
-        "oauth.redirect_uri_mismatch"       => "Incompatibilité de l'URI de redirection",
-        "oauth.refresh_no_user"             => "Le jeton d'actualisation n'a pas d'utilisateur associé",
+        "oauth.auth_config_error" => "Erreur de configuration d'authentification",
+        "oauth.pkce_invalid" => "Le vérificateur de code PKCE est invalide",
+        "oauth.redirect_uri_mismatch" => "Incompatibilité de l'URI de redirection",
+        "oauth.refresh_no_user" => "Le jeton d'actualisation n'a pas d'utilisateur associé",
         _ => return None,
     })
 }

@@ -2,7 +2,7 @@ pub mod native_server_adapter;
 
 pub use native_server_adapter::ApiError;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

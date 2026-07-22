@@ -1,8 +1,9 @@
 # Documentation `rustok-media`
 
-`rustok-media` is the domain facade and metadata index for media asset
+`rustok-media` is the domain owner and metadata index for media asset
 management on the platform. It handles images, video and PDF assets while
-relying on `rustok-storage` as the physical binary/object owner.
+calling the host-provided `object_store` runtime directly; `rustok-storage`
+only constructs that runtime and enforces canonical keys.
 
 ## Purpose
 
@@ -17,20 +18,28 @@ relying on `rustok-storage` as the physical binary/object owner.
 - typed cross-module image contract `MediaImageDescriptor` (`url/alt/size/mime` + derived helpers), `MediaImageDeliveryProfile`, `MediaImagePublicUrlPolicy` and `proxy_path` helper for explicit direct-public/proxy-required/not-addressable URL policy;
 - FBA provider contract `MediaAssetReadPort` / `media.asset_read.v1` with source-locked evidence for deadline/context guards, typed `PortError` retryability and `MediaAssetSummary` kind/usage metadata;
 - FBA owner control contract `MediaAssetWritePort` / `media.asset_write.v1` for upload target
-  preparation, delete, translation, and tenant-scoped cleanup; binary bytes stay on Media-owned
-  streaming REST or a future presigned upload target, outside generic port DTOs;
+  preparation/completion, delete, translation, and tenant-scoped reconciliation; binary bytes stay
+  on Media-owned streaming REST or short-lived presigned S3 PUT targets, outside generic port DTOs;
+- loopback-verified `rustok-media-transport` tonic adapters for all read/write
+  control operations; gRPC propagates deadlines and exact typed owner errors
+  while binary bodies remain outside the service;
 - GraphQL and REST adapters of the module;
 - upload validation by size/MIME policy and tenant isolation before accessing storage;
-- module-owned admin UI package `rustok-media-admin` with FFA split `core`/`transport`/`ui/leptos`; native server functions use `HostRuntimeContext` and host-provided typed `StorageService` instead of a host-wide `AppContext`;
-- observability signals for upload, delete and storage health;
+- module-owned admin UI package `rustok-media-admin` with FFA split `core`/`transport`/`ui/leptos`; native server functions use `HostRuntimeContext` and the host-provided `StorageRuntime` instead of a host-wide `AppContext`;
+- observability signals for upload, delete, rendition latency/outcome, upload sessions,
+  reconciliation outcomes, and storage health;
 - translation normalization: `locale` trim/lowercase, empty `title`/`alt_text`/`caption` are stored as `None`, translation lists are returned in stable order by locale;
-- conservative cleanup contract: `cleanup_storage_orphans` reads exact `storage_path`, does not delete readable objects, removes only DB rows for `NotFound`/`InvalidPath`, and treats `Io`/`Backend` as retryable failures; `MediaStorageCleanupReport` publishes helpers for empty/change/retry state.
-- `rustok-media-cli` provides `media cleanup [--limit <count>]`; it explicitly builds `StorageService` from the host-neutral CLI `storage` settings snapshot and invokes the owner service across tenants. The default limit is 1,000 records.
+- owner-local lifecycle persistence in `media_assets`, `media_blobs`, `media_renditions`, `media_upload_sessions`, and `media_translations`; the former Content-owned `media` migration no longer exists.
+- reconciliation contract: `reconcile_storage` probes exact immutable object keys, marks missing ready blobs as failed without deleting evidence, retries transient failures, and completes persisted delete tombstones; `MediaReconciliationReport` exposes healthy, missing, deletion, and retry counts.
+- `rustok-media-cli` provides `media reconcile`; it explicitly builds `StorageRuntime` from the host-neutral CLI storage settings and invokes the Media service across tenants.
+- the image pipeline emits immutable JPEG, PNG, WebP, and AVIF renditions with golden-output,
+  orientation, animated-input rejection, memory, timeout, and concurrency tests;
+- Local and env-gated S3-compatible integration tests exercise the same Media lifecycle;
 
 ## Integration
 
-- uses `rustok-storage` as the physical backend storage contract; media records
-  keep object references and media metadata, not backend ownership;
+- uses the host-provided direct `object_store` runtime; Media rows keep immutable object
+  references and lifecycle metadata, never a backend/driver name;
 - `apps/server` remains the composition root and wiring layer for media routes/graphql;
 - runtime guard relies on tenant-scoped module enablement for public surfaces;
 - upload remains REST-owned, GraphQL is preserved for read/mutation flows without multipart extension, and the Leptos admin adapter calls the transport facade instead of the raw API module; the transport facade inside the admin package splits native server functions, the GraphQL selected path and REST upload adapters, while upload/detail presentation state remains in Leptos-free `admin/src/core.rs`;
@@ -41,13 +50,15 @@ relying on `rustok-storage` as the physical binary/object owner.
 
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
-- targeted tests for upload validation, translation normalization, cleanup probe classification, storage cleanup and admin-facing read/write contracts
+- `cargo test -p rustok-media-transport`
+- targeted tests for upload validation, translation normalization, reconciliation classification, local object lifecycle and admin-facing read/write contracts
 
 ## Related documents
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Admin package](../admin/README.md)
+- [gRPC transport](../../rustok-media-transport/docs/README.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
 
 ## Host boundary notes

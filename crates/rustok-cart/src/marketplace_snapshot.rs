@@ -8,8 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     AddMarketplaceCartLineItemInput, AddMarketplaceCartLineItemResponse, CartError,
-    CartMarketplaceLineSnapshot, CartMarketplaceSnapshotService,
-    MarketplaceCartLineSnapshotInput,
+    CartMarketplaceLineSnapshot, CartMarketplaceSnapshotService, MarketplaceCartLineSnapshotInput,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -88,13 +87,9 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         request: AddMarketplaceCartLineRequest,
     ) -> Result<AddMarketplaceCartLineItemResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
-        self.add_marketplace_line_item(
-            parse_tenant_id(&context)?,
-            request.cart_id,
-            request.input,
-        )
-        .await
-        .map_err(map_cart_error)
+        self.add_marketplace_line_item(parse_tenant_id(&context)?, request.cart_id, request.input)
+            .await
+            .map_err(map_cart_error)
     }
 
     async fn bind_marketplace_line_snapshot(
@@ -131,10 +126,9 @@ fn map_cart_error(error: CartError) -> PortError {
             message,
             false,
         ),
-        CartError::CartNotFound(cart_id) => PortError::not_found(
-            "cart.not_found",
-            format!("cart {cart_id} not found"),
-        ),
+        CartError::CartNotFound(cart_id) => {
+            PortError::not_found("cart.not_found", format!("cart {cart_id} not found"))
+        }
         CartError::CartLineItemNotFound(line_item_id) => PortError::not_found(
             "cart.line_item_not_found",
             format!("cart line item {line_item_id} not found"),

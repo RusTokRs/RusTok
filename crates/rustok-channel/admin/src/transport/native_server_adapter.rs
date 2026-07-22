@@ -16,8 +16,8 @@ use crate::model::{
 
 #[cfg(feature = "ssr")]
 fn ensure_manage_permission(permissions: &[rustok_api::Permission]) -> Result<(), ServerFnError> {
-    use rustok_api::has_any_effective_permission;
     use rustok_api::Permission;
+    use rustok_api::has_any_effective_permission;
 
     if !has_any_effective_permission(
         permissions,
@@ -1161,7 +1161,7 @@ fn build_native_rule_definition_payload(
             other => {
                 return Err(ServerFnError::new(format!(
                     "Unsupported surface `{other}`; only `http` is currently supported",
-                )))
+                )));
             }
         };
         predicates.push(ResolutionPredicate::SurfaceIs(surface));

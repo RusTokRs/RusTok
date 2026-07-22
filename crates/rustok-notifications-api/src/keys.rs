@@ -20,10 +20,7 @@ pub enum NotificationKeyError {
     #[error("{kind} must start and end with an ASCII lowercase letter or digit")]
     InvalidBoundary { kind: &'static str },
     #[error("{kind} contains invalid character `{character}`")]
-    InvalidCharacter {
-        kind: &'static str,
-        character: char,
-    },
+    InvalidCharacter { kind: &'static str, character: char },
     #[error("{kind} contains an empty semantic segment")]
     EmptySegment { kind: &'static str },
     #[error("notification audience cursor contains a control character")]

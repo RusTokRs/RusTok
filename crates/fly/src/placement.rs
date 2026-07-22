@@ -244,10 +244,12 @@ mod tests {
         let registries = RegistrySet::with_builtins();
         let decision = registries.evaluate_placement(&document, None, "text", Some("text-a"), 0);
         assert!(!decision.legal);
-        assert!(decision
-            .reason
-            .unwrap_or_default()
-            .contains("does not accept"));
+        assert!(
+            decision
+                .reason
+                .unwrap_or_default()
+                .contains("does not accept")
+        );
     }
 
     #[test]

@@ -54,7 +54,7 @@ impl MigrationTrait for Migration {
             backend => {
                 return Err(DbErr::Migration(format!(
                     "module build request migration does not support database backend {backend:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

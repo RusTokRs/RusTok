@@ -23,7 +23,10 @@ mod tests {
         assert!(NotificationTemplateKey::new("forum.reply.approved").is_ok());
 
         for invalid in ["Forum", " forum", "forum ", "forum/source", "forum..reply"] {
-            assert!(NotificationTypeKey::new(invalid).is_err(), "accepted {invalid:?}");
+            assert!(
+                NotificationTypeKey::new(invalid).is_err(),
+                "accepted {invalid:?}"
+            );
         }
         assert!(NotificationSourceSlug::new("forum.reply").is_err());
     }
@@ -73,11 +76,13 @@ mod tests {
             NotificationAudienceCandidate { recipient_id },
         ];
         assert!(NotificationAudiencePage::try_new(duplicate.clone(), None).is_err());
-        assert!(serde_json::from_value::<NotificationAudiencePage>(serde_json::json!({
-            "recipients": duplicate,
-            "next_cursor": null
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<NotificationAudiencePage>(serde_json::json!({
+                "recipients": duplicate,
+                "next_cursor": null
+            }))
+            .is_err()
+        );
 
         let oversized = (0..=MAX_NOTIFICATION_AUDIENCE_PAGE_SIZE)
             .map(|_| NotificationAudienceCandidate {
@@ -85,11 +90,13 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert!(NotificationAudiencePage::try_new(oversized.clone(), None).is_err());
-        assert!(serde_json::from_value::<NotificationAudiencePage>(serde_json::json!({
-            "recipients": oversized,
-            "next_cursor": null
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<NotificationAudiencePage>(serde_json::json!({
+                "recipients": oversized,
+                "next_cursor": null
+            }))
+            .is_err()
+        );
 
         let page = NotificationAudiencePage::try_new(
             vec![NotificationAudienceCandidate { recipient_id }],
@@ -113,7 +120,10 @@ mod tests {
             "/forum/topic?preview=true",
             "/forum\\topic",
         ] {
-            assert!(NotificationTargetRoute::new(invalid).is_err(), "accepted {invalid:?}");
+            assert!(
+                NotificationTargetRoute::new(invalid).is_err(),
+                "accepted {invalid:?}"
+            );
         }
     }
 

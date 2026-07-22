@@ -1,9 +1,9 @@
 use super::{AssetCommand, EditorCommand, History, HistoryEntry, RevisionState};
 use crate::{
-    apply_binding_command, apply_context_command, apply_dynamic_command, apply_page_command,
-    apply_style_rule_command, apply_translation_command, extend_with_runtime_validation,
-    validate_project, AssetDescriptor, FlyError, FlyResult, ProjectDocument, ProjectSnapshot,
-    RegistrySet, SequentialIdGenerator, ValidationLimits, ValidationReport,
+    AssetDescriptor, FlyError, FlyResult, ProjectDocument, ProjectSnapshot, RegistrySet,
+    SequentialIdGenerator, ValidationLimits, ValidationReport, apply_binding_command,
+    apply_context_command, apply_dynamic_command, apply_page_command, apply_style_rule_command,
+    apply_translation_command, extend_with_runtime_validation, validate_project,
 };
 use serde::{Deserialize, Serialize};
 

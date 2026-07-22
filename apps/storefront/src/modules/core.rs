@@ -1,6 +1,6 @@
-﻿use leptos::prelude::*;
+use leptos::prelude::*;
 
-use super::{register_component, StorefrontComponentRegistration, StorefrontSlot};
+use super::{StorefrontComponentRegistration, StorefrontSlot, register_component};
 
 pub fn register_components() {
     register_component(StorefrontComponentRegistration {

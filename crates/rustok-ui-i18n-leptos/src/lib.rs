@@ -12,7 +12,7 @@ use std::sync::OnceLock;
 
 use leptos::prelude::use_context;
 use rustok_ui_core::UiRouteContext;
-use rustok_ui_i18n::{build_ui_message_catalog, resolve_ui_message_or_fallback, UiMessageCatalog};
+use rustok_ui_i18n::{UiMessageCatalog, build_ui_message_catalog, resolve_ui_message_or_fallback};
 
 pub struct LeptosUiMessages {
     default_locale: &'static str,

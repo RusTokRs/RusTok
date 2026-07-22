@@ -487,8 +487,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        ForumWidgetContractService, FORUM_WIDGET_TYPE_REPLY_STREAM, FORUM_WIDGET_TYPE_TOPIC_DETAIL,
-        FORUM_WIDGET_TYPE_TOPIC_LIST,
+        FORUM_WIDGET_TYPE_REPLY_STREAM, FORUM_WIDGET_TYPE_TOPIC_DETAIL,
+        FORUM_WIDGET_TYPE_TOPIC_LIST, ForumWidgetContractService,
     };
     use crate::ValidateForumWidgetPropsInput;
 
@@ -530,10 +530,12 @@ mod tests {
             json!("550e8400-e29b-41d4-a716-446655440000")
         );
         assert_eq!(response.normalized_props["sort"], json!("newest"));
-        assert!(response
-            .issues
-            .iter()
-            .any(|issue| issue.class == "sanitize"));
+        assert!(
+            response
+                .issues
+                .iter()
+                .any(|issue| issue.class == "sanitize")
+        );
     }
 
     #[test]
@@ -565,9 +567,11 @@ mod tests {
         });
 
         assert!(!response.valid);
-        assert!(response
-            .issues
-            .iter()
-            .any(|issue| issue.code.ends_with("out_of_range")));
+        assert!(
+            response
+                .issues
+                .iter()
+                .any(|issue| issue.code.ends_with("out_of_range"))
+        );
     }
 }

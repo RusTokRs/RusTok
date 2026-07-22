@@ -1,17 +1,17 @@
 use async_graphql::{Context, Object, Result};
-use rustok_api::graphql::require_module_enabled;
 use rustok_api::Permission;
+use rustok_api::graphql::require_module_enabled;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
-    entities::WorkflowStatus, CreateWorkflowInput, CreateWorkflowStepInput, UpdateWorkflowInput,
-    UpdateWorkflowStepInput, WorkflowService,
+    CreateWorkflowInput, CreateWorkflowStepInput, UpdateWorkflowInput, UpdateWorkflowStepInput,
+    WorkflowService, entities::WorkflowStatus,
 };
 
-use super::{require_workflow_permission, types::*, MODULE_SLUG};
+use super::{MODULE_SLUG, require_workflow_permission, types::*};
 
 #[derive(Default)]
 pub struct WorkflowMutation;

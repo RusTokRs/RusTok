@@ -1,7 +1,7 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use uuid::Uuid;
 
-use crate::{hash_password, AuthLifecycleMutationError};
+use crate::{AuthLifecycleMutationError, hash_password};
 
 /// Narrow identity input for bootstrap and installer workflows.
 ///

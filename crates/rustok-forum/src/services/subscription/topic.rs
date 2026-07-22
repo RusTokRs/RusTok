@@ -18,11 +18,11 @@ use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::subscription::ForumSubscriptionLevel;
 
-use super::helpers::{
-    ensure_revision_update, implicit_response, require_authenticated_user, resolve_preferences,
-    topic_response, validate_expected_revision, validate_new_revision, INITIAL_REVISION,
-};
 use super::SubscriptionService;
+use super::helpers::{
+    INITIAL_REVISION, ensure_revision_update, implicit_response, require_authenticated_user,
+    resolve_preferences, topic_response, validate_expected_revision, validate_new_revision,
+};
 
 impl SubscriptionService {
     #[instrument(skip(self, security))]

@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::model::CategoryTreeResponse;
@@ -79,7 +79,7 @@ fn graphql_url() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{category_node_selection, MAX_CATEGORY_TREE_DEPTH};
+    use super::{MAX_CATEGORY_TREE_DEPTH, category_node_selection};
 
     #[test]
     fn category_tree_query_covers_owner_depth_bound() {

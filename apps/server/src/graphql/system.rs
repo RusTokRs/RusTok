@@ -107,12 +107,12 @@ impl SystemQuery {
 
         #[cfg(feature = "mod-media")]
         {
-            use rustok_storage::StorageService;
-            match ctx.data_opt::<StorageService>() {
+            use rustok_storage::StorageRuntime;
+            match ctx.data_opt::<StorageRuntime>() {
                 Some(storage) => {
                     let health = probe_storage(storage).await;
                     rustok_telemetry::metrics::update_storage_health(
-                        storage.backend_name(),
+                        storage.kind.as_str(),
                         health.is_ok(),
                     );
                     components.push(ComponentHealth {
@@ -257,13 +257,24 @@ impl SystemQuery {
 }
 
 #[cfg(feature = "mod-media")]
-async fn probe_storage(
-    storage: &rustok_storage::StorageService,
-) -> std::result::Result<(), rustok_storage::StorageError> {
-    let probe_path = ".health-probe";
+async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store::Result<()> {
+    use object_store::ObjectStoreExt;
+    let probe_path = rustok_storage::ObjectKey::chronological(
+        "platform-health",
+        rustok_storage::ObjectZone::Staging,
+        rustok_storage::ObjectScope::Platform,
+        chrono::Utc::now(),
+        uuid::Uuid::new_v4(),
+        "probe",
+    )
+    .expect("platform health key constants are valid")
+    .into_path();
     let data = bytes::Bytes::from_static(b"ok");
-    storage.store(probe_path, data, "text/plain").await?;
-    storage.delete(probe_path).await?;
+    storage
+        .objects
+        .put_opts(&probe_path, data.into(), storage.put_options("text/plain"))
+        .await?;
+    storage.objects.delete(&probe_path).await?;
     Ok(())
 }
 

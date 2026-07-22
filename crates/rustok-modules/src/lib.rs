@@ -11,9 +11,12 @@ mod composition;
 mod contracts;
 mod control_plane;
 mod data;
+mod data_snapshot;
 mod definition;
 mod dependency;
 mod dispatcher;
+mod distribution;
+mod distribution_release;
 mod event_delivery;
 mod execution_audit;
 mod executor;
@@ -29,6 +32,7 @@ mod migrations;
 mod oci;
 mod operation_store;
 mod policy;
+mod promotion;
 mod publish_validation;
 mod recovery;
 mod resolution;
@@ -117,6 +121,17 @@ pub use data::{
     SeaOrmArtifactDataObjectUploadService, SeaOrmArtifactDataPurgeService,
     SeaOrmArtifactDataSchemaValidator, SnapshotArtifactDataObjectRetentionPolicy,
 };
+pub use data_snapshot::{
+    ArtifactDataRestoreRequest, ArtifactDataRestoreResult, ArtifactDataSnapshot,
+    ArtifactDataSnapshotAuthorizer, ArtifactDataSnapshotCollectionAuthorizer,
+    ArtifactDataSnapshotCollectionCandidate, ArtifactDataSnapshotCollectionPolicy,
+    ArtifactDataSnapshotCollectionRequest, ArtifactDataSnapshotCollectionResult,
+    ArtifactDataSnapshotCollectionRule, ArtifactDataSnapshotCreateRequest,
+    ArtifactDataSnapshotRetention, ArtifactDataSnapshotRetentionAuthorizer,
+    ArtifactDataSnapshotRetentionUpdateRequest, SeaOrmArtifactDataSnapshotCollectionService,
+    SeaOrmArtifactDataSnapshotRetentionService, SeaOrmArtifactDataSnapshotService,
+    SnapshotArtifactDataSnapshotCollectionPolicy,
+};
 pub use definition::{
     ModuleDefinition, ModuleDefinitionCatalog, ModuleDefinitionError, ModuleDefinitionKind,
     ModuleDefinitionSource,
@@ -131,6 +146,31 @@ pub use dispatcher::{
     ArtifactBindingExecutionContext, ArtifactBindingExecutor, ArtifactInstallationTarget,
     ArtifactLifecycleExecutor, ModuleDispatchError, ModuleExecutionDispatcher,
     ModuleLifecycleHookPhase, ARTIFACT_BINDING_DISPATCH_ENVELOPE_VERSION,
+};
+pub use distribution::{
+    ModuleStaticDistributionAuthorizer, ModuleStaticDistributionBuild,
+    ModuleStaticDistributionBuildCommand, ModuleStaticDistributionBuildEvidence,
+    ModuleStaticDistributionBuildReceipt, ModuleStaticDistributionBuildStatus,
+    ModuleStaticDistributionClaimCommand, ModuleStaticDistributionCompletionCommand,
+    ModuleStaticDistributionCompletionOutcome, ModuleStaticDistributionCompletionReceipt,
+    ModuleStaticDistributionError, ModuleStaticDistributionExecutor,
+    ModuleStaticDistributionExecutorError, ModuleStaticDistributionExecutorReadiness,
+    ModuleStaticDistributionFailure, ModuleStaticDistributionHeartbeatCommand,
+    ModuleStaticDistributionHeartbeatReceipt, ModuleStaticDistributionItem,
+    ModuleStaticDistributionSelection, ModuleStaticDistributionState,
+    ModuleStaticDistributionWorkItem, ModuleStaticDistributionWorkerAuthorizer,
+    SeaOrmModuleStaticDistributionService, SeaOrmModuleStaticDistributionWorkerService,
+};
+pub use distribution_release::{
+    ModuleStaticDistributionActivationCommand, ModuleStaticDistributionActivationReceipt,
+    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseAdmission,
+    ModuleStaticDistributionReleaseAuthorizer, ModuleStaticDistributionReleaseError,
+    ModuleStaticDistributionReleaseState, ModuleStaticDistributionReleaseStatus,
+    ModuleStaticDistributionReleaseVerificationRequest, ModuleStaticDistributionReleaseVerifier,
+    ModuleStaticDistributionRevocationCommand, ModuleStaticDistributionRevocationReceipt,
+    ModuleStaticDistributionRollback, ModuleStaticDistributionRollbackCommand,
+    ModuleStaticDistributionRollbackReceipt, ModuleStaticDistributionRollbackStatus,
+    SeaOrmModuleStaticDistributionReleaseService,
 };
 pub use event_delivery::{
     ArtifactEventDeliveryCompletion, ArtifactEventDeliveryConfig, ArtifactEventDeliveryError,
@@ -204,8 +244,9 @@ pub use oci::{
     strict_oci_distribution_client, strict_oci_distribution_client_with_policy,
     OciArtifactEvidence, OciArtifactEvidenceKind, OciArtifactPublicationBundle,
     OciArtifactPublicationError, OciArtifactPublicationReceipt, OciArtifactPublicationTarget,
-    OciArtifactPublisher, OciDistributionArtifactPublisher, OciDistributionArtifactRegistry,
-    OciRegistryProxyMode, OciRegistryTransportPolicy, MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
+    OciArtifactPublisher, OciBuildPublicationArtifact, OciBuildPublicationBlob,
+    OciDistributionArtifactPublisher, OciDistributionArtifactRegistry, OciRegistryProxyMode,
+    OciRegistryTransportPolicy, MODULE_ARTIFACT_DESCRIPTOR_MEDIA_TYPE,
     MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE, MODULE_ARTIFACT_RELEASE_LINEAGE_MEDIA_TYPE,
     MODULE_ARTIFACT_SBOM_MEDIA_TYPE, MODULE_ARTIFACT_TEST_EVIDENCE_MEDIA_TYPE,
     OCI_EMPTY_CONFIG_MEDIA_TYPE,
@@ -221,6 +262,12 @@ pub(crate) use operation_store::{
 pub use policy::{
     validate_module_toggle, ModuleEffectivePolicy, ModuleEffectivePolicyQuery,
     ModuleToggleValidationError, TenantModuleOverride,
+};
+pub use promotion::{
+    ModuleStaticPromotion, ModuleStaticPromotionApprovalCommand,
+    ModuleStaticPromotionApprovalEvidence, ModuleStaticPromotionAuthorizer,
+    ModuleStaticPromotionError, ModuleStaticPromotionEvidence, ModuleStaticPromotionReceipt,
+    ModuleStaticPromotionRequestCommand, ModuleStaticPromotionStatus, SeaOrmModulePromotionService,
 };
 pub use publish_validation::{
     validate_module_publish_artifact, validate_module_publish_bundle,
@@ -257,11 +304,13 @@ pub use schedule_materializer::{
     ArtifactScheduleMaterializationReport, ArtifactScheduleMaterializer,
 };
 pub use secrets::{
-    ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretError,
-    ArtifactSecretHandle, ArtifactSecretHandleAuthorizer, ArtifactSecretHandleRequest,
-    ArtifactSecretPolicy, RegistryArtifactSecretAuthorizer, SeaOrmArtifactSecretCapabilityBroker,
-    SeaOrmArtifactSecretCapabilityBrokerResolver, SeaOrmArtifactSecretHandleService,
-    SeaOrmArtifactSecretService,
+    ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretConsumerError,
+    ArtifactSecretError, ArtifactSecretHandle, ArtifactSecretHandleAuthorizer,
+    ArtifactSecretHandleRequest, ArtifactSecretPolicy, ArtifactSecretUseAuthorizer,
+    ArtifactSecretUseContext, ArtifactSecretUseReceipt, ArtifactSecretUseRequest,
+    ArtifactSecretValueConsumer, RegistryArtifactSecretAuthorizer,
+    SeaOrmArtifactSecretCapabilityBroker, SeaOrmArtifactSecretCapabilityBrokerResolver,
+    SeaOrmArtifactSecretHandleService, SeaOrmArtifactSecretService, SeaOrmArtifactSecretUseService,
 };
 pub use settings::{
     normalize_module_settings, validate_module_settings_schema, ModuleSettingSpec,

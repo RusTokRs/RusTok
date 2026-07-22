@@ -10,7 +10,6 @@ pub mod services;
 pub mod target_type;
 
 pub use dto::{
-    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
     AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
     BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelDetailResponse,
     ChannelModuleBindingResponse, ChannelOauthAppResponse,
@@ -20,14 +19,15 @@ pub use dto::{
     CreateChannelTargetInput, CreateResolutionPolicySetRequest, CreateResolutionRuleRequest,
     ReorderChannelResolutionRulesInput, ReorderResolutionRulesRequest,
     UpdateChannelResolutionRuleInput, UpdateChannelTargetInput, UpdateResolutionRuleRequest,
+    create_resolution_policy_set_input, create_resolution_rule_input, update_resolution_rule_input,
 };
 pub use error::{ChannelError, ChannelResult};
 pub use invalidation_generation::{
-    read_resolution_invalidation_generation, CHANNEL_RESOLUTION_INVALIDATION_SCOPE,
+    CHANNEL_RESOLUTION_INVALIDATION_SCOPE, read_resolution_invalidation_generation,
 };
 pub use policy::{
-    ChannelResolutionRuleDefinition, ResolutionAction, ResolutionPredicate,
-    StoredChannelResolutionRule, CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION,
+    CHANNEL_RESOLUTION_POLICY_SCHEMA_VERSION, ChannelResolutionRuleDefinition, ResolutionAction,
+    ResolutionPredicate, StoredChannelResolutionRule,
 };
 pub use ports::*;
 pub use resolution::{

@@ -103,10 +103,10 @@ pub async fn list_users_native(
 ) -> Result<GraphqlUsersResponse, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext, has_effective_permission};
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -326,7 +326,7 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
     {
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext, has_effective_permission};
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await
@@ -782,7 +782,7 @@ pub async fn list_oauth_apps_native(limit: i64) -> Result<Vec<OAuthApp>, ServerF
     {
         use leptos::prelude::expect_context;
         use rustok_api::Permission;
-        use rustok_api::{has_effective_permission, AuthContext, TenantContext};
+        use rustok_api::{AuthContext, TenantContext, has_effective_permission};
 
         let auth = leptos_axum::extract::<AuthContext>()
             .await

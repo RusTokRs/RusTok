@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::content::model::IndexContentModel;
 use crate::error::IndexResult;
 use crate::traits::{
-    run_bounded_reindex, Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer,
+    Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer, run_bounded_reindex,
 };
 
 /// Raw DB row for building index_content

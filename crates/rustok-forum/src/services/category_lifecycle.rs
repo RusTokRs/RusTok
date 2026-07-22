@@ -12,8 +12,7 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    CategorySubtreeLifecycleResponse, MAX_FORUM_CATEGORY_TREE_DEPTH,
-    MAX_FORUM_CATEGORY_TREE_NODES,
+    CategorySubtreeLifecycleResponse, MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES,
 };
 use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
@@ -145,10 +144,7 @@ impl CategoryLifecycleService {
     }
 }
 
-async fn lock_category_tree_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-) -> ForumResult<()> {
+async fn lock_category_tree_in_tx(txn: &DatabaseTransaction, tenant_id: Uuid) -> ForumResult<()> {
     match txn.get_database_backend() {
         DatabaseBackend::Postgres => {
             txn.execute(Statement::from_sql_and_values(

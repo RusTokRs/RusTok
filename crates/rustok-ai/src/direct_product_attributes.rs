@@ -6,14 +6,14 @@ use serde_json::json;
 use std::time::Duration;
 
 use crate::direct::{
-    direct_operator_port_context, explain_result, generate_product_attributes,
-    DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler,
+    DirectExecutionRequest, DirectExecutionResult, DirectTaskHandler, direct_operator_port_context,
+    explain_result, generate_product_attributes,
 };
 use crate::model::{AiProductAttributesTaskInput, DirectExecutionTarget, ToolTrace};
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_ai_product::{PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_ATTRIBUTES_TOOL_NAME};
-use rustok_product::{dto::ProductResponse, ProductProjectionRequest};
+use rustok_product::{ProductProjectionRequest, dto::ProductResponse};
 
 const PRODUCT_CATALOG_READ_DEADLINE: Duration = Duration::from_secs(3);
 

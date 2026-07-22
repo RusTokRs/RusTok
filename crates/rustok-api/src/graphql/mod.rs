@@ -3,8 +3,8 @@ mod contribution;
 mod errors;
 
 pub use common::{
-    decode_cursor, encode_cursor, require_module_enabled, resolve_graphql_locale,
-    resolve_graphql_tenant_id, PageInfo, PaginationInput,
+    PageInfo, PaginationInput, decode_cursor, encode_cursor, require_module_enabled,
+    resolve_graphql_locale, resolve_graphql_tenant_id,
 };
 pub use contribution::GraphqlContributionDescriptor;
 #[cfg(feature = "server")]

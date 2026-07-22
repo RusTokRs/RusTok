@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    CacheInvalidationObservation, CacheInvalidationPayloadError, VersionedCacheInvalidation,
-    MAX_CACHE_INVALIDATION_CHANNEL_BYTES,
+    CacheInvalidationObservation, CacheInvalidationPayloadError,
+    MAX_CACHE_INVALIDATION_CHANNEL_BYTES, VersionedCacheInvalidation,
 };
 
 pub const DEFAULT_MAX_TRACKED_INVALIDATION_CHANNELS: usize = 4_096;

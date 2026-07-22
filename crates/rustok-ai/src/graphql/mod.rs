@@ -6,7 +6,7 @@ pub mod types;
 use async_graphql::{FieldError, Result};
 
 use rustok_api::graphql::GraphQLError;
-use rustok_api::{has_effective_permission, AuthContext, Permission};
+use rustok_api::{AuthContext, Permission, has_effective_permission};
 
 fn ensure_permission(auth: &AuthContext, permission: &Permission, message: &str) -> Result<()> {
     if has_effective_permission(&auth.permissions, permission) {

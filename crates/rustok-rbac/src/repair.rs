@@ -347,8 +347,12 @@ where
 {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DbBackend::Sqlite => "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?1, ?2, ?3, ?4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING",
-        DbBackend::Postgres | DbBackend::MySql => "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES ($1, $2, $3, $4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING",
+        DbBackend::Sqlite => {
+            "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES (?1, ?2, ?3, ?4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING"
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            "INSERT INTO roles (id, tenant_id, name, slug, description, is_system) VALUES ($1, $2, $3, $4, NULL, TRUE) ON CONFLICT (tenant_id, slug) DO NOTHING"
+        }
     };
     execute(
         db,
@@ -374,8 +378,12 @@ where
 {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DbBackend::Sqlite => "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1",
-        DbBackend::Postgres | DbBackend::MySql => "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1",
+        DbBackend::Sqlite => {
+            "SELECT id FROM permissions WHERE tenant_id = ?1 AND resource = ?2 AND action = ?3 LIMIT 1"
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            "SELECT id FROM permissions WHERE tenant_id = $1 AND resource = $2 AND action = $3 LIMIT 1"
+        }
     };
     db.query_one(Statement::from_sql_and_values(
         backend,
@@ -399,8 +407,12 @@ where
 {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DbBackend::Sqlite => "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?1, ?2, ?3, ?4, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING",
-        DbBackend::Postgres | DbBackend::MySql => "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES ($1, $2, $3, $4, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING",
+        DbBackend::Sqlite => {
+            "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES (?1, ?2, ?3, ?4, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING"
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            "INSERT INTO permissions (id, tenant_id, resource, action, description) VALUES ($1, $2, $3, $4, NULL) ON CONFLICT (tenant_id, resource, action) DO NOTHING"
+        }
     };
     execute(
         db,
@@ -424,8 +436,12 @@ where
 {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DbBackend::Sqlite => "SELECT rp.permission_id, p.tenant_id, p.resource, p.action FROM role_permissions rp LEFT JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?1",
-        DbBackend::Postgres | DbBackend::MySql => "SELECT rp.permission_id, p.tenant_id, p.resource, p.action FROM role_permissions rp LEFT JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = $1",
+        DbBackend::Sqlite => {
+            "SELECT rp.permission_id, p.tenant_id, p.resource, p.action FROM role_permissions rp LEFT JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?1"
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            "SELECT rp.permission_id, p.tenant_id, p.resource, p.action FROM role_permissions rp LEFT JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = $1"
+        }
     };
     let rows = db
         .query_all(Statement::from_sql_and_values(
@@ -457,8 +473,12 @@ where
 {
     let backend = db.get_database_backend();
     let sql = match backend {
-        DbBackend::Sqlite => "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3) ON CONFLICT (role_id, permission_id) DO NOTHING",
-        DbBackend::Postgres | DbBackend::MySql => "INSERT INTO role_permissions (id, role_id, permission_id) VALUES ($1, $2, $3) ON CONFLICT (role_id, permission_id) DO NOTHING",
+        DbBackend::Sqlite => {
+            "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?1, ?2, ?3) ON CONFLICT (role_id, permission_id) DO NOTHING"
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            "INSERT INTO role_permissions (id, role_id, permission_id) VALUES ($1, $2, $3) ON CONFLICT (role_id, permission_id) DO NOTHING"
+        }
     };
     execute(
         db,
@@ -559,7 +579,7 @@ fn database_error(error: impl std::fmt::Display) -> RbacSystemRoleRepairError {
 
 #[cfg(test)]
 mod tests {
-    use super::{built_in_roles, RbacSystemRoleRepairReport};
+    use super::{RbacSystemRoleRepairReport, built_in_roles};
 
     #[test]
     fn built_in_role_inventory_is_stable() {

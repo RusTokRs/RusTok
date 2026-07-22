@@ -1,8 +1,8 @@
 use crate::{
-    diff_runtime_scenario_render_snapshots, PageSelection, ProjectDocument, ProjectHash,
+    FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT, PageSelection, ProjectDocument, ProjectHash,
     RenderPolicy, RuntimeContextScenario, RuntimeScenarioRegressionStatus,
     RuntimeScenarioRenderDiff, RuntimeScenarioRenderSnapshot, ValidationDiagnostic,
-    ValidationSeverity, FLY_RUNTIME_SCENARIO_RENDER_SNAPSHOT,
+    ValidationSeverity, diff_runtime_scenario_render_snapshots,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;

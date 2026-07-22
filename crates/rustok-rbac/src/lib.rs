@@ -25,16 +25,16 @@ pub use artifact_permission_assignment::{
 pub use artifact_permission_catalog::RbacArtifactPermissionCatalog;
 pub use bootstrap::{RbacRoleAssignmentDbWriter, RbacRoleAssignmentError};
 pub use catalog::BuiltinTenantRbacCatalog;
-pub use consistency::{load_consistency_stats, RbacConsistencyStats};
+pub use consistency::{RbacConsistencyStats, load_consistency_stats};
 pub use error::RbacError;
 pub use integration::{
-    RbacIntegrationEventKind, RbacRoleAssignmentEvent, RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED,
-    RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED, RBAC_EVENT_USER_ROLE_ASSIGNMENT_REMOVED,
-    RBAC_EVENT_USER_ROLE_REPLACED,
+    RBAC_EVENT_ROLE_PERMISSIONS_ASSIGNED, RBAC_EVENT_TENANT_ROLE_ASSIGNMENTS_REMOVED,
+    RBAC_EVENT_USER_ROLE_ASSIGNMENT_REMOVED, RBAC_EVENT_USER_ROLE_REPLACED,
+    RbacIntegrationEventKind, RbacRoleAssignmentEvent,
 };
 pub use invalidation_generation::{
+    RBAC_PERMISSION_INVALIDATION_SCOPE, RbacInvalidationGenerationError,
     read_permission_invalidation_generation, reserve_permission_invalidation_generation,
-    RbacInvalidationGenerationError, RBAC_PERMISSION_INVALIDATION_SCOPE,
 };
 pub use ports::*;
 pub use repair::{
@@ -43,27 +43,27 @@ pub use repair::{
 };
 pub use services::authz_mode::AuthzEngine;
 pub use services::permission_authorizer::{
-    authorize_all_permissions, authorize_any_permission, authorize_permission,
-    AuthorizationDecision,
+    AuthorizationDecision, authorize_all_permissions, authorize_any_permission,
+    authorize_permission,
 };
 pub use services::permission_evaluator::{
-    evaluate_all_permissions, evaluate_any_permission, evaluate_single_permission,
-    PermissionEvaluation,
+    PermissionEvaluation, evaluate_all_permissions, evaluate_any_permission,
+    evaluate_single_permission,
 };
 pub use services::permission_policy::{
-    check_all_permissions, check_any_permission, check_permission, denied_reason_for_denial,
-    has_effective_permission_in_set, missing_permissions, DeniedReasonKind, PermissionCheckOutcome,
+    DeniedReasonKind, PermissionCheckOutcome, check_all_permissions, check_any_permission,
+    check_permission, denied_reason_for_denial, has_effective_permission_in_set,
+    missing_permissions,
 };
 
 pub use services::permission_resolver::{PermissionResolution, PermissionResolver};
 pub use services::policy_model::{
-    build_tenant_policy_csv, build_tenant_policy_enforcer, default_tenant_policy_model,
-    resolved_permissions_subject, TenantPolicyEnforcer,
+    TenantPolicyEnforcer, build_tenant_policy_csv, build_tenant_policy_enforcer,
+    default_tenant_policy_model, resolved_permissions_subject,
 };
 pub use services::relation_permission_resolver::{
-    invalidate_cached_permissions, resolve_permissions_from_relations,
-    resolve_permissions_with_cache, PermissionCache, PermissionCacheLookup,
-    RelationPermissionStore,
+    PermissionCache, PermissionCacheLookup, RelationPermissionStore, invalidate_cached_permissions,
+    resolve_permissions_from_relations, resolve_permissions_with_cache,
 };
 pub use services::runtime_permission_resolver::{RoleAssignmentStore, RuntimePermissionResolver};
 

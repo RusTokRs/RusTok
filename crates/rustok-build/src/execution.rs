@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -163,7 +163,7 @@ pub async fn run_build_command(spec: &BuildCommandSpec) -> anyhow::Result<()> {
 mod tests {
     use std::path::Path;
 
-    use super::{build_manifest_snapshot_path, BuildCommandSpec};
+    use super::{BuildCommandSpec, build_manifest_snapshot_path};
     use crate::{
         BuildExecutionPlan, BuildRuntimeMode, FrontendArtifactKind, FrontendBuildPlan,
         FrontendBuildTool,
@@ -191,9 +191,10 @@ mod tests {
             spec.args()[0..4],
             ["build", "-p", "rustok-server", "--release"]
         );
-        assert!(spec
-            .args()
-            .contains(&"x86_64-unknown-linux-gnu".to_string()));
+        assert!(
+            spec.args()
+                .contains(&"x86_64-unknown-linux-gnu".to_string())
+        );
         assert!(spec.args().contains(&"embed-admin".to_string()));
     }
 

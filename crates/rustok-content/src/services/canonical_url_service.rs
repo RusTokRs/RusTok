@@ -2,7 +2,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::entities::{canonical_url, url_alias};
-use crate::{normalize_locale_code, resolve_by_locale, ContentError, ContentResult};
+use crate::{ContentError, ContentResult, normalize_locale_code, resolve_by_locale};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedContentRoute {

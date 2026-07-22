@@ -31,8 +31,7 @@ pub fn workflow_status_presentation(status: &WorkflowStatus) -> WorkflowStatusPr
         WorkflowStatus::Active => WorkflowStatusPresentation {
             i18n_key: "workflow.status.active",
             fallback_label: "Active",
-            class_name:
-                "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+            class_name: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
         },
         WorkflowStatus::Paused => WorkflowStatusPresentation {
             i18n_key: "workflow.status.paused",

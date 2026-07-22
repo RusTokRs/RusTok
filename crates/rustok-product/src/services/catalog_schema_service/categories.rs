@@ -1,10 +1,10 @@
 use super::{
-    ensure_attribute, ensure_schema, ensure_structural_category, insert_category_group_translation,
-    load_category_group_id, load_category_parent, parse_virtual_category_rule_v1,
-    validate_virtual_category_rule_references, BindCategoryAttributeInput, CatalogCategoryKind,
-    CatalogCategoryListRecord, CatalogCategoryListRow, CatalogCategoryRecord,
-    CreateCatalogCategoryInput, CreateCategoryAttributeGroupInput, ProductAttributeGroupRecord,
-    ProductCatalogSchemaService, SetCategorySchemaModeInput,
+    BindCategoryAttributeInput, CatalogCategoryKind, CatalogCategoryListRecord,
+    CatalogCategoryListRow, CatalogCategoryRecord, CreateCatalogCategoryInput,
+    CreateCategoryAttributeGroupInput, ProductAttributeGroupRecord, ProductCatalogSchemaService,
+    SetCategorySchemaModeInput, ensure_attribute, ensure_schema, ensure_structural_category,
+    insert_category_group_translation, load_category_group_id, load_category_parent,
+    parse_virtual_category_rule_v1, validate_virtual_category_rule_references,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, Statement, TransactionTrait};
 use serde_json::Value;

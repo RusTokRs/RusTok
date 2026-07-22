@@ -2,11 +2,11 @@ use super::*;
 use crate::{
     BindingCatalog, BindingCommand, BindingTarget, BindingTransform, ConditionOperator,
     ContextCommand, ContextFieldDefinition, ContextSchemaCatalog, ContextValueKind, DynamicCatalog,
-    DynamicCommand, FlyError, GrapesJsCodec, RegistrySet, RuntimeBinding, RuntimeCondition,
-    SnapshotCatalog, TranslationCatalog, TranslationCommand, TranslationEntry,
-    FLY_RUNTIME_CONDITIONS_FIELD,
+    DynamicCommand, FLY_RUNTIME_CONDITIONS_FIELD, FlyError, GrapesJsCodec, RegistrySet,
+    RuntimeBinding, RuntimeCondition, SnapshotCatalog, TranslationCatalog, TranslationCommand,
+    TranslationEntry,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 fn editor() -> FlyEditor {
     let document = GrapesJsCodec::decode_value(json!({
@@ -74,15 +74,19 @@ fn dynamic_commands_participate_in_history() {
             .len(),
         1
     );
-    assert!(editor
-        .document()
-        .project
-        .extensions
-        .contains_key(FLY_RUNTIME_CONDITIONS_FIELD));
+    assert!(
+        editor
+            .document()
+            .project
+            .extensions
+            .contains_key(FLY_RUNTIME_CONDITIONS_FIELD)
+    );
     editor.undo().expect("undo dynamic command");
-    assert!(DynamicCatalog::from_document(editor.document())
-        .conditions
-        .is_empty());
+    assert!(
+        DynamicCatalog::from_document(editor.document())
+            .conditions
+            .is_empty()
+    );
 }
 
 #[test]
@@ -112,9 +116,11 @@ fn binding_commands_participate_in_history() {
         1
     );
     editor.undo().expect("undo binding command");
-    assert!(BindingCatalog::from_document(editor.document())
-        .bindings
-        .is_empty());
+    assert!(
+        BindingCatalog::from_document(editor.document())
+            .bindings
+            .is_empty()
+    );
 }
 
 #[test]
@@ -142,9 +148,11 @@ fn context_commands_participate_in_history() {
         1
     );
     editor.undo().expect("undo context command");
-    assert!(ContextSchemaCatalog::from_document(editor.document())
-        .fields
-        .is_empty());
+    assert!(
+        ContextSchemaCatalog::from_document(editor.document())
+            .fields
+            .is_empty()
+    );
 }
 
 #[test]
@@ -173,9 +181,11 @@ fn translation_commands_participate_in_history() {
         1
     );
     editor.undo().expect("undo translation command");
-    assert!(TranslationCatalog::from_document(editor.document())
-        .entries
-        .is_empty());
+    assert!(
+        TranslationCatalog::from_document(editor.document())
+            .entries
+            .is_empty()
+    );
     editor.redo().expect("redo translation command");
     assert_eq!(
         TranslationCatalog::from_document(editor.document())
@@ -205,9 +215,11 @@ fn invalid_runtime_definitions_block_transaction() {
         })
         .expect_err("root repeater should fail validation");
     assert!(matches!(error, FlyError::Validation(_)));
-    assert!(DynamicCatalog::from_document(editor.document())
-        .repeaters
-        .is_empty());
+    assert!(
+        DynamicCatalog::from_document(editor.document())
+            .repeaters
+            .is_empty()
+    );
 }
 
 #[test]
@@ -231,11 +243,13 @@ fn batch_is_atomic_and_creates_one_history_entry() {
     assert_eq!(editor.document().project.assets.len(), 1);
     editor.undo().expect("undo batch");
     assert!(editor.document().project.assets.is_empty());
-    assert!(editor
-        .document()
-        .component("hero")
-        .and_then(|component| component.extensions.get("content"))
-        .is_none());
+    assert!(
+        editor
+            .document()
+            .component("hero")
+            .and_then(|component| component.extensions.get("content"))
+            .is_none()
+    );
 }
 
 #[test]
@@ -282,13 +296,15 @@ fn snapshot_restore_is_hash_verified_and_participates_in_history() {
     editor
         .restore_snapshot(&snapshot)
         .expect("restore snapshot");
-    assert!(editor
-        .document()
-        .component("hero")
-        .unwrap()
-        .extensions
-        .get("content")
-        .is_none());
+    assert!(
+        editor
+            .document()
+            .component("hero")
+            .unwrap()
+            .extensions
+            .get("content")
+            .is_none()
+    );
     assert_eq!(editor.history().undo_len(), 2);
 
     editor.undo().expect("undo restore");
@@ -297,13 +313,15 @@ fn snapshot_restore_is_hash_verified_and_participates_in_history() {
         "Updated"
     );
     editor.redo().expect("redo restore");
-    assert!(editor
-        .document()
-        .component("hero")
-        .unwrap()
-        .extensions
-        .get("content")
-        .is_none());
+    assert!(
+        editor
+            .document()
+            .component("hero")
+            .unwrap()
+            .extensions
+            .get("content")
+            .is_none()
+    );
 }
 
 #[test]

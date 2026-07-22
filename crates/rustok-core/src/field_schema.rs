@@ -1480,9 +1480,11 @@ mod tests {
             Some(rule),
         )]);
         let errors = schema.validate(&json!({"tags": ["a", "b", "c"]}));
-        assert!(errors
-            .iter()
-            .any(|e| e.error_code == FieldErrorCode::TooLong));
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.error_code == FieldErrorCode::TooLong)
+        );
     }
 
     // ── Email ─────────────────────────────────────────────────────────────────
@@ -1491,9 +1493,11 @@ mod tests {
     fn validate_email_valid() {
         let schema =
             CustomFieldsSchema::new(vec![typed_def("email", FieldType::Email, false, None)]);
-        assert!(schema
-            .validate(&json!({"email": "user@example.com"}))
-            .is_empty());
+        assert!(
+            schema
+                .validate(&json!({"email": "user@example.com"}))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1510,9 +1514,11 @@ mod tests {
     #[test]
     fn validate_url_valid() {
         let schema = CustomFieldsSchema::new(vec![typed_def("site", FieldType::Url, false, None)]);
-        assert!(schema
-            .validate(&json!({"site": "https://example.com"}))
-            .is_empty());
+        assert!(
+            schema
+                .validate(&json!({"site": "https://example.com"}))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1545,12 +1551,16 @@ mod tests {
     fn validate_datetime_valid() {
         let schema =
             CustomFieldsSchema::new(vec![typed_def("ts", FieldType::DateTime, false, None)]);
-        assert!(schema
-            .validate(&json!({"ts": "2024-06-01T12:00:00Z"}))
-            .is_empty());
-        assert!(schema
-            .validate(&json!({"ts": "2024-06-01T12:00:00"}))
-            .is_empty());
+        assert!(
+            schema
+                .validate(&json!({"ts": "2024-06-01T12:00:00Z"}))
+                .is_empty()
+        );
+        assert!(
+            schema
+                .validate(&json!({"ts": "2024-06-01T12:00:00"}))
+                .is_empty()
+        );
     }
 
     // ── Color ─────────────────────────────────────────────────────────────────
@@ -1634,18 +1644,20 @@ mod tests {
     fn json_depth_1_object_with_array_of_primitives_ok() {
         // {"items": [1, 2, 3]} → depth 1 (array transparent).
         let s = json_schema();
-        assert!(s
-            .validate(&json!({"meta": {"items": [1, 2, 3]}}))
-            .is_empty());
+        assert!(
+            s.validate(&json!({"meta": {"items": [1, 2, 3]}}))
+                .is_empty()
+        );
     }
 
     #[test]
     fn json_depth_2_nested_object_ok() {
         // {"address": {"city": "NY"}} → depth 2, at the limit.
         let s = json_schema();
-        assert!(s
-            .validate(&json!({"meta": {"address": {"city": "NY"}}}))
-            .is_empty());
+        assert!(
+            s.validate(&json!({"meta": {"address": {"city": "NY"}}}))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1653,9 +1665,10 @@ mod tests {
         // {"items": [{"id": 1, "name": "x"}]} → depth 2 (array transparent).
         // This is the key Variant-A case: a list of objects stays within limit.
         let s = json_schema();
-        assert!(s
-            .validate(&json!({"meta": {"items": [{"id": 1, "name": "x"}]}}))
-            .is_empty());
+        assert!(
+            s.validate(&json!({"meta": {"items": [{"id": 1, "name": "x"}]}}))
+                .is_empty()
+        );
     }
 
     #[test]

@@ -135,7 +135,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{execute_selected_transport, UiTransportError, UiTransportPath};
+    use super::{UiTransportError, UiTransportPath, execute_selected_transport};
     use std::future::Future;
     use std::pin::Pin;
     use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
@@ -196,9 +196,11 @@ mod tests {
             Some("server function unavailable".to_string())
         );
         assert_eq!(error.graphql_error, Some("network unavailable".to_string()));
-        assert!(error
-            .to_string()
-            .contains("native_server=server function unavailable"));
+        assert!(
+            error
+                .to_string()
+                .contains("native_server=server function unavailable")
+        );
         assert!(error.to_string().contains("graphql=network unavailable"));
     }
 

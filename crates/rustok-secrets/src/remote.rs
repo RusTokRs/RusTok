@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use base64::Engine;
 use reqwest::Url;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::{SecretError, SecretResolver};
 
@@ -508,10 +508,12 @@ mod tests {
             VaultAuth::Token(SecretString::from("server-token")),
         )
         .unwrap();
-        assert!(vault
-            .resolve("tenants/allowed/../../sys#value")
-            .await
-            .is_err());
+        assert!(
+            vault
+                .resolve("tenants/allowed/../../sys#value")
+                .await
+                .is_err()
+        );
         assert!(vault.resolve("tenants/%2e%2e/sys#value").await.is_err());
 
         let kubernetes = KubernetesSecretResolver::with_client(

@@ -230,12 +230,12 @@ fn bounded_limit(limit: Option<i32>) -> u64 {
 
 fn map_operator_error(error: crate::MarketplaceFinancialOperatorError) -> async_graphql::Error {
     match error {
-        crate::MarketplaceFinancialOperatorError::Validation(_) => async_graphql::Error::new(
-            "Marketplace financial operator request is invalid",
-        )
-        .extend_with(|_, extensions| {
-            extensions.set("code", "MARKETPLACE_FINANCIAL_OPERATOR_INVALID")
-        }),
+        crate::MarketplaceFinancialOperatorError::Validation(_) => {
+            async_graphql::Error::new("Marketplace financial operator request is invalid")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "MARKETPLACE_FINANCIAL_OPERATOR_INVALID")
+                })
+        }
         crate::MarketplaceFinancialOperatorError::Conflict(message)
             if message.contains("was not found") =>
         {
@@ -250,12 +250,12 @@ fn map_operator_error(error: crate::MarketplaceFinancialOperatorError) -> async_
         .extend_with(|_, extensions| {
             extensions.set("code", "MARKETPLACE_FINANCIAL_OPERATOR_CONFLICT")
         }),
-        crate::MarketplaceFinancialOperatorError::Database(_) => async_graphql::Error::new(
-            "Marketplace financial operator storage is unavailable",
-        )
-        .extend_with(|_, extensions| {
-            extensions.set("code", "MARKETPLACE_FINANCIAL_STORAGE_UNAVAILABLE")
-        }),
+        crate::MarketplaceFinancialOperatorError::Database(_) => {
+            async_graphql::Error::new("Marketplace financial operator storage is unavailable")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "MARKETPLACE_FINANCIAL_STORAGE_UNAVAILABLE")
+                })
+        }
         crate::MarketplaceFinancialOperatorError::Inbox(error) => {
             let (message, code) = if error.retryable() {
                 (
@@ -274,9 +274,7 @@ fn map_operator_error(error: crate::MarketplaceFinancialOperatorError) -> async_
     }
 }
 
-impl From<crate::MarketplaceFinancialOperationOperatorView>
-    for MarketplaceFinancialOperationGql
-{
+impl From<crate::MarketplaceFinancialOperationOperatorView> for MarketplaceFinancialOperationGql {
     fn from(value: crate::MarketplaceFinancialOperationOperatorView) -> Self {
         Self {
             checkout_operation_id: value.checkout_operation_id,

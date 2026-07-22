@@ -3,14 +3,14 @@ use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use moka::Expiry;
 use moka::future::Cache;
 use moka::ops::compute::{CompResult, Op};
-use moka::Expiry;
 use tokio::sync::Mutex as AsyncMutex;
 
+use crate::Result;
 use crate::cache::CacheStats;
 use crate::context::{CacheBackend, CacheCompareAndSetOutcome};
-use crate::Result;
 
 const IN_MEMORY_WRITE_LOCK_STRIPES: usize = 64;
 

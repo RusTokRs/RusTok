@@ -251,10 +251,10 @@ pub async fn load_available_inventory_for_variant_in_public_channel(
 #[cfg(test)]
 mod tests {
     use super::{
-        check_public_channel_inventory_request, extract_allowed_channel_slugs,
-        is_allowlist_visible_for_public_channel, is_metadata_visible_for_public_channel,
-        normalize_public_channel_slug, public_channel_inventory_projection_map,
-        PublicChannelInventoryVariantProjectionInput,
+        PublicChannelInventoryVariantProjectionInput, check_public_channel_inventory_request,
+        extract_allowed_channel_slugs, is_allowlist_visible_for_public_channel,
+        is_metadata_visible_for_public_channel, normalize_public_channel_slug,
+        public_channel_inventory_projection_map,
     };
 
     use std::collections::HashMap;
@@ -361,16 +361,22 @@ mod tests {
         let error = check_public_channel_inventory_request("continue", -1)
             .expect_err("negative quantities must fail before policy checks");
 
-        assert!(error
-            .to_string()
-            .contains("requested inventory quantity must be non-negative"));
+        assert!(
+            error
+                .to_string()
+                .contains("requested inventory quantity must be non-negative")
+        );
     }
 
     #[test]
     fn public_channel_inventory_request_skips_lookup_for_backorder_policy() {
-        assert!(check_public_channel_inventory_request(" CONTINUE ", 0)
-            .expect("backorderable request should be valid"));
-        assert!(!check_public_channel_inventory_request("deny", 0)
-            .expect("deny-policy zero request should still be valid"));
+        assert!(
+            check_public_channel_inventory_request(" CONTINUE ", 0)
+                .expect("backorderable request should be valid")
+        );
+        assert!(
+            !check_public_channel_inventory_request("deny", 0)
+                .expect("deny-policy zero request should still be valid")
+        );
     }
 }

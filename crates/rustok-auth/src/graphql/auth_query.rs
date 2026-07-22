@@ -1,8 +1,8 @@
 use async_graphql::{Context, Object, Result};
 
 use super::{
-    auth_lifecycle_context, auth_runtime, require_auth_context, AuthUser, SessionItem,
-    SessionsPayload,
+    AuthUser, SessionItem, SessionsPayload, auth_lifecycle_context, auth_runtime,
+    require_auth_context,
 };
 
 const DEFAULT_SESSION_LIMIT: u64 = 50;

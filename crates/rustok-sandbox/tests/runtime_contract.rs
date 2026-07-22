@@ -304,9 +304,11 @@ async fn denied_capability_call_emits_redacted_audit_evidence() {
         records[0].error_code.as_deref(),
         Some("CAPABILITY_CONTEXT_MISMATCH")
     );
-    assert!(!serde_json::to_string(&records[0])
-        .expect("serialize audit record")
-        .contains("must-not-appear-in-audit"));
+    assert!(
+        !serde_json::to_string(&records[0])
+            .expect("serialize audit record")
+            .contains("must-not-appear-in-audit")
+    );
 }
 
 #[tokio::test]
@@ -347,9 +349,11 @@ async fn execution_audit_excludes_untrusted_error_text() {
     assert_eq!(failed.error_code.as_deref(), Some("EXECUTION_TRAPPED"));
     let metrics = failed.metrics.as_ref().expect("terminal failure metrics");
     assert_eq!(metrics.capability_calls, 0);
-    assert!(!serde_json::to_string(failed)
-        .expect("serialize audit record")
-        .contains("must-not-appear-in-audit"));
+    assert!(
+        !serde_json::to_string(failed)
+            .expect("serialize audit record")
+            .contains("must-not-appear-in-audit")
+    );
 }
 
 #[tokio::test]

@@ -639,7 +639,7 @@ pub(super) async fn seo_index_repair_replay_native(
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{persist_seo_settings, require_permission, MODULE_SLUG};
+    use super::{MODULE_SLUG, persist_seo_settings, require_permission};
     use rustok_api::AuthContext;
     use rustok_api::Permission;
     use rustok_seo::{SeoIndexRepairReplayInput, SeoModuleSettings};

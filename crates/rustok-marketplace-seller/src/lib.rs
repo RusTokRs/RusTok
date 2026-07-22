@@ -8,11 +8,11 @@ mod external_events;
 mod localized_sellers;
 mod receipted_commands;
 mod seller_events;
-mod seller_prose;
 #[cfg(test)]
 mod seller_events_tests;
 #[cfg(test)]
 mod seller_member_events_tests;
+mod seller_prose;
 #[cfg(test)]
 mod seller_response_events_tests;
 

@@ -1,7 +1,7 @@
 use sea_orm::{
-    sea_query::{Expr, Query, SelectStatement},
     ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, Select, Set, TransactionTrait,
+    sea_query::{Expr, Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -16,11 +16,11 @@ struct PostTranslationUpsertInput {
     now: chrono::DateTime<chrono::Utc>,
 }
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
-use rustok_core::{prepare_content_payload, SecurityContext};
+use rustok_core::{SecurityContext, prepare_content_payload};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;

@@ -1,11 +1,9 @@
 use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::{
-    CategoryService, ForumError, UpdateCategoryTopicPolicyInput,
-};
+use rustok_forum::{CategoryService, ForumError, UpdateCategoryTopicPolicyInput};
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 use uuid::Uuid;
 
-use super::{test_error, TestResult};
+use super::{TestResult, test_error};
 
 pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
@@ -46,10 +44,7 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
         ))
         .await;
     let error = blocked.expect_err("disabled category accepted a topic insert");
-    if !error
-        .to_string()
-        .contains("does not allow topic creation")
-    {
+    if !error.to_string().contains("does not allow topic creation") {
         return Err(test_error(format!(
             "unexpected category topic policy error: {error}"
         )));
@@ -70,7 +65,7 @@ pub async fn exercise_category_topic_policy(db: &DatabaseConnection) -> TestResu
         Err(error) => {
             return Err(test_error(format!(
                 "expected tenant-scoped category not found, got {error}"
-            )))
+            )));
         }
         Ok(_) => return Err(test_error("foreign tenant updated category topic policy")),
     }

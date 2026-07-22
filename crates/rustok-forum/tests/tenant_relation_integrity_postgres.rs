@@ -3,8 +3,8 @@ mod support;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use support::postgres::{execute, expect_rejected as assert_rejected, PostgresForumTestDb};
 use support::TestResult;
+use support::postgres::{PostgresForumTestDb, execute, expect_rejected as assert_rejected};
 
 #[tokio::test]
 async fn postgres_rejects_cross_tenant_forum_relation_rows() -> TestResult<()> {
@@ -68,35 +68,53 @@ VALUES
 
     for (sql, label) in [
         (
-            format!("INSERT INTO forum_topic_votes (topic_id, user_id, tenant_id, value) VALUES ('{topic_a}', '{user_id}', '{tenant_b}', 1)"),
+            format!(
+                "INSERT INTO forum_topic_votes (topic_id, user_id, tenant_id, value) VALUES ('{topic_a}', '{user_id}', '{tenant_b}', 1)"
+            ),
             "cross-tenant topic vote",
         ),
         (
-            format!("INSERT INTO forum_reply_votes (reply_id, user_id, tenant_id, value) VALUES ('{reply_a}', '{user_id}', '{tenant_b}', 1)"),
+            format!(
+                "INSERT INTO forum_reply_votes (reply_id, user_id, tenant_id, value) VALUES ('{reply_a}', '{user_id}', '{tenant_b}', 1)"
+            ),
             "cross-tenant reply vote",
         ),
         (
-            format!("INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id) VALUES ('{category_a}', '{user_id}', '{tenant_b}')"),
+            format!(
+                "INSERT INTO forum_category_subscriptions (category_id, user_id, tenant_id) VALUES ('{category_a}', '{user_id}', '{tenant_b}')"
+            ),
             "cross-tenant category subscription",
         ),
         (
-            format!("INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id) VALUES ('{topic_a}', '{user_id}', '{tenant_b}')"),
+            format!(
+                "INSERT INTO forum_topic_subscriptions (topic_id, user_id, tenant_id) VALUES ('{topic_a}', '{user_id}', '{tenant_b}')"
+            ),
             "cross-tenant topic subscription",
         ),
         (
-            format!("INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ('{topic_a}', '{tenant_b}', '{reply_b}')"),
+            format!(
+                "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ('{topic_a}', '{tenant_b}', '{reply_b}')"
+            ),
             "cross-tenant solution",
         ),
         (
-            format!("INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ('{topic_a}', '{tenant_a}', '{reply_a2}')"),
+            format!(
+                "INSERT INTO forum_solutions (topic_id, tenant_id, reply_id) VALUES ('{topic_a}', '{tenant_a}', '{reply_a2}')"
+            ),
             "solution reply from another topic",
         ),
         (
-            format!("INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ('{}', '{topic_a}', '{term_a}', '{tenant_b}')", Uuid::new_v4()),
+            format!(
+                "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ('{}', '{topic_a}', '{term_a}', '{tenant_b}')",
+                Uuid::new_v4()
+            ),
             "cross-tenant topic tag",
         ),
         (
-            format!("INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ('{}', '{topic_a}', '{term_b}', '{tenant_a}')", Uuid::new_v4()),
+            format!(
+                "INSERT INTO forum_topic_tags (id, topic_id, term_id, tenant_id) VALUES ('{}', '{topic_a}', '{term_b}', '{tenant_a}')",
+                Uuid::new_v4()
+            ),
             "cross-tenant taxonomy term",
         ),
     ] {

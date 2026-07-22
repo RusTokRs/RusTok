@@ -6,8 +6,8 @@ use std::time::Instant;
 use ::rhai;
 use parking_lot::RwLock;
 use rhai::{
-    Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc, Scope,
-    AST,
+    AST, Dynamic, Engine, EvalAltResult, LexError, ParseError, ParseErrorType, RhaiNativeFunc,
+    Scope,
 };
 
 use super::{RhaiConfig, RhaiError, RhaiResult};

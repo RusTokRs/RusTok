@@ -232,7 +232,7 @@ pub fn compose_application_router(
             runtime_ctx
         };
         let runtime_ctx = if let Some(storage) =
-            middleware_runtime_ctx.shared_get::<rustok_storage::StorageService>()
+            middleware_runtime_ctx.shared_get::<rustok_storage::StorageRuntime>()
         {
             runtime_ctx.with_shared_value(storage)
         } else {

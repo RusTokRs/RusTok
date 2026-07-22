@@ -218,10 +218,12 @@ async fn create_order_persists_typed_adjustments_and_net_total() {
     );
     assert_eq!(created.adjustments[0].source_type, "promotion");
     assert_eq!(created.adjustments[0].currency_code, "USD");
-    assert!(created.adjustments[0]
-        .metadata
-        .get("display_label")
-        .is_none());
+    assert!(
+        created.adjustments[0]
+            .metadata
+            .get("display_label")
+            .is_none()
+    );
 }
 
 #[tokio::test]

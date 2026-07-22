@@ -4,12 +4,11 @@ use leptos::prelude::*;
 use std::fmt::{Display, Formatter};
 
 use crate::core::{
-    normalized_adjust_quantity_input, normalized_availability_check_input,
-    normalized_release_reservation_input, normalized_reserve_quantity_input,
-    normalized_set_quantity_input, InventoryAdjustQuantityRequest,
-    InventoryAvailabilityCheckRequest, InventoryProductRequest, InventoryProductsRequest,
-    InventoryReleaseReservationRequest, InventoryReserveQuantityRequest,
-    InventorySetQuantityRequest,
+    InventoryAdjustQuantityRequest, InventoryAvailabilityCheckRequest, InventoryProductRequest,
+    InventoryProductsRequest, InventoryReleaseReservationRequest, InventoryReserveQuantityRequest,
+    InventorySetQuantityRequest, normalized_adjust_quantity_input,
+    normalized_availability_check_input, normalized_release_reservation_input,
+    normalized_reserve_quantity_input, normalized_set_quantity_input,
 };
 use crate::model::{
     InventoryAdminBootstrap, InventoryAvailabilityCheckResult, InventoryProductDetail,

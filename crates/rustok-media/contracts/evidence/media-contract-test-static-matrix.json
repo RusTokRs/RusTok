@@ -3,37 +3,37 @@
   "module": "media",
   "role": "provider",
   "generated_from": "crates/rustok-media/contracts/media-fba-registry.json",
-  "status": "planned_cases_locked",
+  "status": "runtime_verified",
   "cases": [
     {
       "operation": "get_asset",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "loopback_grpc"
       ],
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved"
       ],
-      "runtime_evidence": "pending"
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "list_assets",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "loopback_grpc"
       ],
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved"
       ],
-      "runtime_evidence": "pending"
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "get_image_descriptor",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "loopback_grpc"
       ],
       "assertions": [
         "typed_port_error_mapping",
@@ -41,20 +41,80 @@
         "seo_descriptor_normalization_preserved",
         "public_url_policy_preserved"
       ],
-      "runtime_evidence": "pending"
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
     },
     {
       "operation": "get_translations",
       "profiles": [
         "in_process",
-        "remote_adapter_placeholder"
+        "loopback_grpc"
       ],
       "assertions": [
         "typed_port_error_mapping",
         "context_deadline_preserved",
         "locale_fallback_input_preserved"
       ],
-      "runtime_evidence": "pending"
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
+      "operation": "prepare_upload",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "owner_binary_transport_preserved",
+        "write_policy_preserved"
+      ],
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
+      "operation": "complete_upload",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "write_policy_preserved"
+      ],
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
+      "operation": "delete_asset",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "typed_port_error_mapping",
+        "write_policy_preserved"
+      ],
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
+      "operation": "upsert_translation",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "owner_normalization_preserved",
+        "write_policy_preserved"
+      ],
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
+    },
+    {
+      "operation": "reconcile_storage",
+      "profiles": [
+        "in_process",
+        "loopback_grpc"
+      ],
+      "assertions": [
+        "report_contract_preserved",
+        "write_policy_preserved"
+      ],
+      "runtime_evidence": "crates/rustok-media-transport/tests/port_conformance.rs"
     }
   ],
   "fallback_smoke": {

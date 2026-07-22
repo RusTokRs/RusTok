@@ -742,7 +742,7 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
                     ExpressionEvaluation::Value(value) => rendered.push(scalar_text(&value)),
                     ExpressionEvaluation::Pending => return ExpressionEvaluation::Pending,
                     ExpressionEvaluation::Error(error) => {
-                        return ExpressionEvaluation::Error(error)
+                        return ExpressionEvaluation::Error(error);
                     }
                 }
             }
@@ -808,7 +808,7 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
                     ExpressionEvaluation::Value(_) => {}
                     ExpressionEvaluation::Pending => return ExpressionEvaluation::Pending,
                     ExpressionEvaluation::Error(error) => {
-                        return ExpressionEvaluation::Error(error)
+                        return ExpressionEvaluation::Error(error);
                     }
                 }
             }
@@ -824,7 +824,7 @@ fn evaluate_expression(expression: &ContextExpression, context: &Value) -> Expre
                     ExpressionEvaluation::Value(_) => {}
                     ExpressionEvaluation::Pending => saw_pending = true,
                     ExpressionEvaluation::Error(error) => {
-                        return ExpressionEvaluation::Error(error)
+                        return ExpressionEvaluation::Error(error);
                     }
                 }
             }
@@ -1526,12 +1526,16 @@ mod tests {
         }))
         .expect("document");
         let diagnostics = validate_context_definitions(&document);
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch"));
-        assert!(diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_computed_dependency_cycle"));
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_context_default_type_mismatch")
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_computed_dependency_cycle")
+        );
     }
 
     #[test]
@@ -1560,8 +1564,10 @@ mod tests {
             .as_array()
             .expect("schema entries");
         assert_eq!(entries.len(), 2);
-        assert!(entries
-            .iter()
-            .any(|entry| entry.get("providerSchema").is_some()));
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.get("providerSchema").is_some())
+        );
     }
 }

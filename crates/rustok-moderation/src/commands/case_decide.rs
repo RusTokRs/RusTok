@@ -2,7 +2,7 @@ use chrono::Utc;
 use rustok_api::PortContext;
 use rustok_core::generate_id;
 use sea_orm::{
-    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, prelude::DateTimeWithTimeZone,
 };
 use uuid::Uuid;
 
@@ -11,12 +11,12 @@ use crate::domain::{DecideModerationCaseCommand, ModerationCaseStatus, Moderatio
 use crate::entities::{moderation_case, moderation_decision};
 use crate::error::{ModerationError, ModerationResult};
 use crate::receipts::{
-    admit, replay, replay_existing, request_hash, required_idempotency_key,
-    ModerationReceiptAdmission, NewModerationReceipt,
+    ModerationReceiptAdmission, NewModerationReceipt, admit, replay, replay_existing, request_hash,
+    required_idempotency_key,
 };
 use crate::service::{
-    actor_uuid, append_event, find_case, immutable_decision_hash, map_decision, parse_tenant_id,
-    validate_policy_snapshot, ModerationService,
+    ModerationService, actor_uuid, append_event, find_case, immutable_decision_hash, map_decision,
+    parse_tenant_id, validate_policy_snapshot,
 };
 
 const OP_DECIDE_CASE: &str = "decide_case";

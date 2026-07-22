@@ -1,6 +1,6 @@
 use crate::{
-    normalize_slug, validate_runtime_extensions, AssetCatalog, AssetPolicy, PageMetadata,
-    ProjectDocument, RegistrySet, StyleRuleCatalog, StyleRuleScope,
+    AssetCatalog, AssetPolicy, PageMetadata, ProjectDocument, RegistrySet, StyleRuleCatalog,
+    StyleRuleScope, normalize_slug, validate_runtime_extensions,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -416,22 +416,30 @@ mod tests {
             &RegistrySet::with_builtins(),
             ValidationLimits::default(),
         );
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "duplicate_asset_id"));
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "orphan_component_style_rule"));
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "non_normalized_page_slug"));
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid"));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "duplicate_asset_id")
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "orphan_component_style_rule")
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "non_normalized_page_slug")
+        );
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "runtime_context_field_path_invalid")
+        );
         assert_eq!(report.page_count, 1);
         assert_eq!(report.asset_count, 2);
         assert_eq!(report.style_rule_count, 1);
@@ -446,9 +454,11 @@ mod tests {
             ValidationLimits::default(),
         );
         assert!(!report.is_valid());
-        assert!(report
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == "missing_pages"));
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "missing_pages")
+        );
     }
 }

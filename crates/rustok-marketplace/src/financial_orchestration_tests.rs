@@ -28,15 +28,14 @@ async fn financial_orchestration_uses_stable_child_keys_and_preserves_causation(
     let assessed_at = Utc::now().fixed_offset();
     let posted_at = assessed_at;
     let commission = Arc::new(FakeCommissionPort::new(commission_response(
-        tenant_id, order_id, assessed_at,
+        tenant_id,
+        order_id,
+        assessed_at,
     )));
     let ledger = Arc::new(FakeLedgerPort::success(ledger_response(
         tenant_id, order_id, posted_at, 1_000,
     )));
-    let service = MarketplaceFinancialOrchestrationService::new(
-        commission.clone(),
-        ledger.clone(),
-    );
+    let service = MarketplaceFinancialOrchestrationService::new(commission.clone(), ledger.clone());
 
     let response = service
         .process_order(
@@ -92,10 +91,7 @@ async fn retry_after_ledger_unavailable_reuses_both_child_keys() {
     let ledger = Arc::new(FakeLedgerPort::fail_once(ledger_response(
         tenant_id, order_id, now, 1_000,
     )));
-    let service = MarketplaceFinancialOrchestrationService::new(
-        commission.clone(),
-        ledger.clone(),
-    );
+    let service = MarketplaceFinancialOrchestrationService::new(commission.clone(), ledger.clone());
     let input = ProcessMarketplaceOrderFinancialsInput {
         order_id,
         assessed_at: now,

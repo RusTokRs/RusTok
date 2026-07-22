@@ -2,8 +2,8 @@ mod support;
 
 use uuid::Uuid;
 
-use support::postgres::{execute, expect_rejected, PostgresForumTestDb};
 use support::TestResult;
+use support::postgres::{PostgresForumTestDb, execute, expect_rejected};
 
 #[tokio::test]
 async fn postgres_rejects_self_parent_and_category_cycles() -> TestResult<()> {

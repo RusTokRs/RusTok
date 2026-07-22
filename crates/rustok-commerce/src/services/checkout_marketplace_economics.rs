@@ -90,9 +90,11 @@ impl CheckoutMarketplaceEconomicsCheckpointJournal {
             .filter(checkout_operation::Column::TenantId.eq(input.tenant_id))
             .one(&transaction)
             .await?
-            .ok_or(CheckoutMarketplaceEconomicsCheckpointError::OperationNotFound(
-                input.checkout_operation_id,
-            ))?;
+            .ok_or(
+                CheckoutMarketplaceEconomicsCheckpointError::OperationNotFound(
+                    input.checkout_operation_id,
+                ),
+            )?;
         validate_operation_lease(&operation, &input)?;
 
         if let Some(existing) = checkout_marketplace_economics_checkpoint::Entity::find_by_id(
@@ -150,11 +152,13 @@ pub fn build_marketplace_economics_evidence(
         ));
     }
     if allocation.allocations.len() != commission.assessments.len() {
-        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
-            "allocation count {} does not match assessment count {}",
-            allocation.allocations.len(),
-            commission.assessments.len()
-        )));
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(
+            format!(
+                "allocation count {} does not match assessment count {}",
+                allocation.allocations.len(),
+                commission.assessments.len()
+            ),
+        ));
     }
 
     let mut allocation_rows = Vec::with_capacity(allocation.allocations.len());
@@ -166,10 +170,12 @@ pub fn build_marketplace_economics_evidence(
             || normalize_currency_code(&item.currency_code)? != currency_code
             || item.total_amount < 0
         {
-            return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
-                "allocation {} does not match the checkpoint order, currency, or active economics",
-                item.id
-            )));
+            return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(
+                format!(
+                    "allocation {} does not match the checkpoint order, currency, or active economics",
+                    item.id
+                ),
+            ));
         }
         allocation_total_amount = allocation_total_amount
             .checked_add(item.total_amount)
@@ -207,10 +213,12 @@ pub fn build_marketplace_economics_evidence(
                 .checked_add(item.seller_proceeds_amount)
                 != Some(item.allocation_total_amount)
         {
-            return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
-                "commission assessment {} does not match the checkpoint economics",
-                item.id
-            )));
+            return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(
+                format!(
+                    "commission assessment {} does not match the checkpoint economics",
+                    item.id
+                ),
+            ));
         }
         commission_total_amount = commission_total_amount
             .checked_add(item.commission_amount)
@@ -301,9 +309,11 @@ pub fn validate_marketplace_economics_checkpoint(
             .checked_add(checkpoint.seller_proceeds_total_amount)
             != Some(checkpoint.allocation_total_amount)
     {
-        return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(format!(
-            "checkpoint for checkout operation {checkout_operation_id} does not match the immutable checkout plan"
-        )));
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(
+            format!(
+                "checkpoint for checkout operation {checkout_operation_id} does not match the immutable checkout plan"
+            ),
+        ));
     }
     Ok(())
 }
@@ -323,10 +333,12 @@ fn validate_operation_lease(
         || operation.lease_owner.as_deref() != Some(input.lease_owner.as_str())
         || lease_expired
     {
-        return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(format!(
-            "checkout operation {} is not actively leased at payment_ready for this economics checkpoint",
-            operation.id
-        )));
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(
+            format!(
+                "checkout operation {} is not actively leased at payment_ready for this economics checkpoint",
+                operation.id
+            ),
+        ));
     }
     Ok(())
 }
@@ -369,10 +381,12 @@ fn ensure_same_evidence(
         || existing.seller_proceeds_total_amount != evidence.seller_proceeds_total_amount
         || existing.assessment_set_hash != evidence.assessment_set_hash
     {
-        return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(format!(
-            "checkout operation {} is already bound to different marketplace economics evidence",
-            existing.checkout_operation_id
-        )));
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(
+            format!(
+                "checkout operation {} is already bound to different marketplace economics evidence",
+                existing.checkout_operation_id
+            ),
+        ));
     }
     Ok(())
 }
@@ -383,9 +397,9 @@ fn normalize_hash(
 ) -> CheckoutMarketplaceEconomicsCheckpointResult<String> {
     let value = value.trim();
     if value.is_empty() || value.len() > 128 {
-        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
-            "{field} must contain 1 to 128 bytes"
-        )));
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(
+            format!("{field} must contain 1 to 128 bytes"),
+        ));
     }
     Ok(value.to_string())
 }
@@ -396,16 +410,14 @@ fn normalize_sha256(
 ) -> CheckoutMarketplaceEconomicsCheckpointResult<String> {
     let value = value.trim().to_ascii_lowercase();
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
-            "{field} must be a lowercase SHA-256 hex digest"
-        )));
+        return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(
+            format!("{field} must be a lowercase SHA-256 hex digest"),
+        ));
     }
     Ok(value)
 }
 
-fn normalize_currency_code(
-    value: &str,
-) -> CheckoutMarketplaceEconomicsCheckpointResult<String> {
+fn normalize_currency_code(value: &str) -> CheckoutMarketplaceEconomicsCheckpointResult<String> {
     let value = value.trim().to_ascii_uppercase();
     if value.len() != 3 || !value.bytes().all(|byte| byte.is_ascii_alphabetic()) {
         return Err(CheckoutMarketplaceEconomicsCheckpointError::Validation(
@@ -415,10 +427,7 @@ fn normalize_currency_code(
     Ok(value)
 }
 
-fn count_to_i32(
-    value: usize,
-    field: &str,
-) -> CheckoutMarketplaceEconomicsCheckpointResult<i32> {
+fn count_to_i32(value: usize, field: &str) -> CheckoutMarketplaceEconomicsCheckpointResult<i32> {
     i32::try_from(value).map_err(|_| {
         CheckoutMarketplaceEconomicsCheckpointError::Validation(format!(
             "{field} exceeds supported range"

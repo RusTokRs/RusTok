@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use async_graphql::{Context, FieldError, Object, Result, SimpleObject};
-use rustok_api::{graphql::GraphQLError, TenantContext};
+use rustok_api::{TenantContext, graphql::GraphQLError};
 use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

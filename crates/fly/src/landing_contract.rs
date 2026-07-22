@@ -1,7 +1,7 @@
 use crate::{
-    evaluate_landing_readiness, render_page, ComponentNode, ComponentObject, FlyError, FlyResult,
-    LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport, PageHead,
-    PageSelection, ProjectDocument, RegistrySet, RenderPolicy,
+    ComponentNode, ComponentObject, FlyError, FlyResult, LandingPropertyValidationReport,
+    LandingReadinessPolicy, LandingReadinessReport, PageHead, PageSelection, ProjectDocument,
+    RegistrySet, RenderPolicy, evaluate_landing_readiness, render_page,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -742,10 +742,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["heading", "wrapper"]
         );
-        assert!(manifest
-            .components
-            .iter()
-            .all(|component| component.provider.is_some()));
+        assert!(
+            manifest
+                .components
+                .iter()
+                .all(|component| component.provider.is_some())
+        );
     }
 
     #[test]
@@ -869,9 +871,11 @@ mod tests {
             artifact.pages[0].landing_sections[0].kind,
             LandingSectionKind::Hero
         );
-        assert!(!artifact.pages[0].landing_sections[0]
-            .content_hash
-            .is_empty());
+        assert!(
+            !artifact.pages[0].landing_sections[0]
+                .content_hash
+                .is_empty()
+        );
     }
 
     #[test]

@@ -1,11 +1,11 @@
+use rustok_core::InMemoryCacheBackend;
 use rustok_core::context::CacheBackend;
 use rustok_core::resilience::{
-    with_timeout, Bulkhead, BulkheadConfig, BulkheadError, CircuitBreaker, CircuitBreakerConfig,
-    CircuitBreakerError, CircuitState, RetryPolicy, RetryStrategy,
+    Bulkhead, BulkheadConfig, BulkheadError, CircuitBreaker, CircuitBreakerConfig,
+    CircuitBreakerError, CircuitState, RetryPolicy, RetryStrategy, with_timeout,
 };
-use rustok_core::InMemoryCacheBackend;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 #[tokio::test]

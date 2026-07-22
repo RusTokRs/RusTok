@@ -49,9 +49,8 @@ pub fn attach_commerce_provider_registries(
         let runtime = server
             .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
             .unwrap_or_else(|| {
-                let runtime = rustok_commerce::MarketplaceFinancialRuntime::in_process(
-                    server.db_clone(),
-                );
+                let runtime =
+                    rustok_commerce::MarketplaceFinancialRuntime::in_process(server.db_clone());
                 server.shared_insert(runtime.clone());
                 runtime
             });

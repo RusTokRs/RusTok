@@ -15,19 +15,18 @@ use uuid::Uuid;
 
 use crate::dto::{
     AssessMarketplaceOrderCommissionsInput, AssessMarketplaceOrderCommissionsResponse,
-    CreateMarketplaceCommissionRuleVersionInput, ListMarketplaceCommissionAssessmentsBySellerRequest,
-    ListMarketplaceCommissionRulesRequest, MarketplaceCommissionAssessmentListResponse,
-    MarketplaceCommissionAssessmentResponse, MarketplaceCommissionAssessmentStatus,
-    MarketplaceCommissionRuleListResponse, MarketplaceCommissionRuleResponse,
-    MarketplaceCommissionRuleStatus, MAX_COMMISSION_ASSESSMENTS_PER_PAGE,
-    MAX_COMMISSION_RULES_PER_PAGE,
+    CreateMarketplaceCommissionRuleVersionInput,
+    ListMarketplaceCommissionAssessmentsBySellerRequest, ListMarketplaceCommissionRulesRequest,
+    MAX_COMMISSION_ASSESSMENTS_PER_PAGE, MAX_COMMISSION_RULES_PER_PAGE,
+    MarketplaceCommissionAssessmentListResponse, MarketplaceCommissionAssessmentResponse,
+    MarketplaceCommissionAssessmentStatus, MarketplaceCommissionRuleListResponse,
+    MarketplaceCommissionRuleResponse, MarketplaceCommissionRuleStatus,
 };
 use crate::entities::{assessment, rule};
 use crate::error::{MarketplaceCommissionError, MarketplaceCommissionResult};
 use crate::receipts::{
-    admit_receipt, command_request_hash, complete_receipt, normalize_idempotency_key,
-    replay_existing, replay_receipt, rollback_receipt, CommissionReceiptAdmission,
-    NewCommissionReceipt,
+    CommissionReceiptAdmission, NewCommissionReceipt, admit_receipt, command_request_hash,
+    complete_receipt, normalize_idempotency_key, replay_existing, replay_receipt, rollback_receipt,
 };
 
 const RESPONSE_KIND_RULE: &str = "rule";
@@ -152,13 +151,9 @@ impl MarketplaceCommissionService {
                 RESPONSE_KIND_ASSESSMENTS,
             ),
             CommissionReceiptAdmission::New(receipt) => {
-                let result = assess_in_transaction(
-                    &receipt,
-                    tenant_id,
-                    input.assessed_at,
-                    allocations,
-                )
-                .await;
+                let result =
+                    assess_in_transaction(&receipt, tenant_id, input.assessed_at, allocations)
+                        .await;
                 match result {
                     Ok(response) => {
                         complete_receipt(receipt, RESPONSE_KIND_ASSESSMENTS, &response).await
@@ -379,10 +374,14 @@ async fn assess_in_transaction(
             calculate_commission(selected, &allocation)?;
         commission_total = commission_total
             .checked_add(commission_amount)
-            .ok_or_else(|| MarketplaceCommissionError::Validation("commission total overflow".to_string()))?;
+            .ok_or_else(|| {
+                MarketplaceCommissionError::Validation("commission total overflow".to_string())
+            })?;
         proceeds_total = proceeds_total
             .checked_add(seller_proceeds_amount)
-            .ok_or_else(|| MarketplaceCommissionError::Validation("proceeds total overflow".to_string()))?;
+            .ok_or_else(|| {
+                MarketplaceCommissionError::Validation("proceeds total overflow".to_string())
+            })?;
         let model = assessment::ActiveModel {
             id: Set(generate_id()),
             tenant_id: Set(tenant_id),
@@ -475,11 +474,15 @@ fn calculate_commission(
 ) -> MarketplaceCommissionResult<(i64, i64)> {
     let percentage = i128::from(allocation.total_amount)
         .checked_mul(i128::from(rule.rate_bps))
-        .ok_or_else(|| MarketplaceCommissionError::Validation("commission multiplication overflow".to_string()))?
+        .ok_or_else(|| {
+            MarketplaceCommissionError::Validation("commission multiplication overflow".to_string())
+        })?
         / 10_000;
     let commission = percentage
         .checked_add(i128::from(rule.fixed_amount))
-        .ok_or_else(|| MarketplaceCommissionError::Validation("commission addition overflow".to_string()))?;
+        .ok_or_else(|| {
+            MarketplaceCommissionError::Validation("commission addition overflow".to_string())
+        })?;
     if commission > i128::from(allocation.total_amount) {
         return Err(MarketplaceCommissionError::Validation(format!(
             "commission rule {} version {} exceeds allocation total {}",
@@ -489,9 +492,12 @@ fn calculate_commission(
     let commission = i64::try_from(commission).map_err(|_| {
         MarketplaceCommissionError::Validation("commission amount overflow".to_string())
     })?;
-    let proceeds = allocation.total_amount.checked_sub(commission).ok_or_else(|| {
-        MarketplaceCommissionError::Validation("seller proceeds underflow".to_string())
-    })?;
+    let proceeds = allocation
+        .total_amount
+        .checked_sub(commission)
+        .ok_or_else(|| {
+            MarketplaceCommissionError::Validation("seller proceeds underflow".to_string())
+        })?;
     Ok((commission, proceeds))
 }
 
@@ -529,7 +535,10 @@ fn normalize_rule_input(
             "currency_code is required when fixed_amount is positive".to_string(),
         ));
     }
-    if input.effective_until.is_some_and(|until| until <= input.effective_from) {
+    if input
+        .effective_until
+        .is_some_and(|until| until <= input.effective_from)
+    {
         return Err(MarketplaceCommissionError::Validation(
             "effective_until must be later than effective_from".to_string(),
         ));
@@ -587,12 +596,13 @@ fn normalize_metadata(value: serde_json::Value) -> MarketplaceCommissionResult<s
 }
 
 fn map_rule(model: rule::Model) -> MarketplaceCommissionResult<MarketplaceCommissionRuleResponse> {
-    let status = MarketplaceCommissionRuleStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceCommissionError::Validation(format!(
-            "unknown commission rule status `{}`",
-            model.status
-        ))
-    })?;
+    let status =
+        MarketplaceCommissionRuleStatus::parse(model.status.as_str()).ok_or_else(|| {
+            MarketplaceCommissionError::Validation(format!(
+                "unknown commission rule status `{}`",
+                model.status
+            ))
+        })?;
     Ok(MarketplaceCommissionRuleResponse {
         id: model.id,
         tenant_id: model.tenant_id,
@@ -615,12 +625,13 @@ fn map_rule(model: rule::Model) -> MarketplaceCommissionResult<MarketplaceCommis
 fn map_assessment(
     model: assessment::Model,
 ) -> MarketplaceCommissionResult<MarketplaceCommissionAssessmentResponse> {
-    let status = MarketplaceCommissionAssessmentStatus::parse(model.status.as_str()).ok_or_else(|| {
-        MarketplaceCommissionError::Validation(format!(
-            "unknown commission assessment status `{}`",
-            model.status
-        ))
-    })?;
+    let status =
+        MarketplaceCommissionAssessmentStatus::parse(model.status.as_str()).ok_or_else(|| {
+            MarketplaceCommissionError::Validation(format!(
+                "unknown commission assessment status `{}`",
+                model.status
+            ))
+        })?;
     Ok(MarketplaceCommissionAssessmentResponse {
         id: model.id,
         tenant_id: model.tenant_id,

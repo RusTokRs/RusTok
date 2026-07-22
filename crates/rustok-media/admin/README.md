@@ -26,7 +26,7 @@ Leptos admin UI package for the `rustok-media` module.
 ## Interactions
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
-- Uses `rustok-media::MediaService` directly on the server-function path through `HostRuntimeContext`; DB and host-provided `StorageService` are consumed without the previous runtime crate dependency.
+- Uses `rustok-media::MediaService` directly on the server-function path through `HostRuntimeContext`; DB and the host-provided `StorageRuntime` are consumed without a host-wide application context.
 - Keeps the existing `rustok-media` GraphQL and `/api/media` REST contracts intact.
 
 ## Documentation

@@ -1,6 +1,6 @@
 use rustok_ui_core::{
-    normalize_optional_ui_text, ui_busy_key_last_segment_matches, ui_scoped_busy_key,
-    AdminQueryKey, UiRouteQueryIntent,
+    AdminQueryKey, UiRouteQueryIntent, normalize_optional_ui_text,
+    ui_busy_key_last_segment_matches, ui_scoped_busy_key,
 };
 
 use crate::model::{

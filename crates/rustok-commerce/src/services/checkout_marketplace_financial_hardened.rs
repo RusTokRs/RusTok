@@ -14,9 +14,8 @@ use super::checkout_marketplace_financial_legacy::{
     MarketplaceFinancialOperationJournal, MarketplaceFinancialOperationStatus,
 };
 use super::{
-    CheckoutMarketplaceEconomicsCheckpointError,
-    CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutPaymentCapturedState,
-    validate_marketplace_economics_checkpoint,
+    CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
+    CheckoutPaymentCapturedState, validate_marketplace_economics_checkpoint,
 };
 
 const LEDGER_DEADLINE: Duration = Duration::from_secs(5);
@@ -47,9 +46,9 @@ impl CheckoutMarketplaceFinancialError {
             Self::Busy(_) => true,
             Self::Boundary { retryable, .. } => *retryable,
             Self::Journal(MarketplaceFinancialOperationError::Database(_))
-            | Self::EconomicsCheckpoint(
-                CheckoutMarketplaceEconomicsCheckpointError::Database(_),
-            ) => true,
+            | Self::EconomicsCheckpoint(CheckoutMarketplaceEconomicsCheckpointError::Database(_)) => {
+                true
+            }
             Self::Journal(_)
             | Self::EconomicsCheckpoint(_)
             | Self::Validation(_)
@@ -65,20 +64,17 @@ impl CheckoutMarketplaceFinancialError {
                 "marketplace_financial.storage_unavailable".to_string()
             }
             Self::Journal(_) => "marketplace_financial.journal_conflict".to_string(),
-            Self::EconomicsCheckpoint(
-                CheckoutMarketplaceEconomicsCheckpointError::Database(_),
-            ) => "marketplace_financial.checkpoint_unavailable".to_string(),
-            Self::EconomicsCheckpoint(_) => {
-                "marketplace_financial.checkpoint_conflict".to_string()
+            Self::EconomicsCheckpoint(CheckoutMarketplaceEconomicsCheckpointError::Database(_)) => {
+                "marketplace_financial.checkpoint_unavailable".to_string()
             }
+            Self::EconomicsCheckpoint(_) => "marketplace_financial.checkpoint_conflict".to_string(),
             Self::Validation(_) => "marketplace_financial.validation".to_string(),
             Self::Invariant(_) => "marketplace_financial.invariant".to_string(),
         }
     }
 }
 
-pub type CheckoutMarketplaceFinancialResult<T> =
-    Result<T, CheckoutMarketplaceFinancialError>;
+pub type CheckoutMarketplaceFinancialResult<T> = Result<T, CheckoutMarketplaceFinancialError>;
 
 pub struct CheckoutMarketplaceFinancialStage {
     journal: MarketplaceFinancialOperationJournal,
@@ -87,10 +83,7 @@ pub struct CheckoutMarketplaceFinancialStage {
 }
 
 impl CheckoutMarketplaceFinancialStage {
-    pub fn new(
-        db: DatabaseConnection,
-        ledger_port: Arc<dyn MarketplaceLedgerCommandPort>,
-    ) -> Self {
+    pub fn new(db: DatabaseConnection, ledger_port: Arc<dyn MarketplaceLedgerCommandPort>) -> Self {
         Self {
             journal: MarketplaceFinancialOperationJournal::new(db.clone()),
             economics_journal: CheckoutMarketplaceEconomicsCheckpointJournal::new(db),
@@ -252,12 +245,7 @@ impl CheckoutMarketplaceFinancialStage {
             return Err(error);
         }
         self.journal
-            .complete_with_ledger(
-                tenant_id,
-                captured.operation_id,
-                lease_owner,
-                &ledger,
-            )
+            .complete_with_ledger(tenant_id, captured.operation_id, lease_owner, &ledger)
             .await?;
         Ok(())
     }

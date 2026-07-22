@@ -281,7 +281,9 @@ fn test_fulfillment_provider_runtime_mode_maps_degraded_and_capability_guards() 
     assert!(registry.runtime_mode("slow-carrier", "ship").is_ok());
     assert!(registry.runtime_mode("slow-carrier", "cancel").is_err());
     assert!(registry.runtime_mode("slow-carrier", "unknown").is_err());
-    assert!(registry
-        .runtime_mode("missing-carrier", "create_label")
-        .is_err());
+    assert!(
+        registry
+            .runtime_mode("missing-carrier", "create_label")
+            .is_err()
+    );
 }

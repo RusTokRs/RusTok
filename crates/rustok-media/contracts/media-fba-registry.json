@@ -9,9 +9,8 @@
     "remote_transport": "grpc",
     "database_ownership": "exclusive",
     "pilot_phase": "media_isolated_pilot",
-    "remote_status": "planned",
+    "remote_status": "loopback_verified",
     "split_blockers": [
-      "grpc_conformance",
       "isolated_database_storage_evidence"
     ]
   },
@@ -44,9 +43,10 @@
       "contract_version": "media.asset_write.v1",
       "operations": [
         "prepare_upload",
+        "complete_upload",
         "delete_asset",
         "upsert_translation",
-        "cleanup_storage_orphans"
+        "reconcile_storage"
       ],
       "context": "rustok_api::ports::PortContext",
       "error": "rustok_api::ports::PortError",
@@ -54,14 +54,15 @@
       "deadline_required": true,
       "write_operations": [
         "prepare_upload",
+        "complete_upload",
         "delete_asset",
         "upsert_translation",
-        "cleanup_storage_orphans"
+        "reconcile_storage"
       ],
       "read_operations": [],
       "upload_body_transport": [
         "media_owned_streaming_rest",
-        "future_presigned_upload"
+        "presigned_object_store"
       ]
     }
   ],
@@ -107,19 +108,19 @@
     "status": "implemented"
   },
   "contract_tests": {
-    "status": "planned_cases_locked",
-    "source": "crates/rustok-media/contracts/media-fba-registry.json",
-    "runner": "scripts/verify/verify-media-fba.mjs",
+    "status": "runtime_verified",
+    "source": "crates/rustok-media-transport/tests/port_conformance.rs",
+    "runner": "cargo test -p rustok-media-transport --test port_conformance",
     "profiles": [
       "in_process",
-      "remote_adapter_placeholder"
+      "loopback_grpc"
     ],
     "cases": [
       {
         "operation": "get_asset",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "loopback_grpc"
         ],
         "assertions": [
           "typed_port_error_mapping",
@@ -130,7 +131,7 @@
         "operation": "list_assets",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "loopback_grpc"
         ],
         "assertions": [
           "typed_port_error_mapping",
@@ -141,7 +142,7 @@
         "operation": "get_image_descriptor",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "loopback_grpc"
         ],
         "assertions": [
           "typed_port_error_mapping",
@@ -154,12 +155,67 @@
         "operation": "get_translations",
         "profiles": [
           "in_process",
-          "remote_adapter_placeholder"
+          "loopback_grpc"
         ],
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
           "locale_fallback_input_preserved"
+        ]
+      },
+      {
+        "operation": "prepare_upload",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "owner_binary_transport_preserved",
+          "write_policy_preserved"
+        ]
+      },
+      {
+        "operation": "complete_upload",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "write_policy_preserved"
+        ]
+      },
+      {
+        "operation": "delete_asset",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "write_policy_preserved"
+        ]
+      },
+      {
+        "operation": "upsert_translation",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "owner_normalization_preserved",
+          "write_policy_preserved"
+        ]
+      },
+      {
+        "operation": "reconcile_storage",
+        "profiles": [
+          "in_process",
+          "loopback_grpc"
+        ],
+        "assertions": [
+          "report_contract_preserved",
+          "write_policy_preserved"
         ]
       }
     ],

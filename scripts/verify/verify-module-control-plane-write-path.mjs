@@ -16,9 +16,12 @@ const nonOwnerRoots = [
   'crates/rustok-module-build-dispatcher/src',
   'crates/rustok-worker-transport/src',
 ].map((relativePath) => path.join(root, relativePath));
-const writePattern = /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:platform_state|module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|registry_[a-z_]+)\b/i;
-const activeModelPattern = /\b(?:module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|registry_[a-z_]+)::ActiveModel\b/;
-const ownerServiceConstructorPattern = /\b(?:ModuleDefinitionCatalog::from_static_registry|ModuleEffectivePolicyQuery::new|ModuleLifecycleDbWriter::new|SeaOrmArtifactInstallationStore::new|SeaOrmArtifactSandboxPolicyResolver::new|SeaOrmArtifactDataCapabilityBrokerResolver::new|SeaOrmArtifactDataObjectCapabilityBrokerResolver::new|SeaOrmArtifactDataExportService::new|SeaOrmArtifactSecretService::new|SeaOrmArtifactSecretHandleService::new|SeaOrmArtifactSecretCapabilityBroker::new|SeaOrmArtifactSecretCapabilityBrokerResolver::new|SeaOrmArtifactExecutionObserver::new|SeaOrmArtifactEventSubscriptionProjector::new|SeaOrmArtifactBindingIdempotencyStore::new|SeaOrmModuleBuildService::new|SeaOrmModuleCompositionService::new|SeaOrmModuleGovernanceService::new)\s*\(/;
+const ownerRoot = path.join(root, 'crates/rustok-modules/src');
+const writePattern = /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:platform_state|module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|module_static_[a-z_]+|registry_[a-z_]+)\b/i;
+const activeModelPattern = /\b(?:module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|module_static_[a-z_]+|registry_[a-z_]+)::ActiveModel\b/;
+const entityMutationPattern = /\b(?:module_operations|tenant_modules|module_artifact_[a-z_]+|module_build_requests|module_static_[a-z_]+|registry_[a-z_]+)::Entity::(?:insert|insert_many|update_many|delete_many|delete_by_id)\b/;
+const ownerServiceConstructorPattern = /\b(?:ModuleDefinitionCatalog::from_static_registry|ModuleEffectivePolicyQuery::new|ModuleLifecycleDbWriter::new|SeaOrmArtifactInstallationStore::new|SeaOrmArtifactSandboxPolicyResolver::new|SeaOrmArtifactDataCapabilityBrokerResolver::new|SeaOrmArtifactDataObjectCapabilityBrokerResolver::new|SeaOrmArtifactDataExportService::new|SeaOrmArtifactDataSnapshotService::new|SeaOrmArtifactDataSnapshotRetentionService::new|SeaOrmArtifactDataSnapshotCollectionService::new|SeaOrmArtifactSecretService::new|SeaOrmArtifactSecretHandleService::new|SeaOrmArtifactSecretCapabilityBroker::new|SeaOrmArtifactSecretCapabilityBrokerResolver::new|SeaOrmArtifactSecretUseService::new|SeaOrmArtifactExecutionObserver::new|SeaOrmArtifactEventSubscriptionProjector::new|SeaOrmArtifactBindingIdempotencyStore::new|SeaOrmModuleBuildService::new|SeaOrmModuleCompositionService::new|SeaOrmModuleGovernanceService::new|SeaOrmModulePromotionService::with_infrastructure|SeaOrmModuleStaticDistributionService::with_infrastructure|SeaOrmModuleStaticDistributionWorkerService::with_infrastructure|SeaOrmModuleStaticDistributionReleaseService::with_infrastructure)\s*\(/;
+const directEventEnvelopePattern = /\bEventEnvelope::new\s*\(/;
 const ownerBoundaries = [
   {
     path: 'crates/rustok-modules/src/composition.rs',
@@ -37,12 +40,28 @@ const ownerBoundaries = [
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_data[a-z_]*\b/i,
   },
   {
+    path: 'crates/rustok-modules/src/data_snapshot.rs',
+    pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_artifact_data[a-z_]*\b/i,
+  },
+  {
     path: 'crates/rustok-modules/src/build.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_build_requests\b/i,
   },
   {
     path: 'crates/rustok-modules/src/governance.rs',
     pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+registry_[a-z_]+\b/i,
+  },
+  {
+    path: 'crates/rustok-modules/src/promotion.rs',
+    pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_static_[a-z_]+\b/i,
+  },
+  {
+    path: 'crates/rustok-modules/src/distribution.rs',
+    pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_static_distribution_[a-z_]+\b/i,
+  },
+  {
+    path: 'crates/rustok-modules/src/distribution_release.rs',
+    pattern: /\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+module_static_distribution_release[a-z_]*\b/i,
   },
 ];
 
@@ -63,7 +82,11 @@ function relative(filePath) {
 }
 
 function writesControlPlane(source) {
-  return writePattern.test(source) || activeModelPattern.test(source);
+  return (
+    writePattern.test(source) ||
+    activeModelPattern.test(source) ||
+    entityMutationPattern.test(source)
+  );
 }
 
 function constructsOwnerService(source) {
@@ -86,6 +109,12 @@ try {
   const constructionViolations = productionSources
     .filter((filePath) => constructsOwnerService(fs.readFileSync(filePath, 'utf8')))
     .map(relative);
+  const directEventEnvelopeViolations = rustFiles(ownerRoot)
+    .filter(isProductionSource)
+    .filter((filePath) => !relative(filePath).includes('/migrations/'))
+    .filter((filePath) => relative(filePath) !== 'crates/rustok-modules/src/infrastructure.rs')
+    .filter((filePath) => directEventEnvelopePattern.test(fs.readFileSync(filePath, 'utf8')))
+    .map(relative);
 
   if (writeViolations.length > 0) {
     fail(`control-plane writes must be owner-owned; found: ${writeViolations.join(', ')}`);
@@ -94,6 +123,12 @@ try {
   if (constructionViolations.length > 0) {
     fail(
       `control-plane services must be obtained through ModuleControlPlane; found: ${constructionViolations.join(', ')}`,
+    );
+  }
+
+  if (directEventEnvelopeViolations.length > 0) {
+    fail(
+      `control-plane events must use injected identity, time, tenant, and actor metadata; found: ${directEventEnvelopeViolations.join(', ')}`,
     );
   }
 

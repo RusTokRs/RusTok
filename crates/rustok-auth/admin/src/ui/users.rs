@@ -8,8 +8,8 @@ use leptos_use::use_debounce_fn;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    graphql_user_view, prepare_create_user_input, user_list_page, user_list_pagination,
-    user_list_previous_page, user_list_query_params, CreateUserInputError,
+    CreateUserInputError, graphql_user_view, prepare_create_user_input, user_list_page,
+    user_list_pagination, user_list_previous_page, user_list_query_params,
 };
 use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::{create_user, fetch_users};

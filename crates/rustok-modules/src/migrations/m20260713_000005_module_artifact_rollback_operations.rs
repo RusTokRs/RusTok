@@ -42,9 +42,11 @@ impl MigrationTrait for Migration {
                 )",
                 "CREATE INDEX module_artifact_rollback_operations_installation_idx ON module_artifact_rollback_operations (installation_id, committed_at DESC)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "module artifact rollback-operation migration does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "module artifact rollback-operation migration does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

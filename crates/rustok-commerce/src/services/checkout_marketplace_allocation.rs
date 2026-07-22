@@ -25,8 +25,7 @@ pub enum CheckoutMarketplaceAllocationError {
     },
 }
 
-pub type CheckoutMarketplaceAllocationResult<T> =
-    Result<T, CheckoutMarketplaceAllocationError>;
+pub type CheckoutMarketplaceAllocationResult<T> = Result<T, CheckoutMarketplaceAllocationError>;
 
 pub struct CheckoutMarketplaceAllocationStage {
     allocation_port: Arc<dyn MarketplaceAllocationCommandPort>,
@@ -56,9 +55,7 @@ impl CheckoutMarketplaceAllocationStage {
             format!("checkout-marketplace-allocation-{operation_id}"),
         )
         .with_deadline(ALLOCATION_DEADLINE)
-        .with_idempotency_key(format!(
-            "checkout:{operation_id}:marketplace-allocation:v1"
-        ));
+        .with_idempotency_key(format!("checkout:{operation_id}:marketplace-allocation:v1"));
         if let Some(channel) = plan.channel_slug.clone() {
             context = context.with_channel(channel);
         }
@@ -91,12 +88,15 @@ fn build_request(
 
     let mut lines = Vec::with_capacity(plan.marketplace_lines.len());
     for planned in &plan.marketplace_lines {
-        let order_line = order.line_items.get(planned.order_line_index).ok_or_else(|| {
-            CheckoutMarketplaceAllocationError::Validation(format!(
-                "marketplace snapshot references missing created order line index {}",
-                planned.order_line_index
-            ))
-        })?;
+        let order_line = order
+            .line_items
+            .get(planned.order_line_index)
+            .ok_or_else(|| {
+                CheckoutMarketplaceAllocationError::Validation(format!(
+                    "marketplace snapshot references missing created order line index {}",
+                    planned.order_line_index
+                ))
+            })?;
         let snapshot = &planned.snapshot;
         if order_line.product_id != Some(snapshot.master_product_id)
             || order_line.variant_id != Some(snapshot.master_variant_id)

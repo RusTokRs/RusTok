@@ -1,15 +1,15 @@
 use async_graphql::{Context, FieldError, Object, Result};
-use rustok_api::graphql::{require_module_enabled, GraphQLError};
+use rustok_api::graphql::{GraphQLError, require_module_enabled};
 use rustok_api::{
-    has_effective_permission, Action, AuthContext, Permission, Resource, TenantContext,
+    Action, AuthContext, Permission, Resource, TenantContext, has_effective_permission,
 };
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{dto::UpsertTranslationInput, MediaService};
+use crate::{MediaService, dto::UpsertTranslationInput};
 
-use super::{GqlMediaTranslation, UpsertMediaTranslationInput, MODULE_SLUG};
+use super::{GqlMediaTranslation, MODULE_SLUG, UpsertMediaTranslationInput};
 
 #[derive(Default)]
 pub struct MediaMutation;
@@ -21,7 +21,7 @@ impl MediaMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Delete)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let storage = ctx.data::<StorageService>()?;
+        let storage = ctx.data::<StorageRuntime>()?;
 
         let service = MediaService::new(db.clone(), storage.clone());
         service
@@ -42,7 +42,7 @@ impl MediaMutation {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_media_permission(ctx, tenant_id, Action::Update)?;
         let db = ctx.data::<DatabaseConnection>()?;
-        let storage = ctx.data::<StorageService>()?;
+        let storage = ctx.data::<StorageRuntime>()?;
 
         let service = MediaService::new(db.clone(), storage.clone());
         let translation = service

@@ -18,11 +18,11 @@ mod categories;
 mod schemas;
 
 use super::catalog_schema::{
-    parse_virtual_category_rule_v1, resolve_effective_product_form, AttributeBinding,
-    AttributeValueType, AttributeVisibilityOverrides, CatalogCategoryKind, CatalogCategorySchema,
-    CategoryAttributeBinding, CategoryAttributeBindingKind, CategorySchemaMode,
-    EffectiveAttributeSource, EffectiveProductForm, ProductAttributeSchema, SchemaResolutionError,
-    VirtualCategoryAttributeCondition, VirtualCategoryRuleV1,
+    AttributeBinding, AttributeValueType, AttributeVisibilityOverrides, CatalogCategoryKind,
+    CatalogCategorySchema, CategoryAttributeBinding, CategoryAttributeBindingKind,
+    CategorySchemaMode, EffectiveAttributeSource, EffectiveProductForm, ProductAttributeSchema,
+    SchemaResolutionError, VirtualCategoryAttributeCondition, VirtualCategoryRuleV1,
+    parse_virtual_category_rule_v1, resolve_effective_product_form,
 };
 use super::write_transaction::ProductWriteTransaction;
 

@@ -19,17 +19,18 @@ impl MigrationTrait for Migration {
                             .string_len(3)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Payouts::TotalAmount).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(Payouts::TotalAmount)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Payouts::Status).string_len(32).not_null())
                     .col(
                         ColumnDef::new(Payouts::ScheduledFor)
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(Payouts::DestinationReference)
-                            .string_len(191),
-                    )
+                    .col(ColumnDef::new(Payouts::DestinationReference).string_len(191))
                     .col(ColumnDef::new(Payouts::ExternalReference).string_len(191))
                     .col(ColumnDef::new(Payouts::FailureCode).string_len(120))
                     .col(
@@ -151,10 +152,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(PayoutReceipts::CompletedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(PayoutReceipts::CompletedAt).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;
@@ -190,12 +188,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
         manager
-            .drop_table(
-                Table::drop()
-                    .table(Payouts::Table)
-                    .if_exists()
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(Payouts::Table).if_exists().to_owned())
             .await?;
         Ok(())
     }

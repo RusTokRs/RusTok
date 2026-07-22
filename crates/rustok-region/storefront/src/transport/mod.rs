@@ -4,7 +4,7 @@ pub(crate) mod native_server_adapter;
 use std::fmt::{Display, Formatter};
 
 use leptos::prelude::*;
-use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
+use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 use serde::{Deserialize, Serialize};
 
 use crate::core::{RegionErrorEvidence, RegionStorefrontErrorPath};

@@ -4,11 +4,11 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    builtin_slug, populate_image_template_fields, schema, SeoBulkSummaryRecord,
-    SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord, SeoTargetAlternateRoute,
-    SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope,
-    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
+    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
+    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
+    builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 

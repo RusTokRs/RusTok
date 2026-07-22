@@ -105,7 +105,7 @@ mod tests {
     use crate::{
         AccessibilityMetadata, ContributionDescriptor, PropertyEditorDescriptor, RendererDescriptor,
     };
-    use serde_json::{json, Map};
+    use serde_json::{Map, json};
     use std::collections::{BTreeMap, BTreeSet};
 
     struct MockAdapter;

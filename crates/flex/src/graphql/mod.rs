@@ -7,7 +7,7 @@ mod types;
 
 use async_graphql::{Context, FieldError, Result};
 use rustok_api::{
-    graphql::GraphQLError, has_effective_permission, AuthContext, Permission, TenantContext,
+    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_effective_permission,
 };
 use rustok_core::field_schema::is_valid_field_key;
 

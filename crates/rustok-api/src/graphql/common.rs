@@ -2,9 +2,9 @@ use async_graphql::{Context, ErrorExtensions, InputObject, Result, SimpleObject}
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
+use crate::PLATFORM_FALLBACK_LOCALE;
 use crate::context::TenantContext;
 use crate::request::RequestContext;
-use crate::PLATFORM_FALLBACK_LOCALE;
 
 #[derive(SimpleObject, Debug, Clone)]
 pub struct PageInfo {
@@ -90,12 +90,12 @@ impl PaginationInput {
 }
 
 pub fn encode_cursor(n: i64) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     STANDARD.encode(n.to_string())
 }
 
 pub fn decode_cursor(s: &str) -> Option<i64> {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     STANDARD
         .decode(s)
         .ok()

@@ -1,91 +1,153 @@
 # Implementation plan for `rustok-media`
 
+## Target state
+
+Media owns the complete asset lifecycle: stable assets, immutable source blobs,
+immutable renditions, edit recipes, upload sessions, translations, delivery
+descriptors, reconciliation, and deletion evidence. Bytes live in the direct
+`object_store` runtime. Searchable ownership and lifecycle state live in
+Media-owned database tables.
+
+The modular monolith uses those tables in the shared PostgreSQL deployment.
+Whole-module extraction moves the schema and Media storage credentials together;
+it does not require a separate database server before extraction.
+
 ## Current state
 
-`rustok-media` owns media metadata, upload/translation policy, media reads, and
-the module-owned admin surface. Physical binaries stay in `rustok-storage`.
-GraphQL owns media read/write flows, while multipart upload remains REST-owned.
-`MediaQuery::media_usage` and its DTO are module-owned; the server only composes
-the schema.
-
-The public URL policy distinguishes direct public URLs, proxy-required storage
-paths, and opaque references.
-
-Admin uses a Leptos-free core, native/GraphQL/REST transport adapters, and an
-explicit UI adapter. Native functions use `HostRuntimeContext` plus the typed
-storage handle. `MediaImageDescriptor` is the cross-module SEO image boundary;
-`MediaAssetSummary` supplies kind/usage classification without raw blob access.
+- `rustok-media` publishes the migration for `media_assets`, `media_blobs`,
+  `media_renditions`, `media_upload_sessions`, and `media_translations`.
+- Direct uploads write an object, then atomically persist one asset and one
+  immutable ready blob. Database failure compensates the object write.
+- Blob rows persist SHA-256, verified MIME, size, dimensions, timestamps,
+  lifecycle state, retry count, and last error. Backend kind is runtime
+  diagnostics and is never domain data.
+- Delete requests persist tombstones before deleting objects. Successful deletion
+  and `NotFound` complete tombstones; transient failures remain restart-safe work.
+- Reconciliation marks missing ready blobs as failed without deleting evidence,
+  retries transient failures, completes deletions, expires upload sessions, and
+  removes completed or expired staging objects.
+- Presigned S3 sessions persist tenant/actor, expected type/size, staging key,
+  expiry, and completion. Finalization validates staged bytes and is idempotent
+  through the unique asset `upload_session_id`.
+- Immutable recipes normalize EXIF orientation and apply crop, quarter-turn,
+  flips, and SIMD resize. JPEG, PNG, WebP, and AVIF outputs use production
+  encoders with explicit alpha handling and stripped metadata.
+- CPU work runs in a bounded `spawn_blocking` worker. Input/output bytes,
+  decoded memory, dimensions, pixels, frames, concurrency, and total deadline
+  are bounded. Animated input is rejected rather than truncated.
+- Golden output, resource-limit, concurrency, Local lifecycle, and live
+  MinIO-compatible lifecycle/conformance tests pass.
 
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
 - FBA status: `boundary_ready`
 - Structural shape: `core_transport_ui`
-- FBA provider contract: `MediaAssetReadPort` / `media.asset_read.v1` in
-  `crates/rustok-media/contracts/media-fba-registry.json`.
-- Static, fallback, error, and runtime-order evidence:
-  `crates/rustok-media/contracts/evidence/media-contract-test-static-matrix.json`,
-  `crates/rustok-media/contracts/evidence/media-runtime-fallback-smoke.json`,
-  `crates/rustok-media/contracts/evidence/media-port-error-matrix.json`, and
-  `crates/rustok-media/contracts/evidence/media-provider-runtime-order-smoke.json`.
-- `scripts/verify/verify-media-admin-boundary.mjs` and
-  `npm run verify:media:fba` lock the owner UI boundary and read-provider order.
+- Provider contracts: `MediaAssetReadPort` and `MediaAssetWritePort`.
+- Cross-module consumers receive typed descriptors and control operations,
+  never raw object-store handles or binary bodies.
+- Local streaming REST and presigned object-store PUT are Media-owned binary
+  transports. Generic ports carry only metadata and completion control.
+- `rustok-media-transport` provides the loopback-verified tonic client/server
+  adapters. One compiled suite runs every read/write port operation against
+  both the embedded provider and a real loopback gRPC provider.
+- The modular monolith keeps the embedded provider as its default. A production
+  process split still requires deployment-owned mTLS, readiness, isolated
+  database/storage, rollback, and performance evidence before
+  `transport_verified` promotion.
+- Static boundary evidence remains in `media-fba-registry.json`,
+  `media-contract-test-static-matrix.json`, `media-runtime-fallback-smoke.json`,
+  and `media-port-error-matrix.json`. `MediaAssetSummary` and the public URL policy
+  remain the consumer-safe read model.
+- This is the whole-module extraction pilot described by
+  `2026-07-16-media-search-extraction-boundaries.md`.
+- Native admin transport receives database and `StorageRuntime` through the
+  host-neutral `HostRuntimeContext`. The fast boundary guard is
+  `scripts/verify/verify-media-admin-boundary.mjs`.
 
-## Deployment and extraction track
+## Object layout
 
-Media is the first whole-module extraction pilot. The current deployment stays
-in the modular monolith; the target remote deployment runs the complete
-`rustok-media` owner with its own database/schema, storage credentials, and
-`MediaAssetReadPort` gRPC adapter. Consumers continue to use the same port and
-must not receive raw storage handles or blob payloads through the cross-module
-boundary. See [ADR: Media and Search Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+Media uses only `ObjectKey::chronological`:
 
-The pilot is complete only after loopback transport conformance, isolated
-database/storage execution, tenant and security propagation, descriptor/public
-URL fallback behavior, restart/retry evidence, and health/metrics proof.
-`MediaAssetReadPort` covers current cross-module reads. `MediaAssetWritePort`
-now owns upload target preparation, delete, translation, and tenant-scoped
-cleanup control. Large binaries remain on Media-owned streaming REST or a
-future presigned upload rather than generic gRPC DTOs. The embedded upload
-handler remains the current body transport; no remote service cutover is
-implied by this control contract.
+```text
+media/objects/tenants/{tenant_id}/YYYY/MM/DD/{shard}/{blob_id}.{ext}
+media/staging/tenants/{tenant_id}/YYYY/MM/DD/{shard}/{upload_id}.upload
+```
 
-## Open results
+- UTC creation date is immutable.
+- The UUID-derived shard bounds local directory fan-out.
+- The database is the index; object-store folder listing is never a media query.
+- Original filenames, titles, locales, mutable slugs, backend names, and layout
+  versions never enter keys.
+- Extensions come from verified content or a controlled rendition format.
 
-1. **Execute MediaAssetReadPort runtime evidence.** Prove tenant context,
-   descriptor materialization, typed error retryability, fallback/degraded
-   profiles, and consumer behavior with a real provider before FBA promotion.
-   **Depends on:** a runtime-composed media/storage provider and SEO consumers.
-   **Done when:** executable provider/consumer evidence covers every published
-   read profile without raw blob or server-local media access.
+## Persistence model
 
-2. **Finish cleanup ownership and storage-failure coverage.** Verify the
-   `rustok-media-cli` cleanup path against persistence and storage failures, then
-   remove the legacy cleanup task.
-   **Depends on:** CLI runtime composition and a DB-backed storage fixture.
-   **Done when:** cleanup decisions, inspected/deleted/kept/retry reporting, and
-   failure recovery are tested through the owner service.
+- `media_assets`: stable tenant identity, uploader, optional upload-session
+  identity, active source blob, metadata, and lifecycle timestamps.
+- `media_blobs`: immutable object key, MIME, size, dimensions, checksum, state,
+  retry evidence, and deletion timestamps.
+- `media_renditions`: source blob, canonical recipe JSON/hash, result blob,
+  purpose, state, and failure evidence; unique on source plus recipe hash.
+- `media_upload_sessions`: original name, bounded staging key, expected type/size,
+  actor, expiry, finalization, staging cleanup, and failure evidence.
+- `media_translations`: localized title, alt text, and caption owned by the asset.
 
-3. **Publish durable media delivery policy.** Evolve richer metadata and
-   storage-driver behavior through the module service, and clarify the public
-   URL policy for direct, proxy-required, and opaque references.
-   **Depends on:** storage driver requirements and consuming public surfaces.
-   **Done when:** `MediaAssetSummary`, `MediaImageDescriptor`, URL policy, and
-   operations documentation give consumers one stable delivery contract.
+No other module creates, alters, or queries these tables directly.
+
+## Image pipeline
+
+The default pipeline is pure Rust:
+
+- `image` for bounded decoding, EXIF orientation, transforms, PNG framing, and
+  the AVIF encoder backed by `ravif`;
+- `fast_image_resize` for SIMD resize and cover/contain behavior;
+- `mozjpeg-rs` for progressive JPEG;
+- `zenwebp` for WebP;
+- `oxipng` for deterministic lossless PNG optimization.
+
+`imageproc` is added only when a required editor operation is absent from
+`image`. `libvips` remains an evidence-driven fallback if representative
+benchmarks prove that the pure-Rust pipeline misses an accepted CPU or memory
+budget.
+
+## Delivery order
+
+1. **Completed — direct storage and canonical keys.** All owners call
+   `ObjectStore` directly and use the one chronological or digest key policy.
+2. **Completed — Media-owned persistence.** Assets, blobs, renditions, upload
+   sessions, and translations have explicit lifecycle evidence and migrations.
+3. **Completed — immutable image renditions.** Recipe hashing, normalized
+   transforms, production encoders, golden fixtures, limits, worker execution,
+   persistence, and idempotency are verified.
+4. **Completed — reconciliation instead of destructive cleanup.** Tombstones,
+   missing-object failure state, staging expiry, compensation, and retry evidence
+   are restart-safe and observable.
+5. **Completed — extraction conformance.** Direct and presigned Local/S3
+   delivery are verified. `rustok-media-transport` preserves deadlines and
+   typed owner errors, keeps binary bodies outside gRPC, and passes one compiled
+   read/write port suite against embedded and loopback providers.
 
 ## Verification
 
-- `npm run verify:media:admin-boundary`
-- `npm run verify:media:fba`
+- `cargo test -p rustok-media`
+- `cargo test -p rustok-media-transport`
+- `cargo test -p rustok-media --features s3 --test s3_lifecycle`
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
-- Targeted upload policy, translation, cleanup, storage-error, and media-port
-  tests.
+- `npm run verify:media:admin-boundary`
+- `npm run verify:media:fba`
+- `cargo test -p rustok-storage --all-features`
+
+The S3 suites run when `RUSTOK_TEST_S3_ENDPOINT` and matching bucket/credentials
+are present. Required evidence covers direct upload, presigned PUT/finalize,
+rendition, deletion, conditional create, prefix listing, multipart abort,
+signing, compensation, reconciliation, and restart/idempotency behavior.
 
 ## Change rules
 
-1. Keep media policy and metadata in this module; keep binaries in storage.
-2. Update local docs, `rustok-module.toml`, storage docs, and consumer docs with
-   a media delivery contract change.
-3. Update this status block and `docs/modules/registry.md` with an FFA/FBA
-   boundary change.
+1. Media owns media metadata and lifecycle; `rustok-storage` owns neither.
+2. Never mutate an original or rendition object in place.
+3. Never query media by listing object-store folders.
+4. Keep FFA/FBA status and central registry evidence synchronized with UI or
+   transport-boundary changes.

@@ -4,12 +4,12 @@ use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 
 use crate::core::{
-    category_card_view_model, forum_admin_action_button_class, ForumAdminActionButtonKind,
-    ForumAdminCategoryRenderLabels,
+    ForumAdminActionButtonKind, ForumAdminCategoryRenderLabels, category_card_view_model,
+    forum_admin_action_button_class,
 };
 use crate::i18n::t;
 use crate::model::{
-    category_drop_move_request, CategoryDropPlacement, CategoryListItem, CategoryMoveRequest,
+    CategoryDropPlacement, CategoryListItem, CategoryMoveRequest, category_drop_move_request,
 };
 use crate::transport;
 
@@ -70,11 +70,7 @@ pub(super) fn CategoryDndGrid(
         "forum.categories.dropRoot",
         "Drop here to move to the end of root categories",
     );
-    let archived_label = t(
-        locale.as_deref(),
-        "forum.categories.archived",
-        "Archived",
-    );
+    let archived_label = t(locale.as_deref(), "forum.categories.archived", "Archived");
     let move_error_prefix = t(
         locale.as_deref(),
         "forum.error.moveCategory",
@@ -126,10 +122,9 @@ pub(super) fn CategoryDndGrid(
                 .await
                 {
                     Ok(()) => set_refresh_nonce.update(|value| *value += 1),
-                    Err(error) => set_move_error.set(Some(format!(
-                        "{}: {}",
-                        move_error_prefix, error
-                    ))),
+                    Err(error) => {
+                        set_move_error.set(Some(format!("{}: {}", move_error_prefix, error)))
+                    }
                 }
                 set_move_busy.set(false);
             });

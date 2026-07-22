@@ -12,7 +12,7 @@ use crate::model::{
 use rustok_fulfillment_storefront::transport::select_shipping_option;
 use rustok_order_storefront::transport::complete_checkout;
 use rustok_payment_storefront::transport::create_payment_collection;
-use rustok_ui_transport::{execute_selected_transport, UiTransportError, UiTransportPath};
+use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_transport};
 use shared_adapter::ApiError;
 
 pub async fn fetch_storefront_commerce(

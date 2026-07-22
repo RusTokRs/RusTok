@@ -4,8 +4,8 @@ use uuid::Uuid;
 use crate::{CreateOAuthAppCommand, UpdateOAuthAppCommand};
 
 use super::{
-    map_error, mutation_context, require_auth_context, runtime, CreateOAuthAppInput,
-    CreateOAuthAppResultGql, OAuthAppGql, RotateSecretResultGql, UpdateOAuthAppInput,
+    CreateOAuthAppInput, CreateOAuthAppResultGql, OAuthAppGql, RotateSecretResultGql,
+    UpdateOAuthAppInput, map_error, mutation_context, require_auth_context, runtime,
 };
 
 #[derive(Default)]

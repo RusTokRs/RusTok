@@ -309,8 +309,8 @@ pub struct ChannelDetailResponse {
 #[cfg(test)]
 mod tests {
     use super::{
-        create_resolution_rule_input, update_resolution_rule_input, CreateResolutionRuleRequest,
-        UpdateResolutionRuleRequest,
+        CreateResolutionRuleRequest, UpdateResolutionRuleRequest, create_resolution_rule_input,
+        update_resolution_rule_input,
     };
     use crate::{ResolutionPredicate, TargetSurface};
     use uuid::Uuid;

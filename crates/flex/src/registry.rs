@@ -9,7 +9,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use rustok_core::field_schema::{
-    is_valid_field_key, FieldDefinition, FieldType, FlexError, ValidationRule,
+    FieldDefinition, FieldType, FlexError, ValidationRule, is_valid_field_key,
 };
 use rustok_events::{DomainEvent, EventEnvelope};
 

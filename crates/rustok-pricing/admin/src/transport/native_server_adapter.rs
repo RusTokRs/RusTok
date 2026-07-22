@@ -6,12 +6,12 @@ use rustok_api::HostRuntimeContext;
 #[cfg(feature = "ssr")]
 use rustok_ui_core::normalize_optional_ui_text;
 
+use crate::core::{
+    PricingAdminRequestError, parse_optional_uuid_string, sanitize_channel_slug,
+    sanitize_resolution_context,
+};
 #[cfg(feature = "ssr")]
 use crate::core::{parse_optional_currency_code, text_or_none};
-use crate::core::{
-    parse_optional_uuid_string, sanitize_channel_slug, sanitize_resolution_context,
-    PricingAdminRequestError,
-};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 #[cfg(feature = "ssr")]
@@ -1583,9 +1583,11 @@ mod tests {
         let error = sanitize_resolution_context(Some("US1".to_string()), None, None, Some(1))
             .expect_err("invalid currency should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("currency_code must be a 3-letter code"));
+        assert!(
+            error
+                .to_string()
+                .contains("currency_code must be a 3-letter code")
+        );
     }
 
     #[test]
@@ -1601,9 +1603,11 @@ mod tests {
         let error = sanitize_resolution_context(None, None, Some(Uuid::new_v4().to_string()), None)
             .expect_err("price_list_id without currency should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("currency_code is required for pricing resolution context"));
+        assert!(
+            error
+                .to_string()
+                .contains("currency_code is required for pricing resolution context")
+        );
     }
 
     #[test]
@@ -2092,8 +2096,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_pricing_native_update_variant_price_rejects_compare_at_below_amount_without_mutating_base_row(
-    ) {
+    async fn admin_pricing_native_update_variant_price_rejects_compare_at_below_amount_without_mutating_base_row()
+     {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
@@ -2141,9 +2145,11 @@ mod tests {
         .await
         .expect_err("invalid compare_at should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("Compare at price must be greater than amount"));
+        assert!(
+            error
+                .to_string()
+                .contains("Compare at price must be greater than amount")
+        );
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
@@ -2181,8 +2187,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_pricing_native_update_variant_price_rejects_compare_at_below_amount_without_mutating_price_list_override(
-    ) {
+    async fn admin_pricing_native_update_variant_price_rejects_compare_at_below_amount_without_mutating_price_list_override()
+     {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
@@ -2248,9 +2254,11 @@ mod tests {
         .await
         .expect_err("invalid compare_at should be rejected for override");
 
-        assert!(error
-            .to_string()
-            .contains("Compare at price must be greater than amount"));
+        assert!(
+            error
+                .to_string()
+                .contains("Compare at price must be greater than amount")
+        );
 
         let detail = rustok_pricing::PricingService::new(db, mock_transactional_event_bus())
             .get_admin_product_pricing_with_locale_fallback(
@@ -2787,8 +2795,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_pricing_native_preview_variant_discount_rejects_channel_mismatch_for_price_list_override(
-    ) {
+    async fn admin_pricing_native_preview_variant_discount_rejects_channel_mismatch_for_price_list_override()
+     {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
@@ -2848,9 +2856,11 @@ mod tests {
         .await
         .expect_err("mismatched channel should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("price_list_id is not available for the requested channel"));
+        assert!(
+            error
+                .to_string()
+                .contains("price_list_id is not available for the requested channel")
+        );
     }
 
     #[tokio::test]
@@ -2968,8 +2978,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_pricing_native_apply_variant_discount_rejects_future_price_list_override_without_writing(
-    ) {
+    async fn admin_pricing_native_apply_variant_discount_rejects_future_price_list_override_without_writing()
+     {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
@@ -3035,8 +3045,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_pricing_native_apply_variant_discount_rejects_expired_price_list_override_without_writing(
-    ) {
+    async fn admin_pricing_native_apply_variant_discount_rejects_expired_price_list_override_without_writing()
+     {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
@@ -3102,8 +3112,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_pricing_native_apply_variant_discount_rejects_channel_mismatch_without_mutating_scoped_override(
-    ) {
+    async fn admin_pricing_native_apply_variant_discount_rejects_channel_mismatch_without_mutating_scoped_override()
+     {
         let db = setup_test_db().await;
         support::ensure_commerce_schema(&db).await;
         let tenant_id = Uuid::new_v4();
@@ -3214,9 +3224,11 @@ mod tests {
             .find(|price| price.price_list_id == Some(price_list_id))
             .expect("scoped price should exist");
 
-        assert!(error
-            .to_string()
-            .contains("price_list_id is not available for the requested channel"));
+        assert!(
+            error
+                .to_string()
+                .contains("price_list_id is not available for the requested channel")
+        );
         assert_eq!(count_before, 1);
         assert_eq!(count_after, 1);
         assert_eq!(
@@ -3376,9 +3388,11 @@ mod tests {
         .await
         .expect_err("draft list should be rejected");
 
-        assert!(error
-            .to_string()
-            .contains("price_list_id must reference an active price list"));
+        assert!(
+            error
+                .to_string()
+                .contains("price_list_id must reference an active price list")
+        );
     }
 
     #[tokio::test]
@@ -3718,9 +3732,11 @@ mod tests {
         )
         .await
         .expect("scoped list should load");
-        assert!(scoped_lists
-            .iter()
-            .any(|item| item.id == price_list_id.to_string()));
+        assert!(
+            scoped_lists
+                .iter()
+                .any(|item| item.id == price_list_id.to_string())
+        );
 
         let mismatched_lists = list_active_price_lists_native_with_context(
             &app_ctx,
@@ -3731,9 +3747,11 @@ mod tests {
         )
         .await
         .expect("mismatched list should load");
-        assert!(!mismatched_lists
-            .iter()
-            .any(|item| item.id == price_list_id.to_string()));
+        assert!(
+            !mismatched_lists
+                .iter()
+                .any(|item| item.id == price_list_id.to_string())
+        );
 
         update_price_list_scope_native_with_context(
             &app_ctx,
@@ -3757,9 +3775,11 @@ mod tests {
         )
         .await
         .expect("global list should load");
-        assert!(global_lists
-            .iter()
-            .any(|item| item.id == price_list_id.to_string()));
+        assert!(
+            global_lists
+                .iter()
+                .any(|item| item.id == price_list_id.to_string())
+        );
     }
 
     #[tokio::test]

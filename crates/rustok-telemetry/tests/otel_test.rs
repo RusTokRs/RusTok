@@ -2,7 +2,7 @@
 ///
 /// These tests verify OpenTelemetry initialization and configuration.
 /// Note: Full tracing tests require a running OTLP collector (Jaeger/Tempo).
-use rustok_telemetry::otel::{init_tracing, OtelConfig};
+use rustok_telemetry::otel::{OtelConfig, init_tracing};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 fn env_lock() -> MutexGuard<'static, ()> {

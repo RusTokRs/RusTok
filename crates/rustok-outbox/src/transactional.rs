@@ -1,6 +1,6 @@
 use crate::transport::OutboxTransport;
-use rustok_core::events::EventTransport;
 use rustok_core::Result;
+use rustok_core::events::EventTransport;
 use rustok_events::{
     ContractEventEnvelope, DomainEvent, EventContract, EventEnvelope, ValidateEvent,
 };

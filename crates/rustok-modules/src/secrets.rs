@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use async_trait::async_trait;
-use rustok_events::{DomainEvent, EventEnvelope};
+use rustok_events::DomainEvent;
 use rustok_sandbox::{
     CapabilityBroker, CapabilityCall, CapabilityGrant, CapabilityName, CapabilityResponse,
     ExecutionPhase, SandboxError, SandboxResult, SandboxSubject,
@@ -28,7 +28,6 @@ const MAX_REFERENCE_NAME_BYTES: usize = 96;
 const MAX_RESOLVER_ALIAS_BYTES: usize = 96;
 const MAX_RESOLVER_KEY_BYTES: usize = 512;
 const MAX_REASON_BYTES: usize = 2_000;
-#[allow(dead_code)]
 const MAX_SECRET_USE_PURPOSE_BYTES: usize = 96;
 
 /// Owner command that binds one admitted logical reference to a deployment
@@ -85,7 +84,6 @@ pub struct ArtifactSecretUseRequest {
 /// Non-secret context supplied to a trusted value consumer alongside the
 /// short-lived `SecretString` borrow.
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub struct ArtifactSecretUseContext {
     pub scope: ArtifactDataScope,
     pub reference: String,
@@ -101,7 +99,6 @@ pub struct ArtifactSecretUseContext {
 /// Redacted host receipt. It is the only output of secret use and cannot carry
 /// consumer output or resolved material back into a sandbox payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct ArtifactSecretUseReceipt {
     pub reference: String,
     pub revision: u64,
@@ -112,7 +109,6 @@ pub struct ArtifactSecretUseReceipt {
 /// part of an error propagated across the owner boundary.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 #[error("artifact secret consumer failed")]
-#[allow(dead_code)]
 pub struct ArtifactSecretConsumerError;
 
 /// Trusted host adapter that consumes resolved secret material without
@@ -120,7 +116,6 @@ pub struct ArtifactSecretConsumerError;
 /// purpose and must keep the borrowed value out of logs, errors, persistence,
 /// and responses.
 #[async_trait]
-#[allow(dead_code)]
 pub trait ArtifactSecretValueConsumer: Send + Sync {
     fn purpose(&self) -> &'static str;
 
@@ -157,7 +152,6 @@ pub trait ArtifactSecretHandleAuthorizer: Send + Sync {
 /// Stronger host policy for resolving and consuming a bound value. Handle
 /// acquisition authority does not imply value-use authority.
 #[async_trait]
-#[allow(dead_code)]
 pub trait ArtifactSecretUseAuthorizer: Send + Sync {
     async fn authorize_secret_use(
         &self,
@@ -165,8 +159,8 @@ pub trait ArtifactSecretUseAuthorizer: Send + Sync {
     ) -> Result<(), ArtifactSecretError>;
 }
 
-/// Deployment-owned lifecycle, actor, and admitted-policy checks for both
-/// management-time binding and execution-time handle acquisition.
+/// Deployment-owned lifecycle, actor, and admitted-policy checks for
+/// management-time binding, handle acquisition, and value consumption.
 #[async_trait]
 pub trait ArtifactSecretPolicy: Send + Sync {
     async fn authorize_secret_binding(
@@ -493,9 +487,9 @@ where
         self.infrastructure
             .write_event(
                 &transaction,
-                EventEnvelope::new(
-                    self.infrastructure.new_id(),
+                self.infrastructure.event_envelope(
                     Some(request.scope.tenant_id),
+                    Some(request.actor_id),
                     DomainEvent::ModuleArtifactSecretBound {
                         tenant_id: request.scope.tenant_id,
                         module_slug: request.scope.module_slug.clone(),
@@ -567,6 +561,103 @@ where
             reference,
             revision: u64::try_from(revision)
                 .map_err(|_| ArtifactSecretError::HandleUnavailable)?,
+        })
+    }
+}
+
+/// Host-only value-use boundary. It resolves one exact bound revision after a
+/// stronger use authorization check, then lends the `SecretString` directly to
+/// a fixed trusted consumer. No sandbox capability response can contain the
+/// value or arbitrary consumer output.
+#[derive(Clone)]
+pub struct SeaOrmArtifactSecretUseService<A, C> {
+    db: DatabaseConnection,
+    resolvers: SecretResolverRegistry,
+    authorizer: A,
+    consumer: C,
+}
+
+impl<A, C> SeaOrmArtifactSecretUseService<A, C>
+where
+    A: ArtifactSecretUseAuthorizer,
+    C: ArtifactSecretValueConsumer,
+{
+    pub fn new(
+        db: DatabaseConnection,
+        resolvers: SecretResolverRegistry,
+        authorizer: A,
+        consumer: C,
+    ) -> Self {
+        Self {
+            db,
+            resolvers,
+            authorizer,
+            consumer,
+        }
+    }
+
+    pub async fn use_secret(
+        &self,
+        request: ArtifactSecretUseRequest,
+    ) -> Result<ArtifactSecretUseReceipt, ArtifactSecretError> {
+        let purpose = self.consumer.purpose();
+        validate_use_request(&request, purpose)?;
+        self.authorizer.authorize_secret_use(&request).await?;
+
+        let transaction = self.db.begin().await.map_err(storage_error)?;
+        configure_tenant_scope(&transaction, request.scope.tenant_id)
+            .await
+            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?;
+        let backend = transaction.get_database_backend();
+        let row = transaction
+            .query_one(Statement::from_sql_and_values(
+                backend,
+                format!(
+                    "SELECT resolver_alias, resolver_key, revision
+                     FROM module_artifact_secret_bindings
+                     WHERE tenant_id = {} AND module_slug = {} AND data_contract_revision = {}
+                     AND reference_name = {} AND revision = {}",
+                    placeholder(backend, 1),
+                    placeholder(backend, 2),
+                    placeholder(backend, 3),
+                    placeholder(backend, 4),
+                    placeholder(backend, 5),
+                ),
+                binding_values_for_use(&request, backend)?,
+            ))
+            .await
+            .map_err(storage_error)?;
+        transaction.commit().await.map_err(storage_error)?;
+        let row = row.ok_or(ArtifactSecretError::HandleUnavailable)?;
+        let resolver: String = row.try_get("", "resolver_alias").map_err(storage_error)?;
+        let key: String = row.try_get("", "resolver_key").map_err(storage_error)?;
+        let revision: i64 = row.try_get("", "revision").map_err(storage_error)?;
+        let revision =
+            u64::try_from(revision).map_err(|_| ArtifactSecretError::HandleUnavailable)?;
+        let secret = self
+            .resolvers
+            .resolve_for_tenant(request.scope.tenant_id, &SecretRef { resolver, key })
+            .await
+            .map_err(|_| ArtifactSecretError::ResolutionUnavailable)?;
+        let context = ArtifactSecretUseContext {
+            scope: request.scope,
+            reference: request.reference,
+            revision,
+            execution_id: request.execution_id,
+            subject: request.subject,
+            phase: request.phase,
+            actor_id: request.actor_id,
+            trace_id: request.trace_id,
+            purpose,
+        };
+        self.consumer
+            .consume_secret(&context, &secret)
+            .await
+            .map_err(|_| ArtifactSecretError::ConsumerUnavailable)?;
+        Ok(ArtifactSecretUseReceipt {
+            reference: context.reference,
+            revision: context.revision,
+            purpose: context.purpose.to_string(),
         })
     }
 }
@@ -711,16 +802,53 @@ fn validate_request(request: &ArtifactSecretBindingRequest) -> Result<(), Artifa
 fn validate_handle_request(
     request: &ArtifactSecretHandleRequest,
 ) -> Result<(), ArtifactSecretError> {
-    request
-        .scope
+    validate_execution_secret_identity(
+        &request.scope,
+        &request.reference,
+        request.execution_id,
+        &request.subject,
+    )
+}
+
+fn validate_use_request(
+    request: &ArtifactSecretUseRequest,
+    purpose: &str,
+) -> Result<(), ArtifactSecretError> {
+    validate_execution_secret_identity(
+        &request.scope,
+        &request.reference,
+        request.execution_id,
+        &request.subject,
+    )?;
+    if request.expected_revision == 0
+        || purpose.is_empty()
+        || purpose.len() > MAX_SECRET_USE_PURPOSE_BYTES
+        || !purpose.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-' | '.')
+        })
+    {
+        return Err(ArtifactSecretError::InvalidCommand);
+    }
+    Ok(())
+}
+
+fn validate_execution_secret_identity(
+    scope: &ArtifactDataScope,
+    reference: &str,
+    execution_id: Uuid,
+    subject: &SandboxSubject,
+) -> Result<(), ArtifactSecretError> {
+    scope
         .validate()
         .map_err(|_| ArtifactSecretError::InvalidScope)?;
-    if !valid_reference_name(&request.reference) || request.execution_id.is_nil() {
+    if !valid_reference_name(reference) || execution_id.is_nil() {
         return Err(ArtifactSecretError::InvalidCommand);
     }
     if !matches!(
-        &request.subject,
-        SandboxSubject::ModuleArtifact { slug, .. } if slug == &request.scope.module_slug
+        subject,
+        SandboxSubject::ModuleArtifact { slug, .. } if slug == &scope.module_slug
     ) {
         return Err(ArtifactSecretError::PolicyDenied);
     }
@@ -776,6 +904,18 @@ fn binding_values_for_scope(
     ])
 }
 
+fn binding_values_for_use(
+    request: &ArtifactSecretUseRequest,
+    backend: DbBackend,
+) -> Result<Vec<sea_orm::Value>, ArtifactSecretError> {
+    let mut values = binding_values_for_scope(&request.scope, &request.reference, backend)?;
+    values.push(
+        revision_value(request.expected_revision)
+            .map_err(|error| ArtifactSecretError::Storage(error.to_string()))?,
+    );
+    Ok(values)
+}
+
 fn capability_reference(call: &CapabilityCall) -> SandboxResult<&str> {
     let input = call
         .input
@@ -823,6 +963,12 @@ fn secret_capability_error(
             capability: capability.clone(),
             message: "artifact secret handle is unavailable".to_string(),
         },
+        ArtifactSecretError::ResolutionUnavailable | ArtifactSecretError::ConsumerUnavailable => {
+            SandboxError::HostCapability {
+                capability: capability.clone(),
+                message: "artifact secret handle is unavailable".to_string(),
+            }
+        }
     }
 }
 
@@ -848,27 +994,43 @@ pub enum ArtifactSecretError {
     PolicyDenied,
     #[error("artifact secret handle is unavailable")]
     HandleUnavailable,
+    #[error("artifact secret value could not be resolved")]
+    ResolutionUnavailable,
+    #[error("artifact secret consumer is unavailable")]
+    ConsumerUnavailable,
     #[error("artifact secret storage failed: {0}")]
     Storage(String),
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
     use async_trait::async_trait;
+    use rustok_core::MigrationSource;
     use rustok_sandbox::{
         CapabilityCall, CapabilityCallContext, CapabilityName, ExecutionPhase, SandboxSubject,
     };
-    use rustok_secrets::SecretRef;
-    use rustok_secrets::{EnvResolver, SecretAccessPolicy, SecretResolverRegistry};
+    use rustok_secrets::{
+        EnvResolver, SecretAccessPolicy, SecretError, SecretRef, SecretResolver,
+        SecretResolverRegistry, SecretString,
+    };
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
     use serde_json::json;
     use uuid::Uuid;
 
     use super::{
-        capability_reference, validate_handle_request, validate_request, ArtifactSecretAuthorizer,
-        ArtifactSecretBindingRequest, ArtifactSecretError, ArtifactSecretHandleRequest,
-        ArtifactSecretPolicy, ArtifactSecretUseRequest, RegistryArtifactSecretAuthorizer,
+        capability_reference, validate_handle_request, validate_request, validate_use_request,
+        ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretError,
+        ArtifactSecretHandleRequest, ArtifactSecretPolicy, ArtifactSecretUseContext,
+        ArtifactSecretUseRequest, ArtifactSecretValueConsumer, RegistryArtifactSecretAuthorizer,
+        SeaOrmArtifactSecretUseService,
     };
-    use crate::ArtifactDataScope;
+    use crate::{ArtifactDataScope, ArtifactSecretConsumerError, ModulesModule};
 
     fn request() -> ArtifactSecretBindingRequest {
         ArtifactSecretBindingRequest {
@@ -947,6 +1109,38 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn secret_use_requires_exact_nonzero_handle_revision_and_fixed_purpose() {
+        let binding = request();
+        let mut use_request = ArtifactSecretUseRequest {
+            scope: binding.scope.clone(),
+            reference: binding.reference,
+            expected_revision: 1,
+            execution_id: Uuid::new_v4(),
+            subject: SandboxSubject::ModuleArtifact {
+                installation_id: Uuid::new_v4(),
+                slug: binding.scope.module_slug,
+                version: "1.0.0".to_string(),
+                digest: "sha256:sample".to_string(),
+            },
+            phase: ExecutionPhase::Manual,
+            actor_id: Some("artifact-actor".to_string()),
+            trace_id: Some("trace-1".to_string()),
+        };
+
+        assert!(validate_use_request(&use_request, "http.authorization").is_ok());
+        use_request.expected_revision = 0;
+        assert!(matches!(
+            validate_use_request(&use_request, "http.authorization"),
+            Err(ArtifactSecretError::InvalidCommand)
+        ));
+        use_request.expected_revision = 1;
+        assert!(matches!(
+            validate_use_request(&use_request, "HTTP Authorization"),
+            Err(ArtifactSecretError::InvalidCommand)
+        ));
+    }
+
     struct AllowSecretPolicy;
 
     #[async_trait]
@@ -993,5 +1187,112 @@ mod tests {
             authorizer.authorize_secret_binding(&allowed).await,
             Err(ArtifactSecretError::PolicyDenied)
         ));
+    }
+
+    #[derive(Clone)]
+    struct FixedSecretResolver;
+
+    #[async_trait]
+    impl SecretResolver for FixedSecretResolver {
+        async fn resolve(&self, _key: &str) -> Result<SecretString, SecretError> {
+            Ok(SecretString::from("top-secret-value".to_string()))
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordingSecretConsumer {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl ArtifactSecretValueConsumer for RecordingSecretConsumer {
+        fn purpose(&self) -> &'static str {
+            "http.authorization"
+        }
+
+        async fn consume_secret(
+            &self,
+            _context: &ArtifactSecretUseContext,
+            _secret: &SecretString,
+        ) -> Result<(), ArtifactSecretConsumerError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn secret_use_returns_only_a_redacted_receipt() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite database");
+        let manager = SchemaManager::new(&database);
+        for migration in ModulesModule.migrations() {
+            migration.up(&manager).await.expect("module migration");
+        }
+        let binding = request();
+        database
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO module_artifact_secret_bindings
+                 (tenant_id, module_slug, data_contract_revision, reference_name, resolver_alias,
+                  resolver_key, revision, actor_id, reason, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, datetime('now'), datetime('now'))",
+                vec![
+                    binding.scope.tenant_id.to_string().into(),
+                    binding.scope.module_slug.clone().into(),
+                    1_i64.into(),
+                    binding.reference.clone().into(),
+                    "fixed".into(),
+                    "allowed-key".into(),
+                    binding.actor_id.to_string().into(),
+                    binding.reason.clone().into(),
+                ],
+            ))
+            .await
+            .expect("secret binding fixture");
+        let resolvers = SecretResolverRegistry::builder()
+            .resolver(
+                "fixed",
+                FixedSecretResolver,
+                SecretAccessPolicy::Exact(vec!["allowed-key".to_string()]),
+            )
+            .build();
+        let authorizer =
+            RegistryArtifactSecretAuthorizer::new(resolvers.clone(), AllowSecretPolicy);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let service = SeaOrmArtifactSecretUseService::new(
+            database,
+            resolvers,
+            authorizer,
+            RecordingSecretConsumer {
+                calls: Arc::clone(&calls),
+            },
+        );
+        let receipt = service
+            .use_secret(ArtifactSecretUseRequest {
+                scope: binding.scope.clone(),
+                reference: binding.reference.clone(),
+                expected_revision: 1,
+                execution_id: Uuid::new_v4(),
+                subject: SandboxSubject::ModuleArtifact {
+                    installation_id: Uuid::new_v4(),
+                    slug: binding.scope.module_slug,
+                    version: "1.0.0".to_string(),
+                    digest: "sha256:sample".to_string(),
+                },
+                phase: ExecutionPhase::Manual,
+                actor_id: Some("artifact-actor".to_string()),
+                trace_id: Some("trace-1".to_string()),
+            })
+            .await
+            .expect("secret use receipt");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(receipt.reference, binding.reference);
+        assert_eq!(receipt.revision, 1);
+        assert_eq!(receipt.purpose, "http.authorization");
+        assert!(!serde_json::to_string(&receipt)
+            .expect("receipt JSON")
+            .contains("top-secret-value"));
     }
 }

@@ -1,6 +1,6 @@
 use fly_ui::{
-    resolve_editor_shortcut, CanvasRect, EditorShortcut, KeyStroke, ModifierState, ResizeHandle,
-    ResizePolicy, ResizeResult, ResizeSession,
+    CanvasRect, EditorShortcut, KeyStroke, ModifierState, ResizeHandle, ResizePolicy, ResizeResult,
+    ResizeSession, resolve_editor_shortcut,
 };
 use wasm_bindgen::JsCast;
 use web_sys::{Element, EventTarget, KeyboardEvent, PointerEvent};

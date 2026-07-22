@@ -55,10 +55,12 @@ pub(crate) async fn load_seller_prose<C: ConnectionTrait>(
     tenant_id: Uuid,
     seller_id: Uuid,
 ) -> MarketplaceSellerResult<SellerProseProjection> {
-    Ok(load_seller_prose_map(connection, tenant_id, vec![seller_id])
-        .await?
-        .remove(&seller_id)
-        .unwrap_or_default())
+    Ok(
+        load_seller_prose_map(connection, tenant_id, vec![seller_id])
+            .await?
+            .remove(&seller_id)
+            .unwrap_or_default(),
+    )
 }
 
 pub(crate) async fn load_seller_prose_map<C: ConnectionTrait>(

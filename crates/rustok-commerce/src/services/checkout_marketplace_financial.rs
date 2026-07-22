@@ -68,8 +68,7 @@ pub enum MarketplaceFinancialOperationError {
     Database(#[from] sea_orm::DbErr),
 }
 
-pub type MarketplaceFinancialOperationResult<T> =
-    Result<T, MarketplaceFinancialOperationError>;
+pub type MarketplaceFinancialOperationResult<T> = Result<T, MarketplaceFinancialOperationError>;
 
 #[derive(Clone)]
 pub struct MarketplaceFinancialOperationJournal {
@@ -161,21 +160,17 @@ impl MarketplaceFinancialOperationJournal {
         let now = Utc::now().fixed_offset();
         let expires_at = now + Duration::seconds(FINANCIAL_LEASE_SECONDS);
         let claimable = Condition::any()
-            .add(
-                marketplace_financial_operation::Column::Status.is_in([
-                    MarketplaceFinancialOperationStatus::Pending.as_str(),
-                    MarketplaceFinancialOperationStatus::RetryableError.as_str(),
-                ]),
-            )
+            .add(marketplace_financial_operation::Column::Status.is_in([
+                MarketplaceFinancialOperationStatus::Pending.as_str(),
+                MarketplaceFinancialOperationStatus::RetryableError.as_str(),
+            ]))
             .add(
                 Condition::all()
                     .add(
                         marketplace_financial_operation::Column::Status
                             .eq(MarketplaceFinancialOperationStatus::Executing.as_str()),
                     )
-                    .add(
-                        marketplace_financial_operation::Column::LeaseExpiresAt.lte(now),
-                    ),
+                    .add(marketplace_financial_operation::Column::LeaseExpiresAt.lte(now)),
             );
         let update = marketplace_financial_operation::Entity::update_many()
             .col_expr(
@@ -426,15 +421,12 @@ impl CheckoutMarketplaceFinancialError {
             Self::Busy(_) => true,
             Self::Boundary { retryable, .. } => *retryable,
             Self::Journal(MarketplaceFinancialOperationError::Database(_)) => true,
-            Self::Journal(_)
-            | Self::Validation(_)
-            | Self::Economics(_) => false,
+            Self::Journal(_) | Self::Validation(_) | Self::Economics(_) => false,
         }
     }
 }
 
-pub type CheckoutMarketplaceFinancialResult<T> =
-    Result<T, CheckoutMarketplaceFinancialError>;
+pub type CheckoutMarketplaceFinancialResult<T> = Result<T, CheckoutMarketplaceFinancialError>;
 
 pub struct CheckoutMarketplaceFinancialStage {
     journal: MarketplaceFinancialOperationJournal,
@@ -443,10 +435,7 @@ pub struct CheckoutMarketplaceFinancialStage {
 }
 
 impl CheckoutMarketplaceFinancialStage {
-    pub fn new(
-        db: DatabaseConnection,
-        ledger_port: Arc<dyn MarketplaceLedgerCommandPort>,
-    ) -> Self {
+    pub fn new(db: DatabaseConnection, ledger_port: Arc<dyn MarketplaceLedgerCommandPort>) -> Self {
         Self {
             journal: MarketplaceFinancialOperationJournal::new(db.clone()),
             economics_journal: CheckoutMarketplaceEconomicsCheckpointJournal::new(db),
@@ -582,12 +571,7 @@ impl CheckoutMarketplaceFinancialStage {
         };
         validate_ledger(&ledger, tenant_id, captured, &checkpoint)?;
         self.journal
-            .complete_with_ledger(
-                tenant_id,
-                captured.operation_id,
-                lease_owner,
-                &ledger,
-            )
+            .complete_with_ledger(tenant_id, captured.operation_id, lease_owner, &ledger)
             .await?;
         Ok(())
     }
@@ -624,9 +608,7 @@ fn normalize_begin_input(
         ));
     }
     let currency_code = input.currency_code.trim().to_ascii_uppercase();
-    if currency_code.len() != 3
-        || !currency_code.bytes().all(|byte| byte.is_ascii_alphabetic())
-    {
+    if currency_code.len() != 3 || !currency_code.bytes().all(|byte| byte.is_ascii_alphabetic()) {
         return Err(MarketplaceFinancialOperationError::Validation(
             "currency_code must be a three-letter alphabetic code".to_string(),
         ));

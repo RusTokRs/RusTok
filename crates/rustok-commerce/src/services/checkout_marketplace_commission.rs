@@ -25,8 +25,7 @@ pub enum CheckoutMarketplaceCommissionError {
     },
 }
 
-pub type CheckoutMarketplaceCommissionResult<T> =
-    Result<T, CheckoutMarketplaceCommissionError>;
+pub type CheckoutMarketplaceCommissionResult<T> = Result<T, CheckoutMarketplaceCommissionError>;
 
 pub struct CheckoutMarketplaceCommissionStage {
     commission_port: Arc<dyn MarketplaceCommissionCommandPort>,
@@ -44,7 +43,8 @@ impl CheckoutMarketplaceCommissionStage {
         operation_id: Uuid,
         plan: &CheckoutOrderPlanPayload,
         order: &OrderResponse,
-    ) -> CheckoutMarketplaceCommissionResult<Option<AssessMarketplaceOrderCommissionsResponse>> {
+    ) -> CheckoutMarketplaceCommissionResult<Option<AssessMarketplaceOrderCommissionsResponse>>
+    {
         if plan.marketplace_lines.is_empty() {
             return Ok(None);
         }
@@ -56,9 +56,7 @@ impl CheckoutMarketplaceCommissionStage {
             format!("checkout-marketplace-commission-{operation_id}"),
         )
         .with_deadline(COMMISSION_DEADLINE)
-        .with_idempotency_key(format!(
-            "checkout:{operation_id}:marketplace-commission:v1"
-        ));
+        .with_idempotency_key(format!("checkout:{operation_id}:marketplace-commission:v1"));
         if let Some(channel) = plan.channel_slug.clone() {
             context = context.with_channel(channel);
         }

@@ -8,6 +8,7 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use object_store::ObjectStoreExt;
 use rustok_api::{AuthContextExtension, Permission, has_effective_permission};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use subtle::ConstantTimeEq;
@@ -261,16 +262,27 @@ async fn serve_artifact(
     let Some(storage_key) = publish_request.artifact_storage_key.as_deref() else {
         return not_found("Registry publish artifact was not uploaded");
     };
-    let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() else {
+    let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() else {
         return internal_error("Registry artifact storage is unavailable");
     };
-    let bytes = match storage.read(storage_key).await {
-        Ok(bytes) => bytes,
-        Err(rustok_storage::StorageError::NotFound(_)) => {
+    let result = match storage
+        .objects
+        .get(&object_store::path::Path::from(storage_key))
+        .await
+    {
+        Ok(result) => result,
+        Err(object_store::Error::NotFound { .. }) => {
             return not_found("Registry publish artifact was not found");
         }
         Err(error) => {
             tracing::error!(%error, request_id = %publish_request.id, "Failed to read registry artifact");
+            return internal_error("Failed to read registry publish artifact");
+        }
+    };
+    let bytes = match result.bytes().await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            tracing::error!(%error, request_id = %publish_request.id, "Failed to read registry artifact body");
             return internal_error("Failed to read registry publish artifact");
         }
     };

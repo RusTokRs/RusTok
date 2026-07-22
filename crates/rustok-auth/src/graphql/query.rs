@@ -3,8 +3,8 @@ use rustok_telemetry::metrics;
 use uuid::Uuid;
 
 use super::{
-    map_error, mutation_context, require_auth_context, runtime, AppType, AuthorizedAppGql,
-    OAuthAppGql,
+    AppType, AuthorizedAppGql, OAuthAppGql, map_error, mutation_context, require_auth_context,
+    runtime,
 };
 
 #[derive(Default)]

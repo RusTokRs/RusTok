@@ -33,7 +33,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Arc<AppSchema> {
     let host_runtime = module_runtime_extensions_from_ctx(ctx).apply_to_host_runtime(host_runtime);
     let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
     #[cfg(feature = "mod-media")]
-    let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
+    let host_runtime = if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
         host_runtime.with_shared_value(storage)
     } else {
         host_runtime
@@ -107,15 +107,20 @@ fn content_orchestration_from_ctx(
 }
 
 #[cfg(feature = "mod-media")]
-fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageService {
-    if let Some(storage) = ctx.shared_get::<rustok_storage::StorageService>() {
+fn storage_from_ctx(ctx: &ServerRuntimeContext) -> rustok_storage::StorageRuntime {
+    if let Some(storage) = ctx.shared_get::<rustok_storage::StorageRuntime>() {
         return storage;
     }
 
-    let fallback = rustok_storage::StorageService::new(rustok_storage::local::LocalStorage::new(
-        std::env::temp_dir().join("rustok-media-fallback"),
-        "/media",
-    ));
+    let fallback = rustok_storage::StorageRuntime::local(&rustok_storage::LocalStorageConfig {
+        base_dir: std::env::temp_dir()
+            .join("rustok-media-fallback")
+            .to_string_lossy()
+            .into_owned(),
+        base_url: "/media".to_string(),
+        fsync: false,
+    })
+    .expect("create fallback local storage runtime");
     ctx.shared_insert(fallback.clone());
     fallback
 }

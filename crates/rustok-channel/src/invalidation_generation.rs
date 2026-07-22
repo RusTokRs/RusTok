@@ -133,12 +133,16 @@ mod tests {
         db.execute_unprepared("DROP TABLE channel_resolution_invalidation_state")
             .await
             .unwrap();
-        assert!(read_resolution_invalidation_generation(&replica_a)
-            .await
-            .is_err());
-        assert!(read_resolution_invalidation_generation(&replica_b)
-            .await
-            .is_err());
+        assert!(
+            read_resolution_invalidation_generation(&replica_a)
+                .await
+                .is_err()
+        );
+        assert!(
+            read_resolution_invalidation_generation(&replica_b)
+                .await
+                .is_err()
+        );
 
         install_generation_state(&db, 7).await;
         assert_eq!(

@@ -1,5 +1,4 @@
 use crate::error::{Error, Result};
-use sea_orm::{DatabaseConnection, EntityTrait};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -66,42 +65,6 @@ pub enum RuntimeWorkerLifecycleState {
     Degraded,
     Stopping,
     Failed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DatabaseTruncateReport {
-    pub releases: u64,
-    pub builds: u64,
-    pub tenant_modules: u64,
-    pub sessions: u64,
-    pub users: u64,
-    pub tenants: u64,
-}
-
-pub async fn truncate_server_database(db: &DatabaseConnection) -> Result<DatabaseTruncateReport> {
-    let releases = rustok_build::release::Entity::delete_many()
-        .exec(db)
-        .await?;
-    let builds = rustok_build::build::Entity::delete_many().exec(db).await?;
-    let tenant_modules = crate::models::_entities::tenant_modules::Entity::delete_many()
-        .exec(db)
-        .await?;
-    let sessions = crate::models::sessions::Entity::delete_many()
-        .exec(db)
-        .await?;
-    let users = crate::models::users::Entity::delete_many().exec(db).await?;
-    let tenants = crate::models::tenants::Entity::delete_many()
-        .exec(db)
-        .await?;
-
-    Ok(DatabaseTruncateReport {
-        releases: releases.rows_affected,
-        builds: builds.rows_affected,
-        tenant_modules: tenant_modules.rows_affected,
-        sessions: sessions.rows_affected,
-        users: users.rows_affected,
-        tenants: tenants.rows_affected,
-    })
 }
 
 impl RuntimeWorkerLifecycleState {

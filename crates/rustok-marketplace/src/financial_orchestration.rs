@@ -176,7 +176,10 @@ impl MarketplaceFinancialOrchestrationService {
             .require_policy(PortCallPolicy::write())
             .map_err(map_context_error)?;
         validate_reversal_input(&input.reversal)?;
-        let ledger_key = child_key(root_idempotency_key(&context)?, LEDGER_REVERSAL_STAGE_SUFFIX)?;
+        let ledger_key = child_key(
+            root_idempotency_key(&context)?,
+            LEDGER_REVERSAL_STAGE_SUFFIX,
+        )?;
         let expected = input.reversal.clone();
         let reversal = self
             .ledger_port
@@ -210,9 +213,7 @@ impl MarketplaceFinancialCommandPort for MarketplaceFinancialOrchestrationServic
     }
 }
 
-fn root_idempotency_key(
-    context: &PortContext,
-) -> MarketplaceFinancialOrchestrationResult<&str> {
+fn root_idempotency_key(context: &PortContext) -> MarketplaceFinancialOrchestrationResult<&str> {
     context
         .idempotency_key
         .as_deref()
@@ -283,10 +284,7 @@ fn validate_reversal_input(
     Ok(())
 }
 
-fn child_key(
-    root_key: &str,
-    suffix: &str,
-) -> MarketplaceFinancialOrchestrationResult<String> {
+fn child_key(root_key: &str, suffix: &str) -> MarketplaceFinancialOrchestrationResult<String> {
     let key = format!("{root_key}{suffix}");
     if key.len() > MAX_CHILD_IDEMPOTENCY_KEY_BYTES {
         return Err(MarketplaceFinancialOrchestrationError::Validation(format!(
@@ -325,9 +323,10 @@ fn validate_commission_result(
                 "commission stage totals overflow".to_string(),
             )
         })?;
-    let assessment_total = commission.assessments.iter().try_fold(
-        0_i64,
-        |total, assessment| {
+    let assessment_total = commission
+        .assessments
+        .iter()
+        .try_fold(0_i64, |total, assessment| {
             total
                 .checked_add(assessment.allocation_total_amount)
                 .ok_or_else(|| {
@@ -335,8 +334,7 @@ fn validate_commission_result(
                         "commission assessment total overflow".to_string(),
                     )
                 })
-        },
-    )?;
+        })?;
     if expected_total != assessment_total {
         return Err(MarketplaceFinancialOrchestrationError::Invariant(
             "commission aggregate totals do not match assessment allocations".to_string(),

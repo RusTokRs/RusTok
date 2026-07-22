@@ -4,8 +4,8 @@ use sea_orm_migration::MigrationTrait;
 use rustok_core::module::{MigrationSource, RusToKModule};
 use rustok_core::registry::ModuleRegistry;
 use rustok_mcp::tools::{
-    list_modules, list_modules_filtered, module_details, module_exists, McpState, McpToolResponse,
-    ModuleLookupRequest, ModuleQueryRequest,
+    McpState, McpToolResponse, ModuleLookupRequest, ModuleQueryRequest, list_modules,
+    list_modules_filtered, module_details, module_exists,
 };
 
 struct DemoModule;

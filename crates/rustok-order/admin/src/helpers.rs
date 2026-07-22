@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use crate::core::{order_detail_form_state, OrderAdminDetailFormState};
+use crate::core::{OrderAdminDetailFormState, order_detail_form_state};
 use crate::model::OrderDetailEnvelope;
 
 #[allow(clippy::too_many_arguments)]

@@ -4,7 +4,7 @@ use rustok_api::Permission;
 use rustok_core::registry::ModuleRegistry;
 use rustok_outbox::TransactionalEventBus;
 use rustok_secrets::{SecretRef, SecretResolverRegistry};
-use rustok_storage::StorageService;
+use rustok_storage::StorageRuntime;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -55,7 +55,7 @@ pub struct AiHostRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     module_registry: ModuleRegistry,
-    storage: Option<StorageService>,
+    storage: Option<StorageRuntime>,
     alloy_runtime: Option<alloy::SharedAlloyRuntime>,
     secret_registry: SecretResolverRegistry,
     egress_policy: crate::ProviderEgressPolicy,
@@ -114,7 +114,7 @@ pub fn ai_host_runtime_from_context(
         egress_policy,
         provider_targets,
     )
-    .with_storage(context.shared_get::<StorageService>())
+    .with_storage(context.shared_get::<StorageRuntime>())
     .with_alloy_runtime(context.shared_get::<alloy::SharedAlloyRuntime>())
     .with_order_status_port(order_status_port)
     .with_product_catalog_read_port(product_catalog_read_port)
@@ -149,7 +149,7 @@ impl AiHostRuntime {
         }
     }
 
-    pub(crate) fn with_storage(mut self, storage: Option<StorageService>) -> Self {
+    pub(crate) fn with_storage(mut self, storage: Option<StorageRuntime>) -> Self {
         self.storage = storage;
         self
     }
@@ -271,7 +271,7 @@ impl AiHostRuntime {
         self.module_registry.clone()
     }
 
-    pub fn storage(&self) -> Option<StorageService> {
+    pub fn storage(&self) -> Option<StorageRuntime> {
         self.storage.clone()
     }
 

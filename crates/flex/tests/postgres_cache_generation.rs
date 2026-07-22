@@ -1,10 +1,9 @@
 use std::time::Duration;
 
 use flex::cache_generation::{
-    create_field_definition_cache_generation_table,
-    create_field_definition_cache_generation_trigger,
-    drop_field_definition_cache_generation_table,
-    drop_field_definition_cache_generation_trigger, FIELD_DEFINITION_CACHE_GENERATION_TABLE,
+    FIELD_DEFINITION_CACHE_GENERATION_TABLE, create_field_definition_cache_generation_table,
+    create_field_definition_cache_generation_trigger, drop_field_definition_cache_generation_table,
+    drop_field_definition_cache_generation_trigger,
 };
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, Statement, TransactionTrait,
@@ -126,9 +125,7 @@ async fn postgres_flex_generation_is_transactional_concurrent_and_replay_safe() 
 
     for (table, _) in OWNERS {
         writer
-            .execute_unprepared(&format!(
-                "UPDATE {table} SET position = position + 1"
-            ))
+            .execute_unprepared(&format!("UPDATE {table} SET position = position + 1"))
             .await
             .expect("owner reorder should commit");
     }
@@ -198,15 +195,17 @@ async fn postgres_flex_generation_is_transactional_concurrent_and_replay_safe() 
         ))
         .await
         .expect("generation table should drop for recovery evidence");
-    assert!(replica
-        .query_one(Statement::from_string(
-            replica.get_database_backend(),
-            format!(
-                "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"
-            ),
-        ))
-        .await
-        .is_err());
+    assert!(
+        replica
+            .query_one(Statement::from_string(
+                replica.get_database_backend(),
+                format!(
+                    "SELECT generation FROM {FIELD_DEFINITION_CACHE_GENERATION_TABLE} WHERE id = 1"
+                ),
+            ))
+            .await
+            .is_err()
+    );
 
     install_generation_contract(&writer).await;
     assert_eq!(read_generation(&writer).await, 0);

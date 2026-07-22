@@ -2,16 +2,16 @@ use rustok_cli_core::{
     CliCoreError, CliCoreResult, CommandDescriptor, CommandOutcome, CommandProvider, CommandRequest,
 };
 use rustok_installer::{
-    evaluate_preflight, execute_install_apply, execute_seed_profile, redact_install_plan,
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallApplyOptions, InstallEnvironment,
     InstallPlan, InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode,
     SecretRef, SecretValue, SeedExecutionRequest, SeedProfile, SeedTenantRequest, SeedUserRequest,
-    TenantBootstrap,
+    TenantBootstrap, evaluate_preflight, execute_install_apply, execute_seed_profile,
+    redact_install_plan,
 };
 use rustok_installer_persistence::{
     InstallerPersistenceService, SeaOrmInstallerApplyPorts, SeaOrmInstallerBootstrapPorts,
 };
-use rustok_runtime::{db_clone, RuntimeComposition};
+use rustok_runtime::{RuntimeComposition, db_clone};
 
 pub struct InstallerCommandProvider {
     runtime: RuntimeComposition,
@@ -58,7 +58,7 @@ impl CommandProvider for InstallerCommandProvider {
             ("install", "apply") => {
                 return self
                     .install_apply_command(&request.args, request.dry_run)
-                    .await
+                    .await;
             }
             ("install", "status") => return self.install_status_command().await,
             ("seed", "apply") => {}
@@ -66,7 +66,7 @@ impl CommandProvider for InstallerCommandProvider {
                 return Err(CliCoreError::UnknownCommand {
                     namespace: request.namespace,
                     name: request.name,
-                })
+                });
             }
         }
         if request.dry_run {
@@ -352,7 +352,7 @@ fn failed(error: impl std::fmt::Display) -> CliCoreError {
 }
 #[cfg(test)]
 mod tests {
-    use super::{command_provider, RuntimeComposition};
+    use super::{RuntimeComposition, command_provider};
     use rustok_cli_core::CommandRequest;
 
     #[tokio::test]

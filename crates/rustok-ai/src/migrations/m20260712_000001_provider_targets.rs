@@ -21,7 +21,7 @@ impl MigrationTrait for Migration {
             other => {
                 return Err(DbErr::Migration(format!(
                     "AI provider target migration does not support database backend {other:?}"
-                )))
+                )));
             }
         };
         let rows = connection
@@ -59,7 +59,7 @@ impl MigrationTrait for Migration {
             other => {
                 return Err(DbErr::Migration(format!(
                     "AI provider target migration does not support database backend {other:?}"
-                )))
+                )));
             }
         };
         for statement in statements {

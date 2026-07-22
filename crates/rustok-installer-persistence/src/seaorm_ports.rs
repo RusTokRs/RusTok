@@ -24,7 +24,7 @@ use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
 
-use crate::{entities::install_session, InstallerPersistenceService};
+use crate::{InstallerPersistenceService, entities::install_session};
 
 const DEFAULT_PG_ADMIN_URL: &str = "postgres://postgres:postgres@localhost:5432/postgres";
 

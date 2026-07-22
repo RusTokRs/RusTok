@@ -17,14 +17,26 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(LedgerTransactions::TenantId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(LedgerTransactions::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(LedgerTransactions::SourceKind)
                             .string_len(80)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(LedgerTransactions::SourceId).uuid().not_null())
-                    .col(ColumnDef::new(LedgerTransactions::OrderId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(LedgerTransactions::SourceId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(LedgerTransactions::OrderId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(LedgerTransactions::CurrencyCode)
                             .string_len(3)
@@ -101,10 +113,22 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(LedgerEntries::TenantId).uuid().not_null())
-                    .col(ColumnDef::new(LedgerEntries::TransactionId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(LedgerEntries::TransactionId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(LedgerEntries::OrderId).uuid().not_null())
-                    .col(ColumnDef::new(LedgerEntries::AssessmentId).uuid().not_null())
-                    .col(ColumnDef::new(LedgerEntries::AllocationId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(LedgerEntries::AssessmentId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(LedgerEntries::AllocationId)
+                            .uuid()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(LedgerEntries::OrderLineItemId)
                             .uuid()
@@ -126,7 +150,11 @@ impl MigrationTrait for Migration {
                             .string_len(3)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(LedgerEntries::Amount).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(LedgerEntries::Amount)
+                            .big_integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(LedgerEntries::Metadata)
                             .json_binary()
@@ -211,10 +239,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
-                    .col(
-                        ColumnDef::new(LedgerReceipts::CompletedAt)
-                            .timestamp_with_time_zone(),
-                    )
+                    .col(ColumnDef::new(LedgerReceipts::CompletedAt).timestamp_with_time_zone())
                     .to_owned(),
             )
             .await?;

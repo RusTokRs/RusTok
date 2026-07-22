@@ -10,8 +10,8 @@ pub use components::{
     SeoSummaryTile,
 };
 pub use model::{
-    derive_control_plane_widget_state, remediation_hint_for_issue_code, SeoCompletenessReport,
-    SeoControlPlaneWidgetState, SeoControlPlaneWidgetStateKind, SeoEntityForm,
-    SeoEventDeliverySummary, SeoMetaView, SeoRevisionView,
+    SeoCompletenessReport, SeoControlPlaneWidgetState, SeoControlPlaneWidgetStateKind,
+    SeoEntityForm, SeoEventDeliverySummary, SeoMetaView, SeoRevisionView,
+    derive_control_plane_widget_state, remediation_hint_for_issue_code,
 };
 pub use panel::{SeoCapabilityNotice, SeoEntityPanel};

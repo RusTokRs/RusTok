@@ -22,31 +22,34 @@ pub mod standalone;
 pub struct FlexModule;
 
 pub use attached::{
-    delete_attached_localized_values, load_exact_locale_values, load_localized_values_by_locale,
-    persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
-    resolve_attached_payload, AttachedEntityRef, PreparedAttachedValuesWrite,
+    AttachedEntityRef, PreparedAttachedValuesWrite, delete_attached_localized_values,
+    load_exact_locale_values, load_localized_values_by_locale, persist_localized_values,
+    prepare_attached_values_create, prepare_attached_values_update, resolve_attached_payload,
 };
-pub use errors::{map_flex_error, FlexMappedError, FlexMappedErrorKind};
+pub use errors::{FlexMappedError, FlexMappedErrorKind, map_flex_error};
 pub use orchestration::{
-    create_field_definition, deactivate_field_definition, find_field_definition,
-    invalidate_field_definition_cache, list_field_definitions, list_field_definitions_with_cache,
-    reorder_field_definitions, update_field_definition, FieldDefinitionCachePort,
+    FieldDefinitionCachePort, create_field_definition, deactivate_field_definition,
+    find_field_definition, invalidate_field_definition_cache, list_field_definitions,
+    list_field_definitions_with_cache, reorder_field_definitions, update_field_definition,
 };
-pub use parsing::{parse_field_definitions_config, FieldDefinitionsConfigParseError};
+pub use parsing::{FieldDefinitionsConfigParseError, parse_field_definitions_config};
 pub use registry::{
+    CreateFieldDefinitionCommand, FieldDefRegistry, FieldDefinitionService, FieldDefinitionSource,
+    FieldDefinitionView, FieldDefinitionViewSource, UpdateFieldDefinitionCommand,
     field_definition_cache_invalidation_target, field_definition_created_event,
     field_definition_deleted_event, field_definition_description_json,
     field_definition_from_source, field_definition_label_json, field_definition_position_or_next,
     field_definition_type_name, field_definition_updated_event, field_definition_validation_json,
-    validate_field_definition_create, CreateFieldDefinitionCommand, FieldDefRegistry,
-    FieldDefinitionService, FieldDefinitionSource, FieldDefinitionView, FieldDefinitionViewSource,
-    UpdateFieldDefinitionCommand,
+    validate_field_definition_create,
 };
 pub use rest::{
     CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,
     FlexSchemaResponse, UpdateFlexEntryRequest, UpdateFlexSchemaRequest,
 };
 pub use standalone::{
+    CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView, FlexSchemaView,
+    FlexStandaloneService, StandaloneEntryViewSource, StandaloneSchemaTranslationSource,
+    StandaloneSchemaViewSource, UpdateFlexEntryCommand, UpdateFlexSchemaCommand,
     build_standalone_custom_fields_schema, create_entry, create_entry_with_event, create_schema,
     create_schema_with_event, delete_entry, delete_entry_with_event, delete_schema,
     delete_schema_with_event, effective_standalone_entry_data, find_entry, find_schema,
@@ -57,10 +60,7 @@ pub use standalone::{
     standalone_schema_view_from_source, update_entry, update_entry_with_event, update_schema,
     update_schema_with_event, validate_create_entry_command, validate_create_schema_command,
     validate_optional_standalone_uuid, validate_standalone_uuid, validate_update_entry_command,
-    validate_update_schema_command, CreateFlexEntryCommand, CreateFlexSchemaCommand, FlexEntryView,
-    FlexSchemaView, FlexStandaloneService, StandaloneEntryViewSource,
-    StandaloneSchemaTranslationSource, StandaloneSchemaViewSource, UpdateFlexEntryCommand,
-    UpdateFlexSchemaCommand,
+    validate_update_schema_command,
 };
 
 pub use events::{

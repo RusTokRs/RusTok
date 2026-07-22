@@ -73,10 +73,12 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     assert!(ambiguous.provider_result.is_none());
 
     let recovery = FulfillmentProviderOperationRecovery::new(db.clone());
-    assert!(recovery
-        .resolve_unknown_as_failed(Uuid::new_v4(), operation.id, "wrong tenant")
-        .await
-        .is_err());
+    assert!(
+        recovery
+            .resolve_unknown_as_failed(Uuid::new_v4(), operation.id, "wrong tenant")
+            .await
+            .is_err()
+    );
 
     let retryable = recovery
         .resolve_unknown_as_failed(tenant_id, operation.id, "carrier confirmed no shipment")
@@ -85,11 +87,13 @@ async fn provider_execution_has_one_claimant_and_ambiguous_errors_require_reconc
     assert_eq!(retryable.status, PROVIDER_OPERATION_ERROR);
     assert!(retryable.provider_completed_at.is_none());
 
-    assert!(journal
-        .claim_execution(operation.id)
-        .await
-        .expect("retry claim")
-        .is_some());
+    assert!(
+        journal
+            .claim_execution(operation.id)
+            .await
+            .expect("retry claim")
+            .is_some()
+    );
     let succeeded = journal
         .mark_provider_succeeded(
             operation.id,
@@ -153,15 +157,17 @@ async fn manual_success_reconciliation_validates_provider_identity() {
         "tracking_number": "TRACK-1",
         "metadata": {}
     });
-    assert!(recovery
-        .resolve_unknown_as_succeeded(
-            tenant_id,
-            operation.id,
-            Some("label-1".to_string()),
-            wrong_provider,
-        )
-        .await
-        .is_err());
+    assert!(
+        recovery
+            .resolve_unknown_as_succeeded(
+                tenant_id,
+                operation.id,
+                Some("label-1".to_string()),
+                wrong_provider,
+            )
+            .await
+            .is_err()
+    );
 
     let reconciled = recovery
         .resolve_unknown_as_succeeded(

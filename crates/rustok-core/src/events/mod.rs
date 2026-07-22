@@ -19,7 +19,7 @@ pub use handler::{
     RunningDispatcher,
 };
 pub use memory::MemoryTransport;
-pub use schema::{event_schema, EventSchema, FieldSchema, EVENT_SCHEMAS};
+pub use schema::{EVENT_SCHEMAS, EventSchema, FieldSchema, event_schema};
 pub use transport::{EventTransport, ReliabilityLevel};
 pub use types::{DomainEvent, EventEnvelope};
 pub use validation::{EventValidationError, ValidateEvent};

@@ -53,9 +53,11 @@ async fn sitemap_generation_rolls_back_when_transactional_event_fails() {
         .await
         .expect_err("event failure must abort the sitemap transaction");
 
-    assert!(error
-        .to_string()
-        .contains("failed to enqueue sitemap event transactionally"));
+    assert!(
+        error
+            .to_string()
+            .contains("failed to enqueue sitemap event transactionally")
+    );
     assert_eq!(
         seo_sitemap_job::Entity::find()
             .count(&db)

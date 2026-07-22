@@ -1,5 +1,5 @@
-use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue;
+use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -60,8 +60,7 @@ impl ActiveModelBehavior for ActiveModel {
         if let ActiveValue::Set(Some(color)) = &mut self.color {
             let normalized = normalize_category_color(color).ok_or_else(|| {
                 DbErr::Custom(
-                    "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA"
-                        .to_string(),
+                    "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string(),
                 )
             })?;
             *color = normalized;
@@ -75,7 +74,9 @@ fn normalize_category_color(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let digits = trimmed.strip_prefix('#')?;
     if !matches!(digits.len(), 3 | 4 | 6 | 8)
-        || !digits.chars().all(|character| character.is_ascii_hexdigit())
+        || !digits
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
     {
         return None;
     }
@@ -89,7 +90,10 @@ mod tests {
 
     #[test]
     fn normalizes_supported_category_color_tokens() {
-        assert_eq!(normalize_category_color(" #0EA5E9 ").as_deref(), Some("#0EA5E9"));
+        assert_eq!(
+            normalize_category_color(" #0EA5E9 ").as_deref(),
+            Some("#0EA5E9")
+        );
         assert_eq!(normalize_category_color("#fff").as_deref(), Some("#fff"));
         assert_eq!(normalize_category_color("#abcd").as_deref(), Some("#abcd"));
     }

@@ -1,12 +1,10 @@
 use std::collections::HashMap;
 
-use sea_orm::{
-    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use tracing::instrument;
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource};
 use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 
@@ -145,9 +143,8 @@ impl PageService {
             ) {
                 return Ok((Vec::new(), 0));
             }
-            select = select.filter(
-                page::Column::Status.eq(status_to_storage(&ContentStatus::Published)),
-            );
+            select = select
+                .filter(page::Column::Status.eq(status_to_storage(&ContentStatus::Published)));
         }
         if let Some(status) = filter.status {
             select = select.filter(page::Column::Status.eq(status_to_storage(&status)));
@@ -287,10 +284,7 @@ impl PageService {
         Ok(map)
     }
 
-    pub(super) async fn load_bodies(
-        &self,
-        page_id: Uuid,
-    ) -> PagesResult<Vec<page_body::Model>> {
+    pub(super) async fn load_bodies(&self, page_id: Uuid) -> PagesResult<Vec<page_body::Model>> {
         Ok(page_body::Entity::find()
             .filter(page_body::Column::PageId.eq(page_id))
             .all(&self.db)

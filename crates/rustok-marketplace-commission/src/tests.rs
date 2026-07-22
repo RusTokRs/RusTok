@@ -1,6 +1,6 @@
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 
 use async_trait::async_trait;
@@ -8,20 +8,19 @@ use chrono::{Duration, Utc};
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_marketplace_allocation::{
     ListMarketplaceAllocationsByOrderRequest, ListMarketplaceAllocationsBySellerRequest,
-    MarketplaceAllocationListResponse, MarketplaceAllocationReadPort,
-    MarketplaceAllocationStatus, MarketplaceOrderAllocationResponse,
-    ReadMarketplaceAllocationByLineRequest,
+    MarketplaceAllocationListResponse, MarketplaceAllocationReadPort, MarketplaceAllocationStatus,
+    MarketplaceOrderAllocationResponse, ReadMarketplaceAllocationByLineRequest,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::MarketplaceCommissionService;
 use crate::dto::{
     AssessMarketplaceOrderCommissionsInput, CreateMarketplaceCommissionRuleVersionInput,
     MarketplaceCommissionRuleStatus,
 };
 use crate::error::MarketplaceCommissionError;
-use crate::MarketplaceCommissionService;
 
 #[tokio::test]
 async fn assessment_selects_listing_then_seller_rule_and_replays_before_provider_read() {
@@ -117,7 +116,11 @@ async fn assessment_selects_listing_then_seller_rule_and_replays_before_provider
         .await
         .unwrap();
     assert_eq!(replayed, created);
-    assert_eq!(provider.read_count(), 1, "replay must precede provider reads");
+    assert_eq!(
+        provider.read_count(),
+        1,
+        "replay must precede provider reads"
+    );
 
     let conflict = service
         .assess_order_with_receipt(
@@ -147,11 +150,7 @@ async fn rule_versions_are_immutable_and_latest_version_wins_ties() {
     let seller_id = Uuid::new_v4();
     let listing_id = Uuid::new_v4();
     let provider = Arc::new(FakeAllocationReader::new(vec![allocation(
-        tenant_id,
-        order_id,
-        seller_id,
-        listing_id,
-        10_000,
+        tenant_id, order_id, seller_id, listing_id, 10_000,
     )]));
     let service = MarketplaceCommissionService::new(db, provider);
     let rule_key = Uuid::new_v4();
@@ -162,14 +161,7 @@ async fn rule_versions_are_immutable_and_latest_version_wins_ties() {
             tenant_id,
             actor_id,
             "rule-version-one",
-            rule_input(
-                rule_key,
-                Some(seller_id),
-                None,
-                200,
-                0,
-                effective_from,
-            ),
+            rule_input(rule_key, Some(seller_id), None, 200, 0, effective_from),
         )
         .await
         .unwrap();
@@ -178,14 +170,7 @@ async fn rule_versions_are_immutable_and_latest_version_wins_ties() {
             tenant_id,
             actor_id,
             "rule-version-two",
-            rule_input(
-                rule_key,
-                Some(seller_id),
-                None,
-                300,
-                0,
-                effective_from,
-            ),
+            rule_input(rule_key, Some(seller_id), None, 300, 0, effective_from),
         )
         .await
         .unwrap();

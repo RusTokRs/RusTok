@@ -8,8 +8,8 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use support::category_commands::exercise_category_commands;
 use support::TestResult;
+use support::category_commands::exercise_category_commands;
 
 #[tokio::test]
 async fn sqlite_category_move_and_reorder_are_atomic_and_tenant_scoped() -> TestResult<()> {

@@ -46,8 +46,8 @@ pub use graphql::{SeoMutation, SeoQuery};
 #[cfg(feature = "server")]
 pub use rustok_seo_targets::SeoTargetRegistry;
 pub use rustok_seo_targets::{
-    builtin_slug as seo_builtin_slug, SeoTargetCapabilities, SeoTargetCapabilityKind,
-    SeoTargetRegistryEntry, SeoTargetSlug,
+    SeoTargetCapabilities, SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTargetSlug,
+    builtin_slug as seo_builtin_slug,
 };
 #[cfg(feature = "server")]
 pub use services::{SeoMediaAssetReadProvider, SeoService};

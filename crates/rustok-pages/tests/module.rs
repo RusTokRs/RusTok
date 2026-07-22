@@ -17,12 +17,16 @@ fn module_permissions() {
     let permissions = module.permissions();
 
     // Check pages permissions exist
-    assert!(permissions
-        .iter()
-        .any(|p| { p.resource == Resource::Pages && p.action == Action::Create }));
-    assert!(permissions
-        .iter()
-        .any(|p| { p.resource == Resource::Pages && p.action == Action::Publish }));
+    assert!(
+        permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Pages && p.action == Action::Create })
+    );
+    assert!(
+        permissions
+            .iter()
+            .any(|p| { p.resource == Resource::Pages && p.action == Action::Publish })
+    );
 
     assert!(
         permissions.iter().all(|p| p.resource != Resource::Nodes),

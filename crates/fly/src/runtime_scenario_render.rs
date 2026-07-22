@@ -1,6 +1,7 @@
 use crate::{
-    render_page_with_runtime_context, PageSelection, ProjectDocument, ProjectHash, RenderPolicy,
-    RuntimeContextScenario, RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity,
+    PageSelection, ProjectDocument, ProjectHash, RenderPolicy, RuntimeContextScenario,
+    RuntimeRenderResult, ValidationDiagnostic, ValidationSeverity,
+    render_page_with_runtime_context,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -312,9 +313,11 @@ mod tests {
             &[RuntimeContextScenario::new("one", "One", json!({}))],
         );
         assert_eq!(matrix.failed_count, 1);
-        assert!(matrix
-            .case("one")
-            .and_then(|case| case.error.as_ref())
-            .is_some());
+        assert!(
+            matrix
+                .case("one")
+                .and_then(|case| case.error.as_ref())
+                .is_some()
+        );
     }
 }

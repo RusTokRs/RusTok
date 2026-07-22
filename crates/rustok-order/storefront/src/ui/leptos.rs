@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{
-    build_order_checkout_result_view_model, order_checkout_action_label, OrderCheckoutActionLabels,
-    OrderCheckoutResultData, OrderCheckoutResultLabels,
+    OrderCheckoutActionLabels, OrderCheckoutResultData, OrderCheckoutResultLabels,
+    build_order_checkout_result_view_model, order_checkout_action_label,
 };
 use crate::i18n::t;
-use crate::transport::{build_complete_checkout_request, CompleteCheckoutRequest};
+use crate::transport::{CompleteCheckoutRequest, build_complete_checkout_request};
 
 #[component]
 pub fn OrderView() -> impl IntoView {

@@ -438,32 +438,42 @@ impl ConnectorAckToken {
     pub fn decode(token: &str) -> Result<Self, ConnectorError> {
         let parts: Vec<&str> = token.split(':').collect();
         match parts.as_slice() {
-            [Self::SIMULATED_PREFIX, mode, stream, topic, partition, offset] => {
-                Ok(Self::simulated(
-                    mode,
-                    stream,
-                    topic,
-                    partition.parse().map_err(|_| {
-                        ConnectorError::Config("invalid simulated ack partition".to_string())
-                    })?,
-                    offset.parse().map_err(|_| {
-                        ConnectorError::Config("invalid simulated ack offset".to_string())
-                    })?,
-                ))
-            }
-            [Self::IGGY_SDK_PREFIX, stream, topic, partition, offset, consumer_id] => {
-                Ok(Self::iggy_sdk(
-                    stream,
-                    topic,
-                    partition.parse().map_err(|_| {
-                        ConnectorError::Config("invalid SDK ack partition".to_string())
-                    })?,
-                    offset.parse().map_err(|_| {
-                        ConnectorError::Config("invalid SDK ack offset".to_string())
-                    })?,
-                    consumer_id,
-                ))
-            }
+            [
+                Self::SIMULATED_PREFIX,
+                mode,
+                stream,
+                topic,
+                partition,
+                offset,
+            ] => Ok(Self::simulated(
+                mode,
+                stream,
+                topic,
+                partition.parse().map_err(|_| {
+                    ConnectorError::Config("invalid simulated ack partition".to_string())
+                })?,
+                offset.parse().map_err(|_| {
+                    ConnectorError::Config("invalid simulated ack offset".to_string())
+                })?,
+            )),
+            [
+                Self::IGGY_SDK_PREFIX,
+                stream,
+                topic,
+                partition,
+                offset,
+                consumer_id,
+            ] => Ok(Self::iggy_sdk(
+                stream,
+                topic,
+                partition
+                    .parse()
+                    .map_err(|_| ConnectorError::Config("invalid SDK ack partition".to_string()))?,
+                offset
+                    .parse()
+                    .map_err(|_| ConnectorError::Config("invalid SDK ack offset".to_string()))?,
+                consumer_id,
+            )),
             _ => Err(ConnectorError::Config(
                 "unsupported connector ack token".to_string(),
             )),

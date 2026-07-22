@@ -262,8 +262,6 @@ pub struct StageReleaseResponse {
     pub created: bool,
 }
 
-
-
 #[derive(Debug, Serialize)]
 pub struct RunScriptResponse {
     pub execution_id: String,
@@ -554,9 +552,8 @@ mod tests {
     #[test]
     fn lifecycle_request_requires_an_expected_version() {
         assert!(serde_json::from_str::<ScriptRevisionRequest>(r#"{}"#).is_err());
-        let request =
-            serde_json::from_str::<ScriptRevisionRequest>(r#"{"expected_version": 3}"#)
-                .expect("expected version should deserialize");
+        let request = serde_json::from_str::<ScriptRevisionRequest>(r#"{"expected_version": 3}"#)
+            .expect("expected version should deserialize");
         assert_eq!(request.expected_version, 3);
     }
 }

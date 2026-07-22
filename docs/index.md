@@ -43,9 +43,13 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [Module Platform Crate Registry](./modules/crates-registry.md)
 - [`rustok-modules` control-plane documentation](../crates/rustok-modules/docs/README.md)
 - [`rustok-verification-transport` gRPC documentation](../crates/rustok-verification-transport/docs/README.md)
+- [`rustok-media-transport` gRPC documentation](../crates/rustok-media-transport/docs/README.md)
 - [`rustok-verification-worker` documentation](../crates/rustok-verification-worker/docs/README.md)
-- [`rustok-module-build-transport` gRPC documentation](../crates/rustok-module-build-transport/docs/README.md)
+- [`rustok-module-build-transport` current build-worker gRPC documentation](../crates/rustok-module-build-transport/docs/README.md)
 - [`rustok-module-build-worker` documentation](../crates/rustok-module-build-worker/docs/README.md)
+- [`rustok-build-publication` credential and signing foundation](../crates/rustok-build-publication/docs/README.md)
+- [`rustok-build-source` immutable CAS archive materialization](../crates/rustok-build-source/docs/README.md)
+- [`rustok-static-distribution-worker` documentation](../crates/rustok-static-distribution-worker/docs/README.md)
 - [`rustok-registry-validation-worker` documentation](../crates/rustok-registry-validation-worker/README.md)
 - [`rustok-module-build-dispatcher` documentation](../crates/rustok-module-build-dispatcher/docs/README.md)
 - [`rustok-worker-transport` mTLS foundation](../crates/rustok-worker-transport/docs/README.md)
@@ -99,9 +103,11 @@ Local documents for applications and crates live in `apps/*/docs/`,
 
 ## Architecture and Foundation
 
+- [ADR: Static promotion review boundary](../DECISIONS/2026-07-22-static-promotion-review-boundary.md)
+- [ADR: Durable artifact-data snapshot and guarded restore](../DECISIONS/2026-07-22-artifact-data-snapshot-restore.md)
 - [ADR: Athanor-owned RAG data plane](../DECISIONS/2026-07-18-rag-postgres-capability-profiles.md)
 - [ADR: Repository connector module with GitHub as the first provider](../DECISIONS/2026-07-18-repository-connector-module-github-first.md)
-- [ADR: Storage physical ownership and Media facade](../DECISIONS/2026-07-18-storage-physical-owner-media-facade.md)
+- [ADR: Direct object-store runtime and owner-local lifecycle](../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
 
 - [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
 

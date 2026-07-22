@@ -1,7 +1,7 @@
 use rustok_core::MigrationSource;
+use rustok_pages::PagesModule;
 use rustok_pages::dto::{CreateMenuInput, MenuItemInput, MenuLocation};
 use rustok_pages::services::MenuService;
-use rustok_pages::PagesModule;
 use rustok_test_utils::{db::setup_test_db, helpers::admin_context, mock_transactional_event_bus};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;

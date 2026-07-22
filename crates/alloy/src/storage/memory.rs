@@ -7,9 +7,9 @@ use tokio::sync::RwLock;
 use super::traits::{ScriptPage, ScriptQuery, ScriptRegistry};
 use crate::error::{ScriptError, ScriptResult};
 use crate::model::{
-    validate_transition, ReviewCommand, ReviewDecision, Script, ScriptId, ScriptSourceRevision,
-    ScriptStatus, ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion,
-    TestRunLease, TestRunStatus,
+    ReviewCommand, ReviewDecision, Script, ScriptId, ScriptSourceRevision, ScriptStatus,
+    ScriptTrigger, TestCommand, TestRun, TestRunClaim, TestRunCompletion, TestRunLease,
+    TestRunStatus, validate_transition,
 };
 
 #[derive(Clone)]
@@ -319,10 +319,10 @@ impl ScriptRegistry for InMemoryStorage {
             completed_at: None,
         };
         let lease_token = uuid::Uuid::new_v4();
-        self.test_leases
-            .write()
-            .await
-            .insert(run.id, (lease_token, crate::model::test_run_lease_expires_at(now)));
+        self.test_leases.write().await.insert(
+            run.id,
+            (lease_token, crate::model::test_run_lease_expires_at(now)),
+        );
         runs.insert(key, run.clone());
         Ok(TestRunClaim::Claimed(TestRunLease {
             run,

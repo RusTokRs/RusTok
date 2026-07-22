@@ -4,7 +4,7 @@ use leptos_auth::hooks::use_tenant;
 use leptos_hook_form::FormState;
 use rustok_ui_core::UiRouteContext;
 
-use crate::core::{prepare_password_reset_request, AuthFormInputError};
+use crate::core::{AuthFormInputError, prepare_password_reset_request};
 use crate::i18n::t;
 use crate::transport;
 use crate::ui::components::{Button, Input};

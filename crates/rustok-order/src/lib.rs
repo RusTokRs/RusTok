@@ -21,7 +21,7 @@ pub mod migrations;
 pub mod ports;
 pub mod services;
 
-pub use analytics::{load_order_stats_snapshot, OrderStatsSnapshot};
+pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
