@@ -58,6 +58,7 @@ const contract = JSON.parse(
 );
 const dto = read(contract.quote_command?.dto ?? "");
 const service = read(contract.quote_command?.service ?? "");
+const tests = read("crates/rustok-forum/src/services/mention_relation_tests.rs");
 const controller = read("crates/rustok-forum/src/controllers/quote_commands.rs");
 const routes = read("crates/rustok-forum/src/controllers/mod.rs");
 const graphql = read("crates/rustok-forum/src/graphql/quote_commands.rs");
@@ -107,6 +108,16 @@ requireText(service, "input.quotes", "an explicit empty quote list must reach ow
 requireText(service, "quote_inputs_are_deduplicated_and_bounded", "quote bounds need owner unit coverage");
 reject(service, /rustok_notifications|NotificationService/, "quote commands must not call Notifications");
 reject(service, /handle_snapshot|projection_fingerprint/, "quote command DTO/service must not expose private relation fields");
+
+for (const marker of [
+  "quote_owner_replace_replay_clear_and_cross_tenant_rejection_are_atomic",
+  "identical replacement should replay",
+  "explicit empty list should clear quotes",
+  "cross-tenant quoted revision must fail closed",
+  "checked_sub(3)",
+]) {
+  requireText(tests, marker, `quote owner runtime scenario is missing ${marker}`);
+}
 
 for (const marker of [
   "/api/forum/topics/{id}/quotes",
