@@ -240,9 +240,9 @@ pub async fn upsert_group_admin_application_policy(
     let tenant = context.tenant_slug.clone();
     let native_command = command.clone();
     execute_selected_transport(
-        "groups.admin.applications.policy.upsert",
+        "groups.admin.applications.policy.upsert_if_current",
         context.path(),
-        move || native_applications_adapter::upsert_group_application_policy(native_command),
+        move || native_policy_locale_adapter::upsert_group_application_policy(native_command),
         move || graphql_policy_locale_adapter::upsert_group_application_policy(token, tenant, command),
     )
     .await
