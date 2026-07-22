@@ -5,7 +5,11 @@ use rustok_cart::{
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
-use rustok_order::{OrderError, OrderService};
+use rustok_order::{
+    AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
+    CheckoutOrderIdentitySnapshot, OrderError, OrderService,
+    ReadCheckoutOrderIdentityByOperationRequest, in_process_checkout_order_identity_port,
+};
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::dto::CancelPaymentInput;
 use rustok_payment::error::PaymentError;
@@ -14,7 +18,7 @@ use rustok_payment::{
     PROVIDER_OPERATION_EXECUTING, PROVIDER_OPERATION_RECONCILIATION_REQUIRED,
     PROVIDER_OPERATION_SUCCEEDED, PaymentProviderOperationJournal, PaymentService,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
+use sea_orm::DatabaseConnection;
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
@@ -43,8 +47,6 @@ pub enum CheckoutCompensationError {
     PaymentOrchestration(#[from] PaymentOrchestrationError),
     #[error(transparent)]
     Order(#[from] OrderError),
-    #[error(transparent)]
-    Database(#[from] sea_orm::DbErr),
     #[error("checkout compensation requires manual reconciliation: {0}")]
     ManualReconciliation(String),
     #[error("checkout compensation conflict: {0}")]
@@ -68,11 +70,11 @@ pub enum CheckoutCompensationError {
 pub type CheckoutCompensationResult<T> = Result<T, CheckoutCompensationError>;
 
 pub struct CheckoutCompensationService {
-    db: DatabaseConnection,
     operation_journal: CheckoutOperationJournal,
     reservation_journal: CheckoutInventoryReservationJournal,
     reservation_port: Arc<dyn InventoryReservationIdentityPort>,
     cart_port: Arc<dyn CartCheckoutPort>,
+    order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
     payment_service: PaymentService,
     payment_orchestration: PaymentOrchestrationService,
     payment_operation_journal: PaymentProviderOperationJournal,
@@ -93,11 +95,11 @@ impl CheckoutCompensationService {
             reservation_journal: CheckoutInventoryReservationJournal::new(db.clone()),
             reservation_port,
             cart_port,
+            order_identity_port: in_process_checkout_order_identity_port(db.clone()),
             payment_service: PaymentService::new(db.clone()),
             payment_orchestration: PaymentOrchestrationService::new(db.clone()),
             payment_operation_journal: PaymentProviderOperationJournal::new(db.clone()),
-            order_service: OrderService::new(db.clone(), event_bus),
-            db,
+            order_service: OrderService::new(db, event_bus),
             lease_seconds: DEFAULT_CHECKOUT_LEASE_SECONDS,
             port_deadline: Duration::from_secs(COMPENSATION_PORT_DEADLINE_SECONDS),
         }
@@ -110,6 +112,14 @@ impl CheckoutCompensationService {
         self.payment_orchestration = self
             .payment_orchestration
             .with_provider_registry(payment_provider_registry);
+        self
+    }
+
+    pub fn with_order_identity_port(
+        mut self,
+        order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
+    ) -> Self {
+        self.order_identity_port = order_identity_port;
         self
     }
 
@@ -198,11 +208,10 @@ impl CheckoutCompensationService {
 
         self.compensate_payment(tenant_id, operation).await?;
 
-        let order_id = match operation.order_id {
-            Some(order_id) => Some(order_id),
-            None => find_order_id_by_operation(&self.db, tenant_id, operation.id).await?,
-        };
-        if let Some(order_id) = order_id {
+        if let Some(order_id) = self
+            .resolve_compensation_order_id(tenant_id, operation)
+            .await?
+        {
             self.compensate_order(tenant_id, actor_id, operation, order_id)
                 .await?;
         }
@@ -214,6 +223,61 @@ impl CheckoutCompensationService {
             .await?;
         self.release_cart(tenant_id, operation).await?;
         Ok(())
+    }
+
+    async fn resolve_compensation_order_id(
+        &self,
+        tenant_id: Uuid,
+        operation: &checkout_operation::Model,
+    ) -> CheckoutCompensationResult<Option<Uuid>> {
+        let mut identity = self
+            .order_identity_port
+            .read_by_operation(
+                order_identity_context(
+                    tenant_id,
+                    operation,
+                    self.port_deadline,
+                    "read",
+                    false,
+                ),
+                ReadCheckoutOrderIdentityByOperationRequest {
+                    checkout_operation_id: operation.id,
+                },
+            )
+            .await
+            .map_err(|error| boundary_error("read_order_identity", error))?;
+        if identity.is_none() {
+            identity = self
+                .order_identity_port
+                .adopt_legacy(
+                    order_identity_context(
+                        tenant_id,
+                        operation,
+                        self.port_deadline,
+                        "adopt",
+                        true,
+                    ),
+                    AdoptLegacyCheckoutOrderIdentityRequest {
+                        checkout_operation_id: operation.id,
+                        cart_id: operation.cart_id,
+                    },
+                )
+                .await
+                .map_err(|error| boundary_error("adopt_order_identity", error))?;
+        }
+
+        match identity {
+            Some(identity) => {
+                validate_compensation_identity(tenant_id, operation, &identity)?;
+                Ok(Some(identity.order_id))
+            }
+            None if operation.order_id.is_none() => Ok(None),
+            None => Err(CheckoutCompensationError::ManualReconciliation(format!(
+                "checkout operation {} records order {} but has no order-owner identity",
+                operation.id,
+                operation.order_id.expect("checked as present")
+            ))),
+        }
     }
 
     async fn compensate_payment(
@@ -290,16 +354,10 @@ impl CheckoutCompensationService {
             .order_service
             .get_order_with_locale_fallback(tenant_id, order_id, PLATFORM_FALLBACK_LOCALE, None)
             .await?;
-        let source_operation = order
-            .metadata
-            .get("checkout")
-            .and_then(|checkout| checkout.get("operation_id"))
-            .and_then(serde_json::Value::as_str)
-            .and_then(|value| Uuid::parse_str(value).ok());
-        if source_operation != Some(operation.id) {
+        if operation.order_id.is_some() && operation.order_id != Some(order.id) {
             return Err(CheckoutCompensationError::Conflict(format!(
-                "order {order_id} is not owned by checkout operation {}",
-                operation.id
+                "order {} does not match checkout operation {} checkpoint",
+                order.id, operation.id
             )));
         }
 
@@ -443,41 +501,23 @@ impl CheckoutCompensationService {
     }
 }
 
-async fn find_order_id_by_operation<C>(
-    conn: &C,
+fn validate_compensation_identity(
     tenant_id: Uuid,
-    operation_id: Uuid,
-) -> Result<Option<Uuid>, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    let sql = match conn.get_database_backend() {
-        DbBackend::Postgres => {
-            "SELECT id FROM orders WHERE tenant_id = ? AND metadata #>> '{checkout,operation_id}' = ? LIMIT 2"
-        }
-        DbBackend::Sqlite => {
-            "SELECT id FROM orders WHERE tenant_id = ? AND json_extract(metadata, '$.checkout.operation_id') = ? LIMIT 2"
-        }
-        DbBackend::MySql => {
-            "SELECT id FROM orders WHERE tenant_id = ? AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id')) = ? LIMIT 2"
-        }
-    };
-    let rows = conn
-        .query_all(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            sql,
-            vec![tenant_id.into(), operation_id.to_string().into()],
-        ))
-        .await?;
-    if rows.len() > 1 {
-        return Err(sea_orm::DbErr::Custom(format!(
-            "multiple orders are bound to checkout operation {operation_id}"
+    operation: &checkout_operation::Model,
+    identity: &CheckoutOrderIdentitySnapshot,
+) -> CheckoutCompensationResult<()> {
+    if identity.tenant_id != tenant_id
+        || identity.checkout_operation_id != operation.id
+        || identity.source_cart_id.is_some()
+            && identity.source_cart_id != Some(operation.cart_id)
+        || operation.order_id.is_some() && operation.order_id != Some(identity.order_id)
+    {
+        return Err(CheckoutCompensationError::Conflict(format!(
+            "typed order identity does not match checkout operation {}",
+            operation.id
         )));
     }
-    rows.into_iter()
-        .next()
-        .map(|row| row.try_get("", "id"))
-        .transpose()
+    Ok(())
 }
 
 fn inventory_context(
@@ -525,6 +565,31 @@ fn cart_context(
     }
 }
 
+fn order_identity_context(
+    tenant_id: Uuid,
+    operation: &checkout_operation::Model,
+    deadline: Duration,
+    action: &str,
+    write: bool,
+) -> PortContext {
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("rustok-commerce.checkout-compensation"),
+        PLATFORM_FALLBACK_LOCALE,
+        format!("checkout:{}:compensation:order-identity:{action}", operation.id),
+    )
+    .with_causation_id(operation.id.to_string())
+    .with_deadline(deadline);
+    if write {
+        context.with_idempotency_key(format!(
+            "checkout:{}:compensation:order-identity:{action}",
+            operation.id
+        ))
+    } else {
+        context
+    }
+}
+
 fn boundary_error(stage: &'static str, error: PortError) -> CheckoutCompensationError {
     CheckoutCompensationError::Boundary {
         stage,
@@ -549,7 +614,6 @@ fn compensation_error_code(error: &CheckoutCompensationError) -> &'static str {
             "checkout.compensation_inventory_failed"
         }
         CheckoutCompensationError::Operation(_)
-        | CheckoutCompensationError::Database(_)
         | CheckoutCompensationError::Conflict(_)
         | CheckoutCompensationError::CompensationAndJournal { .. } => {
             "checkout.compensation_failed"
