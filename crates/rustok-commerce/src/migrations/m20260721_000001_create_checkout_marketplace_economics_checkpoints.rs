@@ -123,13 +123,19 @@ impl MigrationTrait for Migration {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => install_postgres_guards(manager).await?,
             DatabaseBackend::Sqlite => install_sqlite_guards(manager).await?,
-            _ => {}
+            DatabaseBackend::MySql => install_mysql_guards(manager).await?,
         }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        match manager.get_database_backend() {
+            DatabaseBackend::Postgres => uninstall_postgres_guards(manager).await?,
+            DatabaseBackend::Sqlite => {}
+            DatabaseBackend::MySql => uninstall_mysql_guards(manager).await?,
+        }
+
         manager
             .drop_table(
                 Table::drop()
@@ -171,20 +177,7 @@ async fn install_postgres_guards(manager: &SchemaManager<'_>) -> Result<(), DbEr
                 operation_tenant UUID;
                 operation_order UUID;
             BEGIN
-                IF TG_OP = 'UPDATE' AND (
-                    NEW.checkout_operation_id IS DISTINCT FROM OLD.checkout_operation_id
-                    OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
-                    OR NEW.order_id IS DISTINCT FROM OLD.order_id
-                    OR NEW.plan_hash IS DISTINCT FROM OLD.plan_hash
-                    OR NEW.currency_code IS DISTINCT FROM OLD.currency_code
-                    OR NEW.allocation_count IS DISTINCT FROM OLD.allocation_count
-                    OR NEW.allocation_total_amount IS DISTINCT FROM OLD.allocation_total_amount
-                    OR NEW.allocation_set_hash IS DISTINCT FROM OLD.allocation_set_hash
-                    OR NEW.assessment_count IS DISTINCT FROM OLD.assessment_count
-                    OR NEW.commission_total_amount IS DISTINCT FROM OLD.commission_total_amount
-                    OR NEW.seller_proceeds_total_amount IS DISTINCT FROM OLD.seller_proceeds_total_amount
-                    OR NEW.assessment_set_hash IS DISTINCT FROM OLD.assessment_set_hash
-                ) THEN
+                IF TG_OP = 'UPDATE' THEN
                     RAISE EXCEPTION 'checkout marketplace economics checkpoint is immutable'
                         USING ERRCODE = '23514';
                 END IF;
@@ -211,6 +204,20 @@ async fn install_postgres_guards(manager: &SchemaManager<'_>) -> Result<(), DbEr
             BEFORE INSERT OR UPDATE ON checkout_marketplace_economics_checkpoints
             FOR EACH ROW
             EXECUTE FUNCTION enforce_checkout_marketplace_economics_integrity();
+            "#,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn uninstall_postgres_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+            DROP TRIGGER IF EXISTS checkout_marketplace_economics_integrity_guard
+                ON checkout_marketplace_economics_checkpoints;
+            DROP FUNCTION IF EXISTS enforce_checkout_marketplace_economics_integrity();
             "#,
         )
         .await?;
@@ -255,6 +262,113 @@ async fn install_sqlite_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr>
                 SELECT RAISE(ABORT, 'checkout marketplace economics checkpoint is immutable');
             END;
             "#,
+        )
+        .await?;
+    Ok(())
+}
+
+async fn install_mysql_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+            ALTER TABLE checkout_marketplace_economics_checkpoints
+                ADD CONSTRAINT ck_checkout_marketplace_economics_identity
+                CHECK (
+                    trim(plan_hash) <> ''
+                    AND currency_code = upper(currency_code)
+                    AND char_length(currency_code) = 3
+                    AND trim(allocation_set_hash) <> ''
+                    AND trim(assessment_set_hash) <> ''
+                ),
+                ADD CONSTRAINT ck_checkout_marketplace_economics_amounts
+                CHECK (
+                    allocation_count > 0
+                    AND assessment_count = allocation_count
+                    AND allocation_total_amount >= 0
+                    AND commission_total_amount >= 0
+                    AND seller_proceeds_total_amount >= 0
+                    AND commission_total_amount + seller_proceeds_total_amount = allocation_total_amount
+                )
+            "#,
+        )
+        .await?;
+
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+            CREATE TRIGGER checkout_marketplace_economics_guard_insert
+            BEFORE INSERT ON checkout_marketplace_economics_checkpoints
+            FOR EACH ROW
+            BEGIN
+                IF trim(NEW.plan_hash) = ''
+                    OR NEW.currency_code <> upper(NEW.currency_code)
+                    OR char_length(NEW.currency_code) <> 3
+                    OR trim(NEW.allocation_set_hash) = ''
+                    OR trim(NEW.assessment_set_hash) = ''
+                THEN
+                    SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'invalid checkout marketplace economics identity';
+                END IF;
+
+                IF NEW.allocation_count <= 0
+                    OR NEW.assessment_count <> NEW.allocation_count
+                    OR NEW.allocation_total_amount < 0
+                    OR NEW.commission_total_amount < 0
+                    OR NEW.seller_proceeds_total_amount < 0
+                    OR NEW.commission_total_amount + NEW.seller_proceeds_total_amount
+                        <> NEW.allocation_total_amount
+                THEN
+                    SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'invalid checkout marketplace economics amounts';
+                END IF;
+
+                IF (
+                    SELECT COUNT(*)
+                    FROM checkout_operations
+                    WHERE id = NEW.checkout_operation_id
+                      AND tenant_id = NEW.tenant_id
+                      AND order_id = NEW.order_id
+                ) <> 1
+                THEN
+                    SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'checkout marketplace economics operation identity mismatch';
+                END IF;
+            END
+            "#,
+        )
+        .await?;
+
+    manager
+        .get_connection()
+        .execute_unprepared(
+            r#"
+            CREATE TRIGGER checkout_marketplace_economics_guard_update
+            BEFORE UPDATE ON checkout_marketplace_economics_checkpoints
+            FOR EACH ROW
+            BEGIN
+                SIGNAL SQLSTATE '45000'
+                    SET MESSAGE_TEXT = 'checkout marketplace economics checkpoint is immutable';
+            END
+            "#,
+        )
+        .await?;
+
+    Ok(())
+}
+
+async fn uninstall_mysql_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(
+            "DROP TRIGGER IF EXISTS checkout_marketplace_economics_guard_insert",
+        )
+        .await?;
+    manager
+        .get_connection()
+        .execute_unprepared(
+            "DROP TRIGGER IF EXISTS checkout_marketplace_economics_guard_update",
         )
         .await?;
     Ok(())
