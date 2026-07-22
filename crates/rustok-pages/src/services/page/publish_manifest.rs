@@ -103,7 +103,7 @@ where
             artifact_id: Set(artifact_id),
             artifact_hash: Set(artifact_hash),
             materialization_hash: Set(materialization_hash),
-            created_at: Set(operation.created_at),
+            created_at: Set(operation.created_at.clone()),
         }
         .insert(db)
         .await?;
