@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use rustok_api::{normalize_locale_tag, Action, Resource};
 use rustok_core::SecurityContext;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -139,6 +139,15 @@ impl ForumQuoteCommandService {
                     .one(&self.db)
                     .await?
                     .ok_or(ForumError::TopicNotFound(topic_id))?;
+                ensure_not_deleted(
+                    &self.db,
+                    "forum_topics",
+                    "id",
+                    tenant_id,
+                    topic_id,
+                    ForumError::TopicDeleted,
+                )
+                .await?;
                 let translation = forum_topic_translation::Entity::find()
                     .filter(forum_topic_translation::Column::TenantId.eq(tenant_id))
                     .filter(forum_topic_translation::Column::TopicId.eq(topic_id))
@@ -154,6 +163,15 @@ impl ForumQuoteCommandService {
                     .one(&self.db)
                     .await?
                     .ok_or(ForumError::ReplyNotFound(reply_id))?;
+                ensure_not_deleted(
+                    &self.db,
+                    "forum_replies",
+                    "id",
+                    tenant_id,
+                    reply_id,
+                    ForumError::ReplyDeleted,
+                )
+                .await?;
                 let body = forum_reply_body::Entity::find()
                     .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
                     .filter(forum_reply_body::Column::ReplyId.eq(reply_id))
@@ -165,6 +183,28 @@ impl ForumQuoteCommandService {
             }
         }
     }
+}
+
+async fn ensure_not_deleted(
+    db: &DatabaseConnection,
+    table: &'static str,
+    id_column: &'static str,
+    tenant_id: Uuid,
+    source_id: Uuid,
+    deleted_error: ForumError,
+) -> ForumResult<()> {
+    let statement = Statement::from_string(
+        db.get_database_backend(),
+        format!(
+            "SELECT 1 AS active FROM {table} \
+             WHERE tenant_id = '{tenant_id}' AND {id_column} = '{source_id}' \
+               AND deleted_at IS NULL"
+        ),
+    );
+    if db.query_one(statement).await?.is_none() {
+        return Err(deleted_error);
+    }
+    Ok(())
 }
 
 async fn load_snapshot_in_tx(
