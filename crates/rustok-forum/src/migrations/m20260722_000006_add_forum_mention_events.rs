@@ -52,6 +52,9 @@ const EVENT_TYPES_WITHOUT_MENTIONS: &str = r#"
         'forum.topic.tags_changed'
 "#;
 
+const MENTION_EVENT_FILTER: &str =
+    "event_type NOT IN ('forum.mention.user_added', 'forum.mention.audience_added')";
+
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -65,15 +68,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "DELETE FROM forum_domain_events WHERE event_type IN (\
-                 'forum.mention.user_added', 'forum.mention.audience_added')",
-            )
-            .await?;
         match manager.get_database_backend() {
-            DatabaseBackend::Postgres => update_postgres_constraint(manager, false).await,
+            DatabaseBackend::Postgres => rollback_postgres(manager).await,
             DatabaseBackend::Sqlite => rebuild_sqlite_journal(manager, false).await,
             backend => Err(DbErr::Custom(format!(
                 "rustok-forum mention event rollback does not support {backend:?}"
@@ -106,6 +102,27 @@ ALTER TABLE forum_domain_events
     Ok(())
 }
 
+async fn rollback_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .get_connection()
+        .execute_unprepared(&format!(
+            r#"
+DROP TRIGGER IF EXISTS forum_domain_events_immutable_delete ON forum_domain_events;
+DELETE FROM forum_domain_events WHERE {MENTION_EVENT_FILTER} IS FALSE;
+ALTER TABLE forum_domain_events
+    DROP CONSTRAINT IF EXISTS chk_forum_domain_events_event_type;
+ALTER TABLE forum_domain_events
+    ADD CONSTRAINT chk_forum_domain_events_event_type
+    CHECK (event_type IN ({EVENT_TYPES_WITHOUT_MENTIONS}));
+CREATE TRIGGER forum_domain_events_immutable_delete
+BEFORE DELETE ON forum_domain_events
+FOR EACH ROW EXECUTE FUNCTION forum_reject_domain_event_mutation();
+"#
+        ))
+        .await?;
+    Ok(())
+}
+
 async fn rebuild_sqlite_journal(
     manager: &SchemaManager<'_>,
     include_mentions: bool,
@@ -114,6 +131,11 @@ async fn rebuild_sqlite_journal(
         EVENT_TYPES_WITH_MENTIONS
     } else {
         EVENT_TYPES_WITHOUT_MENTIONS
+    };
+    let copy_filter = if include_mentions {
+        String::new()
+    } else {
+        format!("WHERE {MENTION_EVENT_FILTER}")
     };
     let connection = manager.get_connection();
 
@@ -148,7 +170,7 @@ CREATE TABLE forum_domain_events_next (
         ))
         .await?;
     connection
-        .execute_unprepared(
+        .execute_unprepared(&format!(
             r#"
 INSERT INTO forum_domain_events_next (
     sequence_no, event_id, tenant_id, aggregate_type, aggregate_id,
@@ -158,9 +180,10 @@ SELECT
     sequence_no, event_id, tenant_id, aggregate_type, aggregate_id,
     event_type, schema_version, actor_id, payload, created_at
 FROM forum_domain_events
+{copy_filter}
 ORDER BY sequence_no
-"#,
-        )
+"#
+        ))
         .await?;
     connection
         .execute_unprepared("DROP TABLE forum_domain_events")
