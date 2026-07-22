@@ -1,19 +1,18 @@
 use std::collections::BTreeMap;
 
+use fly::ProjectHash;
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use fly::ProjectHash;
-use rustok_graphql::{execute as execute_graphql, GraphqlHttpError, GraphqlRequest};
-use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use rustok_page_builder::PageBuilderReviewedPublishRuntime;
-use rustok_page_builder_admin::{
-    load_publish_scenario_selection, resolve_publish_scenario,
-};
+use rustok_page_builder::runtime_scenario_release::RuntimeScenarioReleaseBaseline;
+use rustok_page_builder_admin::{load_publish_scenario_selection, resolve_publish_scenario};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::model::{
     CreatePageDraft, PageDetail, PageList, PageMutationResult, PublishPageReceipt,
+    RollbackPageReceipt,
 };
 
 pub type ApiError = GraphqlHttpError;
@@ -25,9 +24,11 @@ const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInp
 const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt } } }";
 const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt } } }";
 const PUBLISH_PAGE_MUTATION: &str = "mutation PublishPage($id: UUID!, $input: PublishGqlPageInput!) { publishPage(id: $id, input: $input) { operationId pageId version idempotencyKey reviewHash sanitizedSetHash artifactSetHash replayed publishedAt } }";
+const ROLLBACK_PAGE_MUTATION: &str = "mutation RollbackPage($id: UUID!, $input: RollbackGqlPageInput!) { rollbackPage(id: $id, input: $input) { operationId pageId version idempotencyKey targetPublishOperationId sourceArtifactSetHash targetArtifactSetHash replayed rolledBackAt } }";
 const UNPUBLISH_PAGE_MUTATION: &str = "mutation UnpublishPage($id: UUID!) { unpublishPage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const DELETE_PAGE_MUTATION: &str = "mutation DeletePage($id: UUID!) { deletePage(id: $id) }";
 const PUBLISH_IDEMPOTENCY_FORMAT: &str = "pages_admin_publish_v1";
+const ROLLBACK_IDEMPOTENCY_FORMAT: &str = "pages_admin_rollback_v1";
 
 #[derive(Debug, Deserialize)]
 struct PagesResponse {
@@ -72,6 +73,12 @@ struct SavePageDocumentResponse {
 struct PublishPageResponse {
     #[serde(rename = "publishPage")]
     publish_page: PublishPageReceipt,
+}
+
+#[derive(Debug, Deserialize)]
+struct RollbackPageResponse {
+    #[serde(rename = "rollbackPage")]
+    rollback_page: RollbackPageReceipt,
 }
 
 #[derive(Debug, Deserialize)]
@@ -151,6 +158,14 @@ struct PublishPageInput {
     #[serde(rename = "idempotencyKey")]
     idempotency_key: String,
     runtime: ReviewedPagePublishRuntimeInput,
+}
+
+#[derive(Debug, Serialize)]
+struct RollbackPageInput {
+    #[serde(rename = "expectedVersion")]
+    expected_version: i32,
+    #[serde(rename = "idempotencyKey")]
+    idempotency_key: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -340,6 +355,7 @@ pub async fn create_page(
     Ok(response.create_page)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn patch_page_metadata(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -414,12 +430,8 @@ pub async fn publish_page(
     let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
-    let revisions = fetch_page_body_revisions(
-        token.clone(),
-        tenant_slug.clone(),
-        &page,
-    )
-    .await?;
+    let revisions =
+        fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
     let baseline = fetch_page_builder_scenario_baseline(
         token.clone(),
         tenant_slug.clone(),
@@ -435,15 +447,13 @@ pub async fn publish_page(
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
     let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
-    let reviewed = PageBuilderReviewedPublishRuntime::new(
-        scenario.id.clone(),
-        scenario.context.clone(),
-    )
-    .map_err(|error| {
-        GraphqlHttpError::Graphql(format!(
-            "Unable to prepare reviewed Page Builder runtime: {error}"
-        ))
-    })?;
+    let reviewed =
+        PageBuilderReviewedPublishRuntime::new(scenario.id.clone(), scenario.context.clone())
+            .map_err(|error| {
+                GraphqlHttpError::Graphql(format!(
+                    "Unable to prepare reviewed Page Builder runtime: {error}"
+                ))
+            })?;
     let expected_body_revisions = revisions
         .iter()
         .map(|(locale, revision)| PageBodyRevisionInput {
@@ -474,6 +484,36 @@ pub async fn publish_page(
     )
     .await?;
     Ok(response.publish_page)
+}
+
+pub async fn rollback_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<RollbackPageReceipt, ApiError> {
+    let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
+        .await?
+        .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
+    if page.status != "published" {
+        return Err(GraphqlHttpError::Graphql(
+            "Only a currently published page can be rolled back".to_string(),
+        ));
+    }
+    let idempotency_key = rollback_idempotency_key(&page)?;
+    let response: RollbackPageResponse = request(
+        ROLLBACK_PAGE_MUTATION,
+        PageWriteVariables {
+            id,
+            input: RollbackPageInput {
+                expected_version: page.version,
+                idempotency_key,
+            },
+        },
+        token,
+        tenant_slug,
+    )
+    .await?;
+    Ok(response.rollback_page)
 }
 
 async fn fetch_page_body_revisions(
@@ -524,6 +564,23 @@ fn publish_idempotency_key(
     })?;
     Ok(format!(
         "pages-admin-v1:{}:{}:{}",
+        page.id,
+        page.version,
+        ProjectHash::from_bytes(&bytes).hex()
+    ))
+}
+
+fn rollback_idempotency_key(page: &PageDetail) -> Result<String, ApiError> {
+    let bytes = serde_json::to_vec(&(
+        ROLLBACK_IDEMPOTENCY_FORMAT,
+        page.id.as_str(),
+        page.version,
+    ))
+    .map_err(|error| {
+        GraphqlHttpError::Graphql(format!("Unable to encode page rollback identity: {error}"))
+    })?;
+    Ok(format!(
+        "pages-rollback-v1:{}:{}:{}",
         page.id,
         page.version,
         ProjectHash::from_bytes(&bytes).hex()
