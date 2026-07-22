@@ -1,0 +1,42 @@
+[module]
+slug = "navigation"
+name = "Navigation"
+version = "0.1.0"
+description = "Localized navigation menus and current-channel slot bindings"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "storefront_only"
+
+[marketplace]
+category = "content"
+tags = ["navigation", "menus", "storefront"]
+
+[dependencies]
+channel = { version_req = ">=0.1.0" }
+
+[crate]
+entry_type = "NavigationModule"
+
+[provides.graphql]
+query = "graphql::NavigationQuery"
+mutation = "graphql::NavigationMutation"
+
+[provides.http]
+axum_router = "http::axum_router"
+
+[provides.storefront_ui]
+leptos_crate = "rustok-navigation-storefront"
+slot = "footer_navigation"
+route_segment = "navigation"
+page_title = "Navigation"
+
+[[provides.storefront_ui.components]]
+id = "navigation-header"
+component = "NavigationHeaderMenu"
+slot = "header_navigation"
+order = 100
+
+[provides.storefront_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "storefront/locales"

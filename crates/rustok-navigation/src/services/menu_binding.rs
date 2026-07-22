@@ -2,7 +2,6 @@ use chrono::Utc;
 use rustok_api::{Action, Resource};
 use rustok_channel::{ChannelError, ChannelService};
 use rustok_core::SecurityContext;
-use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
     IntoActiveModel, QueryFilter, TransactionTrait,
@@ -11,18 +10,17 @@ use uuid::Uuid;
 
 use crate::dto::{ActiveMenuBindingResponse, MenuLocation, MenuResponse};
 use crate::entities::{menu, menu_binding};
-use crate::error::{PagesError, PagesResult};
+use crate::error::{NavigationError, NavigationResult};
 use crate::services::MenuService;
 use crate::services::rbac::enforce_scope;
 
 pub struct MenuBindingService {
     db: DatabaseConnection,
-    event_bus: TransactionalEventBus,
 }
 
 impl MenuBindingService {
-    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
     }
 
     pub async fn bind(
@@ -32,20 +30,23 @@ impl MenuBindingService {
         channel_id: Uuid,
         location: MenuLocation,
         menu_id: Uuid,
-    ) -> PagesResult<ActiveMenuBindingResponse> {
-        enforce_scope(&security, Resource::Pages, Action::Update)?;
+    ) -> NavigationResult<ActiveMenuBindingResponse> {
+        enforce_scope(&security, Resource::Navigation, Action::Update)?;
         self.ensure_channel_scope(tenant_id, channel_id).await?;
 
-        let menu_exists = menu::Entity::find_by_id(menu_id)
+        let menu = menu::Entity::find_by_id(menu_id)
             .filter(menu::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .is_some();
-        if !menu_exists {
-            return Err(PagesError::menu_not_found(menu_id));
+            .ok_or_else(|| NavigationError::menu_not_found(menu_id))?;
+        let storage_location = menu_location_to_storage(location);
+        if menu.location != storage_location {
+            return Err(NavigationError::validation(format!(
+                "Menu `{menu_id}` belongs to location `{}` and cannot be bound to `{storage_location}`",
+                menu.location,
+            )));
         }
 
-        let storage_location = menu_location_to_storage(location);
         let now = Utc::now();
         let txn = self.db.begin().await?;
         let existing = menu_binding::Entity::find()
@@ -84,8 +85,8 @@ impl MenuBindingService {
         security: SecurityContext,
         channel_id: Uuid,
         location: MenuLocation,
-    ) -> PagesResult<Option<ActiveMenuBindingResponse>> {
-        enforce_scope(&security, Resource::Pages, Action::Read)?;
+    ) -> NavigationResult<Option<ActiveMenuBindingResponse>> {
+        enforce_scope(&security, Resource::Navigation, Action::Read)?;
         let model = menu_binding::Entity::find()
             .filter(menu_binding::Column::TenantId.eq(tenant_id))
             .filter(menu_binding::Column::ChannelId.eq(channel_id))
@@ -102,7 +103,7 @@ impl MenuBindingService {
         channel_id: Uuid,
         location: MenuLocation,
         effective_locale: &str,
-    ) -> PagesResult<Option<MenuResponse>> {
+    ) -> NavigationResult<Option<MenuResponse>> {
         let Some(binding) = self
             .get_binding(tenant_id, security.clone(), channel_id, location)
             .await?
@@ -110,38 +111,38 @@ impl MenuBindingService {
             return Ok(None);
         };
 
-        let mut menu = MenuService::new(self.db.clone(), self.event_bus.clone())
+        let mut menu = MenuService::new(self.db.clone())
             .get(tenant_id, security, binding.menu_id, effective_locale)
             .await?;
         menu.location = binding.location;
         Ok(Some(menu))
     }
 
-    async fn ensure_channel_scope(&self, tenant_id: Uuid, channel_id: Uuid) -> PagesResult<()> {
+    async fn ensure_channel_scope(&self, tenant_id: Uuid, channel_id: Uuid) -> NavigationResult<()> {
         let channel = match ChannelService::new(self.db.clone())
             .get_channel(channel_id)
             .await
         {
             Ok(channel) => channel,
             Err(ChannelError::NotFound(_)) => {
-                return Err(PagesError::validation(format!(
+                return Err(NavigationError::validation(format!(
                     "Channel `{channel_id}` does not exist for active menu binding"
                 )));
             }
-            Err(ChannelError::Database(error)) => return Err(PagesError::Database(error)),
+            Err(ChannelError::Database(error)) => return Err(NavigationError::Database(error)),
             Err(error) => {
-                return Err(PagesError::validation(format!(
+                return Err(NavigationError::validation(format!(
                     "Unable to validate channel `{channel_id}` for active menu binding: {error}"
                 )));
             }
         };
         if channel.tenant_id != tenant_id {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Channel `{channel_id}` does not belong to tenant `{tenant_id}`"
             )));
         }
         if !channel.is_active {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Channel `{channel_id}` is inactive"
             )));
         }
@@ -149,7 +150,7 @@ impl MenuBindingService {
     }
 }
 
-fn binding_response(model: menu_binding::Model) -> PagesResult<ActiveMenuBindingResponse> {
+fn binding_response(model: menu_binding::Model) -> NavigationResult<ActiveMenuBindingResponse> {
     Ok(ActiveMenuBindingResponse {
         id: model.id,
         tenant_id: model.tenant_id,
@@ -168,13 +169,13 @@ pub(crate) fn menu_location_to_storage(location: MenuLocation) -> &'static str {
     }
 }
 
-fn menu_location_from_storage(value: &str) -> PagesResult<MenuLocation> {
+fn menu_location_from_storage(value: &str) -> NavigationResult<MenuLocation> {
     match value {
         "header" => Ok(MenuLocation::Header),
         "footer" => Ok(MenuLocation::Footer),
         "sidebar" => Ok(MenuLocation::Sidebar),
         "mobile" => Ok(MenuLocation::Mobile),
-        _ => Err(PagesError::validation(format!(
+        _ => Err(NavigationError::validation(format!(
             "Unsupported active menu location: {value}"
         ))),
     }

@@ -1,11 +1,11 @@
 use leptos::prelude::*;
 
 use super::ApiError;
-use crate::model::{StorefrontMenu, StorefrontMenuLocation, StorefrontPagesData};
+use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
 use crate::model::{
-    PageBody, PageDetail, PageList, PageListItem, PageTranslation, StorefrontMenuItem,
+    PageBody, PageDetail, PageList, PageListItem, PageTranslation,
 };
 
 #[cfg(feature = "ssr")]
@@ -21,125 +21,6 @@ pub async fn fetch_storefront_pages_server(
     storefront_pages_native(tenant_slug, page_slug, locale)
         .await
         .map_err(ApiError::from)
-}
-
-pub async fn fetch_active_menu_server(
-    tenant_slug: Option<String>,
-    location: StorefrontMenuLocation,
-    locale: Option<String>,
-) -> Result<Option<StorefrontMenu>, ApiError> {
-    active_menu_native(tenant_slug, location, locale)
-        .await
-        .map_err(ApiError::from)
-}
-
-#[server(prefix = "/api/fn", endpoint = "pages/active-menu")]
-async fn active_menu_native(
-    tenant_slug: Option<String>,
-    location: StorefrontMenuLocation,
-    locale: Option<String>,
-) -> Result<Option<StorefrontMenu>, ServerFnError> {
-    #[cfg(feature = "ssr")]
-    {
-        use leptos::prelude::expect_context;
-        use rustok_api::HostRuntimeContext;
-        use rustok_channel::ChannelService;
-        use rustok_core::SecurityContext;
-        use rustok_outbox::TransactionalEventBus;
-        use rustok_pages::{
-            MENU_LOCALE_NOT_FOUND_ERROR_CODE, MenuBindingService, MenuLocation, PagesError,
-        };
-        use rustok_tenant::TenantService;
-
-        let runtime_ctx = expect_context::<HostRuntimeContext>();
-        let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
-            .await
-            .ok();
-        let Some(channel_id) = request_context.as_ref().and_then(|ctx| ctx.channel_id) else {
-            return Ok(None);
-        };
-        let enabled = ChannelService::new(runtime_ctx.db_clone())
-            .is_module_enabled(channel_id, MODULE_SLUG)
-            .await
-            .map_err(ServerFnError::new)?;
-        if !enabled {
-            return Ok(None);
-        }
-
-        let tenant_context = leptos_axum::extract::<rustok_api::TenantContext>()
-            .await
-            .ok();
-        let (tenant_id, fallback_locale) = if let Some(tenant) = tenant_context.as_ref() {
-            (tenant.id, tenant.default_locale.clone())
-        } else {
-            let slug = tenant_slug
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    ServerFnError::new(
-                        "pages/active-menu requires tenant context or tenant slug",
-                    )
-                })?;
-            let tenant = TenantService::new(runtime_ctx.db_clone())
-                .get_tenant_by_slug(slug)
-                .await
-                .map_err(ServerFnError::new)?;
-            let fallback = request_context
-                .as_ref()
-                .map(|ctx| ctx.locale.clone())
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
-            (tenant.id, fallback)
-        };
-        let requested_locale = locale
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .or_else(|| request_context.as_ref().map(|ctx| ctx.locale.clone()))
-            .unwrap_or(fallback_locale);
-        let event_bus = runtime_ctx
-            .shared_get::<TransactionalEventBus>()
-            .ok_or_else(|| {
-                ServerFnError::new(
-                    "pages/active-menu requires TransactionalEventBus in host runtime context",
-                )
-            })?;
-        let location = match location {
-            StorefrontMenuLocation::Header => MenuLocation::Header,
-            StorefrontMenuLocation::Footer => MenuLocation::Footer,
-            StorefrontMenuLocation::Sidebar => MenuLocation::Sidebar,
-            StorefrontMenuLocation::Mobile => MenuLocation::Mobile,
-        };
-
-        match MenuBindingService::new(runtime_ctx.db_clone(), event_bus)
-            .get_active(
-                tenant_id,
-                SecurityContext::public_read(),
-                channel_id,
-                location,
-                requested_locale.as_str(),
-            )
-            .await
-        {
-            Ok(menu) => Ok(menu.map(map_storefront_menu)),
-            Err(PagesError::MenuNotFound(_)) => Ok(None),
-            Err(PagesError::Rich(rich))
-                if rich.error_code.as_deref() == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
-            {
-                Ok(None)
-            }
-            Err(error) => Err(ServerFnError::new(error)),
-        }
-    }
-    #[cfg(not(feature = "ssr"))]
-    {
-        let _ = (tenant_slug, location, locale);
-        Err(ServerFnError::new(
-            "pages/active-menu requires the `ssr` feature",
-        ))
-    }
 }
 
 #[server(prefix = "/api/fn", endpoint = "pages/storefront-data")]
@@ -389,35 +270,8 @@ fn storefront_cache_variant(
 }
 
 #[cfg(feature = "ssr")]
-fn map_storefront_menu(menu: rustok_pages::MenuResponse) -> StorefrontMenu {
-    StorefrontMenu {
-        id: menu.id.to_string(),
-        effective_locale: menu.effective_locale,
-        name: menu.name,
-        location: match menu.location {
-            rustok_pages::MenuLocation::Header => StorefrontMenuLocation::Header,
-            rustok_pages::MenuLocation::Footer => StorefrontMenuLocation::Footer,
-            rustok_pages::MenuLocation::Sidebar => StorefrontMenuLocation::Sidebar,
-            rustok_pages::MenuLocation::Mobile => StorefrontMenuLocation::Mobile,
-        },
-        items: menu.items.into_iter().map(map_storefront_menu_item).collect(),
-    }
-}
 
 #[cfg(feature = "ssr")]
-fn map_storefront_menu_item(item: rustok_pages::MenuItemResponse) -> StorefrontMenuItem {
-    StorefrontMenuItem {
-        id: item.id.to_string(),
-        title: item.title,
-        url: item.url,
-        icon: item.icon,
-        children: item
-            .children
-            .into_iter()
-            .map(map_storefront_menu_item)
-            .collect(),
-    }
-}
 
 #[cfg(feature = "ssr")]
 fn published_artifact_page_body(

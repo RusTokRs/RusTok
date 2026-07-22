@@ -6,7 +6,7 @@ use rustok_ui_transport::{UiTransportError, UiTransportPath, execute_selected_tr
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-use crate::model::{StorefrontMenu, StorefrontMenuLocation, StorefrontPagesData};
+use crate::model::StorefrontPagesData;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApiError {
@@ -65,25 +65,6 @@ pub async fn fetch_pages(
     .await
 }
 
-pub async fn fetch_active_menu(
-    location: StorefrontMenuLocation,
-    locale: Option<String>,
-) -> Result<Option<StorefrontMenu>, PagesTransportError> {
-    let native_locale = locale.clone();
-    execute_selected_transport(
-        "pages",
-        selected_transport_path(),
-        move || {
-            native_server_adapter::fetch_active_menu_server(
-                configured_tenant_slug(),
-                location,
-                native_locale,
-            )
-        },
-        move || graphql_adapter::fetch_active_menu(location, locale),
-    )
-    .await
-}
 
 fn configured_tenant_slug() -> Option<String> {
     [

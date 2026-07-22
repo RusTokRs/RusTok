@@ -172,3 +172,5 @@ with `[provides.admin_ui]`; the manifest remains the canonical source for mounte
 - `rustok-email`: `apps/next-admin/packages/email/`
 - `rustok-cache`: `apps/next-admin/packages/cache/`
 - `rustok-events`: `apps/next-admin/packages/events/`
+
+- `rustok-navigation`: [storefront README](../../crates/rustok-navigation/storefront/README.md)

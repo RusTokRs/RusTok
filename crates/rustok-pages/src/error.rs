@@ -14,8 +14,6 @@ pub enum PagesError {
     #[error("Page not found: {0}")]
     PageNotFound(Uuid),
 
-    #[error("Menu not found: {0}")]
-    MenuNotFound(Uuid),
 
     #[error("Duplicate slug: {slug} already exists for locale {locale}")]
     DuplicateSlug { slug: String, locale: String },
@@ -161,12 +159,6 @@ impl From<PagesError> for RichError {
                     .with_field("page_id", id.to_string())
                     .with_error_code("PAGE_NOT_FOUND")
             }
-            PagesError::MenuNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Menu {id} not found"))
-                    .with_user_message("The requested menu does not exist")
-                    .with_field("menu_id", id.to_string())
-                    .with_error_code("MENU_NOT_FOUND")
-            }
             PagesError::DuplicateSlug { slug, locale } => RichError::new(
                 ErrorKind::Conflict,
                 format!("Slug '{slug}' already exists for locale '{locale}'"),
@@ -282,9 +274,6 @@ impl PagesError {
         Self::PageNotFound(page_id)
     }
 
-    pub fn menu_not_found(menu_id: Uuid) -> Self {
-        Self::MenuNotFound(menu_id)
-    }
 
     pub fn duplicate_slug(slug: impl Into<String>, locale: impl Into<String>) -> Self {
         Self::DuplicateSlug {

@@ -1,6 +1,6 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
-    Action, AuthContext, Permission, RequestContext, Resource, TenantContext,
+    Action, AuthContext, Permission, Resource, TenantContext,
     graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
     has_any_effective_permission,
 };
@@ -9,8 +9,7 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuBindingService,
-    MenuItemInput, MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
@@ -26,7 +25,6 @@ const MODULE_SLUG: &str = "pages";
 const PAGE_METADATA_VERSION_CONFLICT: &str = "PAGE_METADATA_VERSION_CONFLICT";
 const PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND: &str =
     "PAGE_CREATE_PUBLISH_REQUIRES_REVIEWED_COMMAND";
-const CHANNEL_CONTEXT_REQUIRED: &str = "CHANNEL_CONTEXT_REQUIRED";
 
 #[derive(Default)]
 pub struct PagesMutation;
@@ -72,66 +70,7 @@ impl PagesMutation {
         Ok(page.into())
     }
 
-    async fn create_menu(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateGqlMenuInput,
-        locale: Option<String>,
-        tenant_id: Option<Uuid>,
-    ) -> Result<GqlMenu> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_pages_permission(ctx, Permission::PAGES_CREATE)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
-        let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
 
-        MenuService::new(db.clone(), event_bus.clone())
-            .create(
-                tenant_id,
-                page_security(&auth),
-                &effective_locale,
-                CreateMenuInput {
-                    translations: input
-                        .translations
-                        .into_iter()
-                        .map(menu_translation_input)
-                        .collect(),
-                    location: menu_location_input(input.location),
-                    items: input.items.into_iter().map(menu_item_input).collect(),
-                },
-            )
-            .await
-            .map(Into::into)
-            .map_err(map_pages_error)
-    }
-
-    async fn bind_active_menu(
-        &self,
-        ctx: &Context<'_>,
-        input: BindGqlActiveMenuInput,
-    ) -> Result<GqlActiveMenuBinding> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_pages_permission(ctx, Permission::PAGES_UPDATE)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = mutation_tenant_id(tenant, &auth, None)?;
-        let channel_id = current_channel_id(ctx)?;
-
-        MenuBindingService::new(db.clone(), event_bus.clone())
-            .bind(
-                tenant_id,
-                page_security(&auth),
-                channel_id,
-                input.location.into(),
-                input.menu_id,
-            )
-            .await
-            .map(Into::into)
-            .map_err(map_pages_error)
-    }
 
     async fn patch_page_metadata(
         &self,
@@ -335,59 +274,6 @@ fn publish_page_input(input: PublishGqlPageInput) -> PublishPageInput {
     }
 }
 
-fn menu_translation_input(input: GqlMenuTranslationInput) -> MenuTranslationInput {
-    MenuTranslationInput {
-        locale: input.locale,
-        name: input.name,
-    }
-}
-
-fn menu_item_translation_input(input: GqlMenuItemTranslationInput) -> MenuItemTranslationInput {
-    MenuItemTranslationInput {
-        locale: input.locale,
-        title: input.title,
-    }
-}
-
-fn menu_item_input(input: GqlMenuItemInput) -> MenuItemInput {
-    MenuItemInput {
-        translations: input
-            .translations
-            .into_iter()
-            .map(menu_item_translation_input)
-            .collect(),
-        url: input.url,
-        page_id: input.page_id,
-        icon: input.icon,
-        position: input.position,
-        children: input
-            .children
-            .map(|children| children.into_iter().map(menu_item_input).collect()),
-    }
-}
-
-fn menu_location_input(input: GqlMenuLocation) -> MenuLocation {
-    match input {
-        GqlMenuLocation::Header => MenuLocation::Header,
-        GqlMenuLocation::Footer => MenuLocation::Footer,
-        GqlMenuLocation::Sidebar => MenuLocation::Sidebar,
-        GqlMenuLocation::Mobile => MenuLocation::Mobile,
-    }
-}
-
-fn current_channel_id(ctx: &Context<'_>) -> Result<Uuid> {
-    ctx.data_opt::<RequestContext>()
-        .and_then(|request_context| request_context.channel_id)
-        .ok_or_else(|| {
-            async_graphql::Error::new(
-                "Active menu binding requires a resolved current channel",
-            )
-            .extend_with(|_, extensions| {
-                extensions.set("code", CHANNEL_CONTEXT_REQUIRED);
-            })
-        })
-}
-
 fn create_publish_bypass_error() -> async_graphql::Error {
     async_graphql::Error::new(
         "Page creation cannot publish a Page Builder document; use publishPage with a reviewed runtime",
@@ -401,7 +287,6 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
     let code = match &error {
         PagesError::VersionConflict { .. } => PAGE_METADATA_VERSION_CONFLICT,
         PagesError::PageNotFound(_) => "PAGE_NOT_FOUND",
-        PagesError::MenuNotFound(_) => "MENU_NOT_FOUND",
         PagesError::DuplicateSlug { .. } => "DUPLICATE_SLUG",
         PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
         PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",

@@ -9,17 +9,15 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_api::{Action, Resource};
-use rustok_content::normalize_locale_code;
+use rustok_api::{Action, Resource, normalize_locale_tag};
 use rustok_core::{
     SecurityContext,
     error::{ErrorKind, RichError},
 };
-use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::*;
-use crate::entities::{menu, menu_item, menu_item_translation, menu_translation, page};
-use crate::error::{PagesError, PagesResult};
+use crate::entities::{menu, menu_item, menu_item_translation, menu_translation};
+use crate::error::{NavigationError, NavigationResult};
 use crate::services::rbac::enforce_scope;
 
 pub const MENU_LOCALE_NOT_FOUND_ERROR_CODE: &str = "MENU_LOCALE_NOT_FOUND";
@@ -33,7 +31,7 @@ pub struct MenuService {
 }
 
 impl MenuService {
-    pub fn new(db: DatabaseConnection, _event_bus: TransactionalEventBus) -> Self {
+    pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }
 
@@ -43,13 +41,13 @@ impl MenuService {
         security: SecurityContext,
         effective_locale: &str,
         input: CreateMenuInput,
-    ) -> PagesResult<MenuResponse> {
-        enforce_scope(&security, Resource::Pages, Action::Create)?;
+    ) -> NavigationResult<MenuResponse> {
+        enforce_scope(&security, Resource::Navigation, Action::Create)?;
         let effective_locale = normalize_effective_locale(effective_locale)?;
         let translations = normalize_menu_translations(input.translations)?;
         let menu_locales = translation_locales(&translations);
         if !menu_locales.contains(&effective_locale) {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Menu create response locale `{effective_locale}` must be present in menu translations"
             )));
         }
@@ -57,7 +55,7 @@ impl MenuService {
             .items
             .into_iter()
             .map(|item| normalize_menu_item(item, &menu_locales))
-            .collect::<PagesResult<Vec<_>>>()?;
+            .collect::<NavigationResult<Vec<_>>>()?;
 
         let now = Utc::now();
         let menu_id = Uuid::new_v4();
@@ -106,20 +104,8 @@ impl MenuService {
         menu_id: Uuid,
         parent_item_id: Option<Uuid>,
         input: PreparedMenuItem,
-    ) -> Pin<Box<dyn Future<Output = PagesResult<Uuid>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = NavigationResult<Uuid>> + Send + 'a>> {
         Box::pin(async move {
-            if let Some(page_id) = input.page_id {
-                let page_exists = page::Entity::find_by_id(page_id)
-                    .filter(page::Column::TenantId.eq(tenant_id))
-                    .one(txn)
-                    .await?
-                    .is_some();
-                if !page_exists {
-                    return Err(PagesError::validation(format!(
-                        "Menu item page `{page_id}` does not belong to tenant `{tenant_id}`"
-                    )));
-                }
-            }
 
             let now = Utc::now();
             let item_id = Uuid::new_v4();
@@ -128,7 +114,7 @@ impl MenuService {
                 menu_id: Set(menu_id),
                 tenant_id: Set(tenant_id),
                 parent_item_id: Set(parent_item_id),
-                page_id: Set(input.page_id),
+                page_id: Set(None),
                 position: Set(input.position),
                 url: Set(input.url),
                 icon: Set(input.icon),
@@ -166,14 +152,14 @@ impl MenuService {
         security: SecurityContext,
         menu_id: Uuid,
         effective_locale: &str,
-    ) -> PagesResult<MenuResponse> {
-        enforce_scope(&security, Resource::Pages, Action::Read)?;
+    ) -> NavigationResult<MenuResponse> {
+        enforce_scope(&security, Resource::Navigation, Action::Read)?;
         let effective_locale = normalize_effective_locale(effective_locale)?;
         let menu = menu::Entity::find_by_id(menu_id)
             .filter(menu::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .ok_or_else(|| PagesError::menu_not_found(menu_id))?;
+            .ok_or_else(|| NavigationError::menu_not_found(menu_id))?;
 
         let translations = menu_translation::Entity::find()
             .filter(menu_translation::Column::TenantId.eq(tenant_id))
@@ -209,7 +195,7 @@ impl MenuService {
         tenant_id: Uuid,
         menu_id: Uuid,
         effective_locale: &str,
-    ) -> PagesResult<Vec<MenuItemResponse>> {
+    ) -> NavigationResult<Vec<MenuItemResponse>> {
         let items = menu_item::Entity::find()
             .filter(menu_item::Column::TenantId.eq(tenant_id))
             .filter(menu_item::Column::MenuId.eq(menu_id))
@@ -272,7 +258,6 @@ struct PreparedMenuItemTranslation {
 struct PreparedMenuItem {
     translations: Vec<PreparedMenuItemTranslation>,
     url: String,
-    page_id: Option<Uuid>,
     icon: Option<String>,
     position: i32,
     children: Vec<PreparedMenuItem>,
@@ -280,9 +265,9 @@ struct PreparedMenuItem {
 
 fn normalize_menu_translations(
     translations: Vec<MenuTranslationInput>,
-) -> PagesResult<Vec<PreparedMenuTranslation>> {
+) -> NavigationResult<Vec<PreparedMenuTranslation>> {
     if translations.is_empty() {
-        return Err(PagesError::validation(
+        return Err(NavigationError::validation(
             "At least one menu translation is required",
         ));
     }
@@ -291,16 +276,16 @@ fn normalize_menu_translations(
     for translation in translations {
         let locale = normalize_effective_locale(&translation.locale)?;
         if !locales.insert(locale.clone()) {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Duplicate normalized menu locale: {locale}"
             )));
         }
         let name = translation.name.trim().to_string();
         if name.is_empty() {
-            return Err(PagesError::validation("Menu name cannot be empty"));
+            return Err(NavigationError::validation("Menu name cannot be empty"));
         }
         if name.chars().count() > MAX_MENU_NAME_CHARS {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Menu name cannot exceed {MAX_MENU_NAME_CHARS} characters"
             )));
         }
@@ -313,9 +298,9 @@ fn normalize_menu_translations(
 fn normalize_menu_item(
     input: MenuItemInput,
     menu_locales: &BTreeSet<String>,
-) -> PagesResult<PreparedMenuItem> {
+) -> NavigationResult<PreparedMenuItem> {
     if input.translations.is_empty() {
-        return Err(PagesError::validation(
+        return Err(NavigationError::validation(
             "Every menu item requires translations",
         ));
     }
@@ -324,23 +309,23 @@ fn normalize_menu_item(
     for translation in input.translations {
         let locale = normalize_effective_locale(&translation.locale)?;
         if !locales.insert(locale.clone()) {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Duplicate normalized menu item locale: {locale}"
             )));
         }
         let title = translation.title.trim().to_string();
         if title.is_empty() {
-            return Err(PagesError::validation("Menu item title cannot be empty"));
+            return Err(NavigationError::validation("Menu item title cannot be empty"));
         }
         if title.chars().count() > MAX_MENU_ITEM_TITLE_CHARS {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Menu item title cannot exceed {MAX_MENU_ITEM_TITLE_CHARS} characters"
             )));
         }
         translations.push(PreparedMenuItemTranslation { locale, title });
     }
     if &locales != menu_locales {
-        return Err(PagesError::validation(format!(
+        return Err(NavigationError::validation(format!(
             "Menu item locales [{}] must exactly match menu locales [{}]",
             locales.iter().cloned().collect::<Vec<_>>().join(", "),
             menu_locales.iter().cloned().collect::<Vec<_>>().join(", ")
@@ -354,10 +339,10 @@ fn normalize_menu_item(
         .trim()
         .to_string();
     if url.is_empty() {
-        return Err(PagesError::validation("Menu item URL cannot be empty"));
+        return Err(NavigationError::validation("Menu item URL cannot be empty"));
     }
     if url.chars().count() > 2048 {
-        return Err(PagesError::validation(
+        return Err(NavigationError::validation(
             "Menu item URL cannot exceed 2048 characters",
         ));
     }
@@ -370,12 +355,11 @@ fn normalize_menu_item(
         .unwrap_or_default()
         .into_iter()
         .map(|child| normalize_menu_item(child, menu_locales))
-        .collect::<PagesResult<Vec<_>>>()?;
+        .collect::<NavigationResult<Vec<_>>>()?;
 
     Ok(PreparedMenuItem {
         translations,
         url,
-        page_id: input.page_id,
         icon,
         position: input.position,
         children,
@@ -389,8 +373,8 @@ fn translation_locales(translations: &[PreparedMenuTranslation]) -> BTreeSet<Str
         .collect()
 }
 
-fn normalize_effective_locale(locale: &str) -> PagesResult<String> {
-    normalize_locale_code(locale).ok_or_else(|| PagesError::validation("Invalid menu locale"))
+fn normalize_effective_locale(locale: &str) -> NavigationResult<String> {
+    normalize_locale_tag(locale).ok_or_else(|| NavigationError::validation("Invalid menu locale"))
 }
 
 fn build_menu_tree(
@@ -398,7 +382,7 @@ fn build_menu_tree(
     items_by_parent: &mut HashMap<Option<Uuid>, Vec<menu_item::Model>>,
     titles_by_item: &HashMap<Uuid, String>,
     effective_locale: &str,
-) -> PagesResult<Vec<MenuItemResponse>> {
+) -> NavigationResult<Vec<MenuItemResponse>> {
     let Some(items) = items_by_parent.remove(&parent_id) else {
         return Ok(Vec::new());
     };
@@ -429,8 +413,8 @@ fn build_menu_tree(
         .collect()
 }
 
-fn menu_locale_not_found(menu_id: Uuid, locale: &str) -> PagesError {
-    PagesError::Rich(Box::new(
+fn menu_locale_not_found(menu_id: Uuid, locale: &str) -> NavigationError {
+    NavigationError::Rich(Box::new(
         RichError::new(
             ErrorKind::NotFound,
             format!("Menu `{menu_id}` has no translation for effective locale `{locale}`"),
@@ -442,8 +426,8 @@ fn menu_locale_not_found(menu_id: Uuid, locale: &str) -> PagesError {
     ))
 }
 
-fn menu_integrity_error(message: impl Into<String>) -> PagesError {
-    PagesError::Rich(Box::new(
+fn menu_integrity_error(message: impl Into<String>) -> NavigationError {
+    NavigationError::Rich(Box::new(
         RichError::new(ErrorKind::Internal, message)
             .with_user_message("The localized menu is temporarily unavailable")
             .with_error_code(MENU_TRANSLATION_INTEGRITY_ERROR_CODE),
@@ -459,14 +443,14 @@ fn menu_location_to_storage(location: &MenuLocation) -> &'static str {
     }
 }
 
-fn menu_location_from_storage(value: &str) -> PagesResult<MenuLocation> {
+fn menu_location_from_storage(value: &str) -> NavigationResult<MenuLocation> {
     Ok(match value {
         "header" => MenuLocation::Header,
         "footer" => MenuLocation::Footer,
         "sidebar" => MenuLocation::Sidebar,
         "mobile" => MenuLocation::Mobile,
         other => {
-            return Err(PagesError::validation(format!(
+            return Err(NavigationError::validation(format!(
                 "Unknown menu location in storage: {other}"
             )))
         }
@@ -499,7 +483,6 @@ mod tests {
                     title: "Home".to_string(),
                 }],
                 url: Some("/".to_string()),
-                page_id: None,
                 icon: None,
                 position: 0,
                 children: None,

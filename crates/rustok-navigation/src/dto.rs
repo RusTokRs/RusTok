@@ -34,7 +34,6 @@ pub struct CreateMenuInput {
 pub struct MenuItemInput {
     pub translations: Vec<MenuItemTranslationInput>,
     pub url: Option<String>,
-    pub page_id: Option<Uuid>,
     pub icon: Option<String>,
     pub position: i32,
     pub children: Option<Vec<MenuItemInput>>,

@@ -10,8 +10,8 @@
 
 //! Pages module for RusToK platform.
 //!
-//! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, atomic publish/rollback receipts, cache policy, and Page Builder release baselines.
+//! The module owns pages, localized bodies, deterministic Page Builder artifacts,
+//! atomic publish/rollback receipts, cache policy, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -65,14 +65,14 @@ pub use cache_invalidation::{
 };
 pub use dto::*;
 pub use entities::{
-    Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
+    Page, PageBuilderScenarioBaseline, PagePublishOperation,
     PagePublishOperationArtifact, PagePublishedLandingArtifact, PageRollbackOperation,
     PageStaticLandingArtifact,
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuBindingService, MenuService, PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
@@ -106,7 +106,7 @@ impl RusToKModule for PagesModule {
     }
 
     fn description(&self) -> &'static str {
-        "Pages, visual documents, published artifacts and menus"
+        "Pages, visual documents and published artifacts"
     }
 
     fn version(&self) -> &'static str {

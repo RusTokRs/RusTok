@@ -19,10 +19,8 @@ use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::services::{MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE};
 use crate::{
-    ActiveMenuBindingResponse, BindActiveMenuInput, CANNOT_DELETE_PUBLISHED_ERROR_CODE,
-    CreateMenuInput, CreatePageInput, MenuBindingService, MenuLocation, MenuResponse, MenuService,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput,
     PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService,
     PageCacheScope, PageResponse, PageService, PagesCacheReadRuntime, PagesError,
     PatchPageMetadataInput, PublishedLandingArtifact, SavePageDocumentInput, page_cache_key,
@@ -40,16 +38,6 @@ pub struct GetPageParams {
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct GetPageArtifactParams {
     pub locale: String,
-}
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct GetMenuParams {
-    pub locale: Option<String>,
-}
-
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct CreateMenuParams {
-    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -153,87 +141,6 @@ pub async fn get_page(
         Some(page) => Ok(Json(page)),
         None => Err(HttpError::not_found("page_not_found", "Page not found")),
     }
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/menus/{id}",
-    tag = "pages",
-    params(
-        ("id" = Uuid, Path, description = "Menu ID"),
-        GetMenuParams
-    ),
-    responses(
-        (status = 200, description = "Exact-locale menu", body = MenuResponse),
-        (status = 404, description = "Menu or localized menu copy not found"),
-        (status = 500, description = "Menu translation integrity failure")
-    )
-)]
-pub async fn get_menu(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    request_context: RequestContext,
-    Path(id): Path<Uuid>,
-    Query(params): Query<GetMenuParams>,
-) -> HttpResult<Json<MenuResponse>> {
-    ensure_menu_module_enabled_for_channel(&runtime, &request_context).await?;
-    let effective_locale = params
-        .locale
-        .unwrap_or_else(|| request_context.locale.clone());
-
-    MenuService::new(runtime.db_clone(), runtime.event_bus())
-        .get(
-            tenant.id,
-            rustok_core::SecurityContext::public_read(),
-            id,
-            &effective_locale,
-        )
-        .await
-        .map(Json)
-        .map_err(map_pages_error)
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/menus/active/{location}",
-    tag = "pages",
-    params(
-        ("location" = MenuLocation, Path, description = "Current channel menu location"),
-        GetMenuParams
-    ),
-    responses(
-        (status = 200, description = "Exact-locale active menu for the current tenant and channel", body = MenuResponse),
-        (status = 404, description = "Active menu, current channel, or localized menu copy not found"),
-        (status = 500, description = "Menu translation integrity failure")
-    )
-)]
-pub async fn get_active_menu(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    request_context: RequestContext,
-    Path(location): Path<MenuLocation>,
-    Query(params): Query<GetMenuParams>,
-) -> HttpResult<Json<MenuResponse>> {
-    let channel_id = current_public_channel_id(&request_context)?;
-    ensure_menu_module_enabled_for_channel(&runtime, &request_context).await?;
-    let effective_locale = params
-        .locale
-        .unwrap_or_else(|| request_context.locale.clone());
-
-    MenuBindingService::new(runtime.db_clone(), runtime.event_bus())
-        .get_active(
-            tenant.id,
-            rustok_core::SecurityContext::public_read(),
-            channel_id,
-            location,
-            &effective_locale,
-        )
-        .await
-        .map_err(map_pages_error)?
-        .map(Json)
-        .ok_or_else(|| {
-            HttpError::not_found("active_menu_not_found", "Active menu was not found")
-        })
 }
 
 #[utoipa::path(
@@ -443,77 +350,6 @@ pub async fn create_page(
 }
 
 #[utoipa::path(
-    post,
-    path = "/api/admin/menus",
-    tag = "pages",
-    params(CreateMenuParams),
-    request_body = CreateMenuInput,
-    responses(
-        (status = 201, description = "Page created", body = MenuResponse),
-        (status = 400, description = "Invalid localized menu input"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
-    )
-)]
-pub async fn create_menu(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Query(params): Query<CreateMenuParams>,
-    Json(input): Json<CreateMenuInput>,
-) -> HttpResult<(StatusCode, Json<MenuResponse>)> {
-    ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
-    let effective_locale = params
-        .locale
-        .unwrap_or_else(|| request_context.locale.clone());
-
-    let menu = MenuService::new(runtime.db_clone(), runtime.event_bus())
-        .create(tenant.id, page_security(&auth), &effective_locale, input)
-        .await
-        .map_err(map_pages_error)?;
-    Ok((StatusCode::CREATED, Json(menu)))
-}
-
-#[utoipa::path(
-    put,
-    path = "/api/admin/menus/active/{location}",
-    tag = "pages",
-    params(("location" = MenuLocation, Path, description = "Current channel menu location")),
-    request_body = BindActiveMenuInput,
-    responses(
-        (status = 200, description = "Active menu binding created or replaced", body = ActiveMenuBindingResponse),
-        (status = 400, description = "Current channel is missing or binding input is invalid"),
-        (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden"),
-        (status = 404, description = "Menu not found")
-    )
-)]
-pub async fn bind_active_menu(
-    State(runtime): State<PagesHttpRuntime>,
-    tenant: TenantContext,
-    auth: AuthContext,
-    request_context: RequestContext,
-    Path(location): Path<MenuLocation>,
-    Json(input): Json<BindActiveMenuInput>,
-) -> HttpResult<Json<ActiveMenuBindingResponse>> {
-    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
-    let channel_id = current_admin_channel_id(&request_context)?;
-
-    MenuBindingService::new(runtime.db_clone(), runtime.event_bus())
-        .bind(
-            tenant.id,
-            page_security(&auth),
-            channel_id,
-            location,
-            input.menu_id,
-        )
-        .await
-        .map(Json)
-        .map_err(map_pages_error)
-}
-
-#[utoipa::path(
     patch,
     path = "/api/admin/pages/{id}/metadata",
     tag = "pages",
@@ -599,21 +435,11 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     let state = PagesHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route("/api/pages", axum::routing::get(get_page))
-        .route("/api/menus/{id}", axum::routing::get(get_menu))
-        .route(
-            "/api/menus/active/{location}",
-            axum::routing::get(get_active_menu),
-        )
         .route(
             "/api/pages/{id}/artifact",
             axum::routing::get(get_page_artifact),
         )
         .route("/api/admin/pages", axum::routing::post(create_page))
-        .route("/api/admin/menus", axum::routing::post(create_menu))
-        .route(
-            "/api/admin/menus/active/{location}",
-            axum::routing::put(bind_active_menu),
-        )
         .route("/api/admin/pages/{id}", axum::routing::delete(delete_page))
         .route(
             "/api/admin/pages/{id}/metadata",
@@ -626,45 +452,8 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .with_state(state))
 }
 
-fn current_public_channel_id(request_context: &RequestContext) -> HttpResult<Uuid> {
-    request_context.channel_id.ok_or_else(|| {
-        HttpError::not_found("active_menu_not_found", "Active menu was not found")
-    })
-}
 
-fn current_admin_channel_id(request_context: &RequestContext) -> HttpResult<Uuid> {
-    request_context.channel_id.ok_or_else(|| {
-        HttpError::bad_request(
-            "channel_context_required",
-            "Active menu binding requires a resolved current channel",
-        )
-    })
-}
 
-async fn ensure_menu_module_enabled_for_channel(
-    runtime: &PagesHttpRuntime,
-    request_context: &RequestContext,
-) -> HttpResult<()> {
-    let Some(channel_id) = request_context.channel_id else {
-        return Ok(());
-    };
-    let enabled = ChannelService::new(runtime.db_clone())
-        .is_module_enabled(channel_id, "pages")
-        .await
-        .map_err(|error| {
-            tracing::error!(
-                channel_id = %channel_id,
-                error = %error,
-                "failed to evaluate Pages module availability for menu delivery"
-            );
-            HttpError::internal("Unable to evaluate channel availability")
-        })?;
-    if enabled {
-        Ok(())
-    } else {
-        Err(HttpError::not_found("menu_not_found", "Menu was not found"))
-    }
-}
 
 async fn ensure_pages_module_enabled_for_channel(
     runtime: &PagesHttpRuntime,
@@ -739,18 +528,7 @@ fn map_pages_error(error: PagesError) -> HttpError {
                 message,
             )
         }
-        PagesError::Rich(rich)
-            if rich.error_code.as_deref() == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
-        {
-            HttpError::not_found("menu_locale_not_found", message)
-        }
-        PagesError::Rich(rich)
-            if rich.error_code.as_deref() == Some(MENU_TRANSLATION_INTEGRITY_ERROR_CODE) =>
-        {
-            HttpError::internal(message)
-        }
         PagesError::PageNotFound(_) => HttpError::not_found("page_not_found", message),
-        PagesError::MenuNotFound(_) => HttpError::not_found("menu_not_found", message),
         PagesError::Forbidden(_) => HttpError::forbidden("pages_permission_denied", message),
         PagesError::Database(_) | PagesError::Tenant(_) | PagesError::ArtifactIntegrity(_) => {
             HttpError::internal(message)

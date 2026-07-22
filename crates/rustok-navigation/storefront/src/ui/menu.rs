@@ -11,7 +11,7 @@ enum MenuPresentation {
 }
 
 #[component]
-pub fn PagesHeaderMenu() -> impl IntoView {
+pub fn NavigationHeaderMenu() -> impl IntoView {
     view! {
         <ActiveMenu
             location=StorefrontMenuLocation::Header
@@ -21,7 +21,7 @@ pub fn PagesHeaderMenu() -> impl IntoView {
 }
 
 #[component]
-pub fn PagesFooterMenu() -> impl IntoView {
+pub fn NavigationView() -> impl IntoView {
     view! {
         <ActiveMenu
             location=StorefrontMenuLocation::Footer

@@ -2,9 +2,7 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
-use crate::model::{
-    PageDetail, PageList, StorefrontMenu, StorefrontMenuLocation, StorefrontPagesData,
-};
+use crate::model::{PageDetail, PageList, StorefrontPagesData};
 
 const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) {
   selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) {
@@ -15,19 +13,6 @@ const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!
   pages(filter: $filter) { total items { id title slug status template } }
 }"#;
 
-const STOREFRONT_ACTIVE_MENU_QUERY: &str = r#"query StorefrontActiveMenu($location: GqlMenuLocation!, $locale: String) {
-  activeMenu(location: $location, locale: $locale) {
-    id effectiveLocale name location
-    items {
-      id title url icon
-      children {
-        id title url icon
-        children { id title url icon }
-      }
-    }
-  }
-}"#;
-
 #[derive(Debug, Deserialize)]
 struct StorefrontPagesResponse {
     #[serde(rename = "selectedPage")]
@@ -35,23 +20,11 @@ struct StorefrontPagesResponse {
     pages: PageList,
 }
 
-#[derive(Debug, Deserialize)]
-struct StorefrontActiveMenuResponse {
-    #[serde(rename = "activeMenu")]
-    active_menu: Option<StorefrontMenu>,
-}
-
 #[derive(Debug, Serialize)]
 struct StorefrontPagesVariables {
     #[serde(rename = "pageSlug")]
     page_slug: String,
     filter: ListPagesFilter,
-    locale: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct StorefrontActiveMenuVariables {
-    location: StorefrontMenuLocation,
     locale: Option<String>,
 }
 
@@ -85,17 +58,6 @@ pub async fn fetch_storefront_pages(
     })
 }
 
-pub async fn fetch_active_menu(
-    location: StorefrontMenuLocation,
-    locale: Option<String>,
-) -> Result<Option<StorefrontMenu>, ApiError> {
-    let response: StorefrontActiveMenuResponse = request(
-        STOREFRONT_ACTIVE_MENU_QUERY,
-        StorefrontActiveMenuVariables { location, locale },
-    )
-    .await?;
-    Ok(response.active_menu)
-}
 
 fn graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {

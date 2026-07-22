@@ -169,6 +169,10 @@ pub fn build_registry() -> ModuleRegistry {
     {
         registry = registry.register(rustok_pages::PagesModule);
     }
+    #[cfg(feature = "mod-navigation")]
+    {
+        registry = registry.register(rustok_navigation::NavigationModule);
+    }
     #[cfg(feature = "mod-page_builder")]
     {
         registry = registry.register(rustok_page_builder::PageBuilderModule);
