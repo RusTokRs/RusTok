@@ -8,8 +8,8 @@ use rustok_notifications_api::{
     NotificationTargetRef,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait,
+    DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
     sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
@@ -190,7 +190,10 @@ impl NotificationCandidateService {
             Err(error) => return self.fail_candidate(&item, worker_id, error).await,
         };
 
-        let preference_allows = match self.preference_allows_in_app(&item, &job).await {
+        let preference_allows = match self
+            .preference_allows_in_app(&self.db, &item, &job)
+            .await
+        {
             Ok(allows) => allows,
             Err(error) => return self.fail_candidate(&item, worker_id, error).await,
         };
@@ -267,8 +270,14 @@ impl NotificationCandidateService {
                 .await;
         }
 
-        self.persist_final_notification(&item, &job, descriptor, worker_id)
+        match self
+            .persist_final_notification(&item, &job, descriptor, worker_id)
             .await
+        {
+            Ok(result) => Ok(result),
+            Err(NotificationError::LeaseUnavailable) => Err(NotificationError::LeaseUnavailable),
+            Err(error) => self.fail_candidate(&item, worker_id, error).await,
+        }
     }
 
     async fn load_job(
@@ -282,11 +291,15 @@ impl NotificationCandidateService {
             .ok_or(NotificationError::InvalidEvent)
     }
 
-    async fn preference_allows_in_app(
+    async fn preference_allows_in_app<C>(
         &self,
+        connection: &C,
         item: &candidate_item::Model,
         job: &fanout_job::Model,
-    ) -> NotificationResult<bool> {
+    ) -> NotificationResult<bool>
+    where
+        C: ConnectionTrait,
+    {
         let rows = preference::Entity::find()
             .filter(preference::Column::TenantId.eq(item.tenant_id))
             .filter(preference::Column::UserId.eq(item.recipient_id))
@@ -300,7 +313,7 @@ impl NotificationCandidateService {
                     .add(preference::Column::TypeScope.eq(job.notification_type.as_str()))
                     .add(preference::Column::TypeScope.eq(DEFAULT_TYPE_SCOPE)),
             )
-            .all(&self.db)
+            .all(connection)
             .await?;
 
         let selected = rows.into_iter().max_by_key(|row| {
@@ -482,6 +495,42 @@ impl NotificationCandidateService {
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_candidate_lease(&current, worker_id)?;
+
+        if !self
+            .preference_allows_in_app(&txn, &current, job)
+            .await?
+        {
+            let completion_time = now();
+            let result = candidate_item::Entity::update_many()
+                .set(candidate_item::ActiveModel {
+                    status: Set(FanoutItemStatus::Skipped),
+                    notification_id: Set(None),
+                    last_error_code: Set(Some(PREFERENCE_DISABLED_CODE.to_string())),
+                    next_attempt_at: Set(None),
+                    lease_owner: Set(None),
+                    lease_expires_at: Set(None),
+                    processed_at: Set(Some(completion_time)),
+                    updated_at: Set(completion_time),
+                    ..Default::default()
+                })
+                .filter(candidate_item::Column::Id.eq(current.id))
+                .filter(candidate_item::Column::Status.eq(FanoutItemStatus::Processing))
+                .filter(candidate_item::Column::LeaseOwner.eq(worker_id))
+                .filter(candidate_item::Column::LeaseExpiresAt.gt(completion_time))
+                .exec(&txn)
+                .await?;
+            if result.rows_affected != 1 {
+                txn.rollback().await?;
+                return Err(NotificationError::LeaseUnavailable);
+            }
+            txn.commit().await?;
+            return Ok(NotificationCandidateProcessResult {
+                item_id: current.id,
+                status: FanoutItemStatus::Skipped,
+                notification_id: None,
+                replayed: false,
+            });
+        }
 
         let timestamp = now();
         let template_data_json = serde_json::to_value(&descriptor.template_data)?;
