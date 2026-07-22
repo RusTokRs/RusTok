@@ -5,7 +5,8 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse, UpdateReplyInput,
+    CreateReplyCommandInput, CreateReplyInput, ListRepliesFilter, ReplyListItem, ReplyResponse,
+    UpdateReplyCommandInput, UpdateReplyInput,
 };
 use crate::entities::forum_reply;
 use crate::error::ForumResult;
@@ -35,8 +36,19 @@ impl ReplyService {
         topic_id: Uuid,
         input: CreateReplyInput,
     ) -> ForumResult<ReplyResponse> {
+        self.create_command(tenant_id, security, topic_id, input.into())
+            .await
+    }
+
+    pub async fn create_command(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        input: CreateReplyCommandInput,
+    ) -> ForumResult<ReplyResponse> {
         self.inner
-            .create(tenant_id, security, topic_id, input)
+            .create_command(tenant_id, security, topic_id, input)
             .await
     }
 
@@ -70,8 +82,19 @@ impl ReplyService {
         security: SecurityContext,
         input: UpdateReplyInput,
     ) -> ForumResult<ReplyResponse> {
+        self.update_command(tenant_id, reply_id, security, input.into())
+            .await
+    }
+
+    pub async fn update_command(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        security: SecurityContext,
+        input: UpdateReplyCommandInput,
+    ) -> ForumResult<ReplyResponse> {
         self.inner
-            .update(tenant_id, reply_id, security, input)
+            .update_command(tenant_id, reply_id, security, input)
             .await
     }
 

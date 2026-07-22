@@ -5,7 +5,8 @@ use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
-    CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse, UpdateTopicInput,
+    CreateTopicCommandInput, CreateTopicInput, ListTopicsFilter, TopicListItem, TopicResponse,
+    UpdateTopicCommandInput, UpdateTopicInput,
 };
 use crate::entities::forum_topic;
 use crate::error::ForumResult;
@@ -34,7 +35,16 @@ impl TopicService {
         security: SecurityContext,
         input: CreateTopicInput,
     ) -> ForumResult<TopicResponse> {
-        self.inner.create(tenant_id, security, input).await
+        self.create_command(tenant_id, security, input.into()).await
+    }
+
+    pub async fn create_command(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreateTopicCommandInput,
+    ) -> ForumResult<TopicResponse> {
+        self.inner.create_command(tenant_id, security, input).await
     }
 
     pub async fn get(
@@ -67,8 +77,19 @@ impl TopicService {
         security: SecurityContext,
         input: UpdateTopicInput,
     ) -> ForumResult<TopicResponse> {
+        self.update_command(tenant_id, topic_id, security, input.into())
+            .await
+    }
+
+    pub async fn update_command(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        input: UpdateTopicCommandInput,
+    ) -> ForumResult<TopicResponse> {
         self.inner
-            .update(tenant_id, topic_id, security, input)
+            .update_command(tenant_id, topic_id, security, input)
             .await
     }
 

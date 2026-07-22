@@ -1,30 +1,32 @@
 {
-  "schema_version": 3,
-  "slice": "FORUM-12D1",
+  "schema_version": 4,
+  "slice": "FORUM-12D2",
   "owner_entrypoints": {
     "topic_create": {
-      "owner": "crates/rustok-forum/src/services/topic_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/topic.rs",
-      "delegate": "create_with_relations"
+      "owner": "crates/rustok-forum/src/services/topic_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/topic_inline.rs",
+      "delegate": "create_with_inline_relations"
     },
     "topic_update": {
-      "owner": "crates/rustok-forum/src/services/topic_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/topic.rs",
-      "delegate": "update_with_relations"
+      "owner": "crates/rustok-forum/src/services/topic_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/topic_inline.rs",
+      "delegate": "update_with_inline_relations"
     },
     "reply_create": {
-      "owner": "crates/rustok-forum/src/services/reply_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/reply_owner.rs",
+      "owner": "crates/rustok-forum/src/services/reply_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/reply_owner_inline.rs",
       "delegate": "persist_in_tx"
     },
     "reply_update": {
-      "owner": "crates/rustok-forum/src/services/reply_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/reply.rs",
-      "delegate": "update_with_relations"
+      "owner": "crates/rustok-forum/src/services/reply_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/reply_inline.rs",
+      "delegate": "update_with_inline_relations"
     }
   },
   "required_order": [
+    "normalize or resolve quote input before opening the owner transaction",
     "prepare relation projection before opening the owner transaction",
+    "lock the active source and compare preserved relation revision when required",
     "persist canonical topic translation or reply body",
     "persist relation projection in the same owner transaction",
     "publish events only for newly added targets",
@@ -80,9 +82,40 @@
       "setForumReplyQuotes"
     ]
   },
+  "inline_quote_commands": {
+    "topic_dto": "crates/rustok-forum/src/dto/topic.rs",
+    "reply_dto": "crates/rustok-forum/src/dto/reply.rs",
+    "resolver": "crates/rustok-forum/src/services/relation_quote_input.rs",
+    "module_composition": "crates/rustok-forum/src/services/mod.rs",
+    "create_omitted_quotes": "empty_initial_set",
+    "update_omitted_quotes": "preserve_latest_exact_locale_set",
+    "update_explicit_empty_quotes": "clear",
+    "update_explicit_quotes": "replace",
+    "max_raw_quotes": 32,
+    "deduplicate_exact_references": true,
+    "preserve_expected_revision_cas": true,
+    "conflict_code": "FORUM_RELATION_REVISION_CONFLICT",
+    "conflict_retryable": true,
+    "reject_deleted_source": true,
+    "same_owner_transaction": true,
+    "legacy_rust_dtos_unchanged": true,
+    "legacy_facade_updates_preserve_quotes": true,
+    "rest": [
+      "POST /api/forum/topics",
+      "PUT /api/forum/topics/{id}",
+      "POST /api/forum/topics/{id}/replies",
+      "PUT /api/forum/replies/{id}"
+    ],
+    "graphql": [
+      "createForumTopicWithQuotes",
+      "updateForumTopicWithQuotes",
+      "createForumReplyWithQuotes",
+      "updateForumReplyWithQuotes"
+    ]
+  },
   "source_entrypoints": {
-    "topic": "crates/rustok-forum/src/services/topic.rs",
-    "reply": "crates/rustok-forum/src/services/reply.rs"
+    "topic": "crates/rustok-forum/src/services/topic_inline.rs",
+    "reply": "crates/rustok-forum/src/services/reply_inline.rs"
   },
   "transport_roots": [
     "crates/rustok-forum/src/controllers",
@@ -94,10 +127,11 @@
     "persist_in_tx",
     "create_with_relations",
     "update_with_relations",
+    "create_with_inline_relations",
+    "update_with_inline_relations",
     "publish_contract_in_tx_with_envelope_id"
   ],
   "deferred": [
-    "inline quote input on topic and reply create or body edit commands",
     "Notifications delivery",
     "blocked private deleted source and target visibility rechecks for notification consumption and target opening",
     "PostgreSQL concurrency and delivery runtime evidence"
