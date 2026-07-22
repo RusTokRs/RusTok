@@ -1,0 +1,196 @@
+name: Active Menu PostgreSQL Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "crates/rustok-pages/**"
+      - ".github/workflows/active-menu-postgres-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  active-menu-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-active-menu-postgres-diagnostic
+      - name: Create scoped PostgreSQL contract test
+        shell: bash
+        run: |
+          cat > crates/rustok-pages/tests/active_menu_postgres_diagnostic.rs <<'RS'
+          use rustok_core::MigrationSource;
+          use rustok_pages::PagesModule;
+          use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
+          use sea_orm_migration::SchemaManager;
+          use uuid::Uuid;
+
+          async fn execute(
+              db: &sea_orm::DatabaseConnection,
+              sql: &str,
+              values: Vec<sea_orm::Value>,
+          ) -> Result<(), sea_orm::DbErr> {
+              db.execute(Statement::from_sql_and_values(
+                  DatabaseBackend::Postgres,
+                  sql,
+                  values,
+              ))
+              .await
+              .map(|_| ())
+          }
+
+          #[tokio::test]
+          async fn active_menu_binding_postgres_contract() {
+              let database_url = std::env::var("ACTIVE_MENU_POSTGRES_URL")
+                  .expect("ACTIVE_MENU_POSTGRES_URL must be configured");
+              let db = Database::connect(database_url)
+                  .await
+                  .expect("PostgreSQL should be reachable");
+
+              db.execute_unprepared(
+                  r#"
+                  DROP TABLE IF EXISTS menu_bindings CASCADE;
+                  DROP TABLE IF EXISTS menus CASCADE;
+                  DROP TABLE IF EXISTS channels CASCADE;
+                  CREATE TABLE channels (
+                      id UUID PRIMARY KEY NOT NULL,
+                      tenant_id UUID NOT NULL
+                  );
+                  CREATE TABLE menus (
+                      id UUID PRIMARY KEY NOT NULL,
+                      tenant_id UUID NOT NULL,
+                      location VARCHAR(32) NOT NULL,
+                      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE (tenant_id, id)
+                  );
+                  "#,
+              )
+              .await
+              .expect("minimal current schema should be created");
+
+              let manager = SchemaManager::new(&db);
+              let active_menu_migration = PagesModule
+                  .migrations()
+                  .pop()
+                  .expect("active menu migration should be registered last");
+              active_menu_migration
+                  .up(&manager)
+                  .await
+                  .expect("active menu migration should apply on PostgreSQL");
+
+              let tenant_id = Uuid::new_v4();
+              let other_tenant_id = Uuid::new_v4();
+              let channel_id = Uuid::new_v4();
+              let first_menu_id = Uuid::new_v4();
+              let second_menu_id = Uuid::new_v4();
+
+              execute(
+                  &db,
+                  "INSERT INTO channels (id, tenant_id) VALUES ($1, $2)",
+                  vec![channel_id.into(), tenant_id.into()],
+              )
+              .await
+              .expect("channel should be inserted");
+              for menu_id in [first_menu_id, second_menu_id] {
+                  execute(
+                      &db,
+                      "INSERT INTO menus (id, tenant_id, location) VALUES ($1, $2, $3)",
+                      vec![menu_id.into(), tenant_id.into(), "header".into()],
+                  )
+                  .await
+                  .expect("menu should be inserted");
+              }
+
+              execute(
+                  &db,
+                  "INSERT INTO menu_bindings (id, tenant_id, channel_id, location, menu_id) VALUES ($1, $2, $3, $4, $5)",
+                  vec![
+                      Uuid::new_v4().into(),
+                      tenant_id.into(),
+                      channel_id.into(),
+                      "header".into(),
+                      first_menu_id.into(),
+                  ],
+              )
+              .await
+              .expect("first active binding should be inserted");
+
+              let duplicate_identity = execute(
+                  &db,
+                  "INSERT INTO menu_bindings (id, tenant_id, channel_id, location, menu_id) VALUES ($1, $2, $3, $4, $5)",
+                  vec![
+                      Uuid::new_v4().into(),
+                      tenant_id.into(),
+                      channel_id.into(),
+                      "header".into(),
+                      second_menu_id.into(),
+                  ],
+              )
+              .await;
+              assert!(
+                  duplicate_identity.is_err(),
+                  "tenant/channel/location identity must be unique"
+              );
+
+              let cross_tenant_menu = execute(
+                  &db,
+                  "INSERT INTO menu_bindings (id, tenant_id, channel_id, location, menu_id) VALUES ($1, $2, $3, $4, $5)",
+                  vec![
+                      Uuid::new_v4().into(),
+                      other_tenant_id.into(),
+                      channel_id.into(),
+                      "footer".into(),
+                      first_menu_id.into(),
+                  ],
+              )
+              .await;
+              assert!(
+                  cross_tenant_menu.is_err(),
+                  "composite tenant/menu foreign key must reject cross-tenant rows"
+              );
+
+              let missing_channel = execute(
+                  &db,
+                  "INSERT INTO menu_bindings (id, tenant_id, channel_id, location, menu_id) VALUES ($1, $2, $3, $4, $5)",
+                  vec![
+                      Uuid::new_v4().into(),
+                      tenant_id.into(),
+                      Uuid::new_v4().into(),
+                      "footer".into(),
+                      first_menu_id.into(),
+                  ],
+              )
+              .await;
+              assert!(
+                  missing_channel.is_err(),
+                  "channel foreign key must reject unknown channels"
+              );
+          }
+          RS
+      - name: Run scoped PostgreSQL contract
+        env:
+          ACTIVE_MENU_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: >-
+          cargo test --locked
+          -p rustok-pages
+          --test active_menu_postgres_diagnostic
+          -- --nocapture
