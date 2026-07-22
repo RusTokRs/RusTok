@@ -125,6 +125,8 @@ fn input(
         checkout_operation_id,
         order_id,
         source_cart_id,
+        payment_collection_id: None,
+        shipping_option_id: None,
         snapshot_hash: "a".repeat(64),
         request_hash: "b".repeat(64),
     }
@@ -147,6 +149,8 @@ async fn records_and_reads_typed_checkout_identity() {
     assert_eq!(recorded.checkout_operation_id, operation_id);
     assert_eq!(recorded.order_id, order_id);
     assert_eq!(recorded.source_cart_id, Some(cart_id));
+    assert_eq!(recorded.payment_collection_id, None);
+    assert_eq!(recorded.shipping_option_id, None);
     assert_eq!(
         journal
             .get_by_operation(tenant_id, operation_id)
