@@ -69,11 +69,16 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   rollback.
 - [x] Harden the checkpoint migration source with PostgreSQL/SQLite/MySQL guard
   parity, fully immutable update behavior, and explicit backend cleanup before down.
+- [x] Make economics checkpoint source admission concurrency-safe: after a failed
+  insert, roll back the possibly aborted transaction, adopt the committed row when
+  evidence is identical, and classify different evidence as a typed conflict rather
+  than exposing a backend unique-violation error.
+- [x] Add focused SQLite source coverage for concurrent identical adoption and
+  concurrent conflicting evidence classification.
+- [ ] Execute the checkpoint concurrency tests and retain PostgreSQL/MySQL contention
+  evidence in addition to the SQLite source coverage.
 - [ ] Run clean/upgraded/down/reapply checkpoint migration tests on SQLite,
   PostgreSQL, and MySQL; retain evidence.
-- [ ] Make economics checkpoint admission concurrency-safe: duplicate concurrent
-  inserts with identical evidence must adopt the committed row, while conflicting
-  evidence must return a typed conflict rather than a raw unique-violation error.
 - [ ] Replace cross-owner order metadata/SQL identity lookup with an owner-owned
   checkout operation identity and typed read/command port.
 - [ ] Complete `CheckoutCompletionPort` idempotency and recovery semantics, including
@@ -133,7 +138,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   fulfillment on saved ledger evidence.
 - [x] Add backend-parity source guards and reversible cleanup for the marketplace
   economics checkpoint migration.
-- [ ] Add concurrent economics-checkpoint admission/adoption and conflict tests.
+- [x] Add concurrent economics-checkpoint admission/adoption and typed conflict source
+  coverage without promoting runtime evidence.
 - [ ] Move checkout order identity from JSON metadata into owner-owned typed columns or
   an owner operation table with tenant-safe uniqueness.
 - [ ] Make order creation plus placement one idempotent owner command and expose durable
@@ -369,6 +375,7 @@ Source inspection is not execution evidence.
 ### Compile/tests
 
 - [ ] `cargo check -p rustok-commerce --lib`
+- [ ] `cargo test -p rustok-commerce --test checkout_marketplace_economics_checkpoint`
 - [ ] `cargo check -p rustok-order --all-features`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
@@ -405,7 +412,7 @@ Source inspection is not execution evidence.
 
 1. [x] Reaudit current checkout/order/payment/marketplace source and reopen false-complete P0s.
 2. [x] Harden marketplace economics checkpoint migration source for backend parity and rollback.
-3. [ ] Add economics checkpoint concurrent insert adoption and exact conflict classification.
+3. [x] Add economics checkpoint concurrent insert adoption and exact conflict classification source.
 4. [ ] Add owner-owned checkout operation identity to order storage and migration.
 5. [ ] Replace JSON metadata order lookup and direct `orders` SQL with typed order reads.
 6. [ ] Complete idempotent `CheckoutCompletionPort` create/place/read semantics.
@@ -415,7 +422,7 @@ Source inspection is not execution evidence.
 10. [ ] Remove raw public ecommerce port error leakage and add correlation-safe logging.
 11. [ ] Introduce typed lifecycle status snapshots and remove critical string matching.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
-13. [ ] Run checkpoint clean/upgraded/down/reapply evidence on all supported databases.
+13. [ ] Run checkpoint clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
 15. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
 16. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
