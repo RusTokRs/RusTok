@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "slice": "FORUM-12C",
+  "schema_version": 3,
+  "slice": "FORUM-12D1",
   "owner_entrypoints": {
     "topic_create": {
       "owner": "crates/rustok-forum/src/services/topic_owner.rs",
@@ -58,6 +58,24 @@
       "projection_fingerprint"
     ]
   },
+  "quote_command": {
+    "service": "crates/rustok-forum/src/services/quote_command.rs",
+    "dto": "crates/rustok-forum/src/dto/relation.rs",
+    "source_body_mode": "exact_locale_existing_body",
+    "replace_full_set": true,
+    "empty_set_clears": true,
+    "deduplicate": true,
+    "max_quotes": 32,
+    "same_owner_transaction": true,
+    "rest": [
+      "PUT /api/forum/topics/{id}/quotes",
+      "PUT /api/forum/replies/{id}/quotes"
+    ],
+    "graphql": [
+      "setForumTopicQuotes",
+      "setForumReplyQuotes"
+    ]
+  },
   "source_entrypoints": {
     "topic": "crates/rustok-forum/src/services/topic.rs",
     "reply": "crates/rustok-forum/src/services/reply.rs"
@@ -75,7 +93,7 @@
     "publish_contract_in_tx_with_envelope_id"
   ],
   "deferred": [
-    "quote command DTOs",
+    "inline quote input on topic and reply create or body edit commands",
     "Notifications delivery",
     "blocked private deleted source and target visibility rechecks",
     "PostgreSQL concurrency and delivery runtime evidence"
