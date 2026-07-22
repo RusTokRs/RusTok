@@ -1,6 +1,6 @@
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
