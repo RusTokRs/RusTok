@@ -11,7 +11,7 @@ preconditions, candidate application lifecycle, application review, role delegat
 ownership transfer, command receipts, immutable audit, and native/GraphQL transports
 are implemented at source level.
 
-Bans, bulk review, legacy application-command API migration, consumer-side
+Bans, bulk review, complete legacy application-command API removal, consumer-side
 notification fan-out, and full runtime evidence remain plan-led work.
 
 A group is a social container and policy owner. It is not the persistence owner for
@@ -66,6 +66,8 @@ assets, comments, notification inbox/delivery, or search documents.
   tenant/group application without cross-candidate enumeration.
 - Publish `GroupApplicationLifecycleCommandPort` for pending-only candidate
   cancellation and rejected/cancelled-only manager reopen.
+- Publish `GroupApplicationReviewCommandPort` as the focused review write boundary used
+  by final GraphQL and module-owned native admin surfaces.
 - Candidate cancellation moves membership to `left`, marks the application
   `cancelled`, and preserves the submitted snapshot.
 - Manager reopen restores membership/application to `pending`, clears prior review
@@ -97,9 +99,11 @@ assets, comments, notification inbox/delivery, or search documents.
 - Publish the typed RBAC surface for `groups:*`.
 
 The older unconditional policy-save and candidate-submit methods on
-`GroupApplicationCommandPort` remain available for source compatibility. Module-owned
-admin and storefront FFA no longer use them. Their removal or versioned deprecation is
-a separate API migration gate.
+`GroupApplicationCommandPort` remain available only for Rust source compatibility.
+Final GraphQL, module-owned admin/storefront FFA, and routable native policy writes do
+not use them. Application review uses the focused `GroupApplicationReviewCommandPort`.
+Complete removal or versioned deprecation of the legacy Rust methods remains a separate
+API migration gate.
 
 ## Entry points
 
@@ -122,16 +126,17 @@ a separate API migration gate.
 - `GroupApplicationLifecycleReadPort`
 - `GroupApplicationCasCommandPort`
 - `GroupApplicationLifecycleCommandPort`
+- `GroupApplicationReviewCommandPort`
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
 - `GroupTargetedInvitationCommandPort`
-- `GroupApplicationCommandPort` for compatibility and review commands
+- `GroupApplicationCommandPort` for legacy Rust compatibility only
 - `GroupGovernanceCommandPort`
 - `graphql_application_cas::GroupsQueryRoot` with policy history, policy management,
   lifecycle, and core query composition
 - `graphql_application_cas::GroupsMutationRoot` with core, localization, governance,
-  invitations, CAS, review, and lifecycle composition
+  invitations, CAS, focused review, and lifecycle composition
 - `rustok_groups_admin::GroupsAdmin`
 - `rustok_groups_admin::load_group_admin_application_policy_locale_catalog`
 - `rustok_groups_admin::load_group_admin_application_policy_for_management`
@@ -190,4 +195,5 @@ evidence keys remain `null`.
 - [Live module contract](docs/README.md)
 - [Canonical implementation plan](docs/implementation-plan.md)
 - [FBA registry](contracts/groups-fba-registry.json)
+- [Application no-bypass static guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
 - [Platform documentation map](../../docs/index.md)

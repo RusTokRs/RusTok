@@ -24,8 +24,8 @@ use crate::graphql_applications::{
 use crate::graphql_invitations::GroupsMutationRoot as GroupsPreApplicationMutationRoot;
 use crate::graphql_policy_history::GroupsQueryRoot as GroupsBaseQueryRoot;
 use crate::{
-    GroupApplicationCasCommandPort, GroupApplicationCommandPort,
-    GroupApplicationPolicyPrecondition, GroupApplicationService,
+    GroupApplicationCasCommandPort, GroupApplicationPolicyPrecondition,
+    GroupApplicationReviewCommandPort, GroupApplicationService,
     ReviewGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationIfCurrentRequest,
     SubmitGroupMembershipApplicationRequest, UpsertGroupApplicationPolicyIfCurrentRequest,
     UpsertGroupApplicationPolicyRequest, GROUP_APPLICATION_POLICY_CHANGED_CODE,
@@ -129,7 +129,7 @@ impl GroupsApplicationCasMutation {
         note: Option<String>,
     ) -> Result<ReviewGroupMembershipApplicationResultGql> {
         let auth = require_authenticated(ctx)?;
-        GroupApplicationCommandPort::review_group_membership_application(
+        GroupApplicationReviewCommandPort::review_group_membership_application(
             &application_service(ctx)?,
             port_context(ctx, auth, Some(idempotency_key))?,
             ReviewGroupMembershipApplicationRequest {
