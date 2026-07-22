@@ -6,12 +6,7 @@
     "contract": "grapesjs",
     "builder_contract_version": "1.1",
     "consumer_min_version": "1.0",
-    "capabilities": [
-      "preview",
-      "tree",
-      "properties",
-      "publish"
-    ],
+    "capabilities": ["preview", "tree", "properties", "publish"],
     "preview_runtime_contract": {
       "input": "PageBuilderPreviewRuntime",
       "port": "PageBuilderPreviewRenderingPort",
@@ -66,21 +61,10 @@
       "runtime": "runtime",
       "feature_disabled": "feature-disabled"
     },
-    "error_codes": {
-      "feature_disabled": "FEATURE_DISABLED"
-    },
+    "error_codes": {"feature_disabled": "FEATURE_DISABLED"},
     "health_profile": "ready",
-    "health_states": [
-      "ready",
-      "degraded",
-      "unavailable"
-    ],
-    "degradation_reasons": [
-      "capability_disabled",
-      "provider_unhealthy",
-      "sanitize_backpressure",
-      "publish_backlog"
-    ],
+    "health_states": ["ready", "degraded", "unavailable"],
+    "degradation_reasons": ["capability_disabled", "provider_unhealthy", "sanitize_backpressure", "publish_backlog"],
     "slo_thresholds": {
       "preview_p95_ms": 1500,
       "publish_p95_ms": 3000,
@@ -97,12 +81,7 @@
       "contract_version": "1.1",
       "builder_contract_version": "1.1",
       "consumer_min_version": "1.0",
-      "capabilities": [
-        "preview",
-        "tree",
-        "properties",
-        "publish"
-      ],
+      "capabilities": ["preview", "tree", "properties", "publish"],
       "rollout_state": "wave0_baseline",
       "materialization_persistence": {
         "state": "integrated",
@@ -110,13 +89,7 @@
         "materialization_hash_column": "materialization_hash",
         "materialization_identity_column": "materialization_identity",
         "runtime_snapshots_column": "runtime_snapshots",
-        "unique_key": [
-          "tenant_id",
-          "page_id",
-          "locale",
-          "build_hash",
-          "materialization_hash"
-        ],
+        "unique_key": ["tenant_id", "page_id", "locale", "build_hash", "materialization_hash"],
         "legacy_mode": "verified_static_artifact_with_null_evidence",
         "partial_evidence": "rejected",
         "storefront_integrity": "PageBuilderMaterializedStaticLandingArtifact::verify_integrity",
@@ -130,26 +103,11 @@
         "sanitizer": "sanitize_static_landing_project",
         "receipt_entity": "page_publish_operation",
         "artifact_manifest_entity": "page_publish_operation_artifact",
-        "artifact_manifest_identity": [
-          "locale",
-          "artifact_hash",
-          "materialization_hash"
-        ],
+        "artifact_manifest_identity": ["locale", "artifact_hash", "materialization_hash"],
         "artifact_manifest_persistence": "same_transaction_after_receipt_insert",
-        "idempotency_unique_key": [
-          "tenant_id",
-          "page_id",
-          "idempotency_key"
-        ],
-        "request_identity": [
-          "expected_version",
-          "expected_body_revisions",
-          "review_hash"
-        ],
-        "transactional_outbox": [
-          "NodeUpdated",
-          "NodePublished"
-        ],
+        "idempotency_unique_key": ["tenant_id", "page_id", "idempotency_key"],
+        "request_identity": ["expected_version", "expected_body_revisions", "review_hash"],
+        "transactional_outbox": ["NodeUpdated", "NodePublished"],
         "replay": "stored_receipt_without_rebuild_or_duplicate_events",
         "public_transport": "graphql_http_admin_reviewed_cutover",
         "scenario_selection": "explicit_ephemeral_promoted_scenario_scoped_by_page_and_baseline_hash",
@@ -162,36 +120,36 @@
         "input": "RollbackPageInput",
         "result": "RollbackPageResult",
         "service": "PageService::rollback_to_previous",
-        "selection": "latest_matching_current_manifest_then_older_distinct_manifest",
-        "history_direction": "monotonic_older_only",
+        "selection": "latest_activation_receipt_then_older_distinct_publish_manifest",
+        "history_direction": "monotonic_older_publish_result_version_only",
+        "activation_cursor": {
+          "source_function": "find_current_publish_cursor_in_tx",
+          "publish_receipt_match": ["artifact_set_hash", "result_version_lte_current_page_version"],
+          "rollback_receipt_match": ["target_artifact_set_hash", "result_version_lte_current_page_version"],
+          "winner": "highest_activation_result_version",
+          "rollback_resolution": "target_publish_operation_id",
+          "resolved_manifest_required": true,
+          "hash_match_without_activation_receipt": "rejected"
+        },
         "target_manifest_required": true,
-        "active_manifest_trace_required": true,
+        "activation_receipt_trace_required": true,
         "receipt_entity": "page_rollback_operation",
-        "idempotency_unique_key": [
-          "tenant_id",
-          "page_id",
-          "idempotency_key"
-        ],
-        "request_identity": [
-          "expected_version",
-          "target_publish_operation_id"
-        ],
+        "idempotency_unique_key": ["tenant_id", "page_id", "idempotency_key"],
+        "request_identity": ["expected_version", "target_publish_operation_id"],
         "immutable_reuse_only": true,
         "sanitize": false,
         "materialize": false,
         "compile": false,
-        "transactional_outbox": [
-          "NodeUpdated",
-          "NodePublished"
-        ],
+        "transactional_outbox": ["NodeUpdated", "NodePublished"],
         "cache_invalidation": "existing_NodePublished_generation_rotation",
         "public_transport": "graphql_http_admin_control_connected",
         "admin_control": "crates/rustok-pages/admin/src/rollback_control.rs",
+        "confirmation": "prepare_then_confirm_for_same_page_id",
         "browser_retry": {
           "source": "crates/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
           "storage": "session_storage_expected_version_and_idempotency_key_only",
           "network_or_5xx": "retain_same_command_identity",
-          "graphql_or_4xx": "clear_pending_identity"
+          "typed_graphql_or_4xx": "clear_pending_identity"
         },
         "executed_evidence": "pending"
       },
@@ -203,17 +161,8 @@
         "read_port": "PagesCacheReadPort",
         "server_adapter": "apps/server/src/services/pages_cache_invalidation.rs",
         "server_composition": "apps/server/src/services/module_event_dispatcher.rs",
-        "events": [
-          "NodeUpdated",
-          "NodePublished",
-          "NodeUnpublished",
-          "NodeDeleted"
-        ],
-        "scopes": [
-          "route",
-          "page",
-          "artifact"
-        ],
+        "events": ["NodeUpdated", "NodePublished", "NodeUnpublished", "NodeDeleted"],
+        "scopes": ["route", "page", "artifact"],
         "generation_store": "CacheNamespaceGenerationStore",
         "namespace_scope": "tenant_wide_per_scope",
         "variant_hash": "sha256",
@@ -258,21 +207,11 @@
       "contract_version": "1.0",
       "builder_contract_version": "1.0",
       "consumer_min_version": "1.0",
-      "capabilities": [
-        "preview",
-        "tree",
-        "properties",
-        "publish"
-      ],
+      "capabilities": ["preview", "tree", "properties", "publish"],
       "rollout_state": "deferred"
     }
   ],
-  "fallback_profiles": [
-    "all_on",
-    "publish_off",
-    "preview_off",
-    "builder_off"
-  ],
+  "fallback_profiles": ["all_on", "publish_off", "preview_off", "builder_off"],
   "evidence": {
     "local_plan": "crates/rustok-page-builder/docs/implementation-plan.md",
     "central_board": "docs/modules/registry.md",
