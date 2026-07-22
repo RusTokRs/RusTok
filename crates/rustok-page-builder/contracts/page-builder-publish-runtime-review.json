@@ -170,11 +170,31 @@
     },
     "typed_errors": true,
     "raw_context_persisted": false,
-    "cache_invalidation": "transactional_node_published_outbox",
+    "cache_invalidation": {
+      "event": "NodePublished",
+      "owner_source": "crates/rustok-pages/src/cache_invalidation.rs",
+      "module_listener": "pages_cache_invalidation",
+      "host_adapter": "apps/server/src/services/pages_cache_invalidation.rs",
+      "host_composition": "apps/server/src/services/module_event_dispatcher.rs",
+      "scopes": [
+        "route",
+        "page",
+        "artifact"
+      ],
+      "namespace_scope": "tenant_wide_bounded_generation_per_scope",
+      "key_scope": "tenant_generation_page_variant",
+      "shared_generation": "CacheNamespaceGenerationStore",
+      "failure": "handler_error_retried_before_successful_acknowledgement",
+      "inline_publish_invalidation": false,
+      "reader_adoption": "generation_aware_readers_pending",
+      "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+      "executed_evidence": "pending"
+    },
     "legacy_default_publish": "removed_non_builder_lifecycle_split",
     "public_transport": "graphql_http_admin_reviewed_cutover",
     "atomic_pipeline": "service_and_public_transport_integrated"
   },
   "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
-  "transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs"
+  "transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
+  "cache_invalidation_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
 }
