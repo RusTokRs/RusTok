@@ -13,15 +13,16 @@ use rustok_api::{
 use uuid::Uuid;
 
 use crate::graphql_applications::{
+    GroupApplicationReviewDecisionGql, ReviewGroupMembershipApplicationResultGql,
     SubmitGroupMembershipApplicationInputGql, SubmitGroupMembershipApplicationResultGql,
     UpsertGroupApplicationPolicyInputGql, UpsertGroupApplicationPolicyResultGql,
 };
-use crate::graphql_policy_history::{
-    GroupsMutationRoot as GroupsBaseMutationRoot, GroupsQueryRoot as GroupsBaseQueryRoot,
-};
+use crate::graphql_invitations::GroupsMutationRoot as GroupsPreApplicationMutationRoot;
+use crate::graphql_policy_history::GroupsQueryRoot as GroupsBaseQueryRoot;
 use crate::{
-    GroupApplicationCasCommandPort, GroupApplicationPolicyPrecondition,
-    GroupApplicationService, SubmitGroupMembershipApplicationIfCurrentRequest,
+    GroupApplicationCasCommandPort, GroupApplicationCommandPort,
+    GroupApplicationPolicyPrecondition, GroupApplicationService,
+    ReviewGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationIfCurrentRequest,
     SubmitGroupMembershipApplicationRequest, UpsertGroupApplicationPolicyIfCurrentRequest,
     UpsertGroupApplicationPolicyRequest, GROUP_APPLICATION_POLICY_CHANGED_CODE,
 };
@@ -31,7 +32,10 @@ const PORT_DEADLINE: Duration = Duration::from_secs(5);
 pub type GroupsQueryRoot = GroupsBaseQueryRoot;
 
 #[derive(MergedObject, Default)]
-pub struct GroupsMutationRoot(GroupsBaseMutationRoot, GroupsApplicationCasMutation);
+pub struct GroupsMutationRoot(
+    GroupsPreApplicationMutationRoot,
+    GroupsApplicationCasMutation,
+);
 
 #[derive(Default)]
 pub struct GroupsApplicationCasMutation;
@@ -99,6 +103,29 @@ impl GroupsApplicationCasMutation {
                     answers,
                     acknowledged_rule_keys: input.acknowledged_rule_keys,
                 },
+            },
+        )
+        .await
+        .map(Into::into)
+        .map_err(map_port_error)
+    }
+
+    async fn review_group_membership_application(
+        &self,
+        ctx: &Context<'_>,
+        idempotency_key: String,
+        application_id: Uuid,
+        decision: GroupApplicationReviewDecisionGql,
+        note: Option<String>,
+    ) -> Result<ReviewGroupMembershipApplicationResultGql> {
+        let auth = require_authenticated(ctx)?;
+        GroupApplicationCommandPort::review_group_membership_application(
+            &application_service(ctx)?,
+            port_context(ctx, auth, Some(idempotency_key))?,
+            ReviewGroupMembershipApplicationRequest {
+                application_id,
+                decision: decision.into(),
+                note,
             },
         )
         .await
