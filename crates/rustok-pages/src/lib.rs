@@ -11,7 +11,7 @@
 //! Pages module for RusToK platform.
 //!
 //! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, atomic publish receipts, cache invalidation policy, and Page Builder release baselines.
+//! artifacts, atomic publish receipts, cache policy, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -54,11 +54,14 @@ mod seo_targets;
 pub mod services;
 
 pub use cache_invalidation::{
-    MAX_PAGE_CACHE_KEY_VARIANT_BYTES, PAGES_CACHE_ENTITY_KIND, PAGES_CACHE_EVENT_HANDLER,
-    PAGES_CACHE_NAMESPACE_FORMAT, PageCacheInvalidationCause, PageCacheInvalidationError,
-    PageCacheInvalidationEventHandler, PageCacheInvalidationPort, PageCacheInvalidationReceipt,
-    PageCacheInvalidationRequest, PageCacheScope, PagesCacheInvalidationRuntime, page_cache_key,
-    page_cache_namespace,
+    MAX_PAGE_CACHE_KEY_VARIANT_BYTES, MAX_PAGE_CACHE_VALUE_BYTES, PAGE_CACHE_MUTABLE_SCOPES,
+    PAGE_CACHE_SCOPES, PAGES_CACHE_ENTITY_KIND, PAGES_CACHE_EVENT_HANDLER,
+    PAGES_CACHE_NAMESPACE_FORMAT, PAGES_STOREFRONT_CACHE_MAX_CAPACITY,
+    PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError, PageCacheGenerationSnapshot,
+    PageCacheInvalidationCause, PageCacheInvalidationEventHandler, PageCacheInvalidationPort,
+    PageCacheInvalidationReceipt, PageCacheInvalidationRequest, PageCacheScope,
+    PagesCacheInvalidationRuntime, PagesCacheReadPort, PagesCacheReadRuntime, page_cache_key,
+    page_cache_namespace, storefront_pages_cache_key,
 };
 pub use dto::*;
 pub use entities::{
