@@ -27,6 +27,8 @@ pub mod marketplace_catalog;
 pub mod marketplace_catalog_cache;
 #[cfg(feature = "mod-commerce")]
 pub mod marketplace_financial_worker;
+#[cfg(feature = "mod-marketplace_payout")]
+pub mod marketplace_payout_runtime;
 pub mod mcp_management;
 pub mod mcp_management_authority;
 pub mod mcp_management_guard;

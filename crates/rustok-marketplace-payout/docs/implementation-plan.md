@@ -23,11 +23,12 @@ through a payout provider SPI and journal before changing payout state.
 - [x] Typed operation/transfer status and stage entities.
 - [x] Tenant-scoped internal foreign keys and database checks.
 - [x] Operation/transfer revision, lease, attempt, and safe error-code fields.
-- [ ] Runtime admission/replay repository for payout operations.
-- [ ] CAS lease acquisition and expired-lease recovery.
-- [ ] Per-order `reserve_hold` execution through `MarketplaceLedgerCommandPort`.
-- [ ] Reverse-order `reserve_release` compensation.
-- [ ] Create payout only from confirmed ledger transfer responses.
+- [x] Runtime admission/replay repository for payout operations.
+- [x] CAS lease acquisition and expired-lease recovery.
+- [x] Per-order `reserve_hold` execution through `MarketplaceLedgerCommandPort`.
+- [x] Reverse-order `reserve_release` compensation.
+- [x] Create payout only from confirmed ledger transfer responses.
+- [x] Process-owned server composition for ledger read/command and payout services.
 - [ ] Cancellation and reservation release workflow.
 - [ ] Payout provider accounts and destination ownership.
 - [ ] Provider operation journal and idempotent submission.
@@ -68,6 +69,21 @@ A ledger balance-transfer command intentionally accepts references from one orde
 Multi-order payouts therefore create multiple child rows. Compensation executes
 confirmed reserve rows in descending sequence order.
 
+## Host composition contract
+
+`apps/server` owns one process-scoped `MarketplacePayoutRuntime`. Its in-process
+composition is:
+
+1. `MarketplaceAllocationService` as `MarketplaceAllocationReadPort`;
+2. `MarketplaceCommissionService` as `MarketplaceCommissionReadPort`;
+3. one `MarketplaceLedgerService` exposed as both `MarketplaceLedgerReadPort` and
+   `MarketplaceLedgerCommandPort`;
+4. one `MarketplacePayoutService` configured with those two ledger interfaces.
+
+The runtime is stored in `ServerRuntimeContext` and attached to every
+`HostRuntimeContext`. Repeated host initialization reuses the same payout and ledger
+service instances instead of rebuilding an independent command owner.
+
 ## Migration contract
 
 The original migration generated `payouts`, `payout_items`, and `payout_receipts`
@@ -94,19 +110,20 @@ Required evidence:
 ## Execution order
 
 1. [x] Repair canonical table names and add operation schema.
-2. [ ] Add operation admission and completed-result replay.
-3. [ ] Resolve selected ledger entries and group by order.
-4. [ ] Persist deterministic reserve children.
-5. [ ] Execute/adopt `reserve_hold` children.
-6. [ ] Create payout/items from confirmed reserve responses.
-7. [ ] Complete operation and expose recovery reads.
-8. [ ] Add reverse-order `reserve_release` compensation.
-9. [ ] Add cancellation.
-10. [ ] Add provider accounts and provider operation journal.
-11. [ ] Add transfer submission, lookup recovery, webhook inbox.
-12. [ ] Add settlement/reversal ledger transfers.
-13. [ ] Add operator/seller transports and UI.
-14. [ ] Retain contention, restart, reconciliation, and remote-profile evidence.
+2. [x] Add operation admission and completed-result replay.
+3. [x] Resolve selected ledger entries and group by order.
+4. [x] Persist deterministic reserve children.
+5. [x] Execute/adopt `reserve_hold` children.
+6. [x] Create payout/items from confirmed reserve responses.
+7. [x] Complete operation and replay the resulting payout.
+8. [x] Add reverse-order `reserve_release` compensation.
+9. [x] Compose ledger read/command and payout services in the server host.
+10. [ ] Add cancellation.
+11. [ ] Add provider accounts and provider operation journal.
+12. [ ] Add transfer submission, lookup recovery, webhook inbox.
+13. [ ] Add settlement/reversal ledger transfers.
+14. [ ] Add operator/seller transports and UI.
+15. [ ] Retain contention, restart, reconciliation, and remote-profile evidence.
 
 ## Promotion gate
 
@@ -124,5 +141,6 @@ reconciliation, mounted transports, and operator workflows.
 - existing atomic payout receipt transaction reused after reservation
 - reverse-order `reserve_release` compensation based on Reserved credit entries
 - retryable compensation and operator reconciliation states
+- process-owned server composition of the payout and ledger command path
 
 External provider submission and Reserved-to-Paid settlement remain separate follow-up slices.

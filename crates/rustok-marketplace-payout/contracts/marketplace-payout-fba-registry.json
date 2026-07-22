@@ -60,7 +60,7 @@
   },
   "reservation_operation": {
     "source_schema_ready": true,
-    "runtime_execution_ready": false,
+    "runtime_execution_ready": true,
     "typed_status_and_stage": true,
     "immutable_request_snapshot": true,
     "optimistic_revision": true,
@@ -70,7 +70,7 @@
     "deterministic_compensation_order": "reverse_sequence",
     "ledger_transfer_identity_persisted": true,
     "runtime_orchestration_implemented": true,
-    "host_composition_ready": false
+    "host_composition_ready": true
   },
   "execution": {
     "included_in_this_slice": false,
@@ -80,10 +80,17 @@
   "composition": {
     "modules_manifest": true,
     "distribution_feature": "mod-marketplace_payout",
-    "marketplace_root_read_projection": true
+    "marketplace_root_read_projection": true,
+    "server_runtime": "MarketplacePayoutRuntime",
+    "process_scope": "ServerRuntimeContext",
+    "shared_services": [
+      "MarketplaceLedgerService",
+      "MarketplacePayoutService"
+    ],
+    "ledger_read_and_command_owner_identity": "same_process_instance"
   },
   "known_gaps": [
-    "host command-port composition and live runtime evidence",
+    "live runtime and restart evidence",
     "provider account and execution lifecycle",
     "verified provider webhook inbox",
     "lookup recovery",

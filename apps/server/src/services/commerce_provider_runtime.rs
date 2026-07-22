@@ -44,6 +44,11 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(registry)
     };
 
+    #[cfg(feature = "mod-marketplace_payout")]
+    let host = crate::services::marketplace_payout_runtime::attach_marketplace_payout_runtime(
+        host, server,
+    );
+
     #[cfg(feature = "mod-commerce")]
     let host = {
         let runtime = server
