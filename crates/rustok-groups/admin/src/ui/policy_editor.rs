@@ -60,7 +60,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     let copy = policy_editor_copy(ui_locale.as_deref());
 
     let group_id = RwSignal::new(String::new());
-    let locale = RwSignal::new(ui_locale.unwrap_or_else(|| "en".to_string()));
+    let locale = RwSignal::new(ui_locale.unwrap_or_default());
     let enabled = RwSignal::new(true);
     let questions = RwSignal::new(Vec::<GroupsAdminApplicationQuestion>::new());
     let rules = RwSignal::new(Vec::<GroupsAdminApplicationRule>::new());
@@ -73,7 +73,10 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     let load_transport = transport.clone();
     let load_copy = copy.clone();
     let on_load = Callback::new(move |_: ()| {
-        let query = match prepare_group_application_policy_query(&group_id.get_untracked()) {
+        let query = match prepare_group_application_policy_query(
+            &group_id.get_untracked(),
+            &locale.get_untracked(),
+        ) {
             Ok(query) => query,
             Err(_) => {
                 error.set(Some(load_copy.invalid.clone()));
@@ -143,7 +146,10 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
             }
         };
         let expected_revision = loaded_revision.get_untracked();
-        let query = match prepare_group_application_policy_query(&command.group_id) {
+        let query = match prepare_group_application_policy_query(
+            &command.group_id,
+            &command.locale,
+        ) {
             Ok(query) => query,
             Err(_) => {
                 error.set(Some(save_copy.invalid.clone()));
