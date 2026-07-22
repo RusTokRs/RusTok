@@ -20,7 +20,6 @@ use crate::{
 /// only recovers an already-created order, validates both the new owner hashes
 /// and the previous staged-checkout hashes, and exposes the full owner order
 /// projection required for inventory reservation adoption.
-#[derive(Clone)]
 pub struct CheckoutOrderRecoveryAdapter {
     order_service: OrderService,
     identity_port: InProcessCheckoutOrderIdentityPort,
@@ -51,13 +50,13 @@ impl CheckoutOrderRecoveryAdapter {
         let actor_id = parse_actor_id(&context)?;
         require_operation_context(&context, request.checkout_operation_id)?;
         let legacy_snapshot_hash = normalize_hash(
-            request.legacy_snapshot_hash,
+            request.legacy_snapshot_hash.clone(),
             "legacy_snapshot_hash",
             1,
             128,
         )?;
         let legacy_request_hash = normalize_hash(
-            request.legacy_request_hash,
+            request.legacy_request_hash.clone(),
             "legacy_request_hash",
             64,
             64,
