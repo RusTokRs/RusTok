@@ -84,13 +84,12 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
         let mut succeeded = 0_u32;
         let mut failed = 0_u32;
 
-        for (index, application_id) in request.application_ids.into_iter().enumerate() {
+        for application_id in request.application_ids {
             let item_context = context
                 .clone()
                 .with_causation_id(context.correlation_id.clone())
                 .with_idempotency_key(bulk_review_item_idempotency_key(
                     &base_idempotency_key,
-                    index,
                     application_id,
                 ));
             let item_request = ReviewGroupMembershipApplicationRequest {
@@ -128,12 +127,10 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
 
 fn bulk_review_item_idempotency_key(
     base_idempotency_key: &str,
-    index: usize,
     application_id: Uuid,
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(base_idempotency_key.as_bytes());
-    hasher.update(index.to_be_bytes());
     hasher.update(application_id.as_bytes());
     let digest = hasher.finalize();
     let mut encoded = String::with_capacity(digest.len() * 2);
