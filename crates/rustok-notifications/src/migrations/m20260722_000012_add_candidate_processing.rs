@@ -50,6 +50,10 @@ ALTER TABLE notification_fanout_items
     ADD COLUMN IF NOT EXISTS lease_owner VARCHAR(191) NULL,
     ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ NULL;
 
+UPDATE notification_fanout_items
+SET notification_id = NULL
+WHERE status IN ('skipped', 'failed') AND notification_id IS NOT NULL;
+
 ALTER TABLE notification_fanout_items
     DROP CONSTRAINT IF EXISTS ck_notification_fanout_item_status,
     DROP CONSTRAINT IF EXISTS ck_notification_fanout_item_completion,
@@ -158,7 +162,8 @@ INSERT INTO notification_fanout_items (
     lease_owner, lease_expires_at, created_at, updated_at, processed_at
 )
 SELECT
-    id, tenant_id, fanout_job_id, recipient_id, status, notification_id,
+    id, tenant_id, fanout_job_id, recipient_id, status,
+    CASE WHEN status IN ('skipped', 'failed') THEN NULL ELSE notification_id END,
     idempotency_key, last_error_code, 0, NULL,
     NULL, NULL, created_at, updated_at, processed_at
 FROM notification_fanout_items_before_candidate_processing;
