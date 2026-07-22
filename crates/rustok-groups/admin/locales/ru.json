@@ -118,6 +118,7 @@
   "groups.admin.applications.bulk.load": "Загрузить ожидающие заявки",
   "groups.admin.applications.bulk.empty": "Ожидающие заявки не загружены.",
   "groups.admin.applications.bulk.selectAll": "Выбрать все загруженные",
+  "groups.admin.applications.bulk.selectApplication": "Выбрать заявку",
   "groups.admin.applications.bulk.clear": "Очистить выбор",
   "groups.admin.applications.bulk.selected": "Выбрано",
   "groups.admin.applications.bulk.confirm": "Я подтверждаю массовое решение для выбранных заявок",
