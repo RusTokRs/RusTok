@@ -2,10 +2,13 @@ use std::{path::PathBuf, sync::Arc};
 
 use chrono::{Duration, Utc};
 use rustok_commerce::{
-    CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
-    CheckoutMarketplaceEconomicsEvidence, CheckoutOperationStage, CheckoutOperationStatus,
-    RecordCheckoutMarketplaceEconomicsCheckpoint,
     entities::{checkout_marketplace_economics_checkpoint, checkout_operation},
+    services::{
+        CheckoutMarketplaceEconomicsCheckpointError,
+        CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutMarketplaceEconomicsEvidence,
+        CheckoutOperationStage, CheckoutOperationStatus,
+        RecordCheckoutMarketplaceEconomicsCheckpoint,
+    },
 };
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
@@ -30,7 +33,10 @@ impl TestDatabase {
             .min_connections(1)
             .sqlx_logging(false);
         let db = Database::connect(options).await.unwrap();
-        db.execute_unprepared("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;")
+        db.execute_unprepared("PRAGMA journal_mode = WAL;")
+            .await
+            .unwrap();
+        db.execute_unprepared("PRAGMA busy_timeout = 5000;")
             .await
             .unwrap();
 
