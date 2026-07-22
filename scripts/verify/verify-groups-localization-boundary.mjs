@@ -51,8 +51,8 @@ requireMarkers("crates/rustok-groups/src/graphql_localization.rs", [
   "GroupLocalizationCommandPort",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  'query = "graphql_policy_history::GroupsQueryRoot"',
-  'mutation = "graphql_policy_history::GroupsMutationRoot"',
+  'query = "graphql_application_cas::GroupsQueryRoot"',
+  'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
 requireMarkers("crates/rustok-groups/src/graphql_applications.rs", [
   "GroupsBaseQueryRoot",
@@ -64,6 +64,11 @@ requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
   "GroupsBaseQueryRoot",
   "pub struct GroupsQueryRoot",
   "pub type GroupsMutationRoot",
+]);
+requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+  "GroupsBaseQueryRoot",
+  "GroupsBaseMutationRoot",
+  "GroupsApplicationCasMutation",
 ]);
 
 requireMarkers("crates/rustok-groups/admin/src/core.rs", [
@@ -142,4 +147,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups exact-locale localization, FBA, FFA, last-row, and no-fallback boundary checks passed.");
+console.log("Groups exact-locale localization, CAS composition, FBA, FFA, last-row, and no-fallback boundary checks passed.");
