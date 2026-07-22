@@ -6,26 +6,31 @@ Module-owned Leptos admin FFA package for Groups.
 
 - `core.rs`: framework-neutral UUID/locale/text/invitation validation, command
   preparation, and transport profile;
-- `application_core.rs`: framework-neutral policy/review validation and fresh
-  idempotency-key preparation;
+- `application_core.rs`: framework-neutral policy precondition, question/rule, and
+  review validation with fresh idempotency-key preparation;
 - `model.rs`: directory, governance, localization, and invitation models;
-- `application_model.rs`: application policy, revision history, snapshot, review, and
-  membership models;
+- `application_model.rs`: application policy identity, CAS precondition, revision
+  history, snapshot, review, and membership models;
 - `transport.rs`: the only selected transport facade consumed by UI;
 - `transport/native_server_adapter.rs`: native directory/governance server functions;
 - `transport/native_localization_adapter.rs`: exact-locale localization server
   functions;
 - `transport/native_invitations_adapter.rs`: invitation management server functions;
-- `transport/native_applications_adapter.rs`: policy/list/review server functions;
+- `transport/native_applications_adapter.rs`: application list/review server functions;
+- `transport/native_policy_locale_adapter.rs`: exact-locale policy read and atomic CAS
+  save server functions;
 - `transport/native_policy_history_adapter.rs`: manager-only revision-history server
   function;
 - `transport/graphql_adapter.rs`: directory/governance/localization GraphQL paths;
 - `transport/graphql_invitations_adapter.rs`: invitation GraphQL paths;
-- `transport/graphql_applications_adapter.rs`: policy/list/review GraphQL paths;
+- `transport/graphql_applications_adapter.rs`: application list/review GraphQL paths;
+- `transport/graphql_policy_locale_adapter.rs`: exact-locale policy read and CAS save
+  GraphQL paths;
 - `transport/graphql_policy_history_adapter.rs`: policy-history GraphQL path;
 - `ui/leptos.rs`: directory and governance binding;
 - `ui/localization.rs`: exact-locale group presentation workspace;
-- `ui/policy_editor.rs`: visual membership policy editor and revision history;
+- `ui/policy_editor.rs`: visual membership policy editor, atomic stale protection, and
+  revision history;
 - `ui/applications.rs`: pending application snapshot/review workspace;
 - `ui/invitations.rs`: targeted/shareable invitation management;
 - `ui/root.rs`: module-owned composition root;
@@ -40,19 +45,27 @@ The visual editor supports:
 - adding, removing, and reordering up to 20 questions and 20 rules;
 - editing stable keys, prompt/help copy, required flags, answer limits, titles, and
   bodies;
-- saving through the existing idempotent owner command;
+- capturing the loaded policy ID, revision, and exact locale;
+- saving through `GroupApplicationCasCommandPort` in native or GraphQL mode;
 - listing append-only policy revisions through native or GraphQL transport;
 - displaying revision, locale, actor, timestamp, enabled state, and item counts;
-- blocking the UI save when a reread observes a different revision.
+- preserving the stale precondition after conflict so repeated saves remain blocked
+  until the operator explicitly reloads the current policy.
 
-The locale field is read-only because the owner read contract consumes
-`PortContext.locale`. A multi-locale picker must be added only with an explicit
-selected-locale read contract; the UI must not pretend that changing a text field
-changes owner selection policy.
+The locale field is read-only because the owner read contract consumes the
+host-resolved exact locale. A multi-locale picker must be added only with an explicit
+manager read contract carrying the selected locale; the UI must not pretend that
+changing a text field changes owner selection policy.
 
-The revision reread is a **non-atomic stale preflight**. It reduces accidental
-operator overwrites but does not close the race between reread and write. Atomic
-expected-revision enforcement inside the owner transaction remains planned.
+Policy saves send the loaded policy identity directly to the owner transaction. The
+owner locks the group row and compares `(policy_id, revision, locale)` before any
+policy, version, audit, or receipt write. A mismatch returns the stable conflict code
+`groups.application_policy_changed`. The editor displays a localized stale warning
+and requires `Load policy` before another save.
+
+An identical committed idempotent command is replayed before its precondition is
+checked again. Later policy revisions therefore do not invalidate recovery of an
+already-committed response.
 
 Every successful policy translation INSERT/UPDATE is captured into
 `group_membership_policy_revisions` in the same database transaction. Revision rows
@@ -74,13 +87,17 @@ All facades choose exactly one transport through `execute_selected_transport`; a
 owner denial, timeout, conflict, or unavailable result never triggers implicit retry
 through another path.
 
-## Open gates
+## Compatibility and open gates
+
+The older unconditional policy-save method remains in the backend command port for
+source compatibility, but this admin package does not call it. Its removal or
+versioned deprecation is a separate API migration gate.
 
 Manual group/member/application/invitation UUID entry remains an intermediate
-operator surface. Multi-locale policy selection, atomic expected-revision, pickers,
-explicit destructive confirmation, bulk review, audit/receipt history,
-accessibility execution, and native/GraphQL parity remain open.
+operator surface. Multi-locale policy selection, pickers, explicit destructive
+confirmation, bulk review, audit/receipt history, accessibility execution, and
+native/GraphQL parity remain open.
 
 No source artifact in this package promotes FFA readiness without executed build,
-runtime, migration, replay, concurrency, security, accessibility, and recovery
-evidence.
+runtime, migration, replay, stale-race, concurrency, lock-order, security,
+accessibility, and recovery evidence.
