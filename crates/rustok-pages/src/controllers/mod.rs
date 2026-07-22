@@ -21,8 +21,9 @@ use uuid::Uuid;
 
 use crate::services::{MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE};
 use crate::{
-    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuResponse,
-    MenuService, PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+    ActiveMenuBindingResponse, BindActiveMenuInput, CANNOT_DELETE_PUBLISHED_ERROR_CODE,
+    CreateMenuInput, CreatePageInput, MenuBindingService, MenuLocation, MenuResponse, MenuService,
+    PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
     PageBuilderArtifactService, PageResponse, PageService, PagesError, PatchPageMetadataInput,
     SavePageDocumentInput,
 };
@@ -169,6 +170,49 @@ pub async fn get_menu(
 
 #[utoipa::path(
     get,
+    path = "/api/menus/active/{location}",
+    tag = "pages",
+    params(
+        ("location" = MenuLocation, Path, description = "Current channel menu location"),
+        GetMenuParams
+    ),
+    responses(
+        (status = 200, description = "Exact-locale active menu for the current tenant and channel", body = MenuResponse),
+        (status = 404, description = "Active menu, current channel, or localized menu copy not found"),
+        (status = 500, description = "Menu translation integrity failure")
+    )
+)]
+pub async fn get_active_menu(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+    Path(location): Path<MenuLocation>,
+    Query(params): Query<GetMenuParams>,
+) -> HttpResult<Json<MenuResponse>> {
+    let channel_id = current_public_channel_id(&request_context)?;
+    ensure_menu_module_enabled_for_channel(&runtime, &request_context).await?;
+    let effective_locale = params
+        .locale
+        .unwrap_or_else(|| request_context.locale.clone());
+
+    MenuBindingService::new(runtime.db_clone(), runtime.event_bus())
+        .get_active(
+            tenant.id,
+            rustok_core::SecurityContext::public_read(),
+            channel_id,
+            location,
+            &effective_locale,
+        )
+        .await
+        .map_err(map_pages_error)?
+        .map(Json)
+        .ok_or_else(|| {
+            HttpError::not_found("active_menu_not_found", "Active menu was not found")
+        })
+}
+
+#[utoipa::path(
+    get,
     path = "/api/pages/{id}/artifact",
     tag = "pages",
     params(
@@ -310,6 +354,44 @@ pub async fn create_menu(
 }
 
 #[utoipa::path(
+    put,
+    path = "/api/admin/menus/active/{location}",
+    tag = "pages",
+    params(("location" = MenuLocation, Path, description = "Current channel menu location")),
+    request_body = BindActiveMenuInput,
+    responses(
+        (status = 200, description = "Active menu binding created or replaced", body = ActiveMenuBindingResponse),
+        (status = 400, description = "Current channel is missing or binding input is invalid"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Menu not found")
+    )
+)]
+pub async fn bind_active_menu(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Path(location): Path<MenuLocation>,
+    Json(input): Json<BindActiveMenuInput>,
+) -> HttpResult<Json<ActiveMenuBindingResponse>> {
+    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    let channel_id = current_admin_channel_id(&request_context)?;
+
+    MenuBindingService::new(runtime.db_clone(), runtime.event_bus())
+        .bind(
+            tenant.id,
+            page_security(&auth),
+            channel_id,
+            location,
+            input.menu_id,
+        )
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
+}
+
+#[utoipa::path(
     patch,
     path = "/api/admin/pages/{id}/metadata",
     tag = "pages",
@@ -397,11 +479,19 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .route("/api/pages", axum::routing::get(get_page))
         .route("/api/menus/{id}", axum::routing::get(get_menu))
         .route(
+            "/api/menus/active/{location}",
+            axum::routing::get(get_active_menu),
+        )
+        .route(
             "/api/pages/{id}/artifact",
             axum::routing::get(get_page_artifact),
         )
         .route("/api/admin/pages", axum::routing::post(create_page))
         .route("/api/admin/menus", axum::routing::post(create_menu))
+        .route(
+            "/api/admin/menus/active/{location}",
+            axum::routing::put(bind_active_menu),
+        )
         .route("/api/admin/pages/{id}", axum::routing::delete(delete_page))
         .route(
             "/api/admin/pages/{id}/metadata",
@@ -412,6 +502,21 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
             axum::routing::put(save_page_document),
         )
         .with_state(state))
+}
+
+fn current_public_channel_id(request_context: &RequestContext) -> HttpResult<Uuid> {
+    request_context.channel_id.ok_or_else(|| {
+        HttpError::not_found("active_menu_not_found", "Active menu was not found")
+    })
+}
+
+fn current_admin_channel_id(request_context: &RequestContext) -> HttpResult<Uuid> {
+    request_context.channel_id.ok_or_else(|| {
+        HttpError::bad_request(
+            "channel_context_required",
+            "Active menu binding requires a resolved current channel",
+        )
+    })
 }
 
 async fn ensure_menu_module_enabled_for_channel(

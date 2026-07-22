@@ -3,8 +3,8 @@ pub mod menu;
 pub mod page;
 
 pub use menu::{
-    ActiveMenuBindingResponse, CreateMenuInput, MenuItemInput, MenuItemResponse,
-    MenuItemTranslationInput, MenuLocation, MenuResponse, MenuTranslationInput,
+    ActiveMenuBindingResponse, BindActiveMenuInput, CreateMenuInput, MenuItemInput,
+    MenuItemResponse, MenuItemTranslationInput, MenuLocation, MenuResponse, MenuTranslationInput,
 };
 pub use page::{
     CreatePageInput, ListPagesFilter, PageBodyInput, PageBodyResponse, PageBodyRevisionInput,

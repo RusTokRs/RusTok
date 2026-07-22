@@ -88,6 +88,15 @@ pub struct GqlMenu {
 }
 
 #[derive(Clone, Debug, SimpleObject)]
+pub struct GqlActiveMenuBinding {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub channel_id: Uuid,
+    pub location: GqlMenuLocation,
+    pub menu_id: Uuid,
+}
+
+#[derive(Clone, Debug, SimpleObject)]
 pub struct GqlMenuItem {
     pub id: Uuid,
     pub title: String,
@@ -171,6 +180,12 @@ pub struct CreateGqlMenuInput {
     pub translations: Vec<GqlMenuTranslationInput>,
     pub location: GqlMenuLocation,
     pub items: Vec<GqlMenuItemInput>,
+}
+
+#[derive(InputObject)]
+pub struct BindGqlActiveMenuInput {
+    pub location: GqlMenuLocation,
+    pub menu_id: Uuid,
 }
 
 #[derive(InputObject)]
@@ -284,6 +299,18 @@ impl From<crate::MenuResponse> for GqlMenu {
     }
 }
 
+impl From<crate::ActiveMenuBindingResponse> for GqlActiveMenuBinding {
+    fn from(binding: crate::ActiveMenuBindingResponse) -> Self {
+        Self {
+            id: binding.id,
+            tenant_id: binding.tenant_id,
+            channel_id: binding.channel_id,
+            location: binding.location.into(),
+            menu_id: binding.menu_id,
+        }
+    }
+}
+
 impl From<crate::MenuItemResponse> for GqlMenuItem {
     fn from(item: crate::MenuItemResponse) -> Self {
         Self {
@@ -292,6 +319,17 @@ impl From<crate::MenuItemResponse> for GqlMenuItem {
             url: item.url,
             icon: item.icon,
             children: item.children.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<GqlMenuLocation> for crate::MenuLocation {
+    fn from(location: GqlMenuLocation) -> Self {
+        match location {
+            GqlMenuLocation::Header => Self::Header,
+            GqlMenuLocation::Footer => Self::Footer,
+            GqlMenuLocation::Sidebar => Self::Sidebar,
+            GqlMenuLocation::Mobile => Self::Mobile,
         }
     }
 }
