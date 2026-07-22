@@ -11,7 +11,7 @@
 //! Pages module for RusToK platform.
 //!
 //! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, atomic publish receipts, and Page Builder release baselines.
+//! artifacts, atomic publish receipts, cache invalidation policy, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -41,6 +41,7 @@
 //! let page = service.create(tenant_id, security, input).await?;
 //! ```
 
+pub mod cache_invalidation;
 pub mod controllers;
 pub mod dto;
 pub mod entities;
@@ -52,6 +53,13 @@ pub mod openapi;
 mod seo_targets;
 pub mod services;
 
+pub use cache_invalidation::{
+    MAX_PAGE_CACHE_KEY_VARIANT_BYTES, PAGES_CACHE_ENTITY_KIND, PAGES_CACHE_EVENT_HANDLER,
+    PAGES_CACHE_NAMESPACE_FORMAT, PageCacheInvalidationCause, PageCacheInvalidationError,
+    PageCacheInvalidationEventHandler, PageCacheInvalidationPort, PageCacheInvalidationReceipt,
+    PageCacheInvalidationRequest, PageCacheScope, PagesCacheInvalidationRuntime, page_cache_key,
+    page_cache_namespace,
+};
 pub use dto::*;
 pub use entities::{
     Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
@@ -71,7 +79,10 @@ pub use services::{
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
-use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_core::{
+    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
+    ModuleRuntimeExtensions, RusToKModule,
+};
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
@@ -110,6 +121,24 @@ impl RusToKModule for PagesModule {
             Permission::new(Resource::Pages, Action::Publish),
             Permission::new(Resource::Pages, Action::Manage),
         ]
+    }
+
+    fn register_event_listeners(
+        &self,
+        registry: &mut ModuleEventListenerRegistry,
+        ctx: &ModuleEventListenerContext<'_>,
+    ) {
+        let Some(runtime) = ctx
+            .extensions
+            .get::<PagesCacheInvalidationRuntime>()
+            .cloned()
+        else {
+            tracing::warn!(
+                "Pages cache invalidation runtime is not configured; no Pages cache listener registered"
+            );
+            return;
+        };
+        registry.register(PageCacheInvalidationEventHandler::new(runtime));
     }
 
     fn register_runtime_extensions(
