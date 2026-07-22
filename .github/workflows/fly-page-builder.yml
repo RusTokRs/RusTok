@@ -7,25 +7,30 @@ on:
       - ".github/workflows/fly-page-builder.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-active-menu-binding-v3-port:
+  publish-active-menu-binding-v3:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/pages-active-menu-binding-v3
           fetch-depth: 0
-      - name: Capture scoped three-way port diagnostics
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: pages-active-menu-binding-v3
+      - name: Port active-menu product diff
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           git fetch origin main agent/pages-active-menu-binding-v2
           source_branch=origin/agent/pages-active-menu-binding-v2
           source_base=$(git merge-base origin/main "$source_branch")
-          printf '%s\n' "$source_base" > /tmp/active-menu-source-base.txt
           git diff --binary "$source_base" "$source_branch" -- \
             crates/rustok-pages/src/dto/menu.rs \
             crates/rustok-pages/src/dto/mod.rs \
@@ -39,21 +44,70 @@ jobs:
             crates/rustok-pages/tests/menu_binding_service.rs \
             crates/rustok-pages/tests/menu_transport_contract.rs \
             > /tmp/active-menu-binding.patch
-          git apply --3way /tmp/active-menu-binding.patch > /tmp/active-menu-apply.log 2>&1
-          printf '%s\n' "$?" > /tmp/active-menu-apply.status
-          git status --short > /tmp/active-menu-status.txt
-          git diff --name-only --diff-filter=U > /tmp/active-menu-conflicts.txt
-          git diff > /tmp/active-menu-worktree.diff
-          exit 0
-      - uses: actions/upload-artifact@v4
-        with:
-          name: active-menu-binding-v3-port-diagnostics
-          path: |
-            /tmp/active-menu-source-base.txt
-            /tmp/active-menu-binding.patch
-            /tmp/active-menu-apply.log
-            /tmp/active-menu-apply.status
-            /tmp/active-menu-status.txt
-            /tmp/active-menu-conflicts.txt
-            /tmp/active-menu-worktree.diff
-          if-no-files-found: error
+          test -s /tmp/active-menu-binding.patch
+          set +e
+          git apply --3way /tmp/active-menu-binding.patch
+          apply_status=$?
+          set -e
+          if [[ "$apply_status" -ne 0 ]]; then
+            conflicts=$(git diff --name-only --diff-filter=U)
+            test "$conflicts" = "crates/rustok-pages/src/lib.rs"
+            git checkout --ours crates/rustok-pages/src/lib.rs
+            python - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/rustok-pages/src/lib.rs")
+          text = path.read_text()
+          old_entities = "    Menu, Page, PageBuilderScenarioBaseline, PagePublishOperation,\n"
+          new_entities = "    Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,\n"
+          if text.count(old_entities) != 1:
+              raise SystemExit("expected one current entity export line")
+          text = text.replace(old_entities, new_entities, 1)
+          old_services = "    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,\n"
+          new_services = "    MenuBindingService, MenuService, PageBuilderArtifactService,\n    PageBuilderScenarioBaselineService, PageService,\n"
+          if text.count(old_services) != 1:
+              raise SystemExit("expected one current service export line")
+          path.write_text(text.replace(old_services, new_services, 1))
+          PY
+            git add crates/rustok-pages/src/lib.rs
+          fi
+          test -z "$(git diff --name-only --diff-filter=U)"
+      - name: Verify active-menu binding contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p rustok-pages
+          cargo test -p rustok-pages --lib
+          cargo test -p rustok-pages --test menu_binding_service
+          cargo test -p rustok-pages --test menu_transport_contract
+          cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings
+          actual=$(mktemp)
+          expected=$(mktemp)
+          git diff --name-only --cached | sort > "$actual"
+          cat > "$expected" <<'EOF'
+          crates/rustok-pages/src/dto/menu.rs
+          crates/rustok-pages/src/dto/mod.rs
+          crates/rustok-pages/src/entities/menu_binding.rs
+          crates/rustok-pages/src/entities/mod.rs
+          crates/rustok-pages/src/lib.rs
+          crates/rustok-pages/src/migrations/m20260721_000008_create_active_menu_bindings.rs
+          crates/rustok-pages/src/migrations/mod.rs
+          crates/rustok-pages/src/services/menu_binding.rs
+          crates/rustok-pages/src/services/mod.rs
+          crates/rustok-pages/tests/menu_binding_service.rs
+          crates/rustok-pages/tests/menu_transport_contract.rs
+          EOF
+          sort -o "$expected" "$expected"
+          diff -u "$expected" "$actual"
+          test -z "$(git diff --name-only)"
+      - name: Remove technical workflow and publish product commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/workflows/fly-page-builder.yml > .github/workflows/fly-page-builder.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/fly-page-builder.yml
+          git commit -m "feat(pages): add active menu binding contract"
+          git push origin HEAD:agent/pages-active-menu-binding-v3
