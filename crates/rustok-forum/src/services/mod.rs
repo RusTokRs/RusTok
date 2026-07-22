@@ -10,6 +10,7 @@ mod mention_relation;
 #[cfg(test)]
 mod mention_relation_tests;
 mod quote_command;
+mod relation_quote_input;
 mod relation_read;
 pub mod moderation;
 mod rbac;
