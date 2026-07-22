@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::graphql_application_lifecycle::{
     GroupsApplicationLifecycleMutation, GroupsApplicationLifecycleQuery,
 };
+use crate::graphql_application_policy_management::GroupsApplicationPolicyManagementQuery;
 use crate::graphql_applications::{
     GroupApplicationReviewDecisionGql, ReviewGroupMembershipApplicationResultGql,
     SubmitGroupMembershipApplicationInputGql, SubmitGroupMembershipApplicationResultGql,
@@ -33,7 +34,11 @@ use crate::{
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 
 #[derive(MergedObject, Default)]
-pub struct GroupsQueryRoot(GroupsBaseQueryRoot, GroupsApplicationLifecycleQuery);
+pub struct GroupsQueryRoot(
+    GroupsBaseQueryRoot,
+    GroupsApplicationLifecycleQuery,
+    GroupsApplicationPolicyManagementQuery,
+);
 
 #[derive(MergedObject, Default)]
 pub struct GroupsMutationRoot(
