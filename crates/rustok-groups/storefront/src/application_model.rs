@@ -35,6 +35,11 @@ pub struct GroupsStorefrontApplicationPolicyQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontMyApplicationQuery {
+    pub group_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsStorefrontApplicationPolicyPrecondition {
     pub policy_id: String,
     pub revision: u64,
@@ -67,6 +72,12 @@ pub struct SubmitGroupMembershipApplicationCommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelGroupMembershipApplicationCommand {
+    pub idempotency_key: String,
+    pub application_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsStorefrontMembershipApplication {
     pub id: String,
     pub group_id: String,
@@ -89,6 +100,14 @@ pub struct GroupsStorefrontApplicationMembership {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsStorefrontSubmitApplicationResult {
+    pub application: GroupsStorefrontMembershipApplication,
+    pub membership: GroupsStorefrontApplicationMembership,
+    pub group_version: u64,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontApplicationLifecycleResult {
     pub application: GroupsStorefrontMembershipApplication,
     pub membership: GroupsStorefrontApplicationMembership,
     pub group_version: u64,
