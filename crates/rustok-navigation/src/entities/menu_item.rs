@@ -10,7 +10,6 @@ pub struct Model {
     pub menu_id: Uuid,
     pub tenant_id: Uuid,
     pub parent_item_id: Option<Uuid>,
-    pub page_id: Option<Uuid>,
     pub position: i32,
     pub url: String,
     pub icon: Option<String>,
