@@ -58,13 +58,13 @@ const contract = JSON.parse(
 );
 const dto = read(contract.quote_command?.dto ?? "");
 const service = read(contract.quote_command?.service ?? "");
-const tests = read("crates/rustok-forum/src/services/mention_relation_tests.rs");
+const relationTests = read("crates/rustok-forum/src/services/mention_relation_tests.rs");
 const controller = read("crates/rustok-forum/src/controllers/quote_commands.rs");
 const routes = read("crates/rustok-forum/src/controllers/mod.rs");
 const graphql = read("crates/rustok-forum/src/graphql/quote_commands.rs");
 const graphqlRoot = read("crates/rustok-forum/src/graphql/mod.rs");
 const openapi = read("crates/rustok-forum/src/openapi.rs");
-const record = read("crates/rustok-forum/docs/forum-12d1-quote-commands.md");
+const d1Record = read("crates/rustok-forum/docs/forum-12d1-quote-commands.md");
 
 for (const [field, expected] of [
   ["quotes_field_required", true],
@@ -85,8 +85,8 @@ for (const marker of [
 ]) {
   requireText(dto, marker, `quote command DTO is missing ${marker}`);
 }
-reject(dto, /serde\s*\(\s*default/, "omitting quotes must not silently clear relations");
-reject(graphql, /graphql\s*\(\s*default/, "omitting GraphQL quotes must not silently clear relations");
+reject(dto, /serde\s*\(\s*default/, "omitting D1 quotes must not silently clear relations");
+reject(graphql, /graphql\s*\(\s*default/, "omitting D1 GraphQL quotes must not silently clear relations");
 
 for (const marker of [
   "pub struct ForumQuoteCommandService",
@@ -130,7 +130,7 @@ for (const marker of [
   "cross-tenant quoted revision must fail closed",
   "checked_sub(3)",
 ]) {
-  requireText(tests, marker, `quote owner runtime scenario is missing ${marker}`);
+  requireText(relationTests, marker, `quote owner runtime scenario is missing ${marker}`);
 }
 
 for (const marker of [
@@ -157,6 +157,166 @@ for (const marker of [
   requireText(openapi, marker, `OpenAPI quote boundary is missing ${marker}`);
 }
 
+const inline = contract.inline_quote_commands ?? {};
+for (const [field, expected] of [
+  ["create_omitted_quotes", "empty_initial_set"],
+  ["update_omitted_quotes", "preserve_latest_exact_locale_set"],
+  ["update_explicit_empty_quotes", "clear"],
+  ["preserve_expected_revision_cas", true],
+  ["conflict_code", "FORUM_RELATION_REVISION_CONFLICT"],
+  ["conflict_retryable", true],
+  ["legacy_rust_dtos_unchanged", true],
+  ["legacy_facade_updates_preserve_quotes", true],
+]) {
+  if (inline[field] !== expected) {
+    failures.push(`machine boundary must set inline_quote_commands.${field}=${expected}`);
+  }
+}
+
+const topicDto = read(inline.topic_dto ?? "");
+const replyDto = read(inline.reply_dto ?? "");
+const resolver = read(inline.resolver ?? "");
+const moduleComposition = read(inline.module_composition ?? "");
+const topicOwner = read(contract.owner_entrypoints?.topic_update?.owner ?? "");
+const topicImplementation = read(contract.owner_entrypoints?.topic_update?.implementation ?? "");
+const replyOwner = read(contract.owner_entrypoints?.reply_create?.owner ?? "");
+const replyImplementation = read(contract.owner_entrypoints?.reply_update?.implementation ?? "");
+const topicFacade = read("crates/rustok-forum/src/services/topic_facade.rs");
+const replyFacade = read("crates/rustok-forum/src/services/reply_facade.rs");
+const contentController = read("crates/rustok-forum/src/controllers/content_commands.rs");
+const contentGraphql = read("crates/rustok-forum/src/graphql/content_commands.rs");
+const inlineTests = read("crates/rustok-forum/src/services/relation_quote_input_tests.rs");
+const d2Record = read("crates/rustok-forum/docs/forum-12d2-inline-quote-commands.md");
+
+for (const marker of [
+  "CreateTopicCommandInput",
+  "UpdateTopicCommandInput",
+  "#[serde(default)]",
+  "pub quotes: Vec<ForumQuoteReferenceInput>",
+  "pub quotes: Option<Vec<ForumQuoteReferenceInput>>",
+  "update_command_distinguishes_omitted_quotes_from_explicit_clear",
+]) {
+  requireText(topicDto, marker, `topic inline quote DTO is missing ${marker}`);
+}
+for (const marker of [
+  "CreateReplyCommandInput",
+  "UpdateReplyCommandInput",
+  "#[serde(default)]",
+  "pub quotes: Vec<ForumQuoteReferenceInput>",
+  "pub quotes: Option<Vec<ForumQuoteReferenceInput>>",
+  "update_command_distinguishes_omitted_quotes_from_explicit_clear",
+]) {
+  requireText(replyDto, marker, `reply inline quote DTO is missing ${marker}`);
+}
+
+for (const marker of [
+  "InlineQuoteExpectation",
+  "Exact(Option<i64>)",
+  "resolve_inline_update_quotes",
+  "lock_source_and_assert_latest_in_tx",
+  "deleted_at IS NULL",
+  "ForumError::RelationRevisionConflict",
+  "FORUM_MAX_QUOTE_REFERENCES_PER_REVISION",
+]) {
+  requireText(resolver, marker, `inline quote resolver is missing ${marker}`);
+}
+requireOrder(
+  resolver,
+  [
+    "lock_active_source_in_tx",
+    "InlineQuoteExpectation::Exact",
+    "forum_relation_revision::Entity::find()",
+    "ForumError::RelationRevisionConflict",
+  ],
+  "preserved quotes must lock the source and compare the expected relation revision",
+);
+
+for (const [source, label] of [
+  [topicImplementation, "topic implementation"],
+  [replyImplementation, "reply implementation"],
+]) {
+  for (const marker of [
+    "resolve_inline_update_quotes",
+    "lock_source_and_assert_latest_in_tx",
+    ".persist_in_tx",
+    "txn.commit().await?",
+  ]) {
+    requireText(source, marker, `${label} is missing ${marker}`);
+  }
+  requireOrder(
+    source,
+    [
+      "resolve_inline_update_quotes",
+      ".prepare(",
+      "let txn = self.db.begin().await?;",
+      "lock_source_and_assert_latest_in_tx",
+      ".persist_in_tx",
+      "txn.commit().await?",
+    ],
+    `${label} must preserve quote resolution and persistence order`,
+  );
+}
+for (const marker of ["create_command", "update_command", "create_with_inline_relations", "update_with_inline_relations"]) {
+  requireText(topicOwner + replyOwner, marker, `owner command extension is missing ${marker}`);
+}
+for (const marker of [
+  "self.create_command",
+  "self.update_command",
+  "input.into()",
+]) {
+  requireText(topicFacade + replyFacade, marker, `legacy facade compatibility is missing ${marker}`);
+}
+for (const marker of [
+  'include!("topic.rs")',
+  'include!("topic_inline.rs")',
+  'include!("reply.rs")',
+  'include!("reply_inline.rs")',
+  'include!("topic_owner_inline.rs")',
+  'include!("reply_owner_inline.rs")',
+]) {
+  requireText(moduleComposition, marker, `module composition is missing ${marker}`);
+}
+
+for (const marker of [
+  "content_commands::create_topic",
+  "content_commands::update_topic",
+  "content_commands::create_reply",
+  "content_commands::update_reply",
+  "CreateTopicCommandInput",
+  "UpdateReplyCommandInput",
+  "StatusCode::CONFLICT",
+]) {
+  requireText(routes + contentController, marker, `REST inline quote boundary is missing ${marker}`);
+}
+for (const marker of [
+  "create_forum_topic_with_quotes",
+  "update_forum_topic_with_quotes",
+  "create_forum_reply_with_quotes",
+  "update_forum_reply_with_quotes",
+  "ForumContentCommandMutation",
+]) {
+  requireText(contentGraphql + graphqlRoot, marker, `GraphQL inline quote boundary is missing ${marker}`);
+}
+for (const marker of [
+  "content_commands::create_topic",
+  "content_commands::update_topic",
+  "content_commands::create_reply",
+  "content_commands::update_reply",
+  "CreateTopicCommandInput",
+  "UpdateReplyCommandInput",
+]) {
+  requireText(openapi, marker, `OpenAPI inline quote boundary is missing ${marker}`);
+}
+
+for (const marker of [
+  "inline_quote_preserve_detects_concurrent_relation_replacement",
+  "stale omitted snapshot must conflict",
+  "FORUM_RELATION_REVISION_CONFLICT",
+  "InlineQuoteExpectation::Any",
+]) {
+  requireText(inlineTests, marker, `inline quote runtime scenario is missing ${marker}`);
+}
+
 for (const root of contract.transport_roots ?? []) {
   for (const relative of collectRustFiles(path.join(repoRoot, root))) {
     const source = read(path.join(root, relative).replaceAll(path.sep, "/"));
@@ -177,7 +337,17 @@ for (const marker of [
   "soft-deleted sources reject",
   "Maintainer verification was not executed",
 ]) {
-  requireText(record, marker, `FORUM-12D1 implementation record is missing ${marker}`);
+  requireText(d1Record, marker, `FORUM-12D1 implementation record is missing ${marker}`);
+}
+for (const marker of [
+  "FORUM-12D2",
+  "omitted updates preserve",
+  "explicit empty list clears",
+  "FORUM_RELATION_REVISION_CONFLICT",
+  "legacy Rust DTOs remain unchanged",
+  "Maintainer verification was not executed",
+]) {
+  requireText(d2Record, marker, `FORUM-12D2 implementation record is missing ${marker}`);
 }
 
 if (failures.length > 0) {
