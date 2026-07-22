@@ -52,8 +52,8 @@ The current component-tree authority is `pages[].component`.
   preview/review/materialization contracts, health and rollout controls;
 - consumer backend — page/document revisions, immutable artifacts, publish
   transactions, receipts, outbox and cache scope/key ownership;
-- cache/host infrastructure — shared connection and bounded generation primitives,
-  never consumer cache policy.
+- cache/host infrastructure — shared connection, byte storage and bounded
+  generation primitives, never consumer cache policy.
 
 Fly packages do not choose GraphQL, server functions, tenant policy or consumer
 persistence. Rich text remains an external dedicated capability.
@@ -136,11 +136,16 @@ persistence. Rich text remains an external dedicated capability.
 - [x] The mixed lifecycle/default-runtime branch is removed. Explicit
   `publish_non_builder[_if_current]` rejects GrapesJS/Fly bodies with
   `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` before and inside the transaction.
-- [x] Pages owns route/page/artifact cache scopes and generation-aware key shape.
-  A module listener consumes page lifecycle events and a neutral server adapter
-  rotates bounded tenant-wide generations through the shared cache capability.
-- [ ] Storefront route/page/artifact cache readers must adopt the generation-aware
-  key contract and retain accepted event/receipt/miss/refill evidence.
+- [x] Pages owns route/page/artifact cache scopes and SHA-256 generation-aware key
+  shape. A module listener consumes page lifecycle events and a neutral server
+  adapter rotates bounded tenant-wide generations through the shared cache
+  capability.
+- [x] The composite storefront response consumes route/page/artifact generations;
+  artifact HTTP delivery consumes artifact generation. Module/channel checks run
+  before lookup, verified owner reads precede cache fill and cache failures fail
+  open to the source read.
+- [ ] Accepted evidence must correlate outbox delivery, invalidation receipt,
+  generation rotation and cache miss/refill on both public readers.
 - [ ] Authenticated storefront inline editing is not implemented.
 
 ## Target architecture
@@ -179,7 +184,7 @@ persistence. Rich text remains an external dedicated capability.
     -> published state + transactional outbox
     -> durable idempotent publish receipt
     -> module-owned route/page/artifact generation rotation
-    -> generation-aware cache/storefront correlation
+    -> generation-aware storefront/artifact cache reads
 
   rustok-page-builder
     -> capability policy / health / rollout
@@ -284,6 +289,9 @@ Rules:
   call cache infrastructure inline.
 - Consumer-owned scopes rotate through bounded shared generations instead of
   wildcard Redis scans/deletes.
+- Public cache keys bind tenant/page/request dimensions through bounded SHA-256
+  variants; authorization precedes lookup and verified owner reads precede fill.
+- Cache backend failures fail open to the authoritative owner source read.
 - Handler receipts preserve source event and correlation identity; provider errors
   remain retryable. A retry may safely advance a generation more than once.
 - Save, review, sanitization, publish receipt, invalidation receipt, artifact and
@@ -366,8 +374,9 @@ of the verification programme.
   every GrapesJS/Fly body before and inside the transaction.
 - [x] Connect page lifecycle events to consumer-owned bounded route/page/artifact
   generation rotation through a typed cache port and neutral server adapter.
-- [ ] Adopt generation-aware keys in every route/page/artifact reader and retain
-  accepted event/receipt/miss/refill evidence.
+- [x] Adopt generation-aware keys in the composite storefront response and artifact
+  HTTP delivery reader.
+- [ ] Retain accepted event/receipt/generation/miss/refill evidence.
 - [ ] Rollback to previous immutable artifacts.
 - [ ] Repair/rebuild and integrity-audit commands.
 
@@ -386,7 +395,8 @@ of the verification programme.
 - [x] Current published document/static artifact rendering foundations.
 - [ ] Render only selected immutable published artifacts.
 - [x] Verify Page Builder runtime materialization evidence before storefront read.
-- [ ] Use Pages generation-aware cache keys for route/page/artifact reads.
+- [x] Use Pages generation-aware cache keys for storefront response and artifact
+  delivery reads.
 - [ ] Authenticated real-DOM editing and draft/published switching.
 - [ ] Prove anonymous bundles exclude authoring code.
 - [ ] Visual/accessibility parity across admin preview and published output.
@@ -408,15 +418,12 @@ of the verification programme.
 
 ## Immediate implementation order
 
-1. Adopt `page_cache_key` in every Pages route/page/artifact reader and retain a
-   packet correlating `NodePublished`, handler receipt, generation rotation and
-   storefront miss/refill.
-2. Add idempotent rollback to a previous immutable artifact set.
-3. Complete Pages metadata property contributions and Page Builder asset/degraded
+1. Add idempotent rollback to a previous immutable artifact set.
+2. Complete Pages metadata property contributions and Page Builder asset/degraded
    controls.
-4. Finish the reviewed HTML/CSS/URL/attribute policy and resource limits.
-5. Implement authenticated real-DOM storefront editing and bundle exclusion.
-6. Run accepted Rust/WASM/browser and observed tenant evidence.
+3. Finish the reviewed HTML/CSS/URL/attribute policy and resource limits.
+4. Implement authenticated real-DOM storefront editing and bundle exclusion.
+5. Retain accepted Rust/WASM/browser, cache miss/refill and observed tenant evidence.
 
 ## Verification programme
 
@@ -452,7 +459,7 @@ Required evidence covers current GrapesJS/Fly round trips, iframe rejection and
 cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
 authoritative sanitization, deterministic artifact and receipt integrity,
 preview/static materialization parity, idempotent replay, event-driven cache
-generation rotation and storefront miss/refill, publish/rollback correlation,
+generation rotation and public miss/refill, publish/rollback correlation,
 anonymous bundle exclusion and provider degradation.
 
 ## Update rules
