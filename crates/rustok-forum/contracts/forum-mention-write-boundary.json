@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "slice": "FORUM-12B2",
+  "owner_entrypoints": {
+    "topic_create": {
+      "owner": "crates/rustok-forum/src/services/topic_owner.rs",
+      "implementation": "crates/rustok-forum/src/services/topic_relation_integration.rs",
+      "delegate": "create_with_relations"
+    },
+    "topic_update": {
+      "owner": "crates/rustok-forum/src/services/topic_owner.rs",
+      "implementation": "crates/rustok-forum/src/services/topic_relation_integration.rs",
+      "delegate": "update_with_relations"
+    },
+    "reply_create": {
+      "owner": "crates/rustok-forum/src/services/reply_owner.rs",
+      "implementation": "crates/rustok-forum/src/services/reply_owner.rs",
+      "delegate": "persist_in_tx"
+    },
+    "reply_update": {
+      "owner": "crates/rustok-forum/src/services/reply_owner.rs",
+      "implementation": "crates/rustok-forum/src/services/reply_relation_integration.rs",
+      "delegate": "update_with_relations"
+    }
+  },
+  "required_order": [
+    "prepare relation projection before opening the owner transaction",
+    "persist canonical topic translation or reply body",
+    "persist relation projection in the same owner transaction",
+    "run existing counters and semantic event writes",
+    "commit the owner transaction"
+  ],
+  "source_entrypoints": {
+    "topic": "crates/rustok-forum/src/services/topic.rs",
+    "reply": "crates/rustok-forum/src/services/reply.rs"
+  },
+  "transport_roots": [
+    "crates/rustok-forum/src/controllers",
+    "crates/rustok-forum/src/graphql"
+  ],
+  "forbidden_transport_symbols": [
+    "MentionRelationService",
+    "PreparedMentionRelations",
+    "persist_in_tx",
+    "create_with_relations",
+    "update_with_relations"
+  ],
+  "deferred": [
+    "quote command DTOs",
+    "mention semantic events and outbox publication",
+    "bounded relation owner reads",
+    "Notifications delivery"
+  ]
+}

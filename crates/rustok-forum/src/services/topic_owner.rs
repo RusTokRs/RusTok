@@ -13,6 +13,7 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
+use crate::dto::{CreateTopicInput, TopicResponse, UpdateTopicInput};
 use crate::entities::{forum_reply, forum_solution};
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::{ReplyStatus, TopicStatus};
@@ -40,6 +41,31 @@ impl TopicService {
             db,
             event_bus,
         }
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn create(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreateTopicInput,
+    ) -> ForumResult<TopicResponse> {
+        self.inner
+            .create_with_relations(tenant_id, security, input)
+            .await
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn update(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        input: UpdateTopicInput,
+    ) -> ForumResult<TopicResponse> {
+        self.inner
+            .update_with_relations(tenant_id, topic_id, security, input)
+            .await
     }
 
     #[instrument(skip(self, security))]
@@ -163,7 +189,7 @@ impl TopicService {
     }
 
     pub(crate) async fn set_pinned_in_tx(
-        txn: &DatabaseTransaction,
+        txn: &DatabaseTransaaction,
         tenant_id: Uuid,
         topic_id: Uuid,
         is_pinned: bool,
