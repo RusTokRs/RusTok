@@ -1,3 +1,4 @@
+pub mod application_bulk_review;
 pub mod applications;
 pub mod invitations;
 pub mod leptos;

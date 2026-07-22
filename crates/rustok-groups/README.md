@@ -7,12 +7,13 @@ membership, local roles, invitations, membership applications, feature bindings,
 and group access policy for RusToK. Exact-locale translation management, bounded
 invitation tokens, targeted invitation source events, localized application policies,
 append-only policy revision history, explicit policy-locale management, atomic policy
-preconditions, candidate application lifecycle, application review, role delegation,
-ownership transfer, command receipts, immutable audit, and native/GraphQL transports
-are implemented at source level.
+preconditions, candidate application lifecycle, authorization-first application
+review, bounded partial-result bulk review, role delegation, ownership transfer,
+command receipts, immutable audit, and native/GraphQL transports are implemented at
+source level.
 
-Bans, bulk review, complete legacy application-command API removal, consumer-side
-notification fan-out, and full runtime evidence remain plan-led work.
+Bans, complete legacy application-command API removal, consumer-side notification
+fan-out, and full runtime evidence remain plan-led work.
 
 A group is a social container and policy owner. It is not the persistence owner for
 forum topics, blog posts, Pages documents, marketplace listings, products, media
@@ -68,6 +69,16 @@ assets, comments, notification inbox/delivery, or search documents.
   cancellation and rejected/cancelled-only manager reopen.
 - Publish `GroupApplicationReviewCommandPort` as the focused review write boundary used
   by final GraphQL and module-owned native admin surfaces.
+- Authorize the review actor before pending-status disclosure in focused single and
+  bulk review paths.
+- Publish `GroupApplicationBulkReviewCommandPort` for explicit-confirmation batches of
+  1..50 unique application IDs. The operation is intentionally partial-result: each
+  item reuses the focused owner review path with its own locks, transaction, audit,
+  receipt, and deterministic order-independent child idempotency key.
+- Publish a final GraphQL bulk-review mutation and module-owned admin FFA with
+  framework-neutral preparation, native/GraphQL adapters, no-fallback transport,
+  bounded row selection, confirmation invalidation, disabled invalid submit, per-item
+  success/failure/replay output, and English/Russian UI plus ARIA catalogs.
 - Candidate cancellation moves membership to `left`, marks the application
   `cancelled`, and preserves the submitted snapshot.
 - Manager reopen restores membership/application to `pending`, clears prior review
@@ -127,6 +138,7 @@ API migration gate.
 - `GroupApplicationCasCommandPort`
 - `GroupApplicationLifecycleCommandPort`
 - `GroupApplicationReviewCommandPort`
+- `GroupApplicationBulkReviewCommandPort`
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
@@ -136,7 +148,7 @@ API migration gate.
 - `graphql_application_cas::GroupsQueryRoot` with policy history, policy management,
   lifecycle, and core query composition
 - `graphql_application_cas::GroupsMutationRoot` with core, localization, governance,
-  invitations, CAS, focused review, and lifecycle composition
+  invitations, CAS, focused review, bounded bulk review, and lifecycle composition
 - `rustok_groups_admin::GroupsAdmin`
 - `rustok_groups_admin::load_group_admin_application_policy_locale_catalog`
 - `rustok_groups_admin::load_group_admin_application_policy_for_management`
@@ -145,6 +157,7 @@ API migration gate.
 - `rustok_groups_admin::load_group_admin_application_policy_revisions`
 - `rustok_groups_admin::load_group_admin_membership_applications`
 - `rustok_groups_admin::review_group_admin_membership_application`
+- `rustok_groups_admin::bulk_review_group_admin_membership_applications`
 - `rustok_groups_admin::reopen_group_admin_membership_application`
 - `rustok_groups_admin::load_group_admin_translations`
 - `rustok_groups_admin::upsert_group_admin_translation`
@@ -187,13 +200,15 @@ API migration gate.
 Source presence does not prove migration, runtime, locale-catalog parity, replay,
 concurrency, lock ordering, security, accessibility, retry, or recovery behavior.
 FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; policy-revision,
-application-policy-CAS, application-lifecycle, and policy-locale-management runtime
-evidence keys remain `null`.
+application-policy-CAS, application-lifecycle, policy-locale-management, and
+application-bulk-review runtime evidence keys remain `null`.
 
 ## Documentation
 
 - [Live module contract](docs/README.md)
 - [Canonical implementation plan](docs/implementation-plan.md)
+- [Bulk review contract](docs/bulk-review-contract.md)
 - [FBA registry](contracts/groups-fba-registry.json)
 - [Application no-bypass static guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
+- [Bulk review static guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
 - [Platform documentation map](../../docs/index.md)

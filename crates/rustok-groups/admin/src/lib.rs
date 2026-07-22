@@ -1,3 +1,5 @@
+mod application_bulk_core;
+mod application_bulk_transport;
 mod application_core;
 mod application_model;
 mod core;
@@ -7,6 +9,8 @@ mod policy_locale_compat;
 mod transport;
 mod ui;
 
+pub use application_bulk_core::*;
+pub use application_bulk_transport::*;
 pub use application_core::*;
 pub use application_model::*;
 pub use core::*;

@@ -224,3 +224,5 @@ pub struct GroupsAdminReviewApplicationResult {
     pub group_version: u64,
     pub replayed: bool,
 }
+
+include!("application_bulk_model.rs");
