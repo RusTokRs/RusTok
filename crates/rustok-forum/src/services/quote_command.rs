@@ -3,25 +3,27 @@ use std::collections::BTreeSet;
 use rustok_api::{normalize_locale_tag, Action, Resource};
 use rustok_core::SecurityContext;
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
 use crate::dto::{
-    ForumQuoteReferenceInput, ForumQuoteTargetKindInput, ForumRelationSnapshotQuery,
+    ForumQuoteReferenceInput, ForumQuoteTargetKindInput, ForumRelationQuoteResponse,
     ForumRelationSnapshotResponse, SetForumQuotesInput,
 };
 use crate::entities::{
-    forum_reply, forum_reply_body, forum_topic, forum_topic_translation,
+    forum_audience_mention, forum_quote, forum_relation_revision, forum_reply, forum_reply_body,
+    forum_topic, forum_topic_translation, forum_user_mention,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
-    ForumContentTarget, ForumQuoteReference, FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    ForumContentTarget, ForumQuoteReference, FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
 };
 
 use super::mention_relation::MentionRelationService;
 use super::rbac::enforce_owned_scope;
-use super::relation_read::ForumRelationReadService;
 
 #[derive(Clone, Copy)]
 enum ForumQuoteSource {
@@ -94,9 +96,7 @@ impl ForumQuoteCommandService {
             return Err(ForumError::relation_revision_unavailable());
         }
 
-        let (owner_id, body, body_format) = self
-            .load_source(tenant_id, source, &locale)
-            .await?;
+        let (owner_id, body, body_format) = self.load_source(tenant_id, source, &locale).await?;
         enforce_owned_scope(&security, source.resource(), Action::Update, owner_id)?;
         let quotes = normalize_quote_references(input.quotes)?;
 
@@ -114,21 +114,16 @@ impl ForumQuoteCommandService {
             .await?;
         let txn = self.db.begin().await?;
         let result = relations.persist_in_tx(&txn, prepared).await?;
-        let revision_id = result.source().revision_id();
+        let response = load_snapshot_in_tx(
+            &txn,
+            tenant_id,
+            target,
+            &locale,
+            result.source().revision_id(),
+        )
+        .await?;
         txn.commit().await?;
-
-        ForumRelationReadService::new(self.db.clone())
-            .get(
-                tenant_id,
-                security,
-                ForumRelationSnapshotQuery {
-                    target_kind: target_kind(target).to_string(),
-                    target_id: target.id(),
-                    locale,
-                    revision_id: Some(revision_id),
-                },
-            )
-            .await
+        Ok(response)
     }
 
     async fn load_source(
@@ -172,6 +167,71 @@ impl ForumQuoteCommandService {
     }
 }
 
+async fn load_snapshot_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    target: ForumContentTarget,
+    locale: &str,
+    revision_id: i64,
+) -> ForumResult<ForumRelationSnapshotResponse> {
+    let target_kind = target_kind(target);
+    let revision = forum_relation_revision::Entity::find_by_id(revision_id)
+        .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+        .filter(forum_relation_revision::Column::TargetKind.eq(target_kind))
+        .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
+        .filter(forum_relation_revision::Column::Locale.eq(locale))
+        .one(txn)
+        .await?
+        .ok_or_else(ForumError::relation_revision_unavailable)?;
+    let user_rows = forum_user_mention::Entity::find()
+        .filter(forum_user_mention::Column::TenantId.eq(tenant_id))
+        .filter(forum_user_mention::Column::SourceRevisionId.eq(revision_id))
+        .order_by_asc(forum_user_mention::Column::MentionedUserId)
+        .limit((FORUM_MAX_MENTION_TARGETS_PER_REVISION + 1) as u64)
+        .all(txn)
+        .await?;
+    let audience_rows = forum_audience_mention::Entity::find()
+        .filter(forum_audience_mention::Column::TenantId.eq(tenant_id))
+        .filter(forum_audience_mention::Column::SourceRevisionId.eq(revision_id))
+        .order_by_asc(forum_audience_mention::Column::Audience)
+        .limit((FORUM_MAX_MENTION_TARGETS_PER_REVISION + 1) as u64)
+        .all(txn)
+        .await?;
+    let quote_rows = forum_quote::Entity::find()
+        .filter(forum_quote::Column::TenantId.eq(tenant_id))
+        .filter(forum_quote::Column::SourceRevisionId.eq(revision_id))
+        .order_by_asc(forum_quote::Column::QuotedKind)
+        .order_by_asc(forum_quote::Column::QuotedId)
+        .order_by_asc(forum_quote::Column::QuotedRevisionId)
+        .limit((FORUM_MAX_QUOTE_REFERENCES_PER_REVISION + 1) as u64)
+        .all(txn)
+        .await?;
+    if user_rows.len() + audience_rows.len() > FORUM_MAX_MENTION_TARGETS_PER_REVISION
+        || quote_rows.len() > FORUM_MAX_QUOTE_REFERENCES_PER_REVISION
+    {
+        return Err(ForumError::Validation(
+            "Persisted Forum relation snapshot exceeds owner command limits".to_string(),
+        ));
+    }
+    Ok(ForumRelationSnapshotResponse {
+        revision_id,
+        target_kind: revision.target_kind,
+        target_id: revision.target_id,
+        locale: revision.locale,
+        user_ids: user_rows.into_iter().map(|row| row.mentioned_user_id).collect(),
+        audiences: audience_rows.into_iter().map(|row| row.audience).collect(),
+        quotes: quote_rows
+            .into_iter()
+            .map(|row| ForumRelationQuoteResponse {
+                target_kind: row.quoted_kind,
+                target_id: row.quoted_id,
+                revision_id: row.quoted_revision_id,
+            })
+            .collect(),
+        created_at: revision.created_at.to_rfc3339(),
+    })
+}
+
 fn normalize_quote_references(
     inputs: Vec<ForumQuoteReferenceInput>,
 ) -> ForumResult<Vec<ForumQuoteReference>> {
@@ -197,5 +257,55 @@ fn target_kind(target: ForumContentTarget) -> &'static str {
     match target.kind() {
         crate::mentions::ForumContentTargetKind::Topic => "topic",
         crate::mentions::ForumContentTargetKind::Reply => "reply",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_quote_references;
+    use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput};
+    use crate::mentions::FORUM_MAX_QUOTE_REFERENCES_PER_REVISION;
+    use uuid::Uuid;
+
+    #[test]
+    fn quote_inputs_are_deduplicated_and_bounded() {
+        let target_id = Uuid::new_v4();
+        let quote = ForumQuoteReferenceInput {
+            target_kind: ForumQuoteTargetKindInput::Reply,
+            target_id,
+            revision_id: 7,
+        };
+        let normalized = normalize_quote_references(vec![quote.clone(), quote])
+            .expect("duplicate references should normalize");
+        assert_eq!(normalized.len(), 1);
+
+        let oversized = (0..=FORUM_MAX_QUOTE_REFERENCES_PER_REVISION)
+            .map(|index| ForumQuoteReferenceInput {
+                target_kind: ForumQuoteTargetKindInput::Topic,
+                target_id: Uuid::new_v4(),
+                revision_id: index as i64 + 1,
+            })
+            .collect();
+        assert!(normalize_quote_references(oversized).is_err());
+    }
+
+    #[test]
+    fn quote_inputs_reject_nil_targets_and_non_positive_revisions() {
+        assert!(
+            normalize_quote_references(vec![ForumQuoteReferenceInput {
+                target_kind: ForumQuoteTargetKindInput::Topic,
+                target_id: Uuid::nil(),
+                revision_id: 1,
+            }])
+            .is_err()
+        );
+        assert!(
+            normalize_quote_references(vec![ForumQuoteReferenceInput {
+                target_kind: ForumQuoteTargetKindInput::Reply,
+                target_id: Uuid::new_v4(),
+                revision_id: 0,
+            }])
+            .is_err()
+        );
     }
 }
