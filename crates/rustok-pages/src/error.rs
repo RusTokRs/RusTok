@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Error)]
 pub enum PagesError {
     #[error("Database error: {0}")]
-    Database(#[from] DbErr),
+    Database(DbErr),
 
     #[error("Core error: {0}")]
     Core(#[from] CoreError),
@@ -98,6 +98,19 @@ pub const PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT: &str = "PAGE_ROLLBACK_IDEMPOTENCY_
 pub const PAGE_ROLLBACK_OPERATION_INTEGRITY: &str = "PAGE_ROLLBACK_OPERATION_INTEGRITY";
 pub const PAGE_ROLLBACK_TARGET_UNAVAILABLE: &str = "PAGE_ROLLBACK_TARGET_UNAVAILABLE";
 pub const PAGE_ROLLBACK_REQUIRES_PUBLISHED: &str = "PAGE_ROLLBACK_REQUIRES_PUBLISHED";
+pub(crate) const PUBLISH_MANIFEST_DB_ERROR_PREFIX: &str =
+    "PAGE_PUBLISH_OPERATION_INTEGRITY:";
+
+impl From<DbErr> for PagesError {
+    fn from(error: DbErr) -> Self {
+        if let DbErr::Custom(message) = &error {
+            if let Some(detail) = message.strip_prefix(PUBLISH_MANIFEST_DB_ERROR_PREFIX) {
+                return Self::PublishOperationIntegrity(detail.trim().to_string());
+            }
+        }
+        Self::Database(error)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderRuntimeErrorCatalogEntry {
@@ -413,6 +426,17 @@ mod tests {
             integrity.error_code.as_deref(),
             Some(PAGE_PUBLISH_OPERATION_INTEGRITY)
         );
+    }
+
+    #[test]
+    fn publish_manifest_db_bridge_preserves_typed_integrity_error() {
+        let error = PagesError::from(DbErr::Custom(format!(
+            "{PUBLISH_MANIFEST_DB_ERROR_PREFIX}manifest mismatch"
+        )));
+        assert!(matches!(
+            error,
+            PagesError::PublishOperationIntegrity(message) if message == "manifest mismatch"
+        ));
     }
 
     #[test]
