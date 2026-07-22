@@ -101,38 +101,41 @@ that no GrapesJS/Fly body exists. A builder document receives
 `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` and cannot reach artifact compilation or a raw lifecycle
 transition.
 
-Pages now owns the post-commit cache invalidation contract. `PageCacheInvalidationEventHandler`
-consumes page `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` events. It asks a
-typed port to rotate bounded tenant-wide `route`, `page` and `artifact` namespace generations and
-validates an event/correlation-bound receipt before acknowledging success. The server adapter supplies
-only the shared `CacheNamespaceGenerationStore`; it does not define scopes or concrete key policy.
-Generation-aware storefront readers and accepted runtime miss/refill evidence remain open.
+Pages owns the post-commit cache boundary. `PageCacheInvalidationEventHandler` consumes page
+`NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` events, rotates bounded tenant-wide
+`route`, `page` and `artifact` generations and validates an event/correlation-bound receipt before
+acknowledging success. `PagesCacheReadRuntime` supplies generation-aware bounded JSON reads. The
+composite storefront response binds all three generations; artifact HTTP delivery binds the artifact
+generation. Module/channel authorization precedes lookup, and cache fill follows owner source and
+artifact-integrity checks. Cache failures fail open to source reads. Accepted execution evidence
+remains open.
 
 ## Machine-readable contracts
 
 - `contracts/page-builder-service-boundary.json` records capability/preview ports and composition.
-- `contracts/page-builder-fba-registry.json` records provider/consumer versions and materialization
-  persistence.
+- `contracts/page-builder-fba-registry.json` records provider/consumer versions, materialization
+  persistence and the Pages cache consumer boundary.
 - `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, sanitizer, Pages
   atomic service, body revision identity, receipt schema, replay semantics, public transport cutover,
-  explicit ephemeral scenario selection, isolated non-builder lifecycle and cache generation
-  invalidation state.
+  explicit ephemeral scenario selection, isolated non-builder lifecycle and cache invalidation/read
+  state.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks core atomic invariants.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
   non-builder lifecycle boundaries.
 - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs` source-locks Pages ownership
-  of cache scopes/keys, event-driven invalidation and the neutral server generation adapter.
+  of cache scopes/keys, event-driven invalidation, neutral server capabilities and authorization/cache/
+  owner-source ordering in storefront and artifact readers.
 
 ## FFA/FBA status
 
-- **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection is
-  connected for both single- and multi-scenario baselines; typed metadata properties,
-  generation-aware storefront readers and inline edit mode remain open.
+- **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection and
+  generation-aware Pages storefront/artifact readers are connected; typed metadata properties and
+  inline edit mode remain open.
 - **FBA:** `boundary_ready` for preview/materialization and
   `service_and_public_transport_integrated` for Pages reviewed publication. The default-runtime
-  lifecycle is removed and source-level cache generation invalidation is connected; rollback,
-  cache-reader execution proof, verification and observed rollout evidence remain open.
+  lifecycle is removed and source-level cache invalidation/read boundaries are connected; rollback,
+  executed cache proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability and
   publish contracts.
 - **Evidence:**
@@ -140,12 +143,15 @@ Generation-aware storefront readers and accepted runtime miss/refill evidence re
   - `src/publish_sanitization.rs`;
   - `src/static_landing_materialization.rs`;
   - `contracts/page-builder-publish-runtime-review.json`;
+  - `contracts/page-builder-fba-registry.json`;
   - `admin/src/publish_scenario_selection.rs`;
   - `admin/src/editor/publish_scenario_selector.rs`;
   - `crates/rustok-pages/src/dto/page.rs`;
   - `crates/rustok-pages/src/services/page/reviewed_publish.rs`;
   - `crates/rustok-pages/src/services/page/lifecycle.rs`;
   - `crates/rustok-pages/src/cache_invalidation.rs`;
+  - `crates/rustok-pages/storefront/src/transport/native_server_adapter.rs`;
+  - `crates/rustok-pages/src/controllers/mod.rs`;
   - `apps/server/src/services/pages_cache_invalidation.rs`;
   - `apps/server/src/services/module_event_dispatcher.rs`;
   - `crates/rustok-pages/src/graphql/mutation.rs`;
@@ -159,9 +165,8 @@ Generation-aware storefront readers and accepted runtime miss/refill evidence re
 
 ## Open results
 
-1. Adopt the owner `page_cache_key` contract in every route/page/artifact cache reader and retain an
-   accepted packet correlating `NodePublished`, handler receipt, generation rotation and storefront
-   miss/refill.
+1. Retain an accepted packet correlating `NodePublished`, handler receipt, generation rotation and
+   storefront/artifact cache miss/refill.
 2. Add rollback to a previous immutable artifact set with its own idempotent receipt and outbox
    semantics.
 3. Connect the next production consumer's concrete tenant-scoped store and contextual preview
@@ -191,5 +196,5 @@ Generation-aware storefront readers and accepted runtime miss/refill evidence re
   ports, authorization, transport envelopes, feature profiles and server composition order.
 - Consumer modules own persistence, publication lifecycle, receipts, cache scope/key policy and
   concrete tenant-scoped ports.
-- Cache/server infrastructure owns shared connection and generation primitives only.
+- Cache/server infrastructure owns shared connection, byte storage and generation primitives only.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
