@@ -17,19 +17,16 @@ use sea_orm::{
 use tokio::time::sleep;
 use uuid::Uuid;
 
-use support::postgres::{PostgresForumTestDb, execute};
-use support::{TestResult, test_error};
+use support::postgres::{execute, PostgresForumTestDb};
+use support::{test_error, TestResult};
 
 const LOCALE: &str = "en";
 const ORIGINAL_REPLY_BODY: &str = "Original quoted reply";
 
 struct QuoteFixture {
     tenant_id: Uuid,
-    category_id: Uuid,
-    topic_id: Uuid,
     reply_id: Uuid,
     author_id: Uuid,
-    quoted_topic_revision_id: i64,
 }
 
 #[tokio::test]
@@ -410,13 +407,8 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
             },
         )
         .await?;
-    let quoted_topic_revision_id = latest_relation_revision_id(
-        &context.db,
-        tenant_id,
-        "topic",
-        topic.id,
-    )
-    .await?;
+    let quoted_topic_revision_id =
+        latest_relation_revision_id(&context.db, tenant_id, "topic", topic.id).await?;
 
     let reply = ReplyService::new(context.db.clone(), event_bus(context.db.clone()))
         .create_command(
@@ -444,11 +436,8 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
 
     Ok(QuoteFixture {
         tenant_id,
-        category_id,
-        topic_id: topic.id,
         reply_id: reply.id,
         author_id,
-        quoted_topic_revision_id,
     })
 }
 
@@ -581,7 +570,10 @@ async fn latest_quote_count(
 
 async fn scalar_i64(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<i64> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql.into()))
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            sql.into(),
+        ))
         .await?
         .ok_or_else(|| test_error("scalar query returned no row"))?;
     Ok(row.try_get("", "value")?)
@@ -589,7 +581,10 @@ async fn scalar_i64(db: &DatabaseConnection, sql: impl Into<String>) -> TestResu
 
 async fn scalar_string(db: &DatabaseConnection, sql: impl Into<String>) -> TestResult<String> {
     let row = db
-        .query_one(Statement::from_string(DatabaseBackend::Postgres, sql.into()))
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            sql.into(),
+        ))
         .await?
         .ok_or_else(|| test_error("string query returned no row"))?;
     Ok(row.try_get("", "value")?)
