@@ -95,7 +95,7 @@ impl InProcessCheckoutFulfillmentExecutionPort {
                 .await?;
             let fulfillment = match existing {
                 Some(existing) => existing,
-                None => match self.service.create_fulfillment(tenant_id, input.clone()).await {
+                None => match self.service.create_fulfillment(tenant_id, input).await {
                     Ok(created) => created,
                     Err(error) => {
                         let adopted = self
@@ -345,8 +345,8 @@ fn validate_fulfillment(
         || fulfillment.order_id != order_id
         || fulfillment.shipping_option_id != plan.shipping_option_id
         || fulfillment.customer_id != customer_id
-        || fulfillment.carrier != plan.carrier
-        || fulfillment.tracking_number != plan.tracking_number
+        || fulfillment.carrier.as_deref() != plan.carrier.as_deref()
+        || fulfillment.tracking_number.as_deref() != plan.tracking_number.as_deref()
     {
         return Err(PortError::conflict(
             "fulfillment.checkout_plan_conflict",
@@ -380,8 +380,9 @@ fn validate_fulfillment(
             )
         })?;
     let operation_id = checkout_operation_id.to_string();
+    let order_id_text = order_id.to_string();
     if checkout.get("operation_id").and_then(Value::as_str) != Some(operation_id.as_str())
-        || checkout.get("order_id").and_then(Value::as_str) != Some(order_id.to_string().as_str())
+        || checkout.get("order_id").and_then(Value::as_str) != Some(order_id_text.as_str())
         || checkout.get("order_plan_hash").and_then(Value::as_str) != Some(plan_hash)
         || checkout.get("fulfillment_index").and_then(Value::as_u64)
             != Some(u64::from(plan.index))
