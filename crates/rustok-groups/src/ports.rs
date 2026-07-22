@@ -141,6 +141,7 @@ impl Default for GroupCapabilityDescriptor {
                 "GroupApplicationCasCommandPort",
                 "GroupApplicationLifecycleCommandPort",
                 "GroupApplicationReviewCommandPort",
+                "GroupApplicationBulkReviewCommandPort",
                 "GroupCommandPort",
                 "GroupLocalizationCommandPort",
                 "GroupInvitationCommandPort",
