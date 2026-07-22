@@ -37,6 +37,15 @@ jobs:
             git fetch origin main
             git checkout -B navigation-owner-publish origin/main
             python /tmp/extract_navigation.py
+            python - <<'PY'
+          from pathlib import Path
+          for name in [
+              "crates/rustok-pages/src/migrations/m20260328_000001_create_pages_tables.rs",
+              "crates/rustok-pages/storefront/src/ui/mod.rs",
+          ]:
+              path = Path(name)
+              path.write_text(path.read_text().rstrip() + "\n")
+          PY
             git diff --check
             git add -A
             actual=$(git diff --cached --name-only)
