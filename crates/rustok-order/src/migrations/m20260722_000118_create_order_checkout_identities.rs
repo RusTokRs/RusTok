@@ -149,12 +149,19 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .execute_unprepared(
             r#"
             ALTER TABLE order_checkout_identities
-                ADD CONSTRAINT ck_order_checkout_identity_hashes
+                ADD CONSTRAINT ck_order_checkout_identity_facts
                 CHECK (
-                    (snapshot_hash IS NULL AND request_hash IS NULL)
-                    OR (
-                        snapshot_hash ~ '^[0-9a-f]{1,128}$'
-                        AND request_hash ~ '^[0-9a-f]{64}$'
+                    checkout_operation_id <> '00000000-0000-0000-0000-000000000000'::uuid
+                    AND (
+                        source_cart_id IS NULL
+                        OR source_cart_id <> '00000000-0000-0000-0000-000000000000'::uuid
+                    )
+                    AND (
+                        (snapshot_hash IS NULL AND request_hash IS NULL)
+                        OR (
+                            snapshot_hash ~ '^[0-9a-f]{1,128}$'
+                            AND request_hash ~ '^[0-9a-f]{64}$'
+                        )
                     )
                 );
 
@@ -214,7 +221,9 @@ async fn install_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 created_at
             FROM orders
             WHERE metadata #>> '{checkout,operation_id}'
-                ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+              AND lower(metadata #>> '{checkout,operation_id}')
+                    <> '00000000-0000-0000-0000-000000000000'
             ON CONFLICT DO NOTHING;
             "#,
         )
@@ -231,6 +240,21 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             BEFORE INSERT ON order_checkout_identities
             FOR EACH ROW
             BEGIN
+                SELECT CASE WHEN length(NEW.checkout_operation_id) <> 36
+                    OR lower(NEW.checkout_operation_id) GLOB '*[^0-9a-f-]*'
+                    OR substr(NEW.checkout_operation_id, 9, 1) <> '-'
+                    OR substr(NEW.checkout_operation_id, 14, 1) <> '-'
+                    OR substr(NEW.checkout_operation_id, 19, 1) <> '-'
+                    OR substr(NEW.checkout_operation_id, 24, 1) <> '-'
+                    OR lower(NEW.checkout_operation_id)
+                        = '00000000-0000-0000-0000-000000000000'
+                    THEN RAISE(ABORT, 'invalid checkout operation identity') END;
+                SELECT CASE WHEN NEW.source_cart_id IS NOT NULL AND (
+                    length(NEW.source_cart_id) <> 36
+                    OR lower(NEW.source_cart_id) GLOB '*[^0-9a-f-]*'
+                    OR lower(NEW.source_cart_id)
+                        = '00000000-0000-0000-0000-000000000000'
+                ) THEN RAISE(ABORT, 'invalid source cart identity') END;
                 SELECT CASE WHEN NOT EXISTS (
                     SELECT 1 FROM orders
                     WHERE id = NEW.order_id
@@ -266,7 +290,7 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 created_at
             )
             SELECT
-                trim(json_extract(metadata, '$.checkout.operation_id')),
+                lower(trim(json_extract(metadata, '$.checkout.operation_id'))),
                 tenant_id,
                 id,
                 NULL,
@@ -293,10 +317,14 @@ async fn install_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 created_at
             FROM orders
             WHERE length(trim(json_extract(metadata, '$.checkout.operation_id'))) = 36
+              AND lower(trim(json_extract(metadata, '$.checkout.operation_id')))
+                    NOT GLOB '*[^0-9a-f-]*'
               AND substr(trim(json_extract(metadata, '$.checkout.operation_id')), 9, 1) = '-'
               AND substr(trim(json_extract(metadata, '$.checkout.operation_id')), 14, 1) = '-'
               AND substr(trim(json_extract(metadata, '$.checkout.operation_id')), 19, 1) = '-'
-              AND substr(trim(json_extract(metadata, '$.checkout.operation_id')), 24, 1) = '-';
+              AND substr(trim(json_extract(metadata, '$.checkout.operation_id')), 24, 1) = '-'
+              AND lower(trim(json_extract(metadata, '$.checkout.operation_id')))
+                    <> '00000000-0000-0000-0000-000000000000';
             "#,
         )
         .await?;
@@ -312,6 +340,12 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             BEFORE INSERT ON order_checkout_identities
             FOR EACH ROW
             BEGIN
+                IF NEW.checkout_operation_id = '00000000-0000-0000-0000-000000000000'
+                    OR NEW.source_cart_id = '00000000-0000-0000-0000-000000000000'
+                THEN
+                    SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'invalid order checkout identity';
+                END IF;
                 IF (
                     SELECT COUNT(*) FROM orders
                     WHERE id = NEW.order_id
@@ -362,7 +396,7 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 created_at
             )
             SELECT
-                JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id')),
+                lower(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id'))),
                 tenant_id,
                 id,
                 NULL,
@@ -385,7 +419,9 @@ async fn install_mysql(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 created_at
             FROM orders
             WHERE JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id'))
-                REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$';
+                REGEXP '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+              AND lower(JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.checkout.operation_id')))
+                    <> '00000000-0000-0000-0000-000000000000';
             "#,
         )
         .await?;
