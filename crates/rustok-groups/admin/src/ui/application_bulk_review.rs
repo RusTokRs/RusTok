@@ -8,12 +8,12 @@ use rustok_ui_core::UiRouteContext;
 use crate::application_bulk_core::{
     prepare_bulk_review_group_membership_applications, GroupsAdminBulkReviewInputError,
 };
+use crate::application_bulk_transport::bulk_review_group_admin_membership_applications;
+use crate::application_core::prepare_group_membership_application_query;
 use crate::application_model::{
     GroupsAdminApplicationReviewDecision, GroupsAdminBulkReviewApplicationItemResult,
     GroupsAdminMembershipApplication,
 };
-use crate::application_bulk_transport::bulk_review_group_admin_membership_applications;
-use crate::application_core::prepare_group_membership_application_query;
 use crate::core::{groups_admin_error, selected_transport_profile, GroupsAdminTransportProfile};
 use crate::i18n::t;
 use crate::transport::{
@@ -30,11 +30,14 @@ struct BulkReviewCopy {
     load: String,
     empty: String,
     select_all: String,
+    select_application: String,
     clear: String,
     selected: String,
+    decision: String,
     approve: String,
     reject: String,
     note: String,
+    revision: String,
     confirm: String,
     submit: String,
     busy: String,
@@ -155,8 +158,10 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
         spawn_local(async move {
             match bulk_review_group_admin_membership_applications(context, command).await {
                 Ok(result) => {
-                    let successful_ids = result
-                        .items
+                    let succeeded_count = result.succeeded;
+                    let failed_count = result.failed;
+                    let item_results = result.items;
+                    let successful_ids = item_results
                         .iter()
                         .filter_map(|item| item.result.as_ref().map(|_| item.application_id.clone()))
                         .collect::<BTreeSet<_>>();
@@ -167,10 +172,14 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
                         ids.retain(|id| !successful_ids.contains(id));
                     });
                     set_confirmed.set(false);
-                    set_results.set(result.items);
+                    set_results.set(item_results);
                     set_success.set(Some(format!(
                         "{} · {}: {} · {}: {}",
-                        copy.completed, copy.succeeded, result.succeeded, copy.failed, result.failed
+                        copy.completed,
+                        copy.succeeded,
+                        succeeded_count,
+                        copy.failed,
+                        failed_count
                     )));
                 }
                 Err(submit_error) => set_error.set(Some(groups_admin_error(
@@ -182,6 +191,7 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
         });
     };
 
+    let selection_limit_error = copy.too_many.clone();
     let BulkReviewCopy {
         title,
         body,
@@ -189,11 +199,14 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
         load,
         empty,
         select_all,
+        select_application,
         clear,
         selected,
+        decision: decision_label,
         approve,
         reject,
         note,
+        revision,
         confirm,
         submit,
         busy: busy_label,
@@ -240,35 +253,44 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
                     if items.is_empty() {
                         view! { <p class="text-sm text-muted-foreground">{empty.clone()}</p> }.into_any()
                     } else {
+                        let select_application = select_application.clone();
+                        let revision = revision.clone();
+                        let limit_error = selection_limit_error.clone();
                         view! {
                             <ul class="grid gap-2">
                                 {items.into_iter().map(|item| {
                                     let item_id = item.id.clone();
                                     let item_id_for_checked = item.id.clone();
                                     let item_id_for_change = item.id.clone();
+                                    let item_select_label = select_application.clone();
+                                    let item_revision_label = revision.clone();
+                                    let item_limit_error = limit_error.clone();
                                     view! {
                                         <li class="flex items-center gap-3 rounded-xl border border-border px-4 py-3">
                                             <input
                                                 type="checkbox"
-                                                aria-label=format!("Select application {}", item_id)
+                                                aria-label=format!("{} {}", item_select_label, item_id)
                                                 prop:checked=move || selected_ids.get().contains(&item_id_for_checked)
                                                 on:change=move |event| {
                                                     let checked = event_target_checked(&event);
+                                                    if checked && selected_ids.get_untracked().len() >= MAX_BULK_REVIEW_ITEMS {
+                                                        set_error.set(Some(item_limit_error.clone()));
+                                                        return;
+                                                    }
                                                     set_selected_ids.update(|ids| {
                                                         if checked {
-                                                            if ids.len() < MAX_BULK_REVIEW_ITEMS {
-                                                                ids.insert(item_id_for_change.clone());
-                                                            }
+                                                            ids.insert(item_id_for_change.clone());
                                                         } else {
                                                             ids.remove(&item_id_for_change);
                                                         }
                                                     });
                                                     set_confirmed.set(false);
+                                                    set_error.set(None);
                                                 }
                                             />
                                             <div class="min-w-0">
                                                 <p class="break-all font-mono text-xs text-card-foreground">{item.id}</p>
-                                                <p class="mt-1 text-xs text-muted-foreground">{format!("{} · {} · rev {}", item.user_id, item.policy_locale, item.policy_revision)}</p>
+                                                <p class="mt-1 text-xs text-muted-foreground">{format!("{} · {} · {} {}", item.user_id, item.policy_locale, item_revision_label, item.policy_revision)}</p>
                                             </div>
                                         </li>
                                     }
@@ -281,7 +303,7 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
 
             <form class="mt-6 grid gap-4 rounded-2xl border border-border p-5 md:grid-cols-2" on:submit=on_submit>
                 <label class="text-sm text-muted-foreground">
-                    <span class="mb-2 block">{"Decision"}</span>
+                    <span class="mb-2 block">{decision_label}</span>
                     <select class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" on:change=move |event| {
                         set_decision.set(if event_target_value(&event) == "reject" { GroupsAdminApplicationReviewDecision::Reject } else { GroupsAdminApplicationReviewDecision::Approve });
                         set_confirmed.set(false);
@@ -304,12 +326,17 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
             <Show when=move || !results.get().is_empty()>
                 <ul class="mt-6 grid gap-2" aria-live="polite">
                     {move || results.get().into_iter().map(|item| {
-                        let message = if let Some(result) = item.result {
-                            format!("{} · {}{}", item.application_id, succeeded, if result.replayed { format!(" · {replayed}") } else { String::new() })
-                        } else if let Some(error) = item.error {
-                            format!("{} · {} · {}: {}", item.application_id, failed, error.code, error.message)
+                        let GroupsAdminBulkReviewApplicationItemResult {
+                            application_id,
+                            result,
+                            error,
+                        } = item;
+                        let message = if let Some(result) = result {
+                            format!("{} · {}{}", application_id, succeeded, if result.replayed { format!(" · {replayed}") } else { String::new() })
+                        } else if let Some(error) = error {
+                            format!("{} · {} · {}: {}", application_id, failed, error.code, error.message)
                         } else {
-                            format!("{} · {}", item.application_id, failed)
+                            format!("{} · {}", application_id, failed)
                         };
                         view! { <li class="rounded-xl border border-border px-4 py-3 text-sm">{message}</li> }
                     }).collect_view()}
@@ -327,8 +354,12 @@ fn bulk_input_error_message(
         GroupsAdminBulkReviewInputError::EmptySelection => copy.empty_selection.clone(),
         GroupsAdminBulkReviewInputError::TooManyApplications => copy.too_many.clone(),
         GroupsAdminBulkReviewInputError::DuplicateApplication => copy.duplicate.clone(),
-        GroupsAdminBulkReviewInputError::InvalidApplicationId => copy.invalid_application_id.clone(),
-        GroupsAdminBulkReviewInputError::ConfirmationRequired => copy.confirmation_required.clone(),
+        GroupsAdminBulkReviewInputError::InvalidApplicationId => {
+            copy.invalid_application_id.clone()
+        }
+        GroupsAdminBulkReviewInputError::ConfirmationRequired => {
+            copy.confirmation_required.clone()
+        }
         GroupsAdminBulkReviewInputError::ReviewNoteTooLong => copy.review_note_too_long.clone(),
     }
 }
@@ -341,11 +372,14 @@ fn bulk_review_copy(locale: Option<&str>) -> BulkReviewCopy {
         load: t(locale, "groups.admin.applications.bulk.load", "Load pending applications"),
         empty: t(locale, "groups.admin.applications.bulk.empty", "No pending applications loaded."),
         select_all: t(locale, "groups.admin.applications.bulk.selectAll", "Select all loaded"),
+        select_application: t(locale, "groups.admin.applications.bulk.selectApplication", "Select application"),
         clear: t(locale, "groups.admin.applications.bulk.clear", "Clear selection"),
         selected: t(locale, "groups.admin.applications.bulk.selected", "Selected"),
+        decision: t(locale, "groups.admin.applications.decision", "Decision"),
         approve: t(locale, "groups.admin.applications.approve", "Approve"),
         reject: t(locale, "groups.admin.applications.reject", "Reject"),
         note: t(locale, "groups.admin.applications.note", "Review note (optional)"),
+        revision: t(locale, "groups.admin.policyEditor.revision", "revision"),
         confirm: t(locale, "groups.admin.applications.bulk.confirm", "I confirm this bulk decision for the selected applications"),
         submit: t(locale, "groups.admin.applications.bulk.submit", "Apply bulk review"),
         busy: t(locale, "groups.admin.applications.bulk.busy", "Applying bulk review..."),
