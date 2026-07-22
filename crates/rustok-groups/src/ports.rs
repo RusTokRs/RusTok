@@ -13,39 +13,98 @@ use crate::dto::{
 
 #[async_trait]
 pub trait GroupSummaryReadPort: Send + Sync {
-    async fn read_group(&self, context: PortContext, request: ReadGroupRequest) -> Result<GroupDetails, PortError>;
-    async fn list_groups(&self, context: PortContext, request: ListGroupsRequest) -> Result<GroupConnection, PortError>;
+    async fn read_group(
+        &self,
+        context: PortContext,
+        request: ReadGroupRequest,
+    ) -> Result<GroupDetails, PortError>;
+
+    async fn list_groups(
+        &self,
+        context: PortContext,
+        request: ListGroupsRequest,
+    ) -> Result<GroupConnection, PortError>;
 }
 
 #[async_trait]
 pub trait GroupMembershipReadPort: Send + Sync {
-    async fn read_membership(&self, context: PortContext, request: ReadGroupMembershipRequest) -> Result<Option<GroupMembership>, PortError>;
-    async fn list_memberships(&self, context: PortContext, request: ListGroupMembershipsRequest) -> Result<GroupMembershipConnection, PortError>;
+    async fn read_membership(
+        &self,
+        context: PortContext,
+        request: ReadGroupMembershipRequest,
+    ) -> Result<Option<GroupMembership>, PortError>;
+
+    async fn list_memberships(
+        &self,
+        context: PortContext,
+        request: ListGroupMembershipsRequest,
+    ) -> Result<GroupMembershipConnection, PortError>;
 }
 
 #[async_trait]
 pub trait GroupAccessReadPort: Send + Sync {
-    async fn decide_group_access(&self, context: PortContext, request: GroupAccessRequest) -> Result<GroupAccessDecision, PortError>;
-    async fn enabled_group_features(&self, context: PortContext, group_id: uuid::Uuid) -> Result<Vec<GroupFeatureBinding>, PortError>;
+    async fn decide_group_access(
+        &self,
+        context: PortContext,
+        request: GroupAccessRequest,
+    ) -> Result<GroupAccessDecision, PortError>;
+
+    async fn enabled_group_features(
+        &self,
+        context: PortContext,
+        group_id: uuid::Uuid,
+    ) -> Result<Vec<GroupFeatureBinding>, PortError>;
 }
 
 #[async_trait]
 pub trait GroupLocalizationReadPort: Send + Sync {
-    async fn list_group_translations(&self, context: PortContext, request: ListGroupTranslationsRequest) -> Result<Vec<GroupTranslation>, PortError>;
+    async fn list_group_translations(
+        &self,
+        context: PortContext,
+        request: ListGroupTranslationsRequest,
+    ) -> Result<Vec<GroupTranslation>, PortError>;
 }
 
 #[async_trait]
 pub trait GroupCommandPort: Send + Sync {
-    async fn create_group(&self, context: PortContext, input: CreateGroupInput) -> Result<GroupDetails, PortError>;
-    async fn join_group(&self, context: PortContext, request: JoinGroupRequest) -> Result<GroupMembership, PortError>;
-    async fn leave_group(&self, context: PortContext, request: LeaveGroupRequest) -> Result<GroupMembership, PortError>;
-    async fn set_group_feature(&self, context: PortContext, request: SetGroupFeatureRequest) -> Result<GroupFeatureBinding, PortError>;
+    async fn create_group(
+        &self,
+        context: PortContext,
+        input: CreateGroupInput,
+    ) -> Result<GroupDetails, PortError>;
+
+    async fn join_group(
+        &self,
+        context: PortContext,
+        request: JoinGroupRequest,
+    ) -> Result<GroupMembership, PortError>;
+
+    async fn leave_group(
+        &self,
+        context: PortContext,
+        request: LeaveGroupRequest,
+    ) -> Result<GroupMembership, PortError>;
+
+    async fn set_group_feature(
+        &self,
+        context: PortContext,
+        request: SetGroupFeatureRequest,
+    ) -> Result<GroupFeatureBinding, PortError>;
 }
 
 #[async_trait]
 pub trait GroupLocalizationCommandPort: Send + Sync {
-    async fn upsert_group_translation(&self, context: PortContext, request: UpsertGroupTranslationRequest) -> Result<GroupTranslationMutationResult, PortError>;
-    async fn delete_group_translation(&self, context: PortContext, request: DeleteGroupTranslationRequest) -> Result<DeleteGroupTranslationResult, PortError>;
+    async fn upsert_group_translation(
+        &self,
+        context: PortContext,
+        request: UpsertGroupTranslationRequest,
+    ) -> Result<GroupTranslationMutationResult, PortError>;
+
+    async fn delete_group_translation(
+        &self,
+        context: PortContext,
+        request: DeleteGroupTranslationRequest,
+    ) -> Result<DeleteGroupTranslationResult, PortError>;
 }
 
 pub type SharedGroupSummaryReadPort = Arc<dyn GroupSummaryReadPort>;
