@@ -7,30 +7,25 @@ on:
       - ".github/workflows/fly-page-builder.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish-active-menu-binding-v3:
+  diagnose-active-menu-binding-v3-port:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/pages-active-menu-binding-v3
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@1.93.1
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: pages-active-menu-binding-v3
-      - name: Port active-menu product diff
+      - name: Capture scoped three-way port diagnostics
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           git fetch origin main agent/pages-active-menu-binding-v2
           source_branch=origin/agent/pages-active-menu-binding-v2
           source_base=$(git merge-base origin/main "$source_branch")
+          printf '%s\n' "$source_base" > /tmp/active-menu-source-base.txt
           git diff --binary "$source_base" "$source_branch" -- \
             crates/rustok-pages/src/dto/menu.rs \
             crates/rustok-pages/src/dto/mod.rs \
@@ -44,55 +39,21 @@ jobs:
             crates/rustok-pages/tests/menu_binding_service.rs \
             crates/rustok-pages/tests/menu_transport_contract.rs \
             > /tmp/active-menu-binding.patch
-          test -s /tmp/active-menu-binding.patch
-          git apply --3way /tmp/active-menu-binding.patch
-      - name: Verify active-menu binding contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt -p rustok-pages
-          cargo test -p rustok-pages --lib
-          cargo test -p rustok-pages --test menu_binding_service
-          cargo test -p rustok-pages --test menu_transport_contract
-          cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings
-          actual=$(mktemp)
-          expected=$(mktemp)
-          git diff --name-only | sort > "$actual"
-          cat > "$expected" <<'EOF'
-          crates/rustok-pages/src/dto/menu.rs
-          crates/rustok-pages/src/dto/mod.rs
-          crates/rustok-pages/src/entities/menu_binding.rs
-          crates/rustok-pages/src/entities/mod.rs
-          crates/rustok-pages/src/lib.rs
-          crates/rustok-pages/src/migrations/m20260721_000008_create_active_menu_bindings.rs
-          crates/rustok-pages/src/migrations/mod.rs
-          crates/rustok-pages/src/services/menu_binding.rs
-          crates/rustok-pages/src/services/mod.rs
-          crates/rustok-pages/tests/menu_binding_service.rs
-          crates/rustok-pages/tests/menu_transport_contract.rs
-          EOF
-          sort -o "$expected" "$expected"
-          diff -u "$expected" "$actual"
-      - name: Remove technical workflow and publish product commit
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          git show origin/main:.github/workflows/fly-page-builder.yml > .github/workflows/fly-page-builder.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            .github/workflows/fly-page-builder.yml \
-            crates/rustok-pages/src/dto/menu.rs \
-            crates/rustok-pages/src/dto/mod.rs \
-            crates/rustok-pages/src/entities/menu_binding.rs \
-            crates/rustok-pages/src/entities/mod.rs \
-            crates/rustok-pages/src/lib.rs \
-            crates/rustok-pages/src/migrations/m20260721_000008_create_active_menu_bindings.rs \
-            crates/rustok-pages/src/migrations/mod.rs \
-            crates/rustok-pages/src/services/menu_binding.rs \
-            crates/rustok-pages/src/services/mod.rs \
-            crates/rustok-pages/tests/menu_binding_service.rs \
-            crates/rustok-pages/tests/menu_transport_contract.rs
-          git commit -m "feat(pages): add active menu binding contract"
-          git push origin HEAD:agent/pages-active-menu-binding-v3
+          git apply --3way /tmp/active-menu-binding.patch > /tmp/active-menu-apply.log 2>&1
+          printf '%s\n' "$?" > /tmp/active-menu-apply.status
+          git status --short > /tmp/active-menu-status.txt
+          git diff --name-only --diff-filter=U > /tmp/active-menu-conflicts.txt
+          git diff > /tmp/active-menu-worktree.diff
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: active-menu-binding-v3-port-diagnostics
+          path: |
+            /tmp/active-menu-source-base.txt
+            /tmp/active-menu-binding.patch
+            /tmp/active-menu-apply.log
+            /tmp/active-menu-apply.status
+            /tmp/active-menu-status.txt
+            /tmp/active-menu-conflicts.txt
+            /tmp/active-menu-worktree.diff
+          if-no-files-found: error
