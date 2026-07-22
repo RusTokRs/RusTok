@@ -29,45 +29,69 @@ the capability is explicitly enabled.
 
 ## Persistence
 
-The module-local migration source now creates PostgreSQL/SQLite tables for:
+The module-local migration source creates PostgreSQL/SQLite tables for:
 
 - notifications and read/seen/archive lifecycle;
 - delivery attempts and retry/lease/provider receipt state;
 - fan-out jobs/items;
+- a durable source-event inbox;
 - source/type-scoped preferences;
 - digest jobs/items;
 - encrypted push subscriptions.
 
 Recipient and user references are tenant-composite. Notification identity is
 deduplicated by tenant, recipient, source event, source slug, and notification
-type, with additional tenant-scoped idempotency keys. JSON payloads, cursors,
-error fields, scope keys, and encrypted endpoint material are bounded. Database
-guards enforce typed statuses/channels/modes, read-implies-seen, valid lease and
-completion fields, and cross-tenant actor/fan-out references.
+type, with additional tenant-scoped idempotency keys. Source inbox identity is
+deduplicated by tenant, source slug, and event ID; changed event type or source
+revision is a conflict rather than a second row. JSON payloads, cursors, worker
+IDs, error fields, scope keys, and encrypted endpoint material are bounded.
+Database guards enforce typed statuses/channels/modes, read-implies-seen, valid
+lease and completion fields, and cross-tenant actor/fan-out references.
 
 The persistence schema intentionally stores no source-private payload, rendered
 HTML, email address, phone number, or plaintext push endpoint. Push endpoint and
 key material require encrypted columns, an endpoint hash, and a key version.
 
-The migration is exposed through `NotificationsModule::migrations`. Global
-server migrator registration and the first transactional owner services remain
-open until maintainer verification of this schema slice.
+The migrations are exposed through `NotificationsModule::migrations`. Global
+server migrator registration remains open until maintainer verification.
 
-## First source
+## Durable source fan-out
 
-Forum supports `forum.topic.created`, binds the source revision to the Forum
-event-journal sequence, emits only bounded semantic data, resolves category
-watchers through a capped UUID cursor, excludes the actor, and fails closed for
-channel-restricted, cross-tenant, missing, or non-open targets. Target-open
-authorization returns only a validated internal route.
+`NotificationFanoutService` provides three owner phases:
 
-Provider absence is a healthy empty state. Producer transactions remain
-independent from notification availability.
+- durable idempotent source-event acceptance;
+- leased provider description and descriptor-bound fan-out job creation;
+- leased resolution of one audience page capped at 256 recipients with
+  idempotent pending candidate items and cursor advancement.
 
-Pending capabilities are global migration composition, transactional
-notification/preference commands, durable source consumption, leased fan-out,
-full privacy/block policy, inbox APIs, delivery providers, retention/reconciliation,
-and complete module-owned UI products.
+Provider absence after acceptance is retryable. Changed source identity or
+changed descriptor replay fails closed. Expired leases can be reclaimed and a
+cursor that does not advance becomes a terminal job error.
+
+Pending candidate items are not final notifications. This boundary creates no
+notification rows or delivery attempts. Preference, profile/block privacy,
+recipient-specific source authorization, grouping, and channel policy remain
+mandatory before candidate processing.
+
+## Forum sources
+
+Forum supports `forum.topic.created` and `forum.mention.user_added`.
+
+The user-mention provider verifies the exact immutable `forum_user_mentions`
+row and rechecks current topic/reply visibility while describing, resolving the
+single candidate, and opening the target. A pending reply is retryable; closed,
+hidden, deleted, self-mentioned, or channel-restricted sources fail closed.
+Final profile/block privacy is deferred to `NOTIFY-07`, before candidate
+processing. `forum.mention.audience_added` remains deferred until a bounded
+moderator-directory owner port exists.
+
+Provider absence is a healthy degraded state for producer commands. Producer
+transactions remain independent from notification availability.
+
+Pending capabilities are global migration composition, candidate
+preference/privacy processing, final notification and delivery commands, inbox
+APIs, delivery providers, retention/reconciliation, production outbox consumer
+wiring, and complete module-owned UI products.
 
 ## Verification
 
@@ -76,6 +100,8 @@ cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications-api --all-targets --all-features
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications --all-targets
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
+cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
 node scripts/verify/verify-notifications-foundation.mjs
@@ -84,8 +110,11 @@ node scripts/verify/verify-notifications-runtime.mjs
 node scripts/verify/verify-notifications-runtime.test.mjs
 node scripts/verify/verify-notifications-persistence.mjs
 node scripts/verify/verify-notifications-persistence.test.mjs
+node scripts/verify/verify-notifications-source-fanout.mjs
 cargo xtask module validate notifications
 ```
+
+The commands above were not run while publishing `NOTIFY-01B/03A`.
 
 ## Related Documents
 
