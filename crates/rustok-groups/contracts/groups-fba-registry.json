@@ -59,6 +59,15 @@
         "exact_locale_only": true
       },
       {
+        "name": "GroupApplicationPolicyHistoryReadPort",
+        "operations": ["list_group_application_policy_revisions"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_admin_moderator_or_platform_manage",
+        "append_only_source": "group_membership_policy_revisions"
+      },
+      {
         "name": "GroupCommandPort",
         "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
         "policy": "write",
@@ -197,12 +206,16 @@
     "secret_group_submission": "not_found",
     "policy_owner_tables": [
       "group_membership_policies",
-      "group_membership_policy_translations"
+      "group_membership_policy_translations",
+      "group_membership_policy_revisions"
     ],
     "application_owner_table": "group_membership_applications",
     "policy_locale_selection": "exact_host_effective_locale",
     "module_local_fallback": false,
     "policy_revision": "monotonic_per_group",
+    "policy_revision_capture": "same_transaction_database_trigger",
+    "policy_revision_mutation": "append_only",
+    "policy_revision_history_read": "manager_only",
     "submission_snapshot": "immutable_json_snapshot_on_application",
     "question_limit": 20,
     "rule_limit": 20,
@@ -214,12 +227,15 @@
     "approve_member_count": "increment_same_transaction",
     "review_note_max_chars": 2000,
     "admin_review_ui": "implemented",
+    "admin_policy_editor": "implemented_source",
+    "admin_policy_stale_preflight": "implemented_source_non_atomic",
+    "atomic_expected_revision_guard": "planned",
     "storefront_application_ui": "implemented",
     "storefront_query_key": "apply",
     "storefront_query_clear": "on_success",
     "transport_fallback": "never",
     "bulk_review": "planned",
-    "policy_revision_history": "planned"
+    "policy_revision_history": "implemented_source"
   },
   "feature_provider": {
     "identity": "namespaced_key_plus_contract_version",
@@ -294,6 +310,19 @@
       "implicit_fallback": false
     },
     {
+      "name": "embedded_membership_policy_history_native",
+      "provider": "GroupApplicationPolicyHistoryService",
+      "status": "implemented_source",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "admin_graphql_adapter",
+        "admin_leptos_ui"
+      ],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_governance_native",
       "provider": "GroupGovernanceService",
       "status": "implemented",
@@ -313,6 +342,7 @@
     "invitation_acceptance_ui_static_boundary": "scripts/verify/verify-groups-invitation-acceptance-ui.mjs",
     "targeted_invitation_delivery_static_boundary": "scripts/verify/verify-groups-targeted-invitation-delivery.mjs",
     "membership_application_static_boundary": "scripts/verify/verify-groups-membership-applications.mjs",
+    "membership_policy_revision_static_boundary": "scripts/verify/verify-groups-membership-policy-revisions.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,

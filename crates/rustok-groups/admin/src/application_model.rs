@@ -31,6 +31,7 @@ pub struct GroupsAdminApplicationPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsAdminApplicationPolicyQuery {
     pub group_id: String,
+    pub locale: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +50,34 @@ pub struct GroupsAdminUpsertApplicationPolicyResult {
     pub group_version: u64,
     pub created: bool,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyRevision {
+    pub group_id: String,
+    pub policy_id: String,
+    pub revision: u64,
+    pub locale: String,
+    pub enabled: bool,
+    pub questions: Vec<GroupsAdminApplicationQuestion>,
+    pub rules: Vec<GroupsAdminApplicationRule>,
+    pub created_by_user_id: String,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyRevisionConnection {
+    pub items: Vec<GroupsAdminApplicationPolicyRevision>,
+    pub total: u64,
+    pub page: u64,
+    pub per_page: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyRevisionQuery {
+    pub group_id: String,
+    pub page: u64,
+    pub per_page: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

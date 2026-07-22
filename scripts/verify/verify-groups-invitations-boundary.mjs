@@ -66,8 +66,8 @@ requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
   "with_idempotency_key",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  'query = "graphql_applications::GroupsQueryRoot"',
-  'mutation = "graphql_applications::GroupsMutationRoot"',
+  'query = "graphql_policy_history::GroupsQueryRoot"',
+  'mutation = "graphql_policy_history::GroupsMutationRoot"',
   'subpath = "invitations"',
 ]);
 
