@@ -11,7 +11,7 @@
 //! Pages module for RusToK platform.
 //!
 //! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, atomic publish receipts, cache policy, and Page Builder release baselines.
+//! artifacts, atomic publish/rollback receipts, cache policy, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -66,7 +66,8 @@ pub use cache_invalidation::{
 pub use dto::*;
 pub use entities::{
     Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
-    PagePublishedLandingArtifact, PageStaticLandingArtifact,
+    PagePublishOperationArtifact, PagePublishedLandingArtifact, PageRollbackOperation,
+    PageStaticLandingArtifact,
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
@@ -75,7 +76,9 @@ pub use services::{
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
-    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService,
+    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
+    PAGE_ROLLBACK_OPERATION_INTEGRITY, PAGE_ROLLBACK_REQUIRES_PUBLISHED,
+    PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBuilderArtifactService,
     PageBuilderScenarioBaselineService, PageService, PublishedLandingArtifact,
     SaveIfCurrentScenarioBaselineRequest,
 };
