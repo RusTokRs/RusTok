@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS notification_source_inbox (
     CONSTRAINT fk_notification_source_inbox_tenant FOREIGN KEY (tenant_id)
         REFERENCES tenants(id) ON DELETE CASCADE,
     CONSTRAINT fk_notification_source_inbox_job FOREIGN KEY (tenant_id, fanout_job_id)
-        REFERENCES notification_fanout_jobs(tenant_id, id) ON DELETE SET NULL,
+        REFERENCES notification_fanout_jobs(tenant_id, id) ON DELETE RESTRICT,
     CONSTRAINT ck_notification_source_inbox_identity CHECK (
         source_revision > 0
         AND btrim(source_slug) <> ''
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS notification_source_inbox (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (tenant_id, fanout_job_id)
-        REFERENCES notification_fanout_jobs(tenant_id, id) ON DELETE SET NULL,
+        REFERENCES notification_fanout_jobs(tenant_id, id) ON DELETE RESTRICT,
     CHECK (length(trim(source_slug)) BETWEEN 1 AND 64),
     CHECK (length(trim(event_type)) BETWEEN 1 AND 128),
     CHECK (last_error_code IS NULL OR length(last_error_code) <= 100),
