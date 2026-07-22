@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "contract_version": "order.checkout_compensation.v1",
+  "owner": "order",
+  "consumer": "commerce",
+  "status": "source_ready_unvalidated",
+  "port": "CheckoutOrderCompensationPort",
+  "operation": "compensate_checkout_order",
+  "context": "rustok_api::ports::PortContext",
+  "error": "rustok_api::ports::PortError",
+  "deadline_required": true,
+  "idempotency_required": true,
+  "causation_identity": "checkout_operation_id",
+  "request": {
+    "type": "CheckoutOrderCompensationRequest",
+    "fields": [
+      "checkout_operation_id",
+      "cart_id",
+      "expected_order_id",
+      "reason"
+    ]
+  },
+  "response": {
+    "type": "CheckoutOrderCompensationSnapshot",
+    "nullable_when_no_owner_order": true,
+    "fields": [
+      "order_id",
+      "status"
+    ]
+  },
+  "owner_rules": [
+    "resolve checkout identity inside order owner",
+    "adopt legacy identity only inside the owner compatibility adapter",
+    "cancel pending or confirmed orders idempotently",
+    "adopt an already cancelled order on replay",
+    "return manual reconciliation for paid shipped or delivered orders",
+    "never expose raw storage errors through PortError"
+  ],
+  "compatibility": {
+    "legacy_identity_adoption": "owner_local_temporary",
+    "new_consumer_metadata_lookup": false,
+    "new_consumer_order_service_construction": false
+  },
+  "source": "crates/rustok-order/src/checkout_compensation.rs",
+  "verification": {
+    "guard": "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs",
+    "runtime_evidence": "not_executed"
+  }
+}

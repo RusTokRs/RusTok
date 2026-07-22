@@ -1,375 +1,468 @@
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError};
-use sea_orm::DatabaseConnection;
+use rust_decimal::Decimal;
+use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_commerce_foundation::delivery_groups::{
+    CheckoutDeliveryGroupSnapshot, CheckoutLineAssignment,
+    build_checkout_delivery_group_snapshots,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::services::cart::helpers::{
-    normalize_country_code, normalize_locale_code, normalize_seller_id,
-    normalize_shipping_profile_slug,
-};
-use crate::{
-    CartDeliveryGroupResponse, CartError, CartResponse, CartService, CartShippingSelectionInput,
-};
+use crate::dto::{CartAddressResponse, CartResponse, UpdateCartInput};
+use crate::{CartError, CartService, CartStatus};
 
-const CHECKOUT_SNAPSHOT_SCHEMA: &str = "rustok.cart.checkout_snapshot.v1";
-
-/// Request overlay used to prepare a stable owner-defined checkout snapshot.
-///
-/// The cart remains the source of truth. Region, country and locale only fill
-/// missing cart context. Shipping fields follow the same patch semantics as
-/// `CartService::update_context`, without mutating persistence.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrepareCartCheckoutSnapshotRequest {
-    pub cart_id: Uuid,
-    pub region_id: Option<Uuid>,
-    pub country_code: Option<String>,
-    pub locale_code: Option<String>,
-    pub selected_shipping_option_id: Option<Uuid>,
-    pub shipping_selections: Option<Vec<CartShippingSelectionInput>>,
-}
-
+/// Immutable, transport-neutral checkout snapshot owned by the cart module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedCartCheckoutSnapshot {
     pub cart: CartResponse,
+    pub shipping_address: Option<CartAddressResponse>,
+    pub billing_address: Option<CartAddressResponse>,
+    pub subtotal: Decimal,
+    pub discount_total: Decimal,
+    pub tax_total: Decimal,
+    pub total: Decimal,
     pub snapshot_hash: String,
+    pub projection_hash: String,
+    pub status: String,
+    pub locked: bool,
+    pub delivery_groups: Vec<CheckoutDeliveryGroupSnapshot>,
+    pub tax_context: Option<Value>,
+    pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
-/// Cart-owned boundary for immutable checkout input snapshots.
-///
-/// Consumers must persist `snapshot_hash` with their orchestration identity and
-/// reject a replay when the same idempotency key resolves to another snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrepareCartCheckoutRequest {
+    pub cart_id: Uuid,
+    pub input: UpdateCartInput,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompleteCartCheckoutRequest {
+    pub cart_id: Uuid,
+    pub order_id: Uuid,
+}
+
+/// Stable owner-side checkout contract consumed by orchestration modules.
 #[async_trait]
-pub trait CartCheckoutSnapshotPort: Send + Sync {
-    async fn prepare_checkout_snapshot(
+pub trait CartCheckoutPort: Send + Sync {
+    async fn prepare_checkout(
         &self,
         context: PortContext,
-        request: PrepareCartCheckoutSnapshotRequest,
+        request: PrepareCartCheckoutRequest,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError>;
+
+    async fn read_checkout_snapshot(
+        &self,
+        context: PortContext,
+        cart_id: Uuid,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError>;
+
+    async fn complete_checkout(
+        &self,
+        context: PortContext,
+        request: CompleteCartCheckoutRequest,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError>;
+
+    async fn release_checkout(
+        &self,
+        context: PortContext,
+        cart_id: Uuid,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError>;
 }
 
-pub fn in_process_cart_checkout_snapshot_port(
-    db: DatabaseConnection,
-) -> Arc<dyn CartCheckoutSnapshotPort> {
-    Arc::new(CartService::new(db))
+#[derive(Clone)]
+pub struct InProcessCartCheckoutPort {
+    service: CartService,
+}
+
+impl InProcessCartCheckoutPort {
+    pub fn new(service: CartService) -> Self {
+        Self { service }
+    }
+}
+
+pub fn in_process_cart_checkout_port(service: CartService) -> Arc<dyn CartCheckoutPort> {
+    Arc::new(InProcessCartCheckoutPort::new(service))
 }
 
 #[async_trait]
-impl CartCheckoutSnapshotPort for CartService {
-    async fn prepare_checkout_snapshot(
+impl CartCheckoutPort for InProcessCartCheckoutPort {
+    async fn prepare_checkout(
         &self,
         context: PortContext,
-        request: PrepareCartCheckoutSnapshotRequest,
+        request: PrepareCartCheckoutRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
-        context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let actor_id = parse_actor_id(&context)?;
+        validate_prepare_input(&request.input)?;
+
         let cart = self
+            .service
             .get_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)?;
+        match CartStatus::parse(cart.status.as_str()).map_err(cart_error_to_port_error)? {
+            CartStatus::Active => {}
+            CartStatus::CheckingOut => {
+                return self
+                    .service
+                    .get_cart_with_addresses(tenant_id, request.cart_id)
+                    .await
+                    .map_err(cart_error_to_port_error)
+                    .and_then(snapshot_from_cart);
+            }
+            status => {
+                return Err(PortError::conflict(
+                    "cart.checkout_status_conflict",
+                    format!("cart cannot enter checkout from `{}`", status.as_str()),
+                ));
+            }
+        }
 
-        prepare_snapshot(cart, request).map_err(cart_error_to_port_error)
+        let cart = self
+            .service
+            .update_cart(tenant_id, actor_id, request.cart_id, request.input)
+            .await
+            .map_err(cart_error_to_port_error)?;
+        snapshot_from_cart(cart)
+    }
+
+    async fn read_checkout_snapshot(
+        &self,
+        context: PortContext,
+        cart_id: Uuid,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        context.require_policy(PortCallPolicy::read())?;
+        let tenant_id = parse_tenant_id(&context)?;
+        self.service
+            .get_cart_with_addresses(tenant_id, cart_id)
+            .await
+            .map_err(cart_error_to_port_error)
+            .and_then(snapshot_from_cart)
+    }
+
+    async fn complete_checkout(
+        &self,
+        context: PortContext,
+        request: CompleteCartCheckoutRequest,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let actor_id = parse_actor_id(&context)?;
+        let cart = self
+            .service
+            .transition_status(
+                tenant_id,
+                actor_id,
+                request.cart_id,
+                CartStatus::Completed,
+            )
+            .await
+            .map_err(cart_error_to_port_error)?;
+        let mut cart = cart;
+        cart.metadata = merge_checkout_order_metadata(cart.metadata, request.order_id);
+        snapshot_from_cart(cart)
+    }
+
+    async fn release_checkout(
+        &self,
+        context: PortContext,
+        cart_id: Uuid,
+    ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        context.require_write_semantics()?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let actor_id = parse_actor_id(&context)?;
+        let cart = self
+            .service
+            .transition_status(tenant_id, actor_id, cart_id, CartStatus::Active)
+            .await
+            .map_err(cart_error_to_port_error)?;
+        snapshot_from_cart(cart)
     }
 }
 
-fn prepare_snapshot(
-    mut cart: CartResponse,
-    request: PrepareCartCheckoutSnapshotRequest,
-) -> Result<PreparedCartCheckoutSnapshot, CartError> {
-    if cart.region_id.is_none() {
-        cart.region_id = request.region_id;
+fn validate_prepare_input(input: &UpdateCartInput) -> Result<(), CartError> {
+    input.validate().map_err(|error| {
+        tracing::warn!(error = ?error, "cart checkout input validation failed");
+        CartError::Validation("cart checkout input is invalid".to_string())
+    })?;
+    if input.status.as_deref() != Some(CartStatus::CheckingOut.as_str()) {
+        return Err(CartError::Validation(
+            "checkout preparation requires status=checking_out".to_string(),
+        ));
     }
-    if cart.country_code.is_none() {
-        cart.country_code = request
-            .country_code
-            .as_deref()
-            .map(normalize_country_code)
-            .transpose()?;
-    }
-    if cart.locale_code.is_none() {
-        cart.locale_code = request
-            .locale_code
-            .as_deref()
-            .map(normalize_locale_code)
-            .transpose()?;
-    }
+    Ok(())
+}
 
-    if request.shipping_selections.is_some() || request.selected_shipping_option_id.is_some() {
-        apply_shipping_overlay(
-            &mut cart,
-            request.selected_shipping_option_id,
-            request.shipping_selections,
-        )?;
-    }
+fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.tenant_id.as_str()).map_err(|_| {
+        PortError::validation(
+            "cart.tenant_id_invalid",
+            "PortContext.tenant_id must be a UUID for cart checkout",
+        )
+    })
+}
 
-    let snapshot_hash = hash_cart_snapshot(&cart)?;
+fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
+        PortError::validation(
+            "cart.actor_id_invalid",
+            "PortContext.actor.id must be a UUID for cart checkout writes",
+        )
+    })
+}
+
+fn snapshot_from_cart(cart: CartResponse) -> Result<PreparedCartCheckoutSnapshot, PortError> {
+    let (subtotal, discount_total, tax_total, total) = calculate_checkout_totals(&cart);
+    let snapshot_hash = cart_snapshot_hash(&cart, subtotal, discount_total, tax_total, total)
+        .map_err(cart_error_to_port_error)?;
+    let projection_hash = projection_hash(&cart).map_err(cart_error_to_port_error)?;
+    let status = CartStatus::parse(cart.status.as_str()).map_err(cart_error_to_port_error)?;
+    let delivery_groups = delivery_groups_from_cart(&cart).map_err(cart_error_to_port_error)?;
+    let tax_context = cart.metadata.get("tax_context").cloned();
     Ok(PreparedCartCheckoutSnapshot {
+        shipping_address: cart.shipping_address.clone(),
+        billing_address: cart.billing_address.clone(),
+        subtotal,
+        discount_total,
+        tax_total,
+        total,
+        projection_hash,
+        status: status.as_str().to_string(),
+        locked: status == CartStatus::CheckingOut,
+        delivery_groups,
+        tax_context,
+        updated_at: cart.updated_at,
         cart,
         snapshot_hash,
     })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct SnapshotGroupKey {
-    shipping_profile_slug: String,
-    seller_id: Option<String>,
-    seller_scope: Option<String>,
-}
-
-impl From<&CartDeliveryGroupResponse> for SnapshotGroupKey {
-    fn from(group: &CartDeliveryGroupResponse) -> Self {
-        Self {
-            shipping_profile_slug: normalize_shipping_profile_slug(Some(
-                group.shipping_profile_slug.as_str(),
-            )),
-            seller_id: normalize_seller_id(group.seller_id.as_deref()),
-            // Seller scope is retained in the snapshot identity but intentionally
-            // ignored when matching the current compatibility request shape.
-            seller_scope: group.seller_scope.clone(),
-        }
-    }
-}
-
-fn apply_shipping_overlay(
-    cart: &mut CartResponse,
-    selected_shipping_option_id: Option<Uuid>,
-    shipping_selections: Option<Vec<CartShippingSelectionInput>>,
-) -> Result<(), CartError> {
-    let available_groups = cart
-        .delivery_groups
+fn calculate_checkout_totals(cart: &CartResponse) -> (Decimal, Decimal, Decimal, Decimal) {
+    let subtotal = cart.line_items.iter().map(|line| line.subtotal).sum();
+    let discount_total = cart
+        .line_items
         .iter()
-        .map(SnapshotGroupKey::from)
+        .map(|line| line.discount_total)
+        .sum();
+    let tax_total = cart.line_items.iter().map(|line| line.tax_total).sum();
+    let total = cart.line_items.iter().map(|line| line.total).sum();
+    (subtotal, discount_total, tax_total, total)
+}
+
+fn cart_snapshot_hash(
+    cart: &CartResponse,
+    subtotal: Decimal,
+    discount_total: Decimal,
+    tax_total: Decimal,
+    total: Decimal,
+) -> Result<String, CartError> {
+    let mut value = serde_json::to_value(cart).map_err(|error| {
+        tracing::error!(error = ?error, "cart checkout snapshot projection encoding failed");
+        CartError::Validation("cart checkout snapshot could not be encoded".to_string())
+    })?;
+    normalize_snapshot_value(&mut value)?;
+    hash_json(serde_json::json!({
+        "cart": value,
+        "subtotal": subtotal,
+        "discount_total": discount_total,
+        "tax_total": tax_total,
+        "total": total,
+    }))
+}
+
+fn projection_hash(cart: &CartResponse) -> Result<String, CartError> {
+    let mut value = serde_json::to_value(cart).map_err(|error| {
+        tracing::error!(error = ?error, "cart checkout projection encoding failed");
+        CartError::Validation("cart checkout projection could not be encoded".to_string())
+    })?;
+    normalize_snapshot_value(&mut value)?;
+    hash_json(value)
+}
+
+fn delivery_groups_from_cart(
+    cart: &CartResponse,
+) -> Result<Vec<CheckoutDeliveryGroupSnapshot>, CartError> {
+    let assignments = cart
+        .line_items
+        .iter()
+        .map(|line| CheckoutLineAssignment {
+            cart_line_item_id: line.id,
+            shipping_profile_slug: line.shipping_profile_slug.clone(),
+            seller_id: line.seller_id,
+        })
         .collect::<Vec<_>>();
-    let mut desired = cart
+    let groups = build_checkout_delivery_group_snapshots(assignments)
+        .map_err(|error| CartError::Validation(error.to_string()))?;
+    let selected = cart
         .delivery_groups
         .iter()
         .map(|group| {
             (
-                SnapshotGroupKey::from(group),
+                (
+                    group.shipping_profile_slug.clone(),
+                    group.seller_id.unwrap_or(Uuid::nil()),
+                ),
                 group.selected_shipping_option_id,
             )
         })
-        .collect::<BTreeMap<_, _>>();
-
-    if let Some(shipping_selections) = shipping_selections {
-        desired.clear();
-        for selection in shipping_selections {
-            selection
-                .validate()
-                .map_err(|error| CartError::Validation(error.to_string()))?;
-            let shipping_profile_slug =
-                normalize_shipping_profile_slug(Some(selection.shipping_profile_slug.as_str()));
-            let seller_id = normalize_seller_id(selection.seller_id.as_deref());
-
-            for key in available_groups.iter().filter(|key| {
-                key.shipping_profile_slug == shipping_profile_slug
-                    && match seller_id.as_deref() {
-                        Some(seller_id) => key.seller_id.as_deref() == Some(seller_id),
-                        None => key.seller_id.is_none(),
-                    }
-            }) {
-                desired.insert(key.clone(), selection.selected_shipping_option_id);
-            }
-        }
-    } else if available_groups.len() <= 1 {
-        if let Some(group) = available_groups.first() {
-            desired.insert(group.clone(), selected_shipping_option_id);
-        } else {
-            desired.clear();
-        }
-    } else if selected_shipping_option_id != cart.selected_shipping_option_id
-        && selected_shipping_option_id.is_some()
-    {
-        return Err(CartError::Validation(
-            "selected_shipping_option_id can only be used for carts with a single delivery group"
-                .to_string(),
-        ));
-    }
-
-    for group in &mut cart.delivery_groups {
-        group.selected_shipping_option_id = desired
-            .get(&SnapshotGroupKey::from(&*group))
-            .copied()
-            .flatten();
-    }
-
-    cart.selected_shipping_option_id = match cart.delivery_groups.len() {
-        0 => selected_shipping_option_id,
-        1 => cart.delivery_groups[0].selected_shipping_option_id,
-        _ => None,
-    };
-
-    Ok(())
-}
-
-fn hash_cart_snapshot(cart: &CartResponse) -> Result<String, CartError> {
-    let mut value = serde_json::to_value(cart).map_err(|error| {
-        CartError::Validation(format!(
-            "failed to serialize cart checkout snapshot: {error}"
-        ))
-    })?;
-    normalize_snapshot_value(&mut value)?;
-    let canonical = canonicalize_json(value);
-    let payload = serde_json::to_vec(&serde_json::json!({
-        "schema": CHECKOUT_SNAPSHOT_SCHEMA,
-        "cart": canonical,
-    }))
-    .map_err(|error| {
-        CartError::Validation(format!("failed to encode cart checkout snapshot: {error}"))
-    })?;
-
-    Ok(Sha256::digest(payload)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
+        .collect::<std::collections::HashMap<_, _>>();
+    Ok(groups
+        .into_iter()
+        .map(|mut group| {
+            group.selected_shipping_option_id = selected
+                .get(&(
+                    group.shipping_profile_slug.clone(),
+                    group.seller_id.unwrap_or(Uuid::nil()),
+                ))
+                .copied()
+                .flatten();
+            group
+        })
         .collect())
 }
 
 fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {
-    let cart = value.as_object_mut().ok_or_else(|| {
-        CartError::Validation("cart checkout snapshot must serialize as an object".to_string())
+    let object = value.as_object_mut().ok_or_else(|| {
+        CartError::Validation("cart snapshot must serialize as a JSON object".to_string())
     })?;
-    remove_fields(
-        cart,
-        &["status", "created_at", "updated_at", "completed_at"],
-    );
-
-    normalize_record_array(cart.get_mut("line_items"), true)?;
-    normalize_record_array(cart.get_mut("adjustments"), true)?;
-    normalize_record_array(cart.get_mut("tax_lines"), true)?;
-
-    if let Some(groups) = cart.get_mut("delivery_groups") {
-        let groups = groups.as_array_mut().ok_or_else(|| {
-            CartError::Validation(
-                "cart checkout delivery groups must serialize as an array".to_string(),
-            )
-        })?;
+    for key in [
+        "status",
+        "created_at",
+        "updated_at",
+        "completed_at",
+        "shipping_address_id",
+        "billing_address_id",
+    ] {
+        object.remove(key);
+    }
+    for collection in ["line_items", "adjustments", "tax_lines"] {
+        if let Some(items) = object.get_mut(collection).and_then(Value::as_array_mut) {
+            for item in items.iter_mut() {
+                if let Some(item) = item.as_object_mut() {
+                    item.remove("created_at");
+                    item.remove("updated_at");
+                }
+            }
+            items.sort_by(|left, right| {
+                left.get("id")
+                    .and_then(Value::as_str)
+                    .cmp(&right.get("id").and_then(Value::as_str))
+            });
+        }
+    }
+    if let Some(groups) = object
+        .get_mut("delivery_groups")
+        .and_then(Value::as_array_mut)
+    {
         for group in groups.iter_mut() {
-            let group = group.as_object_mut().ok_or_else(|| {
-                CartError::Validation(
-                    "cart checkout delivery group must serialize as an object".to_string(),
-                )
-            })?;
-            group.remove("available_shipping_options");
-            if let Some(line_item_ids) =
-                group.get_mut("line_item_ids").and_then(Value::as_array_mut)
-            {
-                line_item_ids.sort_by_key(value_sort_key);
+            if let Some(group) = group.as_object_mut() {
+                group.remove("seller_scope");
+                group.remove("available_shipping_options");
+                if let Some(line_ids) = group
+                    .get_mut("line_item_ids")
+                    .and_then(Value::as_array_mut)
+                {
+                    line_ids.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
+                }
             }
         }
-        groups.sort_by_key(delivery_group_sort_key);
+        groups.sort_by(|left, right| {
+            let left_profile = left
+                .get("shipping_profile_slug")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let right_profile = right
+                .get("shipping_profile_slug")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let left_seller = left
+                .get("seller_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let right_seller = right
+                .get("seller_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            (left_profile, left_seller).cmp(&(right_profile, right_seller))
+        });
     }
-
     Ok(())
 }
 
-fn normalize_record_array(
-    value: Option<&mut Value>,
-    remove_timestamps: bool,
-) -> Result<(), CartError> {
-    let Some(value) = value else {
-        return Ok(());
-    };
-    let records = value.as_array_mut().ok_or_else(|| {
-        CartError::Validation("cart checkout records must serialize as an array".to_string())
+fn hash_json(value: Value) -> Result<String, CartError> {
+    let canonical = canonicalize_json(value);
+    let bytes = serde_json::to_vec(&canonical).map_err(|error| {
+        tracing::error!(error = ?error, "cart checkout snapshot hash encoding failed");
+        CartError::Validation("cart checkout snapshot could not be encoded".to_string())
     })?;
-    for record in records.iter_mut() {
-        let record = record.as_object_mut().ok_or_else(|| {
-            CartError::Validation("cart checkout record must serialize as an object".to_string())
-        })?;
-        if remove_timestamps {
-            remove_fields(record, &["created_at", "updated_at"]);
-        }
-    }
-    records.sort_by_key(|record| {
-        record
-            .get("id")
-            .map(value_sort_key)
-            .unwrap_or_else(|| value_sort_key(record))
-    });
-    Ok(())
-}
-
-fn remove_fields(object: &mut serde_json::Map<String, Value>, fields: &[&str]) {
-    for field in fields {
-        object.remove(*field);
-    }
-}
-
-fn delivery_group_sort_key(value: &Value) -> String {
-    let Some(group) = value.as_object() else {
-        return value_sort_key(value);
-    };
-    format!(
-        "{}\u{0}{}\u{0}{}",
-        group
-            .get("shipping_profile_slug")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        group
-            .get("seller_id")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-        group
-            .get("seller_scope")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
-    )
-}
-
-fn value_sort_key(value: &Value) -> String {
-    value
-        .as_str()
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| value.to_string())
+    Ok(hex::encode(Sha256::digest(bytes)))
 }
 
 fn canonicalize_json(value: Value) -> Value {
     match value {
-        Value::Object(values) => {
-            let ordered = values
+        Value::Object(values) => Value::Object(
+            values
                 .into_iter()
                 .map(|(key, value)| (key, canonicalize_json(value)))
-                .collect::<BTreeMap<_, _>>();
-            Value::Object(ordered.into_iter().collect())
-        }
+                .collect::<BTreeMap<_, _>>()
+                .into_iter()
+                .collect(),
+        ),
         Value::Array(values) => Value::Array(values.into_iter().map(canonicalize_json).collect()),
         value => value,
     }
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
-        PortError::validation(
-            "cart.invalid_tenant_id",
-            "cart checkout snapshot requires a UUID tenant_id",
-        )
-    })
+fn merge_checkout_order_metadata(metadata: Value, order_id: Uuid) -> Value {
+    let mut root = match metadata {
+        Value::Object(root) => root,
+        _ => Default::default(),
+    };
+    let mut checkout = root
+        .remove("checkout")
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    checkout.insert("order_id".to_string(), Value::String(order_id.to_string()));
+    root.insert("checkout".to_string(), Value::Object(checkout));
+    Value::Object(root)
 }
 
 fn cart_error_to_port_error(error: CartError) -> PortError {
     match error {
         CartError::Validation(message) => {
-            PortError::validation("cart.checkout_snapshot_validation", message)
+            tracing::warn!(message = %message, "cart checkout owner validation failed");
+            PortError::validation(
+                "cart.checkout_validation",
+                "cart checkout request or projection is invalid",
+            )
         }
-        CartError::CartNotFound(cart_id) => {
-            PortError::not_found("cart.not_found", format!("cart {cart_id} not found"))
+        CartError::CartNotFound(_) => {
+            PortError::not_found("cart.not_found", "cart was not found")
         }
-        CartError::CartLineItemNotFound(line_item_id) => PortError::not_found(
-            "cart.line_item_not_found",
-            format!("cart line item {line_item_id} not found"),
+        CartError::CartLineItemNotFound(_) => {
+            PortError::not_found("cart.line_item_not_found", "cart line item was not found")
+        }
+        CartError::InvalidTransition { .. } => PortError::conflict(
+            "cart.checkout_status_conflict",
+            "cart status transition conflicts with checkout lifecycle",
         ),
-        CartError::InvalidTransition { from, to } => PortError::conflict(
-            "cart.invalid_transition",
-            format!("invalid cart status transition: {from} -> {to}"),
-        ),
-        CartError::Database(_) => PortError::unavailable(
-            "cart.checkout_snapshot_storage_unavailable",
-            "cart checkout snapshot storage is unavailable",
-        ),
+        CartError::Database(error) => {
+            tracing::error!(error = ?error, "cart checkout storage operation failed");
+            PortError::unavailable(
+                "cart.database_unavailable",
+                "cart storage is temporarily unavailable",
+            )
+        }
         CartError::TaxBoundary {
             kind,
             code,

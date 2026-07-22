@@ -109,28 +109,63 @@ impl CheckoutMarketplaceEconomicsCheckpointJournal {
             return Ok(existing);
         }
 
-        let now = Utc::now().fixed_offset();
+        let tenant_id = input.tenant_id;
+        let checkout_operation_id = input.checkout_operation_id;
         let evidence = input.evidence;
-        let model = checkout_marketplace_economics_checkpoint::ActiveModel {
-            checkout_operation_id: Set(input.checkout_operation_id),
-            tenant_id: Set(input.tenant_id),
+        let now = Utc::now().fixed_offset();
+        let insert = checkout_marketplace_economics_checkpoint::ActiveModel {
+            checkout_operation_id: Set(checkout_operation_id),
+            tenant_id: Set(tenant_id),
             order_id: Set(evidence.order_id),
-            plan_hash: Set(evidence.plan_hash),
-            currency_code: Set(evidence.currency_code),
+            plan_hash: Set(evidence.plan_hash.clone()),
+            currency_code: Set(evidence.currency_code.clone()),
             allocation_count: Set(evidence.allocation_count),
             allocation_total_amount: Set(evidence.allocation_total_amount),
-            allocation_set_hash: Set(evidence.allocation_set_hash),
+            allocation_set_hash: Set(evidence.allocation_set_hash.clone()),
             assessment_count: Set(evidence.assessment_count),
             commission_total_amount: Set(evidence.commission_total_amount),
             seller_proceeds_total_amount: Set(evidence.seller_proceeds_total_amount),
-            assessment_set_hash: Set(evidence.assessment_set_hash),
+            assessment_set_hash: Set(evidence.assessment_set_hash.clone()),
             created_at: Set(now),
             updated_at: Set(now),
         }
         .insert(&transaction)
-        .await?;
-        transaction.commit().await?;
-        Ok(model)
+        .await;
+
+        match insert {
+            Ok(model) => {
+                transaction.commit().await?;
+                Ok(model)
+            }
+            Err(insert_error) => {
+                // A uniqueness failure can leave PostgreSQL transactions aborted, so
+                // adoption must happen after rollback on a fresh connection. Concurrent
+                // identical writers adopt the committed checkpoint; conflicting evidence
+                // is classified by `ensure_same_evidence` instead of leaking a backend
+                // unique-violation error.
+                transaction.rollback().await?;
+                let existing =
+                    checkout_marketplace_economics_checkpoint::Entity::find_by_id(
+                        checkout_operation_id,
+                    )
+                    .one(&self.db)
+                    .await?;
+                let Some(existing) = existing else {
+                    return Err(CheckoutMarketplaceEconomicsCheckpointError::Database(
+                        insert_error,
+                    ));
+                };
+                if existing.tenant_id != tenant_id {
+                    return Err(CheckoutMarketplaceEconomicsCheckpointError::Conflict(
+                        format!(
+                            "checkout operation {checkout_operation_id} checkpoint identity is already bound outside the requested tenant"
+                        ),
+                    ));
+                }
+                ensure_same_evidence(&existing, &evidence)?;
+                Ok(existing)
+            }
+        }
     }
 }
 

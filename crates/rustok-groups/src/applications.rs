@@ -1440,3 +1440,10 @@ fn has_platform_manage(context: &PortContext) -> bool {
         .iter()
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }
+include!("applications_legacy.rs");
+include!("applications_review.rs");
+include!("applications_bulk_review.rs");
+include!("applications_cas.rs");
+include!("applications_lifecycle.rs");
+include!("applications_policy_management.rs");
+

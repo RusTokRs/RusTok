@@ -70,6 +70,7 @@ forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum",
 notifications = { crate = "rustok-notifications", source = "path", path = "crates/rustok-notifications", depends_on = ["outbox"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
+navigation = { crate = "rustok-navigation", source = "path", path = "crates/rustok-navigation", depends_on = ["channel"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
@@ -83,4 +84,4 @@ flex = { crate = "flex", source = "path", path = "crates/flex" }
 ai = { crate = "rustok-ai", source = "path", path = "crates/rustok-ai", runtime = "extension" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "page_builder"]
+default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder"]

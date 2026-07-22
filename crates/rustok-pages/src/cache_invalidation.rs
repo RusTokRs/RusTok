@@ -1,22 +1,29 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_core::events::{EventHandler, HandlerResult};
 use rustok_events::{DomainEvent, EventEnvelope};
+use serde::{Serialize, de::DeserializeOwned};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
 pub const PAGES_CACHE_NAMESPACE_FORMAT: &str = "pages_cache_namespace_v1";
 pub const PAGES_CACHE_EVENT_HANDLER: &str = "pages_cache_invalidation";
 pub const PAGES_CACHE_ENTITY_KIND: &str = "page";
+pub const PAGES_STOREFRONT_CACHE_TTL_SECS: u64 = 60;
+pub const PAGES_STOREFRONT_CACHE_MAX_CAPACITY: u64 = 10_000;
 pub const MAX_PAGE_CACHE_KEY_VARIANT_BYTES: usize = 512;
+pub const MAX_PAGE_CACHE_VALUE_BYTES: usize = 2 * 1024 * 1024;
 
-const ALL_SCOPES: [PageCacheScope; 3] = [
+pub const PAGE_CACHE_SCOPES: [PageCacheScope; 3] = [
     PageCacheScope::Route,
     PageCacheScope::Page,
     PageCacheScope::Artifact,
 ];
-const ROUTE_AND_PAGE_SCOPES: [PageCacheScope; 2] = [PageCacheScope::Route, PageCacheScope::Page];
+pub const PAGE_CACHE_MUTABLE_SCOPES: [PageCacheScope; 2] =
+    [PageCacheScope::Route, PageCacheScope::Page];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PageCacheScope {
@@ -55,8 +62,41 @@ impl PageCacheInvalidationCause {
 
     pub const fn scopes(self) -> &'static [PageCacheScope] {
         match self {
-            Self::Updated => &ROUTE_AND_PAGE_SCOPES,
-            Self::Published | Self::Unpublished | Self::Deleted => &ALL_SCOPES,
+            Self::Updated => &PAGE_CACHE_MUTABLE_SCOPES,
+            Self::Published | Self::Unpublished | Self::Deleted => &PAGE_CACHE_SCOPES,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PageCacheGenerationSnapshot {
+    pub route: u64,
+    pub page: u64,
+    pub artifact: u64,
+}
+
+impl PageCacheGenerationSnapshot {
+    pub const fn new(route: u64, page: u64, artifact: u64) -> Self {
+        Self {
+            route,
+            page,
+            artifact,
+        }
+    }
+
+    pub fn record(&mut self, scope: PageCacheScope, generation: u64) {
+        match scope {
+            PageCacheScope::Route => self.route = generation,
+            PageCacheScope::Page => self.page = generation,
+            PageCacheScope::Artifact => self.artifact = generation,
+        }
+    }
+
+    pub const fn generation(self, scope: PageCacheScope) -> u64 {
+        match scope {
+            PageCacheScope::Route => self.route,
+            PageCacheScope::Page => self.page,
+            PageCacheScope::Artifact => self.artifact,
         }
     }
 }
@@ -79,24 +119,24 @@ impl PageCacheInvalidationRequest {
         correlation_id: Uuid,
         trace_id: Option<String>,
         cause: PageCacheInvalidationCause,
-    ) -> Result<Self, PageCacheInvalidationError> {
+    ) -> Result<Self, PageCacheError> {
         if tenant_id.is_nil() {
-            return Err(PageCacheInvalidationError::InvalidRequest(
+            return Err(PageCacheError::InvalidRequest(
                 "tenant id must not be nil".to_string(),
             ));
         }
         if page_id.is_nil() {
-            return Err(PageCacheInvalidationError::InvalidRequest(
+            return Err(PageCacheError::InvalidRequest(
                 "page id must not be nil".to_string(),
             ));
         }
         if event_id.is_nil() {
-            return Err(PageCacheInvalidationError::InvalidRequest(
+            return Err(PageCacheError::InvalidRequest(
                 "event id must not be nil".to_string(),
             ));
         }
         if correlation_id.is_nil() {
-            return Err(PageCacheInvalidationError::InvalidRequest(
+            return Err(PageCacheError::InvalidRequest(
                 "correlation id must not be nil".to_string(),
             ));
         }
@@ -159,19 +199,13 @@ impl PageCacheInvalidationReceipt {
         }
     }
 
-    pub fn validate_for(
-        &self,
-        request: &PageCacheInvalidationRequest,
-    ) -> Result<(), PageCacheInvalidationError> {
+    pub fn validate_for(&self, request: &PageCacheInvalidationRequest) -> Result<(), PageCacheError> {
         if self.event_id != request.event_id || self.correlation_id != request.correlation_id {
-            return Err(PageCacheInvalidationError::ReceiptIdentityMismatch);
+            return Err(PageCacheError::ReceiptIdentityMismatch);
         }
         for scope in request.scopes() {
-            if self
-                .generation(*scope)
-                .is_none_or(|generation| generation == 0)
-            {
-                return Err(PageCacheInvalidationError::MissingGeneration(*scope));
+            if self.generation(*scope).is_none_or(|generation| generation == 0) {
+                return Err(PageCacheError::MissingGeneration(*scope));
             }
         }
         Ok(())
@@ -179,21 +213,23 @@ impl PageCacheInvalidationReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum PageCacheInvalidationError {
-    #[error("invalid Pages cache invalidation request: {0}")]
+pub enum PageCacheError {
+    #[error("invalid Pages cache request: {0}")]
     InvalidRequest(String),
-    #[error("Pages cache invalidation provider failed: {0}")]
+    #[error("Pages cache provider failed: {0}")]
     Provider(String),
     #[error("Pages cache invalidation receipt identity does not match the source event")]
     ReceiptIdentityMismatch,
     #[error("Pages cache invalidation receipt is missing a positive {0:?} generation")]
     MissingGeneration(PageCacheScope),
-    #[error("Pages cache key generation must be positive")]
-    ZeroGeneration,
     #[error("Pages cache key variant must not be empty")]
     EmptyKeyVariant,
     #[error("Pages cache key variant is {length} bytes; maximum is {maximum}")]
     KeyVariantTooLarge { length: usize, maximum: usize },
+    #[error("Pages cache value is {length} bytes; maximum is {maximum}")]
+    ValueTooLarge { length: usize, maximum: usize },
+    #[error("Pages cache serialization failed: {0}")]
+    Serialization(String),
 }
 
 #[async_trait]
@@ -201,7 +237,24 @@ pub trait PageCacheInvalidationPort: Send + Sync {
     async fn invalidate(
         &self,
         request: PageCacheInvalidationRequest,
-    ) -> Result<PageCacheInvalidationReceipt, PageCacheInvalidationError>;
+    ) -> Result<PageCacheInvalidationReceipt, PageCacheError>;
+}
+
+#[async_trait]
+pub trait PagesCacheReadPort: Send + Sync {
+    async fn generation_snapshot(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<PageCacheGenerationSnapshot, PageCacheError>;
+
+    async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, PageCacheError>;
+
+    async fn put(
+        &self,
+        key: String,
+        value: Vec<u8>,
+        ttl: Duration,
+    ) -> Result<(), PageCacheError>;
 }
 
 #[derive(Clone)]
@@ -217,10 +270,62 @@ impl PagesCacheInvalidationRuntime {
     pub async fn invalidate(
         &self,
         request: PageCacheInvalidationRequest,
-    ) -> Result<PageCacheInvalidationReceipt, PageCacheInvalidationError> {
+    ) -> Result<PageCacheInvalidationReceipt, PageCacheError> {
         let receipt = self.port.invalidate(request.clone()).await?;
         receipt.validate_for(&request)?;
         Ok(receipt)
+    }
+}
+
+#[derive(Clone)]
+pub struct PagesCacheReadRuntime {
+    port: Arc<dyn PagesCacheReadPort>,
+}
+
+impl PagesCacheReadRuntime {
+    pub fn new(port: Arc<dyn PagesCacheReadPort>) -> Self {
+        Self { port }
+    }
+
+    pub async fn generation_snapshot(
+        &self,
+        tenant_id: Uuid,
+    ) -> Result<PageCacheGenerationSnapshot, PageCacheError> {
+        if tenant_id.is_nil() {
+            return Err(PageCacheError::InvalidRequest(
+                "tenant id must not be nil".to_string(),
+            ));
+        }
+        self.port.generation_snapshot(tenant_id).await
+    }
+
+    pub async fn get_json<T>(&self, key: &str) -> Result<Option<T>, PageCacheError>
+    where
+        T: DeserializeOwned,
+    {
+        let Some(bytes) = self.port.get(key).await? else {
+            return Ok(None);
+        };
+        validate_cache_value_size(bytes.len())?;
+        serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|error| PageCacheError::Serialization(error.to_string()))
+    }
+
+    pub async fn put_json<T>(&self, key: String, value: &T) -> Result<(), PageCacheError>
+    where
+        T: Serialize + Sync,
+    {
+        let bytes = serde_json::to_vec(value)
+            .map_err(|error| PageCacheError::Serialization(error.to_string()))?;
+        validate_cache_value_size(bytes.len())?;
+        self.port
+            .put(
+                key,
+                bytes,
+                Duration::from_secs(PAGES_STOREFRONT_CACHE_TTL_SECS),
+            )
+            .await
     }
 }
 
@@ -236,7 +341,7 @@ impl PageCacheInvalidationEventHandler {
 
     fn request(
         envelope: &EventEnvelope,
-    ) -> Result<Option<PageCacheInvalidationRequest>, PageCacheInvalidationError> {
+    ) -> Result<Option<PageCacheInvalidationRequest>, PageCacheError> {
         let (page_id, cause) = match &envelope.event {
             DomainEvent::NodeUpdated { node_id, kind } if kind == PAGES_CACHE_ENTITY_KIND => {
                 (*node_id, PageCacheInvalidationCause::Updated)
@@ -321,44 +426,70 @@ pub fn page_cache_key(
     page_id: Uuid,
     generation: u64,
     variant: &str,
-) -> Result<String, PageCacheInvalidationError> {
-    if generation == 0 {
-        return Err(PageCacheInvalidationError::ZeroGeneration);
-    }
+) -> Result<String, PageCacheError> {
+    let variant_hash = cache_variant_hash(variant)?;
+    Ok(format!(
+        "{}:g-{generation}:page:{page_id}:{variant_hash}",
+        page_cache_namespace(scope, tenant_id),
+    ))
+}
+
+pub fn storefront_pages_cache_key(
+    tenant_id: Uuid,
+    generations: PageCacheGenerationSnapshot,
+    variant: &str,
+) -> Result<String, PageCacheError> {
+    let variant_hash = cache_variant_hash(variant)?;
+    Ok(format!(
+        "{PAGES_CACHE_NAMESPACE_FORMAT}:storefront:tenant:{tenant_id}:rg-{}:pg-{}:ag-{}:{variant_hash}",
+        generations.route, generations.page, generations.artifact,
+    ))
+}
+
+fn cache_variant_hash(variant: &str) -> Result<String, PageCacheError> {
     let variant = variant.trim();
     if variant.is_empty() {
-        return Err(PageCacheInvalidationError::EmptyKeyVariant);
+        return Err(PageCacheError::EmptyKeyVariant);
     }
     if variant.len() > MAX_PAGE_CACHE_KEY_VARIANT_BYTES {
-        return Err(PageCacheInvalidationError::KeyVariantTooLarge {
+        return Err(PageCacheError::KeyVariantTooLarge {
             length: variant.len(),
             maximum: MAX_PAGE_CACHE_KEY_VARIANT_BYTES,
         });
     }
-    Ok(format!(
-        "{}:g-{generation}:page:{page_id}:{}",
-        page_cache_namespace(scope, tenant_id),
-        hex::encode(variant.as_bytes())
-    ))
+    Ok(format!("{:x}", Sha256::digest(variant.as_bytes())))
+}
+
+fn validate_cache_value_size(length: usize) -> Result<(), PageCacheError> {
+    if length > MAX_PAGE_CACHE_VALUE_BYTES {
+        return Err(PageCacheError::ValueTooLarge {
+            length,
+            maximum: MAX_PAGE_CACHE_VALUE_BYTES,
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::Mutex;
+
+    use serde_json::{Value, json};
 
     use super::*;
 
     #[derive(Default)]
-    struct FakePort {
+    struct FakeInvalidationPort {
         requests: Mutex<Vec<PageCacheInvalidationRequest>>,
     }
 
     #[async_trait]
-    impl PageCacheInvalidationPort for FakePort {
+    impl PageCacheInvalidationPort for FakeInvalidationPort {
         async fn invalidate(
             &self,
             request: PageCacheInvalidationRequest,
-        ) -> Result<PageCacheInvalidationReceipt, PageCacheInvalidationError> {
+        ) -> Result<PageCacheInvalidationReceipt, PageCacheError> {
             self.requests
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -371,42 +502,78 @@ mod tests {
         }
     }
 
+    struct FakeReadPort {
+        generations: PageCacheGenerationSnapshot,
+        values: Mutex<HashMap<String, Vec<u8>>>,
+    }
+
+    #[async_trait]
+    impl PagesCacheReadPort for FakeReadPort {
+        async fn generation_snapshot(
+            &self,
+            _tenant_id: Uuid,
+        ) -> Result<PageCacheGenerationSnapshot, PageCacheError> {
+            Ok(self.generations)
+        }
+
+        async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, PageCacheError> {
+            Ok(self
+                .values
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(key)
+                .cloned())
+        }
+
+        async fn put(
+            &self,
+            key: String,
+            value: Vec<u8>,
+            _ttl: Duration,
+        ) -> Result<(), PageCacheError> {
+            self.values
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .insert(key, value);
+            Ok(())
+        }
+    }
+
     fn envelope(event: DomainEvent) -> EventEnvelope {
         EventEnvelope::new(Uuid::from_u128(1), Some(Uuid::from_u128(2)), event)
     }
 
     #[test]
     fn published_pages_invalidate_route_page_and_artifact_namespaces() {
-        assert_eq!(PageCacheInvalidationCause::Published.scopes(), &ALL_SCOPES);
+        assert_eq!(
+            PageCacheInvalidationCause::Published.scopes(),
+            &PAGE_CACHE_SCOPES
+        );
         assert_eq!(
             PageCacheInvalidationCause::Updated.scopes(),
-            &ROUTE_AND_PAGE_SCOPES
+            &PAGE_CACHE_MUTABLE_SCOPES
         );
     }
 
     #[test]
     fn namespace_generations_are_bounded_by_tenant_and_scope() {
         let tenant = Uuid::from_u128(11);
-        assert_ne!(
+        assert_eq!(
             page_cache_namespace(PageCacheScope::Route, tenant),
-            page_cache_namespace(PageCacheScope::Page, tenant)
+            format!("{PAGES_CACHE_NAMESPACE_FORMAT}:route:tenant:{tenant}")
         );
         assert_ne!(
             page_cache_namespace(PageCacheScope::Page, tenant),
             page_cache_namespace(PageCacheScope::Artifact, tenant)
         );
-        assert_eq!(
-            page_cache_namespace(PageCacheScope::Page, tenant),
-            page_cache_namespace(PageCacheScope::Page, tenant)
-        );
     }
 
     #[tokio::test]
     async fn handler_forwards_only_page_events_and_validates_the_receipt() {
-        let port = Arc::new(FakePort::default());
-        let handler = PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(
-            port.clone(),
-        ));
+        let port = Arc::new(FakeInvalidationPort::default());
+        let handler = PageCacheInvalidationEventHandler::new(
+            PagesCacheInvalidationRuntime::new(port.clone()),
+        );
         let page_id = Uuid::from_u128(42);
         let page = envelope(DomainEvent::NodePublished {
             node_id: page_id,
@@ -435,12 +602,46 @@ mod tests {
     }
 
     #[test]
-    fn cache_keys_bind_scope_generation_page_and_variant_without_raw_variant_text() {
+    fn cache_keys_allow_initial_generation_and_hash_raw_variants() {
         let tenant = Uuid::from_u128(11);
         let page = Uuid::from_u128(22);
-        let key = page_cache_key(PageCacheScope::Route, tenant, page, 3, "en:/about").unwrap();
-        assert!(key.contains(":g-3:page:"));
+        let key = page_cache_key(PageCacheScope::Route, tenant, page, 0, "en:/about")
+            .unwrap();
+        assert!(key.contains(":g-0:page:"));
         assert!(key.contains(&page.to_string()));
         assert!(!key.contains("/about"));
+    }
+
+    #[test]
+    fn storefront_key_changes_when_any_dependency_generation_changes() {
+        let tenant = Uuid::from_u128(11);
+        let variant = "en|en|web|about";
+        let base = storefront_pages_cache_key(
+            tenant,
+            PageCacheGenerationSnapshot::new(1, 2, 3),
+            variant,
+        )
+        .unwrap();
+        for changed in [
+            PageCacheGenerationSnapshot::new(2, 2, 3),
+            PageCacheGenerationSnapshot::new(1, 3, 3),
+            PageCacheGenerationSnapshot::new(1, 2, 4),
+        ] {
+            assert_ne!(base, storefront_pages_cache_key(tenant, changed, variant).unwrap());
+        }
+        assert!(!base.contains("about"));
+    }
+
+    #[tokio::test]
+    async fn read_runtime_round_trips_bounded_json() {
+        let runtime = PagesCacheReadRuntime::new(Arc::new(FakeReadPort {
+            generations: PageCacheGenerationSnapshot::new(1, 2, 3),
+            values: Mutex::new(HashMap::new()),
+        }));
+        let key = "pages:test".to_string();
+        let value = json!({"page": "home"});
+        runtime.put_json(key.clone(), &value).await.unwrap();
+        let cached: Option<Value> = runtime.get_json(&key).await.unwrap();
+        assert_eq!(cached, Some(value));
     }
 }

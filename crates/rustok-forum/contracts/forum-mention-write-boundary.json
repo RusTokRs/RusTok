@@ -1,38 +1,121 @@
 {
-  "schema_version": 1,
-  "slice": "FORUM-12B2",
+  "schema_version": 4,
+  "slice": "FORUM-12D2",
   "owner_entrypoints": {
     "topic_create": {
-      "owner": "crates/rustok-forum/src/services/topic_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/topic_relation_integration.rs",
-      "delegate": "create_with_relations"
+      "owner": "crates/rustok-forum/src/services/topic_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/topic_inline.rs",
+      "delegate": "create_with_inline_relations"
     },
     "topic_update": {
-      "owner": "crates/rustok-forum/src/services/topic_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/topic_relation_integration.rs",
-      "delegate": "update_with_relations"
+      "owner": "crates/rustok-forum/src/services/topic_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/topic_inline.rs",
+      "delegate": "update_with_inline_relations"
     },
     "reply_create": {
-      "owner": "crates/rustok-forum/src/services/reply_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/reply_owner.rs",
+      "owner": "crates/rustok-forum/src/services/reply_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/reply_owner_inline.rs",
       "delegate": "persist_in_tx"
     },
     "reply_update": {
-      "owner": "crates/rustok-forum/src/services/reply_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/reply_relation_integration.rs",
-      "delegate": "update_with_relations"
+      "owner": "crates/rustok-forum/src/services/reply_owner_inline.rs",
+      "implementation": "crates/rustok-forum/src/services/reply_inline.rs",
+      "delegate": "update_with_inline_relations"
     }
   },
   "required_order": [
+    "normalize or resolve quote input before opening the owner transaction",
     "prepare relation projection before opening the owner transaction",
+    "lock the active source and compare preserved relation revision when required",
     "persist canonical topic translation or reply body",
     "persist relation projection in the same owner transaction",
+    "publish events only for newly added targets",
+    "write the same event identity to transactional outbox and Forum journal",
     "run existing counters and semantic event writes",
     "commit the owner transaction"
   ],
+  "event_contract": {
+    "family": "crates/rustok-events/src/forum_mention.rs",
+    "payload_registry": "crates/rustok-events/src/contract.rs",
+    "event_types": [
+      "forum.mention.user_added",
+      "forum.mention.audience_added"
+    ],
+    "schema_version": 1
+  },
+  "owner_journal": {
+    "entity": "crates/rustok-forum/src/entities/forum_domain_event.rs",
+    "migration": "crates/rustok-forum/src/migrations/m20260722_000006_add_forum_mention_events.rs",
+    "same_event_id_as_outbox": true,
+    "append_only": true
+  },
+  "owner_read": {
+    "service": "crates/rustok-forum/src/services/relation_read.rs",
+    "dto": "crates/rustok-forum/src/dto/relation.rs",
+    "latest_or_exact_revision": true,
+    "max_mentions": 32,
+    "max_quotes": 32,
+    "forbidden_fields": [
+      "handle_snapshot",
+      "projection_fingerprint"
+    ]
+  },
+  "quote_command": {
+    "service": "crates/rustok-forum/src/services/quote_command.rs",
+    "dto": "crates/rustok-forum/src/dto/relation.rs",
+    "source_body_mode": "exact_locale_existing_body",
+    "quotes_field_required": true,
+    "replace_full_set": true,
+    "empty_set_clears": true,
+    "deduplicate": true,
+    "max_raw_quotes": 32,
+    "max_unique_quotes": 32,
+    "reject_deleted_source": true,
+    "same_owner_transaction": true,
+    "response_before_commit": true,
+    "rest": [
+      "PUT /api/forum/topics/{id}/quotes",
+      "PUT /api/forum/replies/{id}/quotes"
+    ],
+    "graphql": [
+      "setForumTopicQuotes",
+      "setForumReplyQuotes"
+    ]
+  },
+  "inline_quote_commands": {
+    "topic_dto": "crates/rustok-forum/src/dto/topic.rs",
+    "reply_dto": "crates/rustok-forum/src/dto/reply.rs",
+    "resolver": "crates/rustok-forum/src/services/relation_quote_input.rs",
+    "module_composition": "crates/rustok-forum/src/services/mod.rs",
+    "create_omitted_quotes": "empty_initial_set",
+    "update_omitted_quotes": "preserve_latest_exact_locale_set",
+    "update_explicit_empty_quotes": "clear",
+    "update_explicit_quotes": "replace",
+    "max_raw_quotes": 32,
+    "deduplicate_exact_references": true,
+    "preserve_expected_revision_cas": true,
+    "conflict_code": "FORUM_RELATION_REVISION_CONFLICT",
+    "conflict_retryable": true,
+    "reject_deleted_source": true,
+    "same_owner_transaction": true,
+    "legacy_rust_dtos_unchanged": true,
+    "legacy_facade_updates_preserve_quotes": true,
+    "rest": [
+      "POST /api/forum/topics",
+      "PUT /api/forum/topics/{id}",
+      "POST /api/forum/topics/{id}/replies",
+      "PUT /api/forum/replies/{id}"
+    ],
+    "graphql": [
+      "createForumTopicWithQuotes",
+      "updateForumTopicWithQuotes",
+      "createForumReplyWithQuotes",
+      "updateForumReplyWithQuotes"
+    ]
+  },
   "source_entrypoints": {
-    "topic": "crates/rustok-forum/src/services/topic.rs",
-    "reply": "crates/rustok-forum/src/services/reply.rs"
+    "topic": "crates/rustok-forum/src/services/topic_inline.rs",
+    "reply": "crates/rustok-forum/src/services/reply_inline.rs"
   },
   "transport_roots": [
     "crates/rustok-forum/src/controllers",
@@ -43,12 +126,14 @@
     "PreparedMentionRelations",
     "persist_in_tx",
     "create_with_relations",
-    "update_with_relations"
+    "update_with_relations",
+    "create_with_inline_relations",
+    "update_with_inline_relations",
+    "publish_contract_in_tx_with_envelope_id"
   ],
   "deferred": [
-    "quote command DTOs",
-    "mention semantic events and outbox publication",
-    "bounded relation owner reads",
-    "Notifications delivery"
+    "Notifications delivery",
+    "blocked private deleted source and target visibility rechecks for notification consumption and target opening",
+    "PostgreSQL concurrency and delivery runtime evidence"
   ]
 }

@@ -2,7 +2,7 @@
 slug = "pages"
 name = "Pages"
 version = "0.1.0"
-description = "Static pages, blocks and menus"
+description = "Static pages and published visual documents"
 ownership = "first_party"
 trust_level = "verified"
 ui_classification = "dual_surface"
@@ -58,6 +58,7 @@ leptos_crate = "rustok-pages-storefront"
 slot = "home_before_footer"
 route_segment = "pages"
 page_title = "Pages"
+
 
 [provides.storefront_ui.i18n]
 default_locale = "en"
@@ -135,4 +136,4 @@ rollback_triggers = [
   "sanitize_failures_above_alert_threshold",
   "storefront_published_read_regression",
 ]
-read_surfaces_guarantee = "pages_owned_list_read_menu_paths_stay_available_when_builder_capabilities_are_disabled"
+read_surfaces_guarantee = "pages_owned_list_and_document_read_paths_stay_available_when_builder_capabilities_are_disabled"

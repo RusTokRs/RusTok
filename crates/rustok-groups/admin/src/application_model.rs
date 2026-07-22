@@ -35,9 +35,66 @@ pub struct GroupsAdminApplicationPolicyQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyLocaleCatalogQuery {
+    pub group_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyLocaleCatalog {
+    pub group_id: String,
+    pub policy_id: Option<String>,
+    pub revision: Option<u64>,
+    pub enabled: bool,
+    pub locales: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyManagementView {
+    pub group_id: String,
+    pub policy_id: Option<String>,
+    pub revision: Option<u64>,
+    pub enabled: bool,
+    pub locale: String,
+    pub translation_exists: bool,
+    pub questions: Vec<GroupsAdminApplicationQuestion>,
+    pub rules: Vec<GroupsAdminApplicationRule>,
+}
+
+impl GroupsAdminApplicationPolicyManagementView {
+    pub fn precondition(&self) -> Option<GroupsAdminApplicationPolicyPrecondition> {
+        self.policy_id
+            .as_ref()
+            .zip(self.revision)
+            .map(|(policy_id, revision)| GroupsAdminApplicationPolicyPrecondition {
+                policy_id: policy_id.clone(),
+                revision,
+                locale: self.locale.clone(),
+            })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsAdminApplicationPolicyPrecondition {
+    pub policy_id: String,
+    pub revision: u64,
+    pub locale: String,
+}
+
+impl From<&GroupsAdminApplicationPolicy> for GroupsAdminApplicationPolicyPrecondition {
+    fn from(value: &GroupsAdminApplicationPolicy) -> Self {
+        Self {
+            policy_id: value.id.clone(),
+            revision: value.revision,
+            locale: value.locale.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpsertGroupApplicationPolicyCommand {
     pub idempotency_key: String,
     pub group_id: String,
+    pub expected_policy: Option<GroupsAdminApplicationPolicyPrecondition>,
     pub locale: String,
     pub enabled: bool,
     pub questions: Vec<GroupsAdminApplicationQuestion>,
@@ -155,9 +212,17 @@ pub struct ReviewGroupMembershipApplicationCommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReopenGroupMembershipApplicationCommand {
+    pub idempotency_key: String,
+    pub application_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsAdminReviewApplicationResult {
     pub application: GroupsAdminMembershipApplication,
     pub membership: GroupsAdminMembership,
     pub group_version: u64,
     pub replayed: bool,
 }
+
+include!("application_bulk_model.rs");

@@ -2,177 +2,133 @@
 
 ## Current state
 
-`rustok-search` owns search documents, PostgreSQL FTS baseline, catalog
-projection search, analytics, dictionaries, query rules, rebuild/diagnostics,
+`rustok-search` owns normalized search documents, PostgreSQL FTS, catalog and Blog
+projection ingestion, analytics, dictionaries, query rules, rebuild/diagnostics,
 and module-owned admin/storefront surfaces. It remains separate from
-`rustok-index`; product catalog projections are consumed through the published
-boundary rather than by importing index runtime types. The FFA split is
-`phase_b_ready`; no further UI extraction is planned without a new functional
-surface.
+`rustok-index`; consumers depend on published Search contracts rather than index
+runtime types. The FFA split is `phase_b_ready` with focused core, transport, and
+UI packages.
 
-Canonical result navigation belongs to the normalized Search contract.
-`canonical_search_result_url` derives product, content, and Blog URLs before
-GraphQL or storefront-native serialization. Blog navigation requires the
-canonical `source_module=blog` / `entity_type=blog_post` pair and a bounded safe
-slug from the owner-projected payload; malformed or spoofed results fail closed.
-Content kind values are bounded before they enter a query string. The Rust
-storefront post-transport Blog enrichment remains temporarily as an idempotent
-compatibility fallback and never overwrites a backend URL. The admin native
-mapper is the last transport-local URL switch and is explicitly prevented from
-adding a second Blog policy before its final cutover.
+Canonical result navigation has a single owner policy:
+`canonical_search_result_url` in `crates/rustok-search/src/engine.rs`. It derives
+product, content, and Blog URLs from normalized `SearchResultItem` values before
+transport serialization. Blog navigation requires the canonical
+`source_module=blog` / `entity_type=blog_post` pair and a bounded ASCII slug from
+the owner-projected payload. Missing, malformed, spoofed, traversal, whitespace,
+and overlong values fail closed. Content source-module values are bounded before
+they enter a query string.
+
+GraphQL Search, storefront native Search, Search admin preview, and admin global
+search all delegate to this single owner policy. The storefront transport facade
+returns the selected transport payload unchanged: there is no transport fallback,
+no post-processing navigation module, and no local Blog route builder. The Search
+admin native adapter is split into focused include-parts for API facade, read
+handlers, write handlers, normalization, execution pipeline, mapping, and support.
+Only the mapping part converts normalized results to admin DTOs, and it delegates
+URL resolution to `canonical_search_result_url`.
 
 Blog ingestion has two executable, unrun harness layers. A routing target locks
-all Blog lifecycle, module-toggle, and targeted/full reindex events. An env-gated
+Blog lifecycle, module-toggle, and targeted/full reindex events. An env-gated
 PostgreSQL target creates an isolated schema, runs Search migrations, projects
 real Blog source rows through `SearchIngestionHandler`, verifies lifecycle and
 payload replacement, checks tenant-scoped full rebuild, targeted missing-post
 cleanup, and module-disabled cleanup followed by enable-time rebuild. Source-table
 availability resolves through the active PostgreSQL `search_path` instead of
-hard-coding `public`, matching the projector's unqualified SQL. A focused source
-guardrail and negative fixtures lock this schema and lifecycle contract.
+hard-coding `public`.
 
 ## FFA/FBA status
 
 - FFA status: `phase_b_ready`.
 - FBA status: `boundary_ready` (`core_transport_ui`).
-- Structural shape: `core_transport_ui`.
-- `SearchQueryPort` and `SearchSuggestionPort` are provider contracts in
+- Provider contracts: `SearchQueryPort` and `SearchSuggestionPort` in
   `crates/rustok-search/contracts/search-fba-registry.json`.
-- Evidence: `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`,
-  `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json`,
-  `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json`,
-  `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json`,
-  `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`,
-  and `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
-- Blog projection harness status: `executable_no_run`; execution remains owned by
-  the user and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL
-  `DATABASE_URL`.
-- Canonical URL status: `source_verified_no_compile`; core, GraphQL, and
-  storefront-native result projections delegate to the shared policy. Only the
-  admin native mapper and eventual compatibility-fallback removal remain.
-- Guardrails: `scripts/verify/verify-search-fba.mjs`,
-  `scripts/verify/verify-search-ui-boundary.mjs`,
-  `scripts/verify/verify-search-blog-navigation.mjs`,
-  `scripts/verify/verify-search-blog-projection.mjs`, and
+- Static provider evidence:
+  `crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json`.
+- Executable provider fallback evidence:
+  `crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json`.
+- Executable provider contract evidence:
+  `crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json`.
+- Provider invocation evidence:
+  `crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json`.
+- Canonical URL status: `source_verified_no_compile`.
+- Canonical URL evidence:
+  `crates/rustok-search/contracts/evidence/search-canonical-url-contract.json`.
+- Canonical URL guardrail:
   `scripts/verify/verify-search-canonical-url-contract.mjs`.
-- GraphQL Search results delegate URL derivation to
-  `canonical_search_result_url`; GraphQL no longer owns a transport-local route
-  switch.
-- Storefront native Search results delegate to the same owner policy before the
-  shared DTO crosses the server-function boundary.
-- The storefront compatibility fallback runs after native/GraphQL selection,
-  preserves backend URLs, validates the same Blog slug shape, and fills only
-  missing legacy URLs.
-- The admin native mapper still has a product/content compatibility switch but
-  the canonical URL guardrail forbids it from defining Blog route behavior.
-- Blog projection table discovery and all subsequent reads use one schema
-  resolution policy through the connection `search_path`; schema-isolated tests
-  and deployments no longer silently check `public` while querying another
-  schema.
-- The PostgreSQL fixture places its unique schema before `public`, keeping test
-  tables isolated while retaining access to shared extensions such as `pg_trgm`.
+- Blog projection evidence:
+  `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`.
+- Blog projection harness status: `executable_no_run`; execution remains user-owned
+  and requires `RUSTOK_SEARCH_TEST_DATABASE_URL` or PostgreSQL `DATABASE_URL`.
+- GraphQL and all native/admin mappings use the same Search-owned URL function.
+- The removed storefront `transport/navigation.rs` path is forbidden by the
+  canonical URL guardrail.
+- Transport-local `derive_search_result_url`, `derive_admin_search_result_url`,
+  `enrich_search_result_urls`, and Blog route constants are forbidden.
+- Blog projection table discovery and reads use the active `search_path`.
 - `TenantModuleToggled(blog, false)` deletes only the current tenant Blog search
-  scope; `TenantModuleToggled(blog, true)` rebuilds it from retained owner rows.
-- Targeted Blog reindex deletes a stale document before source lookup, so a
-  missing owner post remains absent instead of preserving obsolete search data.
+  scope; enabling the module rebuilds it from retained owner rows.
+- Targeted Blog reindex deletes stale documents before source lookup, so a missing
+  owner post cannot leave obsolete search data behind.
 
 ## Deployment and connector boundary
 
-Search is the second whole-module extraction pilot. The remote deployment
-contains the complete `rustok-search` owner, including `SearchEngine`, ranking,
-dictionaries, query rules, analytics, fallback policy, canonical URL policy,
-and the PostgreSQL baseline. Storefront and admin consumers call only
-`SearchQueryPort` and `SearchSuggestionPort` over the selected transport.
+Search is a whole-module extraction pilot. Remote deployment contains the complete
+`rustok-search` owner, including `SearchEngine`, ranking, dictionaries, query
+rules, analytics, URL policy, and PostgreSQL baseline. Storefront and admin
+consumers call normalized Search contracts and never construct application routes.
+The extraction boundary follows
+[Media and Search Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
 
-Meilisearch, Typesense, and Algolia remain connector implementations inside
-this search service. They receive canonical `SearchQuery`/document inputs and
-return normalized `SearchResult`/suggestion DTOs. Consumers never select a
-connector, access engine credentials, or depend on engine-specific schemas.
-Connector results must pass through the Search-owned URL policy before transport
-serialization; connectors do not construct application routes.
+Meilisearch, Typesense, and Algolia remain connector implementations inside the
+Search service. They receive canonical `SearchQuery` and document inputs and
+return normalized `SearchResult` and suggestion DTOs. Connector results must pass
+through Search-owned mapping before transport serialization.
 
-`rustok-index` remains a separate ingestion/read-model owner. Its canonical
-read models may enrich Search only through `IndexReadModelPort`; current
-query-time SQL reads of `index_product_categories` and
-`index_product_attribute_values` must be replaced by search-owned denormalized
-fields populated during ingestion before database isolation. Search continues
-to own `SearchIngestionHandler` and consumes domain events through a replayable
-event transport. Index-service extraction waits for replay, duplicate, lag,
-rebuild, and recovery evidence. See [ADR: Media and Search
-Extraction Boundaries](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
-
-External connector crates implement the internal `SearchEngine` query contract
-and a planned search-owned document writer contract for schema sync, upsert,
-delete, rebuild, and health. They are linked into the whole Search service;
-only normalized Search ports are exposed remotely.
+`rustok-index` remains a separate ingestion/read-model owner. Query-time reads of
+index-owned category and attribute tables should move to Search-owned denormalized
+fields before database isolation. Search continues to own event ingestion and
+rebuild behavior through replayable event transport.
 
 ## Completed implementation slices
 
-1. Added Rust storefront Blog result navigation after transport selection,
-   deriving `/modules/blog?slug=...` from the indexed owner payload without
-   overwriting backend-provided URLs.
-2. Added strict source/entity checks, bounded ASCII slug validation, malformed
-   payload fail-closed behavior, unit coverage, and a focused source guardrail.
-3. Added a Blog ingestion routing contract for all lifecycle events, targeted
-   reindex, full-scope reindex, module toggles, and unrelated-target rejection.
-4. Added an isolated-schema PostgreSQL Blog projection harness covering create,
-   publish, archive, delete, projected payload, stale-document replacement, and
-   cross-tenant rebuild isolation.
-5. Removed the Blog projector's `public` schema assumption so table discovery
-   follows the same active `search_path` as its source and destination SQL.
-6. Added a focused Blog projection verifier with canonical, hard-coded-public,
-   and missing-PostgreSQL-harness fixtures.
-7. Added production module-toggle handling: disable deletes the tenant Blog
-   scope, enable rebuilds it, and both use dedicated operation labels/metrics.
-8. Added PostgreSQL targeted missing-post cleanup and module disable/enable
-   lifecycle cases, then locked them in evidence and verifier fixtures.
-9. Added the Search-owned `canonical_search_result_url` policy with Blog
-   source/entity ownership, bounded slug validation, content-kind injection
-   protection, and product/content compatibility tests.
-10. Exported the canonical URL policy and migrated GraphQL result projection to
-    it, removing the GraphQL-local URL switch.
-11. Migrated storefront native result projection to the same core policy while
-    retaining an idempotent post-transport compatibility fallback.
-12. Added machine-readable canonical URL evidence plus canonical and negative
-    source-verifier fixtures for GraphQL, storefront native, Blog ownership, and
-    admin-policy duplication.
+1. Added Blog lifecycle Search projection, targeted/full reindex, module-toggle
+   handling, stale cleanup, and tenant isolation.
+2. Added isolated-schema PostgreSQL Blog projection harnesses and active
+   `search_path` discovery.
+3. Added `canonical_search_result_url` with product, content, and Blog routing,
+   bounded slug validation, source/entity ownership, and query-injection guards.
+4. Exported the owner policy and migrated GraphQL result projection.
+5. Migrated storefront native result projection to the owner policy.
+6. Removed storefront post-transport navigation enrichment and deleted its source
+   and focused verifier fixtures.
+7. Migrated Search admin preview mapping to the owner policy.
+8. Migrated admin global search to the owner policy and admitted canonical
+   `blog_post` results through the Blog read permission.
+9. Split the Search admin native adapter into focused source parts while preserving
+   its public transport API.
+10. Added current-only machine-readable evidence and negative fixtures that reject
+    every transport-local URL implementation and require no transport fallback.
+11. Added canonical URL ownership to the standard Search FBA gate alongside the
+    provider port, fallback, runtime contract, and invocation evidence.
 
 ## Next results
 
-1. **Finish admin native URL cutover.** Migrate the final admin result mapper to
-   `canonical_search_result_url`; afterward all backend Search result surfaces
-   share one policy.
-2. **Execute canonical URL evidence.** Run the core URL-policy tests, GraphQL
-   storefront search against projected Blog documents, native backend URL
-   behavior, compatibility idempotence, and click-href analytics evidence.
-3. **Retire compatibility fallback.** Remove storefront post-processing only
-   after all consumers prove they receive and preserve backend URLs.
-4. **Execute live Blog projection evidence.** Run the routing, PostgreSQL, and
-   source-verifier targets and retain migration/`pg_trgm`, event-delivery,
-   targeted missing-post cleanup, and module-disabled cleanup evidence.
-5. **Execute live provider contract evidence.** Run queries and suggestions
-   against a real PostgreSQL provider under deadline, fallback, error, locale,
-   tenant, channel, and catalog-filter conditions. Done when invocation traces
-   are backed by runtime results and justify any status promotion.
-6. **Harden search operations.** Deliver ingestion/rebuild retry and DLQ
-   behavior together with production-grade diagnostics and analytics views,
-   including recovery visibility for lagging or inconsistent documents. Done
-   when operator actions have bounded retry/failure semantics and observable
-   outcomes instead of source-only evidence.
-7. **Stage external engines as adapters.** Add Meilisearch, Typesense, or
-   Algolia only behind dedicated connector crates with schema-sync, health,
-   fallback, and data-consistency contracts. Done when a selected connector
-   cannot bypass `SearchQueryPort`/`SearchSuggestionPort` or replace the
-   PostgreSQL baseline implicitly.
-8. **Stop indexing serialized richtext JSON.** During the atomic
-   [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md),
-   replace raw `body` insertion in Blog/shared-content projectors with the one
-   `rustok-content::richtext` plain-text projection. Split SQL
-   `INSERT ... SELECT` into a typed Rust projection or consume owner-extracted
-   text through an event; do not add a shadow text source without evidence.
-   **Done when:** Search/Index fixtures contain prose rather than JSON syntax,
-   locale/profile failures are observable, and no Search-local tree walker
-   exists.
+1. **Execute canonical URL evidence.** Run core URL-policy tests, GraphQL
+   storefront Search, native storefront Search, Search admin preview, and admin
+   global search against projected product, content, and Blog documents. Retain
+   proof that malformed Blog payloads remain non-navigable everywhere.
+2. **Verify click analytics.** Confirm every Search surface records the canonical
+   href without reconstructing routes in analytics code.
+3. **Execute live Blog projection evidence.** Run routing and PostgreSQL harnesses
+   and retain migration/`pg_trgm`, event-delivery, targeted missing-post cleanup,
+   module-disable cleanup, and category reindex results.
+4. **Execute live provider evidence.** Run query and suggestion providers under
+   deadline, error, locale, tenant, channel, ranking, and catalog-filter conditions.
+5. **Harden operations.** Add bounded ingestion/rebuild retry and DLQ behavior with
+   observable lag, consistency, and recovery outcomes.
+6. **Add external engines only as adapters.** Meilisearch, Typesense, or Algolia
+   connectors must not bypass Search ports, owner URL mapping, or PostgreSQL
+   baseline selection.
 
 ## Verification
 
@@ -185,11 +141,7 @@ only normalized Search ports are exposed remotely.
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `npm run verify:search:fba`
 - `npm run verify:search:ui-boundary`
-- `node scripts/verify/verify-search-blog-navigation.mjs`
-- `node scripts/verify/verify-search-blog-navigation.test.mjs`
 - `cargo xtask module validate search`
-- Targeted ingestion, ranking, catalog-filter, diagnostics, navigation, and live
-  provider contract tests.
 
 ## References
 

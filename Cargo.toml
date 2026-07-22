@@ -41,6 +41,7 @@ members = [
     "crates/rustok-forum/storefront",
     "crates/rustok-pages/admin",
     "crates/rustok-pages/storefront",
+    "crates/rustok-navigation/storefront",
     "crates/rustok-page-builder/admin",
     "crates/rustok-search/admin",
     "crates/rustok-search/storefront",
@@ -250,6 +251,7 @@ rustok-blog = { path = "crates/rustok-blog" }
 rustok-content = { path = "crates/rustok-content" }
 rustok-content-orchestration = { path = "crates/rustok-content-orchestration" }
 rustok-pages = { path = "crates/rustok-pages" }
+rustok-navigation = { path = "crates/rustok-navigation" }
 rustok-page-builder = { path = "crates/rustok-page-builder" }
 rustok-taxonomy = { path = "crates/rustok-taxonomy" }
 rustok-index = { path = "crates/rustok-index" }

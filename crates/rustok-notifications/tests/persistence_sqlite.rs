@@ -24,6 +24,7 @@ async fn notification_persistence_enforces_sqlite_invariants() {
         "notification_digest_jobs",
         "notification_digest_items",
         "notification_push_subscriptions",
+        "notification_source_inbox",
     ] {
         assert!(
             manager

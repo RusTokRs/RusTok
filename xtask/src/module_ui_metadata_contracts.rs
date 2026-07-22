@@ -63,11 +63,46 @@ pub(crate) fn validate_module_ui_metadata_contract(
             "provides.storefront_ui.slot",
             storefront_ui.slot.as_deref(),
         )?;
+        validate_storefront_slot(
+            slug,
+            "provides.storefront_ui.slot",
+            storefront_ui.slot.as_deref().unwrap_or_default(),
+        )?;
         validate_ui_surface_metadata_field(
             slug,
             "provides.storefront_ui.page_title",
             storefront_ui.page_title.as_deref(),
         )?;
+        let mut component_ids = std::collections::BTreeSet::new();
+        for component in &storefront_ui.components {
+            validate_ui_surface_metadata_field(
+                slug,
+                "provides.storefront_ui.components[].id",
+                Some(component.id.as_str()),
+            )?;
+            validate_ui_surface_metadata_field(
+                slug,
+                "provides.storefront_ui.components[].component",
+                Some(component.component.as_str()),
+            )?;
+            validate_ui_surface_metadata_field(
+                slug,
+                "provides.storefront_ui.components[].slot",
+                Some(component.slot.as_str()),
+            )?;
+            validate_storefront_slot(
+                slug,
+                "provides.storefront_ui.components[].slot",
+                component.slot.as_str(),
+            )?;
+            if !component_ids.insert(component.id.trim()) {
+                anyhow::bail!(
+                    "Module '{slug}' declares duplicate storefront component id '{}'",
+                    component.id.trim()
+                );
+            }
+            let _ = component.order;
+        }
         validate_ui_i18n_contract(
             slug,
             "provides.storefront_ui.i18n",
@@ -99,6 +134,22 @@ fn validate_ui_surface_metadata_field(
         anyhow::bail!("Module '{slug}' declares invalid {field_name}='{value}'");
     }
     Ok(())
+}
+
+fn validate_storefront_slot(slug: &str, field_name: &str, value: &str) -> Result<()> {
+    match value.trim() {
+        "header_navigation"
+        | "home_after_hero"
+        | "home_after_catalog"
+        | "home_before_footer"
+        | "footer_navigation"
+        | "checkout_shipping_handoff"
+        | "checkout_payment_handoff"
+        | "checkout_result_handoff" => Ok(()),
+        other => anyhow::bail!(
+            "Module '{slug}' declares unsupported {field_name}='{other}'"
+        ),
+    }
 }
 
 fn validate_ui_i18n_contract(

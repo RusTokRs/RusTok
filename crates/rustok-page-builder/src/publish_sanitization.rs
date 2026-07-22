@@ -1,15 +1,21 @@
 use crate::landing::LandingProjectError;
 use crate::static_landing::StaticLandingCompiler;
+use crate::static_publish_policy::{
+    PageBuilderStaticPublishPolicyError, PageBuilderStaticPublishPolicyEvidence,
+    validate_static_publish_document,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 pub const PAGE_BUILDER_STATIC_SANITIZATION_FORMAT: &str =
-    "page_builder_static_publish_sanitization_v1";
+    "page_builder_static_publish_sanitization_v2";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageBuilderSanitizedStaticLandingProject {
     pub format: String,
+    pub policy_format: String,
+    pub policy_hash: String,
     pub sanitized_project: Value,
     pub sanitized_hash: String,
 }
@@ -23,6 +29,13 @@ impl PageBuilderSanitizedStaticLandingProject {
         &self.sanitized_hash
     }
 
+    pub fn policy_evidence(&self) -> PageBuilderStaticPublishPolicyEvidence {
+        PageBuilderStaticPublishPolicyEvidence {
+            format: self.policy_format.clone(),
+            policy_hash: self.policy_hash.clone(),
+        }
+    }
+
     pub fn verify_integrity(&self) -> Result<(), PageBuilderStaticLandingSanitizationError> {
         if self.format != PAGE_BUILDER_STATIC_SANITIZATION_FORMAT {
             return Err(PageBuilderStaticLandingSanitizationError::Integrity(
@@ -34,15 +47,30 @@ impl PageBuilderSanitizedStaticLandingProject {
                 "sanitized static landing project must be a JSON object".to_string(),
             ));
         }
+        let policy_evidence = self.policy_evidence();
+        policy_evidence.verify_integrity()?;
         if !is_sha256(&self.sanitized_hash) {
             return Err(PageBuilderStaticLandingSanitizationError::Integrity(
                 "sanitized static landing hash must be SHA-256".to_string(),
             ));
         }
-        let expected = sanitization_hash(&self.sanitized_project)?;
+        let expected = sanitization_hash(
+            &self.sanitized_project,
+            &self.policy_format,
+            &self.policy_hash,
+        )?;
         if expected != self.sanitized_hash {
             return Err(PageBuilderStaticLandingSanitizationError::Integrity(
                 "sanitized static landing hash mismatch".to_string(),
+            ));
+        }
+
+        let document =
+            StaticLandingCompiler::default().prepare_document(&self.sanitized_project)?;
+        let verified_policy = validate_static_publish_document(&document)?;
+        if verified_policy != policy_evidence {
+            return Err(PageBuilderStaticLandingSanitizationError::Integrity(
+                "sanitized static landing policy evidence mismatch".to_string(),
             ));
         }
         Ok(())
@@ -53,6 +81,8 @@ impl PageBuilderSanitizedStaticLandingProject {
 pub enum PageBuilderStaticLandingSanitizationError {
     #[error(transparent)]
     Landing(#[from] LandingProjectError),
+    #[error(transparent)]
+    Policy(#[from] PageBuilderStaticPublishPolicyError),
     #[error("static publish sanitization encoding failed: {0}")]
     Encode(String),
     #[error("static publish sanitization integrity failed: {0}")]
@@ -62,18 +92,28 @@ pub enum PageBuilderStaticLandingSanitizationError {
 /// Applies the authoritative public-artifact policy before runtime materialization.
 ///
 /// The returned project is a compiler-owned clone. It contains deterministic stable component ids,
-/// preserves current Fly extension fields and has already passed structural and secure-resource
-/// validation. The original editor source and runtime context remain untouched.
+/// preserves current Fly extension fields and has passed structural validation, the complete
+/// fail-closed static publish policy and secure-resource validation. The original editor source and
+/// runtime context remain untouched.
 pub fn sanitize_static_landing_project(
     project_data: &Value,
 ) -> Result<PageBuilderSanitizedStaticLandingProject, PageBuilderStaticLandingSanitizationError> {
     let document = StaticLandingCompiler::default().prepare_document(project_data)?;
-    let sanitized_project = serde_json::to_value(document.project)
-        .map_err(|error| PageBuilderStaticLandingSanitizationError::Encode(error.to_string()))?;
+    let PageBuilderStaticPublishPolicyEvidence {
+        format: policy_format,
+        policy_hash,
+    } = validate_static_publish_document(&document)?;
+    let sanitized_project = serde_json::to_value(document.project).map_err(|error| {
+        PageBuilderStaticLandingSanitizationError::Encode(error.to_string())
+    })?;
+    let sanitized_hash =
+        sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
-        sanitized_hash: sanitization_hash(&sanitized_project)?,
+        policy_format,
+        policy_hash,
         sanitized_project,
+        sanitized_hash,
     };
     result.verify_integrity()?;
     Ok(result)
@@ -81,8 +121,15 @@ pub fn sanitize_static_landing_project(
 
 fn sanitization_hash(
     sanitized_project: &Value,
+    policy_format: &str,
+    policy_hash: &str,
 ) -> Result<String, PageBuilderStaticLandingSanitizationError> {
-    stable_hash(&(PAGE_BUILDER_STATIC_SANITIZATION_FORMAT, sanitized_project))
+    stable_hash(&(
+        PAGE_BUILDER_STATIC_SANITIZATION_FORMAT,
+        policy_format,
+        policy_hash,
+        sanitized_project,
+    ))
 }
 
 fn stable_hash(
@@ -103,17 +150,19 @@ fn is_sha256(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::static_publish_policy::PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT;
     use serde_json::json;
 
     #[test]
-    fn sanitization_assigns_stable_ids_and_hashes_the_versioned_project() {
+    fn sanitization_assigns_stable_ids_and_hashes_policy_bound_project() {
         let project = json!({
             "pages": [{
                 "id": "home",
                 "flyPageMeta": {
                     "title": "Home",
                     "description": "Sanitized landing",
-                    "slug": "home"
+                    "slug": "home",
+                    "canonical_url": "/home"
                 },
                 "component": {
                     "id": "root",
@@ -132,8 +181,18 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.sanitized_hash.len(), 64);
         assert_eq!(
+            first.policy_format,
+            PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT
+        );
+        assert_eq!(first.policy_hash.len(), 64);
+        assert_eq!(
             first.sanitized_hash,
-            sanitization_hash(&first.sanitized_project).expect("versioned sanitization hash")
+            sanitization_hash(
+                &first.sanitized_project,
+                &first.policy_format,
+                &first.policy_hash,
+            )
+            .expect("policy-bound sanitization hash")
         );
         assert!(
             first.sanitized_project["pages"][0]["component"]["components"][0]["id"]
@@ -166,5 +225,39 @@ mod tests {
         });
 
         assert!(sanitize_static_landing_project(&project).is_err());
+    }
+
+    #[test]
+    fn sanitization_rejects_renderer_dropped_attributes_and_css() {
+        let project = json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "title": "Home", "slug": "home" },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "link",
+                        "tagName": "a",
+                        "attributes": {
+                            "onclick": "alert(1)",
+                            "href": "javascript:alert(1)"
+                        },
+                        "style": { "background-image": "url(https://evil.example/x.png)" },
+                        "content": "Unsafe"
+                    }]
+                }
+            }]
+        });
+
+        let error = sanitize_static_landing_project(&project).expect_err("policy rejection");
+        let PageBuilderStaticLandingSanitizationError::Landing(
+            LandingProjectError::Validation { diagnostics },
+        ) = error
+        else {
+            panic!("expected compiler policy validation error");
+        };
+        assert!(diagnostics.len() >= 3);
     }
 }

@@ -33,6 +33,7 @@ mod-forum = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_builde
 mod-notifications = ["dep:rustok-notifications"]
 mod-comments = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments"]
 mod-pages = ["dep:rustok-pages", "mod-content", "mod-page_builder"]
+mod-navigation = ["dep:rustok-navigation"]
 mod-page_builder = ["dep:rustok-page-builder"]
 mod-taxonomy = ["dep:rustok-taxonomy", "mod-content"]
 mod-alloy = ["dep:alloy"]
@@ -81,6 +82,7 @@ rustok-forum = { workspace = true, optional = true }
 rustok-notifications = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
+rustok-navigation = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }

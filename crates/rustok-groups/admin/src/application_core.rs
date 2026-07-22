@@ -2,10 +2,11 @@ use rustok_api::normalize_locale_tag;
 use uuid::Uuid;
 
 use crate::application_model::{
+    GroupsAdminApplicationPolicyLocaleCatalogQuery, GroupsAdminApplicationPolicyPrecondition,
     GroupsAdminApplicationPolicyQuery, GroupsAdminApplicationQuestion,
     GroupsAdminApplicationReviewDecision, GroupsAdminApplicationRule,
-    GroupsAdminMembershipApplicationQuery, ReviewGroupMembershipApplicationCommand,
-    UpsertGroupApplicationPolicyCommand,
+    GroupsAdminMembershipApplicationQuery, ReopenGroupMembershipApplicationCommand,
+    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
 };
 
 const MAX_POLICY_QUESTIONS: usize = 20;
@@ -17,12 +18,22 @@ pub enum GroupsAdminApplicationInputError {
     InvalidGroupId,
     InvalidApplicationId,
     InvalidLocale,
+    InvalidExpectedPolicy,
     TooManyQuestions,
     TooManyRules,
     InvalidQuestion,
     InvalidRule,
     InvalidStatus,
     ReviewNoteTooLong,
+}
+
+pub fn prepare_group_application_policy_locale_catalog_query(
+    group_id: &str,
+) -> Result<GroupsAdminApplicationPolicyLocaleCatalogQuery, GroupsAdminApplicationInputError> {
+    Ok(GroupsAdminApplicationPolicyLocaleCatalogQuery {
+        group_id: normalize_uuid(group_id)
+            .map_err(|_| GroupsAdminApplicationInputError::InvalidGroupId)?,
+    })
 }
 
 pub fn prepare_group_application_policy_query(
@@ -40,6 +51,7 @@ pub fn prepare_group_application_policy_query(
 pub fn prepare_upsert_group_application_policy(
     group_id: &str,
     locale: &str,
+    expected_policy: Option<GroupsAdminApplicationPolicyPrecondition>,
     enabled: bool,
     mut questions: Vec<GroupsAdminApplicationQuestion>,
     mut rules: Vec<GroupsAdminApplicationRule>,
@@ -48,6 +60,18 @@ pub fn prepare_upsert_group_application_policy(
         normalize_uuid(group_id).map_err(|_| GroupsAdminApplicationInputError::InvalidGroupId)?;
     let locale =
         normalize_locale_tag(locale).ok_or(GroupsAdminApplicationInputError::InvalidLocale)?;
+    let expected_policy = expected_policy
+        .map(|mut expected| {
+            expected.policy_id = normalize_uuid(&expected.policy_id)
+                .map_err(|_| GroupsAdminApplicationInputError::InvalidExpectedPolicy)?;
+            expected.locale = normalize_locale_tag(&expected.locale)
+                .ok_or(GroupsAdminApplicationInputError::InvalidExpectedPolicy)?;
+            if expected.revision == 0 || expected.locale != locale {
+                return Err(GroupsAdminApplicationInputError::InvalidExpectedPolicy);
+            }
+            Ok(expected)
+        })
+        .transpose()?;
     if questions.len() > MAX_POLICY_QUESTIONS {
         return Err(GroupsAdminApplicationInputError::TooManyQuestions);
     }
@@ -81,6 +105,7 @@ pub fn prepare_upsert_group_application_policy(
     Ok(UpsertGroupApplicationPolicyCommand {
         idempotency_key: format!("groups-admin-upsert-application-policy-{}", Uuid::new_v4()),
         group_id,
+        expected_policy,
         locale,
         enabled,
         questions,
@@ -130,6 +155,16 @@ pub fn prepare_review_group_membership_application(
         application_id,
         decision,
         note,
+    })
+}
+
+pub fn prepare_reopen_group_membership_application(
+    application_id: &str,
+) -> Result<ReopenGroupMembershipApplicationCommand, GroupsAdminApplicationInputError> {
+    Ok(ReopenGroupMembershipApplicationCommand {
+        idempotency_key: format!("groups-admin-reopen-application-{}", Uuid::new_v4()),
+        application_id: normalize_uuid(application_id)
+            .map_err(|_| GroupsAdminApplicationInputError::InvalidApplicationId)?,
     })
 }
 

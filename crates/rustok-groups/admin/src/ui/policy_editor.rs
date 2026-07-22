@@ -4,18 +4,24 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
+    prepare_group_application_policy_locale_catalog_query,
     prepare_group_application_policy_query, prepare_upsert_group_application_policy,
 };
 use crate::application_model::{
-    GroupsAdminApplicationPolicyRevision, GroupsAdminApplicationPolicyRevisionQuery,
-    GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
+    GroupsAdminApplicationPolicyPrecondition, GroupsAdminApplicationPolicyRevision,
+    GroupsAdminApplicationPolicyRevisionQuery, GroupsAdminApplicationQuestion,
+    GroupsAdminApplicationRule,
 };
 use crate::core::{GroupsAdminTransportProfile, groups_admin_error, selected_transport_profile};
 use crate::i18n::t;
 use crate::transport::{
-    GroupsAdminTransportContext, load_group_admin_application_policy,
+    load_group_admin_application_policy_for_management,
+    load_group_admin_application_policy_locale_catalog,
     load_group_admin_application_policy_revisions, upsert_group_admin_application_policy,
+    GroupsAdminTransportContext,
 };
+
+const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str = "groups.application_policy_changed";
 
 #[derive(Clone)]
 struct PolicyEditorCopy {
@@ -23,6 +29,9 @@ struct PolicyEditorCopy {
     body: String,
     group_id: String,
     locale: String,
+    available_locales: String,
+    existing_translation: String,
+    new_translation: String,
     enabled: String,
     load: String,
     save: String,
@@ -60,11 +69,14 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     let copy = policy_editor_copy(ui_locale.as_deref());
 
     let group_id = RwSignal::new(String::new());
-    let locale = RwSignal::new(ui_locale.unwrap_or_default());
+    let locale = RwSignal::new(ui_locale.unwrap_or_else(|| "en".to_string()));
+    let locale_options = RwSignal::new(Vec::<String>::new());
+    let translation_exists = RwSignal::new(None::<bool>);
+    let management_loaded = RwSignal::new(false);
     let enabled = RwSignal::new(true);
     let questions = RwSignal::new(Vec::<GroupsAdminApplicationQuestion>::new());
     let rules = RwSignal::new(Vec::<GroupsAdminApplicationRule>::new());
-    let loaded_revision = RwSignal::new(None::<u64>);
+    let loaded_policy = RwSignal::new(None::<GroupsAdminApplicationPolicyPrecondition>);
     let history = RwSignal::new(Vec::<GroupsAdminApplicationPolicyRevision>::new());
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
@@ -73,7 +85,17 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     let load_transport = transport.clone();
     let load_copy = copy.clone();
     let on_load = Callback::new(move |_: ()| {
-        let query = match prepare_group_application_policy_query(
+        let catalog_query = match prepare_group_application_policy_locale_catalog_query(
+            &group_id.get_untracked(),
+        ) {
+            Ok(query) => query,
+            Err(_) => {
+                error.set(Some(load_copy.invalid.clone()));
+                success.set(None);
+                return;
+            }
+        };
+        let policy_query = match prepare_group_application_policy_query(
             &group_id.get_untracked(),
             &locale.get_untracked(),
         ) {
@@ -85,32 +107,69 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
             }
         };
         let revision_query = GroupsAdminApplicationPolicyRevisionQuery {
-            group_id: query.group_id.clone(),
+            group_id: policy_query.group_id.clone(),
             page: 1,
             per_page: 20,
         };
-        let context = load_transport.clone();
+        let catalog_context = load_transport.clone();
+        let policy_context = load_transport.clone();
         let history_context = load_transport.clone();
         let copy = load_copy.clone();
         busy.set(true);
         error.set(None);
         success.set(None);
         spawn_local(async move {
-            match load_group_admin_application_policy(context, query).await {
+            match load_group_admin_application_policy_locale_catalog(
+                catalog_context,
+                catalog_query,
+            )
+            .await
+            {
+                Ok(catalog) => locale_options.set(catalog.locales),
+                Err(load_error) => {
+                    management_loaded.set(false);
+                    error.set(Some(groups_admin_error(
+                        &copy.error,
+                        &load_error.to_string(),
+                    )));
+                    busy.set(false);
+                    return;
+                }
+            }
+            match load_group_admin_application_policy_for_management(
+                policy_context,
+                policy_query,
+            )
+            .await
+            {
                 Ok(policy) => {
                     let revision = policy.revision;
+                    let exists = policy.translation_exists;
+                    let expected = policy.precondition();
                     locale.set(policy.locale);
                     enabled.set(policy.enabled);
                     questions.set(policy.questions);
                     rules.set(policy.rules);
-                    loaded_revision.set(Some(revision));
-                    success.set(Some(format!(
-                        "{} · {} {}",
-                        copy.loaded, copy.revision, revision
-                    )));
+                    loaded_policy.set(expected);
+                    translation_exists.set(Some(exists));
+                    management_loaded.set(true);
+                    let translation_state = if exists {
+                        copy.existing_translation.clone()
+                    } else {
+                        copy.new_translation.clone()
+                    };
+                    success.set(Some(match revision {
+                        Some(revision) => format!(
+                            "{} · {} {} · {}",
+                            copy.loaded, copy.revision, revision, translation_state
+                        ),
+                        None => format!("{} · {}", copy.loaded, translation_state),
+                    }));
                 }
                 Err(load_error) => {
-                    loaded_revision.set(None);
+                    management_loaded.set(false);
+                    loaded_policy.set(None);
+                    translation_exists.set(None);
                     error.set(Some(groups_admin_error(
                         &copy.error,
                         &load_error.to_string(),
@@ -131,9 +190,15 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     let save_copy = copy.clone();
     let on_save = move |event: SubmitEvent| {
         event.prevent_default();
+        if !management_loaded.get_untracked() {
+            error.set(Some(save_copy.invalid.clone()));
+            success.set(None);
+            return;
+        }
         let command = match prepare_upsert_group_application_policy(
             &group_id.get_untracked(),
             &locale.get_untracked(),
+            loaded_policy.get_untracked(),
             enabled.get_untracked(),
             questions.get_untracked(),
             rules.get_untracked(),
@@ -145,21 +210,12 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                 return;
             }
         };
-        let expected_revision = loaded_revision.get_untracked();
-        let query = match prepare_group_application_policy_query(&command.group_id, &command.locale)
-        {
-            Ok(query) => query,
-            Err(_) => {
-                error.set(Some(save_copy.invalid.clone()));
-                return;
-            }
-        };
+
         let revision_query = GroupsAdminApplicationPolicyRevisionQuery {
             group_id: command.group_id.clone(),
             page: 1,
             per_page: 20,
         };
-        let preflight_context = save_transport.clone();
         let save_context = save_transport.clone();
         let history_context = save_transport.clone();
         let copy = save_copy.clone();
@@ -167,36 +223,24 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
         error.set(None);
         success.set(None);
         spawn_local(async move {
-            if let Some(expected) = expected_revision {
-                match load_group_admin_application_policy(preflight_context, query).await {
-                    Ok(current) if current.revision != expected => {
-                        error.set(Some(format!(
-                            "{} · {} {}",
-                            copy.stale, copy.revision, current.revision
-                        )));
-                        busy.set(false);
-                        return;
-                    }
-                    Ok(_) => {}
-                    Err(preflight_error) => {
-                        error.set(Some(groups_admin_error(
-                            &copy.error,
-                            &preflight_error.to_string(),
-                        )));
-                        busy.set(false);
-                        return;
-                    }
-                }
-            }
-
             match upsert_group_admin_application_policy(save_context, command).await {
                 Ok(result) => {
                     let revision = result.policy.revision;
-                    locale.set(result.policy.locale);
+                    let saved_locale = result.policy.locale.clone();
+                    let expected = GroupsAdminApplicationPolicyPrecondition::from(&result.policy);
+                    locale.set(saved_locale.clone());
                     enabled.set(result.policy.enabled);
                     questions.set(result.policy.questions);
                     rules.set(result.policy.rules);
-                    loaded_revision.set(Some(revision));
+                    loaded_policy.set(Some(expected));
+                    translation_exists.set(Some(true));
+                    management_loaded.set(true);
+                    locale_options.update(|items| {
+                        if !items.contains(&saved_locale) {
+                            items.push(saved_locale);
+                            items.sort();
+                        }
+                    });
                     success.set(Some(format!(
                         "{} · {} {}",
                         copy.saved, copy.revision, revision
@@ -210,10 +254,15 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                         history.set(connection.items);
                     }
                 }
-                Err(save_error) => error.set(Some(groups_admin_error(
-                    &copy.error,
-                    &save_error.to_string(),
-                ))),
+                Err(save_error) => {
+                    let details = save_error.to_string();
+                    if details.contains(GROUP_APPLICATION_POLICY_CHANGED_CODE) {
+                        management_loaded.set(false);
+                        error.set(Some(copy.stale.clone()));
+                    } else {
+                        error.set(Some(groups_admin_error(&copy.error, &details)));
+                    }
+                }
             }
             busy.set(false);
         });
@@ -250,6 +299,9 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
         body,
         group_id: group_id_label,
         locale: locale_label,
+        available_locales,
+        existing_translation,
+        new_translation,
         enabled: enabled_label,
         load: load_label,
         save: save_label,
@@ -289,14 +341,49 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
 
             <form class="mt-6 space-y-6" on:submit=on_save>
                 <div class="grid gap-3 md:grid-cols-[1fr_12rem_auto_auto]">
-                    <input class="rounded-xl border border-border bg-background px-3 py-2 text-sm" placeholder=group_id_label prop:value=move || group_id.get() on:input=move |event| group_id.set(event_target_value(&event)) />
-                    <input class="rounded-xl border border-border bg-muted px-3 py-2 text-sm" placeholder=locale_label prop:value=move || locale.get() readonly />
+                    <input
+                        class="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                        placeholder=group_id_label
+                        prop:value=move || group_id.get()
+                        on:input=move |event| {
+                            group_id.set(event_target_value(&event));
+                            management_loaded.set(false);
+                            loaded_policy.set(None);
+                            translation_exists.set(None);
+                        }
+                    />
+                    <div>
+                        <input
+                            class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                            placeholder=locale_label
+                            list="groups-policy-locales"
+                            prop:value=move || locale.get()
+                            on:input=move |event| {
+                                locale.set(event_target_value(&event));
+                                management_loaded.set(false);
+                                loaded_policy.set(None);
+                                translation_exists.set(None);
+                                questions.set(Vec::new());
+                                rules.set(Vec::new());
+                            }
+                        />
+                        <datalist id="groups-policy-locales">
+                            {move || locale_options.get().into_iter().map(|item| view! { <option value=item></option> }).collect_view()}
+                        </datalist>
+                    </div>
                     <label class="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm">
                         <input type="checkbox" prop:checked=move || enabled.get() on:change=move |event| enabled.set(event_target_checked(&event)) />
                         <span>{enabled_label}</span>
                     </label>
                     <button class="rounded-xl border border-border px-4 py-2 text-sm font-medium" type="button" on:click=move |_| on_load.run(())>{load_label}</button>
                 </div>
+
+                <Show when=move || !locale_options.get().is_empty()>
+                    <p class="text-xs text-muted-foreground">{move || format!("{}: {}", available_locales.clone(), locale_options.get().join(", "))}</p>
+                </Show>
+                <Show when=move || translation_exists.get().is_some()>
+                    <p class="text-xs text-muted-foreground">{move || if translation_exists.get().unwrap_or(false) { existing_translation.clone() } else { new_translation.clone() }}</p>
+                </Show>
 
                 <div class="space-y-3">
                     <div class="flex items-center justify-between gap-3">
@@ -366,7 +453,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                     }).collect_view()}
                 </div>
 
-                <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" type="submit">{save_label}</button>
+                <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled=move || !management_loaded.get()>{save_label}</button>
             </form>
 
             <Show when=move || busy.get()><p class="mt-4 text-sm text-muted-foreground">{busy_label.clone()}</p></Show>
@@ -409,24 +496,15 @@ fn move_item<T: Send + Sync + 'static>(signal: RwSignal<Vec<T>>, index: usize, d
 
 fn policy_editor_copy(locale: Option<&str>) -> PolicyEditorCopy {
     PolicyEditorCopy {
-        title: t(
-            locale,
-            "groups.admin.policyEditor.title",
-            "Membership policy editor",
-        ),
-        body: t(
-            locale,
-            "groups.admin.policyEditor.body",
-            "Edit exact-locale questions and rules. Ordering is preserved in candidate snapshots and every successful save is captured as immutable history.",
-        ),
+        title: t(locale, "groups.admin.policyEditor.title", "Membership policy editor"),
+        body: t(locale, "groups.admin.policyEditor.body", "Select an exact policy locale, edit its questions and rules, and save through owner CAS without changing the host UI locale."),
         group_id: t(locale, "groups.admin.policyEditor.groupId", "Group UUID"),
         locale: t(locale, "groups.admin.policyEditor.locale", "Policy locale"),
-        enabled: t(
-            locale,
-            "groups.admin.policyEditor.enabled",
-            "Applications enabled",
-        ),
-        load: t(locale, "groups.admin.policyEditor.load", "Load policy"),
+        available_locales: t(locale, "groups.admin.policyEditor.availableLocales", "Available locales"),
+        existing_translation: t(locale, "groups.admin.policyEditor.existingTranslation", "Editing an existing exact-locale translation."),
+        new_translation: t(locale, "groups.admin.policyEditor.newTranslation", "This locale has no translation yet. Saving creates it with the current policy CAS precondition."),
+        enabled: t(locale, "groups.admin.policyEditor.enabled", "Applications enabled"),
+        load: t(locale, "groups.admin.policyEditor.load", "Load selected locale"),
         save: t(locale, "groups.admin.policyEditor.save", "Save policy"),
         add_question: t(
             locale,
@@ -473,28 +551,12 @@ fn policy_editor_copy(locale: Option<&str>) -> PolicyEditorCopy {
         ),
         revision: t(locale, "groups.admin.policyEditor.revision", "revision"),
         changed_by: t(locale, "groups.admin.policyEditor.changedBy", "changed by"),
-        busy: t(
-            locale,
-            "groups.admin.policyEditor.busy",
-            "Applying policy operation...",
-        ),
-        loaded: t(locale, "groups.admin.policyEditor.loaded", "Policy loaded"),
+        busy: t(locale, "groups.admin.policyEditor.busy", "Applying policy operation..."),
+        loaded: t(locale, "groups.admin.policyEditor.loaded", "Policy locale loaded"),
         saved: t(locale, "groups.admin.policyEditor.saved", "Policy saved"),
-        stale: t(
-            locale,
-            "groups.admin.policyEditor.stale",
-            "The policy changed after it was loaded. Review the latest revision before saving again.",
-        ),
-        error: t(
-            locale,
-            "groups.admin.policyEditor.error",
-            "Policy operation failed",
-        ),
-        invalid: t(
-            locale,
-            "groups.admin.policyEditor.invalid",
-            "Check the group UUID, locale, question keys, text limits, and rule fields.",
-        ),
+        stale: t(locale, "groups.admin.policyEditor.stale", "The owner service rejected this stale policy atomically. Reload the selected locale before saving again."),
+        error: t(locale, "groups.admin.policyEditor.error", "Policy operation failed"),
+        invalid: t(locale, "groups.admin.policyEditor.invalid", "Load a valid group and exact locale before saving, then check the expected revision, question keys, text limits, and rule fields."),
     }
 }
 

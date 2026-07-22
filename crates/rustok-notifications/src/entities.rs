@@ -2,8 +2,8 @@ use sea_orm::entity::prelude::*;
 
 use crate::model::{
     DeliveryStatus, DigestJobStatus, DigestMode, FanoutItemStatus, NotificationChannel,
-    NotificationDeliveryMode, NotificationJobStatus, NotificationPriorityValue, NotificationState,
-    PushPlatform, PushSubscriptionStatus,
+    NotificationDeliveryMode, NotificationJobStatus, NotificationPriorityValue,
+    NotificationSourceInboxStatus, NotificationState, PushPlatform, PushSubscriptionStatus,
 };
 
 pub mod notification {
@@ -96,6 +96,38 @@ pub mod fanout_job {
         pub next_attempt_at: Option<DateTimeWithTimeZone>,
         pub lease_owner: Option<String>,
         pub lease_expires_at: Option<DateTimeWithTimeZone>,
+        pub last_error_code: Option<String>,
+        pub last_error_message: Option<String>,
+        pub completed_at: Option<DateTimeWithTimeZone>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod source_inbox {
+    use super::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "notification_source_inbox")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub source_slug: String,
+        pub source_event_id: Uuid,
+        pub source_revision: i64,
+        pub event_type: String,
+        pub status: NotificationSourceInboxStatus,
+        pub attempt_count: i32,
+        pub next_attempt_at: Option<DateTimeWithTimeZone>,
+        pub lease_owner: Option<String>,
+        pub lease_expires_at: Option<DateTimeWithTimeZone>,
+        pub fanout_job_id: Option<Uuid>,
         pub last_error_code: Option<String>,
         pub last_error_message: Option<String>,
         pub completed_at: Option<DateTimeWithTimeZone>,

@@ -17,8 +17,10 @@ use crate::error::BUILDER_FEATURE_DISABLED_ERROR_CODE;
 use crate::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
-    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY, PageService, PagesError,
-    PublishPageInput, PublishPageResult,
+    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT, PAGE_ROLLBACK_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_REQUIRES_PUBLISHED, PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageService, PagesError,
+    PublishPageInput, PublishPageResult, RollbackPageInput, RollbackPageResult,
 };
 
 #[derive(Clone)]
@@ -31,7 +33,7 @@ impl PagesPublishHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("Pages atomic publish HTTP route requires TransactionalEventBus")?;
+            .context("Pages atomic publication HTTP routes require TransactionalEventBus")?;
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
@@ -67,7 +69,38 @@ pub async fn publish_page(
         .publish_reviewed(tenant.id, page_security(&auth), id, input)
         .await
         .map(Json)
-        .map_err(map_publish_error)
+        .map_err(map_publication_error)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/admin/pages/{id}/rollback",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = RollbackPageInput,
+    responses(
+        (status = 200, description = "Atomic previous-artifact rollback receipt", body = RollbackPageResult),
+        (status = 400, description = "Invalid rollback input"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Page not found"),
+        (status = 409, description = "Version, target, page state, or idempotency conflict"),
+        (status = 500, description = "Rollback receipt or persistence integrity failure")
+    )
+)]
+pub async fn rollback_page(
+    State(runtime): State<PagesPublishHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<RollbackPageInput>,
+) -> HttpResult<Json<RollbackPageResult>> {
+    ensure_publish_permission(&auth)?;
+    PageService::new(runtime.db, runtime.event_bus)
+        .rollback_to_previous(tenant.id, page_security(&auth), id, input)
+        .await
+        .map(Json)
+        .map_err(map_publication_error)
 }
 
 pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router> {
@@ -76,6 +109,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .route(
             "/api/admin/pages/{id}/publish",
             axum::routing::post(publish_page),
+        )
+        .route(
+            "/api/admin/pages/{id}/rollback",
+            axum::routing::post(rollback_page),
         )
         .with_state(publish_runtime);
     Ok(crate::controllers::axum_router(runtime)?.merge(publish_router))
@@ -101,7 +138,7 @@ fn ensure_publish_permission(auth: &AuthContext) -> HttpResult<()> {
     }
 }
 
-fn map_publish_error(error: PagesError) -> HttpError {
+fn map_publication_error(error: PagesError) -> HttpError {
     let message = error.to_string();
     match error {
         PagesError::PageNotFound(_) => HttpError::not_found("PAGE_NOT_FOUND", message),
@@ -135,6 +172,26 @@ fn map_publish_error(error: PagesError) -> HttpError {
             PAGE_PUBLISH_OPERATION_INTEGRITY,
             message,
         ),
+        PagesError::RollbackIdempotencyConflict(_) => HttpError::new(
+            StatusCode::CONFLICT,
+            PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
+            message,
+        ),
+        PagesError::RollbackOperationIntegrity(_) => HttpError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            PAGE_ROLLBACK_OPERATION_INTEGRITY,
+            message,
+        ),
+        PagesError::RollbackTargetUnavailable(_) => HttpError::new(
+            StatusCode::CONFLICT,
+            PAGE_ROLLBACK_TARGET_UNAVAILABLE,
+            message,
+        ),
+        PagesError::RollbackRequiresPublished => HttpError::new(
+            StatusCode::CONFLICT,
+            PAGE_ROLLBACK_REQUIRES_PUBLISHED,
+            message,
+        ),
         PagesError::FeatureDisabled { .. } => HttpError::new(
             StatusCode::CONFLICT,
             BUILDER_FEATURE_DISABLED_ERROR_CODE,
@@ -149,7 +206,7 @@ fn map_publish_error(error: PagesError) -> HttpError {
             let code = rich
                 .error_code
                 .clone()
-                .unwrap_or_else(|| "PAGES_PUBLISH_FAILED".to_string());
+                .unwrap_or_else(|| "PAGES_PUBLICATION_FAILED".to_string());
             match rich.kind {
                 rustok_core::error::ErrorKind::NotFound => HttpError::not_found(code, message),
                 rustok_core::error::ErrorKind::Forbidden => HttpError::forbidden(code, message),
@@ -165,6 +222,6 @@ fn map_publish_error(error: PagesError) -> HttpError {
         | PagesError::DuplicateSlug { .. }
         | PagesError::CannotDeletePublished
         | PagesError::MenuNotFound(_)
-        | PagesError::Content(_) => HttpError::bad_request("PAGES_PUBLISH_FAILED", message),
+        | PagesError::Content(_) => HttpError::bad_request("PAGES_PUBLICATION_FAILED", message),
     }
 }

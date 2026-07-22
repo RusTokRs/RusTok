@@ -5,44 +5,68 @@
     "dto": "PageBuilderReviewedPublishRuntime",
     "error": "PageBuilderPublishRuntimeReviewError",
     "source": "crates/rustok-page-builder/src/publish_runtime.rs",
-    "fields": [
-      "format",
-      "scenario_id",
-      "context",
-      "review_hash"
-    ],
-    "scenario": {
-      "required": true,
-      "normalized": true,
-      "max_bytes": 128
-    },
-    "context": {
-      "shape": "json_object",
-      "max_bytes": 262144,
-      "persisted": false
-    },
+    "fields": ["format", "scenario_id", "context", "review_hash"],
+    "scenario": {"required": true, "normalized": true, "max_bytes": 128},
+    "context": {"shape": "json_object", "max_bytes": 262144, "persisted": false},
     "review_hash": {
       "algorithm": "sha256",
-      "payload": [
-        "format",
-        "scenario_id",
-        "context"
-      ],
+      "payload": ["format", "scenario_id", "context"],
       "purpose": "bind reviewed runtime selection to publish materialization"
     },
     "sanitization": {
-      "format": "page_builder_static_publish_sanitization_v1",
+      "format": "page_builder_static_publish_sanitization_v2",
       "source": "crates/rustok-page-builder/src/publish_sanitization.rs",
       "function": "sanitize_static_landing_project",
       "envelope": "PageBuilderSanitizedStaticLandingProject",
       "hash_algorithm": "sha256",
-      "hash_payload": [
-        "format",
-        "sanitized_project"
-      ],
+      "hash_payload": ["format", "policy_format", "policy_hash", "sanitized_project"],
+      "policy": {
+        "format": "page_builder_static_publish_policy_v1",
+        "source": "crates/rustok-page-builder/src/static_publish_policy.rs",
+        "dto": "PageBuilderStaticPublishPolicy",
+        "evidence": "PageBuilderStaticPublishPolicyEvidence",
+        "diagnostic": "PageBuilderStaticPublishPolicyDiagnostic",
+        "error": "PageBuilderStaticPublishPolicyError",
+        "validator": "validate_static_publish_document",
+        "hash_algorithm": "sha256",
+        "failure_mode": "reject_not_drop",
+        "domains": [
+          "tags_component_types_and_markup_content",
+          "attributes_and_url_schemes",
+          "component_and_project_css",
+          "assets_and_page_metadata_urls"
+        ],
+        "url_policy": {
+          "https": true,
+          "relative": true,
+          "navigation_mailto_tel_and_fragments": true,
+          "form_action_relative_only": true,
+          "safe_data_images": ["avif", "gif", "jpeg", "png", "webp"],
+          "http": false,
+          "protocol_relative": false,
+          "unknown_scheme": false
+        },
+        "css_policy": {
+          "url": false,
+          "import": false,
+          "expression": false,
+          "behavior": false,
+          "moz_binding": false,
+          "data": false,
+          "custom_properties": false,
+          "unbound_or_unknown_rules": false
+        },
+        "enforcement": {
+          "pre_materialization": true,
+          "exact_materialized_document": true
+        }
+      },
+      "exact_materialized_recheck_source": "crates/rustok-page-builder/src/static_landing.rs",
       "stable_component_ids": true,
       "secure_public_resources": true,
-      "raw_context_persisted": false
+      "integrity_revalidates_project": true,
+      "raw_context_persisted": false,
+      "executed_evidence": "pending"
     }
   },
   "pages_consumer": {
@@ -51,23 +75,12 @@
     "error_source": "crates/rustok-pages/src/error.rs",
     "input": "PublishPageInput",
     "result": "PublishPageResult",
-    "entrypoints": [
-      "publish_reviewed"
-    ],
-    "input_identity": [
-      "expected_version",
-      "expected_body_revisions",
-      "idempotency_key",
-      "runtime.review_hash"
-    ],
+    "entrypoints": ["publish_reviewed"],
+    "input_identity": ["expected_version", "expected_body_revisions", "idempotency_key", "runtime.review_hash"],
     "builder_sources": {
       "required": true,
       "ordering": "normalized_locale_ascending",
-      "shared_by": [
-        "scenario_release_gate",
-        "sanitization",
-        "materialization"
-      ]
+      "shared_by": ["scenario_release_gate", "sanitization", "materialization"]
     },
     "transactional_gate_reads": {
       "feature_settings": "shared_lock_when_supported",
@@ -78,20 +91,20 @@
       "entity": "page_publish_operation",
       "entity_source": "crates/rustok-pages/src/entities/page_publish_operation.rs",
       "migration": "crates/rustok-pages/src/migrations/m20260721_000007_create_page_publish_operations.rs",
-      "unique_key": [
-        "tenant_id",
-        "page_id",
-        "idempotency_key"
-      ],
+      "unique_key": ["tenant_id", "page_id", "idempotency_key"],
       "hash_algorithm": "sha256",
-      "fields": [
-        "request_hash",
-        "review_hash",
-        "sanitized_set_hash",
-        "artifact_set_hash",
-        "result_version",
-        "published_at"
-      ],
+      "fields": ["request_hash", "review_hash", "sanitized_set_hash", "artifact_set_hash", "result_version", "published_at"],
+      "manifest": {
+        "entity": "page_publish_operation_artifact",
+        "entity_source": "crates/rustok-pages/src/entities/page_publish_operation_artifact.rs",
+        "writer_source": "crates/rustok-pages/src/services/page/publish_manifest.rs",
+        "migration": "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+        "unique_key": ["operation_id", "locale"],
+        "identity": ["locale", "artifact_hash", "materialization_hash"],
+        "persistence": "same_transaction_after_publish_receipt_insert",
+        "hash_match_required": true,
+        "legacy_missing_manifest": "rollback_target_unavailable"
+      },
       "replay": "stored_receipt_without_rebuild_or_duplicate_events"
     },
     "new_operation_order": [
@@ -109,10 +122,7 @@
       "DomainEvent::NodePublished",
       "insert_publish_operation_in_tx"
     ],
-    "materialization_match": [
-      "runtime_scenario_id",
-      "runtime_context_hash"
-    ],
+    "materialization_match": ["runtime_scenario_id", "runtime_context_hash"],
     "error_codes": [
       "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID",
       "PAGE_BUILDER_PUBLISH_SANITIZE_FAILED",
@@ -142,10 +152,7 @@
           "mode": "explicit_ephemeral_promoted_scenario",
           "selection_source": "crates/rustok-page-builder/admin/src/publish_scenario_selection.rs",
           "selector_source": "crates/rustok-page-builder/admin/src/editor/publish_scenario_selector.rs",
-          "scope": [
-            "page_id",
-            "baseline_hash"
-          ],
+          "scope": ["page_id", "baseline_hash"],
           "storage": "browser_session_storage_scenario_id_only",
           "single_scenario": "automatic_exact_selection",
           "multiple_scenarios": "explicit_selection_required",
@@ -157,12 +164,78 @@
       "source_guard": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
       "executed_evidence": "pending"
     },
+    "rollback": {
+      "state": "service_public_transport_and_admin_control_integrated",
+      "source": "crates/rustok-pages/src/services/page/rollback.rs",
+      "artifact_set_source": "crates/rustok-pages/src/services/page/artifact_set.rs",
+      "input": "RollbackPageInput",
+      "result": "RollbackPageResult",
+      "entrypoint": "rollback_to_previous",
+      "selection": "latest_activation_receipt_then_older_distinct_publish_manifest",
+      "history_direction": "monotonic_older_publish_result_version_only",
+      "activation_cursor": {
+        "source_function": "find_current_publish_cursor_in_tx",
+        "publish_receipt_match": ["artifact_set_hash", "result_version_lte_current_page_version"],
+        "rollback_receipt_match": ["target_artifact_set_hash", "result_version_lte_current_page_version"],
+        "winner": "highest_activation_result_version",
+        "rollback_resolution": "target_publish_operation_id",
+        "resolved_manifest_required": true,
+        "resolved_artifact_set_hash_must_match_active": true,
+        "hash_match_without_activation_receipt": "rejected"
+      },
+      "requires_current_status": "published",
+      "concurrency": "expected_page_version",
+      "idempotency_unique_key": ["tenant_id", "page_id", "idempotency_key"],
+      "request_identity": ["format", "tenant_id", "page_id", "expected_version", "target_publish_operation_id"],
+      "receipt_entity": "page_rollback_operation",
+      "receipt_source": "crates/rustok-pages/src/entities/page_rollback_operation.rs",
+      "migration": "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+      "operation_order": [
+        "find_page_for_update",
+        "find_rollback_operation_in_tx",
+        "enforce_expected_version",
+        "load_current_published_set_in_tx",
+        "find_current_publish_cursor_in_tx",
+        "find_previous_publish_target_in_tx",
+        "replace_current_published_set_in_tx",
+        "DomainEvent::NodeUpdated",
+        "DomainEvent::NodePublished",
+        "insert_rollback_operation_in_tx",
+        "commit"
+      ],
+      "artifact_policy": {
+        "sanitize": false,
+        "materialize": false,
+        "compile": false,
+        "target_manifest_required": true,
+        "activation_receipt_trace_required": true,
+        "canonical_binding_integrity_verification": true,
+        "complete_binding_replacement": true
+      },
+      "transport": {
+        "graphql": "rollbackPage",
+        "http": "/api/admin/pages/{id}/rollback",
+        "admin": "module_boundary_control_connected",
+        "admin_control_source": "crates/rustok-pages/admin/src/rollback_control.rs",
+        "confirmation": "prepare_then_confirm_for_same_page_id",
+        "browser_retry_source": "crates/rustok-pages/admin/src/transport/rollback_retry_adapter.rs",
+        "browser_retry_storage": "session_storage_expected_version_and_idempotency_key_only",
+        "ambiguous_network_or_5xx": "retain_and_replay_same_command_identity",
+        "definitive_typed_graphql_or_4xx": "clear_pending_identity"
+      },
+      "cache_invalidation": "existing_NodePublished_generation_rotation",
+      "error_codes": [
+        "PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT",
+        "PAGE_ROLLBACK_OPERATION_INTEGRITY",
+        "PAGE_ROLLBACK_TARGET_UNAVAILABLE",
+        "PAGE_ROLLBACK_REQUIRES_PUBLISHED"
+      ],
+      "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
+      "executed_evidence": "pending"
+    },
     "non_builder_lifecycle": {
       "source": "crates/rustok-pages/src/services/page/lifecycle.rs",
-      "entrypoints": [
-        "publish_non_builder",
-        "publish_non_builder_if_current"
-      ],
+      "entrypoints": ["publish_non_builder", "publish_non_builder_if_current"],
       "builder_detection": "grapesjs_source_presence_checked_before_and_inside_transaction",
       "builder_rejection_code": "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED",
       "artifact_compilation": "forbidden",
@@ -171,22 +244,40 @@
     "typed_errors": true,
     "raw_context_persisted": false,
     "cache_invalidation": {
-      "event": "NodePublished",
+      "events": ["NodeUpdated", "NodePublished", "NodeUnpublished", "NodeDeleted"],
       "owner_source": "crates/rustok-pages/src/cache_invalidation.rs",
       "module_listener": "pages_cache_invalidation",
+      "invalidation_port": "PageCacheInvalidationPort",
+      "read_port": "PagesCacheReadPort",
+      "read_runtime": "PagesCacheReadRuntime",
       "host_adapter": "apps/server/src/services/pages_cache_invalidation.rs",
+      "host_adapter_type": "ServerPagesCachePort",
       "host_composition": "apps/server/src/services/module_event_dispatcher.rs",
-      "scopes": [
-        "route",
-        "page",
-        "artifact"
-      ],
+      "scopes": ["route", "page", "artifact"],
       "namespace_scope": "tenant_wide_bounded_generation_per_scope",
-      "key_scope": "tenant_generation_page_variant",
       "shared_generation": "CacheNamespaceGenerationStore",
+      "concrete_key_hash": "sha256_bounded_variant",
+      "readers": {
+        "storefront_response": {
+          "source": "crates/rustok-pages/storefront/src/transport/native_server_adapter.rs",
+          "dependencies": ["route_generation", "page_generation", "artifact_generation"],
+          "variant": ["page_slug", "requested_locale", "fallback_locale", "channel_slug"],
+          "authorization_before_lookup": true,
+          "failure_mode": "fail_open_to_owner_source_read"
+        },
+        "artifact_delivery": {
+          "source": "crates/rustok-pages/src/controllers/mod.rs",
+          "dependencies": ["artifact_generation"],
+          "variant": ["page_id", "locale", "fallback_locale", "channel_slug"],
+          "integrity_verified_before_fill": true,
+          "etag_and_csp_preserved": true,
+          "failure_mode": "fail_open_to_owner_source_read"
+        }
+      },
       "failure": "handler_error_retried_before_successful_acknowledgement",
+      "retry_semantics": "multiple_generation_advances_are_safe",
       "inline_publish_invalidation": false,
-      "reader_adoption": "generation_aware_readers_pending",
+      "reader_adoption": "storefront_response_and_artifact_delivery_connected",
       "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
       "executed_evidence": "pending"
     },
@@ -196,5 +287,6 @@
   },
   "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
   "transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
-  "cache_invalidation_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
+  "cache_invalidation_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+  "rollback_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
 }

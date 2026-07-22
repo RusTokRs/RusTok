@@ -5,8 +5,9 @@
 `rustok-notifications` owns notification inbox state, recipient preferences,
 bounded fan-out, grouping, digests, retention, and channel delivery attempts.
 The current implementation provides the neutral source boundary, optional runtime
-composition, source-provider discovery, and the first owner persistence
-foundation. Durable consumption and product APIs follow in later tasks.
+composition, durable source intake, bounded candidate fan-out, and a policy-gated
+command that can create one final in-app notification. Channel delivery remains a
+separate later workflow.
 
 ## Responsibilities
 
@@ -15,9 +16,11 @@ foundation. Durable consumption and product APIs follow in later tasks.
   after the executable host has a neutral `HostRuntimeContext`;
 - own tenant/user-scoped notification, delivery, fan-out, preference, digest, and
   encrypted push-subscription storage;
-- resolve candidate recipients in bounded cursor pages;
-- apply notification preferences, privacy, visibility, blocks, and delivery
-  policy before creating inbox or channel work;
+- accept source events idempotently and retain them while a source provider is
+  temporarily unavailable;
+- resolve candidate recipients in bounded cursor pages under recoverable leases;
+- apply notification preferences, injected recipient privacy policy, and current
+  source authorization before creating an inbox row;
 - own retention, replay, reconciliation, and delivery-attempt lifecycle.
 
 ## Non-responsibilities
@@ -25,13 +28,19 @@ foundation. Durable consumption and product APIs follow in later tasks.
 - producer subscriptions and source lifecycle;
 - SMTP, push-vendor, or SMS SDK implementation;
 - authentication identity and contact data;
-- source authorization policy or source-private tables;
+- source-private tables or Profiles-owned block/profile persistence;
 - synchronous notification calls inside producer transactions.
 
 ## Entry points
 
 - `NotificationsModule`
 - `NotificationsService`
+- `NotificationFanoutService`
+- `NotificationCandidateService`
+- `NotificationRecipientPolicy`
+- `NotificationSourceInboxReceipt`
+- `NotificationFanoutPageResult`
+- `NotificationCandidateProcessResult`
 - `rustok_notifications::api` re-export of the neutral source contract
 - `rustok_notifications::entities`
 - `rustok_notifications::model`
@@ -43,15 +52,47 @@ foundation. Durable consumption and product APIs follow in later tasks.
 storage for notifications, delivery attempts, fan-out jobs/items, preferences,
 digest jobs/items, and push subscriptions.
 
+`m20260722_000011_create_notification_source_inbox` adds a durable source-event
+inbox deduplicated by tenant, source slug, and source event ID.
+
+`m20260722_000012_add_candidate_processing` adds processing/retry leases to
+fan-out candidates, typed retryable/terminal states, and recovery indexes while
+preserving SQLite tenant-integrity triggers.
+
 The database enforces tenant-composite recipient integrity, source-event and
 idempotency dedupe, typed state/channel/mode values, read-implies-seen semantics,
 lease/completion timestamps, bounded JSON/error/cursor fields, and encrypted push
 endpoint storage. No email address, phone number, rendered HTML, raw source
 payload, or plaintext push endpoint is persisted.
 
-The migration is exposed through `NotificationsModule::migrations`. Global
-`rustok-migrations` server composition remains a verification-gated follow-up to
-this module-local schema slice.
+The migrations are exposed through `NotificationsModule::migrations`. Global
+`rustok-migrations` server composition remains a verification-gated follow-up.
+
+## Durable source and candidate processing
+
+`NotificationFanoutService` separates source processing into durable event
+acceptance, descriptor materialization, and bounded cursor fan-out. Its output is
+an idempotent set of `pending` candidates, not inbox rows.
+
+`NotificationCandidateService` requires an explicitly injected
+`NotificationRecipientPolicy`; there is no allow-all default. For one candidate it:
+
+1. claims a recoverable candidate lease;
+2. resolves exact source/type preferences before wildcard preferences;
+3. evaluates the injected recipient/profile/block/mute policy;
+4. reauthorizes the current source target for that recipient;
+5. rechecks the preference in the final transaction;
+6. inserts or validates one deduplicated in-app notification and completes the
+   candidate under the same lease CAS.
+
+Disabled preferences, privacy suppression, and unavailable targets become stable
+`skipped` outcomes. Retryable policy/provider failures retain retry state.
+Changed semantic replay fails closed. No channel delivery attempt is created by
+this workflow.
+
+The production Profiles/block adapter remains deferred. Privacy and source
+visibility must be checked again when an inbox item is opened and before delayed
+delivery.
 
 ## Interactions
 
@@ -61,15 +102,17 @@ server materializes those factories only after database-backed host services are
 available. Delivery and identity/contact providers remain separate owner
 capabilities.
 
-The first live producer is Forum for `forum.topic.created`. Forum reads its own
-event journal, resolves category watchers in bounded pages, and reauthorizes the
-current public target. Forum commands continue to succeed when the notifications
-owner is tenant-disabled or absent.
+Forum supports `forum.topic.created` and `forum.mention.user_added`. The user
+mention provider binds the event to the exact immutable `forum_user_mentions`
+row, rechecks current topic/reply visibility, defers pending replies, suppresses
+self-mentions, and fails closed for deleted, hidden, closed, or channel-restricted
+sources. Moderator audience expansion remains deferred until a bounded owner
+directory port exists.
 
-The module is compiled into the selected distribution but is not in
-`settings.default_enabled`; tenant composition therefore remains notifications-
-off by default. The bootstrap admin/storefront packages still expose only
-foundation or unavailable states until inbox APIs exist.
+Forum commands continue to succeed when the notifications owner is tenant-
+disabled or absent. Notifications remains outside `settings.default_enabled`.
+Admin/storefront packages still expose only foundation or unavailable states
+until inbox APIs exist.
 
 ## Documentation
 

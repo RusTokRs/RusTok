@@ -79,16 +79,42 @@ pub enum NotificationJobStatus {
     DeadLetter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
+)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(24))")]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationSourceInboxStatus {
+    #[sea_orm(string_value = "pending")]
+    Pending,
+    #[sea_orm(string_value = "processing")]
+    Processing,
+    #[sea_orm(string_value = "completed")]
+    Completed,
+    #[sea_orm(string_value = "suppressed")]
+    Suppressed,
+    #[sea_orm(string_value = "retryable_error")]
+    RetryableError,
+    #[sea_orm(string_value = "rejected")]
+    Rejected,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
+)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
 #[serde(rename_all = "snake_case")]
 pub enum FanoutItemStatus {
     #[sea_orm(string_value = "pending")]
     Pending,
+    #[sea_orm(string_value = "processing")]
+    Processing,
     #[sea_orm(string_value = "processed")]
     Processed,
     #[sea_orm(string_value = "skipped")]
     Skipped,
+    #[sea_orm(string_value = "retryable_error")]
+    RetryableError,
     #[sea_orm(string_value = "failed")]
     Failed,
 }

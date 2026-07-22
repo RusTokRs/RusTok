@@ -27,7 +27,7 @@ The programme forbids:
 - component-tree mirrors such as `pages[].component -> frames[0].component`;
 - automatic import of obsolete frame trees;
 - consumer block tables retained as fallback authoring models;
-- host-owned persistence, transport or widget schemas;
+- host-owned persistence, transport, cache scopes/keys or widget schemas;
 - raw runtime-context persistence in publication evidence;
 - editor code in anonymous storefront bundles.
 
@@ -51,7 +51,9 @@ The current component-tree authority is `pages[].component`.
 - `rustok-page-builder` backend — capability policy, validation/sanitization,
   preview/review/materialization contracts, health and rollout controls;
 - consumer backend — page/document revisions, immutable artifacts, publish
-  transactions, receipts, outbox and cache ownership.
+  transactions, receipts, outbox and cache scope/key ownership;
+- cache/host infrastructure — shared connection, byte storage and bounded
+  generation primitives, never consumer cache policy.
 
 Fly packages do not choose GraphQL, server functions, tenant policy or consumer
 persistence. Rich text remains an external dedicated capability.
@@ -134,8 +136,16 @@ persistence. Rich text remains an external dedicated capability.
 - [x] The mixed lifecycle/default-runtime branch is removed. Explicit
   `publish_non_builder[_if_current]` rejects GrapesJS/Fly bodies with
   `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED` before and inside the transaction.
-- [ ] Cache-consumer invalidation from the durable `NodePublished` outbox signal is
-  not yet proven.
+- [x] Pages owns route/page/artifact cache scopes and SHA-256 generation-aware key
+  shape. A module listener consumes page lifecycle events and a neutral server
+  adapter rotates bounded tenant-wide generations through the shared cache
+  capability.
+- [x] The composite storefront response consumes route/page/artifact generations;
+  artifact HTTP delivery consumes artifact generation. Module/channel checks run
+  before lookup, verified owner reads precede cache fill and cache failures fail
+  open to the source read.
+- [ ] Accepted evidence must correlate outbox delivery, invalidation receipt,
+  generation rotation and cache miss/refill on both public readers.
 - [ ] Authenticated storefront inline editing is not implemented.
 
 ## Target architecture
@@ -173,7 +183,8 @@ persistence. Rich text remains an external dedicated capability.
     -> immutable artifact persistence and bindings
     -> published state + transactional outbox
     -> durable idempotent publish receipt
-    -> cache/storefront correlation
+    -> module-owned route/page/artifact generation rotation
+    -> generation-aware storefront/artifact cache reads
 
   rustok-page-builder
     -> capability policy / health / rollout
@@ -181,8 +192,9 @@ persistence. Rich text remains an external dedicated capability.
     -> preview/review/sanitization/materialization identity
 ```
 
-Hosts are composition roots only. They supply route, locale, auth and tenant
-context; they do not own Fly state, Pages policy or persistence.
+Hosts are composition roots only. They supply route, locale, auth, tenant context
+and neutral shared capabilities; they do not own Fly state, Pages policy,
+persistence or cache-key semantics.
 
 ## Dependency rules
 
@@ -273,8 +285,17 @@ Rules:
   only scenario identity, snapshots and cryptographic hashes are retained.
 - Exact idempotency replay returns the stored receipt without rebuild or duplicate
   outbox events; key reuse with different input fails closed.
-- Save, review, sanitization, publish receipt, artifact and storefront read share
-  correlation identifiers.
+- Cache invalidation remains post-commit/event-driven; publish transactions never
+  call cache infrastructure inline.
+- Consumer-owned scopes rotate through bounded shared generations instead of
+  wildcard Redis scans/deletes.
+- Public cache keys bind tenant/page/request dimensions through bounded SHA-256
+  variants; authorization precedes lookup and verified owner reads precede fill.
+- Cache backend failures fail open to the authoritative owner source read.
+- Handler receipts preserve source event and correlation identity; provider errors
+  remain retryable. A retry may safely advance a generation more than once.
+- Save, review, sanitization, publish receipt, invalidation receipt, artifact and
+  storefront read share correlation identifiers.
 
 ## Implementation phases
 
@@ -351,7 +372,11 @@ of the verification programme.
   runtime lifecycle.
 - [x] Isolate non-builder publication behind explicitly named commands that reject
   every GrapesJS/Fly body before and inside the transaction.
-- [ ] Prove route/page/artifact cache invalidation from the durable outbox signal.
+- [x] Connect page lifecycle events to consumer-owned bounded route/page/artifact
+  generation rotation through a typed cache port and neutral server adapter.
+- [x] Adopt generation-aware keys in the composite storefront response and artifact
+  HTTP delivery reader.
+- [ ] Retain accepted event/receipt/generation/miss/refill evidence.
 - [ ] Rollback to previous immutable artifacts.
 - [ ] Repair/rebuild and integrity-audit commands.
 
@@ -370,6 +395,8 @@ of the verification programme.
 - [x] Current published document/static artifact rendering foundations.
 - [ ] Render only selected immutable published artifacts.
 - [x] Verify Page Builder runtime materialization evidence before storefront read.
+- [x] Use Pages generation-aware cache keys for storefront response and artifact
+  delivery reads.
 - [ ] Authenticated real-DOM editing and draft/published switching.
 - [ ] Prove anonymous bundles exclude authoring code.
 - [ ] Visual/accessibility parity across admin preview and published output.
@@ -391,14 +418,12 @@ of the verification programme.
 
 ## Immediate implementation order
 
-1. Prove `NodePublished` outbox consumption invalidates every affected route,
-   artifact and page cache key; correlate the receipt through storefront reads.
-2. Add idempotent rollback to a previous immutable artifact set.
-3. Complete Pages metadata property contributions and Page Builder asset/degraded
+1. Add idempotent rollback to a previous immutable artifact set.
+2. Complete Pages metadata property contributions and Page Builder asset/degraded
    controls.
-4. Finish the reviewed HTML/CSS/URL/attribute policy and resource limits.
-5. Implement authenticated real-DOM storefront editing and bundle exclusion.
-6. Run accepted Rust/WASM/browser and observed tenant evidence.
+3. Finish the reviewed HTML/CSS/URL/attribute policy and resource limits.
+4. Implement authenticated real-DOM storefront editing and bundle exclusion.
+5. Retain accepted Rust/WASM/browser, cache miss/refill and observed tenant evidence.
 
 ## Verification programme
 
@@ -418,6 +443,7 @@ node scripts/verify/verify-pages-ui-boundary.mjs
 node --test scripts/verify/verify-pages-ui-boundary.test.mjs
 node scripts/verify/verify-fly-admin-browser-runtime.mjs
 node crates/rustok-pages/scripts/verify/verify-pages-builder-scenario-baseline.mjs
+node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-preview-runtime-contract.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs
 node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs
@@ -432,8 +458,9 @@ cargo audit
 Required evidence covers current GrapesJS/Fly round trips, iframe rejection and
 cleanup, DnD/keyboard/accessibility, metadata/body revision conflicts,
 authoritative sanitization, deterministic artifact and receipt integrity,
-preview/static materialization parity, idempotent replay, publish/rollback/cache
-correlation, anonymous bundle exclusion and provider degradation.
+preview/static materialization parity, idempotent replay, event-driven cache
+generation rotation and public miss/refill, publish/rollback correlation,
+anonymous bundle exclusion and provider degradation.
 
 ## Update rules
 
@@ -443,4 +470,4 @@ correlation, anonymous bundle exclusion and provider degradation.
 - Contract changes require matching guardrails/tests.
 - New dependencies require dependency records.
 - Do not reintroduce shadow editors, component mirrors, consumer block fallbacks,
-  raw runtime-context persistence or host-owned publication policy.
+  raw runtime-context persistence or host-owned publication/cache policy.

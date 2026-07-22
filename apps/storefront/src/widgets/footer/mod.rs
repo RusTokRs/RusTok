@@ -1,10 +1,13 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn Footer(tagline: &'static str) -> impl IntoView {
+pub fn Footer(tagline: &'static str, navigation_views: Vec<AnyView>) -> impl IntoView {
     view! {
         <footer id="contact" class="mt-20 border-t border-border bg-muted/40 px-4 py-10">
-            <div class="container-app space-y-3 text-center">
+            <div class="container-app space-y-5 text-center">
+                {(!navigation_views.is_empty()).then(|| view! {
+                    <div class="flex justify-center">{navigation_views}</div>
+                })}
                 <p class="text-sm text-muted-foreground">{tagline}</p>
                 <div class="flex justify-center gap-3">
                     <span class="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-foreground">"SSR"</span>

@@ -1,4 +1,4 @@
-use async_graphql::{Enum, InputObject, SimpleObject};
+use async_graphql::{InputObject, SimpleObject};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -69,31 +69,17 @@ pub struct GqlPublishPageResult {
     pub published_at: String,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
-pub enum GqlMenuLocation {
-    Header,
-    Footer,
-    Sidebar,
-    Mobile,
-}
-
 #[derive(Clone, Debug, SimpleObject)]
-pub struct GqlMenu {
-    pub id: Uuid,
-    pub effective_locale: String,
-    pub available_locales: Vec<String>,
-    pub name: String,
-    pub location: GqlMenuLocation,
-    pub items: Vec<GqlMenuItem>,
-}
-
-#[derive(Clone, Debug, SimpleObject)]
-pub struct GqlMenuItem {
-    pub id: Uuid,
-    pub title: String,
-    pub url: String,
-    pub icon: Option<String>,
-    pub children: Vec<GqlMenuItem>,
+pub struct GqlRollbackPageResult {
+    pub operation_id: Uuid,
+    pub page_id: Uuid,
+    pub version: i32,
+    pub idempotency_key: String,
+    pub target_publish_operation_id: Uuid,
+    pub source_artifact_set_hash: String,
+    pub target_artifact_set_hash: String,
+    pub replayed: bool,
+    pub rolled_back_at: String,
 }
 
 #[derive(InputObject)]
@@ -142,6 +128,12 @@ pub struct PublishGqlPageInput {
 }
 
 #[derive(InputObject)]
+pub struct RollbackGqlPageInput {
+    pub expected_version: i32,
+    pub idempotency_key: String,
+}
+
+#[derive(InputObject)]
 pub struct GqlPageTranslationInput {
     pub locale: String,
     pub title: String,
@@ -164,35 +156,6 @@ pub struct ListGqlPagesFilter {
     pub template: Option<String>,
     pub page: Option<u64>,
     pub per_page: Option<u64>,
-}
-
-#[derive(InputObject)]
-pub struct CreateGqlMenuInput {
-    pub translations: Vec<GqlMenuTranslationInput>,
-    pub location: GqlMenuLocation,
-    pub items: Vec<GqlMenuItemInput>,
-}
-
-#[derive(InputObject)]
-pub struct GqlMenuTranslationInput {
-    pub locale: String,
-    pub name: String,
-}
-
-#[derive(InputObject)]
-pub struct GqlMenuItemTranslationInput {
-    pub locale: String,
-    pub title: String,
-}
-
-#[derive(InputObject)]
-pub struct GqlMenuItemInput {
-    pub translations: Vec<GqlMenuItemTranslationInput>,
-    pub url: Option<String>,
-    pub page_id: Option<Uuid>,
-    pub icon: Option<String>,
-    pub position: i32,
-    pub children: Option<Vec<GqlMenuItemInput>>,
 }
 
 impl From<crate::PageResponse> for GqlPage {
@@ -233,6 +196,22 @@ impl From<crate::PublishPageResult> for GqlPublishPageResult {
     }
 }
 
+impl From<crate::RollbackPageResult> for GqlRollbackPageResult {
+    fn from(result: crate::RollbackPageResult) -> Self {
+        Self {
+            operation_id: result.operation_id,
+            page_id: result.page_id,
+            version: result.version,
+            idempotency_key: result.idempotency_key,
+            target_publish_operation_id: result.target_publish_operation_id,
+            source_artifact_set_hash: result.source_artifact_set_hash,
+            target_artifact_set_hash: result.target_artifact_set_hash,
+            replayed: result.replayed,
+            rolled_back_at: result.rolled_back_at,
+        }
+    }
+}
+
 impl From<crate::PageTranslationResponse> for GqlPageTranslation {
     fn from(r: crate::PageTranslationResponse) -> Self {
         Self {
@@ -267,42 +246,6 @@ impl From<crate::PageListItem> for GqlPageListItem {
             slug: r.slug,
             channel_slugs: r.channel_slugs,
             updated_at: r.updated_at,
-        }
-    }
-}
-
-impl From<crate::MenuResponse> for GqlMenu {
-    fn from(menu: crate::MenuResponse) -> Self {
-        Self {
-            id: menu.id,
-            effective_locale: menu.effective_locale,
-            available_locales: menu.available_locales,
-            name: menu.name,
-            location: menu.location.into(),
-            items: menu.items.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl From<crate::MenuItemResponse> for GqlMenuItem {
-    fn from(item: crate::MenuItemResponse) -> Self {
-        Self {
-            id: item.id,
-            title: item.title,
-            url: item.url,
-            icon: item.icon,
-            children: item.children.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl From<crate::MenuLocation> for GqlMenuLocation {
-    fn from(location: crate::MenuLocation) -> Self {
-        match location {
-            crate::MenuLocation::Header => Self::Header,
-            crate::MenuLocation::Footer => Self::Footer,
-            crate::MenuLocation::Sidebar => Self::Sidebar,
-            crate::MenuLocation::Mobile => Self::Mobile,
         }
     }
 }

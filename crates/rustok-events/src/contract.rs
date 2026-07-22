@@ -1,11 +1,11 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use thiserror::Error;
 use ulid::Ulid;
 use uuid::Uuid;
 
 use crate::{
-    DomainEvent, EventEnvelope, EventValidationError, MarketplaceListingEvent,
+    DomainEvent, EventEnvelope, EventValidationError, ForumMentionEvent, MarketplaceListingEvent,
     MarketplaceSellerEvent, ValidateEvent,
 };
 
@@ -35,6 +35,8 @@ pub trait EventContract:
 pub enum ContractEventPayload {
     #[serde(rename = "root")]
     Root(DomainEvent),
+    #[serde(rename = "forum_mention")]
+    ForumMention(ForumMentionEvent),
     #[serde(rename = "marketplace_listing")]
     MarketplaceListing(MarketplaceListingEvent),
     #[serde(rename = "marketplace_seller")]
@@ -45,6 +47,7 @@ impl ContractEventPayload {
     fn event_type(&self) -> &'static str {
         match self {
             Self::Root(event) => event.event_type(),
+            Self::ForumMention(event) => event.event_type(),
             Self::MarketplaceListing(event) => event.event_type(),
             Self::MarketplaceSeller(event) => event.event_type(),
         }
@@ -53,6 +56,7 @@ impl ContractEventPayload {
     fn schema_version(&self) -> u16 {
         match self {
             Self::Root(event) => event.schema_version(),
+            Self::ForumMention(event) => event.schema_version(),
             Self::MarketplaceListing(event) => event.schema_version(),
             Self::MarketplaceSeller(event) => event.schema_version(),
         }
@@ -63,6 +67,7 @@ impl ValidateEvent for ContractEventPayload {
     fn validate(&self) -> Result<(), EventValidationError> {
         match self {
             Self::Root(event) => event.validate(),
+            Self::ForumMention(event) => event.validate(),
             Self::MarketplaceListing(event) => event.validate(),
             Self::MarketplaceSeller(event) => event.validate(),
         }

@@ -25,6 +25,7 @@ pub mod runtime_telemetry;
 pub mod service;
 pub mod static_landing;
 pub mod static_landing_materialization;
+pub mod static_publish_policy;
 pub mod transport;
 
 pub use fly::{
@@ -44,6 +45,11 @@ pub use static_landing_materialization::{
     PAGE_BUILDER_STATIC_MATERIALIZATION_FORMAT, PageBuilderMaterializedStaticLandingArtifact,
     PageBuilderStaticLandingMaterializationError, PageBuilderStaticLandingMaterializationIdentity,
     compile_materialized_static_landing,
+};
+pub use static_publish_policy::{
+    PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT, PageBuilderStaticPublishPolicy,
+    PageBuilderStaticPublishPolicyDiagnostic, PageBuilderStaticPublishPolicyError,
+    PageBuilderStaticPublishPolicyEvidence, validate_static_publish_document,
 };
 
 #[cfg(feature = "server")]

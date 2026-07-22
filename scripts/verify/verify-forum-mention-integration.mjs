@@ -12,8 +12,8 @@ const failures = [];
 
 function read(relativePath) {
   const absolute = path.join(repoRoot, relativePath);
-  if (!existsSync(absolute)) {
-    failures.push(`${relativePath}: required file is missing`);
+  if (!relativePath || !existsSync(absolute)) {
+    failures.push(`${relativePath || "<missing path>"}: required file is missing`);
     return "";
   }
   return readFileSync(absolute, "utf8");
@@ -33,6 +33,15 @@ function requireOrder(source, markers, message) {
     }
     previous = index;
   }
+}
+
+function section(source, marker, description) {
+  const index = source.indexOf(marker);
+  if (index < 0) {
+    failures.push(`${description}: missing method marker ${marker}`);
+    return "";
+  }
+  return source.slice(index);
 }
 
 function collectRustFiles(root, relative = "") {
@@ -55,67 +64,84 @@ const topicEntry = read(contract.source_entrypoints?.topic ?? "");
 const replyEntry = read(contract.source_entrypoints?.reply ?? "");
 const topicOwner = read(contract.owner_entrypoints?.topic_create?.owner ?? "");
 const replyOwner = read(contract.owner_entrypoints?.reply_create?.owner ?? "");
-const topicIntegration = read(contract.owner_entrypoints?.topic_create?.implementation ?? "");
-const replyIntegration = read(contract.owner_entrypoints?.reply_update?.implementation ?? "");
-const record = read("crates/rustok-forum/docs/forum-12b2-owner-write-integration.md");
+const mentionService = read("crates/rustok-forum/src/services/mention_relation.rs");
+const b2Record = read("crates/rustok-forum/docs/forum-12b2-owner-write-integration.md");
 
-requireText(topicEntry, 'include!("topic_core.rs");', "topic entrypoint must retain the established implementation");
-requireText(topicEntry, 'include!("topic_relation_integration.rs");', "topic entrypoint must compose the relation hook");
-requireText(replyEntry, 'include!("reply_core.rs");', "reply entrypoint must retain the established implementation");
-requireText(replyEntry, 'include!("reply_relation_integration.rs");', "reply entrypoint must compose the relation hook");
-
-for (const marker of ["create_with_relations", "update_with_relations"]) {
-  requireText(topicOwner, marker, `topic owner must route ${marker}`);
-}
+requireText(topicOwner, "create_with_relations", "topic owner must route relation-aware create");
+requireText(topicOwner, "update_with_relations", "topic owner must route relation-aware edit");
 requireText(replyOwner, "MentionRelationService", "reply owner must own relation composition");
 requireText(replyOwner, "update_with_relations", "reply owner must route relation-aware edits");
 
+const topicCreate = section(topicEntry, "pub(crate) async fn create_with_relations", "topic create");
 requireOrder(
-  topicIntegration,
+  topicCreate,
   [
     ".prepare(",
     "let txn = self.db.begin().await?;",
     "forum_topic_translation::ActiveModel",
     ".persist_in_tx(&txn, prepared_relations)",
     "DomainEvent::ForumTopicCreated",
-    "txn.commit().await?;"
+    "txn.commit().await?;",
   ],
-  "topic create must prepare outside the transaction and persist after the source body"
+  "topic create must prepare outside the transaction and persist after the source body",
 );
+
+const topicUpdate = section(topicEntry, "pub(crate) async fn update_with_relations", "topic edit");
 requireOrder(
-  topicIntegration,
+  topicUpdate,
   [
     "prepare_topic_relation_body_for_update",
     ".prepare(",
     "let txn = self.db.begin().await?;",
     "self.upsert_translation_in_tx(",
     ".persist_in_tx(&txn, prepared_relations)",
-    "txn.commit().await?;"
+    "txn.commit().await?;",
   ],
-  "topic edit must persist relations after the translation write"
+  "topic edit must persist relations after the translation write",
 );
+
+const replyCreate = section(replyOwner, "pub async fn create(", "reply create");
 requireOrder(
-  replyOwner,
+  replyCreate,
   [
     ".prepare(",
     "let txn = self.db.begin().await?;",
     "forum_reply_body::ActiveModel",
     ".persist_in_tx(&txn, prepared_relations)",
     "DomainEvent::ForumTopicReplied",
-    "txn.commit().await?;"
+    "txn.commit().await?;",
   ],
-  "reply create must persist relations after the body write"
+  "reply create must persist relations after the body write",
 );
+
+const replyUpdate = section(replyEntry, "pub(crate) async fn update_with_relations", "reply edit");
 requireOrder(
-  replyIntegration,
+  replyUpdate,
   [
     ".prepare(",
     "let txn = self.db.begin().await?;",
     "self.upsert_body_in_tx(",
     ".persist_in_tx(&txn, prepared_relations)",
-    "txn.commit().await?;"
+    "txn.commit().await?;",
   ],
-  "reply edit must persist relations after the body write"
+  "reply edit must persist relations after the body write",
+);
+
+for (const marker of [
+  "publish_added_target_events_in_tx",
+  "publish_contract_in_tx_with_envelope_id",
+  "forum_domain_event::ActiveModel",
+]) {
+  requireText(mentionService, marker, `mention persistence must compose FORUM-12C marker ${marker}`);
+}
+requireOrder(
+  mentionService,
+  [
+    "let result = MentionRelationSyncResult",
+    "publish_added_target_events_in_tx",
+    "Ok(result)",
+  ],
+  "mention events must be derived from the persisted added-target result",
 );
 
 for (const root of contract.transport_roots ?? []) {
@@ -134,9 +160,9 @@ for (const marker of [
   "prepare the projection",
   "persist_in_tx",
   "Quote command DTOs are intentionally unchanged",
-  "Maintainer verification was not executed"
+  "Maintainer verification was not executed",
 ]) {
-  requireText(record, marker, `FORUM-12B2 implementation record is missing ${marker}`);
+  requireText(b2Record, marker, `FORUM-12B2 implementation record is missing ${marker}`);
 }
 
 if (failures.length > 0) {

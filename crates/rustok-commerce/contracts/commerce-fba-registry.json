@@ -49,10 +49,15 @@
       "contract_version": "order.checkout_completion.v1",
       "registry": "crates/rustok-order/contracts/order-fba-registry.json",
       "ports": [
-        "CheckoutCompletionPort"
+        "CheckoutCompletionPort",
+        "CheckoutOrderIdentityPort",
+        "CheckoutOrderCompensationPort",
+        "CheckoutOrderPaymentSettlementPort"
       ],
       "profiles": [
-        "checkout_completion_orchestration"
+        "checkout_completion_orchestration",
+        "checkout_compensation_orchestration",
+        "checkout_payment_settlement"
       ],
       "fallback_profiles": [
         "embedded_native",
@@ -60,7 +65,9 @@
       ],
       "degraded_modes": [
         "preserve_cart_checkout_state",
-        "show_completion_retry"
+        "show_completion_retry",
+        "require_manual_compensation_reconciliation",
+        "preserve_captured_payment_before_order_settlement_retry"
       ]
     },
     {
@@ -68,10 +75,14 @@
       "contract_version": "payment.checkout.v1+provider_spi.v1+provider_webhook_inbox.v1+refund_creation.v1+provider_outcome.v1+stripe_runtime.v1",
       "registry": "crates/rustok-payment/contracts/payment-fba-registry.json",
       "ports": [
-        "PaymentCollectionPort"
+        "PaymentCollectionPort",
+        "CheckoutPaymentCompensationPort",
+        "CheckoutPaymentExecutionPort"
       ],
       "profiles": [
-        "checkout_orchestration"
+        "checkout_orchestration",
+        "checkout_compensation_orchestration",
+        "checkout_payment_execution"
       ],
       "fallback_profiles": [
         "embedded_native",
@@ -79,7 +90,9 @@
       ],
       "degraded_modes": [
         "reuse_existing_collection",
-        "show_payment_handoff_retry"
+        "show_payment_handoff_retry",
+        "require_manual_compensation_reconciliation",
+        "preserve_provider_checkpoint_for_reconciliation"
       ],
       "provider_spi": {
         "required": true,
@@ -92,10 +105,12 @@
       "contract_version": "fulfillment.shipping_selection.v1+provider_spi.v1",
       "registry": "crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json",
       "ports": [
-        "ShippingSelectionPort"
+        "ShippingSelectionPort",
+        "CheckoutFulfillmentExecutionPort"
       ],
       "profiles": [
-        "checkout_shipping_orchestration"
+        "checkout_shipping_orchestration",
+        "checkout_fulfillment_execution"
       ],
       "fallback_profiles": [
         "embedded_native",
@@ -103,7 +118,8 @@
       ],
       "degraded_modes": [
         "keep_previous_selection",
-        "show_shipping_handoff_retry"
+        "show_shipping_handoff_retry",
+        "preserve_fulfillment_set_for_recovery"
       ],
       "provider_spi": {
         "required": true,
@@ -175,8 +191,66 @@
       ]
     }
   ],
+  "workflow_contracts": [
+    {
+      "owner": "order",
+      "contract_version": "order.checkout_compensation.v1",
+      "contract": "crates/rustok-order/contracts/order-checkout-compensation-v1.json",
+      "port": "CheckoutOrderCompensationPort",
+      "operation": "compensate_checkout_order",
+      "profile": "checkout_compensation_orchestration",
+      "status": "source_ready_unvalidated"
+    },
+    {
+      "owner": "payment",
+      "contract_version": "payment.checkout_compensation.v1",
+      "contract": "crates/rustok-payment/contracts/payment-checkout-compensation-v1.json",
+      "port": "CheckoutPaymentCompensationPort",
+      "operation": "compensate_checkout_payment",
+      "profile": "checkout_compensation_orchestration",
+      "status": "source_ready_unvalidated"
+    },
+    {
+      "owner": "payment",
+      "contract_version": "payment.checkout_execution.v1",
+      "contract": "crates/rustok-payment/contracts/payment-checkout-execution-v1.json",
+      "port": "CheckoutPaymentExecutionPort",
+      "operations": [
+        "prepare_checkout_collection",
+        "authorize_checkout_collection",
+        "capture_checkout_collection",
+        "read_checkout_collection"
+      ],
+      "profile": "checkout_payment_execution",
+      "status": "source_ready_unvalidated"
+    },
+    {
+      "owner": "fulfillment",
+      "contract_version": "fulfillment.checkout_execution.v1",
+      "contract": "crates/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json",
+      "port": "CheckoutFulfillmentExecutionPort",
+      "operations": [
+        "ensure_checkout_fulfillments",
+        "read_checkout_fulfillments"
+      ],
+      "profile": "checkout_fulfillment_execution",
+      "status": "source_ready_unvalidated"
+    },
+    {
+      "owner": "order",
+      "contract_version": "order.checkout_payment_settlement.v1",
+      "contract": "crates/rustok-order/contracts/order-checkout-payment-settlement-v1.json",
+      "port": "CheckoutOrderPaymentSettlementPort",
+      "operation": "settle_checkout_payment",
+      "profile": "checkout_payment_settlement",
+      "status": "source_ready_unvalidated"
+    }
+  ],
   "evidence": {
     "local_plan": "crates/rustok-commerce/docs/implementation-plan.md",
+    "checkout_compensation_cutover": "crates/rustok-commerce/docs/checkout-compensation-owner-cutover.md",
+    "checkout_compensation_guard": "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs",
+    "checkout_owner_stage_guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
     "central_board": "docs/modules/registry.md",
     "verifier": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "runtime_invocation_trace": "crates/rustok-commerce/contracts/evidence/commerce-domain-provider-invocation-trace.json"

@@ -66,8 +66,8 @@ requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
   "with_idempotency_key",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  'query = "graphql_policy_history::GroupsQueryRoot"',
-  'mutation = "graphql_policy_history::GroupsMutationRoot"',
+  'query = "graphql_application_cas::GroupsQueryRoot"',
+  'mutation = "graphql_application_cas::GroupsMutationRoot"',
   'subpath = "invitations"',
 ]);
 
@@ -153,4 +153,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups invitation token, digest, redemption, FBA, FFA, and no-fallback boundary checks passed.");
+console.log("Groups invitation token, digest, redemption, CAS composition, FBA, FFA, and no-fallback boundary checks passed.");

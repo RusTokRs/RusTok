@@ -29,9 +29,9 @@ pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
 pub use services::{
-    CategoryService, ForumEventService, ForumReadModelService, ForumWidgetContractService,
-    ModerationService, ReplyService, RevisionService, SubscriptionService, TopicService,
-    UserStatsService, VoteService,
+    CategoryService, ForumEventService, ForumQuoteCommandService, ForumReadModelService,
+    ForumRelationReadService, ForumWidgetContractService, ModerationService, ReplyService,
+    RevisionService, SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};

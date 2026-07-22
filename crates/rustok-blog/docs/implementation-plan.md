@@ -15,11 +15,18 @@ Exceeded responses carry the same value in GraphQL `retryAfter` and HTTP
 `Retry-After`; the Axum controller preserves async-graphql response headers.
 
 Search consumes Blog lifecycle and `ReindexRequested` events without importing
-the Blog crate. The projector denormalizes `category_name` and `category_slug`
-into Blog documents. Category update/delete therefore publish
-`ReindexRequested { target_type: "blog", target_id: None }` in the same owner
-transaction. Search table discovery follows the active PostgreSQL
+the Blog crate. The projector denormalizes `category_name`, `category_slug`, and
+the canonical post slug into Blog documents. Category update/delete therefore
+publish `ReindexRequested { target_type: "blog", target_id: None }` in the same
+owner transaction. Search table discovery follows the active PostgreSQL
 `search_path`.
+
+Search owns result navigation through `canonical_search_result_url`. Blog results
+are navigable only for the canonical `source_module=blog` /
+`entity_type=blog_post` pair with a bounded safe projected slug. GraphQL,
+storefront native Search, Search admin preview, and admin global search delegate
+to that single owner policy. Blog and Search transport packages contain no local
+Blog route construction and no post-transport navigation fallback.
 
 Blog categories use one platform permission resource: `blog_categories:*`.
 `Resource::BlogCategories`, parser/display strings, permission constants,
@@ -53,6 +60,8 @@ transactional outbox publication.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
   user-owned.
 - Category search reindex: `source_verified_no_compile`.
+- Canonical Search URL: `source_verified_no_compile`; one owner policy and no
+  transport fallback.
 - Blog category authority is exclusively `blog_categories:*`.
 - Category writes require `CategoryService::new(db, event_bus)`.
 - Category mutation and reindex publication share one transaction.
@@ -78,7 +87,6 @@ transactional outbox publication.
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
-- `scripts/verify/verify-search-blog-navigation.mjs`
 - `scripts/verify/verify-search-blog-projection.mjs`
 - `scripts/verify/verify-search-canonical-url-contract.mjs`
 
@@ -97,15 +105,17 @@ transactional outbox publication.
    locking, retryable ordering, and transactional outbox publication.
 6. Added Comments-owned approved public reads, fail-closed provider defaults,
    transport parity, moderation parity, and bounded storefront/admin pagination.
-7. Added Search-owned canonical result URL policy and migrated GraphQL plus
-   storefront-native result serialization to that policy.
-8. Added Blog category HTTP CRUD, list DTOs, OpenAPI wiring, module routes,
+7. Added Search-owned canonical result URL policy and migrated GraphQL,
+   storefront native, Search admin, and admin global search to that policy.
+8. Removed storefront navigation post-processing and every transport-local Blog
+   URL builder.
+9. Added Blog category HTTP CRUD, list DTOs, OpenAPI wiring, module routes,
    transactional owner writes, Search reindex publication, tenant-scoped
    translations, and machine-readable evidence.
-9. Added dedicated `blog_categories:*` authority across the platform permission
-   parser, constants, OAuth groups, built-in roles, public authority, Blog owner,
-   HTTP adapter, module registration, tests, evidence, and guardrails.
-10. Removed alternate category permission paths and made
+10. Added dedicated `blog_categories:*` authority across the platform permission
+    parser, constants, OAuth groups, built-in roles, public authority, Blog owner,
+    HTTP adapter, module registration, tests, evidence, and guardrails.
+11. Removed alternate category permission paths and made
     `TransactionalEventBus` a required `CategoryService` constructor argument.
 
 ## Next results
@@ -117,12 +127,12 @@ transactional outbox publication.
 2. **Execute Search refresh evidence.** Consume category-triggered Blog reindex
    and retain changed `category_name` / `category_slug` documents for related
    posts.
-3. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
+3. **Execute canonical navigation evidence.** Verify Blog results through GraphQL,
+   storefront native Search, Search admin preview, and admin global search; retain
+   fail-closed malformed-slug and canonical click-href evidence.
+4. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
-4. **Delete duplicate Search URL derivation.** Admin and storefront consumers
-   must use the Search-owned URL field directly; transport packages must not
-   contain route switches or local Blog URL construction.
 5. **Close comments runtime evidence.** Cover approved-only reads, moderation,
    pagination, independent create commands, duplicate delivery, concurrent
    counters, missing-post retry, rollback, and outbox publication.
@@ -159,7 +169,6 @@ transactional outbox publication.
 - `npm run verify:blog:fba`
 - `npm run verify:comments:fba`
 - `npm run verify:consumer:fba-runtime-order`
-- `node scripts/verify/verify-search-blog-navigation.mjs`
 - `node scripts/verify/verify-search-blog-projection.mjs`
 - `node scripts/verify/verify-search-blog-projection.test.mjs`
 - `node scripts/verify/verify-search-canonical-url-contract.mjs`

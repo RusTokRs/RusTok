@@ -140,7 +140,11 @@ fn map_region_error(error: crate::RegionError) -> PortError {
             PortError::validation("region.validation", message)
         }
         crate::RegionError::Database(error) => {
-            PortError::unavailable("region.read_failed", error.to_string())
+            tracing::error!(error = ?error, "region port storage operation failed");
+            PortError::unavailable(
+                "region.read_failed",
+                "region storage is temporarily unavailable",
+            )
         }
     }
 }

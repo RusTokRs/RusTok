@@ -4,7 +4,9 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
-    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
+    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyLocaleCatalog,
+    GroupsAdminApplicationPolicyLocaleCatalogQuery, GroupsAdminApplicationPolicyManagementView,
+    GroupsAdminApplicationPolicyPrecondition, GroupsAdminApplicationPolicyQuery,
     GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
     GroupsAdminUpsertApplicationPolicyResult, UpsertGroupApplicationPolicyCommand,
 };
@@ -12,23 +14,31 @@ use crate::application_model::{
 pub type GraphqlGroupsPolicyLocaleError = String;
 
 const POLICY_FIELDS: &str = "id group_id: groupId revision enabled locale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required }";
+const MANAGEMENT_FIELDS: &str = "group_id: groupId policy_id: policyId revision enabled locale translation_exists: translationExists questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required }";
 
-fn policy_query() -> String {
-    format!(
-        "query GroupsAdminApplicationPolicyLocale($groupId: UUID!) {{ group_application_policy: groupApplicationPolicy(groupId: $groupId) {{ {POLICY_FIELDS} }} }}"
-    )
+fn locale_catalog_query() -> String {
+    "query GroupsAdminApplicationPolicyLocaleCatalog($groupId: UUID!) { group_application_policy_locale_catalog: groupApplicationPolicyLocaleCatalog(groupId: $groupId) { group_id: groupId policy_id: policyId revision enabled locales } }".to_string()
+}
+
+fn management_policy_query() -> String {
+    format!("query GroupsAdminApplicationPolicyForManagement($groupId: UUID!, $locale: String!) {{ group_application_policy_for_management: groupApplicationPolicyForManagement(groupId: $groupId, locale: $locale) {{ {MANAGEMENT_FIELDS} }} }}")
 }
 
 fn upsert_policy_mutation() -> String {
-    format!(
-        "mutation GroupsAdminUpsertApplicationPolicyLocale($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}"
-    )
+    format!("mutation GroupsAdminUpsertApplicationPolicyIfCurrent($idempotencyKey: String!, $groupId: UUID!, $expectedPolicy: GroupApplicationPolicyPreconditionInputGql, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicyIfCurrent(idempotencyKey: $idempotencyKey, groupId: $groupId, expectedPolicy: $expectedPolicy, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}")
 }
 
 #[derive(Debug, Serialize)]
-struct PolicyVariables {
+struct CatalogVariables {
     #[serde(rename = "groupId")]
     group_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ManagementVariables {
+    #[serde(rename = "groupId")]
+    group_id: String,
+    locale: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -37,7 +47,27 @@ struct UpsertVariables {
     idempotency_key: String,
     #[serde(rename = "groupId")]
     group_id: String,
+    #[serde(rename = "expectedPolicy")]
+    expected_policy: Option<PolicyPreconditionInput>,
     input: UpsertInput,
+}
+
+#[derive(Debug, Serialize)]
+struct PolicyPreconditionInput {
+    #[serde(rename = "policyId")]
+    policy_id: String,
+    revision: u64,
+    locale: String,
+}
+
+impl From<GroupsAdminApplicationPolicyPrecondition> for PolicyPreconditionInput {
+    fn from(value: GroupsAdminApplicationPolicyPrecondition) -> Self {
+        Self {
+            policy_id: value.policy_id,
+            revision: value.revision,
+            locale: value.locale,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -68,13 +98,39 @@ struct RuleInput {
 }
 
 #[derive(Debug, Deserialize)]
-struct PolicyResponse {
-    group_application_policy: PolicyWire,
+struct CatalogResponse {
+    group_application_policy_locale_catalog: CatalogWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManagementResponse {
+    group_application_policy_for_management: ManagementWire,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpsertResponse {
     upsert_group_application_policy: UpsertWire,
+}
+
+#[derive(Debug, Deserialize)]
+struct CatalogWire {
+    group_id: String,
+    policy_id: Option<String>,
+    revision: Option<u64>,
+    enabled: bool,
+    locales: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManagementWire {
+    group_id: String,
+    policy_id: Option<String>,
+    revision: Option<u64>,
+    enabled: bool,
+    locale: String,
+    translation_exists: bool,
+    questions: Vec<QuestionWire>,
+    rules: Vec<RuleWire>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,27 +169,55 @@ struct RuleWire {
     required: bool,
 }
 
-pub async fn load_group_application_policy(
+pub async fn load_group_application_policy_locale_catalog(
     token: Option<String>,
     tenant_slug: Option<String>,
-    query: GroupsAdminApplicationPolicyQuery,
-) -> Result<GroupsAdminApplicationPolicy, GraphqlGroupsPolicyLocaleError> {
-    let locale = Some(query.locale.clone());
-    let response: PolicyResponse = execute_graphql(
+    query: GroupsAdminApplicationPolicyLocaleCatalogQuery,
+) -> Result<GroupsAdminApplicationPolicyLocaleCatalog, GraphqlGroupsPolicyLocaleError> {
+    let response: CatalogResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &policy_query(),
-            Some(PolicyVariables {
+            locale_catalog_query(),
+            Some(CatalogVariables {
                 group_id: query.group_id,
             }),
         ),
         token,
         tenant_slug,
-        locale,
+        None,
     )
     .await
     .map_err(|error| error.to_string())?;
-    Ok(response.group_application_policy.into())
+    Ok(GroupsAdminApplicationPolicyLocaleCatalog {
+        group_id: response.group_application_policy_locale_catalog.group_id,
+        policy_id: response.group_application_policy_locale_catalog.policy_id,
+        revision: response.group_application_policy_locale_catalog.revision,
+        enabled: response.group_application_policy_locale_catalog.enabled,
+        locales: response.group_application_policy_locale_catalog.locales,
+    })
+}
+
+pub async fn load_group_application_policy_for_management(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    query: GroupsAdminApplicationPolicyQuery,
+) -> Result<GroupsAdminApplicationPolicyManagementView, GraphqlGroupsPolicyLocaleError> {
+    let response: ManagementResponse = execute_graphql(
+        &graphql_url(),
+        GraphqlRequest::new(
+            management_policy_query(),
+            Some(ManagementVariables {
+                group_id: query.group_id,
+                locale: query.locale,
+            }),
+        ),
+        token,
+        tenant_slug,
+        None,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+    Ok(response.group_application_policy_for_management.into())
 }
 
 pub async fn upsert_group_application_policy(
@@ -141,14 +225,14 @@ pub async fn upsert_group_application_policy(
     tenant_slug: Option<String>,
     command: UpsertGroupApplicationPolicyCommand,
 ) -> Result<GroupsAdminUpsertApplicationPolicyResult, GraphqlGroupsPolicyLocaleError> {
-    let locale = Some(command.locale.clone());
     let response: UpsertResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &upsert_policy_mutation(),
+            upsert_policy_mutation(),
             Some(UpsertVariables {
                 idempotency_key: command.idempotency_key,
                 group_id: command.group_id,
+                expected_policy: command.expected_policy.map(Into::into),
                 input: UpsertInput {
                     locale: command.locale,
                     enabled: command.enabled,
@@ -178,7 +262,7 @@ pub async fn upsert_group_application_policy(
         ),
         token,
         tenant_slug,
-        locale,
+        None,
     )
     .await
     .map_err(|error| error.to_string())?;
@@ -188,6 +272,21 @@ pub async fn upsert_group_application_policy(
         created: response.upsert_group_application_policy.created,
         replayed: response.upsert_group_application_policy.replayed,
     })
+}
+
+impl From<ManagementWire> for GroupsAdminApplicationPolicyManagementView {
+    fn from(value: ManagementWire) -> Self {
+        Self {
+            group_id: value.group_id,
+            policy_id: value.policy_id,
+            revision: value.revision,
+            enabled: value.enabled,
+            locale: value.locale,
+            translation_exists: value.translation_exists,
+            questions: value.questions.into_iter().map(Into::into).collect(),
+            rules: value.rules.into_iter().map(Into::into).collect(),
+        }
+    }
 }
 
 impl From<PolicyWire> for GroupsAdminApplicationPolicy {

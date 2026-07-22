@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Error)]
 pub enum PagesError {
     #[error("Database error: {0}")]
-    Database(#[from] DbErr),
+    Database(DbErr),
 
     #[error("Core error: {0}")]
     Core(#[from] CoreError),
@@ -14,8 +14,6 @@ pub enum PagesError {
     #[error("Page not found: {0}")]
     PageNotFound(Uuid),
 
-    #[error("Menu not found: {0}")]
-    MenuNotFound(Uuid),
 
     #[error("Duplicate slug: {slug} already exists for locale {locale}")]
     DuplicateSlug { slug: String, locale: String },
@@ -50,6 +48,18 @@ pub enum PagesError {
     #[error("Page publish operation integrity error: {0}")]
     PublishOperationIntegrity(String),
 
+    #[error("Page rollback idempotency conflict: {0}")]
+    RollbackIdempotencyConflict(String),
+
+    #[error("Page rollback operation integrity error: {0}")]
+    RollbackOperationIntegrity(String),
+
+    #[error("Page rollback target unavailable: {0}")]
+    RollbackTargetUnavailable(String),
+
+    #[error("Page rollback requires a published page")]
+    RollbackRequiresPublished,
+
     #[error("Forbidden: {0}")]
     Forbidden(String),
 
@@ -81,6 +91,23 @@ pub const PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH: &str =
     "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH";
 pub const PAGE_PUBLISH_IDEMPOTENCY_CONFLICT: &str = "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT";
 pub const PAGE_PUBLISH_OPERATION_INTEGRITY: &str = "PAGE_PUBLISH_OPERATION_INTEGRITY";
+pub const PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT: &str = "PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT";
+pub const PAGE_ROLLBACK_OPERATION_INTEGRITY: &str = "PAGE_ROLLBACK_OPERATION_INTEGRITY";
+pub const PAGE_ROLLBACK_TARGET_UNAVAILABLE: &str = "PAGE_ROLLBACK_TARGET_UNAVAILABLE";
+pub const PAGE_ROLLBACK_REQUIRES_PUBLISHED: &str = "PAGE_ROLLBACK_REQUIRES_PUBLISHED";
+pub(crate) const PUBLISH_MANIFEST_DB_ERROR_PREFIX: &str =
+    "PAGE_PUBLISH_OPERATION_INTEGRITY:";
+
+impl From<DbErr> for PagesError {
+    fn from(error: DbErr) -> Self {
+        if let DbErr::Custom(message) = &error {
+            if let Some(detail) = message.strip_prefix(PUBLISH_MANIFEST_DB_ERROR_PREFIX) {
+                return Self::PublishOperationIntegrity(detail.trim().to_string());
+            }
+        }
+        Self::Database(error)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderRuntimeErrorCatalogEntry {
@@ -130,12 +157,6 @@ impl From<PagesError> for RichError {
                     .with_user_message("The requested page does not exist")
                     .with_field("page_id", id.to_string())
                     .with_error_code("PAGE_NOT_FOUND")
-            }
-            PagesError::MenuNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Menu {id} not found"))
-                    .with_user_message("The requested menu does not exist")
-                    .with_field("menu_id", id.to_string())
-                    .with_error_code("MENU_NOT_FOUND")
             }
             PagesError::DuplicateSlug { slug, locale } => RichError::new(
                 ErrorKind::Conflict,
@@ -201,6 +222,31 @@ impl From<PagesError> for RichError {
                     .with_user_message("The stored page publish receipt failed integrity validation.")
                     .with_error_code(PAGE_PUBLISH_OPERATION_INTEGRITY)
             }
+            PagesError::RollbackIdempotencyConflict(message) => {
+                RichError::new(ErrorKind::Conflict, message)
+                    .with_user_message(
+                        "This rollback idempotency key is already bound to a different request.",
+                    )
+                    .with_error_code(PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT)
+            }
+            PagesError::RollbackOperationIntegrity(message) => {
+                RichError::new(ErrorKind::Internal, message)
+                    .with_user_message("The stored page rollback receipt failed integrity validation.")
+                    .with_error_code(PAGE_ROLLBACK_OPERATION_INTEGRITY)
+            }
+            PagesError::RollbackTargetUnavailable(message) => {
+                RichError::new(ErrorKind::Conflict, message)
+                    .with_user_message(
+                        "The previous published artifact set is unavailable or failed integrity validation.",
+                    )
+                    .with_error_code(PAGE_ROLLBACK_TARGET_UNAVAILABLE)
+            }
+            PagesError::RollbackRequiresPublished => RichError::new(
+                ErrorKind::Conflict,
+                "Page rollback requires the page to remain published",
+            )
+            .with_user_message("Only a currently published page can be rolled back.")
+            .with_error_code(PAGE_ROLLBACK_REQUIRES_PUBLISHED),
             PagesError::Forbidden(message) => RichError::new(ErrorKind::Forbidden, message)
                 .with_user_message("You do not have permission to perform this action"),
             PagesError::FeatureDisabled { feature } => RichError::new(
@@ -227,9 +273,6 @@ impl PagesError {
         Self::PageNotFound(page_id)
     }
 
-    pub fn menu_not_found(menu_id: Uuid) -> Self {
-        Self::MenuNotFound(menu_id)
-    }
 
     pub fn duplicate_slug(slug: impl Into<String>, locale: impl Into<String>) -> Self {
         Self::DuplicateSlug {
@@ -264,6 +307,22 @@ impl PagesError {
 
     pub fn publish_operation_integrity(message: impl Into<String>) -> Self {
         Self::PublishOperationIntegrity(message.into())
+    }
+
+    pub fn rollback_idempotency_conflict(message: impl Into<String>) -> Self {
+        Self::RollbackIdempotencyConflict(message.into())
+    }
+
+    pub fn rollback_operation_integrity(message: impl Into<String>) -> Self {
+        Self::RollbackOperationIntegrity(message.into())
+    }
+
+    pub fn rollback_target_unavailable(message: impl Into<String>) -> Self {
+        Self::RollbackTargetUnavailable(message.into())
+    }
+
+    pub fn rollback_requires_published() -> Self {
+        Self::RollbackRequiresPublished
     }
 
     pub fn forbidden(message: impl Into<String>) -> Self {
@@ -354,6 +413,48 @@ mod tests {
         assert_eq!(
             integrity.error_code.as_deref(),
             Some(PAGE_PUBLISH_OPERATION_INTEGRITY)
+        );
+    }
+
+    #[test]
+    fn publish_manifest_db_bridge_preserves_typed_integrity_error() {
+        let error = PagesError::from(DbErr::Custom(format!(
+            "{PUBLISH_MANIFEST_DB_ERROR_PREFIX}manifest mismatch"
+        )));
+        assert!(matches!(
+            error,
+            PagesError::PublishOperationIntegrity(message) if message == "manifest mismatch"
+        ));
+    }
+
+    #[test]
+    fn rollback_errors_have_stable_codes() {
+        let conflict: RichError = PagesError::rollback_idempotency_conflict("reused").into();
+        assert_eq!(conflict.kind, ErrorKind::Conflict);
+        assert_eq!(
+            conflict.error_code.as_deref(),
+            Some(PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT)
+        );
+
+        let integrity: RichError = PagesError::rollback_operation_integrity("invalid").into();
+        assert_eq!(integrity.kind, ErrorKind::Internal);
+        assert_eq!(
+            integrity.error_code.as_deref(),
+            Some(PAGE_ROLLBACK_OPERATION_INTEGRITY)
+        );
+
+        let unavailable: RichError = PagesError::rollback_target_unavailable("missing").into();
+        assert_eq!(unavailable.kind, ErrorKind::Conflict);
+        assert_eq!(
+            unavailable.error_code.as_deref(),
+            Some(PAGE_ROLLBACK_TARGET_UNAVAILABLE)
+        );
+
+        let unpublished: RichError = PagesError::rollback_requires_published().into();
+        assert_eq!(unpublished.kind, ErrorKind::Conflict);
+        assert_eq!(
+            unpublished.error_code.as_deref(),
+            Some(PAGE_ROLLBACK_REQUIRES_PUBLISHED)
         );
     }
 

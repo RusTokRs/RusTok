@@ -1,17 +1,24 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use rustok_api::normalize_locale_tag;
 use uuid::Uuid;
 
 use crate::application_model::{
-    GroupsStorefrontApplicationAnswer, GroupsStorefrontApplicationPolicy,
-    GroupsStorefrontApplicationPolicyQuery, SubmitGroupMembershipApplicationCommand,
+    CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationAnswer,
+    GroupsStorefrontApplicationPolicy, GroupsStorefrontApplicationPolicyPrecondition,
+    GroupsStorefrontApplicationPolicyQuery, GroupsStorefrontMyApplicationQuery,
+    SubmitGroupMembershipApplicationCommand,
 };
 
 pub const GROUP_APPLICATION_QUERY_KEY: &str = "apply";
+pub const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str = "groups.application_policy_changed";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupsStorefrontApplicationInputError {
     InvalidGroupId,
+    InvalidApplicationId,
+    InvalidLocale,
+    InvalidPolicy,
     UnknownQuestion,
     MissingRequiredAnswer,
     AnswerTooLong,
@@ -21,10 +28,32 @@ pub enum GroupsStorefrontApplicationInputError {
 
 pub fn prepare_group_application_policy_query(
     group_id: &str,
+    locale: &str,
 ) -> Result<GroupsStorefrontApplicationPolicyQuery, GroupsStorefrontApplicationInputError> {
     Ok(GroupsStorefrontApplicationPolicyQuery {
         group_id: normalize_uuid(group_id)
             .map_err(|_| GroupsStorefrontApplicationInputError::InvalidGroupId)?,
+        locale: normalize_locale_tag(locale)
+            .ok_or(GroupsStorefrontApplicationInputError::InvalidLocale)?,
+    })
+}
+
+pub fn prepare_my_group_membership_application_query(
+    group_id: &str,
+) -> Result<GroupsStorefrontMyApplicationQuery, GroupsStorefrontApplicationInputError> {
+    Ok(GroupsStorefrontMyApplicationQuery {
+        group_id: normalize_uuid(group_id)
+            .map_err(|_| GroupsStorefrontApplicationInputError::InvalidGroupId)?,
+    })
+}
+
+pub fn prepare_cancel_group_membership_application(
+    application_id: &str,
+) -> Result<CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationInputError> {
+    Ok(CancelGroupMembershipApplicationCommand {
+        idempotency_key: format!("groups-storefront-cancel-application-{}", Uuid::new_v4()),
+        application_id: normalize_uuid(application_id)
+            .map_err(|_| GroupsStorefrontApplicationInputError::InvalidApplicationId)?,
     })
 }
 
@@ -33,6 +62,12 @@ pub fn prepare_submit_group_membership_application(
     answers: BTreeMap<String, String>,
     acknowledged_rule_keys: BTreeSet<String>,
 ) -> Result<SubmitGroupMembershipApplicationCommand, GroupsStorefrontApplicationInputError> {
+    if policy.revision == 0
+        || Uuid::parse_str(&policy.id).is_err()
+        || normalize_locale_tag(&policy.locale).as_deref() != Some(policy.locale.as_str())
+    {
+        return Err(GroupsStorefrontApplicationInputError::InvalidPolicy);
+    }
     let question_map = policy
         .questions
         .iter()
@@ -71,6 +106,7 @@ pub fn prepare_submit_group_membership_application(
     Ok(SubmitGroupMembershipApplicationCommand {
         idempotency_key: format!("groups-storefront-submit-application-{}", Uuid::new_v4()),
         group_id: policy.group_id.clone(),
+        expected_policy: GroupsStorefrontApplicationPolicyPrecondition::from(policy),
         answers: answers
             .into_iter()
             .map(|(key, value)| GroupsStorefrontApplicationAnswer {
@@ -80,6 +116,10 @@ pub fn prepare_submit_group_membership_application(
             .collect(),
         acknowledged_rule_keys: acknowledged_rule_keys.into_iter().collect(),
     })
+}
+
+pub fn is_application_policy_changed(error: &str) -> bool {
+    error.contains(GROUP_APPLICATION_POLICY_CHANGED_CODE)
 }
 
 fn normalize_uuid(value: &str) -> Result<String, uuid::Error> {

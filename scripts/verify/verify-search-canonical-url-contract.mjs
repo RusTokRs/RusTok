@@ -34,8 +34,13 @@ const libPath = "crates/rustok-search/src/lib.rs";
 const graphqlPath = "crates/rustok-search/src/graphql/types.rs";
 const storefrontNativePath =
   "crates/rustok-search/storefront/src/transport/native_server_adapter.rs";
-const adminNativePath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
-const compatibilityPath = "crates/rustok-search/storefront/src/transport/navigation.rs";
+const storefrontFacadePath = "crates/rustok-search/storefront/src/transport/mod.rs";
+const adminNativeRootPath = "crates/rustok-search/admin/src/transport/native_server_adapter.rs";
+const adminNativeMappingPath =
+  "crates/rustok-search/admin/src/transport/native_server_adapter/mapping.rs";
+const adminShellPath = "apps/admin/src/widgets/app_shell/native_server_adapter.rs";
+const removedCompatibilityPath =
+  "crates/rustok-search/storefront/src/transport/navigation.rs";
 const evidencePath = "crates/rustok-search/contracts/evidence/search-canonical-url-contract.json";
 const planPath = "crates/rustok-search/docs/implementation-plan.md";
 
@@ -43,8 +48,10 @@ const engine = read(enginePath);
 const lib = read(libPath);
 const graphql = read(graphqlPath);
 const storefrontNative = read(storefrontNativePath);
-const adminNative = read(adminNativePath);
-const compatibility = read(compatibilityPath);
+const storefrontFacade = read(storefrontFacadePath);
+const adminNativeRoot = read(adminNativeRootPath);
+const adminNativeMapping = read(adminNativeMappingPath);
+const adminShell = read(adminShellPath);
 const plan = read(planPath);
 let evidence = null;
 try {
@@ -59,7 +66,7 @@ for (const marker of [
   'const BLOG_ENTITY_TYPE: &str = "blog_post"',
   'const BLOG_STOREFRONT_ROUTE: &str = "/modules/blog"',
   "value.source_module == BLOG_SOURCE_MODULE",
-  "payload.get(\"slug\")",
+  'payload.get("slug")',
   "MAX_BLOG_SLUG_LEN",
   "ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_')",
   "content_kind_query",
@@ -68,29 +75,35 @@ for (const marker of [
 }
 
 requireMarker(lib, "canonical_search_result_url", libPath);
-requireMarker(graphql, "crate::canonical_search_result_url(&value)", graphqlPath);
-rejectMarker(graphql, "fn derive_search_result_url", graphqlPath);
-requireMarker(
-  storefrontNative,
-  "rustok_search::canonical_search_result_url(&value)",
-  storefrontNativePath,
-);
-rejectMarker(storefrontNative, "fn derive_search_result_url", storefrontNativePath);
 
-for (const marker of [
-  "item.url.is_some()",
-  "item.url = blog_result_url",
-  "preserves_backend_url_and_rejects_invalid_slug",
+for (const [source, sourcePath, marker] of [
+  [graphql, graphqlPath, "crate::canonical_search_result_url(&value)"],
+  [storefrontNative, storefrontNativePath, "rustok_search::canonical_search_result_url(&value)"],
+  [adminNativeMapping, adminNativeMappingPath, "rustok_search::canonical_search_result_url(&item)"],
+  [adminShell, adminShellPath, "rustok_search::canonical_search_result_url(&item)"],
 ]) {
-  requireMarker(compatibility, marker, compatibilityPath);
+  requireMarker(source, marker, sourcePath);
+  for (const forbidden of [
+    "fn derive_search_result_url",
+    "fn derive_admin_search_result_url",
+    'const BLOG_STOREFRONT_ROUTE',
+    '"/modules/blog"',
+  ]) {
+    rejectMarker(source, forbidden, sourcePath);
+  }
 }
 
-// Admin native still carries the final transport-local switch. Keep the debt
-// visible until it is migrated, but do not let it expand into another Blog
-// implementation.
-requireMarker(adminNative, "fn derive_search_result_url", adminNativePath);
-rejectMarker(adminNative, '"blog_post"', adminNativePath);
-rejectMarker(adminNative, '"/modules/blog"', adminNativePath);
+requireMarker(
+  adminNativeRoot,
+  'include!("native_server_adapter/mapping.rs")',
+  adminNativeRootPath,
+);
+for (const marker of ["mod navigation", "enrich_search_result_urls", "blog_result_url"] ) {
+  rejectMarker(storefrontFacade, marker, storefrontFacadePath);
+}
+if (existsSync(repoPath(removedCompatibilityPath))) {
+  failures.push(`${removedCompatibilityPath}: compatibility implementation must be deleted`);
+}
 
 if (evidence) {
   if (evidence.schema_version !== 1) failures.push(`${evidencePath}: schema_version must be 1`);
@@ -103,30 +116,49 @@ if (evidence) {
   if (evidence.compile_policy !== "not_run_by_request") {
     failures.push(`${evidencePath}: compile policy drift`);
   }
-  if (evidence.production_contract?.normalized_result !== enginePath) {
-    failures.push(`${evidencePath}: normalized result owner drift`);
+  const contract = evidence.production_contract ?? {};
+  for (const [key, expected] of Object.entries({
+    normalized_result: enginePath,
+    public_export: libPath,
+    graphql_projection: graphqlPath,
+    storefront_native_projection: storefrontNativePath,
+    storefront_transport_facade: storefrontFacadePath,
+    admin_native_root: adminNativeRootPath,
+    admin_native_mapping: adminNativeMappingPath,
+    admin_shell_projection: adminShellPath,
+  })) {
+    if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} path drift`);
   }
-  if (evidence.production_contract?.graphql_projection !== graphqlPath) {
-    failures.push(`${evidencePath}: GraphQL projection path drift`);
+  if ("compatibility_fallback" in contract) {
+    failures.push(`${evidencePath}: compatibility_fallback must be removed`);
   }
-  if (evidence.production_contract?.storefront_native_projection !== storefrontNativePath) {
-    failures.push(`${evidencePath}: storefront native projection path drift`);
-  }
-  if (evidence.production_contract?.admin_native_projection !== adminNativePath) {
-    failures.push(`${evidencePath}: admin native projection path drift`);
-  }
-  if (evidence.production_contract?.compatibility_fallback !== compatibilityPath) {
-    failures.push(`${evidencePath}: compatibility fallback path drift`);
+
+  const cases = new Set((evidence.cases ?? []).map((entry) => entry.name));
+  for (const requiredCase of [
+    "blog_canonical_route",
+    "blog_fail_closed",
+    "product_and_content_routes",
+    "content_kind_injection",
+    "graphql_owner_projection",
+    "storefront_native_owner_projection",
+    "admin_native_owner_projection",
+    "admin_shell_owner_projection",
+    "no_transport_fallback",
+  ]) {
+    if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
   }
 }
 
 for (const marker of [
   "search-canonical-url-contract.json",
   "canonical_search_result_url",
-  "compatibility fallback",
-  "admin native",
+  "single owner policy",
+  "no transport fallback",
 ]) {
   requireMarker(plan, marker, planPath);
+}
+for (const marker of ["compatibility fallback", "rolling compatibility", "admin native cutover"]) {
+  rejectMarker(plan, marker, planPath);
 }
 
 if (failures.length > 0) {

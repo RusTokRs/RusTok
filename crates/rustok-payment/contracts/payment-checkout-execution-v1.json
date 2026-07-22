@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "contract_version": "payment.checkout_execution.v1",
+  "owner": "payment",
+  "consumer": "commerce",
+  "status": "source_ready_unvalidated",
+  "port": "CheckoutPaymentExecutionPort",
+  "operations": [
+    "prepare_checkout_collection",
+    "authorize_checkout_collection",
+    "capture_checkout_collection",
+    "read_checkout_collection"
+  ],
+  "context": "rustok_api::ports::PortContext",
+  "deadline_required": true,
+  "write_idempotency_required": true,
+  "causation_identity": "checkout_operation_id",
+  "identity": [
+    "checkout_operation_id",
+    "cart_id",
+    "order_id",
+    "customer_id",
+    "currency_code",
+    "amount",
+    "order_plan_hash"
+  ],
+  "provider_replay": {
+    "authorize_key": "payment_collection:{collection_id}:authorize",
+    "capture_key": "payment_collection:{collection_id}:capture",
+    "legacy_request_payload_compatible": true,
+    "provider_success_checkpoint_before_local_state": true,
+    "local_state_before_committed_checkpoint": true,
+    "unknown_outcome_auto_retry": false
+  },
+  "owner_rules": [
+    "payment collection lifecycle remains inside payment owner",
+    "provider registry and operation journal remain inside payment owner",
+    "existing collection identity is validated before reuse",
+    "provider result is durably checkpointed before local collection mutation",
+    "local mutation failure after provider success requires reconciliation",
+    "commerce receives normalized PaymentCollectionResponse only",
+    "raw storage and provider errors never cross the port"
+  ],
+  "source": "crates/rustok-payment/src/checkout_execution.rs",
+  "verification": {
+    "guard": "scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs",
+    "runtime_evidence": "not_executed"
+  }
+}

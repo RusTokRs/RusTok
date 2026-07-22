@@ -14,10 +14,13 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
+use crate::dto::{
+    ForumQuoteReferenceInput, ForumQuoteTargetKindInput, SetForumQuotesInput,
+};
 use crate::entities::forum_relation_revision;
 use crate::mentions::{ForumContentTarget, ForumQuoteReference};
 
-use super::MentionRelationService;
+use super::{ForumQuoteCommandService, MentionRelationService};
 
 struct FakeProfilesReader {
     records: HashMap<(Uuid, String), ProfileRecord>,
@@ -103,7 +106,8 @@ async fn setup_db() -> DatabaseConnection {
             reply_count INTEGER NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            last_reply_at TEXT
+            last_reply_at TEXT,
+            deleted_at TEXT
         )"#,
         r#"CREATE TABLE forum_topic_translations (
             id TEXT PRIMARY KEY,
@@ -126,7 +130,8 @@ async fn setup_db() -> DatabaseConnection {
             status TEXT NOT NULL,
             position INTEGER NOT NULL,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
         )"#,
         r#"CREATE TABLE forum_reply_bodies (
             id TEXT PRIMARY KEY,
@@ -138,6 +143,18 @@ async fn setup_db() -> DatabaseConnection {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )"#,
+        r#"CREATE TABLE forum_domain_events (
+            sequence_no INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id TEXT NOT NULL UNIQUE,
+            tenant_id TEXT NOT NULL,
+            aggregate_type TEXT NOT NULL,
+            aggregate_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            schema_version INTEGER NOT NULL DEFAULT 1,
+            actor_id TEXT,
+            payload TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )"#,
     ] {
         db.execute_unprepared(statement)
             .await
@@ -146,7 +163,29 @@ async fn setup_db() -> DatabaseConnection {
     db
 }
 
-async fn insert_topic_source(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid, body: &str) {
+async fn apply_relation_migrations(db: &DatabaseConnection) {
+    let manager = SchemaManager::new(db);
+    let mut migrations = crate::migrations::migrations();
+    let relation_migrations = migrations.split_off(
+        migrations
+            .len()
+            .checked_sub(3)
+            .expect("three mention relation migrations should be registered"),
+    );
+    for migration in relation_migrations {
+        migration
+            .up(&manager)
+            .await
+            .expect("mention relation migration should apply");
+    }
+}
+
+async fn insert_topic_source(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    topic_id: Uuid,
+    body: &str,
+) {
     let category_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         "INSERT INTO forum_topics (
@@ -236,21 +275,7 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
     insert_topic_source(&db, tenant_id, topic_id, "Hello @alice").await;
     insert_reply_source(&db, tenant_id, topic_id, reply_id, "Quoted reply").await;
     insert_topic_source(&db, other_tenant_id, other_topic_id, "Foreign quote").await;
-
-    let manager = SchemaManager::new(&db);
-    let mut migrations = crate::migrations::migrations();
-    let relation_migrations = migrations.split_off(
-        migrations
-            .len()
-            .checked_sub(2)
-            .expect("two mention relation migrations should be registered"),
-    );
-    for migration in relation_migrations {
-        migration
-            .up(&manager)
-            .await
-            .expect("mention relation migration should apply");
-    }
+    apply_relation_migrations(&db).await;
 
     let before_seed = relation_revision_count(&db, tenant_id).await;
     let seeded_topic_id = Uuid::new_v4();
@@ -418,5 +443,117 @@ async fn relation_revision_replay_diff_quotes_and_guards_are_atomic() {
         immutable_error
             .to_string()
             .contains("forum relation projections are immutable")
+    );
+}
+
+#[tokio::test]
+async fn quote_owner_replace_replay_clear_and_cross_tenant_rejection_are_atomic() {
+    let db = setup_db().await;
+    let tenant_id = Uuid::new_v4();
+    let other_tenant_id = Uuid::new_v4();
+    let topic_id = Uuid::new_v4();
+    let reply_id = Uuid::new_v4();
+    let other_topic_id = Uuid::new_v4();
+    insert_topic_source(&db, tenant_id, topic_id, "Quote source").await;
+    insert_reply_source(&db, tenant_id, topic_id, reply_id, "Quote consumer").await;
+    insert_topic_source(&db, other_tenant_id, other_topic_id, "Foreign source").await;
+    apply_relation_migrations(&db).await;
+
+    let relation_service = MentionRelationService::with_profiles(Arc::new(FakeProfilesReader {
+        records: HashMap::new(),
+    }));
+    let security = SecurityContext::system();
+    let prepared = relation_service
+        .prepare(
+            tenant_id,
+            ForumContentTarget::topic(topic_id),
+            "en",
+            "Quote source",
+            "markdown",
+            &security,
+            [],
+        )
+        .await
+        .expect("quoted source revision should prepare");
+    let txn = db.begin().await.expect("source transaction should begin");
+    let source_revision = relation_service
+        .persist_in_tx(&txn, prepared)
+        .await
+        .expect("quoted source revision should persist");
+    txn.commit().await.expect("source transaction should commit");
+
+    let quote_input = ForumQuoteReferenceInput {
+        target_kind: ForumQuoteTargetKindInput::Topic,
+        target_id: topic_id,
+        revision_id: source_revision.source().revision_id(),
+    };
+    let command = ForumQuoteCommandService::new(db.clone());
+    let replaced = command
+        .set_reply_quotes(
+            tenant_id,
+            reply_id,
+            security.clone(),
+            SetForumQuotesInput {
+                locale: "en".to_string(),
+                quotes: vec![quote_input.clone()],
+            },
+        )
+        .await
+        .expect("quote replacement should commit");
+    assert_eq!(replaced.quotes.len(), 1);
+    assert_eq!(replaced.quotes[0].target_kind, "topic");
+    assert_eq!(replaced.quotes[0].target_id, topic_id);
+    assert_eq!(
+        replaced.quotes[0].revision_id,
+        source_revision.source().revision_id()
+    );
+
+    let replay = command
+        .set_reply_quotes(
+            tenant_id,
+            reply_id,
+            security.clone(),
+            SetForumQuotesInput {
+                locale: "en".to_string(),
+                quotes: vec![quote_input.clone()],
+            },
+        )
+        .await
+        .expect("identical replacement should replay");
+    assert_eq!(replay.revision_id, replaced.revision_id);
+
+    let cleared = command
+        .set_reply_quotes(
+            tenant_id,
+            reply_id,
+            security.clone(),
+            SetForumQuotesInput {
+                locale: "en".to_string(),
+                quotes: Vec::new(),
+            },
+        )
+        .await
+        .expect("explicit empty list should clear quotes");
+    assert!(cleared.quotes.is_empty());
+    assert!(cleared.revision_id > replaced.revision_id);
+
+    let before_foreign = relation_revision_count(&db, other_tenant_id).await;
+    let error = command
+        .set_topic_quotes(
+            other_tenant_id,
+            other_topic_id,
+            security,
+            SetForumQuotesInput {
+                locale: "en".to_string(),
+                quotes: vec![quote_input],
+            },
+        )
+        .await
+        .expect_err("cross-tenant quoted revision must fail closed");
+    assert_eq!(error.stable_code(), "FORUM_QUOTE_TARGET_UNAVAILABLE");
+    assert_eq!(
+        relation_revision_count(&db, other_tenant_id).await,
+        before_foreign,
+        "failed quote replacement must not append a relation revision"
     );
 }

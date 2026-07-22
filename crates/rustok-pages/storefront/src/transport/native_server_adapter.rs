@@ -4,7 +4,9 @@ use super::ApiError;
 use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
-use crate::model::{PageBody, PageDetail, PageList, PageListItem, PageTranslation};
+use crate::model::{
+    PageBody, PageDetail, PageList, PageListItem, PageTranslation,
+};
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
@@ -37,6 +39,7 @@ async fn storefront_pages_native(
         use rustok_outbox::TransactionalEventBus;
         use rustok_pages::{
             ListPagesFilter as RuntimeListPagesFilter, PageBuilderArtifactService, PageService,
+            PagesCacheReadRuntime, storefront_pages_cache_key,
         };
         use rustok_tenant::TenantService;
 
@@ -104,6 +107,52 @@ async fn storefront_pages_native(
         let public_channel_slug = request_context
             .as_ref()
             .and_then(|ctx| normalize_channel_slug(ctx.channel_slug.as_deref()));
+
+        let cache_runtime = runtime_ctx.shared_get::<PagesCacheReadRuntime>();
+        let cache_variant = storefront_cache_variant(
+            page_slug.as_str(),
+            requested_locale.as_str(),
+            fallback_locale.as_str(),
+            public_channel_slug.as_deref(),
+        );
+        let cache_key = if let Some(cache_runtime) = cache_runtime.as_ref() {
+            match cache_runtime.generation_snapshot(tenant_id).await {
+                Ok(generations) => match storefront_pages_cache_key(
+                    tenant_id,
+                    generations,
+                    cache_variant.as_str(),
+                ) {
+                    Ok(key) => Some(key),
+                    Err(error) => {
+                        tracing::warn!(%error, %tenant_id, "Pages storefront cache key rejected");
+                        None
+                    }
+                },
+                Err(error) => {
+                    tracing::warn!(%error, %tenant_id, "Pages storefront generation read failed; bypassing cache");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if let (Some(cache_runtime), Some(cache_key)) =
+            (cache_runtime.as_ref(), cache_key.as_ref())
+        {
+            match cache_runtime
+                .get_json::<StorefrontPagesData>(cache_key)
+                .await
+            {
+                Ok(Some(cached)) => {
+                    tracing::debug!(%tenant_id, "Pages storefront cache hit");
+                    return Ok(cached);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(%error, %tenant_id, "Pages storefront cache read failed; loading source data");
+                }
+            }
+        }
 
         let service = PageService::new(runtime_ctx.db_clone(), event_bus);
 
@@ -179,13 +228,21 @@ async fn storefront_pages_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        Ok(StorefrontPagesData {
+        let data = StorefrontPagesData {
             selected_page,
             pages: PageList {
                 items: items.into_iter().map(map_page_list_item).collect(),
                 total,
             },
-        })
+        };
+        if let (Some(cache_runtime), Some(cache_key)) =
+            (cache_runtime.as_ref(), cache_key)
+        {
+            if let Err(error) = cache_runtime.put_json(cache_key, &data).await {
+                tracing::warn!(%error, %tenant_id, "Pages storefront cache fill failed");
+            }
+        }
+        Ok(data)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -195,6 +252,26 @@ async fn storefront_pages_native(
         ))
     }
 }
+
+#[cfg(feature = "ssr")]
+fn storefront_cache_variant(
+    page_slug: &str,
+    requested_locale: &str,
+    fallback_locale: &str,
+    channel_slug: Option<&str>,
+) -> String {
+    serde_json::to_string(&(
+        page_slug.trim(),
+        requested_locale.trim(),
+        fallback_locale.trim(),
+        channel_slug.unwrap_or_default(),
+    ))
+    .expect("serializing a tuple of strings cannot fail")
+}
+
+#[cfg(feature = "ssr")]
+
+#[cfg(feature = "ssr")]
 
 #[cfg(feature = "ssr")]
 fn published_artifact_page_body(
@@ -284,13 +361,22 @@ fn map_page_list_item(page: rustok_pages::PageListItem) -> PageListItem {
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{artifact_url, published_artifact_page_body};
+    use super::{artifact_url, published_artifact_page_body, storefront_cache_variant};
 
     const PAGE_ID: &str = "00000000-0000-0000-0000-000000000000";
 
     #[test]
     fn missing_published_artifact_fails_closed() {
         assert!(published_artifact_page_body(PAGE_ID, None, Some("web")).is_none());
+    }
+
+    #[test]
+    fn cache_variant_binds_route_locale_fallback_and_channel() {
+        let base = storefront_cache_variant("about", "en", "en", Some("web"));
+        assert_ne!(base, storefront_cache_variant("home", "en", "en", Some("web")));
+        assert_ne!(base, storefront_cache_variant("about", "fr", "en", Some("web")));
+        assert_ne!(base, storefront_cache_variant("about", "en", "ru", Some("web")));
+        assert_ne!(base, storefront_cache_variant("about", "en", "en", Some("mobile")));
     }
 
     #[test]

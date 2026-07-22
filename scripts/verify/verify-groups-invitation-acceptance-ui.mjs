@@ -220,9 +220,9 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
 }
 
 requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
-  "storefront invitation acceptance",
-  "verify-groups-invitation-acceptance-ui.mjs",
-  "invitation acceptance transport parity",
+  "invitation acceptance/delivery source",
+  "runtime parity and Notifications consumer evidence",
+  "targeted invitation delivery remains `in_progress`",
 ]);
 
 if (failures.length > 0) {

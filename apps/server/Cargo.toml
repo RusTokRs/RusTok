@@ -33,6 +33,7 @@ default = [
     "mod-notifications",
     "mod-comments",
     "mod-pages",
+    "mod-navigation",
     "mod-page_builder",
     "mod-taxonomy",
     "mod-alloy",
@@ -75,6 +76,7 @@ mod-forum     = ["dep:rustok-forum", "mod-content", "mod-taxonomy", "mod-page_bu
 mod-notifications = ["dep:rustok-notifications", "rustok-distribution/mod-notifications"]
 mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
 mod-pages     = ["dep:rustok-pages", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
+mod-navigation = ["dep:rustok-navigation", "rustok-distribution/mod-navigation"]
 mod-page_builder = ["dep:rustok-page-builder", "rustok-distribution/mod-page_builder"]
 mod-taxonomy  = ["dep:rustok-taxonomy", "mod-content", "rustok-distribution/mod-taxonomy"]
 mod-alloy     = ["dep:alloy", "rustok-distribution/mod-alloy"]
@@ -128,6 +130,7 @@ rustok-content-orchestration = { workspace = true }
 rustok-forum     = { workspace = true, optional = true }
 rustok-notifications = { workspace = true, optional = true }
 rustok-pages     = { workspace = true, optional = true }
+rustok-navigation = { workspace = true, optional = true }
 rustok-page-builder = { workspace = true, optional = true }
 rustok-taxonomy  = { workspace = true, optional = true }
 rustok-storage   = { workspace = true, features = ["s3"] }

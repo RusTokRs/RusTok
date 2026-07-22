@@ -1,5 +1,7 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/graphql_application_lifecycle_adapter.rs"]
+mod graphql_application_lifecycle_adapter;
 #[path = "transport/graphql_applications_adapter.rs"]
 mod graphql_applications_adapter;
 #[path = "transport/graphql_invitations_adapter.rs"]
@@ -8,6 +10,8 @@ mod graphql_invitations_adapter;
 mod graphql_policy_history_adapter;
 #[path = "transport/graphql_policy_locale_adapter.rs"]
 mod graphql_policy_locale_adapter;
+#[path = "transport/native_application_lifecycle_adapter.rs"]
+mod native_application_lifecycle_adapter;
 #[path = "transport/native_applications_adapter.rs"]
 mod native_applications_adapter;
 #[path = "transport/native_invitations_adapter.rs"]
@@ -24,11 +28,13 @@ mod native_server_adapter;
 use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 
 use crate::application_model::{
-    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
+    GroupsAdminApplicationPolicyLocaleCatalog, GroupsAdminApplicationPolicyLocaleCatalogQuery,
+    GroupsAdminApplicationPolicyManagementView, GroupsAdminApplicationPolicyQuery,
     GroupsAdminApplicationPolicyRevisionConnection, GroupsAdminApplicationPolicyRevisionQuery,
     GroupsAdminMembershipApplicationConnection, GroupsAdminMembershipApplicationQuery,
     GroupsAdminReviewApplicationResult, GroupsAdminUpsertApplicationPolicyResult,
-    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
+    ReopenGroupMembershipApplicationCommand, ReviewGroupMembershipApplicationCommand,
+    UpsertGroupApplicationPolicyCommand,
 };
 use crate::core::GroupsAdminTransportProfile;
 use crate::model::{
@@ -216,18 +222,50 @@ pub async fn revoke_group_admin_invitation(
     .await
 }
 
-pub async fn load_group_admin_application_policy(
+pub async fn load_group_admin_application_policy_locale_catalog(
     context: GroupsAdminTransportContext,
-    query: GroupsAdminApplicationPolicyQuery,
-) -> UiTransportResult<GroupsAdminApplicationPolicy> {
+    query: GroupsAdminApplicationPolicyLocaleCatalogQuery,
+) -> UiTransportResult<GroupsAdminApplicationPolicyLocaleCatalog> {
     let token = context.access_token.clone();
     let tenant = context.tenant_slug.clone();
     let native_query = query.clone();
     execute_selected_transport(
-        "groups.admin.applications.policy.read",
+        "groups.admin.applications.policy.locales",
         context.path(),
-        move || native_policy_locale_adapter::load_group_application_policy(native_query),
-        move || graphql_policy_locale_adapter::load_group_application_policy(token, tenant, query),
+        move || {
+            native_policy_locale_adapter::load_group_application_policy_locale_catalog(
+                native_query,
+            )
+        },
+        move || {
+            graphql_policy_locale_adapter::load_group_application_policy_locale_catalog(
+                token, tenant, query,
+            )
+        },
+    )
+    .await
+}
+
+pub async fn load_group_admin_application_policy_for_management(
+    context: GroupsAdminTransportContext,
+    query: GroupsAdminApplicationPolicyQuery,
+) -> UiTransportResult<GroupsAdminApplicationPolicyManagementView> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.admin.applications.policy.management_read",
+        context.path(),
+        move || {
+            native_policy_locale_adapter::load_group_application_policy_for_management(
+                native_query,
+            )
+        },
+        move || {
+            graphql_policy_locale_adapter::load_group_application_policy_for_management(
+                token, tenant, query,
+            )
+        },
     )
     .await
 }
@@ -240,9 +278,9 @@ pub async fn upsert_group_admin_application_policy(
     let tenant = context.tenant_slug.clone();
     let native_command = command.clone();
     execute_selected_transport(
-        "groups.admin.applications.policy.upsert",
+        "groups.admin.applications.policy.upsert_if_current",
         context.path(),
-        move || native_applications_adapter::upsert_group_application_policy(native_command),
+        move || native_policy_locale_adapter::upsert_group_application_policy(native_command),
         move || {
             graphql_policy_locale_adapter::upsert_group_application_policy(token, tenant, command)
         },
@@ -303,6 +341,30 @@ pub async fn review_group_admin_membership_application(
         move || native_applications_adapter::review_group_membership_application(native_command),
         move || {
             graphql_applications_adapter::review_group_membership_application(
+                token, tenant, command,
+            )
+        },
+    )
+    .await
+}
+
+pub async fn reopen_group_admin_membership_application(
+    context: GroupsAdminTransportContext,
+    command: ReopenGroupMembershipApplicationCommand,
+) -> UiTransportResult<GroupsAdminReviewApplicationResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.admin.applications.reopen",
+        context.path(),
+        move || {
+            native_application_lifecycle_adapter::reopen_group_membership_application(
+                native_command,
+            )
+        },
+        move || {
+            graphql_application_lifecycle_adapter::reopen_group_membership_application(
                 token, tenant, command,
             )
         },

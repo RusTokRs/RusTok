@@ -13,8 +13,25 @@ pub fn Header(
     nav_contact: &'static str,
     nav_language: &'static str,
     cta_primary: &'static str,
+    navigation_views: Vec<AnyView>,
 ) -> impl IntoView {
     let links = build_header_links(locale.as_str());
+    let navigation = if navigation_views.is_empty() {
+        view! {
+            <nav class="hidden lg:flex items-center gap-6" aria-label="Primary navigation">
+                <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#home">{nav_home}</a>
+                <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#catalog">{nav_catalog}</a>
+                <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#about">{nav_about}</a>
+                <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#contact">{nav_contact}</a>
+            </nav>
+        }
+        .into_any()
+    } else {
+        view! {
+            <div class="contents">{navigation_views}</div>
+        }
+        .into_any()
+    };
 
     view! {
         <header class="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
@@ -24,12 +41,7 @@ pub fn Header(
                         "RusToK"
                     </a>
                 </div>
-                <nav class="hidden lg:flex items-center gap-6">
-                    <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#home">{nav_home}</a>
-                    <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#catalog">{nav_catalog}</a>
-                    <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#about">{nav_about}</a>
-                    <a class="text-sm text-muted-foreground hover:text-foreground transition-colors" href="#contact">{nav_contact}</a>
-                </nav>
+                {navigation}
                 <div class="flex items-center gap-3 ml-6">
                     <div class="relative">
                         <details class="group">

@@ -9,13 +9,14 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuItemInput,
-    MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
-    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY, PageBodyInput,
+    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT, PAGE_ROLLBACK_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_REQUIRES_PUBLISHED, PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBodyInput,
     PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
-    PublishPageInput, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
+    PublishPageInput, ReviewedPagePublishRuntimeInput, RollbackPageInput, SavePageDocumentInput,
 };
 
 use super::types::*;
@@ -69,40 +70,7 @@ impl PagesMutation {
         Ok(page.into())
     }
 
-    async fn create_menu(
-        &self,
-        ctx: &Context<'_>,
-        input: CreateGqlMenuInput,
-        locale: Option<String>,
-        tenant_id: Option<Uuid>,
-    ) -> Result<GqlMenu> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        let db = ctx.data::<DatabaseConnection>()?;
-        let event_bus = ctx.data::<TransactionalEventBus>()?;
-        let auth = require_pages_permission(ctx, Permission::PAGES_CREATE)?;
-        let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
-        let effective_locale = resolve_graphql_locale(ctx, locale.as_deref());
 
-        MenuService::new(db.clone(), event_bus.clone())
-            .create(
-                tenant_id,
-                page_security(&auth),
-                &effective_locale,
-                CreateMenuInput {
-                    translations: input
-                        .translations
-                        .into_iter()
-                        .map(menu_translation_input)
-                        .collect(),
-                    location: menu_location_input(input.location),
-                    items: input.items.into_iter().map(menu_item_input).collect(),
-                },
-            )
-            .await
-            .map(Into::into)
-            .map_err(map_pages_error)
-    }
 
     async fn patch_page_metadata(
         &self,
@@ -193,6 +161,36 @@ impl PagesMutation {
             .map_err(map_pages_error)
     }
 
+    async fn rollback_page(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: RollbackGqlPageInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlRollbackPageResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .rollback_to_previous(
+                tenant_id,
+                page_security(&auth),
+                id,
+                RollbackPageInput {
+                    expected_version: input.expected_version,
+                    idempotency_key: input.idempotency_key,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
     async fn unpublish_page(
         &self,
         ctx: &Context<'_>,
@@ -276,46 +274,6 @@ fn publish_page_input(input: PublishGqlPageInput) -> PublishPageInput {
     }
 }
 
-fn menu_translation_input(input: GqlMenuTranslationInput) -> MenuTranslationInput {
-    MenuTranslationInput {
-        locale: input.locale,
-        name: input.name,
-    }
-}
-
-fn menu_item_translation_input(input: GqlMenuItemTranslationInput) -> MenuItemTranslationInput {
-    MenuItemTranslationInput {
-        locale: input.locale,
-        title: input.title,
-    }
-}
-
-fn menu_item_input(input: GqlMenuItemInput) -> MenuItemInput {
-    MenuItemInput {
-        translations: input
-            .translations
-            .into_iter()
-            .map(menu_item_translation_input)
-            .collect(),
-        url: input.url,
-        page_id: input.page_id,
-        icon: input.icon,
-        position: input.position,
-        children: input
-            .children
-            .map(|children| children.into_iter().map(menu_item_input).collect()),
-    }
-}
-
-fn menu_location_input(input: GqlMenuLocation) -> MenuLocation {
-    match input {
-        GqlMenuLocation::Header => MenuLocation::Header,
-        GqlMenuLocation::Footer => MenuLocation::Footer,
-        GqlMenuLocation::Sidebar => MenuLocation::Sidebar,
-        GqlMenuLocation::Mobile => MenuLocation::Mobile,
-    }
-}
-
 fn create_publish_bypass_error() -> async_graphql::Error {
     async_graphql::Error::new(
         "Page creation cannot publish a Page Builder document; use publishPage with a reviewed runtime",
@@ -329,7 +287,6 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
     let code = match &error {
         PagesError::VersionConflict { .. } => PAGE_METADATA_VERSION_CONFLICT,
         PagesError::PageNotFound(_) => "PAGE_NOT_FOUND",
-        PagesError::MenuNotFound(_) => "MENU_NOT_FOUND",
         PagesError::DuplicateSlug { .. } => "DUPLICATE_SLUG",
         PagesError::Forbidden(_) => "PAGES_PERMISSION_DENIED",
         PagesError::FeatureDisabled { .. } => "FEATURE_DISABLED",
@@ -341,6 +298,10 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
         }
         PagesError::PublishIdempotencyConflict(_) => PAGE_PUBLISH_IDEMPOTENCY_CONFLICT,
         PagesError::PublishOperationIntegrity(_) => PAGE_PUBLISH_OPERATION_INTEGRITY,
+        PagesError::RollbackIdempotencyConflict(_) => PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
+        PagesError::RollbackOperationIntegrity(_) => PAGE_ROLLBACK_OPERATION_INTEGRITY,
+        PagesError::RollbackTargetUnavailable(_) => PAGE_ROLLBACK_TARGET_UNAVAILABLE,
+        PagesError::RollbackRequiresPublished => PAGE_ROLLBACK_REQUIRES_PUBLISHED,
         PagesError::Rich(rich) => rich
             .error_code
             .as_deref()

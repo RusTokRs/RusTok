@@ -1,0 +1,26 @@
+[package]
+name = "rustok-navigation-storefront"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Leptos storefront navigation slot package"
+
+[features]
+default = []
+hydrate = ["leptos/hydrate"]
+ssr = ["leptos/ssr", "dep:leptos_axum", "dep:rustok-channel", "dep:rustok-core", "dep:rustok-navigation", "dep:rustok-tenant", "rustok-api/server"]
+
+[dependencies]
+leptos.workspace = true
+leptos_axum = { workspace = true, optional = true }
+rustok-api = { workspace = true, default-features = false }
+rustok-channel = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+rustok-graphql.workspace = true
+rustok-navigation = { workspace = true, optional = true }
+rustok-tenant = { workspace = true, optional = true }
+rustok-ui-core.workspace = true
+rustok-ui-transport.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+web-sys = { version = "0.3", features = ["Location", "Window"] }

@@ -63,11 +63,12 @@ fn enrich_runtime_extensions_after_event_start(
     {
         let cache = crate::services::cache_runtime::ensure_cache_service(ctx);
         let provider = Arc::new(
-            crate::services::pages_cache_invalidation::ServerPagesCacheInvalidationPort::new(
-                &cache,
-            ),
+            crate::services::pages_cache_invalidation::ServerPagesCachePort::new(&cache),
         );
-        enriched.insert(rustok_pages::PagesCacheInvalidationRuntime::new(provider));
+        enriched.insert(rustok_pages::PagesCacheInvalidationRuntime::new(
+            provider.clone(),
+        ));
+        enriched.insert(rustok_pages::PagesCacheReadRuntime::new(provider));
     }
 
     #[cfg(feature = "mod-commerce")]

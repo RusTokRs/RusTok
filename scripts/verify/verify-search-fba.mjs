@@ -4,17 +4,22 @@ function read(path) { return fs.readFileSync(path, 'utf8'); }
 function json(path) { return JSON.parse(read(path)); }
 function fail(message) { console.error(`[verify-search-fba] ${message}`); process.exit(1); }
 function hasAll(text, snippets, label) { for (const s of snippets) if (!text.includes(s)) fail(`${label} missing ${s}`); }
+function hasNone(text, snippets, label) { for (const s of snippets) if (text.includes(s)) fail(`${label} contains forbidden ${s}`); }
 
 const registryPath = 'crates/rustok-search/contracts/search-fba-registry.json';
 const evidencePath = 'crates/rustok-search/contracts/evidence/search-contract-test-static-matrix.json';
 const runtimeSmokePath = 'crates/rustok-search/contracts/evidence/search-runtime-fallback-smoke.json';
 const runtimeContractPath = 'crates/rustok-search/contracts/evidence/search-runtime-contract-smoke.json';
 const runtimeInvocationPath = 'crates/rustok-search/contracts/evidence/search-runtime-invocation-trace.json';
+const canonicalUrlEvidencePath = 'crates/rustok-search/contracts/evidence/search-canonical-url-contract.json';
+const canonicalUrlVerifierPath = 'scripts/verify/verify-search-canonical-url-contract.mjs';
+const removedNavigationPath = 'crates/rustok-search/storefront/src/transport/navigation.rs';
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(runtimeSmokePath);
 const runtimeContract = json(runtimeContractPath);
 const runtimeInvocation = json(runtimeInvocationPath);
+const canonicalUrlEvidence = json(canonicalUrlEvidencePath);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'search' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
@@ -38,7 +43,7 @@ hasAll(manifest, ['[fba.provider]', 'registry = "contracts/search-fba-registry.j
 const cargo = read('crates/rustok-search/Cargo.toml');
 hasAll(cargo, ['rustok-api.workspace = true'], 'Cargo.toml');
 const lib = read('crates/rustok-search/src/lib.rs');
-hasAll(lib, ['pub mod ports;', 'pub use ports::*;'], 'lib.rs');
+hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'canonical_search_result_url'], 'lib.rs');
 const source = read('crates/rustok-search/src/ports.rs');
 hasAll(source, ['pub trait SearchQueryPort', 'pub trait SearchSuggestionPort', 'impl SearchQueryPort for PgSearchEngine', 'impl SearchSuggestionPort for PgSearchEngine', 'PortCallPolicy', 'PortContext', 'PortError', 'search_error_to_port_error'], 'ports.rs');
 const queryImpl = source.slice(source.indexOf('impl SearchQueryPort for PgSearchEngine'));
@@ -53,7 +58,7 @@ if (!suggestionImpl.includes('SearchSuggestionService::suggestions(self.connecti
 const pgEngine = read('crates/rustok-search/src/pg_engine.rs');
 hasAll(pgEngine, ['pub(crate) fn connection(&self) -> &DatabaseConnection', '&self.db'], 'pg_engine.rs');
 const engine = read('crates/rustok-search/src/engine.rs');
-hasAll(engine, ['pub trait SearchEngine', 'Self::Postgres', 'Self::Meilisearch', 'Self::Typesense', 'Self::Algolia'], 'engine connector boundary');
+hasAll(engine, ['pub trait SearchEngine', 'Self::Postgres', 'Self::Meilisearch', 'Self::Typesense', 'Self::Algolia', 'pub fn canonical_search_result_url', 'BLOG_ENTITY_TYPE', 'valid_blog_slug'], 'engine connector and navigation boundary');
 
 if (evidence.generated_from !== registryPath || evidence.status !== registry.contract_tests.status) fail('evidence header drift');
 const registryCases = registry.contract_tests.cases.map((c) => c.operation).sort().join('|');
@@ -85,9 +90,37 @@ for (const mode of registry.contract_tests.fallback_smoke.degraded_modes ?? []) 
   if (!JSON.stringify(runtimeSmoke.cases).includes(mode)) fail(`runtime fallback smoke missing degraded mode ${mode}`);
 }
 
+if (canonicalUrlEvidence.module !== 'search' || canonicalUrlEvidence.surface !== 'canonical_result_url' || canonicalUrlEvidence.owner !== 'rustok-search') fail('canonical URL evidence identity drift');
+if (canonicalUrlEvidence.status !== 'source_verified_no_compile' || canonicalUrlEvidence.compile_policy !== 'not_run_by_request') fail('canonical URL evidence status drift');
+const canonicalContract = canonicalUrlEvidence.production_contract ?? {};
+for (const [key, expected] of Object.entries({
+  normalized_result: 'crates/rustok-search/src/engine.rs',
+  public_export: 'crates/rustok-search/src/lib.rs',
+  graphql_projection: 'crates/rustok-search/src/graphql/types.rs',
+  storefront_native_projection: 'crates/rustok-search/storefront/src/transport/native_server_adapter.rs',
+  storefront_transport_facade: 'crates/rustok-search/storefront/src/transport/mod.rs',
+  admin_native_root: 'crates/rustok-search/admin/src/transport/native_server_adapter.rs',
+  admin_native_mapping: 'crates/rustok-search/admin/src/transport/native_server_adapter/mapping.rs',
+  admin_shell_projection: 'apps/admin/src/widgets/app_shell/native_server_adapter.rs',
+})) {
+  if (canonicalContract[key] !== expected) fail(`canonical URL ${key} path drift`);
+}
+if ('compatibility_fallback' in canonicalContract) fail('canonical URL compatibility fallback must not exist');
+const canonicalVerifier = read(canonicalUrlVerifierPath);
+hasAll(canonicalVerifier, ['compatibility implementation must be deleted', 'canonical_search_result_url(&item)', 'no_transport_fallback'], 'canonical URL verifier');
+if (fs.existsSync(removedNavigationPath)) fail('storefront navigation compatibility file must not exist');
+const storefrontFacade = read(canonicalContract.storefront_transport_facade);
+hasNone(storefrontFacade, ['mod navigation', 'enrich_search_result_urls', 'blog_result_url'], 'storefront transport facade');
+const adminMapping = read(canonicalContract.admin_native_mapping);
+hasAll(adminMapping, ['rustok_search::canonical_search_result_url(&item)'], 'admin Search mapping');
+hasNone(adminMapping, ['fn derive_search_result_url', '"/modules/blog"'], 'admin Search mapping');
+const adminShell = read(canonicalContract.admin_shell_projection);
+hasAll(adminShell, ['rustok_search::canonical_search_result_url(&item)', '("blog_post", "blog" | "rustok-blog")'], 'admin global Search mapping');
+hasNone(adminShell, ['fn derive_admin_search_result_url', '"/modules/blog"'], 'admin global Search mapping');
+
 const plan = read('crates/rustok-search/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md'], 'local plan');
+hasAll(plan, ['- FBA status: `boundary_ready`', 'search-fba-registry.json', 'SearchQueryPort', 'search-contract-test-static-matrix.json', 'search-runtime-fallback-smoke.json', 'search-runtime-contract-smoke.json', 'search-runtime-invocation-trace.json', 'whole-module extraction pilot', 'SearchEngine', '2026-07-16-media-search-extraction-boundaries.md', 'search-canonical-url-contract.json', 'single owner policy', 'no transport fallback'], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `search` |', 'crates/rustok-search/contracts/search-fba-registry.json', '`phase_b_ready` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-search-fba] search FBA provider metadata, port semantics, static evidence and executable no-compile runtime smokes and invocation trace are consistent');
+console.log('[verify-search-fba] Search provider metadata, port semantics, current-only canonical URL ownership, static evidence, and executable no-compile runtime contracts are consistent');

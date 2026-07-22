@@ -51,6 +51,12 @@ pub enum ForumError {
     #[error("Forum quote target is unavailable")]
     QuoteTargetUnavailable,
 
+    #[error("Forum relation revision is unavailable")]
+    RelationRevisionUnavailable,
+
+    #[error("Forum relation revision changed concurrently")]
+    RelationRevisionConflict,
+
     #[error("Required capability `{capability}` is unavailable")]
     CapabilityUnavailable {
         capability: &'static str,
@@ -87,7 +93,14 @@ impl ForumError {
         Self::QuoteTargetUnavailable
     }
 
-    pub const fn capability_unavailable(capability: &'static str, code: &'static str) -> Self {
+    pub const fn relation_revision_unavailable() -> Self {
+        Self::RelationRevisionUnavailable
+    }
+
+    pub const fn capability_unavailable(
+        capability: &'static str,
+        code: &'static str,
+    ) -> Self {
         Self::CapabilityUnavailable { capability, code }
     }
 
@@ -111,6 +124,8 @@ impl ForumError {
             Self::CapabilityFailure { .. } => "FORUM_CAPABILITY_FAILURE",
             Self::MentionTargetUnavailable => "FORUM_MENTION_TARGET_UNAVAILABLE",
             Self::QuoteTargetUnavailable => "FORUM_QUOTE_TARGET_UNAVAILABLE",
+            Self::RelationRevisionUnavailable => "FORUM_RELATION_REVISION_UNAVAILABLE",
+            Self::RelationRevisionConflict => "FORUM_RELATION_REVISION_CONFLICT",
             Self::CategoryNotFound(_) => "FORUM_CATEGORY_NOT_FOUND",
             Self::TopicNotFound(_) => "FORUM_TOPIC_NOT_FOUND",
             Self::ReplyNotFound(_) => "FORUM_REPLY_NOT_FOUND",
@@ -131,7 +146,7 @@ impl ForumError {
     pub const fn is_retryable(&self) -> bool {
         match self {
             Self::CapabilityFailure { retryable, .. } => *retryable,
-            Self::Database(_) | Self::Internal(_) => true,
+            Self::Database(_) | Self::Internal(_) | Self::RelationRevisionConflict => true,
             _ => false,
         }
     }

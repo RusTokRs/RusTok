@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "contract_version": "payment.checkout_compensation.v1",
+  "owner": "payment",
+  "consumer": "commerce",
+  "status": "source_ready_unvalidated",
+  "port": "CheckoutPaymentCompensationPort",
+  "operation": "compensate_checkout_payment",
+  "context": "rustok_api::ports::PortContext",
+  "error": "rustok_api::ports::PortError",
+  "deadline_required": true,
+  "idempotency_required": true,
+  "causation_identity": "checkout_operation_id",
+  "request": {
+    "type": "CheckoutPaymentCompensationRequest",
+    "fields": [
+      "checkout_operation_id",
+      "collection_id",
+      "reason",
+      "metadata"
+    ]
+  },
+  "response": {
+    "type": "PaymentCollectionStatusSnapshot",
+    "nullable_when_no_collection": true,
+    "required_terminal_status": "cancelled"
+  },
+  "owner_rules": [
+    "read and mutate payment collection only inside payment owner",
+    "inspect provider operation journal only inside payment owner",
+    "reuse canonical payment_collection:{collection_id}:cancel provider identity",
+    "preserve the pre-port immutable provider cancel payload for upgraded replay",
+    "never re-execute executing or reconciliation-required provider outcomes",
+    "return manual reconciliation for captured collections",
+    "checkpoint provider success before local cancellation and commit after local cancellation",
+    "never expose raw provider or storage errors through PortError"
+  ],
+  "provider_replay": {
+    "canonical_idempotency_key": "payment_collection:{collection_id}:cancel",
+    "legacy_request_payload_compatible": true,
+    "unknown_outcome_auto_retry": false,
+    "reconciliation_required_auto_retry": false
+  },
+  "source": "crates/rustok-payment/src/checkout_compensation.rs",
+  "verification": {
+    "guard": "scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs",
+    "runtime_evidence": "not_executed"
+  }
+}

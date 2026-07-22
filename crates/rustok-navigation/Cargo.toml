@@ -1,0 +1,29 @@
+[package]
+name = "rustok-navigation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tenant and channel scoped navigation menu owner"
+
+[dependencies]
+anyhow.workspace = true
+async-graphql.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+rustok-api = { workspace = true, features = ["server"] }
+rustok-channel.workspace = true
+rustok-core.workspace = true
+rustok-tenant.workspace = true
+rustok-web.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tracing.workspace = true
+utoipa = { workspace = true, features = ["uuid", "chrono"] }
+uuid.workspace = true
+
+[dev-dependencies]
+rustok-test-utils.workspace = true
+tokio.workspace = true

@@ -1,4 +1,6 @@
 mod graphql_adapter;
+#[cfg(target_arch = "wasm32")]
+mod rollback_retry_adapter;
 mod scenario_baseline_cas_adapter;
 mod scenario_release_adapter;
 
@@ -78,6 +80,7 @@ pub async fn create_page(
     graphql_adapter::create_page(token, tenant_slug, draft).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn patch_page_metadata(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -136,6 +139,22 @@ pub async fn publish_page(
         .await
         .map(PagePublicationResult::Published)?;
     validate_publication_result(&expected_page_id, result)
+}
+
+pub async fn rollback_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PagePublicationResult, TransportError> {
+    let expected_page_id = id.clone();
+    #[cfg(target_arch = "wasm32")]
+    let receipt = rollback_retry_adapter::rollback_page(token, tenant_slug, id).await?;
+    #[cfg(not(target_arch = "wasm32"))]
+    let receipt = graphql_adapter::rollback_page(token, tenant_slug, id).await?;
+    validate_publication_result(
+        &expected_page_id,
+        PagePublicationResult::RolledBack(receipt),
+    )
 }
 
 pub async fn unpublish_page(

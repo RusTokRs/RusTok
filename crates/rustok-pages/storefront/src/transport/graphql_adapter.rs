@@ -4,7 +4,14 @@ use serde::{Deserialize, Serialize};
 use super::{ApiError, configured_tenant_slug};
 use crate::model::{PageDetail, PageList, StorefrontPagesData};
 
-const STOREFRONT_PAGES_QUERY: &str = "query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) { selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) { effectiveLocale translation { locale title slug metaTitle metaDescription } body { locale content format } } pages(filter: $filter) { total items { id title slug status template } } }";
+const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) {
+  selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) {
+    effectiveLocale
+    translation { locale title slug metaTitle metaDescription }
+    body { locale content format }
+  }
+  pages(filter: $filter) { total items { id title slug status template } }
+}"#;
 
 #[derive(Debug, Deserialize)]
 struct StorefrontPagesResponse {
@@ -50,6 +57,7 @@ pub async fn fetch_storefront_pages(
         pages: response.pages,
     })
 }
+
 
 fn graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {

@@ -72,11 +72,13 @@ impl CheckoutInventoryOrderAdoptionService {
     }
 
     /// Rebinds inventory owner rows from immutable cart-line identity to the
-    /// corresponding pending order line, then checkpoints `order_created`.
+    /// corresponding owner order line, then checkpoints `order_created`.
     ///
-    /// A retry accepts rows already bound to the same order line, but fails
-    /// closed when reservation identity, tenant, quantity, variant or source
-    /// provenance differs.
+    /// The order may already be confirmed because `CheckoutCompletionPort`
+    /// creates and places it as one owner command before commerce adopts its
+    /// reserved inventory rows. A retry accepts rows already bound to the same
+    /// order line, but fails closed when reservation identity, tenant, quantity,
+    /// variant or source provenance differs.
     pub async fn adopt_and_checkpoint(
         &self,
         tenant_id: Uuid,
@@ -113,9 +115,9 @@ impl CheckoutInventoryOrderAdoptionService {
                 operation.id, operation.stage
             )));
         }
-        if order.status != "pending" {
+        if !matches!(order.status.as_str(), "pending" | "confirmed") {
             return Err(CheckoutInventoryOrderAdoptionError::Conflict(format!(
-                "order {} must remain pending while checkout reservations are adopted, not `{}`",
+                "order {} must be pending or confirmed while checkout reservations are adopted, not `{}`",
                 order.id, order.status
             )));
         }

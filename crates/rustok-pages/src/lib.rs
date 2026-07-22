@@ -10,8 +10,8 @@
 
 //! Pages module for RusToK platform.
 //!
-//! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, atomic publish receipts, cache invalidation policy, and Page Builder release baselines.
+//! The module owns pages, localized bodies, deterministic Page Builder artifacts,
+//! atomic publish/rollback receipts, cache policy, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -54,25 +54,31 @@ mod seo_targets;
 pub mod services;
 
 pub use cache_invalidation::{
-    MAX_PAGE_CACHE_KEY_VARIANT_BYTES, PAGES_CACHE_ENTITY_KIND, PAGES_CACHE_EVENT_HANDLER,
-    PAGES_CACHE_NAMESPACE_FORMAT, PageCacheInvalidationCause, PageCacheInvalidationError,
-    PageCacheInvalidationEventHandler, PageCacheInvalidationPort, PageCacheInvalidationReceipt,
-    PageCacheInvalidationRequest, PageCacheScope, PagesCacheInvalidationRuntime, page_cache_key,
-    page_cache_namespace,
+    MAX_PAGE_CACHE_KEY_VARIANT_BYTES, MAX_PAGE_CACHE_VALUE_BYTES, PAGE_CACHE_MUTABLE_SCOPES,
+    PAGE_CACHE_SCOPES, PAGES_CACHE_ENTITY_KIND, PAGES_CACHE_EVENT_HANDLER,
+    PAGES_CACHE_NAMESPACE_FORMAT, PAGES_STOREFRONT_CACHE_MAX_CAPACITY,
+    PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError, PageCacheGenerationSnapshot,
+    PageCacheInvalidationCause, PageCacheInvalidationEventHandler, PageCacheInvalidationPort,
+    PageCacheInvalidationReceipt, PageCacheInvalidationRequest, PageCacheScope,
+    PagesCacheInvalidationRuntime, PagesCacheReadPort, PagesCacheReadRuntime, page_cache_key,
+    page_cache_namespace, storefront_pages_cache_key,
 };
 pub use dto::*;
 pub use entities::{
-    Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
-    PagePublishedLandingArtifact, PageStaticLandingArtifact,
+    Page, PageBuilderScenarioBaseline, PagePublishOperation,
+    PagePublishOperationArtifact, PagePublishedLandingArtifact, PageRollbackOperation,
+    PageStaticLandingArtifact,
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuBindingService, MenuService, PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
-    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService,
+    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
+    PAGE_ROLLBACK_OPERATION_INTEGRITY, PAGE_ROLLBACK_REQUIRES_PUBLISHED,
+    PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBuilderArtifactService,
     PageBuilderScenarioBaselineService, PageService, PublishedLandingArtifact,
     SaveIfCurrentScenarioBaselineRequest,
 };
@@ -100,7 +106,7 @@ impl RusToKModule for PagesModule {
     }
 
     fn description(&self) -> &'static str {
-        "Pages, visual documents, published artifacts and menus"
+        "Pages, visual documents and published artifacts"
     }
 
     fn version(&self) -> &'static str {

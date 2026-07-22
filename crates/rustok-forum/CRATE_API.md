@@ -6,6 +6,15 @@
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
 - `pub struct CategoryService`, `TopicService`, `ReplyService`, `ModerationService`, `SubscriptionService`, `UserStatsService`, `VoteService`
+- `pub struct ForumRelationReadService`
+- `ForumRelationReadService::get(tenant_id, security, ForumRelationSnapshotQuery) -> ForumRelationSnapshotResponse`
+- `pub struct ForumQuoteCommandService`
+- `ForumQuoteCommandService::set_topic_quotes(tenant_id, topic_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
+- `ForumQuoteCommandService::set_reply_quotes(tenant_id, reply_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
+- `TopicService::create_command(tenant_id, security, CreateTopicCommandInput) -> TopicResponse`
+- `TopicService::update_command(tenant_id, topic_id, security, UpdateTopicCommandInput) -> TopicResponse`
+- `ReplyService::create_command(tenant_id, security, topic_id, CreateReplyCommandInput) -> ReplyResponse`
+- `ReplyService::update_command(tenant_id, reply_id, security, UpdateReplyCommandInput) -> ReplyResponse`
 - `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
 - `CategoryService::move_category(tenant_id, category_id, security, MoveCategoryInput) -> MoveCategoryResponse`
 - `CategoryService::reorder_siblings(tenant_id, security, ReorderCategorySiblingsInput) -> ReorderCategorySiblingsResponse`
@@ -21,6 +30,9 @@
 - `validate_forum_quote_references(source, references) -> ForumResult<Vec<ForumQuoteReference>>`
 - `diff_forum_mentions(previous, current) -> ForumResult<ForumMentionDiff>`
 - `ForumRevisionIdentity`, `ForumMentionRevisionProjection`, `ForumMentionEventCandidate`, `ForumQuoteReference`
+- `ForumQuoteTargetKindInput`, `ForumQuoteReferenceInput`, `SetForumQuotesInput`
+- `CreateTopicCommandInput`, `UpdateTopicCommandInput`, `CreateReplyCommandInput`, `UpdateReplyCommandInput`
+- `ForumRelationSnapshotQuery`, `ForumRelationSnapshotResponse`, `ForumRelationQuoteResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -73,7 +85,7 @@
 - `CategoryCoverMediaCandidate` is a transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
 - `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
 - `resolve_category_cover_for_write` calls the Media owner port and fails with stable code `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed; it never treats a missing capability as a clear-cover command.
-- `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled deployment profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
+- `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
 - Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
 - Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
 - Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
@@ -93,14 +105,44 @@
 - `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only child rows keyed by the complete source identity and relation revision.
 - Quote rows retain the quoted target and globally unique quoted relation revision; PostgreSQL and SQLite reject tenant, kind or target mismatches.
 - Existing topic translations and reply bodies receive one `legacy` relation revision during migration, without parsing historical content or reading Profiles-owned tables.
-- PostgreSQL and SQLite source INSERT seed triggers give topic translations and reply bodies created after B1 rollout exactly one empty `legacy` identity until B2 composes active projections; the triggers do not infer mentions or read Profiles.
+- PostgreSQL and SQLite source INSERT seed triggers give topic translations and reply bodies created after B1 rollout exactly one empty `legacy` identity until active projection persistence; the triggers do not infer mentions or read Profiles.
 - The crate-private `MentionRelationService` separates profile-dependent `prepare` from transaction-only `persist_in_tx`; it is an owner implementation seam, not public persistence API.
 - `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over canonical body, format, resolved targets and quote identities.
 - `persist_in_tx` locks the source stream, re-reads the persisted body in the same transaction, rejects prepared/body mismatch and writes the revision plus all child rows atomically.
+- Topic and reply create/edit owner commands prepare before opening the transaction and call `persist_in_tx` immediately after the canonical body write and before counters, semantic events and commit.
 - An identical latest fingerprint must also match the persisted target snapshot; only then does replay return the existing relation revision with no added targets.
 - `FORUM_QUOTE_TARGET_UNAVAILABLE` safely covers missing, foreign-tenant or mismatched quoted revision identity without exposing target existence.
-- FORUM-12B1 does not change active topic/reply commands. Facade integration follows in FORUM-12B2; semantic owner events and outbox publication follow in FORUM-12C.
-- Run `node scripts/verify/verify-forum-mention-persistence.mjs` after changing this boundary.
+- Run `node scripts/verify/verify-forum-mention-persistence.mjs` and `node scripts/verify/verify-forum-mention-integration.mjs` after changing this boundary.
+### Mention events and relation owner read
+- `ForumMentionEvent` is a sealed `rustok-events` family with v1 `forum.mention.user_added` and `forum.mention.audience_added` contracts.
+- Event payloads contain the source kind/ID/relation revision/locale plus resolved user ID or typed audience; they contain no contact data, profile handle snapshot or rendered body.
+- Only `MentionRelationSyncResult.added_user_ids` and `added_audiences` are published. Identical replay, removed targets and unchanged targets emit nothing.
+- Each event is written through `TransactionalEventBus` to the canonical outbox and to `forum_domain_events` with the same event UUID inside the source owner transaction.
+- PostgreSQL and SQLite journal constraints accept both event types and keep the journal append-only.
+- `ForumRelationReadService` returns latest or exact tenant/source/locale revision snapshots, bounded to 32 mention targets and 32 quotes.
+- Relation owner reads expose user IDs, audiences and revision-bound quotes, but not `handle_snapshot` or `projection_fingerprint`.
+- Invalid or unavailable relation identity returns `FORUM_RELATION_REVISION_UNAVAILABLE` without disclosing cross-tenant existence.
+- No REST or GraphQL relation endpoint is added in FORUM-12C.
+- Run `node scripts/verify/verify-forum-mention-events.mjs` after changing this boundary.
+### Quote owner commands
+- `SetForumQuotesInput` contains an exact source locale and a full replacement list of typed `ForumQuoteReferenceInput` values.
+- Exact duplicates are normalized deterministically and the submitted set is capped at 32 references.
+- An empty list explicitly clears quotes while retaining mentions extracted from the unchanged canonical body.
+- `ForumQuoteCommandService` requires the corresponding topic/reply update owner scope, prepares outside the transaction, persists the immutable relation revision and materializes the bounded response before commit.
+- Identical replacement replays the current relation revision; missing, cross-tenant or mismatched quote targets use `FORUM_QUOTE_TARGET_UNAVAILABLE`.
+- REST entry points: `PUT /api/forum/topics/{id}/quotes` and `PUT /api/forum/replies/{id}/quotes`.
+- GraphQL entry points: `setForumTopicQuotes` and `setForumReplyQuotes`.
+- Run `node scripts/verify/verify-forum-quote-commands.mjs` after changing this boundary.
+### Inline quote create and edit commands
+- Separate `Create*CommandInput` and `Update*CommandInput` DTOs add typed quote references without changing existing Rust create/update structs.
+- Create commands treat omitted quotes as an empty initial set.
+- Update commands preserve the latest exact-locale quote set when `quotes` is omitted, explicitly clear with `quotes: []`, and fully replace with a non-empty list.
+- Existing `TopicService::create/update` and `ReplyService::create/update` convert legacy DTOs to command DTOs, so legacy body edits preserve quotes.
+- Omitted-update preservation records the expected relation revision, locks the active source inside the transaction and returns retryable `FORUM_RELATION_REVISION_CONFLICT` if the stream changed concurrently.
+- REST uses the existing topic/reply create and update routes with command DTOs.
+- GraphQL adds `createForumTopicWithQuotes`, `updateForumTopicWithQuotes`, `createForumReplyWithQuotes` and `updateForumReplyWithQuotes` while retaining legacy mutations.
+- Soft-deleted sources reject inline relation updates; quote references remain bounded to 32 raw entries.
+- Run `node scripts/verify/verify-forum-quote-commands.mjs` after changing this boundary.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -122,17 +164,12 @@
 ## Locale fallback chain
 Translation lookup order: `requested → explicit fallback → "en" → first available`.
 The `effective_locale` field indicates which locale was actually returned.
+Quote owner commands and inline quote preservation intentionally use an exact existing source locale and do not use fallback.
 
 ## Slug contract
-- `CategoryResponse` / `CategoryListItem` return locale-aware slug at the
-  `forum_category_translation` level; the slug follows the same resolved translation as
-  `name` / `description`.
-- `TopicResponse` / `TopicListItem` return a stable topic slug. When
-  creating a new topic translation, the slug is copied from the seed-translation, unless
-  a separate topic-level slug workflow is explicitly introduced.
-- The current forum public contract remains ID-based: the forum API does not promise lookup
-  by slug. If such a read-path is added later, it must use the
-  same locale fallback contract as the rest of the forum read-path.
+- `CategoryResponse` / `CategoryListItem` return locale-aware slug at the `forum_category_translation` level; the slug follows the same resolved translation as `name` / `description`.
+- `TopicResponse` / `TopicListItem` return a stable topic slug. When creating a new topic translation, the slug is copied from the seed-translation, unless a separate topic-level slug workflow is explicitly introduced.
+- The current forum public contract remains ID-based: the forum API does not promise lookup by slug. If such a read-path is added later, it must use the same locale fallback contract as the rest of the forum read-path.
 
 ## Events
 Publishes forum domain events through the outbox pipeline:
@@ -141,22 +178,27 @@ Publishes forum domain events through the outbox pipeline:
 - `ForumTopicStatusChanged` — when topic status changes (close/archive)
 - `ForumTopicPinned` — when topic is pinned/unpinned
 - `ForumReplyStatusChanged` — when a reply is moderated (approve/reject/hide)
+- `forum.mention.user_added` — once for each newly added resolved user target
+- `forum.mention.audience_added` — once for each newly added typed audience target
 
-All new forum events are defined in `rustok-core::events::DomainEvent`.
-Mention event candidates remain pure owner projections; FORUM-12B1 publishes no mention event or outbox row.
+Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events use the sealed `ForumMentionEvent` typed family in `rustok-events`. Forum publishes to the transactional outbox and never invokes Notifications synchronously.
 
 ## Owner Service Boundary
 - Public topic and reply workflows use the root `TopicService` and `ReplyService` facade exports.
 - Raw `services::topic`, `services::reply`, `topic_owner`, `reply_owner` and `mention_relation` implementations are crate-private.
 - Public facades expose explicit create/read/update/list methods and never implement `Deref` to an implementation service.
 - Topic/reply deletion must use facade `delete` methods so tombstones, counters and semantic events remain atomic.
-- Active mention/quote persistence must be composed by the same owner write transaction in FORUM-12B2; transports must never invoke `MentionRelationService` directly.
+- Active mention/quote persistence and added-target event publication are composed by the same owner write transaction; transports must never invoke `MentionRelationService` or event publishing directly.
+- Quote replacement is exposed only through `ForumQuoteCommandService`; inline quote create/edit is exposed through topic/reply command facades.
+- The legacy facade methods convert into command DTOs and preserve existing quotes on body updates.
+- Relation snapshots are read only through `ForumRelationReadService` or materialized inside an active owner transaction.
 - Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
 - `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
+- `rustok-events` for the sealed Forum mention event family
 - `rustok-outbox`
 - `rustok-profiles` for tenant-scoped mention handle resolution through `ProfilesReader`
 
@@ -175,17 +217,25 @@ Mention event candidates remain pure owner projections; FORUM-12B1 publishes no 
 - Parses mentions from code blocks, escaped text or unsanitized `rt_json_v1`.
 - Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
 - Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
+- Calls Notifications from the Forum transaction instead of publishing a typed owner event.
+- Uses separate identities for the outbox and Forum journal copies of one mention event.
+- Exposes `handle_snapshot`, projection fingerprint or source body through the relation owner read.
 - Updates a persisted mention/quote row instead of appending a new relation revision.
 - Removes the source INSERT seed triggers before active owner writes are composed.
 - Persists a prepared relation projection without revalidating the source body inside the owner transaction.
+- Lets quote transports import `MentionRelationService`, `PreparedMentionRelations` or `persist_in_tx`.
+- Treats omitted update quotes as an empty list and silently clears relations.
+- Preserves an out-of-date quote snapshot without expected-revision CAS.
+- Returns a quote command response through a post-commit read that can fail after the write committed.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
-- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
+- Existing `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput` and `UpdateReplyInput` remain source-compatible.
+- Separate command DTOs carry inline quotes and are consumed by transport adapters and facade conversions.
+- All changes to existing create/update DTO fields are considered breaking changes.
 
 ### Domain Invariants
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
@@ -198,16 +248,22 @@ Mention event candidates remain pure owner projections; FORUM-12B1 publishes no 
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
 - Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
 - Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
-- Mention revision diffs are immutable on replay and only added resolved targets become future event candidates.
+- Mention revision diffs are immutable on replay and only added resolved targets become owner events.
 - Relation revisions and mention/quote children are append-only, tenant-bound and atomically matched to the persisted source body.
 - Source INSERT seeding preserves one relation identity for every persisted topic/reply locale during the B1-to-B2 rollout window.
+- Mention events and their relation revision are committed atomically with one identity shared between outbox and Forum journal.
+- Bounded relation reads are tenant/source/locale scoped and never expose handle snapshots or replay fingerprints.
+- Quote replacement is exact-locale, owner-scoped, bounded to 32 references and materializes its response before commit.
+- Inline body edits preserve omitted quotes by expected relation revision and conflict rather than overwrite a concurrent replacement.
 - Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
-- FORUM-12B1 creates no mention event or outbox side effect; publication remains FORUM-12C.
+- `forum.mention.user_added` and `forum.mention.audience_added` are emitted only for targets added by a newly persisted relation revision.
+- Quote-only replacement and preserved body edits emit nothing for unchanged mentions and never call Notifications synchronously.
+- Forum records the same event UUID in the canonical outbox and append-only owner journal.
 
 ### Errors / Failure Codes
 - Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
@@ -215,3 +271,5 @@ Mention event candidates remain pure owner projections; FORUM-12B1 publishes no 
 - Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.
 - Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
 - Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
+- Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
+- A stale omitted-update quote snapshot returns retryable `FORUM_RELATION_REVISION_CONFLICT`; REST maps it to HTTP 409.

@@ -44,6 +44,8 @@ ssr = [
   "rustok-order-storefront/ssr",
   "dep:rustok-pages-storefront",
   "rustok-pages-storefront/ssr",
+  "dep:rustok-navigation-storefront",
+  "rustok-navigation-storefront/ssr",
   "dep:rustok-payment-storefront",
   "rustok-payment-storefront/ssr",
   "dep:rustok-pricing-storefront",
@@ -98,6 +100,7 @@ rustok-groups-storefront = { path = "../../crates/rustok-groups/storefront", def
 rustok-notifications-storefront = { path = "../../crates/rustok-notifications/storefront", default-features = false, optional = true }
 rustok-order-storefront = { path = "../../crates/rustok-order/storefront", default-features = false, optional = true }
 rustok-pages-storefront = { path = "../../crates/rustok-pages/storefront", default-features = false, optional = true }
+rustok-navigation-storefront = { path = "../../crates/rustok-navigation/storefront", default-features = false, optional = true }
 rustok-payment-storefront = { path = "../../crates/rustok-payment/storefront", default-features = false, optional = true }
 rustok-pricing-storefront = { path = "../../crates/rustok-pricing/storefront", default-features = false, optional = true }
 rustok-product-storefront = { path = "../../crates/rustok-product/storefront", default-features = false, optional = true }
@@ -135,6 +138,7 @@ normal = [
   "rustok-notifications-storefront",
   "rustok-order-storefront",
   "rustok-pages-storefront",
+  "rustok-navigation-storefront",
   "rustok-payment-storefront",
   "rustok-pricing-storefront",
   "rustok-product-storefront",

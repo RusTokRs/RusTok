@@ -1,4 +1,7 @@
 use crate::landing::{LandingProjectError, LandingProjectInspection, LandingProjectResult};
+use crate::static_publish_policy::{
+    PageBuilderStaticPublishPolicyError, validate_static_publish_document,
+};
 use fly::{
     FlyHtmlLandingRenderer, LandingReadinessPolicy, LandingRenderer, ProjectDocument, RegistrySet,
     RenderPolicy, SequentialIdGenerator, StaticLandingArtifact, ValidationDiagnostic,
@@ -90,6 +93,7 @@ where
         if !self.render_policy.allow_http {
             require_secure_resource_urls(&document)?;
         }
+        require_static_publish_policy(&document)?;
         Ok(document)
     }
 
@@ -97,11 +101,12 @@ where
         &self,
         document: &ProjectDocument,
     ) -> LandingProjectResult<StaticLandingArtifact> {
-        // Runtime bindings can materialize new resource URLs after the authoring document was
-        // prepared. Re-run the public artifact security policy on the exact document being built.
+        // Runtime bindings can materialize new attributes, CSS and URLs after the authoring document
+        // was prepared. Re-run every public-artifact policy on the exact document being built.
         if !self.render_policy.allow_http {
             require_secure_resource_urls(document)?;
         }
+        require_static_publish_policy(document)?;
         let build = build_static_landing_artifact_with_renderer(
             document,
             &self.registries,
@@ -124,6 +129,33 @@ where
 
     pub(crate) fn render_policy(&self) -> &RenderPolicy {
         &self.render_policy
+    }
+}
+
+fn require_static_publish_policy(document: &ProjectDocument) -> LandingProjectResult<()> {
+    match validate_static_publish_document(document) {
+        Ok(_) => Ok(()),
+        Err(PageBuilderStaticPublishPolicyError::Rejected { diagnostics }) => {
+            Err(LandingProjectError::Validation {
+                diagnostics: diagnostics
+                    .into_iter()
+                    .map(|diagnostic| ValidationDiagnostic {
+                        severity: ValidationSeverity::Error,
+                        code: diagnostic.code,
+                        path: diagnostic.path,
+                        message: diagnostic.message,
+                    })
+                    .collect(),
+            })
+        }
+        Err(error) => Err(LandingProjectError::Validation {
+            diagnostics: vec![ValidationDiagnostic {
+                severity: ValidationSeverity::Error,
+                code: "landing_static_publish_policy_integrity".to_string(),
+                path: "project".to_string(),
+                message: error.to_string(),
+            }],
+        }),
     }
 }
 
@@ -292,5 +324,27 @@ mod tests {
             diagnostic.code == "landing_insecure_resource_url"
                 && diagnostic.path.ends_with("attributes.src")
         }));
+    }
+
+    #[test]
+    fn compiler_rechecks_materialized_css_policy() {
+        let compiler = StaticLandingCompiler::default();
+        let mut document = compiler.prepare_document(&project()).expect("prepared");
+        document
+            .component_mut("heading")
+            .expect("heading")
+            .style = Some(json!({ "background-image": "url(https://evil.example/x.png)" }));
+
+        let error = compiler
+            .compile_prepared_document(&document)
+            .expect_err("materialized CSS must be rejected");
+        let LandingProjectError::Validation { diagnostics } = error else {
+            panic!("expected typed validation diagnostics");
+        };
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "landing_css_value_rejected")
+        );
     }
 }

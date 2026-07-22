@@ -65,6 +65,7 @@ pub async fn fetch_pages(
     .await
 }
 
+
 fn configured_tenant_slug() -> Option<String> {
     [
         "RUSTOK_TENANT_SLUG",
