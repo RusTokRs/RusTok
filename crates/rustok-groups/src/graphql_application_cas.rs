@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use async_graphql::{Context, FieldError, InputObject, MergedObject, Object, Result};
+use async_graphql::{
+    Context, ErrorExtensions, FieldError, InputObject, MergedObject, Object, Result,
+};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
@@ -189,10 +191,10 @@ fn port_context(
 
 fn map_port_error(error: PortError) -> FieldError {
     if error.code == GROUP_APPLICATION_POLICY_CHANGED_CODE {
-        return <FieldError as GraphQLError>::bad_user_input(&format!(
-            "{}: {}",
-            error.code, error.message
-        ));
+        return FieldError::new(error.message).extend_with(|_, extensions| {
+            extensions.set("code", GROUP_APPLICATION_POLICY_CHANGED_CODE);
+            extensions.set("kind", "CONFLICT");
+        });
     }
     match error.kind {
         PortErrorKind::Validation | PortErrorKind::Conflict => {
