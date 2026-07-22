@@ -494,11 +494,11 @@ async fn find_candidate_application_for_update(
             .filter(membership_application::Column::GroupId.eq(group_id))
             .filter(membership_application::Column::UserId.eq(user_id))
     };
-    match transaction.get_database_backend() {
+    let model = match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-    }
-    .pipe(Ok)
+    };
+    Ok(model)
 }
 
 fn normalize_policy_precondition(
