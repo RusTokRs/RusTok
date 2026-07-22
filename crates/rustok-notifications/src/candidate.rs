@@ -15,7 +15,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::entities::{fanout_item, fanout_job, notification, preference};
+use crate::entities::{fanout_job, notification, preference};
 use crate::error::{NotificationError, NotificationResult};
 use crate::model::{
     FanoutItemStatus, NotificationDeliveryMode, NotificationPriorityValue, NotificationState,
@@ -29,6 +29,38 @@ const DEFAULT_SOURCE_SCOPE: &str = "*";
 const DEFAULT_TYPE_SCOPE: &str = "*";
 const PREFERENCE_DISABLED_CODE: &str = "NOTIFICATION_PREFERENCE_DISABLED";
 const SOURCE_TARGET_UNAVAILABLE_CODE: &str = "NOTIFICATION_SOURCE_TARGET_UNAVAILABLE";
+
+mod candidate_item {
+    use sea_orm::entity::prelude::*;
+
+    use crate::model::FanoutItemStatus;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "notification_fanout_items")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub fanout_job_id: Uuid,
+        pub recipient_id: Uuid,
+        pub status: FanoutItemStatus,
+        pub notification_id: Option<Uuid>,
+        pub idempotency_key: String,
+        pub last_error_code: Option<String>,
+        pub attempt_count: i32,
+        pub next_attempt_at: Option<DateTimeWithTimeZone>,
+        pub lease_owner: Option<String>,
+        pub lease_expires_at: Option<DateTimeWithTimeZone>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+        pub processed_at: Option<DateTimeWithTimeZone>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -136,7 +168,7 @@ impl NotificationCandidateService {
         worker_id: &str,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         validate_worker_id(worker_id)?;
-        let initial = fanout_item::Entity::find_by_id(item_id)
+        let initial = candidate_item::Entity::find_by_id(item_id)
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
@@ -239,7 +271,10 @@ impl NotificationCandidateService {
             .await
     }
 
-    async fn load_job(&self, item: &fanout_item::Model) -> NotificationResult<fanout_job::Model> {
+    async fn load_job(
+        &self,
+        item: &candidate_item::Model,
+    ) -> NotificationResult<fanout_job::Model> {
         fanout_job::Entity::find_by_id(item.fanout_job_id)
             .filter(fanout_job::Column::TenantId.eq(item.tenant_id))
             .one(&self.db)
@@ -249,7 +284,7 @@ impl NotificationCandidateService {
 
     async fn preference_allows_in_app(
         &self,
-        item: &fanout_item::Model,
+        item: &candidate_item::Model,
         job: &fanout_job::Model,
     ) -> NotificationResult<bool> {
         let rows = preference::Entity::find()
@@ -285,8 +320,8 @@ impl NotificationCandidateService {
         &self,
         item_id: Uuid,
         worker_id: &str,
-    ) -> NotificationResult<fanout_item::Model> {
-        let current = fanout_item::Entity::find_by_id(item_id)
+    ) -> NotificationResult<candidate_item::Model> {
+        let current = candidate_item::Entity::find_by_id(item_id)
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
@@ -295,8 +330,8 @@ impl NotificationCandidateService {
         }
 
         let timestamp = now();
-        let result = fanout_item::Entity::update_many()
-            .set(fanout_item::ActiveModel {
+        let result = candidate_item::Entity::update_many()
+            .set(candidate_item::ActiveModel {
                 status: Set(FanoutItemStatus::Processing),
                 lease_owner: Set(Some(worker_id.to_string())),
                 lease_expires_at: Set(Some(
@@ -308,31 +343,34 @@ impl NotificationCandidateService {
                 updated_at: Set(timestamp),
                 ..Default::default()
             })
-            .filter(fanout_item::Column::Id.eq(item_id))
+            .filter(candidate_item::Column::Id.eq(item_id))
             .filter(
                 Condition::any()
-                    .add(fanout_item::Column::Status.eq(FanoutItemStatus::Pending))
+                    .add(candidate_item::Column::Status.eq(FanoutItemStatus::Pending))
                     .add(
                         Condition::all()
                             .add(
-                                fanout_item::Column::Status.eq(FanoutItemStatus::RetryableError),
+                                candidate_item::Column::Status
+                                    .eq(FanoutItemStatus::RetryableError),
                             )
                             .add(
                                 Condition::any()
-                                    .add(fanout_item::Column::NextAttemptAt.is_null())
-                                    .add(fanout_item::Column::NextAttemptAt.lte(timestamp)),
+                                    .add(candidate_item::Column::NextAttemptAt.is_null())
+                                    .add(candidate_item::Column::NextAttemptAt.lte(timestamp)),
                             ),
                     )
                     .add(
                         Condition::all()
-                            .add(fanout_item::Column::Status.eq(FanoutItemStatus::Processing))
-                            .add(fanout_item::Column::LeaseExpiresAt.lt(timestamp)),
+                            .add(
+                                candidate_item::Column::Status.eq(FanoutItemStatus::Processing),
+                            )
+                            .add(candidate_item::Column::LeaseExpiresAt.lt(timestamp)),
                     ),
             )
             .exec(&self.db)
             .await?;
         if result.rows_affected == 0 {
-            let current = fanout_item::Entity::find_by_id(item_id)
+            let current = candidate_item::Entity::find_by_id(item_id)
                 .one(&self.db)
                 .await?
                 .ok_or(NotificationError::InvalidEvent)?;
@@ -341,7 +379,7 @@ impl NotificationCandidateService {
             }
             return Err(NotificationError::LeaseUnavailable);
         }
-        fanout_item::Entity::find_by_id(item_id)
+        candidate_item::Entity::find_by_id(item_id)
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)
@@ -349,13 +387,13 @@ impl NotificationCandidateService {
 
     async fn finish_candidate_skipped(
         &self,
-        item: &fanout_item::Model,
+        item: &candidate_item::Model,
         worker_id: &str,
         reason_code: &str,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         let timestamp = now();
-        let result = fanout_item::Entity::update_many()
-            .set(fanout_item::ActiveModel {
+        let result = candidate_item::Entity::update_many()
+            .set(candidate_item::ActiveModel {
                 status: Set(FanoutItemStatus::Skipped),
                 notification_id: Set(None),
                 last_error_code: Set(Some(truncate(reason_code, MAX_ERROR_CODE_BYTES))),
@@ -366,16 +404,16 @@ impl NotificationCandidateService {
                 updated_at: Set(timestamp),
                 ..Default::default()
             })
-            .filter(fanout_item::Column::Id.eq(item.id))
-            .filter(fanout_item::Column::Status.eq(FanoutItemStatus::Processing))
-            .filter(fanout_item::Column::LeaseOwner.eq(worker_id))
-            .filter(fanout_item::Column::LeaseExpiresAt.gt(timestamp))
+            .filter(candidate_item::Column::Id.eq(item.id))
+            .filter(candidate_item::Column::Status.eq(FanoutItemStatus::Processing))
+            .filter(candidate_item::Column::LeaseOwner.eq(worker_id))
+            .filter(candidate_item::Column::LeaseExpiresAt.gt(timestamp))
             .exec(&self.db)
             .await?;
         if result.rows_affected != 1 {
             return Err(NotificationError::LeaseUnavailable);
         }
-        let completed = fanout_item::Entity::find_by_id(item.id)
+        let completed = candidate_item::Entity::find_by_id(item.id)
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
@@ -384,7 +422,7 @@ impl NotificationCandidateService {
 
     async fn fail_candidate<T>(
         &self,
-        item: &fanout_item::Model,
+        item: &candidate_item::Model,
         worker_id: &str,
         error: NotificationError,
     ) -> NotificationResult<T> {
@@ -394,14 +432,14 @@ impl NotificationCandidateService {
 
     async fn finish_candidate_error(
         &self,
-        item: &fanout_item::Model,
+        item: &candidate_item::Model,
         worker_id: &str,
         error: &NotificationError,
     ) -> NotificationResult<()> {
         let retryable = error.is_retryable();
         let timestamp = now();
-        let result = fanout_item::Entity::update_many()
-            .set(fanout_item::ActiveModel {
+        let result = candidate_item::Entity::update_many()
+            .set(candidate_item::ActiveModel {
                 status: Set(if retryable {
                     FanoutItemStatus::RetryableError
                 } else {
@@ -419,10 +457,10 @@ impl NotificationCandidateService {
                 updated_at: Set(timestamp),
                 ..Default::default()
             })
-            .filter(fanout_item::Column::Id.eq(item.id))
-            .filter(fanout_item::Column::Status.eq(FanoutItemStatus::Processing))
-            .filter(fanout_item::Column::LeaseOwner.eq(worker_id))
-            .filter(fanout_item::Column::LeaseExpiresAt.gt(timestamp))
+            .filter(candidate_item::Column::Id.eq(item.id))
+            .filter(candidate_item::Column::Status.eq(FanoutItemStatus::Processing))
+            .filter(candidate_item::Column::LeaseOwner.eq(worker_id))
+            .filter(candidate_item::Column::LeaseExpiresAt.gt(timestamp))
             .exec(&self.db)
             .await?;
         if result.rows_affected != 1 {
@@ -433,13 +471,13 @@ impl NotificationCandidateService {
 
     async fn persist_final_notification(
         &self,
-        item: &fanout_item::Model,
+        item: &candidate_item::Model,
         job: &fanout_job::Model,
         descriptor: NotificationSemanticDescriptor,
         worker_id: &str,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         let txn = self.db.begin().await?;
-        let current = fanout_item::Entity::find_by_id(item.id)
+        let current = candidate_item::Entity::find_by_id(item.id)
             .one(&txn)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
@@ -447,9 +485,8 @@ impl NotificationCandidateService {
 
         let timestamp = now();
         let template_data_json = serde_json::to_value(&descriptor.template_data)?;
-        let notification_id = Uuid::new_v4();
         let active = notification::ActiveModel {
-            id: Set(notification_id),
+            id: Set(Uuid::new_v4()),
             tenant_id: Set(current.tenant_id),
             recipient_id: Set(current.recipient_id),
             source_slug: Set(job.source_slug.clone()),
@@ -505,8 +542,8 @@ impl NotificationCandidateService {
         )?;
 
         let completion_time = now();
-        let result = fanout_item::Entity::update_many()
-            .set(fanout_item::ActiveModel {
+        let result = candidate_item::Entity::update_many()
+            .set(candidate_item::ActiveModel {
                 status: Set(FanoutItemStatus::Processed),
                 notification_id: Set(Some(persisted.id)),
                 last_error_code: Set(None),
@@ -517,10 +554,10 @@ impl NotificationCandidateService {
                 updated_at: Set(completion_time),
                 ..Default::default()
             })
-            .filter(fanout_item::Column::Id.eq(current.id))
-            .filter(fanout_item::Column::Status.eq(FanoutItemStatus::Processing))
-            .filter(fanout_item::Column::LeaseOwner.eq(worker_id))
-            .filter(fanout_item::Column::LeaseExpiresAt.gt(completion_time))
+            .filter(candidate_item::Column::Id.eq(current.id))
+            .filter(candidate_item::Column::Status.eq(FanoutItemStatus::Processing))
+            .filter(candidate_item::Column::LeaseOwner.eq(worker_id))
+            .filter(candidate_item::Column::LeaseExpiresAt.gt(completion_time))
             .exec(&txn)
             .await?;
         if result.rows_affected != 1 {
@@ -538,7 +575,9 @@ impl NotificationCandidateService {
     }
 }
 
-fn deserialize_descriptor(job: &fanout_job::Model) -> NotificationResult<NotificationSemanticDescriptor> {
+fn deserialize_descriptor(
+    job: &fanout_job::Model,
+) -> NotificationResult<NotificationSemanticDescriptor> {
     let descriptor = serde_json::from_value::<NotificationSemanticDescriptor>(
         job.descriptor_json.clone(),
     )
@@ -563,7 +602,10 @@ fn preference_specificity(
     source_score + type_score
 }
 
-fn ensure_candidate_lease(item: &fanout_item::Model, worker_id: &str) -> NotificationResult<()> {
+fn ensure_candidate_lease(
+    item: &candidate_item::Model,
+    worker_id: &str,
+) -> NotificationResult<()> {
     if item.status != FanoutItemStatus::Processing
         || item.lease_owner.as_deref() != Some(worker_id)
         || item
@@ -628,7 +670,7 @@ fn is_terminal_candidate(status: FanoutItemStatus) -> bool {
 }
 
 fn candidate_result(
-    item: fanout_item::Model,
+    item: candidate_item::Model,
     replayed: bool,
 ) -> NotificationCandidateProcessResult {
     NotificationCandidateProcessResult {
