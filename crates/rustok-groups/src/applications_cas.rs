@@ -252,6 +252,13 @@ impl GroupApplicationService {
             return Ok(replayed);
         }
 
+        let prelocked_application = find_candidate_application_for_update(
+            &transaction,
+            tenant_id,
+            request.submission.group_id,
+            actor_user_id,
+        )
+        .await?;
         let group_model = find_group_for_update(
             &transaction,
             tenant_id,
@@ -297,12 +304,18 @@ impl GroupApplicationService {
             ));
         }
 
-        let existing_application = membership_application::Entity::find()
-            .filter(membership_application::Column::TenantId.eq(tenant_id))
-            .filter(membership_application::Column::GroupId.eq(request.submission.group_id))
-            .filter(membership_application::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?;
+        let existing_application = match prelocked_application {
+            Some(existing) => Some(existing),
+            None => {
+                find_candidate_application_for_update(
+                    &transaction,
+                    tenant_id,
+                    request.submission.group_id,
+                    actor_user_id,
+                )
+                .await?
+            }
+        };
         if existing_application
             .as_ref()
             .is_some_and(|row| row.status == GroupApplicationStatus::Pending.as_str())
@@ -425,7 +438,8 @@ impl GroupApplicationService {
                 "policy_revision": result.application.policy_revision,
                 "policy_locale": result.application.policy_locale,
                 "group_version": group_version,
-                "expected_revision_enforced": true
+                "expected_revision_enforced": true,
+                "application_lock_order": "application_then_group_when_existing"
             }),
         )
         .await?;
@@ -466,6 +480,25 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
             .await
             .map_err(map_application_cas_error)
     }
+}
+
+async fn find_candidate_application_for_update(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_id: Uuid,
+) -> GroupsResult<Option<membership_application::Model>> {
+    let query = || {
+        membership_application::Entity::find()
+            .filter(membership_application::Column::TenantId.eq(tenant_id))
+            .filter(membership_application::Column::GroupId.eq(group_id))
+            .filter(membership_application::Column::UserId.eq(user_id))
+    };
+    match transaction.get_database_backend() {
+        DbBackend::Sqlite => query().one(transaction).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
+    }
+    .pipe(Ok)
 }
 
 fn normalize_policy_precondition(
