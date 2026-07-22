@@ -6,6 +6,7 @@ const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const files = {
   composition: "crates/rustok-groups/src/applications.rs",
+  review: "crates/rustok-groups/src/applications_review.rs",
   owner: "crates/rustok-groups/src/applications_bulk_review.rs",
   graphqlRoot: "crates/rustok-groups/src/graphql_application_cas.rs",
   graphql: "crates/rustok-groups/src/graphql_application_bulk_review.rs",
@@ -37,7 +38,8 @@ if (failures.length === 0) {
     "groups.bulk_review_confirmation_required",
     "groups.bulk_review_limit_exceeded",
     "groups.bulk_review_duplicate_application",
-    "review_application_owned",
+    "normalize_optional_note",
+    "review_application_authorized_owned",
     "BulkReviewGroupMembershipApplicationItemResult",
     "succeeded",
     "failed",
@@ -45,13 +47,27 @@ if (failures.length === 0) {
     "application_id.as_bytes()",
   ]);
   for (const forbidden of [
+    "review_application_owned",
     "index.to_be_bytes()",
     "DatabaseTransaction",
     "transaction.commit",
   ]) {
     if (read(files.owner).includes(forbidden)) {
-      failures.push(`${files.owner}: forbidden batch-level atomicity/order marker ${JSON.stringify(forbidden)}`);
+      failures.push(`${files.owner}: forbidden unsafe batch marker ${JSON.stringify(forbidden)}`);
     }
+  }
+
+  const reviewSource = read(files.review);
+  const reviewStart = reviewSource.indexOf("async fn review_application_authorized_owned");
+  const authorize = reviewSource.indexOf("authorize_application_review", reviewStart);
+  const statusCheck = reviewSource.indexOf(
+    "application_model.status != GroupApplicationStatus::Pending.as_str()",
+    reviewStart,
+  );
+  if (!(reviewStart >= 0 && authorize > reviewStart && statusCheck > authorize)) {
+    failures.push(
+      `${files.review}: manager authorization must occur before pending-status disclosure`,
+    );
   }
 
   requireMarkers(files.graphqlRoot, [
@@ -80,4 +96,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups bounded partial-result bulk review source contract checks passed.");
+console.log("Groups bounded partial-result bulk review and authorization-order source checks passed.");
