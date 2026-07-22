@@ -16,8 +16,8 @@ tags = ["social", "groups", "community", "memberships", "phpfox"]
 entry_type = "GroupsModule"
 
 [provides.graphql]
-query = "graphql_application_lifecycle::GroupsQueryRoot"
-mutation = "graphql_application_lifecycle::GroupsMutationRoot"
+query = "graphql_application_cas::GroupsQueryRoot"
+mutation = "graphql_application_cas::GroupsMutationRoot"
 
 [provides.admin_ui]
 leptos_crate = "rustok-groups-admin"
