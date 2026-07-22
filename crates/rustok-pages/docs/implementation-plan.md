@@ -56,8 +56,8 @@ Pages persistence, cache scope or tenant policy.
   `PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED`; it cannot compile artifacts or reach a
   raw publish transition.
 - [x] Pages owns a bounded cache contract with `route`, `page` and `artifact`
-  scopes. Namespace generations are tenant-wide per scope; final cache keys bind
-  generation, page id and a bounded encoded variant.
+  scopes. Namespace generations are tenant-wide per scope; concrete keys bind
+  generation, tenant/page identity and a bounded SHA-256 variant.
 
 ### Admin FFA
 
@@ -87,8 +87,16 @@ Pages persistence, cache scope or tenant policy.
   storefront HTML is returned. New records verify the complete Page Builder
   materialization envelope; legacy records are accepted only with all evidence
   columns `NULL` and a valid Fly artifact.
-- [ ] Storefront route, page and artifact readers must use the generation-aware
-  `page_cache_key` contract.
+- [x] The composite storefront response uses a cache key bound to route, page and
+  artifact generations plus page slug, requested/fallback locale and channel.
+- [x] The artifact HTTP delivery path uses the artifact generation plus page,
+  locale, fallback locale and channel; module/channel gating runs before lookup,
+  and cache fill happens only after the owner artifact service has verified the
+  published binding and materialization evidence.
+- [x] Cache/generation/provider failures fail open to the owner source read rather
+  than serving a stale key or failing the public request.
+- [ ] Accepted evidence must prove event-driven generation rotation causes a miss
+  and refill on both storefront and artifact delivery paths.
 - [ ] Storefront should read only the selected immutable published artifact.
 - [ ] Authenticated real-DOM inline editing is not implemented.
 - [ ] Anonymous bundle exclusion evidence is not complete.
@@ -130,19 +138,22 @@ Pages persistence, cache scope or tenant policy.
   `NodeUnpublished` and `NodeDeleted` events. The neutral server adapter rotates
   owner-declared generations through the process-wide `CacheService`; provider
   failures return handler errors for dispatcher retry.
+- [x] The same typed server adapter implements `PagesCacheReadPort`; storefront and
+  artifact readers consume the shared generation snapshot and cache backend without
+  owning Redis or generation policy.
 - [ ] Accepted execution evidence must correlate the outbox event, handler receipt,
-  generation changes and generation-aware storefront misses/refills.
+  generation changes, cache misses and refills.
 - [ ] Observed tenant Wave 0/Wave 1 evidence remains open.
 
 ## FFA/FBA status
 
-- **FFA:** `in_progress` — reviewed publication and explicit promoted-scenario
-  selection are connected; typed metadata properties, generation-aware storefront
-  readers and inline edit mode remain open.
+- **FFA:** `in_progress` — reviewed publication, explicit promoted-scenario
+  selection and generation-aware storefront/artifact readers are connected; typed
+  metadata properties and inline edit mode remain open.
 - **FBA:** `in_progress` — reviewed runtime, authoritative sanitizer, immutable
   materialization evidence, idempotent atomic service, GraphQL/HTTP/admin transport
-  cutover, scenario selection, default-runtime removal and source-level cache
-  generation invalidation are integrated. Rollback, cache-reader execution proof,
+  cutover, scenario selection, default-runtime removal and cache invalidation/read
+  boundaries are integrated at source level. Rollback, executed cache proof,
   verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` with one current document authority.
 
@@ -161,8 +172,8 @@ Pages persistence, cache scope or tenant policy.
   deterministic rendering and document hash.
 - **Page Builder backend FBA:** capability policy, validation/sanitization ports,
   health, feature flags and rollout mechanics.
-- **Cache/server host:** process-wide cache connection and generation primitive only;
-  it does not define Pages scopes, variants or invalidation causes.
+- **Cache/server host:** process-wide cache connection, byte storage and generation
+  primitive only; it does not define Pages scopes, variants or invalidation causes.
 - **Hosts:** route, locale, auth and tenant context only.
 
 ## Current document/publication model
@@ -189,7 +200,7 @@ GraphQL / HTTP / admin reviewed command
   -> commit
   -> Pages module event listener
   -> rotate tenant route/page/artifact cache generations
-  -> generation-aware storefront miss/refill
+  -> generation-aware storefront/artifact miss and refill
 
 Non-builder command
   -> page metadata version
@@ -224,16 +235,19 @@ Invariants:
 14. Cache invalidation is event-driven: reviewed publish does not call cache
     services inline.
 15. Pages owns invalidation causes and cache key shape; the server only supplies
-    `CacheNamespaceGenerationStore`.
+    `CacheNamespaceGenerationStore` and a byte cache capability.
 16. Tenant-wide per-scope generations keep trusted local snapshots bounded; page id
-    and variant remain part of each concrete cache key.
+    and SHA-256 request variants remain part of concrete keys.
 17. A handler acknowledges success only after every owner-requested generation has
     advanced and the receipt matches event/correlation identity. A retry may advance
     a generation more than once, which is safe because old keys remain unreachable.
-18. Missing providers fail visibly and never cause silent deletion.
-19. Dynamic widgets persist versioned configuration, not privileged snapshots.
-20. Anonymous storefront bundles contain no editor code.
-21. No block or shadow-editor fallback exists.
+18. Channel/module authorization runs before every cache lookup.
+19. Cache fill follows owner source validation; cache errors fail open to source
+    reads and do not authorize or publish data.
+20. Missing providers fail visibly and never cause silent deletion.
+21. Dynamic widgets persist versioned configuration, not privileged snapshots.
+22. Anonymous storefront bundles contain no editor code.
+23. No block or shadow-editor fallback exists.
 
 ## Completed slice — 2026-07-21
 
@@ -272,16 +286,20 @@ Invariants:
 
 - Added `PageCacheScope::{Route, Page, Artifact}` and owner-defined invalidation
   causes for update, publish, unpublish and delete.
-- Added bounded tenant-wide generation namespaces and concrete keys that bind
-  generation, page id and an encoded bounded variant.
+- Added bounded tenant-wide generation namespaces and SHA-256 concrete key variants.
 - Added `PageCacheInvalidationEventHandler` with event/correlation-bound receipts.
 - Registered the listener through `PagesModule` and a typed
   `PagesCacheInvalidationRuntime` extension.
-- Added a neutral server adapter over the shared `CacheService` generation store;
-  the adapter iterates owner-declared scopes and contains no route/page/artifact
-  policy or Redis scan/delete implementation.
-- Added `verify-pages-cache-invalidation.mjs` and synchronized the machine publish
-  contract. The source guard and runtime tests were not executed in this slice.
+- Added `PagesCacheReadPort` / `PagesCacheReadRuntime` and a neutral shared server
+  adapter over `CacheService`, `CacheNamespaceGenerationStore` and `CacheBackend`.
+- Connected the composite storefront response to route/page/artifact generations.
+- Connected `/api/pages/{id}/artifact` delivery to the artifact generation while
+  preserving module/channel gates, ETag, CSP and public cache-control semantics.
+- Added bounded serialization/value guards and fail-open cache diagnostics.
+- Expanded `verify-pages-cache-invalidation.mjs` to source-lock owner/host boundaries
+  and authorization → cache → owner source → fill ordering.
+- Synchronized both Page Builder machine contracts. Source guards and runtime tests
+  were not executed in this slice.
 
 ## Next implementation order
 
@@ -308,10 +326,12 @@ Invariants:
 - [x] Add explicit admin scenario selection for multi-scenario baselines.
 - [x] Remove the mixed builder lifecycle and split an explicit non-builder-only
   publication command with a stable reviewed-publish-required error.
-- [x] Connect `NodePublished` and related page events to bounded owner-defined
-  route/page/artifact generation rotation.
-- [ ] Adopt `page_cache_key` in every route/page/artifact cache reader and retain
-  accepted miss/refill evidence after generation rotation.
+- [x] Connect page lifecycle events to bounded owner-defined route/page/artifact
+  generation rotation.
+- [x] Adopt generation-aware keys in the composite storefront response and artifact
+  delivery reader.
+- [ ] Retain accepted evidence for outbox event → handler receipt → generation
+  rotation → cache miss/refill.
 - [ ] Add rollback to a previous immutable artifact.
 - [ ] Correlate receipt, editor save, page/body revisions, runtime review,
   materialization, invalidation receipt, artifact and storefront read in telemetry.
