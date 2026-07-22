@@ -48,6 +48,7 @@ for (const relative of [
   "crates/rustok-groups/admin/src/ui/policy_editor.rs",
   "crates/rustok-groups/storefront/src/application_model.rs",
   "crates/rustok-groups/storefront/src/application_core.rs",
+  "crates/rustok-groups/storefront/src/transport.rs",
   "crates/rustok-groups/storefront/src/transport/native_applications_adapter.rs",
   "crates/rustok-groups/storefront/src/transport/graphql_applications_adapter.rs",
   "crates/rustok-groups/storefront/src/ui/application.rs",
@@ -116,11 +117,20 @@ if (requireFile("crates/rustok-groups/src/applications_cas.rs")) {
 
 requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
   "MergedObject",
+  "GroupsPreApplicationMutationRoot",
   "GroupsApplicationCasMutation",
   "GroupApplicationPolicyPreconditionInputGql",
   "upsert_group_application_policy_if_current",
   "submit_group_membership_application_if_current",
+  "review_group_membership_application",
   "GROUP_APPLICATION_POLICY_CHANGED_CODE",
+  "ErrorExtensions",
+  'extensions.set("code", GROUP_APPLICATION_POLICY_CHANGED_CODE)',
+]);
+forbidMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
+  "GroupsMutationRoot as GroupsBaseMutationRoot",
+  "async fn upsert_group_application_policy(\n",
+  "async fn submit_group_membership_application(\n",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
   'query = "graphql_application_cas::GroupsQueryRoot"',
@@ -177,6 +187,11 @@ requireMarkers("crates/rustok-groups/storefront/src/application_core.rs", [
   "GroupsStorefrontApplicationPolicyPrecondition::from(policy)",
   "is_application_policy_changed",
   "normalize_locale_tag",
+]);
+requireMarkers("crates/rustok-groups/storefront/src/transport.rs", [
+  '"groups.storefront.applications.submit_if_current"',
+  "execute_selected_transport",
+  "never falls back",
 ]);
 requireMarkers("crates/rustok-groups/storefront/src/transport/native_applications_adapter.rs", [
   "GroupApplicationCasCommandPort",
@@ -248,11 +263,14 @@ if (requireFile("crates/rustok-groups/contracts/groups-fba-registry.json")) {
   if (applications?.storefront_stale_submit_ux !== "implemented_source") {
     failures.push("Groups storefront stale-submit UX must be source-complete");
   }
+  if (applications?.final_graphql_legacy_application_mutations !== "not_exposed") {
+    failures.push("Groups final GraphQL root must not expose legacy application mutations");
+  }
   if (
     applications?.legacy_unconditional_application_command_port !==
-    "compatibility_only_not_used_by_module_ffa"
+    "rust_compatibility_only_not_exposed_by_final_graphql_or_module_ffa"
   ) {
-    failures.push("Groups registry must disclose the legacy unconditional command port");
+    failures.push("Groups registry must disclose the legacy Rust-only compatibility port");
   }
   if (registry?.evidence?.membership_application_policy_cas !== null) {
     failures.push("unexecuted application CAS runtime evidence must remain null");
@@ -263,6 +281,7 @@ requireMarkers("crates/rustok-groups/docs/implementation-plan.md", [
   "GroupApplicationCasCommandPort",
   "groups.application_policy_changed",
   "receipt replay is checked before the precondition",
+  "final GraphQL root does not expose",
   "legacy unconditional",
   "verify-groups-application-policy-cas.mjs",
   "membership_application_policy_cas` remains `null",
@@ -274,4 +293,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups application policy CAS, stable conflict, exact-locale, FFA recovery, and no-fallback boundary checks passed.");
+console.log("Groups application policy CAS, stable conflict, GraphQL no-bypass, exact-locale, FFA recovery, and no-fallback boundary checks passed.");
