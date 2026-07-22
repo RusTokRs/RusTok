@@ -4,8 +4,9 @@ use rustok_api::normalize_locale_tag;
 use uuid::Uuid;
 
 use crate::application_model::{
-    GroupsStorefrontApplicationAnswer, GroupsStorefrontApplicationPolicy,
-    GroupsStorefrontApplicationPolicyPrecondition, GroupsStorefrontApplicationPolicyQuery,
+    CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationAnswer,
+    GroupsStorefrontApplicationPolicy, GroupsStorefrontApplicationPolicyPrecondition,
+    GroupsStorefrontApplicationPolicyQuery, GroupsStorefrontMyApplicationQuery,
     SubmitGroupMembershipApplicationCommand,
 };
 
@@ -15,6 +16,7 @@ pub const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str = "groups.application_poli
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GroupsStorefrontApplicationInputError {
     InvalidGroupId,
+    InvalidApplicationId,
     InvalidLocale,
     InvalidPolicy,
     UnknownQuestion,
@@ -33,6 +35,25 @@ pub fn prepare_group_application_policy_query(
             .map_err(|_| GroupsStorefrontApplicationInputError::InvalidGroupId)?,
         locale: normalize_locale_tag(locale)
             .ok_or(GroupsStorefrontApplicationInputError::InvalidLocale)?,
+    })
+}
+
+pub fn prepare_my_group_membership_application_query(
+    group_id: &str,
+) -> Result<GroupsStorefrontMyApplicationQuery, GroupsStorefrontApplicationInputError> {
+    Ok(GroupsStorefrontMyApplicationQuery {
+        group_id: normalize_uuid(group_id)
+            .map_err(|_| GroupsStorefrontApplicationInputError::InvalidGroupId)?,
+    })
+}
+
+pub fn prepare_cancel_group_membership_application(
+    application_id: &str,
+) -> Result<CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationInputError> {
+    Ok(CancelGroupMembershipApplicationCommand {
+        idempotency_key: format!("groups-storefront-cancel-application-{}", Uuid::new_v4()),
+        application_id: normalize_uuid(application_id)
+            .map_err(|_| GroupsStorefrontApplicationInputError::InvalidApplicationId)?,
     })
 }
 

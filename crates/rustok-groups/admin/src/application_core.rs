@@ -5,7 +5,8 @@ use crate::application_model::{
     GroupsAdminApplicationPolicyPrecondition, GroupsAdminApplicationPolicyQuery,
     GroupsAdminApplicationQuestion, GroupsAdminApplicationReviewDecision,
     GroupsAdminApplicationRule, GroupsAdminMembershipApplicationQuery,
-    ReviewGroupMembershipApplicationCommand, UpsertGroupApplicationPolicyCommand,
+    ReopenGroupMembershipApplicationCommand, ReviewGroupMembershipApplicationCommand,
+    UpsertGroupApplicationPolicyCommand,
 };
 
 const MAX_POLICY_QUESTIONS: usize = 20;
@@ -146,6 +147,16 @@ pub fn prepare_review_group_membership_application(
         application_id,
         decision,
         note,
+    })
+}
+
+pub fn prepare_reopen_group_membership_application(
+    application_id: &str,
+) -> Result<ReopenGroupMembershipApplicationCommand, GroupsAdminApplicationInputError> {
+    Ok(ReopenGroupMembershipApplicationCommand {
+        idempotency_key: format!("groups-admin-reopen-application-{}", Uuid::new_v4()),
+        application_id: normalize_uuid(application_id)
+            .map_err(|_| GroupsAdminApplicationInputError::InvalidApplicationId)?,
     })
 }
 

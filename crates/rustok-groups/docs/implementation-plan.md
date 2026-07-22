@@ -114,16 +114,28 @@ current exact-locale policy, and checks the precondition before writing policy,
 membership, application, version, audit, or receipt state. A mismatch returns the
 stable conflict code `groups.application_policy_changed`.
 
+For an existing candidate application, CAS submit locks the application before the
+group. For a first submission with no row to lock, it locks the group and repeats the
+candidate-application lookup before state writes. This aligns existing-application
+submit with review, cancel, and reopen lock ordering while preserving first-submit
+serialization.
+
 Idempotent receipt replay is checked before the precondition is re-evaluated. An
 already-committed identical command therefore replays its result even when the
 policy has subsequently advanced.
+
+Candidate cancellation and manager reopen use
+`GroupApplicationLifecycleCommandPort`. Both check receipt replay before state locks,
+lock application then group, and commit application, membership, group version,
+audit, and receipt atomically. Manager authorization occurs before reopen status is
+exposed or validated.
 
 The older unconditional methods on `GroupApplicationCommandPort` remain public only
 for Rust source compatibility. Module-owned admin and storefront FFA do not use them
 for policy save or candidate submit. The final GraphQL root does not expose the
 legacy unconditional policy-save or candidate-submit mutations; it composes the
-pre-application mutation root with CAS save/submit and review. Removing or versioning
-those legacy Rust methods remains a separate API migration gate.
+pre-application mutation root with CAS save/submit, review, and application lifecycle.
+Removing or versioning those legacy Rust methods remains a separate API migration gate.
 
 ## Current implementation state
 
@@ -146,15 +158,27 @@ The following source exists:
   approve/reject review;
 - append-only membership policy revision storage, manager-only history port, native
   and GraphQL history adapters, and a localized visual policy editor;
-- atomic expected-policy CAS for admin policy save and candidate submit under the
-  owner group lock, with a stable conflict code and idempotent replay semantics;
+- atomic expected-policy CAS for admin policy save and candidate submit under owner
+  locking, with a stable conflict code and idempotent replay semantics;
 - final GraphQL no-bypass composition exposing CAS save/submit and review while
   omitting the legacy unconditional application mutations;
+- exact-candidate current-application reads through
+  `GroupApplicationLifecycleReadPort`;
+- candidate cancellation from pending to cancelled, with membership moved to left,
+  submitted snapshot preserved, and route retained for fresh resubmit;
+- manager reopen from rejected/cancelled to pending with the submitted policy identity,
+  snapshot, answers, acknowledgements, and submitted time preserved;
+- fresh rejected/cancelled resubmit through current-policy CAS, replacing the snapshot
+  only after successful submission;
+- admin application status filtering and reopen controls;
+- storefront current-status, pending cancellation, approved duplicate-submit blocking,
+  and rejected/cancelled fresh-resubmit UX;
 - admin stale-save handling that requires an explicit reload after conflict;
 - storefront stale-submit handling that preserves the `apply` route, blocks repeated
   submit, clears old answers on explicit reload, and reloads the exact-locale policy;
 - Rust ports, final merged GraphQL roots, native Leptos server functions, explicit
-  native/GraphQL transport selection, admin review UI, and storefront application UI;
+  native/GraphQL transport selection, admin review/reopen UI, and storefront
+  application lifecycle UI;
 - EN/RU copy, FBA registry, live README contracts, and focused static guards.
 
 The following evidence remains open and must not be inferred:
@@ -165,7 +189,9 @@ The following evidence remains open and must not be inferred:
 - policy history backfill, trigger atomicity, append-only rejection, and pagination
   execution;
 - atomic stale policy save/submit race execution and lock-order evidence;
-- idempotency replay, concurrent submit/review/policy-write, and recovery evidence;
+- exact-candidate read isolation, lifecycle replay, transition-race, and lock-order
+  execution;
+- concurrent cancel/review/reopen/resubmit terminal-outcome evidence;
 - removal or versioned deprecation of the legacy unconditional Rust methods;
 - bulk-review limits, confirmation, partial-failure, and audit evidence;
 - accessibility and keyboard/screen-reader execution;
@@ -180,9 +206,9 @@ The following evidence remains open and must not be inferred:
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
 | GROUPS-02 | in_progress | group identity, localized presentation, visibility, join policy, feature bindings, receipts/audit, targeted source events | lifecycle/runtime/concurrency evidence |
 | GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | request/bans/concurrency completion |
-| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, application-CAS, governance ports | provider/consumer/fallback runtime matrix |
+| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, application-CAS, application-lifecycle, governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, storefront discovery, invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
-| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, stale recovery UX | legacy Rust-port migration, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
+| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, candidate cancellation, manager reopen, stale/resubmit UX | legacy Rust-port migration, bulk safety, profiles/events, parity, concurrency, accessibility |
 | GROUPS-07 | planned | bans, suspension, expiry, reason, bulk moderation, moderation adapter | all implementation/evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and group navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
@@ -216,13 +242,17 @@ The following evidence remains open and must not be inferred:
 - `GroupApplicationReadPort::read_group_application_policy`;
 - `GroupApplicationReadPort::list_group_membership_applications`;
 - `GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions`;
+- `GroupApplicationLifecycleReadPort::read_my_group_membership_application`;
 - `GroupApplicationCasCommandPort::upsert_group_application_policy_if_current`;
 - `GroupApplicationCasCommandPort::submit_group_membership_application_if_current`;
+- `GroupApplicationLifecycleCommandPort::cancel_group_membership_application`;
+- `GroupApplicationLifecycleCommandPort::reopen_group_membership_application`;
 - `GroupApplicationCommandPort::review_group_membership_application`.
 
 The history read port uses the same active owner/admin/moderator or platform-manage
 authorization boundary as application review. Candidates cannot enumerate policy
-history.
+history. The lifecycle read port returns only the authenticated actor's exact
+tenant/group application and never permits cross-candidate enumeration.
 
 `GroupApplicationCommandPort::upsert_group_application_policy` and
 `submit_group_membership_application` remain Rust compatibility methods. They are not
@@ -253,17 +283,48 @@ used by module-owned FFA and are not exposed by the final GraphQL root.
 - secret groups return not-found semantics;
 - the actor must be an authenticated, non-banned, non-active candidate;
 - submit requires the policy ID, revision, and exact locale that produced the form;
-- the owner compares that precondition after the group lock and before membership or
-  application lookup/write;
+- an existing candidate application is locked before the group; a missing first-submit
+  row is re-read after the group lock before state writes;
+- the owner compares the policy precondition after the group lock and before membership
+  or application writes;
 - stale forms return `groups.application_policy_changed` without creating or changing
   membership, application, group version, audit, or receipt state;
 - required answers must be non-empty and within the per-question limit;
 - unknown answer keys and unknown rule acknowledgements are rejected;
 - every required rule key must be acknowledged;
 - a pending or already-approved application cannot be submitted again;
-- rejected applications may be resubmitted and receive a fresh snapshot;
+- rejected and cancelled applications may be freshly resubmitted and receive a current
+  policy snapshot;
 - application snapshot, pending membership, group version, audit, and receipt commit
   in one owner transaction.
+
+### Candidate cancellation invariants
+
+- only the exact candidate may cancel; a different actor receives not-found semantics;
+- only a pending application with a still-pending, non-banned membership may cancel;
+- membership moves to `left`, `left_at` is recorded, and application becomes
+  `cancelled`;
+- review metadata is cleared while submitted policy identity, snapshot, answers, and
+  acknowledgements remain unchanged;
+- application, membership, group version, audit
+  `group.membership_application_cancelled`, and receipt commit together;
+- application then group rows are locked where supported;
+- storefront cancellation preserves `apply=<group_uuid>` for a fresh CAS resubmit.
+
+### Manager reopen invariants
+
+- reopen requires active owner/admin/moderator or platform authority;
+- authorization occurs before the current application status is disclosed or validated;
+- only rejected or cancelled applications may be reopened;
+- the group must remain active, non-secret, and use `request` join policy;
+- membership must be `left`, non-banned, and non-active;
+- membership and application move to `pending`, and previous review metadata is cleared;
+- submitted timestamp, policy identity/revision/locale, snapshot, answers, and
+  acknowledgements are preserved;
+- application, membership, group version, audit
+  `group.membership_application_reopened`, and receipt commit together;
+- later review uses the preserved snapshot; fresh candidate resubmit is a distinct CAS
+  command that replaces the snapshot.
 
 ### Review invariants
 
@@ -279,22 +340,26 @@ used by module-owned FFA and are not exposed by the final GraphQL root.
 
 ### FFA surfaces
 
-- admin framework-neutral policy/history/review models and preparation core;
-- admin native and GraphQL CAS policy/history/list/review adapters through one facade;
+- admin framework-neutral policy/history/review/reopen models and preparation core;
+- admin native and GraphQL CAS policy/history/list/review/reopen adapters through one
+  facade;
 - localized visual policy editor for adding/removing/reordering questions and rules;
 - editor history list with revision, locale, actor, timestamp, enabled state, and item
   counts;
 - host-resolved locale rendered read-only in the current editor;
 - editor submits its loaded policy identity to owner CAS and requires explicit reload
   after `groups.application_policy_changed`;
-- localized pending review workspace displaying candidate, policy revision/locale,
-  answers, and acknowledged rules;
-- storefront request-group links using `apply=<group_uuid>`;
-- storefront framework-neutral dynamic-form validation and policy precondition capture;
-- native and GraphQL CAS submit adapters through one facade;
+- admin status filtering covers pending, approved, rejected, and cancelled rows;
+- reopen controls are rendered only for rejected/cancelled applications;
+- localized application workspace displays candidate, policy revision/locale, answers,
+  and acknowledged rules;
+- storefront request-group links use `apply=<group_uuid>`;
+- storefront loads the exact candidate's current application before exposing controls;
+- pending status exposes candidate cancel, approved status blocks duplicate submit, and
+  rejected/cancelled status exposes a fresh current-policy CAS form;
 - stale storefront forms block repeated submit, preserve the route, and expose explicit
   reload that clears old answers and acknowledgements;
-- `apply` query removal only after successful submission;
+- `apply` query removal occurs only after successful submission, never cancellation;
 - no implicit native/GraphQL fallback.
 
 ### GROUPS-06 remaining work
@@ -303,15 +368,15 @@ used by module-owned FFA and are not exposed by the final GraphQL root.
   after all external Rust consumers migrate to `GroupApplicationCasCommandPort`;
 - explicit multi-locale admin picker backed by an owner manager read contract carrying
   the selected exact locale;
-- candidate cancellation and manager reopen/resubmit policy;
 - bulk review with bounded selection, confirmation, per-item results, and audit;
 - profile-backed candidate summaries through `ProfilesReader` without copying profile
   state;
-- application submitted/reviewed semantic events and optional Notifications consumer;
+- application submitted/reviewed/cancelled/reopened semantic events and optional
+  Notifications consumer;
 - operator filtering, pagination controls, pickers, and audit/receipt history;
 - keyboard, focus, validation association, and screen-reader evidence;
-- executed parity, replay, stale-race, concurrency, lock-order, migration, security,
-  retry, and recovery evidence.
+- executed parity, replay, stale-race, lifecycle-race, concurrency, lock-order,
+  migration, security, retry, and recovery evidence.
 
 ## Other open Groups contracts
 
@@ -346,6 +411,10 @@ ownership and Groups never embeds another module's business UI directly.
   do not select another locale.
 - Policy CAS conflict: write no owner state, preserve the selected transport error, and
   require explicit reload before retry.
+- Current-application lifecycle read unavailable: do not guess candidate status or
+  expose submit/cancel controls.
+- Lifecycle command transport failure: preserve the selected-path error and `apply`
+  route; never retry through the other path.
 - Policy history unavailable: current owner policy remains authoritative; hide history
   and do not synthesize revisions.
 - Native or GraphQL application transport failure: surface the selected-path error;
@@ -375,6 +444,7 @@ node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
+node scripts/verify/verify-groups-application-lifecycle.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
@@ -388,15 +458,18 @@ Additional executable evidence required for GROUPS-06 promotion:
 - policy exact-locale read and missing-locale failure;
 - required/optional question and rule validation;
 - banned, active-member, secret-group, and non-request-group denial;
-- idempotent CAS policy save, CAS submit, and review replay;
+- idempotent CAS policy save, CAS submit, review, cancel, and reopen replay;
+- exact-candidate application-read isolation;
+- pending-only cancel and rejected/cancelled-only reopen;
+- reopen snapshot preservation and fresh CAS resubmit snapshot replacement;
 - concurrent policy writers with one successful revision and stable stale conflict;
 - policy change racing candidate submit with no stale membership/application write;
 - concurrent duplicate submit;
-- concurrent approve/reject with one terminal outcome;
+- concurrent cancel/review/reopen/resubmit with one valid terminal outcome;
 - approve member-count correctness and no double increment;
-- native/GraphQL result, conflict-code, and error parity;
+- native/GraphQL result, conflict-code, lifecycle, and error parity;
 - selected-transport no-fallback behavior;
-- EN/RU editor/form/review rendering and accessibility execution.
+- EN/RU editor/form/review/lifecycle rendering and accessibility execution.
 
 ## Evidence state for this change
 
@@ -411,6 +484,7 @@ security, retry, or recovery command was executed for this source slice. Therefo
 - `membership_application_concurrency` remains `null`;
 - `membership_application_policy_revision` remains `null`;
 - `membership_application_policy_cas` remains `null`;
+- `membership_application_lifecycle` remains `null`;
 - `membership_application_bulk_review` remains `null`.
 
 ## Definition of release-ready Groups MVP

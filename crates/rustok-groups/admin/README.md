@@ -6,17 +6,18 @@ Module-owned Leptos admin FFA package for Groups.
 
 - `core.rs`: framework-neutral UUID/locale/text/invitation validation, command
   preparation, and transport profile;
-- `application_core.rs`: framework-neutral policy precondition, question/rule, and
-  review validation with fresh idempotency-key preparation;
+- `application_core.rs`: framework-neutral policy precondition, question/rule,
+  review, reopen, and idempotency-key preparation;
 - `model.rs`: directory, governance, localization, and invitation models;
 - `application_model.rs`: application policy identity, CAS precondition, revision
-  history, snapshot, review, and membership models;
+  history, snapshot, review, reopen, and membership models;
 - `transport.rs`: the only selected transport facade consumed by UI;
 - `transport/native_server_adapter.rs`: native directory/governance server functions;
 - `transport/native_localization_adapter.rs`: exact-locale localization server
   functions;
 - `transport/native_invitations_adapter.rs`: invitation management server functions;
 - `transport/native_applications_adapter.rs`: application list/review server functions;
+- `transport/native_application_lifecycle_adapter.rs`: manager reopen server function;
 - `transport/native_policy_locale_adapter.rs`: exact-locale policy read and atomic CAS
   save server functions;
 - `transport/native_policy_history_adapter.rs`: manager-only revision-history server
@@ -24,6 +25,7 @@ Module-owned Leptos admin FFA package for Groups.
 - `transport/graphql_adapter.rs`: directory/governance/localization GraphQL paths;
 - `transport/graphql_invitations_adapter.rs`: invitation GraphQL paths;
 - `transport/graphql_applications_adapter.rs`: application list/review GraphQL paths;
+- `transport/graphql_application_lifecycle_adapter.rs`: manager reopen GraphQL path;
 - `transport/graphql_policy_locale_adapter.rs`: exact-locale policy read and CAS save
   GraphQL paths;
 - `transport/graphql_policy_history_adapter.rs`: policy-history GraphQL path;
@@ -31,7 +33,8 @@ Module-owned Leptos admin FFA package for Groups.
 - `ui/localization.rs`: exact-locale group presentation workspace;
 - `ui/policy_editor.rs`: visual membership policy editor, atomic stale protection, and
   revision history;
-- `ui/applications.rs`: pending application snapshot/review workspace;
+- `ui/applications.rs`: status-filtered application snapshot, review, and reopen
+  workspace;
 - `ui/invitations.rs`: targeted/shareable invitation management;
 - `ui/root.rs`: module-owned composition root;
 - `locales/`: English and Russian copy.
@@ -72,12 +75,29 @@ Every successful policy translation INSERT/UPDATE is captured into
 are append-only, and history listing reuses the application-review authorization
 boundary.
 
-## Other admin surfaces
+## Application review and reopen workspace
 
-The application review facade lists policy snapshots, candidate answers, and rule
-acknowledgements, then calls the same approve/reject owner service from native and
-GraphQL paths. Approval/rejection, membership state, group version, audit, and
-idempotency receipt remain owner-transactional.
+The application facade lists immutable policy snapshots, candidate answers, and rule
+acknowledgements. Operators can filter pending, approved, rejected, and cancelled
+applications.
+
+Pending rows continue through the approve/reject owner review service. Rejected and
+cancelled rows expose `Reopen`, prepared in the framework-neutral core and executed
+through `GroupApplicationLifecycleCommandPort`.
+
+The owner locks application then group, verifies active owner/admin/moderator or
+platform authority before disclosing reopen state, and accepts only rejected or
+cancelled applications with a left, non-banned, non-active membership. Reopen restores
+application and membership to pending, clears prior review metadata, and preserves
+submitted time, policy identity/revision/locale, policy snapshot, answers, and
+acknowledgements. Group version, audit, and idempotency receipt commit with the owner
+state.
+
+A manager reopen is not a candidate resubmit. Reopen keeps the submitted snapshot for
+later review; a fresh candidate resubmit instead uses current-policy CAS and replaces
+the snapshot only after success.
+
+## Other admin surfaces
 
 The localization facade never selects fallback locale rows. The invitation facade
 never stores or recovers invitation plaintext after the first create response. The
@@ -89,15 +109,15 @@ through another path.
 
 ## Compatibility and open gates
 
-The older unconditional policy-save method remains in the backend command port for
-source compatibility, but this admin package does not call it. Its removal or
-versioned deprecation is a separate API migration gate.
+The older unconditional policy-save and candidate-submit methods remain in the
+backend command port for source compatibility, but this admin package does not call
+them. Their removal or versioned deprecation is a separate API migration gate.
 
 Manual group/member/application/invitation UUID entry remains an intermediate
-operator surface. Multi-locale policy selection, pickers, explicit destructive
-confirmation, bulk review, audit/receipt history, accessibility execution, and
-native/GraphQL parity remain open.
+operator surface. Multi-locale policy selection, profile-backed pickers, explicit
+destructive confirmation, bulk review, audit/receipt history, accessibility execution,
+and native/GraphQL parity remain open.
 
 No source artifact in this package promotes FFA readiness without executed build,
-runtime, migration, replay, stale-race, concurrency, lock-order, security,
+runtime, migration, replay, stale/lifecycle race, concurrency, lock-order, security,
 accessibility, and recovery evidence.

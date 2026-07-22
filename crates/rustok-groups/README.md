@@ -6,9 +6,10 @@
 membership, local roles, invitations, membership applications, feature bindings,
 and group access policy for RusToK. Exact-locale translation management, bounded
 invitation tokens, targeted invitation source events, localized application policies,
-append-only policy revision history, atomic policy preconditions, application review,
-role delegation, ownership transfer, command receipts, immutable audit, and
-native/GraphQL transports are implemented at source level.
+append-only policy revision history, atomic policy preconditions, candidate
+application lifecycle, application review, role delegation, ownership transfer,
+command receipts, immutable audit, and native/GraphQL transports are implemented at
+source level.
 
 Bans, bulk review, multi-locale policy selection, legacy application-command API
 migration, consumer-side notification fan-out, and full runtime evidence remain
@@ -47,16 +48,30 @@ assets, comments, notification inbox/delivery, or search documents.
   function, and admin FFA surfaces.
 - Publish `GroupApplicationCasCommandPort` for interactive policy saves and candidate
   submissions. Commands carry the rendered policy ID, revision, and exact locale.
-- Lock the group row and compare the expected policy before changing policy,
-  membership, application, group version, audit, or receipt state. A mismatch returns
+- Lock an existing candidate application before the group during CAS resubmit; for a
+  first submission, repeat the application lookup after the group lock before writes.
+- Compare the expected policy before changing policy, membership, application, group
+  version, audit, or receipt state. A mismatch returns
   `groups.application_policy_changed`.
 - Check an identical idempotent receipt before re-evaluating the policy precondition,
   so a committed command can replay after later policy revisions.
+- Publish `GroupApplicationLifecycleReadPort` for the authenticated candidate's exact
+  tenant/group application without cross-candidate enumeration.
+- Publish `GroupApplicationLifecycleCommandPort` for pending-only candidate
+  cancellation and rejected/cancelled-only manager reopen.
+- Candidate cancellation moves membership to `left`, marks the application
+  `cancelled`, and preserves the submitted snapshot.
+- Manager reopen restores membership/application to `pending`, clears prior review
+  metadata, and preserves policy identity, snapshot, answers, acknowledgements, and
+  submitted time.
+- Keep fresh rejected/cancelled resubmit separate from reopen: it uses current-policy
+  CAS and replaces the snapshot only after a successful new submission.
 - Publish a visual policy editor that sends its loaded policy identity directly to the
   owner CAS transaction and requires an explicit reload after a stale conflict.
-- Publish storefront stale-form recovery that preserves `apply=<group_uuid>`, blocks
-  repeated submission, clears old answers on explicit reload, and loads the current
-  exact-locale policy.
+- Publish storefront lifecycle/stale-form recovery that preserves
+  `apply=<group_uuid>` after cancellation or errors, blocks invalid duplicate submit,
+  clears old answers on explicit stale reload, and clears the route only after
+  successful fresh submission.
 - Review applications through owner/admin/moderator authorization. Approval activates
   membership and increments member count; rejection moves membership to `left`.
 - Persist successful governance, invitation, and membership-application commands with
@@ -94,7 +109,9 @@ a separate API migration gate.
 - `GroupInvitationReadPort`
 - `GroupApplicationReadPort`
 - `GroupApplicationPolicyHistoryReadPort`
+- `GroupApplicationLifecycleReadPort`
 - `GroupApplicationCasCommandPort`
+- `GroupApplicationLifecycleCommandPort`
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
@@ -103,13 +120,14 @@ a separate API migration gate.
 - `GroupGovernanceCommandPort`
 - `graphql_application_cas::GroupsQueryRoot` with the `graphql` feature
 - `graphql_application_cas::GroupsMutationRoot` with core, localization, governance,
-  invitations, applications, policy history, and application CAS composition
+  invitations, applications, policy history, CAS, review, and lifecycle composition
 - `rustok_groups_admin::GroupsAdmin`
 - `rustok_groups_admin::load_group_admin_application_policy`
 - `rustok_groups_admin::upsert_group_admin_application_policy`
 - `rustok_groups_admin::load_group_admin_application_policy_revisions`
 - `rustok_groups_admin::load_group_admin_membership_applications`
 - `rustok_groups_admin::review_group_admin_membership_application`
+- `rustok_groups_admin::reopen_group_admin_membership_application`
 - `rustok_groups_admin::load_group_admin_translations`
 - `rustok_groups_admin::upsert_group_admin_translation`
 - `rustok_groups_admin::delete_group_admin_translation`
@@ -120,7 +138,9 @@ a separate API migration gate.
 - `rustok_groups_admin::transfer_group_admin_ownership`
 - `rustok_groups_storefront::GroupsView`
 - `rustok_groups_storefront::load_groups_storefront_application_policy`
+- `rustok_groups_storefront::load_groups_storefront_my_application`
 - `rustok_groups_storefront::submit_groups_storefront_membership_application`
+- `rustok_groups_storefront::cancel_groups_storefront_membership_application`
 - `rustok_groups_storefront::accept_groups_storefront_targeted_invitation`
 
 ## Interactions
@@ -147,8 +167,9 @@ a separate API migration gate.
 
 Source presence does not prove migration, runtime, stable-code parity, replay,
 concurrency, lock ordering, security, accessibility, retry, or recovery behavior.
-FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; policy-revision and
-application-policy-CAS runtime evidence keys remain `null`.
+FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; policy-revision,
+application-policy-CAS, and application-lifecycle runtime evidence keys remain
+`null`.
 
 ## Documentation
 

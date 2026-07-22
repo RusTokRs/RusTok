@@ -68,6 +68,15 @@
         "append_only_source": "group_membership_policy_revisions"
       },
       {
+        "name": "GroupApplicationLifecycleReadPort",
+        "operations": ["read_my_group_membership_application"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "authenticated_exact_candidate_only",
+        "cross_candidate_read": "forbidden"
+      },
+      {
         "name": "GroupApplicationCasCommandPort",
         "operations": [
           "upsert_group_application_policy_if_current",
@@ -87,7 +96,34 @@
         "transactional_audit": true,
         "transactional_membership": true,
         "transactional_group_version": true,
-        "serialized_group_row": "exclusive_lock_where_supported"
+        "serialized_group_row": "exclusive_lock_where_supported",
+        "serialized_application_row": "existing_application_before_group_where_supported",
+        "first_submission_application_recheck": "after_group_lock_before_state_write"
+      },
+      {
+        "name": "GroupApplicationLifecycleCommandPort",
+        "operations": [
+          "cancel_group_membership_application",
+          "reopen_group_membership_application"
+        ],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "cancel_authorization": "authenticated_exact_candidate_only",
+        "reopen_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "cancel_from": ["pending"],
+        "reopen_from": ["rejected", "cancelled"],
+        "cancel_membership_state": "left",
+        "reopen_membership_state": "pending",
+        "reopen_snapshot": "preserve",
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "transactional_group_version": true,
+        "serialized_application_row": "exclusive_lock_where_supported",
+        "serialized_group_row": "exclusive_lock_where_supported",
+        "lock_order": "application_then_group",
+        "reopen_status_disclosure": "after_manager_authorization"
       },
       {
         "name": "GroupCommandPort",
@@ -247,9 +283,18 @@
     "unique_current_application": "tenant_group_user",
     "approve_membership_state": "active",
     "reject_membership_state": "left",
+    "candidate_cancel_from": ["pending"],
+    "candidate_cancel_membership_state": "left",
+    "candidate_cancel_snapshot": "preserve",
+    "candidate_cancel_query_clear": "never",
+    "manager_reopen_from": ["rejected", "cancelled"],
+    "manager_reopen_snapshot": "preserve",
+    "fresh_resubmit_from": ["rejected", "cancelled"],
+    "fresh_resubmit_snapshot": "replace_with_current_cas_policy",
     "approve_member_count": "increment_same_transaction",
     "review_note_max_chars": 2000,
     "admin_review_ui": "implemented",
+    "admin_reopen_ui": "implemented_source",
     "admin_policy_editor": "implemented_source",
     "admin_policy_stale_preflight": "replaced_by_owner_cas",
     "atomic_expected_revision_guard": "implemented_source",
@@ -257,6 +302,8 @@
     "atomic_expected_revision_conflict_code": "groups.application_policy_changed",
     "final_graphql_legacy_application_mutations": "not_exposed",
     "storefront_application_ui": "implemented",
+    "storefront_application_status_ui": "implemented_source",
+    "storefront_candidate_cancel_ui": "implemented_source",
     "storefront_stale_submit_ux": "implemented_source",
     "storefront_stale_submit_reload_clears_answers": true,
     "storefront_query_key": "apply",
@@ -328,7 +375,9 @@
       "surfaces": [
         "rust_read_port",
         "rust_cas_command_port",
-        "graphql_cas_and_review",
+        "rust_lifecycle_read_port",
+        "rust_lifecycle_command_port",
+        "graphql_cas_review_and_lifecycle",
         "leptos_server_function",
         "admin_core",
         "admin_graphql_adapter",
@@ -374,6 +423,7 @@
     "membership_application_static_boundary": "scripts/verify/verify-groups-membership-applications.mjs",
     "membership_policy_revision_static_boundary": "scripts/verify/verify-groups-membership-policy-revisions.mjs",
     "membership_application_policy_cas_static_boundary": "scripts/verify/verify-groups-application-policy-cas.mjs",
+    "membership_application_lifecycle_static_boundary": "scripts/verify/verify-groups-application-lifecycle.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
@@ -387,6 +437,7 @@
     "membership_application_concurrency": null,
     "membership_application_policy_revision": null,
     "membership_application_policy_cas": null,
+    "membership_application_lifecycle": null,
     "membership_application_bulk_review": null,
     "governance_transport_parity": null,
     "governance_concurrency": null

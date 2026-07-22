@@ -4,8 +4,8 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
-    prepare_group_membership_application_query, prepare_review_group_membership_application,
-    GroupsAdminApplicationInputError,
+    prepare_group_membership_application_query, prepare_reopen_group_membership_application,
+    prepare_review_group_membership_application, GroupsAdminApplicationInputError,
 };
 use crate::application_model::{
     GroupsAdminApplicationReviewDecision, GroupsAdminMembershipApplication,
@@ -13,8 +13,8 @@ use crate::application_model::{
 use crate::core::{groups_admin_error, selected_transport_profile, GroupsAdminTransportProfile};
 use crate::i18n::t;
 use crate::transport::{
-    load_group_admin_membership_applications, review_group_admin_membership_application,
-    GroupsAdminTransportContext,
+    load_group_admin_membership_applications, reopen_group_admin_membership_application,
+    review_group_admin_membership_application, GroupsAdminTransportContext,
 };
 
 #[derive(Clone)]
@@ -22,6 +22,11 @@ struct ApplicationCopy {
     title: String,
     body: String,
     group_id: String,
+    status: String,
+    pending: String,
+    approved: String,
+    rejected: String,
+    cancelled: String,
     load: String,
     empty: String,
     application_id: String,
@@ -30,10 +35,12 @@ struct ApplicationCopy {
     reject: String,
     note: String,
     review: String,
+    reopen: String,
     busy: String,
     error: String,
     loaded: String,
     reviewed: String,
+    reopened: String,
     user: String,
     policy: String,
     answers: String,
@@ -53,6 +60,7 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
     let copy = application_copy(locale.as_deref());
 
     let (group_id, set_group_id) = signal(String::new());
+    let (status, set_status) = signal("pending".to_string());
     let (application_id, set_application_id) = signal(String::new());
     let (review_note, set_review_note) = signal(String::new());
     let (decision, set_decision) = signal(GroupsAdminApplicationReviewDecision::Approve);
@@ -65,9 +73,10 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
     let load_copy = copy.clone();
     let on_load = move |event: SubmitEvent| {
         event.prevent_default();
+        let selected_status = status.get_untracked();
         let query = match prepare_group_membership_application_query(
             &group_id.get_untracked(),
-            Some("pending"),
+            Some(&selected_status),
         ) {
             Ok(query) => query,
             Err(input_error) => {
@@ -142,10 +151,54 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
         });
     };
 
+    let reopen_transport = transport.clone();
+    let reopen_copy = copy.clone();
+    let on_reopen = Callback::new(move |selected_application_id: String| {
+        let command = match prepare_reopen_group_membership_application(&selected_application_id) {
+            Ok(command) => command,
+            Err(input_error) => {
+                set_error.set(Some(application_input_error_message(
+                    input_error,
+                    &reopen_copy,
+                )));
+                set_success.set(None);
+                return;
+            }
+        };
+        let context = reopen_transport.clone();
+        let copy = reopen_copy.clone();
+        set_busy.set(true);
+        set_error.set(None);
+        set_success.set(None);
+        spawn_local(async move {
+            match reopen_group_admin_membership_application(context, command).await {
+                Ok(result) => {
+                    let reopened_id = result.application.id.clone();
+                    set_applications.update(|items| items.retain(|item| item.id != reopened_id));
+                    set_application_id.set(String::new());
+                    set_success.set(Some(format!(
+                        "{} · group version {}",
+                        copy.reopened, result.group_version
+                    )));
+                }
+                Err(reopen_error) => set_error.set(Some(groups_admin_error(
+                    &copy.error,
+                    &reopen_error.to_string(),
+                ))),
+            }
+            set_busy.set(false);
+        });
+    });
+
     let ApplicationCopy {
         title,
         body,
         group_id: group_id_label,
+        status: status_label,
+        pending,
+        approved,
+        rejected,
+        cancelled,
         load,
         empty,
         application_id: application_id_label,
@@ -154,6 +207,7 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
         reject,
         note,
         review,
+        reopen,
         busy: busy_label,
         user: user_label,
         policy: policy_label,
@@ -167,13 +221,24 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
             <h2 class="text-xl font-semibold text-card-foreground">{title}</h2>
             <p class="mt-2 max-w-3xl text-sm text-muted-foreground">{body}</p>
 
-            <form class="mt-6 grid gap-3 md:grid-cols-[1fr_auto]" on:submit=on_load>
+            <form class="mt-6 grid gap-3 md:grid-cols-[1fr_14rem_auto]" on:submit=on_load>
                 <input
                     class="rounded-xl border border-border bg-background px-3 py-2 text-sm"
                     placeholder=group_id_label
                     prop:value=move || group_id.get()
                     on:input=move |event| set_group_id.set(event_target_value(&event))
                 />
+                <label class="sr-only">{status_label.clone()}</label>
+                <select
+                    class="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                    aria-label=status_label
+                    on:change=move |event| set_status.set(event_target_value(&event))
+                >
+                    <option value="pending">{pending}</option>
+                    <option value="rejected">{rejected}</option>
+                    <option value="cancelled">{cancelled}</option>
+                    <option value="approved">{approved}</option>
+                </select>
                 <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" type="submit">{load}</button>
             </form>
 
@@ -184,7 +249,7 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                 <p class="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-foreground" role="status">{move || success.get().unwrap_or_default()}</p>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground">{busy_label}</p>
+                <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">{busy_label}</p>
             </Show>
 
             <div class="mt-6">
@@ -197,6 +262,9 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                             <ul class="grid gap-4">
                                 {items.into_iter().map(|item| {
                                     let application_id_for_pick = item.id.clone();
+                                    let application_id_for_reopen = item.id.clone();
+                                    let reopenable = matches!(item.status.as_str(), "rejected" | "cancelled");
+                                    let reopen_callback = on_reopen.clone();
                                     let answers = item.answers.clone();
                                     let acknowledgements = item.acknowledged_rule_keys.join(", ");
                                     view! {
@@ -209,7 +277,18 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                                                 >
                                                     {item.id.clone()}
                                                 </button>
-                                                <span class="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{item.status.clone()}</span>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{item.status.clone()}</span>
+                                                    <Show when=move || reopenable>
+                                                        <button
+                                                            class="rounded-lg border border-border bg-background px-3 py-1 text-xs font-medium"
+                                                            type="button"
+                                                            on:click=move |_| reopen_callback.run(application_id_for_reopen.clone())
+                                                        >
+                                                            {reopen.clone()}
+                                                        </button>
+                                                    </Show>
+                                                </div>
                                             </div>
                                             <dl class="mt-4 grid gap-3 text-sm md:grid-cols-2">
                                                 <div><dt class="text-xs text-muted-foreground">{user_label.clone()}</dt><dd class="break-all">{item.user_id}</dd></div>
@@ -283,6 +362,7 @@ fn application_input_error_message(
         GroupsAdminApplicationInputError::InvalidStatus => copy.invalid_status.clone(),
         GroupsAdminApplicationInputError::ReviewNoteTooLong => copy.review_note_too_long.clone(),
         GroupsAdminApplicationInputError::InvalidLocale
+        | GroupsAdminApplicationInputError::InvalidExpectedPolicy
         | GroupsAdminApplicationInputError::TooManyQuestions
         | GroupsAdminApplicationInputError::TooManyRules
         | GroupsAdminApplicationInputError::InvalidQuestion
@@ -293,20 +373,27 @@ fn application_input_error_message(
 fn application_copy(locale: Option<&str>) -> ApplicationCopy {
     ApplicationCopy {
         title: t(locale, "groups.admin.applications.title", "Membership applications"),
-        body: t(locale, "groups.admin.applications.body", "Review pending applications against the exact policy snapshot seen by each candidate."),
+        body: t(locale, "groups.admin.applications.body", "Review pending applications or reopen rejected and cancelled applications while preserving their policy snapshot."),
         group_id: t(locale, "groups.admin.applications.groupId", "Group UUID"),
-        load: t(locale, "groups.admin.applications.load", "Load pending applications"),
-        empty: t(locale, "groups.admin.applications.empty", "No pending applications loaded."),
+        status: t(locale, "groups.admin.applications.status", "Application status"),
+        pending: t(locale, "groups.admin.applications.pending", "Pending"),
+        approved: t(locale, "groups.admin.applications.approved", "Approved"),
+        rejected: t(locale, "groups.admin.applications.rejected", "Rejected"),
+        cancelled: t(locale, "groups.admin.applications.cancelled", "Cancelled"),
+        load: t(locale, "groups.admin.applications.load", "Load applications"),
+        empty: t(locale, "groups.admin.applications.empty", "No applications loaded."),
         application_id: t(locale, "groups.admin.applications.applicationId", "Application UUID"),
         decision: t(locale, "groups.admin.applications.decision", "Decision"),
         approve: t(locale, "groups.admin.applications.approve", "Approve"),
         reject: t(locale, "groups.admin.applications.reject", "Reject"),
         note: t(locale, "groups.admin.applications.note", "Review note (optional)"),
         review: t(locale, "groups.admin.applications.review", "Apply review"),
+        reopen: t(locale, "groups.admin.applications.reopen", "Reopen"),
         busy: t(locale, "groups.admin.applications.busy", "Applying membership application command..."),
         error: t(locale, "groups.admin.applications.error", "Membership application command failed"),
-        loaded: t(locale, "groups.admin.applications.loaded", "Pending applications loaded"),
+        loaded: t(locale, "groups.admin.applications.loaded", "Applications loaded"),
         reviewed: t(locale, "groups.admin.applications.reviewed", "Application reviewed"),
+        reopened: t(locale, "groups.admin.applications.reopened", "Application reopened"),
         user: t(locale, "groups.admin.applications.user", "Candidate"),
         policy: t(locale, "groups.admin.applications.policy", "Policy snapshot"),
         answers: t(locale, "groups.admin.applications.answers", "Answers"),

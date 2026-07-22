@@ -12,6 +12,9 @@ use rustok_api::{
 };
 use uuid::Uuid;
 
+use crate::graphql_application_lifecycle::{
+    GroupsApplicationLifecycleMutation, GroupsApplicationLifecycleQuery,
+};
 use crate::graphql_applications::{
     GroupApplicationReviewDecisionGql, ReviewGroupMembershipApplicationResultGql,
     SubmitGroupMembershipApplicationInputGql, SubmitGroupMembershipApplicationResultGql,
@@ -29,12 +32,14 @@ use crate::{
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 
-pub type GroupsQueryRoot = GroupsBaseQueryRoot;
+#[derive(MergedObject, Default)]
+pub struct GroupsQueryRoot(GroupsBaseQueryRoot, GroupsApplicationLifecycleQuery);
 
 #[derive(MergedObject, Default)]
 pub struct GroupsMutationRoot(
     GroupsPreApplicationMutationRoot,
     GroupsApplicationCasMutation,
+    GroupsApplicationLifecycleMutation,
 );
 
 #[derive(Default)]
