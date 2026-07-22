@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 
+use super::application_bulk_review::GroupsApplicationsBulkReviewAdmin;
 use super::applications::GroupsApplicationsAdmin;
 use super::invitations::GroupsInvitationsAdmin;
 use super::leptos::GroupsAdmin as GroupsAdminCore;
@@ -14,6 +15,7 @@ pub fn GroupsAdmin() -> impl IntoView {
             <GroupsLocalizationAdmin />
             <GroupsPolicyEditorAdmin />
             <GroupsApplicationsAdmin />
+            <GroupsApplicationsBulkReviewAdmin />
             <GroupsInvitationsAdmin />
         </div>
     }
