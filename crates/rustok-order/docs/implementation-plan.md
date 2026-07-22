@@ -16,12 +16,18 @@ or fulfillment side effects. Checkout completion is owner-owned through
 `CheckoutCompletionPort`; the public GraphQL and native storefront paths use
 the same typed request/result contract.
 
-Order now also owns `order_checkout_identities`, an immutable typed projection
-that binds a checkout operation to one order and, for live writes, one source
-cart plus immutable snapshot/request hashes. Legacy rows are backfilled only
-from valid facts already present in order metadata; an unknown legacy cart is
-kept as `NULL` rather than fabricated. The old JSON identity path remains a
-temporary compatibility bridge until commerce is cut over to owner reads.
+Order owns `order_checkout_identities`, an immutable typed projection that binds
+a checkout operation to one order and, for live writes, one source cart plus
+immutable snapshot/request hashes. `CheckoutOrderIdentityPort` publishes reads,
+bind, and explicit legacy adoption over that owner state. Staged checkout order
+creation and compensation now consume this port and no longer query `orders` or
+inspect checkout identity metadata themselves.
+
+Legacy order metadata remains a temporary compatibility input only inside the
+order-owned `adopt_legacy` adapter. Legacy rows retain `NULL` for unknown cart or
+missing hash facts rather than fabricating attribution. The metadata bridge and
+old JSON indexes must be removed after completion/result consumers use typed
+identity exclusively.
 
 ## FFA/FBA boundary
 
@@ -30,17 +36,18 @@ temporary compatibility bridge until commerce is cut over to owner reads.
 - Structural shape: `core_transport_ui`
 - FBA provider contract: `order.checkout_completion.v1` in
   `crates/rustok-order/contracts/order-fba-registry.json`.
+- Published provider ports: `CheckoutCompletionPort` and
+  `CheckoutOrderIdentityPort`.
 - Static contract evidence:
   `crates/rustok-order/contracts/evidence/order-contract-test-static-matrix.json`.
 - `scripts/verify/verify-order-admin-boundary.mjs`,
-  `scripts/verify/verify-order-storefront-boundary.mjs`, and
-  `scripts/verify/verify-commerce-storefront-transport-handoff.mjs` lock the
-  module/commerce UI and transport ownership split.
-- Storefront owner transport uses `execute_selected_transport` with native
-  `#[server]` selected first and GraphQL retained as the parallel fallback.
-- No status promotion is allowed from the new identity source alone; clean /
-  upgraded migrations, contention, replay, and mounted consumer evidence are
-  still missing.
+  `scripts/verify/verify-order-storefront-boundary.mjs`,
+  `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`, and
+  `scripts/verify/verify-commerce-order-identity-boundary.mjs` lock the current
+  UI, transport, and identity ownership split.
+- No status promotion is allowed from source inspection. Clean/upgraded
+  migrations, contention, restart, mounted consumers, and remote-profile
+  evidence remain missing.
 
 ## Checkout identity workstream
 
@@ -51,29 +58,46 @@ temporary compatibility bridge until commerce is cut over to owner reads.
   PostgreSQL, SQLite, and MySQL source paths.
 - [x] Backfill valid operation and hash facts from legacy metadata without
   inventing an unknown source cart or missing hashes.
-- [x] Publish owner-local typed reads by operation, order, and cart.
-- [x] Make owner-local identity admission replay-safe and classify conflicting
-  operation/order/cart bindings as typed conflicts.
-- [x] Add focused SQLite source tests for typed reads, replay, concurrency, and
-  conflict classification.
+- [x] Publish typed reads by operation/cart plus idempotent bind and explicit
+  legacy adoption through `CheckoutOrderIdentityPort`.
+- [x] Keep legacy metadata lookup inside the order-owned compatibility adapter;
+  consumers receive only typed snapshots and safe `PortError` values.
+- [x] Cut staged checkout order creation over to typed read/adopt/bind.
+- [x] Cut checkout compensation identity resolution over to typed read/adopt.
+- [x] Remove direct `orders` SQL and order metadata identity reads from commerce
+  creation and compensation source.
+- [x] Add focused SQLite source tests for journal reads/replay/contention and
+  owner-port legacy adoption/cart conflict classification.
+- [x] Add a static boundary verifier that rejects direct commerce order SQL,
+  local legacy lookup helpers, and `order.metadata` identity reads.
+- [ ] Execute the new journal/port tests and static verifier.
 - [ ] Execute clean/upgraded/down/reapply migrations on SQLite, PostgreSQL, and
   MySQL and retain constraint/rollback evidence.
-- [ ] Execute PostgreSQL/MySQL concurrent admission and restart evidence.
-- [ ] Cut commerce order creation and recovery over to this owner identity.
-- [ ] Remove the old JSON expression indexes, generated column, metadata
-  identity writes, and direct metadata lookup after all consumers are cut over.
+- [ ] Execute PostgreSQL/MySQL concurrent admission, legacy adoption, restart,
+  and remote-adapter evidence.
+- [ ] Move `CheckoutCompletionPort` create/place/result reads onto the typed
+  identity so cart/operation recovery is complete.
+- [ ] Remove old JSON expression indexes, generated columns, metadata identity
+  writes, and `adopt_legacy` after every production consumer is cut over.
 
 ## Open results
 
-1. **Complete owner checkout identity cutover.** Publish the typed read/command
-   contract over the owner journal, use it from staged checkout and
-   compensation, then remove direct `orders` SQL and JSON identity lookup from
-   commerce.
-   **Depends on:** the typed identity migration and journal source.
-   **Done when:** create/place/read replay uses owner ports, legacy adoption is
-   explicit, and no production consumer queries checkout identity from metadata.
+1. **Complete idempotent checkout completion.** Replace the current separate
+   create/confirm calls with one owner command bound to typed checkout identity,
+   and implement result reads by operation/cart.
+   **Depends on:** `CheckoutOrderIdentityPort` and staged checkout consumer
+   cutover.
+   **Done when:** concurrent and crash replay returns one placed order, result
+   reads no longer return unavailable, and request-hash conflicts are typed.
 
-2. **Complete the post-order domain layer.** Evolve returns into explicit
+2. **Remove the compatibility bridge.** Cut every remaining order completion,
+   recovery, admin, and remote consumer over to typed identity, then delete old
+   metadata identity writes, JSON indexes/generated columns, and
+   `adopt_legacy`.
+   **Depends on:** completed checkout port and upgraded migration evidence.
+   **Done when:** no production lookup depends on `metadata.checkout.*`.
+
+3. **Complete the post-order domain layer.** Evolve returns into explicit
    refund, exchange, claim, and order-change resolutions with owner-controlled
    lifecycle transitions and idempotent integration boundaries; do not move
    payment or fulfillment state transitions into this module.
@@ -81,34 +105,34 @@ temporary compatibility bridge until commerce is cut over to owner reads.
    **Done when:** each resolution has typed references, failure semantics,
    outbox behavior, and targeted lifecycle tests.
 
-3. **Prove checkout transport parity beyond the embedded owner path.** Keep
-   GraphQL, native server-function, and remote-adapter fallback behavior aligned
-   for completion, result, and status reads.
+4. **Prove checkout transport parity beyond the embedded owner path.** Keep
+   GraphQL, native server-function, and remote-adapter behavior aligned for
+   completion, identity, result, and status reads.
    **Depends on:** the commerce checkout runtime and a remote adapter test
    environment.
    **Done when:** the contract-test matrix has executable remote evidence and
    fallback behavior supports a justified status promotion.
 
-4. **Keep order and commerce documentation synchronized.** Update local
-   README/admin docs, manifest metadata, central registry, and the umbrella
-   commerce plan whenever order lifecycle, checkout snapshots, or post-order
-   ownership changes.
-   **Depends on:** the change-owning contract.
-   **Done when:** no owner-specific server GraphQL artifact, duplicate DTO, or
-   stale cross-module responsibility remains.
+5. **Keep order and commerce documentation synchronized.** Update local docs,
+   manifests, registries, central status, and the umbrella commerce plan whenever
+   order lifecycle, checkout snapshots, or identity ownership changes.
+   **Done when:** no stale cross-module responsibility or evidence claim remains.
 
 ## Verification
 
 - `npm run verify:ecommerce:fba`
+- `node scripts/verify/verify-commerce-order-identity-boundary.mjs`
+- `node --test scripts/verify/verify-commerce-order-identity-boundary.test.mjs`
 - `npm run verify:order:admin-boundary`
 - `npm run verify:order:storefront-boundary`
 - `npm run verify:commerce:storefront-transport-handoff`
 - `cargo xtask module validate order`
 - `cargo xtask module test order`
 - `cargo test -p rustok-order --test order_checkout_identity`
+- `cargo test -p rustok-order --test checkout_order_identity_port`
 - Clean/upgraded/down/reapply identity migrations on SQLite/PostgreSQL/MySQL.
-- Targeted identity replay, contention, tenant/order mismatch, lifecycle,
-  snapshot, outbox, and post-order tests.
+- Targeted identity replay, contention, tenant/order mismatch, legacy adoption,
+  remote profile, lifecycle, snapshot, and rollback tests.
 
 ## Change rules
 
@@ -119,6 +143,6 @@ temporary compatibility bridge until commerce is cut over to owner reads.
 3. Update this status block and `docs/modules/registry.md` only with proven UI
    or FBA boundary changes.
 4. Do not invent legacy checkout cart, hash, actor, or provider facts during
-   migration.
-5. Remove the metadata compatibility bridge immediately after all production
-   consumers use the typed owner identity.
+   migration or adoption.
+5. Keep compatibility lookup owner-local and delete it immediately after every
+   production consumer uses typed identity.
