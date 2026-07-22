@@ -15,7 +15,10 @@ pub fn prepare_bulk_review_group_membership_applications(
     decision: GroupsAdminApplicationReviewDecision,
     note: Option<String>,
     confirmed: bool,
-) -> Result<BulkReviewGroupMembershipApplicationsCommand, GroupsAdminBulkReviewInputError> {
+) -> Result<
+    crate::application_model::BulkReviewGroupMembershipApplicationsCommand,
+    GroupsAdminBulkReviewInputError,
+> {
     if !confirmed {
         return Err(GroupsAdminBulkReviewInputError::ConfirmationRequired);
     }
@@ -45,7 +48,7 @@ pub fn prepare_bulk_review_group_membership_applications(
         return Err(GroupsAdminBulkReviewInputError::ReviewNoteTooLong);
     }
 
-    Ok(BulkReviewGroupMembershipApplicationsCommand {
+    Ok(crate::application_model::BulkReviewGroupMembershipApplicationsCommand {
         idempotency_key: format!("groups-admin-bulk-review-{}", Uuid::new_v4()),
         application_ids: normalized_ids,
         decision,
