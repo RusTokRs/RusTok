@@ -137,8 +137,8 @@ async fn groups_admin_review_membership_application_native(
             TenantContext,
         };
         use rustok_groups::{
-            GroupApplicationCommandPort, GroupApplicationReviewDecision, GroupApplicationService,
-            ReviewGroupMembershipApplicationRequest,
+            GroupApplicationReviewCommandPort, GroupApplicationReviewDecision,
+            GroupApplicationService, ReviewGroupMembershipApplicationRequest,
         };
         use std::time::Duration;
         use uuid::Uuid;
@@ -177,7 +177,7 @@ async fn groups_admin_review_membership_application_native(
         for permission in auth.permissions {
             context = context.with_claim(permission.to_string());
         }
-        let result = GroupApplicationCommandPort::review_group_membership_application(
+        let result = GroupApplicationReviewCommandPort::review_group_membership_application(
             &GroupApplicationService::new(runtime.db_clone()),
             context,
             ReviewGroupMembershipApplicationRequest {
