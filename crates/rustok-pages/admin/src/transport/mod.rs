@@ -78,6 +78,7 @@ pub async fn create_page(
     graphql_adapter::create_page(token, tenant_slug, draft).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn patch_page_metadata(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -135,6 +136,18 @@ pub async fn publish_page(
     let result = graphql_adapter::publish_page(token, tenant_slug, id)
         .await
         .map(PagePublicationResult::Published)?;
+    validate_publication_result(&expected_page_id, result)
+}
+
+pub async fn rollback_page(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    id: String,
+) -> Result<PagePublicationResult, TransportError> {
+    let expected_page_id = id.clone();
+    let result = graphql_adapter::rollback_page(token, tenant_slug, id)
+        .await
+        .map(PagePublicationResult::RolledBack)?;
     validate_publication_result(&expected_page_id, result)
 }
 
