@@ -18,9 +18,9 @@ not expose relation persistence to REST or GraphQL.
 ## Compatibility contract
 
 The existing Rust `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput` and
-`UpdateReplyInput` structs remain unchanged. Separate command DTOs carry inline
-quote input, while the existing facade methods convert legacy inputs into those
-commands.
+`UpdateReplyInput` structs remain unchanged. In other words, legacy Rust DTOs
+remain unchanged. Separate command DTOs carry inline quote input, while the
+existing facade methods convert legacy inputs into those commands.
 
 Create commands treat an omitted quote list as an empty initial set. Update
 commands use three distinct states:
