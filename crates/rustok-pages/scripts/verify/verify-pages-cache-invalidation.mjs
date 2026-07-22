@@ -32,6 +32,14 @@ function forbidMarker(source, marker, label) {
   if (source.includes(marker)) fail(`${label} still contains ${marker}`);
 }
 
+function sliceBetween(source, start, end, label) {
+  const startIndex = source.indexOf(start);
+  if (startIndex < 0) fail(`${label} is missing ${start}`);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  if (endIndex < 0) fail(`${label} is missing ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
 for (const marker of [
   'PAGES_CACHE_NAMESPACE_FORMAT: &str = "pages_cache_namespace_v1"',
   "pub enum PageCacheScope",
@@ -93,6 +101,7 @@ for (const marker of [
 ]) {
   requireMarker(serverAdapter, marker, "neutral server cache capability adapter");
 }
+const serverAdapterRuntime = serverAdapter.split("#[cfg(test)]", 1)[0];
 for (const forbidden of [
   "PageCacheScope::Route",
   "PageCacheScope::Page",
@@ -104,7 +113,7 @@ for (const forbidden of [
   'cmd("KEYS")',
   'cmd("DEL")',
 ]) {
-  forbidMarker(serverAdapter, forbidden, "server adapter ownership boundary");
+  forbidMarker(serverAdapterRuntime, forbidden, "server adapter ownership boundary");
 }
 
 for (const marker of [
@@ -116,26 +125,29 @@ for (const marker of [
 ]) {
   requireMarker(dispatcher, marker, "server Pages cache runtime composition");
 }
-
-const runtimeInsert = dispatcher.indexOf(
+const enrichment = sliceBetween(
+  dispatcher,
+  "fn enrich_runtime_extensions_after_event_start(",
+  '#[cfg(feature = "mod-commerce")]\nfn spawn_paid_order_label_worker_if_enabled',
+  "server runtime extension enrichment",
+);
+requireMarker(
+  enrichment,
   "enriched.insert(rustok_pages::PagesCacheInvalidationRuntime::new(provider))",
+  "server runtime extension enrichment",
+);
+const enrichmentCall = dispatcher.indexOf(
+  "let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions)",
 );
 const dispatcherBuild = dispatcher.indexOf(
   "build_module_event_dispatcher(registry, bus, db, extensions.as_ref())",
 );
-if (runtimeInsert < 0 || dispatcherBuild < 0 || runtimeInsert < dispatcherBuild) {
-  // The insertion lives in the enrichment function called before dispatcherBuild.
-  const enrichmentCall = dispatcher.indexOf(
-    "let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions)",
-  );
-  if (
-    runtimeInsert < 0 ||
-    enrichmentCall < 0 ||
-    dispatcherBuild < 0 ||
-    enrichmentCall > dispatcherBuild
-  ) {
-    fail("Pages cache runtime must be composed before module event listeners are built");
-  }
+if (
+  enrichmentCall < 0 ||
+  dispatcherBuild < 0 ||
+  enrichmentCall > dispatcherBuild
+) {
+  fail("Pages cache runtime must be composed before module event listeners are built");
 }
 
 console.log("[verify-pages-cache-invalidation] PASS");
