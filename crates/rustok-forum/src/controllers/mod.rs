@@ -10,6 +10,7 @@ pub mod category_commands;
 pub mod category_lifecycle;
 pub mod category_policy;
 pub mod category_tree;
+pub mod quote_commands;
 pub mod replies;
 pub mod subscriptions;
 pub mod topics;
@@ -100,6 +101,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
                 .delete(topics::delete_topic),
         )
         .route(
+            "/api/forum/topics/{id}/quotes",
+            axum::routing::put(quote_commands::set_topic_quotes),
+        )
+        .route(
             "/api/forum/topics/{topic_id}/solution/{reply_id}",
             axum::routing::post(topics::mark_topic_solution),
         )
@@ -136,6 +141,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
             get(replies::get_reply)
                 .put(replies::update_reply)
                 .delete(replies::delete_reply),
+        )
+        .route(
+            "/api/forum/replies/{id}/quotes",
+            axum::routing::put(quote_commands::set_reply_quotes),
         )
         .route(
             "/api/forum/replies/{reply_id}/vote/{value}",

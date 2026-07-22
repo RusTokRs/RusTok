@@ -5,6 +5,7 @@ mod category_tree_query;
 mod connection;
 mod mutation;
 mod query;
+mod quote_commands;
 mod types;
 
 use async_graphql::MergedObject;
@@ -19,6 +20,10 @@ pub use category_tree_query::{
     GqlForumCategoryBreadcrumb, GqlForumCategoryTree, GqlForumCategoryTreeNode,
 };
 pub use connection::*;
+pub use quote_commands::{
+    GqlForumQuoteReferenceInput, GqlForumQuoteTargetKind, GqlForumRelationQuote,
+    GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
+};
 pub use types::*;
 
 #[derive(MergedObject, Default)]
@@ -34,4 +39,5 @@ pub struct ForumMutation(
     category_command_mutation::ForumCategoryCommandMutation,
     category_lifecycle_mutation::ForumCategoryLifecycleMutation,
     category_policy::ForumCategoryTopicPolicyMutation,
+    quote_commands::ForumQuoteCommandMutation,
 );
