@@ -27,10 +27,13 @@ pub enum GroupsAdminApplicationInputError {
 
 pub fn prepare_group_application_policy_query(
     group_id: &str,
+    locale: &str,
 ) -> Result<GroupsAdminApplicationPolicyQuery, GroupsAdminApplicationInputError> {
     Ok(GroupsAdminApplicationPolicyQuery {
         group_id: normalize_uuid(group_id)
             .map_err(|_| GroupsAdminApplicationInputError::InvalidGroupId)?,
+        locale: normalize_locale_tag(locale)
+            .ok_or(GroupsAdminApplicationInputError::InvalidLocale)?,
     })
 }
 
