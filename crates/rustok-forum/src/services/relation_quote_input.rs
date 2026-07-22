@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Statement,
 };
 
 use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput};
@@ -10,6 +11,23 @@ use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
     ForumContentTarget, ForumQuoteReference, FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InlineQuoteExpectation {
+    Any,
+    Exact(Option<i64>),
+}
+
+pub(crate) struct ResolvedInlineUpdateQuotes {
+    quotes: Vec<ForumQuoteReference>,
+    expectation: InlineQuoteExpectation,
+}
+
+impl ResolvedInlineUpdateQuotes {
+    pub(crate) fn into_parts(self) -> (Vec<ForumQuoteReference>, InlineQuoteExpectation) {
+        (self.quotes, self.expectation)
+    }
+}
 
 pub(crate) fn normalize_quote_inputs(
     inputs: Vec<ForumQuoteReferenceInput>,
@@ -40,11 +58,46 @@ pub(crate) async fn resolve_inline_update_quotes(
     source: ForumContentTarget,
     locale: &str,
     input: Option<Vec<ForumQuoteReferenceInput>>,
-) -> ForumResult<Vec<ForumQuoteReference>> {
+) -> ForumResult<ResolvedInlineUpdateQuotes> {
     match input {
-        Some(input) => normalize_quote_inputs(input),
-        None => load_latest_quotes(db, tenant_id, source, locale).await,
+        Some(input) => Ok(ResolvedInlineUpdateQuotes {
+            quotes: normalize_quote_inputs(input)?,
+            expectation: InlineQuoteExpectation::Any,
+        }),
+        None => {
+            let (revision_id, quotes) = load_latest_quotes(db, tenant_id, source, locale).await?;
+            Ok(ResolvedInlineUpdateQuotes {
+                quotes,
+                expectation: InlineQuoteExpectation::Exact(revision_id),
+            })
+        }
     }
+}
+
+pub(crate) async fn lock_source_and_assert_latest_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    source: ForumContentTarget,
+    locale: &str,
+    expectation: InlineQuoteExpectation,
+) -> ForumResult<()> {
+    lock_active_source_in_tx(txn, tenant_id, source).await?;
+    let InlineQuoteExpectation::Exact(expected) = expectation else {
+        return Ok(());
+    };
+    let actual = forum_relation_revision::Entity::find()
+        .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+        .filter(forum_relation_revision::Column::TargetKind.eq(source_kind(source)))
+        .filter(forum_relation_revision::Column::TargetId.eq(source.id()))
+        .filter(forum_relation_revision::Column::Locale.eq(locale))
+        .order_by_desc(forum_relation_revision::Column::RevisionId)
+        .one(txn)
+        .await?
+        .map(|revision| revision.revision_id);
+    if actual != expected {
+        return Err(ForumError::RelationRevisionConflict);
+    }
+    Ok(())
 }
 
 async fn load_latest_quotes(
@@ -52,11 +105,8 @@ async fn load_latest_quotes(
     tenant_id: uuid::Uuid,
     source: ForumContentTarget,
     locale: &str,
-) -> ForumResult<Vec<ForumQuoteReference>> {
-    let source_kind = match source.kind() {
-        crate::mentions::ForumContentTargetKind::Topic => "topic",
-        crate::mentions::ForumContentTargetKind::Reply => "reply",
-    };
+) -> ForumResult<(Option<i64>, Vec<ForumQuoteReference>)> {
+    let source_kind = source_kind(source);
     let Some(revision) = forum_relation_revision::Entity::find()
         .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
         .filter(forum_relation_revision::Column::TargetKind.eq(source_kind))
@@ -66,7 +116,7 @@ async fn load_latest_quotes(
         .one(db)
         .await?
     else {
-        return Ok(Vec::new());
+        return Ok((None, Vec::new()));
     };
 
     let rows = forum_quote::Entity::find()
@@ -87,7 +137,8 @@ async fn load_latest_quotes(
         ));
     }
 
-    rows.into_iter()
+    let quotes = rows
+        .into_iter()
         .map(|row| {
             let target = match row.quoted_kind.as_str() {
                 "topic" => ForumContentTarget::topic(row.quoted_id),
@@ -96,12 +147,67 @@ async fn load_latest_quotes(
             };
             ForumQuoteReference::new(target, row.quoted_revision_id)
         })
-        .collect()
+        .collect::<ForumResult<Vec<_>>>()?;
+    Ok((Some(revision.revision_id), quotes))
+}
+
+async fn lock_active_source_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: uuid::Uuid,
+    source: ForumContentTarget,
+) -> ForumResult<()> {
+    let (table, id_column, deleted_error) = match source.kind() {
+        crate::mentions::ForumContentTargetKind::Topic => (
+            "forum_topics",
+            "id",
+            ForumError::TopicDeleted,
+        ),
+        crate::mentions::ForumContentTargetKind::Reply => (
+            "forum_replies",
+            "id",
+            ForumError::ReplyDeleted,
+        ),
+    };
+    let found = match txn.get_database_backend() {
+        DbBackend::Sqlite => {
+            txn.execute(Statement::from_string(
+                DbBackend::Sqlite,
+                format!(
+                    "UPDATE {table} SET updated_at = updated_at WHERE tenant_id = '{tenant_id}' AND {id_column} = '{}' AND deleted_at IS NULL",
+                    source.id()
+                ),
+            ))
+            .await?
+            .rows_affected()
+                == 1
+        }
+        DbBackend::Postgres | DbBackend::MySql => txn
+            .query_one(Statement::from_string(
+                txn.get_database_backend(),
+                format!(
+                    "SELECT {id_column} FROM {table} WHERE tenant_id = '{tenant_id}' AND {id_column} = '{}' AND deleted_at IS NULL FOR UPDATE",
+                    source.id()
+                ),
+            ))
+            .await?
+            .is_some(),
+    };
+    if !found {
+        return Err(deleted_error);
+    }
+    Ok(())
+}
+
+fn source_kind(source: ForumContentTarget) -> &'static str {
+    match source.kind() {
+        crate::mentions::ForumContentTargetKind::Topic => "topic",
+        crate::mentions::ForumContentTargetKind::Reply => "reply",
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_quote_inputs;
+    use super::{InlineQuoteExpectation, normalize_quote_inputs};
     use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput};
     use crate::mentions::FORUM_MAX_QUOTE_REFERENCES_PER_REVISION;
     use uuid::Uuid;
@@ -128,5 +234,10 @@ mod tests {
             })
             .collect();
         assert!(normalize_quote_inputs(oversized).is_err());
+    }
+
+    #[test]
+    fn exact_expectation_distinguishes_empty_stream_from_any_revision() {
+        assert_ne!(InlineQuoteExpectation::Any, InlineQuoteExpectation::Exact(None));
     }
 }
