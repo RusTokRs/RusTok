@@ -36,6 +36,10 @@ const adminTransport = read(
 const adminTransportModule = read(
   "crates/rustok-pages/admin/src/transport/mod.rs",
 );
+const adminRollbackControl = read(
+  "crates/rustok-pages/admin/src/rollback_control.rs",
+);
+const adminLib = read("crates/rustok-pages/admin/src/lib.rs");
 
 function fail(message) {
   console.error(`[verify-pages-artifact-rollback] ${message}`);
@@ -247,6 +251,27 @@ for (const marker of [
   "validate_publication_result",
 ]) {
   requireMarker(adminTransportModule, marker, "admin rollback transport facade");
+}
+
+for (const marker of [
+  "pub(crate) fn PagesRollbackControl",
+  "use_route_query_value(AdminQueryKey::PageId.as_str())",
+  'page.status.eq_ignore_ascii_case("published")',
+  "transport::rollback_page(token, tenant, page_id)",
+  "result.version()",
+  "on_rolled_back.run(())",
+  '"Rollback"',
+]) {
+  requireMarker(adminRollbackControl, marker, "Pages admin rollback control");
+}
+for (const marker of [
+  "mod rollback_control;",
+  "use rollback_control::PagesRollbackControl;",
+  "pub fn PagesAdmin()",
+  "<PagesRollbackControl on_rolled_back />",
+  "<PagesWorkspace />",
+]) {
+  requireMarker(adminLib, marker, "Pages admin rollback boundary composition");
 }
 
 console.log("[verify-pages-artifact-rollback] PASS");
