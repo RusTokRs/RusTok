@@ -59,6 +59,18 @@ slot = "home_before_footer"
 route_segment = "pages"
 page_title = "Pages"
 
+[[provides.storefront_ui.components]]
+id = "pages-header-navigation"
+component = "PagesHeaderMenu"
+slot = "header_navigation"
+order = 100
+
+[[provides.storefront_ui.components]]
+id = "pages-footer-navigation"
+component = "PagesFooterMenu"
+slot = "footer_navigation"
+order = 100
+
 [provides.storefront_ui.i18n]
 default_locale = "en"
 supported_locales = ["en", "ru"]

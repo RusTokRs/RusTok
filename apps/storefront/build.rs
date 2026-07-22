@@ -47,6 +47,20 @@ struct LeptosUiContract {
     route_segment: Option<String>,
     #[serde(default)]
     page_title: Option<String>,
+    #[serde(default)]
+    components: Vec<StorefrontUiComponentContract>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct StorefrontUiComponentContract {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    component: String,
+    #[serde(default)]
+    slot: String,
+    #[serde(default)]
+    order: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -57,14 +71,25 @@ struct StorefrontUiEntry {
     slot: StorefrontSlot,
     route_segment: String,
     page_title: String,
+    components: Vec<StorefrontUiComponentEntry>,
+}
+
+#[derive(Debug)]
+struct StorefrontUiComponentEntry {
+    id: String,
+    component_name: String,
+    slot: StorefrontSlot,
+    order: usize,
 }
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy)]
 enum StorefrontSlot {
+    HeaderNavigation,
     HomeAfterHero,
     HomeAfterCatalog,
     HomeBeforeFooter,
+    FooterNavigation,
     CheckoutPaymentHandoff,
     CheckoutResultHandoff,
     CheckoutShippingHandoff,
@@ -142,6 +167,40 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
             .name
             .clone()
             .unwrap_or_else(|| slug.clone());
+        let mut component_ids = std::collections::BTreeSet::new();
+        let components = storefront_ui
+            .components
+            .into_iter()
+            .enumerate()
+            .map(|(index, component)| {
+                let id = required_manifest_value(
+                    component.id,
+                    format!("module '{slug}' storefront component id"),
+                )?;
+                if !component_ids.insert(id.clone()) {
+                    return Err(format!(
+                        "module '{slug}' declares duplicate storefront component id '{id}'"
+                    )
+                    .into());
+                }
+                let component_name = required_manifest_value(
+                    component.component,
+                    format!("module '{slug}' storefront component '{id}' Rust component"),
+                )?;
+                if !is_rust_component_path(component_name.as_str()) {
+                    return Err(format!(
+                        "module '{slug}' declares invalid storefront Rust component '{component_name}'"
+                    )
+                    .into());
+                }
+                Ok(StorefrontUiComponentEntry {
+                    id,
+                    component_name,
+                    slot: storefront_slot_from_manifest(Some(component.slot.as_str()))?,
+                    order: component.order.unwrap_or(1_000 + index),
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
         entries.push(StorefrontUiEntry {
             slug: slug.clone(),
             crate_ident: leptos_crate.replace('-', "_"),
@@ -149,6 +208,7 @@ fn generate_storefront_module_codegen() -> Result<(), Box<dyn Error>> {
             slot: storefront_slot_from_manifest(storefront_ui.slot.as_deref())?,
             route_segment: storefront_ui.route_segment.unwrap_or_else(|| slug.clone()),
             page_title: storefront_ui.page_title.unwrap_or(name),
+            components,
         });
     }
 
@@ -219,6 +279,16 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
             title = entry.page_title,
             fn_name = storefront_render_fn_name(&entry.slug),
         ));
+        for component in &entry.components {
+            out.push_str(&format!(
+                "    register_component(StorefrontComponentRegistration {{ id: \"{id}\", module_slug: Some(\"{slug}\"), slot: {slot_expr}, order: {order}, render: {fn_name} }});\n",
+                id = component.id,
+                slug = entry.slug,
+                slot_expr = storefront_slot_expr(component.slot),
+                order = component.order,
+                fn_name = storefront_component_render_fn_name(&entry.slug, &component.id),
+            ));
+        }
     }
     out.push_str("}\n\n");
 
@@ -241,6 +311,16 @@ fn render_storefront_codegen(entries: &[StorefrontUiEntry]) -> String {
         out.push_str("    }\n");
         out.push_str("    .into_any()\n");
         out.push_str("}\n\n");
+        for component in &entry.components {
+            let fn_name = storefront_component_render_fn_name(&entry.slug, &component.id);
+            let component_path = format!("{}::{}", entry.crate_ident, component.component_name);
+            out.push_str(&format!("fn {fn_name}() -> AnyView {{\n"));
+            out.push_str("    view! {\n");
+            out.push_str(&format!("        <{component_path} />\n"));
+            out.push_str("    }\n");
+            out.push_str("    .into_any()\n");
+            out.push_str("}\n\n");
+        }
     }
 
     out
@@ -252,9 +332,11 @@ fn storefront_slot_from_manifest(raw: Option<&str>) -> Result<StorefrontSlot, Bo
         .filter(|value| !value.is_empty())
         .unwrap_or("home_after_hero")
     {
+        "header_navigation" => Ok(StorefrontSlot::HeaderNavigation),
         "home_after_hero" => Ok(StorefrontSlot::HomeAfterHero),
         "home_after_catalog" => Ok(StorefrontSlot::HomeAfterCatalog),
         "home_before_footer" => Ok(StorefrontSlot::HomeBeforeFooter),
+        "footer_navigation" => Ok(StorefrontSlot::FooterNavigation),
         "checkout_payment_handoff" => Ok(StorefrontSlot::CheckoutPaymentHandoff),
         "checkout_result_handoff" => Ok(StorefrontSlot::CheckoutResultHandoff),
         "checkout_shipping_handoff" => Ok(StorefrontSlot::CheckoutShippingHandoff),
@@ -264,9 +346,11 @@ fn storefront_slot_from_manifest(raw: Option<&str>) -> Result<StorefrontSlot, Bo
 
 fn storefront_slot_expr(slot: StorefrontSlot) -> &'static str {
     match slot {
+        StorefrontSlot::HeaderNavigation => "StorefrontSlot::HeaderNavigation",
         StorefrontSlot::HomeAfterHero => "StorefrontSlot::HomeAfterHero",
         StorefrontSlot::HomeAfterCatalog => "StorefrontSlot::HomeAfterCatalog",
         StorefrontSlot::HomeBeforeFooter => "StorefrontSlot::HomeBeforeFooter",
+        StorefrontSlot::FooterNavigation => "StorefrontSlot::FooterNavigation",
         StorefrontSlot::CheckoutPaymentHandoff => "StorefrontSlot::CheckoutPaymentHandoff",
         StorefrontSlot::CheckoutResultHandoff => "StorefrontSlot::CheckoutResultHandoff",
         StorefrontSlot::CheckoutShippingHandoff => "StorefrontSlot::CheckoutShippingHandoff",
@@ -275,6 +359,45 @@ fn storefront_slot_expr(slot: StorefrontSlot) -> &'static str {
 
 fn storefront_render_fn_name(slug: &str) -> String {
     format!("render_{}_storefront_view", slug.replace('-', "_"))
+}
+
+fn storefront_component_render_fn_name(slug: &str, id: &str) -> String {
+    format!(
+        "render_{}_{}_storefront_component",
+        rust_identifier_fragment(slug),
+        rust_identifier_fragment(id),
+    )
+}
+
+fn rust_identifier_fragment(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn required_manifest_value(value: String, label: String) -> Result<String, Box<dyn Error>> {
+    let value = value.trim().to_string();
+    if value.is_empty() {
+        return Err(format!("{label} must not be empty").into());
+    }
+    Ok(value)
+}
+
+fn is_rust_component_path(value: &str) -> bool {
+    value.split("::").all(|segment| {
+        let mut characters = segment.chars();
+        characters
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+            && characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
+    })
 }
 
 fn pascal_case(value: &str) -> String {

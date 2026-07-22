@@ -2,7 +2,9 @@ use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use super::{ApiError, configured_tenant_slug};
-use crate::model::{PageDetail, PageList, StorefrontMenu, StorefrontPagesData};
+use crate::model::{
+    PageDetail, PageList, StorefrontMenu, StorefrontMenuLocation, StorefrontPagesData,
+};
 
 const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!, $filter: ListGqlPagesFilter, $locale: String) {
   selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) {
@@ -11,17 +13,10 @@ const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!
     body { locale content format }
   }
   pages(filter: $filter) { total items { id title slug status template } }
-  activeHeaderMenu: activeMenu(location: HEADER, locale: $locale) {
-    id effectiveLocale name location
-    items {
-      id title url icon
-      children {
-        id title url icon
-        children { id title url icon }
-      }
-    }
-  }
-  activeFooterMenu: activeMenu(location: FOOTER, locale: $locale) {
+}"#;
+
+const STOREFRONT_ACTIVE_MENU_QUERY: &str = r#"query StorefrontActiveMenu($location: GqlMenuLocation!, $locale: String) {
+  activeMenu(location: $location, locale: $locale) {
     id effectiveLocale name location
     items {
       id title url icon
@@ -38,10 +33,12 @@ struct StorefrontPagesResponse {
     #[serde(rename = "selectedPage")]
     selected_page: Option<PageDetail>,
     pages: PageList,
-    #[serde(rename = "activeHeaderMenu")]
-    active_header_menu: Option<StorefrontMenu>,
-    #[serde(rename = "activeFooterMenu")]
-    active_footer_menu: Option<StorefrontMenu>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StorefrontActiveMenuResponse {
+    #[serde(rename = "activeMenu")]
+    active_menu: Option<StorefrontMenu>,
 }
 
 #[derive(Debug, Serialize)]
@@ -49,6 +46,12 @@ struct StorefrontPagesVariables {
     #[serde(rename = "pageSlug")]
     page_slug: String,
     filter: ListPagesFilter,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct StorefrontActiveMenuVariables {
+    location: StorefrontMenuLocation,
     locale: Option<String>,
 }
 
@@ -79,9 +82,19 @@ pub async fn fetch_storefront_pages(
     Ok(StorefrontPagesData {
         selected_page: response.selected_page,
         pages: response.pages,
-        active_header_menu: response.active_header_menu,
-        active_footer_menu: response.active_footer_menu,
     })
+}
+
+pub async fn fetch_active_menu(
+    location: StorefrontMenuLocation,
+    locale: Option<String>,
+) -> Result<Option<StorefrontMenu>, ApiError> {
+    let response: StorefrontActiveMenuResponse = request(
+        STOREFRONT_ACTIVE_MENU_QUERY,
+        StorefrontActiveMenuVariables { location, locale },
+    )
+    .await?;
+    Ok(response.active_menu)
 }
 
 fn graphql_url() -> String {

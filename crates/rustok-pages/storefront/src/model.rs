@@ -4,10 +4,6 @@ use serde::{Deserialize, Serialize};
 pub struct StorefrontPagesData {
     pub selected_page: Option<PageDetail>,
     pub pages: PageList,
-    #[serde(default, rename = "activeHeaderMenu")]
-    pub active_header_menu: Option<StorefrontMenu>,
-    #[serde(default, rename = "activeFooterMenu")]
-    pub active_footer_menu: Option<StorefrontMenu>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -13,6 +13,17 @@ use std::collections::HashMap;
 #[component]
 fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
     let strings = locale_strings(locale.as_str());
+    let enabled_modules = use_enabled_modules().get_untracked();
+    let header_navigation_views =
+        components_for_slot(StorefrontSlot::HeaderNavigation, Some(&enabled_modules))
+            .into_iter()
+            .map(|module| (module.render)())
+            .collect::<Vec<_>>();
+    let footer_navigation_views =
+        components_for_slot(StorefrontSlot::FooterNavigation, Some(&enabled_modules))
+            .into_iter()
+            .map(|module| (module.render)())
+            .collect::<Vec<_>>();
 
     view! {
         <div class="min-h-screen bg-background text-foreground">
@@ -24,11 +35,15 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
                 nav_contact=strings.nav_contact
                 nav_language=strings.nav_language
                 cta_primary=strings.cta_primary
+                navigation_views=header_navigation_views
             />
 
             {body}
 
-            <Footer tagline=strings.footer_tagline />
+            <Footer
+                tagline=strings.footer_tagline
+                navigation_views=footer_navigation_views
+            />
         </div>
     }
 }

@@ -10,3 +10,4 @@ pub use builder::{
     decode_page_builder_body, is_page_builder_body,
 };
 pub use ui::leptos::PagesView;
+pub use ui::{PagesFooterMenu, PagesHeaderMenu};

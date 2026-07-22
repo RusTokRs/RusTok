@@ -158,7 +158,21 @@ pub(crate) struct ModuleUiProvides {
     #[serde(default)]
     pub(crate) page_title: Option<String>,
     #[serde(default)]
+    pub(crate) components: Vec<ModuleUiComponentProvides>,
+    #[serde(default)]
     pub(crate) i18n: Option<ModuleUiI18nProvides>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub(crate) struct ModuleUiComponentProvides {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) component: String,
+    #[serde(default)]
+    pub(crate) slot: String,
+    #[serde(default)]
+    pub(crate) order: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Default)]
