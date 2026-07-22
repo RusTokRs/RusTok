@@ -7,7 +7,7 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumQuoteCommandService, ForumRelationSnapshotResponse, SetForumQuotesInput,
+    ForumError, ForumQuoteCommandService, ForumRelationSnapshotResponse, SetForumQuotesInput,
 };
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
@@ -30,6 +30,24 @@ fn ensure_permission(
     }
 }
 
+fn quote_command_error(error: ForumError) -> HttpError {
+    match error {
+        ForumError::Database(error) => HttpError::internal(error.to_string()),
+        ForumError::Content(error) => HttpError::internal(error.to_string()),
+        ForumError::Internal(error) => HttpError::internal(error.to_string()),
+        ForumError::TopicNotFound(topic_id) => HttpError::not_found(
+            "forum_topic_not_found",
+            format!("Topic not found: {topic_id}"),
+        ),
+        ForumError::ReplyNotFound(reply_id) => HttpError::not_found(
+            "forum_reply_not_found",
+            format!("Reply not found: {reply_id}"),
+        ),
+        ForumError::Forbidden(message) => HttpError::forbidden("forum_permission_denied", message),
+        error => HttpError::bad_request(error.stable_code(), error.to_string()),
+    }
+}
+
 #[utoipa::path(
     put,
     path = "/api/forum/topics/{id}/quotes",
@@ -40,7 +58,8 @@ fn ensure_permission(
         (status = 200, description = "Topic quote relations replaced", body = ForumRelationSnapshotResponse),
         (status = 400, description = "Invalid quote relation"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Topic not found")
     )
 )]
 pub async fn set_topic_quotes(
@@ -58,7 +77,7 @@ pub async fn set_topic_quotes(
     let response = ForumQuoteCommandService::new(runtime.db_clone())
         .set_topic_quotes(tenant.id, topic_id, forum_security(&auth), input)
         .await
-        .map_err(|error| HttpError::bad_request(error.stable_code(), error.to_string()))?;
+        .map_err(quote_command_error)?;
     Ok(Json(response))
 }
 
@@ -72,7 +91,8 @@ pub async fn set_topic_quotes(
         (status = 200, description = "Reply quote relations replaced", body = ForumRelationSnapshotResponse),
         (status = 400, description = "Invalid quote relation"),
         (status = 401, description = "Unauthorized"),
-        (status = 403, description = "Forbidden")
+        (status = 403, description = "Forbidden"),
+        (status = 404, description = "Reply not found")
     )
 )]
 pub async fn set_reply_quotes(
@@ -90,6 +110,6 @@ pub async fn set_reply_quotes(
     let response = ForumQuoteCommandService::new(runtime.db_clone())
         .set_reply_quotes(tenant.id, reply_id, forum_security(&auth), input)
         .await
-        .map_err(|error| HttpError::bad_request(error.stable_code(), error.to_string()))?;
+        .map_err(quote_command_error)?;
     Ok(Json(response))
 }
