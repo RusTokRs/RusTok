@@ -44,7 +44,8 @@ ports, semantic events, and host composition, never Groups foreign keys.
 
 Language-neutral state belongs to base tables. Localized business copy belongs to
 exact-locale rows selected from the host-resolved locale. There is no English,
-first-row, or module-local fallback.
+first-row, or module-local fallback. Current policy rows remain mutable owner state,
+while `group_membership_policy_revisions` stores append-only exact-locale history.
 
 Writes require deadline plus idempotency key. Owner services repeat authorization and
 invariants inside transactions. Successful state, group version, receipt, and audit
@@ -53,14 +54,15 @@ commit together where declared.
 Policy save and candidate submit use `GroupApplicationCasCommandPort` with
 `policy_id`, `revision`, and exact `locale`. The group row is locked and the
 precondition is checked before owner-state writes. Stale input returns
-`groups.application_policy_changed`. Receipt replay is checked before the
-precondition is re-evaluated.
+`groups.application_policy_changed`. For identical committed commands, receipt replay
+is checked before the precondition is re-evaluated.
 
 Candidate cancellation and manager reopen use `GroupApplicationLifecycleCommandPort`.
 Both check receipt replay first, lock application then group, and commit application,
 membership, group version, audit, and receipt atomically. Legacy unconditional Rust
-save/submit methods remain compatibility-only and are absent from final GraphQL and
-module-owned FFA.
+save/submit methods remain compatibility-only. The final GraphQL root does not expose
+those legacy unconditional application mutations, and module-owned FFA does not use
+them.
 
 ## Current implementation state
 
@@ -79,11 +81,16 @@ lifecycle:
   command and replaces the snapshot only after successful submission;
 - final `graphql_application_cas` roots compose CAS, review, lifecycle query, cancel,
   and reopen without exposing legacy unconditional application mutations;
+- the visual policy editor captures loaded policy identity and uses owner CAS;
 - admin FFA supports status filtering and reopen controls;
 - storefront FFA shows current status, permits pending cancellation, blocks approved
   duplicate submission, and permits fresh rejected/cancelled resubmit;
 - cancellation preserves `apply=<group_uuid>`; successful fresh submit clears it;
 - native and GraphQL paths remain explicitly selected and never fall back.
+
+The invitation acceptance/delivery source remains source-complete only at its declared
+boundary. Targeted invitation delivery remains `in_progress`; runtime parity and
+Notifications consumer evidence remain open.
 
 Compilation, tests, migrations, parity, replay, lifecycle race, lock-order,
 accessibility, security, retry, and recovery evidence remain open.
@@ -97,8 +104,8 @@ accessibility, security, retry, and recovery evidence remain open.
 | GROUPS-02 | in_progress | identity, localization, privacy, bindings, receipts/audit, events | runtime/concurrency evidence |
 | GROUPS-03 | in_progress | memberships, join/leave, roles, ownership transfer | bans/concurrency completion |
 | GROUPS-04 | in_progress | typed read/write/CAS/lifecycle/governance ports | provider/consumer matrix |
-| GROUPS-05 | in_progress | GraphQL/native and storefront/invitation transports | runtime parity/consumer evidence |
-| GROUPS-06 | in_progress | localized policy, snapshots, CAS, review, history, candidate cancellation, manager reopen, resubmit UX | legacy migration, bulk safety, profiles/events, parity, concurrency, accessibility |
+| GROUPS-05 | in_progress | GraphQL/native and storefront invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
+| GROUPS-06 | in_progress | localized policy, snapshots, CAS, visual policy editor, review, history, candidate cancellation, manager reopen, resubmit UX | legacy migration, bulk safety, profiles/events, parity, concurrency, accessibility |
 | GROUPS-07 | planned | bans and moderation | implementation/evidence |
 | GROUPS-08 | planned | dynamic feature registry/navigation | runtime degradation evidence |
 | GROUPS-09 | planned | Forum spaces and ACL | Forum integration evidence |
@@ -230,8 +237,7 @@ outcomes, native/GraphQL parity, no fallback, and EN/RU accessibility.
 
 No build, test, migration, verifier, GraphQL schema, parity, concurrency,
 accessibility, security, retry, or recovery command was executed. FFA, FBA,
-GROUPS-06, and GROUPS-19 remain `in_progress`; `membership_application_lifecycle`
-remains `null`.
+GROUPS-06, and GROUPS-19 remain `in_progress`; `membership_application_policy_cas` remains `null`; `membership_application_lifecycle` remains `null`.
 
 ## Release-ready Groups MVP
 
