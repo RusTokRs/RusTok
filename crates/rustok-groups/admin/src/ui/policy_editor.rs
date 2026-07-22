@@ -7,8 +7,9 @@ use crate::application_core::{
     prepare_group_application_policy_query, prepare_upsert_group_application_policy,
 };
 use crate::application_model::{
-    GroupsAdminApplicationPolicyRevision, GroupsAdminApplicationPolicyRevisionQuery,
-    GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
+    GroupsAdminApplicationPolicyPrecondition, GroupsAdminApplicationPolicyRevision,
+    GroupsAdminApplicationPolicyRevisionQuery, GroupsAdminApplicationQuestion,
+    GroupsAdminApplicationRule,
 };
 use crate::core::{groups_admin_error, selected_transport_profile, GroupsAdminTransportProfile};
 use crate::i18n::t;
@@ -16,6 +17,8 @@ use crate::transport::{
     load_group_admin_application_policy, load_group_admin_application_policy_revisions,
     upsert_group_admin_application_policy, GroupsAdminTransportContext,
 };
+
+const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str = "groups.application_policy_changed";
 
 #[derive(Clone)]
 struct PolicyEditorCopy {
@@ -64,7 +67,8 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
     let enabled = RwSignal::new(true);
     let questions = RwSignal::new(Vec::<GroupsAdminApplicationQuestion>::new());
     let rules = RwSignal::new(Vec::<GroupsAdminApplicationRule>::new());
-    let loaded_revision = RwSignal::new(None::<u64>);
+    let loaded_policy =
+        RwSignal::new(None::<GroupsAdminApplicationPolicyPrecondition>);
     let history = RwSignal::new(Vec::<GroupsAdminApplicationPolicyRevision>::new());
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
@@ -99,18 +103,19 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
             match load_group_admin_application_policy(context, query).await {
                 Ok(policy) => {
                     let revision = policy.revision;
+                    let expected = GroupsAdminApplicationPolicyPrecondition::from(&policy);
                     locale.set(policy.locale);
                     enabled.set(policy.enabled);
                     questions.set(policy.questions);
                     rules.set(policy.rules);
-                    loaded_revision.set(Some(revision));
+                    loaded_policy.set(Some(expected));
                     success.set(Some(format!(
                         "{} · {} {}",
                         copy.loaded, copy.revision, revision
                     )));
                 }
                 Err(load_error) => {
-                    loaded_revision.set(None);
+                    loaded_policy.set(None);
                     error.set(Some(groups_admin_error(
                         &copy.error,
                         &load_error.to_string(),
@@ -134,6 +139,7 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
         let command = match prepare_upsert_group_application_policy(
             &group_id.get_untracked(),
             &locale.get_untracked(),
+            loaded_policy.get_untracked(),
             enabled.get_untracked(),
             questions.get_untracked(),
             rules.get_untracked(),
@@ -145,23 +151,11 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                 return;
             }
         };
-        let expected_revision = loaded_revision.get_untracked();
-        let query = match prepare_group_application_policy_query(
-            &command.group_id,
-            &command.locale,
-        ) {
-            Ok(query) => query,
-            Err(_) => {
-                error.set(Some(save_copy.invalid.clone()));
-                return;
-            }
-        };
         let revision_query = GroupsAdminApplicationPolicyRevisionQuery {
             group_id: command.group_id.clone(),
             page: 1,
             per_page: 20,
         };
-        let preflight_context = save_transport.clone();
         let save_context = save_transport.clone();
         let history_context = save_transport.clone();
         let copy = save_copy.clone();
@@ -169,36 +163,15 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
         error.set(None);
         success.set(None);
         spawn_local(async move {
-            if let Some(expected) = expected_revision {
-                match load_group_admin_application_policy(preflight_context, query).await {
-                    Ok(current) if current.revision != expected => {
-                        error.set(Some(format!(
-                            "{} · {} {}",
-                            copy.stale, copy.revision, current.revision
-                        )));
-                        busy.set(false);
-                        return;
-                    }
-                    Ok(_) => {}
-                    Err(preflight_error) => {
-                        error.set(Some(groups_admin_error(
-                            &copy.error,
-                            &preflight_error.to_string(),
-                        )));
-                        busy.set(false);
-                        return;
-                    }
-                }
-            }
-
             match upsert_group_admin_application_policy(save_context, command).await {
                 Ok(result) => {
                     let revision = result.policy.revision;
+                    let expected = GroupsAdminApplicationPolicyPrecondition::from(&result.policy);
                     locale.set(result.policy.locale);
                     enabled.set(result.policy.enabled);
                     questions.set(result.policy.questions);
                     rules.set(result.policy.rules);
-                    loaded_revision.set(Some(revision));
+                    loaded_policy.set(Some(expected));
                     success.set(Some(format!(
                         "{} · {} {}",
                         copy.saved, copy.revision, revision
@@ -212,10 +185,14 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
                         history.set(connection.items);
                     }
                 }
-                Err(save_error) => error.set(Some(groups_admin_error(
-                    &copy.error,
-                    &save_error.to_string(),
-                ))),
+                Err(save_error) => {
+                    let details = save_error.to_string();
+                    if details.contains(GROUP_APPLICATION_POLICY_CHANGED_CODE) {
+                        error.set(Some(copy.stale.clone()));
+                    } else {
+                        error.set(Some(groups_admin_error(&copy.error, &details)));
+                    }
+                }
             }
             busy.set(false);
         });
@@ -425,9 +402,9 @@ fn policy_editor_copy(locale: Option<&str>) -> PolicyEditorCopy {
         busy: t(locale, "groups.admin.policyEditor.busy", "Applying policy operation..."),
         loaded: t(locale, "groups.admin.policyEditor.loaded", "Policy loaded"),
         saved: t(locale, "groups.admin.policyEditor.saved", "Policy saved"),
-        stale: t(locale, "groups.admin.policyEditor.stale", "The policy changed after it was loaded. Review the latest revision before saving again."),
+        stale: t(locale, "groups.admin.policyEditor.stale", "The owner service rejected this stale policy atomically. Load the current policy before saving again."),
         error: t(locale, "groups.admin.policyEditor.error", "Policy operation failed"),
-        invalid: t(locale, "groups.admin.policyEditor.invalid", "Check the group UUID, locale, question keys, text limits, and rule fields."),
+        invalid: t(locale, "groups.admin.policyEditor.invalid", "Check the group UUID, locale, expected policy revision, question keys, text limits, and rule fields."),
     }
 }
 
