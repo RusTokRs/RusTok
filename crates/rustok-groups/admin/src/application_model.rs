@@ -173,6 +173,12 @@ pub struct ReviewGroupMembershipApplicationCommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReopenGroupMembershipApplicationCommand {
+    pub idempotency_key: String,
+    pub application_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsAdminReviewApplicationResult {
     pub application: GroupsAdminMembershipApplication,
     pub membership: GroupsAdminMembership,
