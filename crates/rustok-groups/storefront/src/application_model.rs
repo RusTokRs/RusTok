@@ -31,6 +31,24 @@ pub struct GroupsStorefrontApplicationPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsStorefrontApplicationPolicyQuery {
     pub group_id: String,
+    pub locale: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupsStorefrontApplicationPolicyPrecondition {
+    pub policy_id: String,
+    pub revision: u64,
+    pub locale: String,
+}
+
+impl From<&GroupsStorefrontApplicationPolicy> for GroupsStorefrontApplicationPolicyPrecondition {
+    fn from(value: &GroupsStorefrontApplicationPolicy) -> Self {
+        Self {
+            policy_id: value.id.clone(),
+            revision: value.revision,
+            locale: value.locale.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +61,7 @@ pub struct GroupsStorefrontApplicationAnswer {
 pub struct SubmitGroupMembershipApplicationCommand {
     pub idempotency_key: String,
     pub group_id: String,
+    pub expected_policy: GroupsStorefrontApplicationPolicyPrecondition,
     pub answers: Vec<GroupsStorefrontApplicationAnswer>,
     pub acknowledged_rule_keys: Vec<String>,
 }
