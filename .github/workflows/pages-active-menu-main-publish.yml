@@ -1,0 +1,55 @@
+name: Pages Active Menu Main Publish
+
+on:
+  pull_request:
+    paths:
+      - "scripts/temporary/publish_active_menu_transport_to_main.py"
+      - ".github/workflows/pages-active-menu-main-publish.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Prepare publisher
+        shell: bash
+        run: |
+          cp scripts/temporary/publish_active_menu_transport_to_main.py /tmp/publish_active_menu_transport_to_main.py
+          git fetch origin main agent/pages-active-menu-transport-v2
+          git checkout -B main origin/main
+      - name: Apply active menu transport to current main
+        run: python /tmp/publish_active_menu_transport_to_main.py
+      - name: Commit directly to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          product_files=(
+            crates/rustok-pages/src/controllers/mod.rs
+            crates/rustok-pages/src/dto/menu.rs
+            crates/rustok-pages/src/dto/mod.rs
+            crates/rustok-pages/src/graphql/mutation.rs
+            crates/rustok-pages/src/graphql/query.rs
+            crates/rustok-pages/src/graphql/types.rs
+            crates/rustok-pages/src/openapi.rs
+            crates/rustok-pages/tests/menu_transport_contract.rs
+          )
+          git diff --check
+          git add "${product_files[@]}"
+          expected=$(printf '%s\n' "${product_files[@]}" | sort)
+          actual=$(git diff --cached --name-only --diff-filter=ACMR | sort)
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Unexpected staged files"
+            diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(pages): expose active menu transport"
+          git push origin HEAD:main
