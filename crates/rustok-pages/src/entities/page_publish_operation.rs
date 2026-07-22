@@ -43,7 +43,13 @@ impl ActiveModelBehavior for ActiveModel {
         if insert {
             crate::services::page::publish_manifest::persist_publish_manifest_after_save(db, &model)
                 .await
-                .map_err(|error| DbErr::Custom(error.to_string()))?;
+                .map_err(|error| {
+                    DbErr::Custom(format!(
+                        "{}{}",
+                        crate::error::PUBLISH_MANIFEST_DB_ERROR_PREFIX,
+                        error
+                    ))
+                })?;
         }
         Ok(model)
     }
