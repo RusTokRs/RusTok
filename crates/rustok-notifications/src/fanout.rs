@@ -10,7 +10,7 @@ use rustok_notifications_api::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    IntoActiveModel, QueryFilter, TransactionTrait,
+    QueryFilter, TransactionTrait,
     sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
@@ -701,21 +701,38 @@ impl NotificationFanoutService {
 
         let complete = next_cursor.is_none();
         let timestamp = now();
-        let mut update = current.into_active_model();
-        update.audience_cursor = Set(next_cursor);
-        update.status = Set(if complete {
-            NotificationJobStatus::Completed
-        } else {
-            NotificationJobStatus::Pending
-        });
-        update.lease_owner = Set(None);
-        update.lease_expires_at = Set(None);
-        update.next_attempt_at = Set(None);
-        update.last_error_code = Set(None);
-        update.last_error_message = Set(None);
-        update.completed_at = Set(complete.then_some(timestamp));
-        update.updated_at = Set(timestamp);
-        update.update(&txn).await?;
+        let cursor_condition = match claimed.audience_cursor.as_deref() {
+            Some(cursor) => fanout_job::Column::AudienceCursor.eq(cursor),
+            None => fanout_job::Column::AudienceCursor.is_null(),
+        };
+        let result = fanout_job::Entity::update_many()
+            .set(fanout_job::ActiveModel {
+                audience_cursor: Set(next_cursor),
+                status: Set(if complete {
+                    NotificationJobStatus::Completed
+                } else {
+                    NotificationJobStatus::Pending
+                }),
+                lease_owner: Set(None),
+                lease_expires_at: Set(None),
+                next_attempt_at: Set(None),
+                last_error_code: Set(None),
+                last_error_message: Set(None),
+                completed_at: Set(complete.then_some(timestamp)),
+                updated_at: Set(timestamp),
+                ..Default::default()
+            })
+            .filter(fanout_job::Column::Id.eq(current.id))
+            .filter(fanout_job::Column::Status.eq(NotificationJobStatus::Leased))
+            .filter(fanout_job::Column::LeaseOwner.eq(worker_id))
+            .filter(fanout_job::Column::LeaseExpiresAt.gt(timestamp))
+            .filter(cursor_condition)
+            .exec(&txn)
+            .await?;
+        if result.rows_affected != 1 {
+            txn.rollback().await?;
+            return Err(NotificationError::LeaseUnavailable);
+        }
         txn.commit().await?;
         Ok(inserted_items)
     }
