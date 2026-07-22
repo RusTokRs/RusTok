@@ -1,0 +1,284 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(PagePublishOperationArtifacts::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::OperationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::PageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::Locale)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::ArtifactId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::ArtifactHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::MaterializationHash)
+                            .string_len(64),
+                    )
+                    .col(
+                        ColumnDef::new(PagePublishOperationArtifacts::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_publish_operation_artifacts_operation")
+                            .from(
+                                PagePublishOperationArtifacts::Table,
+                                PagePublishOperationArtifacts::OperationId,
+                            )
+                            .to(PagePublishOperations::Table, PagePublishOperations::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_publish_operation_artifacts_artifact")
+                            .from(
+                                PagePublishOperationArtifacts::Table,
+                                PagePublishOperationArtifacts::ArtifactId,
+                            )
+                            .to(PageStaticLandingArtifacts::Table, PageStaticLandingArtifacts::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_publish_operation_artifacts_locale")
+                    .table(PagePublishOperationArtifacts::Table)
+                    .col(PagePublishOperationArtifacts::OperationId)
+                    .col(PagePublishOperationArtifacts::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_publish_operation_artifacts_page")
+                    .table(PagePublishOperationArtifacts::Table)
+                    .col(PagePublishOperationArtifacts::TenantId)
+                    .col(PagePublishOperationArtifacts::PageId)
+                    .col(PagePublishOperationArtifacts::OperationId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(PageRollbackOperations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::PageId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::IdempotencyKey)
+                            .string_len(191)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::RequestHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::TargetPublishOperationId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::SourceArtifactSetHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::TargetArtifactSetHash)
+                            .string_len(64)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::ResultVersion)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::RolledBackAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PageRollbackOperations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_rollback_operations_page")
+                            .from(PageRollbackOperations::Table, PageRollbackOperations::PageId)
+                            .to(Pages::Table, Pages::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_page_rollback_operations_target_publish")
+                            .from(
+                                PageRollbackOperations::Table,
+                                PageRollbackOperations::TargetPublishOperationId,
+                            )
+                            .to(PagePublishOperations::Table, PagePublishOperations::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_rollback_operations_idempotency")
+                    .table(PageRollbackOperations::Table)
+                    .col(PageRollbackOperations::TenantId)
+                    .col(PageRollbackOperations::PageId)
+                    .col(PageRollbackOperations::IdempotencyKey)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_page_rollback_operations_result")
+                    .table(PageRollbackOperations::Table)
+                    .col(PageRollbackOperations::TenantId)
+                    .col(PageRollbackOperations::PageId)
+                    .col(PageRollbackOperations::ResultVersion)
+                    .to_owned(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PageRollbackOperations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(PagePublishOperationArtifacts::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum PagePublishOperationArtifacts {
+    Table,
+    Id,
+    OperationId,
+    TenantId,
+    PageId,
+    Locale,
+    ArtifactId,
+    ArtifactHash,
+    MaterializationHash,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum PageRollbackOperations {
+    Table,
+    Id,
+    TenantId,
+    PageId,
+    IdempotencyKey,
+    RequestHash,
+    TargetPublishOperationId,
+    SourceArtifactSetHash,
+    TargetArtifactSetHash,
+    ResultVersion,
+    RolledBackAt,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum PagePublishOperations {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum PageStaticLandingArtifacts {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum Pages {
+    Table,
+    Id,
+}
