@@ -120,7 +120,7 @@ impl PageCacheInvalidationRequest {
     }
 
     pub fn namespace(&self, scope: PageCacheScope) -> String {
-        page_cache_namespace(scope, self.tenant_id, self.page_id)
+        page_cache_namespace(scope, self.tenant_id)
     }
 }
 
@@ -306,16 +306,11 @@ impl EventHandler for PageCacheInvalidationEventHandler {
     }
 }
 
-pub fn page_cache_namespace(scope: PageCacheScope, tenant_id: Uuid, page_id: Uuid) -> String {
-    match scope {
-        PageCacheScope::Route => format!(
-            "{PAGES_CACHE_NAMESPACE_FORMAT}:route:tenant:{tenant_id}"
-        ),
-        PageCacheScope::Page | PageCacheScope::Artifact => format!(
-            "{PAGES_CACHE_NAMESPACE_FORMAT}:{}:tenant:{tenant_id}:page:{page_id}",
-            scope.as_str()
-        ),
-    }
+pub fn page_cache_namespace(scope: PageCacheScope, tenant_id: Uuid) -> String {
+    format!(
+        "{PAGES_CACHE_NAMESPACE_FORMAT}:{}:tenant:{tenant_id}",
+        scope.as_str()
+    )
 }
 
 pub fn page_cache_key(
@@ -339,8 +334,8 @@ pub fn page_cache_key(
         });
     }
     Ok(format!(
-        "{}:g-{generation}:{}",
-        page_cache_namespace(scope, tenant_id, page_id),
+        "{}:g-{generation}:page:{page_id}:{}",
+        page_cache_namespace(scope, tenant_id),
         hex::encode(variant.as_bytes())
     ))
 }
@@ -391,21 +386,19 @@ mod tests {
     }
 
     #[test]
-    fn route_namespace_is_tenant_wide_but_page_and_artifact_are_page_scoped() {
+    fn namespace_generations_are_bounded_by_tenant_and_scope() {
         let tenant = Uuid::from_u128(11);
-        let first = Uuid::from_u128(21);
-        let second = Uuid::from_u128(22);
+        assert_ne!(
+            page_cache_namespace(PageCacheScope::Route, tenant),
+            page_cache_namespace(PageCacheScope::Page, tenant)
+        );
+        assert_ne!(
+            page_cache_namespace(PageCacheScope::Page, tenant),
+            page_cache_namespace(PageCacheScope::Artifact, tenant)
+        );
         assert_eq!(
-            page_cache_namespace(PageCacheScope::Route, tenant, first),
-            page_cache_namespace(PageCacheScope::Route, tenant, second)
-        );
-        assert_ne!(
-            page_cache_namespace(PageCacheScope::Page, tenant, first),
-            page_cache_namespace(PageCacheScope::Page, tenant, second)
-        );
-        assert_ne!(
-            page_cache_namespace(PageCacheScope::Artifact, tenant, first),
-            page_cache_namespace(PageCacheScope::Artifact, tenant, second)
+            page_cache_namespace(PageCacheScope::Page, tenant),
+            page_cache_namespace(PageCacheScope::Page, tenant)
         );
     }
 
@@ -443,12 +436,13 @@ mod tests {
     }
 
     #[test]
-    fn cache_keys_bind_scope_generation_and_variant_without_raw_variant_text() {
+    fn cache_keys_bind_scope_generation_page_and_variant_without_raw_variant_text() {
         let tenant = Uuid::from_u128(11);
         let page = Uuid::from_u128(22);
         let key = page_cache_key(PageCacheScope::Route, tenant, page, 3, "en:/about")
             .unwrap();
-        assert!(key.contains(":g-3:"));
+        assert!(key.contains(":g-3:page:"));
+        assert!(key.contains(&page.to_string()));
         assert!(!key.contains("/about"));
     }
 }
