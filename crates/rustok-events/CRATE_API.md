@@ -7,6 +7,7 @@
 - `pub use crate::{DomainEvent, EventEnvelope, RootDomainEvent, RootEventEnvelope}`
 - `pub use crate::{EventSchema, FieldSchema, EventValidationError, ValidateEvent}`
 - `pub use crate::{EventContract, ContractEventPayload, ContractEventEnvelope, EventContractEnvelopeError}`
+- `pub use crate::{ForumMentionEvent, FORUM_MENTION_EVENT_SCHEMAS}`
 - `pub use crate::{MarketplaceListingEvent, MARKETPLACE_LISTING_EVENT_SCHEMAS}`
 - `ContractEventEnvelope::{payload, into_payload}` return only semantically validated typed payloads
 - `pub fn event_schema(event_type: &str) -> Option<&'static EventSchema>`
@@ -17,6 +18,7 @@
 - Consumes: N/A.
 - Established root events use `DomainEvent`/`EventEnvelope`.
 - Bounded event families use sealed `EventContract` implementations and `ContractEventEnvelope`.
+- `ForumMentionEvent` defines v1 `forum.mention.user_added` and `forum.mention.audience_added` with source revision and target identity only.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-telemetry`
@@ -26,6 +28,7 @@
 - Continues to import event contracts from `rustok-core` instead of `rustok-events`.
 - Implements arbitrary external `EventContract` types; the trait is intentionally sealed.
 - Stores bounded-family payloads as untyped `serde_json::Value` instead of adding one typed `ContractEventPayload` family variant.
+- Adds contact data, source body or profile handle snapshots to Forum mention events instead of stable identities.
 - Reads a manually deserialized envelope payload without revalidating it.
 - Adds new compatibility aliases without architectural justification.
 
@@ -40,6 +43,7 @@
 - Envelope event type/schema version must match the typed payload and a registered schema.
 - Tenant, envelope, correlation, and optional actor identities must not be nil.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
+- Forum mention events expose source revision and resolved user/audience identity only; contact and rendered content remain owner-private.
 - Marketplace listing events expose only stable identity/scope/version fields; moderation prose and arbitrary metadata remain owner-private.
 
 ### Events / Outbox Side Effects
