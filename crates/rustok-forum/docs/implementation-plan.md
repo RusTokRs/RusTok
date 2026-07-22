@@ -202,7 +202,7 @@ at the end of this file remain authoritative.
 | `FORUM-09` | `done` | Forum-owned versioned event catalog and journal, merged through PR #1732. |
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
-| `FORUM-12` | `in_progress` | FORUM-12A/B1/B2/C deliver bounded extraction, append-only relations, active owner integration, versioned mention events and bounded reads; FORUM-12D1/D2 add exact-locale replacement and inline quote commands with lost-update protection. Visibility/privacy integration and PostgreSQL/notifications runtime evidence remain. |
+| `FORUM-12` | `in_progress` | FORUM-12A-D2 deliver bounded extraction, immutable relations, owner writes, mention events, reads and quote commands; source-ready PostgreSQL proof plus the `forum.mention.user_added` provider and bounded candidate fan-out now exist. Maintainer runtime execution, profile/block privacy, moderator audience expansion, final notification creation/open authorization and retention purge remain. |
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
@@ -225,10 +225,10 @@ at the end of this file remain authoritative.
 | `FORUM-32` | `in_progress` | Widget contract exists; richer widgets and observed Page Builder evidence remain. |
 | `FORUM-33` | `planned` | Analytics, observability and reconciliation operations. |
 | `FORUM-34` | `planned` | Import/export and resumable NodeBB migration toolkit. |
-| `NOTIFY-00` | `in_progress` | NOTIFY-00A adds the neutral source API, bounded runtime registry, owner module and explicit admin/storefront foundation states; runtime composition and executable provider evidence remain. |
-| `NOTIFY-01` | `planned` | Inbox, delivery, fan-out, preference and digest persistence. |
+| `NOTIFY-00` | `in_progress` | NOTIFY-00A/B deliver the neutral API, optional owner/runtime composition, module-owned packages and real Forum providers. Maintainer verification and complete executable distribution/global migration evidence remain. |
+| `NOTIFY-01` | `in_progress` | NOTIFY-01A creates bounded owner persistence; NOTIFY-01B adds the durable source-event inbox and transactional fan-out owner service. Final notification commands, global migration promotion, retention and reconciliation remain. |
 | `NOTIFY-02` | `planned` | Preferences, quiet hours and digest scheduling. |
-| `NOTIFY-03` | `planned` | Durable source-event consumption and bounded recipient fan-out. |
+| `NOTIFY-03` | `in_progress` | NOTIFY-03A durably accepts source events, materializes bounded provider descriptors and persists leased cursor pages as idempotent pending candidates. Outbox relay wiring, preference/privacy processing, final notifications, deliveries and PostgreSQL lease evidence remain. |
 | `NOTIFY-04` | `planned` | In-app inbox and unread/read mutation APIs. |
 | `NOTIFY-05` | `planned` | Email/push/SMS delivery-provider SPI. |
 | `NOTIFY-06` | `planned` | Localized semantic templates and recipient locale selection. |
@@ -286,10 +286,10 @@ verified; they are no longer active execution items.
 
 ### Wave B — notifications foundation and identity/media integration
 
-1. finish `NOTIFY-00` runtime composition and executable provider evidence;
-2. `NOTIFY-01`;
-3. `NOTIFY-03`;
-4. `NOTIFY-07`;
+1. finish `NOTIFY-00` maintainer verification and executable composition evidence;
+2. complete `NOTIFY-01` final notification persistence, global migration and retention commands;
+3. complete `NOTIFY-03` production outbox intake plus pending-candidate processing;
+4. `NOTIFY-07` profile/block privacy and recipient-specific open authorization;
 5. finish `FORUM-13` after the Media lifecycle-state contract is available;
 6. `FORUM-14`;
 7. `FORUM-15`;
@@ -297,8 +297,9 @@ verified; they are no longer active execution items.
 
 ### Wave C — participation product
 
-1. complete PostgreSQL concurrency/runtime evidence for `FORUM-12`, then finish
-   visibility/privacy and executable notification evidence under `NOTIFY-03/07`;
+1. record successful PostgreSQL execution for `FORUM-12`, then finish
+   visibility/privacy, moderator-audience and final notification evidence under
+   `NOTIFY-03/07`;
 2. `FORUM-16`;
 3. `FORUM-17`;
 4. `FORUM-18`;
@@ -460,7 +461,7 @@ contract exposes persistence services.
 
 **Status:** `in_progress`  
 **Priority:** P1  
-**Dependencies:** FORUM-08/09, profiles read contract; NOTIFY-03 for delivery integration
+**Dependencies:** FORUM-08/09, profiles read contract; NOTIFY-03/07 for delivery and privacy integration
 
 ### Scope
 
@@ -592,6 +593,24 @@ quoted target and quoted revision so edits do not rewrite history.
 - SQLite source coverage proves stale omitted-preserve conflict and explicit
   clear semantics without exposing the persistence seam to transports.
 
+### Delivered with the PostgreSQL proof and `NOTIFY-01B/03A`
+
+- `mention_quote_runtime_postgres` is source-ready for deterministic D1-before-D2
+  root-lock ordering, retryable stale-preserve conflict, stale body rollback,
+  soft-delete rejection and the notifications-off producer profile;
+- the proof record remains explicitly `source_ready`; no successful PostgreSQL
+  run is claimed until the maintainer executes it;
+- the Forum notification source now supports `forum.mention.user_added` and
+  binds each event to the exact immutable `forum_user_mentions` row;
+- topic/reply source visibility is rechecked while describing, resolving the
+  one candidate and opening the target; pending replies are retryable and
+  closed, hidden, deleted or channel-restricted sources fail closed;
+- self-mentions are suppressed and only target/revision identity is exposed;
+- the Notifications owner can durably accept the source event and persist a
+  pending candidate without creating a final notification or delivery attempt;
+- `forum.mention.audience_added` remains deferred until a bounded moderator
+  directory owner port exists.
+
 ### Compatibility and degraded mode
 
 Existing source locales retain their `legacy` seed identity until an active
@@ -599,16 +618,23 @@ owner write appends a canonical relation revision. Existing topic/reply
 create/edit DTOs remain source-compatible; separate D1/D2 command DTOs carry
 quote relations. Legacy body edits route through D2 and preserve current quotes.
 Notifications remain an optional downstream consumer and are never called
-synchronously from Forum transactions.
+synchronously from Forum transactions. When Notifications or the Forum source
+provider is absent, Forum owner commands and semantic-event commits still
+succeed; a durably accepted Notifications source event remains retryable until
+its provider is available.
 
 ### Remaining scope
 
 FORUM-12 remains `in_progress` until all of the following are delivered:
 
-- recheck blocked/private/deleted target and source visibility for notification
-  consumption and target opening under NOTIFY-03/07;
-- add PostgreSQL runtime, concurrent D1/D2 owner-write, deletion/purge and
-  executable notifications-off/on evidence.
+- record successful maintainer PostgreSQL execution for the concurrent D1/D2,
+  deletion and notifications-off source-ready proof;
+- apply profile/block privacy and recipient-specific authorization before a
+  pending mention candidate becomes a final notification, and recheck before
+  target open or delayed delivery under `NOTIFY-03/07`;
+- add bounded moderator-audience expansion for `forum.mention.audience_added`;
+- prove final notification dedupe, notifications-on delivery/open behavior and
+  retention purge/reconciliation without deleting immutable quoted history.
 
 ### Definition of done
 
@@ -618,8 +644,11 @@ FORUM-12 remains `in_progress` until all of the following are delivered:
   conflict rather than restore a stale preserved set;
 - blocked, private, deleted and unauthorized targets cannot generate or open a
   notification;
+- duplicate source events, overlapping audience rules and retries create one
+  permitted notification;
 - tests cover edit diffs, duplicate handles, code blocks, escaping, caps, quote
-  replacement/clear/preserve, replay and expected-revision conflicts.
+  replacement/clear/preserve, replay, expected-revision conflicts and source
+  consumer retry/visibility behavior.
 
 ### Verification
 
@@ -628,6 +657,9 @@ cargo test -p rustok-forum --test mention_contract
 cargo test -p rustok-forum mention_relation
 cargo test -p rustok-forum quote_command
 cargo test -p rustok-forum inline_quote
+cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 node scripts/verify/verify-forum-mention-contract.mjs
 node scripts/verify/verify-forum-mention-contract.test.mjs
 node scripts/verify/verify-forum-mention-persistence.mjs
@@ -635,6 +667,8 @@ node scripts/verify/verify-forum-mention-persistence.test.mjs
 node scripts/verify/verify-forum-mention-integration.mjs
 node scripts/verify/verify-forum-mention-events.mjs
 node scripts/verify/verify-forum-quote-commands.mjs
+node scripts/verify/verify-forum-mention-runtime-proof.mjs
+node scripts/verify/verify-notifications-source-fanout.mjs
 cargo xtask module validate forum
 ```
 
@@ -1203,14 +1237,27 @@ optional capability and continue to work when notifications is absent.
 - static verifier fixtures reject direct producer imports of the owner crate,
   arbitrary JSON/persistence in the neutral contract and synthetic unread state.
 
+### Delivered in `NOTIFY-00B`
+
+- the optional owner is registered in module/distribution/server composition but
+  remains outside tenant default-enabled settings;
+- producer factories are registered before host services exist and materialized
+  only after `HostRuntimeContext` contains the executable database;
+- factory/provider slug conflicts, identity mismatch and build failures fail
+  startup instead of silently removing a source;
+- Forum provides executable source contracts for `forum.topic.created` and
+  `forum.mention.user_added` while Forum commands remain independent from the
+  optional Notifications owner;
+- module-owned admin/storefront packages remain explicit foundation/unavailable
+  surfaces until inbox APIs exist.
+
 ### Remaining scope
 
-- compose the optional module into `modules.toml`, distribution/server/migration
-  registries and host-owned package dependencies;
-- register the first real producer source and execute notifications-off/on
-  provider, fallback, target-open and retry evidence;
-- keep inbox/preferences/fan-out persistence in `NOTIFY-01` rather than adding
-  unowned storage to this foundation slice.
+- record maintainer execution of the neutral API, runtime composition, provider
+  fallback and module-owned package verification sets;
+- preserve optional-module startup/degraded behavior while global migration and
+  production worker composition are promoted under NOTIFY-01/03;
+- do not add inbox/read UI before final owner commands and privacy policy exist.
 
 ### Definition of done
 
@@ -1224,13 +1271,16 @@ cargo test -p rustok-notifications-api
 cargo test -p rustok-notifications
 cargo check -p rustok-notifications-admin --all-targets
 cargo check -p rustok-notifications-storefront --all-targets
+cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 node scripts/verify/verify-notifications-foundation.mjs
 node scripts/verify/verify-notifications-foundation.test.mjs
+node scripts/verify/verify-notifications-runtime.mjs
+node scripts/verify/verify-notifications-runtime.test.mjs
 ```
 
 ## `NOTIFY-01` — notification persistence
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P0  
 **Dependencies:** NOTIFY-00
 
@@ -1244,6 +1294,58 @@ tenant-composite integrity.
 At minimum, dedupe by tenant, recipient, source event and notification type.
 Read implies seen. Provider errors are classified/bounded and secrets or raw
 private content are not persisted.
+
+### Delivered in `NOTIFY-01A`
+
+- PostgreSQL/SQLite owner persistence covers notifications, delivery attempts,
+  fan-out jobs/items, preferences, digest jobs/items and encrypted push
+  subscriptions;
+- recipient/user references are tenant-composite and optional actor/fan-out
+  notification references are guarded against tenant mismatch;
+- typed states, priorities, channels and modes match database `CHECK` values;
+- read implies seen, leased work requires owner/expiry, terminal work requires
+  completion timestamps, and JSON/cursor/error fields are bounded;
+- notification/source and command idempotency keys are tenant-scoped;
+- raw contact data, source-private payloads, rendered HTML and plaintext push
+  endpoints are excluded.
+
+### Delivered in `NOTIFY-01B`
+
+- `notification_source_inbox` durably accepts one source event identity keyed by
+  tenant, source slug and source event ID;
+- changed event type or source revision conflicts instead of creating a second
+  inbox row;
+- typed pending/processing/completed/suppressed/retryable/rejected state stores
+  bounded retry/error metadata and recoverable leases;
+- provider-independent acceptance prevents optional source absence from losing a
+  committed owner event;
+- completed source rows retain their descriptor-bound fan-out job link;
+- the Notifications module migration source orders the inbox migration after the
+  base persistence migration for PostgreSQL and SQLite.
+
+### Remaining scope
+
+- promote the module-local migrations into verified global server migration
+  composition;
+- implement the policy-approved command that converts a pending candidate into
+  one final notification row and optional channel work;
+- add explicit retention, reconciliation and repair commands with RBAC, dry-run
+  and idempotent job state;
+- keep inbox/preferences/digest/delivery transports closed until their owner
+  commands are implemented and verified.
+
+### Verification
+
+```bash
+cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
+NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
+  cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
+node scripts/verify/verify-notifications-persistence.mjs
+node scripts/verify/verify-notifications-persistence.test.mjs
+node scripts/verify/verify-notifications-source-fanout.mjs
+cargo xtask module validate notifications
+```
 
 ## `NOTIFY-02` — preferences, quiet hours and digests
 
@@ -1261,7 +1363,7 @@ Digest rendering rechecks target visibility and deduplicates source items.
 
 ## `NOTIFY-03` — durable source consumption and fan-out
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P0  
 **Dependencies:** NOTIFY-01, durable consumer inbox
 
@@ -1274,6 +1376,51 @@ create in-app rows and enqueue channel deliveries in bounded transactions.
 Large audiences create leased fan-out jobs; never place all recipient IDs in an
 event or load them into memory. Deduplicate recipients reached through author,
 mention, subscription and category-watcher rules.
+
+### Delivered in `NOTIFY-03A`
+
+- `NotificationFanoutService::enqueue_source_event` durably accepts or replays a
+  typed source identity before provider discovery;
+- `materialize_source_event` leases the source inbox, classifies provider errors,
+  suppresses an unavailable source target and creates/replays one bounded
+  descriptor fan-out job;
+- `process_fanout_page` leases the job, invokes cursor-based audience resolution
+  with a hard maximum of 256, rejects oversized, empty-continuing or stalled
+  pages, and persists idempotent pending candidates before cursor advancement;
+- expired source/job leases cannot complete work and can be reclaimed;
+- descriptor and source identity changes fail closed on replay;
+- candidate rows remain `pending` with no final notification ID and no delivery
+  attempt, so preference/privacy cannot be bypassed;
+- Forum `forum.mention.user_added` produces at most one candidate after exact
+  relation and current source-visibility checks; pending replies are retryable,
+  self-mentions and unavailable sources are suppressed;
+- SQLite scenarios cover source replay/conflict, two-page completion, terminal
+  replay, zero final notification rows and Forum mention source behavior;
+- the machine contract and source verifier are
+  `crates/rustok-notifications/contracts/notifications-source-fanout.json` and
+  `scripts/verify/verify-notifications-source-fanout.mjs`.
+
+### Remaining scope
+
+- wire the production outbox relay/consumer runner into
+  `enqueue_source_event` with durable claim/retry/DLQ controls;
+- process each pending candidate through preference resolution, block/profile
+  privacy, recipient-specific source authorization, grouping/dedupe and final
+  notification creation;
+- enqueue channel deliveries only after policy acceptance and outside provider
+  calls from the owner database transaction;
+- add bounded moderator-directory expansion for
+  `forum.mention.audience_added` through an owner port;
+- add PostgreSQL concurrent lease/retry/replay evidence and reconciliation.
+
+### Verification
+
+```bash
+cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
+cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
+node scripts/verify/verify-notifications-source-fanout.mjs
+cargo xtask module validate notifications
+```
 
 ## `NOTIFY-04` — in-app inbox API
 
@@ -1463,6 +1610,8 @@ cargo test -p rustok-forum --test mention_contract
 cargo test -p rustok-forum mention_relation
 cargo test -p rustok-forum quote_command
 cargo test -p rustok-forum inline_quote
+cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1479,6 +1628,7 @@ node scripts/verify/verify-forum-mention-persistence.test.mjs
 node scripts/verify/verify-forum-mention-integration.mjs
 node scripts/verify/verify-forum-mention-events.mjs
 node scripts/verify/verify-forum-quote-commands.mjs
+node scripts/verify/verify-forum-mention-runtime-proof.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -1487,16 +1637,23 @@ npm run verify:index:fba
 
 cargo test -p rustok-notifications-api
 cargo test -p rustok-notifications
+cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo check -p rustok-notifications-admin --all-targets
 cargo check -p rustok-notifications-storefront --all-targets
 node scripts/verify/verify-notifications-foundation.mjs
 node scripts/verify/verify-notifications-foundation.test.mjs
+node scripts/verify/verify-notifications-runtime.mjs
+node scripts/verify/verify-notifications-runtime.test.mjs
+node scripts/verify/verify-notifications-persistence.mjs
+node scripts/verify/verify-notifications-persistence.test.mjs
+node scripts/verify/verify-notifications-source-fanout.mjs
 
 git diff --check
 ```
 
-Add notification module validation, runtime fallback smoke and provider tests
-when the owner is composed into the executable runtime.
+Add production outbox-consumer, candidate-policy, PostgreSQL lease and final
+notification/open-authorization evidence as those owner slices are implemented.
 
 # PR slicing
 
@@ -1506,11 +1663,15 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `FORUM-12`: PostgreSQL concurrent D1/D2 owner-write, deletion and notifications-off runtime evidence;
-2. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
-3. `NOTIFY-01`: inbox/preferences schema;
-4. `NOTIFY-03`: durable consumer and bounded fan-out;
-5. `NOTIFY-07`: privacy/open authorization;
+1. `NOTIFY-03/07`: process pending candidates through preference, profile/block
+   privacy and recipient-specific source authorization before final notification
+   creation;
+2. `NOTIFY-01`: promote verified global migrations and add retention/
+   reconciliation commands;
+3. `NOTIFY-03`: wire production outbox intake and PostgreSQL lease/retry evidence;
+4. `FORUM-12`: record maintainer PostgreSQL proof, add moderator audience owner
+   expansion and final notifications-on evidence;
+5. `NOTIFY-05/06`: delivery provider SPI and localized semantic rendering;
 6. `FORUM-13`: category media references after Media lifecycle state exists;
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
@@ -1554,7 +1715,9 @@ possible.
 
 # Immediate next action
 
-Add PostgreSQL concurrent owner-write and runtime evidence for `FORUM-12`,
-covering omitted-preserve CAS against D1/D2 replacement, soft deletion and the
-notifications-off profile. Keep privacy/open authorization under NOTIFY-03/07
-and never make Notifications a synchronous Forum command dependency.
+Process `notification_fanout_items` through explicit preference and profile/block
+privacy policy, reauthorize the source for the recipient, and only then create a
+final idempotent notification row. Keep channel delivery, moderator audience
+expansion, production outbox wiring and maintainer PostgreSQL evidence as
+separate bounded follow-up slices; never make Notifications a synchronous Forum
+command dependency.
