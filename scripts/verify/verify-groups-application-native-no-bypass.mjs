@@ -38,7 +38,7 @@ if (failures.length === 0) {
   for (const marker of [
     "GroupApplicationCasCommandPort",
     "upsert_group_application_policy_if_current",
-    'endpoint = "groups/admin/applications/policy/upsert-if-current"',
+    'endpoint = "groups/admin/applications/policy-if-current"',
   ]) {
     if (!casNative.includes(marker)) {
       failures.push(`${files.casNative}: missing CAS marker ${JSON.stringify(marker)}`);
