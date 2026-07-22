@@ -3,7 +3,7 @@ name: Navigation Owner Extraction Main Publish
 on:
   pull_request:
     paths:
-      - "scripts/temporary/extract_navigation.py.gz.b64"
+      - "scripts/temporary/navigation_payload/**"
       - ".github/workflows/navigation-owner-extraction-main-publish.yml"
 
 permissions:
@@ -22,7 +22,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode scripts/temporary/extract_navigation.py.gz.b64 | gzip -d > /tmp/extract_navigation.py
+          cat scripts/temporary/navigation_payload/0* > /tmp/extract_navigation.py.gz.b64
+          test "$(wc -c < /tmp/extract_navigation.py.gz.b64)" = "24012"
+          test "$(sha256sum /tmp/extract_navigation.py.gz.b64 | cut -d' ' -f1)" = "adaf452fded56c154f647d86c5a3ea3ad3a4eabaf227838ed0fc0c405c0045e5"
+          base64 --decode /tmp/extract_navigation.py.gz.b64 | gzip -d > /tmp/extract_navigation.py
+          test "$(sha256sum /tmp/extract_navigation.py | cut -d' ' -f1)" = "91f60965cef8ca78565b031fb3e9876d8a8eeb0777859e1c678d678983490513"
           python -m py_compile /tmp/extract_navigation.py
       - name: Apply and commit directly to main
         shell: bash
@@ -60,4 +64,4 @@ jobs:
         with:
           name: navigation-owner-extraction-log
           path: /tmp/navigation-owner-extraction.log
-          if-no-files-found: error
+          if-no-files-found: ignore
