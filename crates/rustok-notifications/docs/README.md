@@ -125,5 +125,6 @@ The commands above were not run while publishing `NOTIFY-03B/07A`.
 
 - [Module README](../README.md)
 - [Module-local implementation gates](implementation-plan.md)
+- [NOTIFY-03B/07A implementation record](notify-03b-candidate-policy.md)
 - Canonical cross-module status:
   `crates/rustok-forum/docs/implementation-plan.md`
