@@ -19,9 +19,12 @@ use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::services::{MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE};
 use crate::{
-    CreatePageInput, PageBuilderArtifactService, PageResponse, PageService, PagesError,
-    UpdatePageInput,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuResponse,
+    MenuService, PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE,
+    PageBuilderArtifactService, PageResponse, PageService, PagesError, PatchPageMetadataInput,
+    SavePageDocumentInput,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
@@ -38,6 +41,16 @@ pub struct GetPageArtifactParams {
     pub locale: String,
 }
 
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct GetMenuParams {
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct CreateMenuParams {
+    pub locale: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct PagesHttpRuntime {
     db: DatabaseConnection,
@@ -52,9 +65,7 @@ impl PagesHttpRuntime {
     fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
     }
-}
 
-impl PagesHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
@@ -116,6 +127,44 @@ pub async fn get_page(
         Some(page) => Ok(Json(page)),
         None => Err(HttpError::not_found("page_not_found", "Page not found")),
     }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/menus/{id}",
+    tag = "pages",
+    params(
+        ("id" = Uuid, Path, description = "Menu ID"),
+        GetMenuParams
+    ),
+    responses(
+        (status = 200, description = "Exact-locale menu", body = MenuResponse),
+        (status = 404, description = "Menu or localized menu copy not found"),
+        (status = 500, description = "Menu translation integrity failure")
+    )
+)]
+pub async fn get_menu(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    request_context: RequestContext,
+    Path(id): Path<Uuid>,
+    Query(params): Query<GetMenuParams>,
+) -> HttpResult<Json<MenuResponse>> {
+    ensure_menu_module_enabled_for_channel(&runtime, &request_context).await?;
+    let effective_locale = params
+        .locale
+        .unwrap_or_else(|| request_context.locale.clone());
+
+    MenuService::new(runtime.db_clone(), runtime.event_bus())
+        .get(
+            tenant.id,
+            rustok_core::SecurityContext::public_read(),
+            id,
+            &effective_locale,
+        )
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
 }
 
 #[utoipa::path(
@@ -220,8 +269,7 @@ pub async fn create_page(
         ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
     }
 
-    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
-    let page = service
+    let page = PageService::new(runtime.db_clone(), runtime.event_bus())
         .create(tenant.id, page_security(&auth), input)
         .await
         .map_err(map_pages_error)?;
@@ -229,36 +277,92 @@ pub async fn create_page(
 }
 
 #[utoipa::path(
-    put,
-    path = "/api/admin/pages/{id}",
+    post,
+    path = "/api/admin/menus",
     tag = "pages",
-    params(("id" = Uuid, Path, description = "Page ID")),
-    request_body = UpdatePageInput,
+    params(CreateMenuParams),
+    request_body = CreateMenuInput,
     responses(
-        (status = 200, description = "Page updated", body = PageResponse),
-        (status = 400, description = "Invalid input"),
+        (status = 201, description = "Menu created", body = MenuResponse),
+        (status = 400, description = "Invalid localized menu input"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
 )]
-pub async fn update_page(
+pub async fn create_menu(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    request_context: RequestContext,
+    Query(params): Query<CreateMenuParams>,
+    Json(input): Json<CreateMenuInput>,
+) -> HttpResult<(StatusCode, Json<MenuResponse>)> {
+    ensure_pages_permission(&auth, Permission::PAGES_CREATE)?;
+    let effective_locale = params
+        .locale
+        .unwrap_or_else(|| request_context.locale.clone());
+
+    let menu = MenuService::new(runtime.db_clone(), runtime.event_bus())
+        .create(tenant.id, page_security(&auth), &effective_locale, input)
+        .await
+        .map_err(map_pages_error)?;
+    Ok((StatusCode::CREATED, Json(menu)))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/admin/pages/{id}/metadata",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = PatchPageMetadataInput,
+    responses(
+        (status = 200, description = "Page metadata updated", body = PageResponse),
+        (status = 409, description = "Metadata version conflict"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn patch_page_metadata(
     State(runtime): State<PagesHttpRuntime>,
     tenant: TenantContext,
     auth: AuthContext,
     Path(id): Path<Uuid>,
-    Json(input): Json<UpdatePageInput>,
+    Json(input): Json<PatchPageMetadataInput>,
 ) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
-    if input.status.is_some() {
-        ensure_pages_permission(&auth, Permission::new(Resource::Pages, Action::Publish))?;
-    }
-
-    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
-    let page = service
-        .update(tenant.id, page_security(&auth), id, input)
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .patch_metadata(tenant.id, page_security(&auth), id, input)
         .await
-        .map_err(map_pages_error)?;
-    Ok(Json(page))
+        .map(Json)
+        .map_err(map_pages_error)
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/admin/pages/{id}/document",
+    tag = "pages",
+    params(("id" = Uuid, Path, description = "Page ID")),
+    request_body = SavePageDocumentInput,
+    responses(
+        (status = 200, description = "Page document saved", body = PageResponse),
+        (status = 409, description = "Document revision conflict or published document is immutable"),
+        (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub async fn save_page_document(
+    State(runtime): State<PagesHttpRuntime>,
+    tenant: TenantContext,
+    auth: AuthContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<SavePageDocumentInput>,
+) -> HttpResult<Json<PageResponse>> {
+    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    PageService::new(runtime.db_clone(), runtime.event_bus())
+        .save_document(tenant.id, page_security(&auth), id, input)
+        .await
+        .map(Json)
+        .map_err(map_pages_error)
 }
 
 #[utoipa::path(
@@ -268,6 +372,7 @@ pub async fn update_page(
     params(("id" = Uuid, Path, description = "Page ID")),
     responses(
         (status = 204, description = "Page deleted"),
+        (status = 409, description = "Published page must be unpublished before deletion"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden")
     )
@@ -279,9 +384,7 @@ pub async fn delete_page(
     Path(id): Path<Uuid>,
 ) -> HttpResult<StatusCode> {
     ensure_pages_permission(&auth, Permission::PAGES_DELETE)?;
-
-    let service = PageService::new(runtime.db_clone(), runtime.event_bus());
-    service
+    PageService::new(runtime.db_clone(), runtime.event_bus())
         .delete(tenant.id, page_security(&auth), id)
         .await
         .map_err(map_pages_error)?;
@@ -292,16 +395,48 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
     let state = PagesHttpRuntime::from_host(runtime)?;
     Ok(axum::Router::new()
         .route("/api/pages", axum::routing::get(get_page))
+        .route("/api/menus/{id}", axum::routing::get(get_menu))
         .route(
             "/api/pages/{id}/artifact",
             axum::routing::get(get_page_artifact),
         )
         .route("/api/admin/pages", axum::routing::post(create_page))
+        .route("/api/admin/menus", axum::routing::post(create_menu))
+        .route("/api/admin/pages/{id}", axum::routing::delete(delete_page))
         .route(
-            "/api/admin/pages/{id}",
-            axum::routing::put(update_page).delete(delete_page),
+            "/api/admin/pages/{id}/metadata",
+            axum::routing::patch(patch_page_metadata),
+        )
+        .route(
+            "/api/admin/pages/{id}/document",
+            axum::routing::put(save_page_document),
         )
         .with_state(state))
+}
+
+async fn ensure_menu_module_enabled_for_channel(
+    runtime: &PagesHttpRuntime,
+    request_context: &RequestContext,
+) -> HttpResult<()> {
+    let Some(channel_id) = request_context.channel_id else {
+        return Ok(());
+    };
+    let enabled = ChannelService::new(runtime.db_clone())
+        .is_module_enabled(channel_id, "pages")
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                channel_id = %channel_id,
+                error = %error,
+                "failed to evaluate Pages module availability for menu delivery"
+            );
+            HttpError::internal("Unable to evaluate channel availability")
+        })?;
+    if enabled {
+        Ok(())
+    } else {
+        Err(HttpError::not_found("menu_not_found", "Menu was not found"))
+    }
 }
 
 async fn ensure_pages_module_enabled_for_channel(
@@ -349,10 +484,46 @@ fn artifact_content_security_policy(css: &str) -> String {
 fn map_pages_error(error: PagesError) -> HttpError {
     let message = error.to_string();
     match error {
-        PagesError::VersionConflict { .. } => {
-            HttpError::new(StatusCode::CONFLICT, "page_version_conflict", message)
+        PagesError::VersionConflict { .. } => HttpError::new(
+            StatusCode::CONFLICT,
+            "page_metadata_version_conflict",
+            message,
+        ),
+        PagesError::CannotDeletePublished => HttpError::new(
+            StatusCode::CONFLICT,
+            CANNOT_DELETE_PUBLISHED_ERROR_CODE.to_ascii_lowercase(),
+            message,
+        ),
+        PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(PAGE_DOCUMENT_REVISION_CONFLICT) =>
+        {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "page_document_revision_conflict",
+                message,
+            )
+        }
+        PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(PAGE_PUBLISHED_DOCUMENT_IMMUTABLE) =>
+        {
+            HttpError::new(
+                StatusCode::CONFLICT,
+                "page_published_document_immutable",
+                message,
+            )
+        }
+        PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(MENU_LOCALE_NOT_FOUND_ERROR_CODE) =>
+        {
+            HttpError::not_found("menu_locale_not_found", message)
+        }
+        PagesError::Rich(rich)
+            if rich.error_code.as_deref() == Some(MENU_TRANSLATION_INTEGRITY_ERROR_CODE) =>
+        {
+            HttpError::internal(message)
         }
         PagesError::PageNotFound(_) => HttpError::not_found("page_not_found", message),
+        PagesError::MenuNotFound(_) => HttpError::not_found("menu_not_found", message),
         PagesError::Forbidden(_) => HttpError::forbidden("pages_permission_denied", message),
         PagesError::Database(_) | PagesError::Tenant(_) | PagesError::ArtifactIntegrity(_) => {
             HttpError::internal(message)
@@ -368,7 +539,6 @@ fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpRe
             "Permission denied: pages:* required",
         ));
     }
-
     Ok(())
 }
 

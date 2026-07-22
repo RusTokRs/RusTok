@@ -4,20 +4,25 @@
   "family": "marketplace",
   "role": "provider",
   "status": "in_progress",
-  "contract_version": "marketplace.ledger.v2",
+  "contract_version": "marketplace.ledger.v3",
   "ownership": {
     "transaction_table": "marketplace_ledger_transactions",
     "entry_table": "marketplace_ledger_entries",
     "receipt_table": "marketplace_ledger_receipts",
     "reversal_table": "marketplace_ledger_reversals",
     "reversal_line_table": "marketplace_ledger_reversal_lines",
+    "entry_balance_bucket_table": "marketplace_ledger_entry_balance_buckets",
+    "seller_balance_transfer_table": "marketplace_seller_balance_transfers",
+    "seller_balance_transfer_line_table": "marketplace_seller_balance_transfer_lines",
     "seller_balance_projection_table": "marketplace_seller_balance_projections",
     "cross_module_foreign_keys": false,
     "owner_local_tenant_composite_foreign_keys": true,
     "entries_append_only": true,
-    "original_transactions_are_never_mutated_by_reversal": true,
+    "balance_transfer_records_append_only": true,
+    "original_transactions_are_never_mutated_by_reversal_or_transfer": true,
     "one_commission_batch_transaction_per_order": true,
     "one_reversal_per_tenant_kind_source": true,
+    "one_balance_transfer_per_tenant_kind_source": true,
     "amount_representation": "signed_64_bit_minor_units"
   },
   "dependencies": [
@@ -47,6 +52,7 @@
       "operations": [
         "post_order_commissions",
         "post_financial_reversal",
+        "post_seller_balance_transfer",
         "rebuild_seller_balance"
       ],
       "deadline_required": true,
@@ -103,6 +109,20 @@
         "amount": "commission_reversal_amount + seller_reversal_amount"
       }
     ],
+    "seller_balance_transfer_line": [
+      {
+        "account": "seller_payable",
+        "direction": "debit",
+        "amount": "transfer_line_amount",
+        "balance_bucket": "from_bucket"
+      },
+      {
+        "account": "seller_payable",
+        "direction": "credit",
+        "amount": "transfer_line_amount",
+        "balance_bucket": "to_bucket"
+      }
+    ],
     "assessment_invariant": "commission_amount + seller_proceeds_amount = allocation_total_amount",
     "transaction_invariant": "debit_total_amount = credit_total_amount",
     "negative_entry_amounts_allowed": false,
@@ -117,11 +137,35 @@
     "original_transaction_status_is_not_mutated": true,
     "receipt_replay_before_owner_reads": true
   },
+  "seller_balance_transfers": {
+    "supported_kinds": {
+      "pending_release": ["pending", "available"],
+      "reserve_hold": ["available", "reserved"],
+      "reserve_release": ["reserved", "available"],
+      "payout_settlement": ["reserved", "paid"],
+      "payout_reversal": ["paid", "available"]
+    },
+    "source_identity": ["tenant_id", "transfer_kind", "source_id"],
+    "receipt_command_kind": "post_seller_balance_transfer",
+    "reference_entry_required": true,
+    "reference_entry_must_be_seller_payable_credit": true,
+    "reference_entry_must_match_seller_currency_and_source_bucket": true,
+    "cumulative_transfer_must_not_exceed_reference_credit": true,
+    "seller_bucket_capacity_checked_from_immutable_entries": true,
+    "seller_entry_locks_before_capacity_check": true,
+    "fresh_locking_reread_after_wait": true,
+    "single_order_scope_per_owner_transaction": true,
+    "multi_order_payout_policy": "orchestration must issue one owner transfer command per order scope",
+    "projection_is_rebuilt_after_post_and_receipt_replay": true,
+    "original_entries_are_not_mutated": true,
+    "append_only_database_guards": ["postgres", "sqlite", "mysql"]
+  },
   "seller_balance_projection": {
     "authoritative_source": "marketplace_ledger_entries",
     "buckets": ["pending", "available", "reserved", "paid"],
     "negative_amount": "max(0, -(pending + available + reserved))",
     "unclassified_original_seller_payable_entries": "pending",
+    "explicit_entry_bucket_classification_precedes_reversal_line_fallback": true,
     "rebuildable": true,
     "rebuild_scope": ["tenant_id", "seller_id", "currency_code"],
     "projection_failure_does_not_mutate_ledger": true
@@ -139,12 +183,11 @@
     "marketplace_root_read_projection": true
   },
   "known_gaps": [
-    "normalized refund and chargeback event orchestration into the ledger reversal command",
-    "available, reserved, and paid bucket transfer transactions",
-    "payout settlement and payout reversal ledger transactions",
-    "reserve hold and reserve release transactions",
+    "payout provider operation journal and verified webhook inbox",
+    "multi-order payout settlement orchestration over per-order ledger transfer commands",
     "external ledger event contracts and transactional outbox",
-    "postgres reversal contention evidence",
-    "admin accounting and seller balance transport surfaces"
+    "postgres balance transfer contention evidence",
+    "admin accounting and seller balance transfer transport surfaces",
+    "production validation evidence"
   ]
 }

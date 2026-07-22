@@ -1,4 +1,7 @@
+pub mod balance_transfer;
+pub mod balance_transfer_line;
 pub mod entry;
+pub mod entry_balance_bucket;
 pub mod receipt;
 pub mod reversal;
 pub mod reversal_line;

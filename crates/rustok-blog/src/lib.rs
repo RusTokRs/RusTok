@@ -64,11 +64,11 @@ pub mod state_machine;
 mod state_machine_proptest;
 
 pub use dto::{
-    CategoryListItem, CategoryResponse, CommentListItem, CommentResponse, CreateCategoryInput,
-    CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
-    ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery, PostListResponse,
-    PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput, UpdateCommentInput,
-    UpdatePostInput, UpdateTagInput,
+    CategoryListItem, CategoryListResponse, CategoryResponse, CommentListItem, CommentResponse,
+    CreateCategoryInput, CreateCommentInput, CreatePostInput, CreateTagInput, ListCategoriesFilter,
+    ListCommentsFilter, ListTagsFilter, ModerateCommentInput, ModerateCommentStatus, PostListQuery,
+    PostListResponse, PostResponse, PostSummary, TagListItem, TagResponse, UpdateCategoryInput,
+    UpdateCommentInput, UpdatePostInput, UpdateTagInput,
 };
 pub use entities::*;
 pub use error::{BlogError, BlogResult};
@@ -111,12 +111,26 @@ impl RusToKModule for BlogModule {
             Permission::BLOG_POSTS_LIST,
             Permission::BLOG_POSTS_PUBLISH,
             Permission::BLOG_POSTS_MANAGE,
+            Permission::BLOG_CATEGORIES_CREATE,
+            Permission::BLOG_CATEGORIES_READ,
+            Permission::BLOG_CATEGORIES_UPDATE,
+            Permission::BLOG_CATEGORIES_DELETE,
+            Permission::BLOG_CATEGORIES_LIST,
+            Permission::BLOG_CATEGORIES_MANAGE,
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider)
-            .expect("blog SEO target registration should remain unique");
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::BlogSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "blog SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 
     fn register_event_listeners(
@@ -158,21 +172,24 @@ mod tests {
         let module = BlogModule;
         let permissions = module.permissions();
 
-        assert!(
-            permissions
-                .iter()
-                .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Create })
-        );
-        assert!(
-            permissions
-                .iter()
-                .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Publish })
-        );
-        assert!(
-            permissions
-                .iter()
-                .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage })
-        );
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Create }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Publish }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogPosts && p.action == Action::Manage }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogCategories && p.action == Action::Create }));
+        assert!(permissions
+            .iter()
+            .any(|p| { p.resource == Resource::BlogCategories && p.action == Action::Manage }));
+        assert!(!permissions
+            .iter()
+            .any(|p| p.resource == Resource::Categories));
     }
 
     #[test]

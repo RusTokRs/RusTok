@@ -394,7 +394,7 @@ impl From<SearchSettingsRecord> for SearchSettingsPayload {
 
 impl From<SearchResultItem> for SearchPreviewResultItem {
     fn from(value: SearchResultItem) -> Self {
-        let url = derive_search_result_url(&value);
+        let url = crate::canonical_search_result_url(&value);
         Self {
             id: value.id.to_string(),
             entity_type: value.entity_type,
@@ -647,21 +647,5 @@ impl From<SearchSuggestion> for SearchSuggestionPayload {
             url: value.url,
             score: value.score,
         }
-    }
-}
-
-fn derive_search_result_url(value: &SearchResultItem) -> Option<String> {
-    match value.entity_type.as_str() {
-        "product" => Some(format!("/store/products/{}", value.id)),
-        "node" => Some(format!(
-            "/modules/content?id={}{}",
-            value.id,
-            if value.source_module.is_empty() || value.source_module == "content" {
-                String::new()
-            } else {
-                format!("&kind={}", value.source_module)
-            }
-        )),
-        _ => None,
     }
 }

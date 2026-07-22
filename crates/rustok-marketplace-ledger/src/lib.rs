@@ -4,6 +4,7 @@ use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 mod balance;
+mod balance_transfer;
 mod receipts;
 mod reversal;
 #[cfg(test)]

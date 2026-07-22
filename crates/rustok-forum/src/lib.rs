@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
+use rustok_notifications_api::register_notification_source_provider_factory;
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
 
@@ -12,7 +13,9 @@ pub mod entities;
 pub mod error;
 pub mod graphql;
 pub mod locale;
+pub mod mentions;
 pub mod migrations;
+mod notification_source;
 pub mod openapi;
 mod seo_targets;
 pub mod services;
@@ -24,6 +27,7 @@ pub use dto::*;
 pub use entities::*;
 pub use error::{ForumError, ForumResult};
 pub use graphql::{ForumMutation, ForumQuery};
+pub use mentions::*;
 pub use services::{
     CategoryService, ForumEventService, ForumReadModelService, ForumWidgetContractService,
     ModerationService, ReplyService, RevisionService, SubscriptionService, TopicService,
@@ -81,11 +85,33 @@ impl RusToKModule for ForumModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         register_seo_target_provider(extensions, seo_targets::ForumCategorySeoTargetProvider)
-            .expect("forum category SEO target registration should remain unique");
-        register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider)
-            .expect("forum topic SEO target registration should remain unique");
+            .map_err(|error| {
+                rustok_core::Error::Validation(format!(
+                    "forum category SEO target registration failed: {error}"
+                ))
+            })?;
+        register_seo_target_provider(extensions, seo_targets::ForumTopicSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "forum topic SEO target registration failed: {error}"
+                ))
+            },
+        )?;
+        register_notification_source_provider_factory(
+            extensions,
+            notification_source::ForumNotificationSourceProviderFactory,
+        )
+        .map_err(|error| {
+            rustok_core::Error::Validation(format!(
+                "forum notification source factory registration failed: {error}"
+            ))
+        })?;
+        Ok(())
     }
 }
 

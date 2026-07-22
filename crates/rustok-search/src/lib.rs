@@ -38,6 +38,7 @@ pub use dictionaries::{
 };
 pub use engine::{
     SearchAttributeFilter, SearchConnectorDescriptor, SearchEngine, SearchEngineKind, SearchQuery,
+    canonical_search_result_url,
 };
 pub use engine::{SearchResult, SearchResultItem};
 pub use ingestion::SearchIngestionHandler;

@@ -30,7 +30,7 @@ impl MigrationTrait for Migration {
                             .text()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(SearchQueryLogs::Locale).string_len(16))
+                    .col(ColumnDef::new(SearchQueryLogs::Locale).string_len(32))
                     .col(
                         ColumnDef::new(SearchQueryLogs::Engine)
                             .string_len(32)

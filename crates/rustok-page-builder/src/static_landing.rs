@@ -70,6 +70,14 @@ where
         &self,
         project_data: &Value,
     ) -> LandingProjectResult<StaticLandingArtifact> {
+        let document = self.prepare_document(project_data)?;
+        self.compile_prepared_document(&document)
+    }
+
+    pub(crate) fn prepare_document(
+        &self,
+        project_data: &Value,
+    ) -> LandingProjectResult<ProjectDocument> {
         let inspection = self.inspect(project_data)?;
         inspection.require_contract_valid()?;
 
@@ -82,9 +90,20 @@ where
         if !self.render_policy.allow_http {
             require_secure_resource_urls(&document)?;
         }
+        Ok(document)
+    }
 
+    pub(crate) fn compile_prepared_document(
+        &self,
+        document: &ProjectDocument,
+    ) -> LandingProjectResult<StaticLandingArtifact> {
+        // Runtime bindings can materialize new resource URLs after the authoring document was
+        // prepared. Re-run the public artifact security policy on the exact document being built.
+        if !self.render_policy.allow_http {
+            require_secure_resource_urls(document)?;
+        }
         let build = build_static_landing_artifact_with_renderer(
-            &document,
+            document,
             &self.registries,
             self.readiness_policy,
             &self.render_policy,
@@ -101,6 +120,10 @@ where
                     .collect(),
             }),
         }
+    }
+
+    pub(crate) fn render_policy(&self) -> &RenderPolicy {
+        &self.render_policy
     }
 }
 

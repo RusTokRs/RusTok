@@ -153,8 +153,12 @@ impl RusToKModule for RbacModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         extensions.insert(SharedTenantRbacCatalog(Arc::new(BuiltinTenantRbacCatalog)));
+        Ok(())
     }
 
     async fn health(&self) -> HealthStatus {

@@ -112,10 +112,97 @@ pub struct BuilderTreeNode {
     pub children: Vec<BuilderTreeNode>,
 }
 
+pub const MAX_PREVIEW_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
+pub const MAX_PREVIEW_SCENARIO_ID_BYTES: usize = 128;
+
+fn empty_runtime_context() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderPreviewRuntimeValidationError {
+    message: String,
+}
+
+impl PageBuilderPreviewRuntimeValidationError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl std::fmt::Display for PageBuilderPreviewRuntimeValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for PageBuilderPreviewRuntimeValidationError {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageBuilderPreviewRuntime {
+    #[serde(default = "empty_runtime_context")]
+    pub context: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scenario_id: Option<String>,
+}
+
+impl Default for PageBuilderPreviewRuntime {
+    fn default() -> Self {
+        Self {
+            context: empty_runtime_context(),
+            scenario_id: None,
+        }
+    }
+}
+
+impl PageBuilderPreviewRuntime {
+    pub fn new(context: serde_json::Value, scenario_id: Option<String>) -> Self {
+        Self {
+            context,
+            scenario_id,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), PageBuilderPreviewRuntimeValidationError> {
+        if !self.context.is_object() {
+            return Err(PageBuilderPreviewRuntimeValidationError::new(
+                "preview runtime context must be a JSON object",
+            ));
+        }
+        let context_bytes = serde_json::to_vec(&self.context).map_err(|error| {
+            PageBuilderPreviewRuntimeValidationError::new(format!(
+                "preview runtime context could not be serialized: {error}"
+            ))
+        })?;
+        if context_bytes.len() > MAX_PREVIEW_RUNTIME_CONTEXT_BYTES {
+            return Err(PageBuilderPreviewRuntimeValidationError::new(format!(
+                "preview runtime context exceeds {MAX_PREVIEW_RUNTIME_CONTEXT_BYTES} bytes"
+            )));
+        }
+        if let Some(scenario_id) = self.scenario_id.as_deref() {
+            if scenario_id.is_empty() || scenario_id.trim() != scenario_id {
+                return Err(PageBuilderPreviewRuntimeValidationError::new(
+                    "preview runtime scenario_id must be a non-empty normalized string",
+                ));
+            }
+            if scenario_id.len() > MAX_PREVIEW_SCENARIO_ID_BYTES {
+                return Err(PageBuilderPreviewRuntimeValidationError::new(format!(
+                    "preview runtime scenario_id exceeds {MAX_PREVIEW_SCENARIO_ID_BYTES} bytes"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewPageBuilderInput {
     pub page_id: String,
     pub project_data: serde_json::Value,
+    #[serde(default)]
+    pub runtime: PageBuilderPreviewRuntime,
 }
 
 impl PreviewPageBuilderInput {
@@ -123,7 +210,13 @@ impl PreviewPageBuilderInput {
         Self {
             page_id: page_id.into(),
             project_data,
+            runtime: PageBuilderPreviewRuntime::default(),
         }
+    }
+
+    pub fn with_runtime(mut self, runtime: PageBuilderPreviewRuntime) -> Self {
+        self.runtime = runtime;
+        self
     }
 }
 
@@ -131,6 +224,8 @@ impl PreviewPageBuilderInput {
 pub struct PreviewPageBuilderResult {
     pub page_id: String,
     pub html: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_scenario_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

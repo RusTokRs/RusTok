@@ -70,23 +70,37 @@ pub use services::{
     CompleteReturnRefundInput, CompleteReturnResolutionInput, CreateReturnDecisionInput,
     DEFAULT_CHECKOUT_LEASE_SECONDS, DEFAULT_RETURN_COMPLETION_LEASE_SECONDS,
     ExchangeDifferenceRefundInput, FulfillmentCreateLabelRecoveryService,
-    FulfillmentReconciliationService, IngestMarketplacePaidEvent, JournaledCheckoutError,
-    JournaledCheckoutResult, JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS,
-    MAX_RETURN_COMPLETION_LEASE_SECONDS, MarketplaceFinancialOperationError,
-    MarketplaceFinancialOperationJournal, MarketplaceFinancialOperationOperatorView,
-    MarketplaceFinancialOperationResult, MarketplaceFinancialOperationStatus,
-    MarketplaceFinancialOperatorError, MarketplaceFinancialOperatorResult,
-    MarketplaceFinancialOperatorService, MarketplaceFinancialRuntime,
-    MarketplacePaidEventInboxError, MarketplacePaidEventInboxJournal,
-    MarketplacePaidEventInboxResult, MarketplacePaidEventInboxService,
-    MarketplacePaidEventOperatorView, MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
+    FulfillmentReconciliationService, IngestMarketplacePaidEvent,
+    IngestMarketplaceReversalEvent, JournaledCheckoutError, JournaledCheckoutResult,
+    JournaledCheckoutService, MAX_CHECKOUT_LEASE_SECONDS, MAX_RETURN_COMPLETION_LEASE_SECONDS,
+    MarketplaceFinancialOperationError, MarketplaceFinancialOperationJournal,
+    MarketplaceFinancialOperationOperatorView, MarketplaceFinancialOperationResult,
+    MarketplaceFinancialOperationStatus, MarketplaceFinancialOperatorError,
+    MarketplaceFinancialOperatorResult, MarketplaceFinancialOperatorService,
+    MarketplaceFinancialRuntime, MarketplacePaidEventInboxError,
+    MarketplacePaidEventInboxJournal, MarketplacePaidEventInboxResult,
+    MarketplacePaidEventInboxService, MarketplacePaidEventOperatorView,
+    MarketplacePaidEventStatus, MarketplacePaidEventSweepFailure,
     MarketplacePaidEventSweepReport, MarketplaceProviderPaidEventAdapter,
     MarketplaceProviderPaidEventAdapterError, MarketplaceProviderPaidEventAdapterResult,
-    OrderChangeOrchestrationService, PaidOrderCreateLabelSweepReport,
-    PaidOrderCreateLabelSweepService, PaymentOrchestrationError, PaymentOrchestrationResult,
-    PaymentOrchestrationService, PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
-    PostOrderOrchestrationService, RecoveringStagedCheckoutError, RecoveringStagedCheckoutResult,
-    RecoveringStagedCheckoutService, RefundReconciliationService, ReturnClaimDecisionInput,
+    MarketplaceProviderReversalAdaptFailure, MarketplaceProviderReversalAdaptReport,
+    MarketplaceProviderReversalBackfillError, MarketplaceProviderReversalBackfillResult,
+    MarketplaceProviderReversalBackfillService, MarketplaceProviderReversalEventAdapter,
+    MarketplaceProviderReversalEventAdapterError, MarketplaceProviderReversalEventAdapterResult,
+    MarketplaceReversalAdaptationFailureError, MarketplaceReversalAdaptationFailureJournal,
+    MarketplaceReversalAdaptationFailureResult, MarketplaceReversalAdaptationFailureStatus,
+    MarketplaceReversalEventInboxError, MarketplaceReversalEventInboxJournal,
+    MarketplaceReversalEventInboxResult, MarketplaceReversalEventInboxService,
+    MarketplaceReversalEventOperatorView, MarketplaceReversalEventStatus,
+    MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
+    MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
+    MarketplaceReversalOperatorService, OrderChangeOrchestrationService,
+    PaidOrderCreateLabelSweepReport, PaidOrderCreateLabelSweepService,
+    PaymentOrchestrationError, PaymentOrchestrationResult, PaymentOrchestrationService,
+    PlanCheckoutInventoryReservation, PostOrderOrchestrationError,
+    PostOrderOrchestrationService, RecoveringStagedCheckoutError,
+    RecoveringStagedCheckoutResult, RecoveringStagedCheckoutService,
+    RefundReconciliationService, ReturnClaimDecisionInput,
     ReturnCompletionOperationCheckpoint, ReturnCompletionOperationError,
     ReturnCompletionOperationJournal, ReturnCompletionOperationResult,
     ReturnCompletionOperationStage, ReturnCompletionOperationStatus,
@@ -160,7 +174,9 @@ impl RusToKModule for CommerceModule {
             .extensions
             .get::<TransactionalEventBus>()
             .cloned()
-            .expect("commerce module requires TransactionalEventBus in ModuleRuntimeExtensions");
+            .expect(
+                "commerce module requires TransactionalEventBus in ModuleRuntimeExtensions",
+            );
         registry.register(services::MarketplacePaidOrderFinancialHandler::new(
             ctx.db.clone(),
             event_bus,
@@ -168,8 +184,12 @@ impl RusToKModule for CommerceModule {
         ));
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         extensions.get_or_insert_with(FulfillmentProviderRegistry::with_manual_provider);
+        Ok(())
     }
 
     fn permissions(&self) -> Vec<Permission> {

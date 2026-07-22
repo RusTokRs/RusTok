@@ -16,8 +16,9 @@ use uuid::Uuid;
 use crate::entities::provider_event;
 use crate::providers::{PaymentProviderRegistry, PaymentProviderWebhookRequest};
 use crate::{
-    PaymentDomainEventApplier, PaymentError, PaymentProviderEventIngressError,
+    PaymentError, PaymentObservedDomainEventApplier, PaymentProviderEventIngressError,
     PaymentProviderEventIngressService, PaymentProviderEventJournal,
+    PaymentProviderEventObservers,
 };
 
 const DELIVERY_ID_HEADERS: [&str; 3] = [
@@ -39,6 +40,7 @@ const MAX_RAW_PAYLOAD_BYTES: usize = 1024 * 1024;
 pub struct PaymentHttpRuntime {
     db: sea_orm::DatabaseConnection,
     provider_registry: PaymentProviderRegistry,
+    event_observers: PaymentProviderEventObservers,
 }
 
 impl PaymentHttpRuntime {
@@ -48,6 +50,9 @@ impl PaymentHttpRuntime {
             provider_registry: runtime
                 .shared_get::<PaymentProviderRegistry>()
                 .unwrap_or_else(PaymentProviderRegistry::with_manual_provider),
+            event_observers: runtime
+                .shared_get::<PaymentProviderEventObservers>()
+                .unwrap_or_default(),
         }
     }
 
@@ -55,7 +60,10 @@ impl PaymentHttpRuntime {
         PaymentProviderEventIngressService::new(
             self.db.clone(),
             self.provider_registry.clone(),
-            Arc::new(PaymentDomainEventApplier::new(self.db.clone())),
+            Arc::new(PaymentObservedDomainEventApplier::new(
+                self.db.clone(),
+                self.event_observers.clone(),
+            )),
         )
     }
 }

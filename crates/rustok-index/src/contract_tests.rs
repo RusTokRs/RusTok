@@ -51,7 +51,8 @@ fn index_module_registers_default_runtime_config() {
 
     let extensions = ModuleRegistry::new()
         .register(IndexModule)
-        .build_runtime_extensions();
+        .build_runtime_extensions()
+        .expect("index runtime extensions should initialize");
 
     assert!(extensions.contains::<IndexerRuntimeConfig>());
 }

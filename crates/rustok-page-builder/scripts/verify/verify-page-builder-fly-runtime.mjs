@@ -78,8 +78,28 @@ const required = [
   ],
   [
     browserHost,
-    "page_builder_browser_module_source",
-    "shared browser module source is missing",
+    "pub struct PageBuilderBrowserModuleOptions",
+    "shared browser module options are missing",
+  ],
+  [
+    browserHost,
+    "pub struct PageBuilderBrowserModuleDescriptor",
+    "shared browser module descriptor is missing",
+  ],
+  [
+    browserHost,
+    "pub nonce: Option<String>",
+    "shared browser CSP nonce is missing",
+  ],
+  [
+    browserHost,
+    "pub fn page_builder_browser_module(",
+    "shared browser module constructor is missing",
+  ],
+  [
+    browserHost,
+    "PAGE_BUILDER_BROWSER_SCRIPT_TYPE",
+    "shared browser script type is missing",
   ],
   [
     browserHost,
@@ -123,6 +143,11 @@ if (service.includes('project_data.get("nodes")')) {
 if (browserHost.includes("autoMount === false")) {
   failures.push(
     "Page Builder host must delegate auto-mount policy to FlyBrowser.bootstrap",
+  );
+}
+if (browserHost.includes("pub fn page_builder_browser_module_source")) {
+  failures.push(
+    "Page Builder browser host must expose only the renderer-neutral module descriptor",
   );
 }
 

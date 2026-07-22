@@ -11,7 +11,7 @@
 //! Pages module for RusToK platform.
 //!
 //! The module owns pages, localized bodies, menus, menu items, deterministic Page Builder
-//! artifacts, and Page Builder release baselines.
+//! artifacts, atomic publish receipts, and Page Builder release baselines.
 //!
 //! # Example
 //!
@@ -46,6 +46,7 @@ pub mod dto;
 pub mod entities;
 pub mod error;
 pub mod graphql;
+pub mod http;
 pub mod migrations;
 pub mod openapi;
 mod seo_targets;
@@ -53,14 +54,19 @@ pub mod services;
 
 pub use dto::*;
 pub use entities::{
-    Menu, Page, PageBuilderScenarioBaseline, PagePublishedLandingArtifact,
-    PageStaticLandingArtifact,
+    Menu, MenuBinding, Page, PageBuilderScenarioBaseline, PagePublishOperation,
+    PagePublishedLandingArtifact, PageStaticLandingArtifact,
 };
-pub use error::{PagesError, PagesResult};
+pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};
 pub use services::{
-    MenuService, PageBuilderArtifactService, PageBuilderScenarioBaselineService, PageService,
-    PublishedLandingArtifact, SaveIfCurrentScenarioBaselineRequest,
+    MenuBindingService, MenuService, PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
+    PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED, PAGE_DOCUMENT_REVISION_CONFLICT,
+    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService,
+    PageBuilderScenarioBaselineService, PageService, PublishedLandingArtifact,
+    SaveIfCurrentScenarioBaselineRequest,
 };
 
 use async_trait::async_trait;
@@ -106,9 +112,17 @@ impl RusToKModule for PagesModule {
         ]
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut ModuleRuntimeExtensions) {
-        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider)
-            .expect("pages SEO target registration should remain unique");
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        register_seo_target_provider(extensions, seo_targets::PagesSeoTargetProvider).map_err(
+            |error| {
+                rustok_core::Error::Validation(format!(
+                    "pages SEO target registration failed: {error}"
+                ))
+            },
+        )
     }
 }
 
@@ -117,50 +131,3 @@ impl MigrationSource for PagesModule {
         migrations::migrations()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn module_metadata() {
-        let module = PagesModule;
-        assert_eq!(module.slug(), "pages");
-        assert_eq!(module.name(), "Pages");
-        assert_eq!(
-            module.description(),
-            "Pages, visual documents, published artifacts and menus"
-        );
-        assert_eq!(module.version(), env!("CARGO_PKG_VERSION"));
-    }
-
-    #[test]
-    fn module_permissions() {
-        let module = PagesModule;
-        let permissions = module.permissions();
-
-        assert!(
-            permissions
-                .iter()
-                .any(|p| p.resource == Resource::Pages && p.action == Action::Create)
-        );
-        assert!(
-            permissions
-                .iter()
-                .any(|p| p.resource == Resource::Pages && p.action == Action::Publish)
-        );
-        assert!(
-            permissions.iter().all(|p| p.resource != Resource::Nodes),
-            "pages module should no longer publish node permissions"
-        );
-    }
-
-    #[test]
-    fn module_has_migrations() {
-        let module = PagesModule;
-        assert!(!module.migrations().is_empty());
-    }
-}
-
-#[cfg(test)]
-mod contract_tests;

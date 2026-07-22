@@ -8,23 +8,56 @@
     "properties",
     "publish"
   ],
+  "dto_contracts": {
+    "preview_runtime": {
+      "source": "dto",
+      "markers": [
+        "pub struct PageBuilderPreviewRuntime",
+        "pub context: serde_json::Value",
+        "pub scenario_id: Option<String>",
+        "pub fn validate(&self)",
+        "pub runtime: PageBuilderPreviewRuntime",
+        "pub fn with_runtime",
+        "pub runtime_scenario_id: Option<String>"
+      ]
+    }
+  },
   "ports": {
     "persistence": {
+      "source": "service",
       "trait": "PageBuilderProjectStore",
       "methods": [
         "load_project",
         "save_project"
       ],
-      "tenant_context_source": "PortContext"
+      "tenant_context_source": "PortContext",
+      "save_result": "PageBuilderProjectSaveResult",
+      "save_result_order": [
+        "let saved = match self",
+        "if saved.page_id != input.page_id",
+        "if saved.revision_id.trim().is_empty()",
+        "record_runtime_call(&evidence.succeeded())",
+        "revision_id: saved.revision_id",
+        "published: saved.published"
+      ]
     },
     "preview_rendering": {
-      "trait": "PageBuilderRenderingAdapter",
+      "source": "preview_port",
+      "trait": "PageBuilderPreviewRenderingPort",
       "methods": [
         "render_preview"
       ],
-      "invocation_order": "after Fly decode and validation"
+      "input": "PreviewPageBuilderInput",
+      "invocation_order": "after Fly decode, structural validation and canonical DTO runtime validation",
+      "runtime_order": [
+        "self.inspect(&input.project_data)?",
+        ".runtime\n            .validate()",
+        "render_preview(context, &input)",
+        "runtime_scenario_id: input.runtime.scenario_id"
+      ]
     },
     "runtime_telemetry": {
+      "source": "telemetry",
       "trait": "PageBuilderRuntimeTelemetry",
       "evidence": "PageBuilderRuntimeCallEvidence",
       "statuses": [
@@ -38,6 +71,125 @@
     "CapabilityGuardedService",
     "AuthorizedPageBuilderHandlers"
   ],
+  "composition_root": {
+    "module": "composition",
+    "default_entrypoint": "compose_fly_page_builder_handlers",
+    "configured_entrypoint": "compose_configured_fly_page_builder_handlers",
+    "preview_port": "PageBuilderPreviewRenderingPort",
+    "invocation_order": [
+      "FlyAdapterBackedPageBuilderService::new",
+      "CapabilityGuardedService::with_policies",
+      "AuthorizedPageBuilderHandlers::with_authorizer"
+    ]
+  },
+  "production_consumers": {
+    "pages": {
+      "source": "crates/rustok-pages/admin/src/builder.rs",
+      "manifest": "crates/rustok-pages/admin/Cargo.toml",
+      "server_feature_marker": "\"rustok-page-builder/server\"",
+      "capability_server_function": "pages_page_builder_capability",
+      "capability_server_function_markers": [
+        "#[server(prefix = \"/api/fn\", endpoint = \"pages/page-builder-capability\")]",
+        "request: PageBuilderCapabilityRequest",
+        "dispatch_pages_page_builder_capability(",
+        "noop_saved_handler()"
+      ],
+      "capability_dispatch_helper": "dispatch_pages_page_builder_capability",
+      "capability_client_entrypoint_marker": "#[cfg(not(feature = \"ssr\"))]\nasync fn dispatch_pages_page_builder_capability",
+      "capability_client_end_marker": "fn page_locale(",
+      "capability_required_server_order": [
+        "pages_request_page_id(&request)?",
+        "ensure_requested_page(&snapshot",
+        "leptos_auth::api::fetch_current_user",
+        "PageBuilderRequestAuth::new",
+        "PortContext::new",
+        ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
+        ".with_idempotency_key",
+        "PagesPageBuilderRenderer {",
+        "PagesPageBuilderProjectStore {",
+        "let handlers = compose_fly_page_builder_handlers(",
+        ".handle(&context, &auth, request)"
+      ],
+      "capability_dispatch_marker": ".handle(&context, &auth, request)",
+      "capability_forbidden_before_dispatch": [
+        "transport::fetch_page(",
+        "transport::save_page_document("
+      ],
+      "capability_client_transport_marker": "let response = pages_page_builder_capability(",
+      "capability_client_forbidden_symbols": [
+        "transport::save_page_document(",
+        "ensure_page_is_editable(",
+        "PublishPageBuilderResult {"
+      ],
+      "capability_wrapper_markers": [
+        "async fn execute_preview(",
+        "PageBuilderCapabilityRequest::Preview(input)",
+        "requested_runtime_scenario_id",
+        "result.runtime_scenario_id == requested_runtime_scenario_id",
+        "async fn execute_publish(",
+        "PageBuilderCapabilityRequest::Publish(input)"
+      ],
+      "composition_call_marker": "let handlers = compose_fly_page_builder_handlers(",
+      "composition_call_count": 1,
+      "tenant_ports": [
+        "PagesPageBuilderProjectStore",
+        "PagesPageBuilderRenderer"
+      ],
+      "preview_renderer_context_guard": "ensure_port_context(context, &self.tenant_slug, &self.actor_id, \"renderer\")?",
+      "preview_runtime_markers": [
+        "impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer",
+        "input: &PreviewPageBuilderInput",
+        "if input.page_id != self.page_id",
+        ".render_runtime_document_html(",
+        "input.runtime.context.clone()"
+      ],
+      "tenant_context_guards": [
+        "fn ensure_context(&self, context: &PortContext)",
+        "context.tenant_id.as_str()",
+        "context.actor.id.as_str()",
+        "self.ensure_context(context)?",
+        "transport::fetch_page(\n            Some(self.token.clone()),\n            Some(self.tenant_slug.clone()),\n            self.page_id.clone(),"
+      ],
+      "persisted_result_marker": "PageBuilderProjectSaveResult",
+      "forbidden_symbols": [
+        "Arc<Mutex<Option<PublishPageBuilderResult>>>",
+        "persisted_result: Arc<Mutex",
+        "Pages save state lock was poisoned",
+        "pages_page_builder_preview(",
+        "#[cfg(feature = \"ssr\")]\nasync fn execute_preview",
+        "#[cfg(feature = \"ssr\")]\nasync fn execute_publish",
+        "impl PageBuilderRenderingAdapter for PagesPageBuilderRenderer"
+      ],
+      "admin_preview": {
+        "runtime_source": "crates/rustok-page-builder/admin/src/editor/runtime.rs",
+        "surface_source": "crates/rustok-page-builder/admin/src/editor/server_preview.rs",
+        "host_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+        "runtime_markers": [
+          "PageBuilderPreviewRuntime::new",
+          "let runtime_context = if self.runtime_context_configured",
+          "let runtime_scenario_id = self.active_runtime_scenario",
+          "let active_page_index = controller.active_page_index()",
+          "document.project.pages = document",
+          "runtime_context.clone()",
+          "runtime_scenario_id.clone()",
+          "PageBuilderCapabilityResponse::Preview(response)",
+          "response.runtime_scenario_id != current_runtime_scenario",
+          "current_runtime_context",
+          "project or runtime context changed while the server preview was rendering",
+          "server_preview_html.set(Some(response.html))",
+          "preview_in_progress.set(true)",
+          "UiIntent::ActivatePage { .. }"
+        ],
+        "surface_markers": [
+          "request_server_preview()",
+          "server_preview_html.get()",
+          "data-page-builder-server-preview-frame",
+          "srcdoc=html"
+        ],
+        "host_marker": "<ServerPreviewPanel runtime=server_preview_runtime />"
+      }
+    }
+  },
   "transport_entrypoints": [
     "handle_page_builder_graphql_endpoint",
     "handle_page_builder_leptos_server_function_endpoint"
@@ -47,6 +199,7 @@
     "ReferencePageBuilderService",
     "AdapterBackedPageBuilderService",
     "FlyValidatedPageBuilderService",
+    "PageBuilderRenderingAdapter",
     "render_preview_html",
     "extract_tree_nodes"
   ]

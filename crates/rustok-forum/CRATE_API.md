@@ -1,7 +1,7 @@
 # rustok-forum / CRATE_API
 
 ## Public Modules
-`category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `services`.
+`category_presentation`, `constants`, `controllers`, `dto`, `entities`, `error`, `graphql`, `locale`, `mentions`, `services`.
 
 ## Primary Public Types and Signatures
 - `pub struct ForumModule`
@@ -14,6 +14,13 @@
 - `CategoryService::topic_policy(tenant_id, category_id, security) -> CategoryTopicPolicyResponse`
 - `CategoryService::set_topic_policy(tenant_id, category_id, security, UpdateCategoryTopicPolicyInput) -> CategoryTopicPolicyResponse`
 - `CategoryCoverMediaCandidate`, `normalize_category_icon_key`, `validate_category_cover_candidate`
+- `resolve_category_cover_for_write(media_port, context, media_id, alt) -> ForumResult<MediaImageDescriptor>`
+- `hydrate_category_cover_for_read(media_port, context, media_id, alt) -> ForumResult<Option<MediaImageDescriptor>>`
+- `extract_forum_mention_candidates(body, body_format, locale, policy) -> ForumResult<ForumMentionCandidates>`
+- `resolve_forum_mentions(profiles, tenant_id, candidates, requested_locale, tenant_default_locale) -> ForumResult<ForumResolvedMentions>`
+- `validate_forum_quote_references(source, references) -> ForumResult<Vec<ForumQuoteReference>>`
+- `diff_forum_mentions(previous, current) -> ForumResult<ForumMentionDiff>`
+- `ForumRevisionIdentity`, `ForumMentionRevisionProjection`, `ForumMentionEventCandidate`, `ForumQuoteReference`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
 - Public DTOs/constants from `dto::*` and `constants::*`
@@ -63,11 +70,37 @@
 ### Category presentation contract
 - Existing `icon` storage is interpreted as an `icon_key` and accepts only a bounded lowercase kebab-case semantic token at the database write boundary.
 - Category colors remain bounded hexadecimal colors; CSS declarations and arbitrary color expressions are rejected.
-- `CategoryCoverMediaCandidate` is the transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
+- `CategoryCoverMediaCandidate` is a transport-neutral Media-to-Forum validation input and carries only media identity, tenant, MIME, size, dimensions and `MediaImageDescriptor`.
 - `validate_category_cover_candidate` rejects foreign tenants, unsupported image MIME, oversized or dimensionless images, descriptor mismatch and non-direct-public delivery.
+- `resolve_category_cover_for_write` calls the Media owner port and fails with stable code `FORUM_CATEGORY_COVER_MEDIA_CAPABILITY_UNAVAILABLE` when Media is not composed; it never treats a missing capability as a clear-cover command.
+- `hydrate_category_cover_for_read` returns `None` only for the explicit Media-disabled deployment profile. Media not-found, timeout, storage and other provider failures remain typed `ForumError::CapabilityFailure` values with source code and retryability.
 - Forum does not accept or store cover URLs, storage paths, drivers, credentials or blobs.
 - Persistent `cover_media_id` writes remain disabled until the Media owner contract publishes quarantine/deletion state.
 - Run `node scripts/verify/verify-forum-category-presentation.mjs` after changing this boundary.
+### Mention and quote revision contract
+- Markdown extraction ignores fenced code, inline code, escaped text and email-address `@` tokens.
+- `rt_json_v1` extraction first uses the canonical `rustok-core` sanitizer and ignores `code_block` nodes and text with a `code` mark.
+- Ordinary handles use `ProfileService::normalize_handle`; the `moderators` audience is a separate typed target and requires explicit moderation policy.
+- Every revision is capped at 32 unique mention targets and 32 unique quote references.
+- `resolve_forum_mentions` uses the tenant-scoped `ProfilesReader` contract. Missing, hidden, blocked, private, followers-only, foreign-tenant or mismatched targets all fail with the same safe `FORUM_MENTION_TARGET_UNAVAILABLE` class.
+- `ForumQuoteReference` stores target identity plus quoted revision identity; the renderer never infers historical identity from display text.
+- `diff_forum_mentions` is deterministic by resolved user identity. Only added targets produce `ForumMentionEventCandidate`; unchanged and removed targets never become delivery candidates.
+- Replaying the same source revision with changed targets fails closed. A byte-identical replay produces no added candidates.
+- FORUM-12A contains no persistence, event publication, notification call or transport surface.
+- Run `node scripts/verify/verify-forum-mention-contract.mjs` after changing this boundary.
+### Mention and quote persistence contract
+- `forum_relation_revisions` assigns one globally unique immutable identity to each persisted mention/quote projection for a tenant, source target and locale.
+- `forum_user_mentions`, `forum_audience_mentions` and `forum_quotes` are append-only child rows keyed by the complete source identity and relation revision.
+- Quote rows retain the quoted target and globally unique quoted relation revision; PostgreSQL and SQLite reject tenant, kind or target mismatches.
+- Existing topic translations and reply bodies receive one `legacy` relation revision during migration, without parsing historical content or reading Profiles-owned tables.
+- PostgreSQL and SQLite source INSERT seed triggers give topic translations and reply bodies created after B1 rollout exactly one empty `legacy` identity until B2 composes active projections; the triggers do not infer mentions or read Profiles.
+- The crate-private `MentionRelationService` separates profile-dependent `prepare` from transaction-only `persist_in_tx`; it is an owner implementation seam, not public persistence API.
+- `prepare` resolves handles through `ProfilesReader` and computes a SHA-256 fingerprint over canonical body, format, resolved targets and quote identities.
+- `persist_in_tx` locks the source stream, re-reads the persisted body in the same transaction, rejects prepared/body mismatch and writes the revision plus all child rows atomically.
+- An identical latest fingerprint must also match the persisted target snapshot; only then does replay return the existing relation revision with no added targets.
+- `FORUM_QUOTE_TARGET_UNAVAILABLE` safely covers missing, foreign-tenant or mismatched quoted revision identity without exposing target existence.
+- FORUM-12B1 does not change active topic/reply commands. Facade integration follows in FORUM-12B2; semantic owner events and outbox publication follow in FORUM-12C.
+- Run `node scripts/verify/verify-forum-mention-persistence.mjs` after changing this boundary.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
 ### ListRepliesFilter (new)
@@ -110,19 +143,22 @@ Publishes forum domain events through the outbox pipeline:
 - `ForumReplyStatusChanged` — when a reply is moderated (approve/reject/hide)
 
 All new forum events are defined in `rustok-core::events::DomainEvent`.
+Mention event candidates remain pure owner projections; FORUM-12B1 publishes no mention event or outbox row.
 
 ## Owner Service Boundary
 - Public topic and reply workflows use the root `TopicService` and `ReplyService` facade exports.
-- Raw `services::topic`, `services::reply`, `topic_owner` and `reply_owner` implementations are crate-private.
+- Raw `services::topic`, `services::reply`, `topic_owner`, `reply_owner` and `mention_relation` implementations are crate-private.
 - Public facades expose explicit create/read/update/list methods and never implement `Deref` to an implementation service.
 - Topic/reply deletion must use facade `delete` methods so tombstones, counters and semantic events remain atomic.
+- Active mention/quote persistence must be composed by the same owner write transaction in FORUM-12B2; transports must never invoke `MentionRelationService` directly.
 - Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-content`
 - `rustok-core`
-- `rustok-media` for transport-neutral image descriptors and candidate validation
+- `rustok-media` for transport-neutral image descriptors, owner read-port resolution and optional-capability degradation
 - `rustok-outbox`
+- `rustok-profiles` for tenant-scoped mention handle resolution through `ProfilesReader`
 
 ## Common AI Mistakes
 - Incorrectly uses moderation limits/constants from `constants`.
@@ -135,6 +171,13 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Creates a topic without honoring the category-owned lifecycle and `allows_topics` policy.
 - Treats category `icon` as a CSS class, URL or markup instead of a semantic icon key.
 - Stores a category image URL/path or reads Media tables instead of using the Media owner port.
+- Swallows a Media port failure as an absent category cover instead of degrading only when Media is not composed.
+- Parses mentions from code blocks, escaped text or unsanitized `rt_json_v1`.
+- Resolves mention handles by querying profile tables or by trusting display labels instead of `ProfilesReader`.
+- Emits mention delivery for unchanged targets or rewrites quote history to the latest revision.
+- Updates a persisted mention/quote row instead of appending a new relation revision.
+- Removes the source INSERT seed triggers before active owner writes are composed.
+- Persists a prepared relation projection without revalidating the source body inside the owner transaction.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
 
@@ -153,12 +196,22 @@ All new forum events are defined in `rustok-core::events::DomainEvent`.
 - Category subtree lifecycle is tenant-scoped, atomic, idempotent and enforced at the database boundary for category hierarchy and topic placement.
 - Category topic policy is tenant-scoped and enforced at the database boundary for topic inserts and category reassignment.
 - Category icon/color values are bounded safe tokens; cover media candidates are tenant-scoped and transport-neutral.
+- Category cover writes fail closed when Media is unavailable; reads degrade only for an explicitly absent optional Media owner and never swallow provider errors.
+- Mention extraction is bounded, format-aware and code/escape-safe; profile resolution is tenant-scoped and privacy fail-closed.
+- Mention revision diffs are immutable on replay and only added resolved targets become future event candidates.
+- Relation revisions and mention/quote children are append-only, tenant-bound and atomically matched to the persisted source body.
+- Source INSERT seeding preserves one relation identity for every persisted topic/reply locale during the B1-to-B2 rollout window.
+- Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
 ### Events / Outbox Side Effects
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
+- FORUM-12B1 creates no mention event or outbox side effect; publication remains FORUM-12C.
 
 ### Errors / Failure Codes
 - Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
 - For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+- Optional capability absence uses `ForumError::CapabilityUnavailable` and a stable owner-specific code; actual provider failures use `ForumError::CapabilityFailure` and preserve source code and retryability.
+- Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
+- Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.

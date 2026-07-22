@@ -17,6 +17,8 @@ menus, channel visibility and deterministic published artifacts.
   `PageBuilderScenarioBaselineService` and `MenuService`;
 - storage for pages, translations, bodies, channel visibility, scenario
   baselines, immutable landing artifacts and menus;
+- language-agnostic base rows with normalized `VARCHAR(32)` parallel locale records,
+  tenant-composite ownership and one effective locale per response;
 - GraphQL/REST adapters and Leptos admin/storefront packages;
 - canonical Fly writes through `body.format = "grapesjs"`;
 - deterministic publish/build/integrity and storefront artifact delivery;

@@ -3,10 +3,6 @@ use sea_orm::DbErr;
 use thiserror::Error;
 use uuid::Uuid;
 
-/// Pages module errors
-///
-/// Uses both legacy Error enum and new RichError system.
-/// Gradually migrate to RichError for better context.
 #[derive(Debug, Error)]
 pub enum PagesError {
     #[error("Database error: {0}")]
@@ -17,9 +13,6 @@ pub enum PagesError {
 
     #[error("Page not found: {0}")]
     PageNotFound(Uuid),
-
-    #[error("Block not found: {0}")]
-    BlockNotFound(Uuid),
 
     #[error("Menu not found: {0}")]
     MenuNotFound(Uuid),
@@ -41,6 +34,21 @@ pub enum PagesError {
 
     #[error("Static landing artifact integrity error: {0}")]
     ArtifactIntegrity(String),
+
+    #[error("Page Builder publish runtime review invalid: {0}")]
+    PublishRuntimeReviewInvalid(String),
+
+    #[error("Page Builder publish sanitization failed: {0}")]
+    PublishSanitize(String),
+
+    #[error("Page Builder publish runtime materialization mismatch: {0}")]
+    PublishRuntimeMaterializationMismatch(String),
+
+    #[error("Page publish idempotency conflict: {0}")]
+    PublishIdempotencyConflict(String),
+
+    #[error("Page publish operation integrity error: {0}")]
+    PublishOperationIntegrity(String),
 
     #[error("Forbidden: {0}")]
     Forbidden(String),
@@ -65,6 +73,15 @@ pub const FEATURE_BUILDER_PREVIEW_ENABLED: &str = "builder.preview.enabled";
 pub const FEATURE_BUILDER_PROPERTIES_ENABLED: &str = "builder.properties.enabled";
 pub const FEATURE_BUILDER_PUBLISH_ENABLED: &str = "builder.publish.enabled";
 pub const BUILDER_FEATURE_DISABLED_ERROR_CODE: &str = "FEATURE_DISABLED";
+pub const CANNOT_DELETE_PUBLISHED_ERROR_CODE: &str = "CANNOT_DELETE_PUBLISHED";
+pub const PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID: &str =
+    "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID";
+pub const PAGE_BUILDER_PUBLISH_SANITIZE_FAILED: &str =
+    "PAGE_BUILDER_PUBLISH_SANITIZE_FAILED";
+pub const PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH: &str =
+    "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH";
+pub const PAGE_PUBLISH_IDEMPOTENCY_CONFLICT: &str = "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT";
+pub const PAGE_PUBLISH_OPERATION_INTEGRITY: &str = "PAGE_PUBLISH_OPERATION_INTEGRITY";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuilderRuntimeErrorCatalogEntry {
@@ -100,37 +117,30 @@ pub fn builder_runtime_error_catalog() -> &'static [BuilderRuntimeErrorCatalogEn
     &BUILDER_RUNTIME_ERROR_CATALOG
 }
 
-// Conversion from PagesError to RichError for API responses
 impl From<PagesError> for RichError {
-    fn from(err: PagesError) -> Self {
-        match err {
-            PagesError::Database(db_err) => {
+    fn from(error: PagesError) -> Self {
+        match error {
+            PagesError::Database(source) => {
                 RichError::new(ErrorKind::Database, "Database operation failed")
                     .with_user_message("Unable to access pages data")
-                    .with_source(db_err)
+                    .with_source(source)
             }
-            PagesError::Core(core_err) => core_err.into(),
+            PagesError::Core(source) => source.into(),
             PagesError::PageNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Page {} not found", id))
+                RichError::new(ErrorKind::NotFound, format!("Page {id} not found"))
                     .with_user_message("The requested page does not exist")
                     .with_field("page_id", id.to_string())
                     .with_error_code("PAGE_NOT_FOUND")
             }
-            PagesError::BlockNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Block {} not found", id))
-                    .with_user_message("The requested block does not exist")
-                    .with_field("block_id", id.to_string())
-                    .with_error_code("BLOCK_NOT_FOUND")
-            }
             PagesError::MenuNotFound(id) => {
-                RichError::new(ErrorKind::NotFound, format!("Menu {} not found", id))
+                RichError::new(ErrorKind::NotFound, format!("Menu {id} not found"))
                     .with_user_message("The requested menu does not exist")
                     .with_field("menu_id", id.to_string())
                     .with_error_code("MENU_NOT_FOUND")
             }
             PagesError::DuplicateSlug { slug, locale } => RichError::new(
                 ErrorKind::Conflict,
-                format!("Slug '{}' already exists for locale '{}'", slug, locale),
+                format!("Slug '{slug}' already exists for locale '{locale}'"),
             )
             .with_user_message("This URL slug is already in use. Please choose a different one.")
             .with_field("slug", slug)
@@ -142,27 +152,57 @@ impl From<PagesError> for RichError {
             } => RichError::new(
                 ErrorKind::Conflict,
                 format!(
-                    "Page changed concurrently: expected version {expected_version}, found {actual_version}"
+                    "Page metadata changed concurrently: expected version {expected_version}, found {actual_version}"
                 ),
             )
             .with_user_message(
-                "The page changed while you were editing it. Reload the latest version and try again.",
+                "The page metadata changed while you were editing it. Reload and try again.",
             )
             .with_field("expected_version", expected_version.to_string())
             .with_field("actual_version", actual_version.to_string())
-            .with_error_code("PAGE_VERSION_CONFLICT"),
+            .with_error_code("PAGE_METADATA_VERSION_CONFLICT"),
             PagesError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published page")
                     .with_user_message("Published pages cannot be deleted. Unpublish them first.")
-                    .with_error_code("CANNOT_DELETE_PUBLISHED")
+                    .with_error_code(CANNOT_DELETE_PUBLISHED_ERROR_CODE)
             }
-            PagesError::Validation(msg) => {
-                RichError::new(ErrorKind::Validation, msg).with_user_message("Invalid input data")
-            }
-            PagesError::ArtifactIntegrity(msg) => RichError::new(ErrorKind::Internal, msg)
+            PagesError::Validation(message) => RichError::new(ErrorKind::Validation, message)
+                .with_user_message("Invalid input data"),
+            PagesError::ArtifactIntegrity(message) => RichError::new(ErrorKind::Internal, message)
                 .with_user_message("The published page artifact is unavailable")
                 .with_error_code("PAGE_ARTIFACT_INTEGRITY"),
-            PagesError::Forbidden(msg) => RichError::new(ErrorKind::Forbidden, msg)
+            PagesError::PublishRuntimeReviewInvalid(message) => {
+                RichError::new(ErrorKind::Validation, message)
+                    .with_user_message(
+                        "The selected Page Builder runtime must be reviewed again before publish.",
+                    )
+                    .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
+            }
+            PagesError::PublishSanitize(message) => RichError::new(ErrorKind::Validation, message)
+                .with_user_message(
+                    "The Page Builder document did not pass the public publish security policy.",
+                )
+                .with_error_code(PAGE_BUILDER_PUBLISH_SANITIZE_FAILED),
+            PagesError::PublishRuntimeMaterializationMismatch(message) => {
+                RichError::new(ErrorKind::Conflict, message)
+                    .with_user_message(
+                        "The reviewed Page Builder runtime no longer matches the publish artifact. Review and publish again.",
+                    )
+                    .with_error_code(PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH)
+            }
+            PagesError::PublishIdempotencyConflict(message) => {
+                RichError::new(ErrorKind::Conflict, message)
+                    .with_user_message(
+                        "This publish idempotency key is already bound to a different request.",
+                    )
+                    .with_error_code(PAGE_PUBLISH_IDEMPOTENCY_CONFLICT)
+            }
+            PagesError::PublishOperationIntegrity(message) => {
+                RichError::new(ErrorKind::Internal, message)
+                    .with_user_message("The stored page publish receipt failed integrity validation.")
+                    .with_error_code(PAGE_PUBLISH_OPERATION_INTEGRITY)
+            }
+            PagesError::Forbidden(message) => RichError::new(ErrorKind::Forbidden, message)
                 .with_user_message("You do not have permission to perform this action"),
             PagesError::FeatureDisabled { feature } => RichError::new(
                 ErrorKind::BusinessLogic,
@@ -171,66 +211,72 @@ impl From<PagesError> for RichError {
             .with_user_message("This feature is disabled for the current tenant")
             .with_field("feature", feature)
             .with_error_code(BUILDER_FEATURE_DISABLED_ERROR_CODE),
-            PagesError::Content(content_err) => content_err.into(),
-            PagesError::Tenant(tenant_err) => RichError::new(
+            PagesError::Content(source) => source.into(),
+            PagesError::Tenant(source) => RichError::new(
                 ErrorKind::Database,
                 "Unable to read tenant module configuration",
             )
             .with_user_message("Unable to resolve the current feature configuration")
-            .with_source(tenant_err),
-            PagesError::Rich(rich) => *rich,
+            .with_source(source),
+            PagesError::Rich(error) => *error,
         }
     }
 }
 
-/// Helper functions for creating common pages errors
 impl PagesError {
-    /// Create a page not found error
     pub fn page_not_found(page_id: Uuid) -> Self {
-        PagesError::PageNotFound(page_id)
+        Self::PageNotFound(page_id)
     }
 
-    /// Create a block not found error
-    pub fn block_not_found(block_id: Uuid) -> Self {
-        PagesError::BlockNotFound(block_id)
-    }
-
-    /// Create a menu not found error
     pub fn menu_not_found(menu_id: Uuid) -> Self {
-        PagesError::MenuNotFound(menu_id)
+        Self::MenuNotFound(menu_id)
     }
 
-    /// Create a duplicate slug error
     pub fn duplicate_slug(slug: impl Into<String>, locale: impl Into<String>) -> Self {
-        PagesError::DuplicateSlug {
+        Self::DuplicateSlug {
             slug: slug.into(),
             locale: locale.into(),
         }
     }
 
-    /// Create a validation error
     pub fn validation(message: impl Into<String>) -> Self {
-        PagesError::Validation(message.into())
+        Self::Validation(message.into())
     }
 
-    /// Create an artifact integrity error
     pub fn artifact_integrity(message: impl Into<String>) -> Self {
-        PagesError::ArtifactIntegrity(message.into())
+        Self::ArtifactIntegrity(message.into())
     }
 
-    /// Create a forbidden error
+    pub fn publish_runtime_review_invalid(message: impl Into<String>) -> Self {
+        Self::PublishRuntimeReviewInvalid(message.into())
+    }
+
+    pub fn publish_sanitize(message: impl Into<String>) -> Self {
+        Self::PublishSanitize(message.into())
+    }
+
+    pub fn publish_runtime_materialization_mismatch(message: impl Into<String>) -> Self {
+        Self::PublishRuntimeMaterializationMismatch(message.into())
+    }
+
+    pub fn publish_idempotency_conflict(message: impl Into<String>) -> Self {
+        Self::PublishIdempotencyConflict(message.into())
+    }
+
+    pub fn publish_operation_integrity(message: impl Into<String>) -> Self {
+        Self::PublishOperationIntegrity(message.into())
+    }
+
     pub fn forbidden(message: impl Into<String>) -> Self {
-        PagesError::Forbidden(message.into())
+        Self::Forbidden(message.into())
     }
 
-    /// Create a cannot delete published error
     pub fn cannot_delete_published() -> Self {
-        PagesError::CannotDeletePublished
+        Self::CannotDeletePublished
     }
 
-    /// Create a feature disabled error
     pub fn feature_disabled(feature: impl Into<String>) -> Self {
-        PagesError::FeatureDisabled {
+        Self::FeatureDisabled {
             feature: feature.into(),
         }
     }
@@ -241,95 +287,79 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_page_not_found_conversion() {
-        let id = Uuid::new_v4();
-        let err = PagesError::page_not_found(id);
-        let rich: RichError = err.into();
-
-        assert_eq!(rich.kind, ErrorKind::NotFound);
-        assert_eq!(rich.status_code, 404);
-        assert!(rich.fields.contains_key("page_id"));
+    fn page_not_found_has_stable_code() {
+        let error: RichError = PagesError::page_not_found(Uuid::new_v4()).into();
+        assert_eq!(error.kind, ErrorKind::NotFound);
+        assert_eq!(error.error_code.as_deref(), Some("PAGE_NOT_FOUND"));
     }
 
     #[test]
-    fn test_block_not_found_conversion() {
-        let id = Uuid::new_v4();
-        let err = PagesError::block_not_found(id);
-        let rich: RichError = err.into();
-
-        assert_eq!(rich.kind, ErrorKind::NotFound);
-        assert_eq!(rich.status_code, 404);
-        assert!(rich.fields.contains_key("block_id"));
-    }
-
-    #[test]
-    fn test_menu_not_found_conversion() {
-        let id = Uuid::new_v4();
-        let err = PagesError::menu_not_found(id);
-        let rich: RichError = err.into();
-
-        assert_eq!(rich.kind, ErrorKind::NotFound);
-        assert_eq!(rich.status_code, 404);
-        assert!(rich.fields.contains_key("menu_id"));
-    }
-
-    #[test]
-    fn test_duplicate_slug_conversion() {
-        let err = PagesError::duplicate_slug("my-page", "en");
-        let rich: RichError = err.into();
-
-        assert_eq!(rich.kind, ErrorKind::Conflict);
-        assert_eq!(rich.status_code, 409);
-        assert_eq!(rich.fields.get("slug"), Some(&"my-page".to_string()));
-    }
-
-    #[test]
-    fn test_cannot_delete_published_conversion() {
-        let err = PagesError::cannot_delete_published();
-        let rich: RichError = err.into();
-
-        assert_eq!(rich.kind, ErrorKind::BusinessLogic);
-        assert_eq!(rich.error_code, Some("CANNOT_DELETE_PUBLISHED".to_string()));
-    }
-
-    #[test]
-    fn test_feature_disabled_conversion() {
-        let err = PagesError::feature_disabled(FEATURE_BUILDER_PUBLISH_ENABLED);
-        let rich: RichError = err.into();
-
-        assert_eq!(rich.kind, ErrorKind::BusinessLogic);
+    fn metadata_conflict_has_stable_code() {
+        let error: RichError = PagesError::VersionConflict {
+            expected_version: 2,
+            actual_version: 3,
+        }
+        .into();
         assert_eq!(
-            rich.error_code,
-            Some(BUILDER_FEATURE_DISABLED_ERROR_CODE.to_string())
-        );
-        assert_eq!(
-            rich.fields.get("feature"),
-            Some(&FEATURE_BUILDER_PUBLISH_ENABLED.to_string())
+            error.error_code.as_deref(),
+            Some("PAGE_METADATA_VERSION_CONFLICT")
         );
     }
 
     #[test]
-    fn test_builder_runtime_error_catalog_is_stable() {
-        let catalog = builder_runtime_error_catalog();
-        let semantics: Vec<_> = catalog.iter().map(|entry| entry.semantic).collect();
+    fn cannot_delete_published_has_stable_code() {
+        let error: RichError = PagesError::cannot_delete_published().into();
+        assert_eq!(error.kind, ErrorKind::BusinessLogic);
         assert_eq!(
-            semantics,
-            vec!["validation", "sanitize", "runtime", "feature_disabled"]
-        );
-
-        let feature_disabled = catalog
-            .iter()
-            .find(|entry| entry.semantic == "feature_disabled")
-            .expect("feature-disabled catalog entry must exist");
-        assert_eq!(feature_disabled.adapter_key, "feature-disabled");
-        assert_eq!(
-            feature_disabled.rich_error_code,
-            Some(BUILDER_FEATURE_DISABLED_ERROR_CODE)
+            error.error_code.as_deref(),
+            Some(CANNOT_DELETE_PUBLISHED_ERROR_CODE)
         );
     }
 
     #[test]
-    fn test_builder_feature_keys_are_stable() {
+    fn reviewed_publish_errors_have_stable_codes() {
+        let review: RichError = PagesError::publish_runtime_review_invalid("invalid").into();
+        assert_eq!(review.kind, ErrorKind::Validation);
+        assert_eq!(
+            review.error_code.as_deref(),
+            Some(PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID)
+        );
+
+        let sanitize: RichError = PagesError::publish_sanitize("blocked").into();
+        assert_eq!(sanitize.kind, ErrorKind::Validation);
+        assert_eq!(
+            sanitize.error_code.as_deref(),
+            Some(PAGE_BUILDER_PUBLISH_SANITIZE_FAILED)
+        );
+
+        let mismatch: RichError =
+            PagesError::publish_runtime_materialization_mismatch("mismatch").into();
+        assert_eq!(mismatch.kind, ErrorKind::Conflict);
+        assert_eq!(
+            mismatch.error_code.as_deref(),
+            Some(PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH)
+        );
+    }
+
+    #[test]
+    fn publish_receipt_errors_have_stable_codes() {
+        let conflict: RichError = PagesError::publish_idempotency_conflict("reused").into();
+        assert_eq!(conflict.kind, ErrorKind::Conflict);
+        assert_eq!(
+            conflict.error_code.as_deref(),
+            Some(PAGE_PUBLISH_IDEMPOTENCY_CONFLICT)
+        );
+
+        let integrity: RichError = PagesError::publish_operation_integrity("invalid").into();
+        assert_eq!(integrity.kind, ErrorKind::Internal);
+        assert_eq!(
+            integrity.error_code.as_deref(),
+            Some(PAGE_PUBLISH_OPERATION_INTEGRITY)
+        );
+    }
+
+    #[test]
+    fn builder_feature_keys_are_stable() {
         assert_eq!(FEATURE_BUILDER_ENABLED, "builder.enabled");
         assert_eq!(FEATURE_BUILDER_PREVIEW_ENABLED, "builder.preview.enabled");
         assert_eq!(

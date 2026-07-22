@@ -12,25 +12,14 @@ Platform plan for runtime registry consolidation, composition, tenant lifecycle,
 governance and admin transport: [module control-plane consolidation plan](./module-control-plane-consolidation-plan.md).
 
 Module local documentation lives inside the crates themselves at
-`crates/<name>/docs/README.md`. This document provides only central navigation to
-module and support/capability crate local docs and does not duplicate local contracts.
+`crates/<name>/docs/README.md`. This document provides central navigation only.
 
 ## Navigation Rule
 
-- Module documentation is not duplicated in `docs/modules/`;
-- Links below lead directly to `crates/<name>/docs/`;
-- For platform modules, the mandatory minimum is: `README.md`, `docs/README.md`,
+- Module documentation is not duplicated in `docs/modules/`.
+- Links below lead directly to `crates/<name>/docs/`.
+- Platform modules require `README.md`, `docs/README.md`, and
   `docs/implementation-plan.md`.
-
-## Documentation Contract
-
-- Root `README.md` of the component remains the public contract in English and describes
-  `Purpose`, `Responsibilities`, `Entry points` and `Interactions`;
-- Local `docs/README.md` in English remains the live runtime/module contract;
-- Local `docs/implementation-plan.md` in English remains the live plan for bringing
-  the component to its target state;
-- This index is only for navigation and should direct the reader to local docs,
-  not retell their contents.
 
 ## Core and Foundation Layer
 
@@ -69,16 +58,12 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-cli-platform` | [docs](../../crates/rustok-cli-platform/docs/README.md) | [plan](../../crates/rustok-cli-platform/docs/implementation-plan.md) |
 | `rustok-migrations` | [README](../../crates/rustok-migrations/README.md) | - |
 | `rustok-installer` | [docs](../../crates/rustok-installer/docs/README.md) | [plan](../../crates/rustok-installer/docs/implementation-plan.md) |
-| `rustok-installer-cli` | [README](../../crates/rustok-installer-cli/README.md) | - |
-| `rustok-installer-persistence` | [README](../../crates/rustok-installer-persistence/README.md) | - |
 | `rustok-build` | [docs](../../crates/rustok-build/docs/README.md) | [plan](../../crates/rustok-build/docs/implementation-plan.md) |
 | `rustok-cli-registry` | [docs](../../crates/rustok-cli-registry/docs/README.md) | [plan](../../crates/rustok-cli-registry/docs/implementation-plan.md) |
 | `rustok-distribution` | [docs](../../crates/rustok-distribution/docs/README.md) | Registry composition and deterministic static-promotion build output are documented locally. |
 | `rustok-cli` | [docs](../../crates/rustok-cli/docs/README.md) | [plan](../../crates/rustok-cli/docs/implementation-plan.md) |
 | `rustok-graphql` | [docs](../../crates/rustok-graphql/docs/README.md) | [plan](../../crates/rustok-graphql/docs/implementation-plan.md) |
-| `rustok-graphql-leptos` | [docs](../../crates/rustok-graphql-leptos/docs/README.md) | - |
 | `rustok-ui-i18n` | [docs](../../crates/rustok-ui-i18n/docs/README.md) | [plan](../../crates/rustok-ui-i18n/docs/implementation-plan.md) |
-| `rustok-ui-i18n-leptos` | [docs](../../crates/rustok-ui-i18n-leptos/docs/README.md) | - |
 | `rustok-test-utils` | [docs](../../crates/rustok-test-utils/docs/README.md) | [plan](../../crates/rustok-test-utils/docs/implementation-plan.md) |
 | `rustok-iggy` | [docs](../../crates/rustok-iggy/docs/README.md) | [plan](../../crates/rustok-iggy/docs/implementation-plan.md) |
 | `rustok-iggy-connector` | [docs](../../crates/rustok-iggy-connector/docs/README.md) | [plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md) |
@@ -104,6 +89,7 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-customer` | [docs](../../crates/rustok-customer/docs/README.md) | [plan](../../crates/rustok-customer/docs/implementation-plan.md) |
 | `rustok-product` | [docs](../../crates/rustok-product/docs/README.md) | [plan](../../crates/rustok-product/docs/implementation-plan.md) |
 | `rustok-profiles` | [docs](../../crates/rustok-profiles/docs/README.md) | [plan](../../crates/rustok-profiles/docs/implementation-plan.md) |
+| `rustok-groups` | [docs](../../crates/rustok-groups/docs/README.md) | [plan](../../crates/rustok-groups/docs/implementation-plan.md) |
 | `rustok-region` | [docs](../../crates/rustok-region/docs/README.md) | [plan](../../crates/rustok-region/docs/implementation-plan.md) |
 | `rustok-pricing` | [docs](../../crates/rustok-pricing/docs/README.md) | [plan](../../crates/rustok-pricing/docs/implementation-plan.md) |
 | `rustok-tax` | [docs](../../crates/rustok-tax/docs/README.md) | [plan](../../crates/rustok-tax/docs/implementation-plan.md) |
@@ -115,6 +101,7 @@ module and support/capability crate local docs and does not duplicate local cont
 | `rustok-blog` | [docs](../../crates/rustok-blog/docs/README.md) | [plan](../../crates/rustok-blog/docs/implementation-plan.md) |
 | `rustok-comments` | [docs](../../crates/rustok-comments/docs/README.md) | [plan](../../crates/rustok-comments/docs/implementation-plan.md) |
 | `rustok-forum` | [docs](../../crates/rustok-forum/docs/README.md) | [plan](../../crates/rustok-forum/docs/implementation-plan.md) |
+| `rustok-notifications` | [docs](../../crates/rustok-notifications/docs/README.md) | [plan](../../crates/rustok-notifications/docs/implementation-plan.md) |
 | `rustok-pages` | [docs](../../crates/rustok-pages/docs/README.md) | [plan](../../crates/rustok-pages/docs/implementation-plan.md) |
 | `rustok-page-builder` | [docs](../../crates/rustok-page-builder/docs/README.md) | [plan](../../crates/rustok-page-builder/docs/implementation-plan.md) |
 | `rustok-seo` | [docs](../../crates/rustok-seo/docs/README.md) | [plan](../../crates/rustok-seo/docs/implementation-plan.md) |
@@ -124,95 +111,30 @@ module and support/capability crate local docs and does not duplicate local cont
 
 ## Module UI Packages
 
-### Core/Admin Surfaces
-
-- `rustok-channel` admin UI: [README](../../crates/rustok-channel/admin/README.md)
-- `rustok-index` admin UI: [README](../../crates/rustok-index/admin/README.md)
-- `rustok-outbox` admin UI: [README](../../crates/rustok-outbox/admin/README.md)
-- `rustok-tenant` admin UI: [README](../../crates/rustok-tenant/admin/README.md)
-- `rustok-rbac` admin UI: [README](../../crates/rustok-rbac/admin/README.md)
-
 ### Optional/Admin Surfaces
 
-- `rustok-product` admin UI: [README](../../crates/rustok-product/admin/README.md)
-- `rustok-fulfillment` admin UI: [README](../../crates/rustok-fulfillment/admin/README.md)
-- `rustok-customer` admin UI: [README](../../crates/rustok-customer/admin/README.md)
-- `rustok-region` admin UI: [README](../../crates/rustok-region/admin/README.md)
-- `rustok-order` admin UI: [README](../../crates/rustok-order/admin/README.md)
-- `rustok-inventory` admin UI: [README](../../crates/rustok-inventory/admin/README.md)
-- `rustok-pricing` admin UI: [README](../../crates/rustok-pricing/admin/README.md)
-- `rustok-commerce` admin UI: [README](../../crates/rustok-commerce/admin/README.md)
-- `rustok-pages` admin UI: [README](../../crates/rustok-pages/admin/README.md)
-- `rustok-seo` admin UI: [README](../../crates/rustok-seo/admin/README.md)
-- `rustok-blog` admin UI: [README](../../crates/rustok-blog/admin/README.md)
-- `rustok-forum` admin UI: [README](../../crates/rustok-forum/admin/README.md)
-- `rustok-search` admin UI: [README](../../crates/rustok-search/admin/README.md)
-- `rustok-media` admin UI: [README](../../crates/rustok-media/admin/README.md)
-- `rustok-comments` admin UI: [README](../../crates/rustok-comments/admin/README.md)
+- `rustok-groups`: [README](../../crates/rustok-groups/admin/README.md)
+- `rustok-product`: [README](../../crates/rustok-product/admin/README.md)
+- `rustok-pages`: [README](../../crates/rustok-pages/admin/README.md)
+- `rustok-blog`: [README](../../crates/rustok-blog/admin/README.md)
+- `rustok-forum`: [README](../../crates/rustok-forum/admin/README.md)
+- `rustok-notifications`: [README](../../crates/rustok-notifications/admin/README.md)
+- `rustok-commerce`: [README](../../crates/rustok-commerce/admin/README.md)
+- Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
 ### Optional/Storefront Surfaces
 
-- `rustok-blog` storefront UI: [README](../../crates/rustok-blog/storefront/README.md)
-- `rustok-cart` storefront UI: [README](../../crates/rustok-cart/storefront/README.md)
-- `rustok-commerce` storefront UI: [README](../../crates/rustok-commerce/storefront/README.md)
-- `rustok-fulfillment` storefront UI: [README](../../crates/rustok-fulfillment/storefront/README.md)
-- `rustok-payment` storefront UI: [README](../../crates/rustok-payment/storefront/README.md)
-- `rustok-order` storefront UI: [README](../../crates/rustok-order/storefront/README.md)
-- `rustok-forum` storefront UI: [README](../../crates/rustok-forum/storefront/README.md)
-- `rustok-pages` storefront UI: [README](../../crates/rustok-pages/storefront/README.md)
-- `rustok-pricing` storefront UI: [README](../../crates/rustok-pricing/storefront/README.md)
-- `rustok-product` storefront UI: [README](../../crates/rustok-product/storefront/README.md)
-- `rustok-region` storefront UI: [README](../../crates/rustok-region/storefront/README.md)
-- `rustok-search` storefront UI: [README](../../crates/rustok-search/storefront/README.md)
-
-### Capability/Admin Surfaces
-
-- `rustok-ai` Leptos operator/admin UI: [README](../../crates/rustok-ai/admin/README.md)
-- `rustok-ai` Next.js operator/admin UI: `apps/next-admin/packages/rustok-ai/`
-
-## Notes
-
-- `rustok-content` remains a shared helper/orchestration boundary and does not publish
-  a separate operator-facing UI.
-- `rustok-seo` is classified as `admin_only`: storefront runtime lives in host applications
-  (`apps/storefront`, `apps/next-frontend`) through shared SEO contract and is not structured as a separate module-owned storefront package.
-- Entity-specific SEO UI is not centralized in `rustok-seo-admin`: canonical ownership goes through
-  `rustok-pages/admin`, `rustok-product/admin`, `rustok-blog/admin`, `rustok-forum/admin` and future
-  content modules, while `rustok-seo-admin` remains a cross-cutting infrastructure/control-plane surface.
-- For Rust-host, the last mile of this contract is now extracted to `rustok-seo-render`, not duplicated in `apps/storefront`.
-- For owner-side admin SEO reuse, there is now a separate support crate `rustok-seo-admin-support`.
-- UI split ecommerce family has already started: `rustok-product` publishes its own
-  admin package, `rustok-fulfillment` has already taken shipping-option UI, `rustok-order`
-  has already taken order UI, `rustok-inventory` has already taken inventory visibility UI,
-  `rustok-pricing` has already taken pricing visibility UI, `rustok-customer` has already
-  taken customer operations UI, `rustok-region` has already taken region CRUD UI, and
-  `rustok-commerce-admin` is left for shipping-profile registry and aggregate cart-promotion operator surface;
-  storefront-side split is also advanced: `rustok-region`, `rustok-product`, `rustok-pricing` and `rustok-cart` already publish their own
-  storefront packages, while `rustok-commerce-storefront` is compressed to aggregate checkout workspace with seller-aware delivery-group shipping selection and no catalog/pricing ownership;
-  remaining commerce storefront flows still need to be extracted from the umbrella route where ownership boundary is already stable.
-- `rustok-mcp` is a capability/support layer and `rustok-ai` is a deployment-scoped,
-  globally active capability registration; both are indexed here for navigation.
-  `rustok-ai` already publishes large operator/admin
-  UI surfaces for Leptos and Next.js hosts.
-- `flex` also remains a capability layer by its role, but is now formalized in
-  `modules.toml` as a `capability_only` ghost module; donor persistence ownership
-  still remains with consumer modules.
-- When changing runtime contract or ownership, first update local component docs,
-  then this index and other central registry docs.
+- `rustok-groups`: [README](../../crates/rustok-groups/storefront/README.md)
+- `rustok-blog`: [README](../../crates/rustok-blog/storefront/README.md)
+- `rustok-forum`: [README](../../crates/rustok-forum/storefront/README.md)
+- `rustok-notifications`: [README](../../crates/rustok-notifications/storefront/README.md)
+- `rustok-pages`: [README](../../crates/rustok-pages/storefront/README.md)
+- Additional owner packages are listed in [UI Packages Index](./UI_PACKAGES_INDEX.md).
 
 ## Related Documents
 
 - [Module Platform Overview](./overview.md)
 - [Module and Application Registry](./registry.md)
-- [Module Platform Crate Registry](./crates-registry.md)
+- [Implementation Plans Registry](./implementation-plans-registry.md)
+- [Module UI Packages Index](./UI_PACKAGES_INDEX.md)
 - [`rustok-module.toml` Contract](./manifest.md)
-- [Module Documentation Template](../templates/module_contract.md)
-### Next.js Admin Showcase
-
-- `rustok-blog`: `apps/next-admin/packages/blog/`
-- `rustok-search`: `apps/next-admin/packages/search/`
-
-## Note on `module-system`
-
-- Final repo-side status of `Registry V1/V2`, authenticated governance contract, `registry_only` and thin runner path is fixed in the corresponding ADRs within `DECISIONS/` and in live platform docs.
-- Audit of path module UI classification (`dual-surface` / `admin-only` / `storefront-only` / `no-ui`) is also maintained there; this index remains only navigation to local docs.

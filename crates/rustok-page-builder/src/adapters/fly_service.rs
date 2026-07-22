@@ -1,4 +1,5 @@
 use super::FlyProjectInspection;
+use crate::preview_port::PageBuilderPreviewRenderingPort;
 use crate::runtime_scenario_release::{
     NoopPageBuilderScenarioBaselineStore, PageBuilderScenarioBaselineStore, release_gate_error,
 };
@@ -6,8 +7,8 @@ use crate::runtime_telemetry::{
     NoopPageBuilderRuntimeTelemetry, PageBuilderRuntimeCallEvidence, PageBuilderRuntimeTelemetry,
 };
 use crate::service::{
-    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
-    PageBuilderServiceError, PageBuilderServiceResult,
+    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderServiceError,
+    PageBuilderServiceResult,
 };
 use async_trait::async_trait;
 use fly::{
@@ -105,7 +106,7 @@ impl<S, R, T, B> FlyAdapterBackedPageBuilderService<S, R, T, B> {
 impl<S, R, T, B> PageBuilderCapabilityService for FlyAdapterBackedPageBuilderService<S, R, T, B>
 where
     S: PageBuilderProjectStore,
-    R: PageBuilderRenderingAdapter,
+    R: PageBuilderPreviewRenderingPort,
     T: PageBuilderRuntimeTelemetry,
     B: PageBuilderScenarioBaselineStore,
 {
@@ -115,13 +116,13 @@ where
         input: crate::dto::PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<crate::dto::PreviewPageBuilderResult> {
         self.inspect(&input.project_data)?;
+        input
+            .runtime
+            .validate()
+            .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
         let evidence = PageBuilderRuntimeCallEvidence::render_preview(context, &input.page_id);
         self.telemetry.record_runtime_call(&evidence);
-        let html = match self
-            .renderer
-            .render_preview(context, &input.project_data)
-            .await
-        {
+        let html = match self.renderer.render_preview(context, &input).await {
             Ok(html) => {
                 self.telemetry.record_runtime_call(&evidence.succeeded());
                 html
@@ -135,6 +136,7 @@ where
         Ok(crate::dto::PreviewPageBuilderResult {
             page_id: input.page_id,
             html,
+            runtime_scenario_id: input.runtime.scenario_id,
         })
     }
 
@@ -242,7 +244,7 @@ where
             &input.revision_id,
         );
         self.telemetry.record_runtime_call(&evidence);
-        match self
+        let saved = match self
             .store
             .save_project(
                 context,
@@ -252,17 +254,34 @@ where
             )
             .await
         {
-            Ok(()) => self.telemetry.record_runtime_call(&evidence.succeeded()),
+            Ok(saved) => saved,
             Err(error) => {
                 self.telemetry.record_runtime_call(&evidence.failed(&error));
                 return Err(error);
             }
+        };
+
+        if saved.page_id != input.page_id {
+            let error = PageBuilderServiceError::Runtime(format!(
+                "project store persisted page `{}`, expected `{}`",
+                saved.page_id, input.page_id
+            ));
+            self.telemetry.record_runtime_call(&evidence.failed(&error));
+            return Err(error);
         }
+        if saved.revision_id.trim().is_empty() {
+            let error = PageBuilderServiceError::Runtime(
+                "project store returned an empty persisted revision".to_string(),
+            );
+            self.telemetry.record_runtime_call(&evidence.failed(&error));
+            return Err(error);
+        }
+        self.telemetry.record_runtime_call(&evidence.succeeded());
 
         Ok(crate::dto::PublishPageBuilderResult {
-            page_id: input.page_id,
-            revision_id: input.revision_id,
-            published: true,
+            page_id: saved.page_id,
+            revision_id: saved.revision_id,
+            published: saved.published,
         })
     }
 }

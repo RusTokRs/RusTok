@@ -14,12 +14,14 @@ use rustok_core::{SecurityContext, prepare_content_payload};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{CreateReplyInput, ReplyResponse};
+use crate::dto::{CreateReplyInput, ReplyResponse, UpdateReplyInput};
 use crate::entities::{forum_reply, forum_reply_body, forum_solution};
 use crate::error::{ForumError, ForumResult};
+use crate::mentions::ForumContentTarget;
 use crate::state_machine::{ReplyStatus, TopicStatus};
 
 use super::category::CategoryService;
+use super::mention_relation::MentionRelationService;
 use super::rbac::{enforce_owned_scope, enforce_scope};
 use super::reply;
 use super::topic_owner::TopicService;
@@ -33,6 +35,7 @@ use super::user_stats::UserStatsService;
 pub struct ReplyService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    relations: MentionRelationService,
     inner: reply::ReplyService,
 }
 
@@ -40,6 +43,7 @@ impl ReplyService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
             inner: reply::ReplyService::new(db.clone(), event_bus.clone()),
+            relations: MentionRelationService::new(db.clone()),
             db,
             event_bus,
         }
@@ -63,6 +67,19 @@ impl ReplyService {
             "Reply content",
         )
         .map_err(ForumError::Validation)?;
+        let reply_id = Uuid::new_v4();
+        let prepared_relations = self
+            .relations
+            .prepare(
+                tenant_id,
+                ForumContentTarget::reply(reply_id),
+                &locale,
+                &prepared_body.body,
+                &prepared_body.format,
+                &security,
+                std::iter::empty(),
+            )
+            .await?;
 
         let txn = self.db.begin().await?;
         let topic = TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
@@ -99,7 +116,6 @@ impl ReplyService {
         } else {
             ReplyStatus::Approved
         };
-        let reply_id = Uuid::new_v4();
         let now = Utc::now();
 
         forum_reply::ActiveModel {
@@ -129,6 +145,10 @@ impl ReplyService {
         .insert(&txn)
         .await?;
 
+        self.relations
+            .persist_in_tx(&txn, prepared_relations)
+            .await?;
+
         if status == ReplyStatus::Approved {
             TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
             CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
@@ -152,6 +172,19 @@ impl ReplyService {
 
         txn.commit().await?;
         self.inner.get(tenant_id, security, reply_id, &locale).await
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn update(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        security: SecurityContext,
+        input: UpdateReplyInput,
+    ) -> ForumResult<ReplyResponse> {
+        self.inner
+            .update_with_relations(tenant_id, reply_id, security, input)
+            .await
     }
 
     #[instrument(skip(self, security))]

@@ -63,8 +63,9 @@ impl PageService {
                     .slug
                     .as_deref()
                     .unwrap_or(translation.title.as_str()),
-            );
+            )?;
             let existing = page_translation::Entity::find()
+                .filter(page_translation::Column::TenantId.eq(tenant_id))
                 .filter(page_translation::Column::PageId.eq(page_id))
                 .filter(page_translation::Column::Locale.eq(&locale))
                 .one(txn)
@@ -100,6 +101,7 @@ impl PageService {
     pub(super) async fn upsert_body_in_tx(
         &self,
         txn: &DatabaseTransaction,
+        tenant_id: Uuid,
         page_id: Uuid,
         body: Option<PreparedPageBody>,
         now: chrono::DateTime<Utc>,
@@ -109,6 +111,7 @@ impl PageService {
         };
         let locale = normalize_locale(&body.locale)?;
         let existing = page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .filter(page_body::Column::Locale.eq(&locale))
             .one(txn)
@@ -124,6 +127,7 @@ impl PageService {
             None => {
                 page_body::ActiveModel {
                     id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
                     page_id: Set(page_id),
                     locale: Set(locale),
                     content: Set(body.content),
@@ -145,6 +149,7 @@ impl PageService {
         channel_slugs: &[String],
     ) -> PagesResult<()> {
         page_channel_visibility::Entity::delete_many()
+            .filter(page_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(page_channel_visibility::Column::PageId.eq(page_id))
             .exec(txn)
             .await?;

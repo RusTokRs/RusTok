@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -14,8 +14,8 @@ use crate::error::{PagesError, PagesResult};
 use crate::services::rbac::{can_read_non_public_pages, enforce_scope};
 
 use super::helpers::{
-    apply_public_page_channel_filter, available_locales, normalize_locale, normalize_slug,
-    page_body_response, page_translation_response, resolve_body_record, resolve_translation_record,
+    apply_public_page_channel_filter, available_locales, body_for_locale, normalize_locale,
+    normalize_slug, page_body_response, page_translation_response, resolve_translation_record,
     status_to_storage, storage_to_status,
 };
 use super::{PageResponseParts, PageService};
@@ -50,9 +50,9 @@ impl PageService {
         {
             return Err(PagesError::forbidden("Permission denied"));
         }
-        let channel_slugs = self.load_channel_slugs(page_id).await?;
-        let translations = self.load_translations(page_id).await?;
-        let bodies = self.load_bodies(page_id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, page_id).await?;
+        let translations = self.load_translations(tenant_id, page_id).await?;
+        let bodies = self.load_bodies(tenant_id, page_id).await?;
         self.build_page_response(
             page,
             translations,
@@ -79,7 +79,7 @@ impl PageService {
         let normalized_fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let candidates = page_translation::Entity::find()
             .filter(page_translation::Column::TenantId.eq(tenant_id))
-            .filter(page_translation::Column::Slug.eq(normalize_slug(slug)))
+            .filter(page_translation::Column::Slug.eq(normalize_slug(slug)?))
             .all(&self.db)
             .await?;
         let resolved = resolve_translation_record(
@@ -95,9 +95,9 @@ impl PageService {
         if storage_to_status(&page.status)? != ContentStatus::Published {
             return Ok(None);
         }
-        let channel_slugs = self.load_channel_slugs(page.id).await?;
-        let translations = self.load_translations(page.id).await?;
-        let bodies = self.load_bodies(page.id).await?;
+        let channel_slugs = self.load_channel_slugs(tenant_id, page.id).await?;
+        let translations = self.load_translations(tenant_id, page.id).await?;
+        let bodies = self.load_bodies(tenant_id, page.id).await?;
         self.build_page_response(
             page,
             translations,
@@ -152,7 +152,7 @@ impl PageService {
         if let Some(template) = filter.template {
             select = select.filter(page::Column::Template.eq(template));
         }
-        self.page_list_from_select(select, locale, filter.page, filter.per_page)
+        self.page_list_from_select(tenant_id, select, locale, filter.page, filter.per_page)
             .await
     }
 
@@ -174,12 +174,13 @@ impl PageService {
             select = select.filter(page::Column::Template.eq(template));
         }
         select = apply_public_page_channel_filter(select, tenant_id, channel_slug);
-        self.page_list_from_select(select, locale, filter.page, filter.per_page)
+        self.page_list_from_select(tenant_id, select, locale, filter.page, filter.per_page)
             .await
     }
 
     async fn page_list_from_select(
         &self,
+        tenant_id: Uuid,
         select: sea_orm::Select<page::Entity>,
         locale: String,
         page_number: u64,
@@ -191,8 +192,8 @@ impl PageService {
         let total = paginator.num_items().await?;
         let pages = paginator.fetch_page(page_number.saturating_sub(1)).await?;
         let page_ids: Vec<Uuid> = pages.iter().map(|item| item.id).collect();
-        let translations_map = self.load_translations_map(&page_ids).await?;
-        let channel_slugs_map = self.load_channel_slugs_map(&page_ids).await?;
+        let translations_map = self.load_translations_map(tenant_id, &page_ids).await?;
+        let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &page_ids).await?;
 
         let mut items = Vec::with_capacity(pages.len());
         for page in pages {
@@ -226,9 +227,11 @@ impl PageService {
 
     pub(super) async fn load_translations(
         &self,
+        tenant_id: Uuid,
         page_id: Uuid,
     ) -> PagesResult<Vec<page_translation::Model>> {
         Ok(page_translation::Entity::find()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
             .filter(page_translation::Column::PageId.eq(page_id))
             .all(&self.db)
             .await?)
@@ -236,12 +239,14 @@ impl PageService {
 
     async fn load_translations_map(
         &self,
+        tenant_id: Uuid,
         page_ids: &[Uuid],
     ) -> PagesResult<HashMap<Uuid, Vec<page_translation::Model>>> {
         if page_ids.is_empty() {
             return Ok(HashMap::new());
         }
         let translations = page_translation::Entity::find()
+            .filter(page_translation::Column::TenantId.eq(tenant_id))
             .filter(page_translation::Column::PageId.is_in(page_ids.to_vec()))
             .all(&self.db)
             .await?;
@@ -254,8 +259,13 @@ impl PageService {
         Ok(map)
     }
 
-    pub(super) async fn load_channel_slugs(&self, page_id: Uuid) -> PagesResult<Vec<String>> {
+    pub(super) async fn load_channel_slugs(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Vec<String>> {
         let records = page_channel_visibility::Entity::find()
+            .filter(page_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(page_channel_visibility::Column::PageId.eq(page_id))
             .order_by_asc(page_channel_visibility::Column::ChannelSlug)
             .all(&self.db)
@@ -265,12 +275,14 @@ impl PageService {
 
     async fn load_channel_slugs_map(
         &self,
+        tenant_id: Uuid,
         page_ids: &[Uuid],
     ) -> PagesResult<HashMap<Uuid, Vec<String>>> {
         if page_ids.is_empty() {
             return Ok(HashMap::new());
         }
         let records = page_channel_visibility::Entity::find()
+            .filter(page_channel_visibility::Column::TenantId.eq(tenant_id))
             .filter(page_channel_visibility::Column::PageId.is_in(page_ids.to_vec()))
             .order_by_asc(page_channel_visibility::Column::ChannelSlug)
             .all(&self.db)
@@ -284,8 +296,13 @@ impl PageService {
         Ok(map)
     }
 
-    pub(super) async fn load_bodies(&self, page_id: Uuid) -> PagesResult<Vec<page_body::Model>> {
+    pub(super) async fn load_bodies(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Vec<page_body::Model>> {
         Ok(page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .all(&self.db)
             .await?)
@@ -303,19 +320,13 @@ impl PageService {
             parts.locale.as_str(),
             parts.fallback_locale.as_deref(),
         );
-        let body = resolve_body_record(
-            &bodies,
-            parts.locale.as_str(),
-            parts.fallback_locale.as_deref(),
-        );
-        let response_body = body.body.map(page_body_response);
-        let effective_locale = if response_body.is_some() {
-            Some(body.effective_locale.clone())
-        } else if translation.translation.is_some() {
-            Some(translation.effective_locale.clone())
-        } else {
-            None
-        };
+        let response_body = translation
+            .translation
+            .and_then(|_| body_for_locale(&bodies, translation.effective_locale.as_str()))
+            .map(page_body_response);
+        let effective_locale = translation
+            .translation
+            .map(|_| translation.effective_locale.clone());
         Ok(PageResponse {
             id: page.id,
             version: page.version,

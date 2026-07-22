@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "module": "blog",
+  "surface": "category_search_reindex",
+  "status": "source_verified_no_compile",
+  "compile_policy": "not_run_by_request",
+  "production_contract": {
+    "permission_resource": "blog_categories",
+    "category_service_constructor": "CategoryService::new(DatabaseConnection, TransactionalEventBus)",
+    "owner_service": "crates/rustok-blog/src/services/category.rs",
+    "owner_rbac": "crates/rustok-blog/src/services/rbac.rs",
+    "platform_permissions": "crates/rustok-api/src/permissions.rs",
+    "platform_rbac": "crates/rustok-core/src/rbac.rs",
+    "oauth_scope_policy": "crates/rustok-api/src/context/auth.rs",
+    "module_permissions": "crates/rustok-blog/src/lib.rs",
+    "http_adapter": "crates/rustok-blog/src/controllers/categories.rs",
+    "router": "crates/rustok-blog/src/controllers/mod.rs",
+    "openapi": "crates/rustok-blog/src/openapi.rs",
+    "search_projector": "crates/rustok-search/src/blog_projector.rs",
+    "search_ingestion": "crates/rustok-search/src/ingestion.rs"
+  },
+  "cases": [
+    {
+      "name": "category_update_atomic_reindex",
+      "expected": "category row, localized translation, and Blog-scope ReindexRequested outbox record commit in one transaction"
+    },
+    {
+      "name": "category_delete_atomic_reindex",
+      "expected": "category deletion and Blog-scope ReindexRequested outbox record commit together; failed deletion publishes no event"
+    },
+    {
+      "name": "tenant_scoped_translations",
+      "expected": "category translation reads, updates, and deletes are constrained by tenant_id and category_id"
+    },
+    {
+      "name": "tenant_scoped_parent",
+      "expected": "a parent category must exist in the same tenant before the child category transaction inserts"
+    },
+    {
+      "name": "non_empty_slug",
+      "expected": "create and translation upsert reject normalized slugs that contain no ASCII letter or digit instead of persisting an empty route key"
+    },
+    {
+      "name": "dedicated_permission_namespace",
+      "expected": "Blog category operations require blog_categories actions; blog_posts and catalog categories actions do not authorize the owner or HTTP adapter"
+    },
+    {
+      "name": "mandatory_transactional_event_bus",
+      "expected": "CategoryService has one constructor that requires DatabaseConnection and TransactionalEventBus; no optional bus, alternate constructor, or database-only write path exists"
+    },
+    {
+      "name": "category_has_no_owner_scope",
+      "expected": "category update/delete use tenant-wide blog_categories resource scope rather than comparing the authenticated user UUID to the category UUID"
+    },
+    {
+      "name": "authorization_precedes_lookup",
+      "expected": "owner update/delete reject missing blog_categories authority before opening a transaction or querying a category, preventing existence disclosure through direct service calls"
+    },
+    {
+      "name": "mounted_http_write_path",
+      "expected": "Blog category HTTP mutations construct CategoryService with the required TransactionalEventBus from HostRuntimeContext"
+    },
+    {
+      "name": "bounded_category_list",
+      "expected": "both owner service and HTTP adapter normalize page to at least one and clamp per_page to the range 1..100"
+    },
+    {
+      "name": "typed_http_errors",
+      "expected": "category not found, validation, forbidden, and unexpected failures map to 404, 400, 403, and safe 500 responses respectively"
+    },
+    {
+      "name": "search_payload_dependency",
+      "expected": "Blog search documents project category_name and category_slug, so category changes require Blog-scope rebuild"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute category create/update/delete HTTP requests with blog_categories RBAC",
+    "verify blog_posts and catalog categories permissions are rejected for Blog category operations",
+    "verify BlogModule registration seeds blog_categories permissions and no catalog category permissions",
+    "verify CategoryService cannot be constructed without TransactionalEventBus",
+    "verify unauthorized direct update/delete calls perform no category lookup",
+    "verify one outbox record is committed for category update and delete",
+    "verify an outbox write failure rolls back the category mutation",
+    "run Search ingestion and confirm category_name/category_slug change in related Blog documents",
+    "verify cross-tenant category IDs, parent IDs, and translations cannot be read or mutated",
+    "verify non-ASCII names require an explicit non-empty ASCII slug",
+    "verify category list limits remain bounded through direct service and HTTP calls"
+  ]
+}

@@ -90,7 +90,7 @@ fallback_mode = "readonly"
 
 [fba.builder_consumer.widgets.topic_detail]
 data_contract_version = "1.0"
-props_schema = "forum.topic_detail.v1"
+props_schema = "forum.topic_list.v1"
 capability_requirements = ["preview", "moderation_view"]
 fallback_mode = "degraded"
 

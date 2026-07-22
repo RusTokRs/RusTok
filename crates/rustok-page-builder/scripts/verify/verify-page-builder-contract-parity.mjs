@@ -99,16 +99,20 @@ const consumerContractVersion = extractVersion(
 );
 
 const errors = [];
+const providerKey = parseVersion(providerVersion, "provider builder_contract_version");
+const providerMinKey = parseVersion(
+  providerConsumerMinVersion,
+  "provider consumer_min_version",
+);
+const consumerKey = parseVersion(consumerVersion, "consumer builder_contract_version");
+const consumerContractKey = parseVersion(
+  consumerContractVersion,
+  "consumer contract_version",
+);
 
-if (providerVersion !== consumerVersion) {
+if (compareVersions(consumerKey, consumerContractKey) !== 0) {
   errors.push(
-    `builder_contract_version mismatch: provider=${providerVersion}, consumer=${consumerVersion}`,
-  );
-}
-
-if (providerVersion !== consumerContractVersion) {
-  errors.push(
-    `consumer contract_version mismatch: provider=${providerVersion}, consumer_contract_version=${consumerContractVersion}`,
+    `consumer contract_version mismatch: builder=${consumerVersion}, contract=${consumerContractVersion}`,
   );
 }
 
@@ -118,14 +122,15 @@ if (providerConsumerMinVersion !== consumerMinVersion) {
   );
 }
 
-if (
-  compareVersions(
-    parseVersion(consumerVersion, "consumer builder_contract_version"),
-    parseVersion(providerConsumerMinVersion, "provider consumer_min_version"),
-  ) < 0
-) {
+if (compareVersions(consumerKey, providerMinKey) < 0) {
   errors.push(
     `consumer builder_contract_version ${consumerVersion} is below provider consumer_min_version ${providerConsumerMinVersion}`,
+  );
+}
+
+if (compareVersions(consumerKey, providerKey) > 0) {
+  errors.push(
+    `builder_contract_version mismatch: consumer=${consumerVersion} is newer than provider=${providerVersion}`,
   );
 }
 
@@ -135,5 +140,5 @@ if (errors.length > 0) {
 
 console.log("[verify-page-builder-contract-parity] PASS");
 console.log(
-  `module=${moduleArg}; provider=${providerVersion}; consumer=${consumerVersion}; consumer_contract_version=${consumerContractVersion}; consumer_min_version=${consumerMinVersion}`,
+  `module=${moduleArg}; provider_range=${providerConsumerMinVersion}..${providerVersion}; consumer=${consumerVersion}; consumer_contract_version=${consumerContractVersion}; consumer_min_version=${consumerMinVersion}`,
 );

@@ -5,7 +5,9 @@ use rustok_auth::{
     CreateOAuthAppCommand, OAuthAdminPort, OAuthAppMutationRecord, OAuthAppSecretResult,
     UpdateOAuthAppCommand, UserMutationRecord,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -34,6 +36,23 @@ impl ServerAuthAdminMutationProvider {
         permissions_for(&context.tenant_id, &context.actor_id).ok_or_else(|| {
             AuthAdminMutationError::Forbidden(
                 "auth administration requires a request-bound effective permission snapshot"
+                    .to_string(),
+            )
+        })
+    }
+
+    fn effective_locale(
+        &self,
+        context: &AuthAdminMutationContext,
+    ) -> Result<String, AuthAdminMutationError> {
+        let locale = context.locale.as_deref().ok_or_else(|| {
+            AuthAdminMutationError::Validation(
+                "auth administration requires a host-resolved effective locale".to_string(),
+            )
+        })?;
+        oauth_apps::normalize_runtime_copy_locale(locale).map_err(|_| {
+            AuthAdminMutationError::Validation(
+                "auth administration requires a valid effective locale other than `und`"
                     .to_string(),
             )
         })
@@ -97,7 +116,6 @@ impl ServerAuthAdminMutationProvider {
         requested_permissions: &[String],
     ) -> Result<(), AuthAdminMutationError> {
         let actor_permissions = self.request_permissions(context)?;
-
         for value in requested_permissions {
             let permission = Permission::from_str(value.trim()).map_err(|error| {
                 AuthAdminMutationError::Validation(format!(
@@ -110,14 +128,26 @@ impl ServerAuthAdminMutationProvider {
                 )));
             }
         }
-
         Ok(())
+    }
+
+    async fn localize_app(
+        &self,
+        context: &AuthAdminMutationContext,
+        app: oauth_apps::Model,
+    ) -> Result<oauth_apps::Model, AuthAdminMutationError> {
+        let locale = self.effective_locale(context)?;
+        oauth_apps::hydrate_exact_translation(&self.db, app, locale.as_str())
+            .await
+            .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))
     }
 
     async fn record(
         &self,
+        context: &AuthAdminMutationContext,
         app: oauth_apps::Model,
     ) -> Result<OAuthAppMutationRecord, AuthAdminMutationError> {
+        let app = self.localize_app(context, app).await?;
         let active_token_count = oauth_tokens::Entity::count_active_by_app(&self.db, app.id)
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
@@ -190,7 +220,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         let mut records = Vec::with_capacity(apps.len());
         for app in apps {
-            records.push(self.record(app).await?);
+            records.push(self.record(context, app).await?);
         }
         Ok(records)
     }
@@ -207,7 +237,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(|error| AuthAdminMutationError::Internal(error.to_string()))?;
         match app {
-            Some(app) => Ok(Some(self.record(app).await?)),
+            Some(app) => Ok(Some(self.record(context, app).await?)),
             None => Ok(None),
         }
     }
@@ -231,7 +261,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         for (consent, app) in consents {
             if let Some(app) = app.filter(|app| app.is_active()) {
                 records.push(AuthorizedOAuthAppRecord {
-                    app: self.record(app).await?,
+                    app: self.record(context, app).await?,
                     scopes: consent.scopes_list(),
                     granted_at: consent.granted_at.into(),
                 });
@@ -248,26 +278,30 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         self.authorize(context).await?;
         self.authorize_delegated_permissions(context, &command.granted_permissions)
             .await?;
-        let result = OAuthAppService::create_app(
-            &self.db,
-            context.tenant_id,
-            oauth_app::CreateOAuthAppInput {
-                name: command.name,
-                slug: command.slug,
-                description: command.description,
-                app_type: command.app_type,
-                icon_url: command.icon_url,
-                redirect_uris: command.redirect_uris,
-                scopes: command.scopes,
-                grant_types: command.grant_types,
-                granted_permissions: command.granted_permissions,
-            },
+        let locale = self.effective_locale(context)?;
+        let result = oauth_apps::scope_runtime_copy_locale(
+            locale,
+            OAuthAppService::create_app(
+                &self.db,
+                context.tenant_id,
+                oauth_app::CreateOAuthAppInput {
+                    name: command.name,
+                    slug: command.slug,
+                    description: command.description,
+                    app_type: command.app_type,
+                    icon_url: command.icon_url,
+                    redirect_uris: command.redirect_uris,
+                    scopes: command.scopes,
+                    grant_types: command.grant_types,
+                    granted_permissions: command.granted_permissions,
+                },
+            ),
         )
         .await
         .map_err(map_service_error)?;
 
         Ok(OAuthAppSecretResult {
-            app: self.record(result.app).await?,
+            app: self.record(context, result.app).await?,
             client_secret: result.client_secret,
         })
     }
@@ -280,23 +314,27 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         self.authorize(context).await?;
         self.authorize_delegated_permissions(context, &command.granted_permissions)
             .await?;
-        let app = OAuthAppService::update_app(
-            &self.db,
-            context.tenant_id,
-            command.id,
-            oauth_app::UpdateOAuthAppInput {
-                name: command.name,
-                description: command.description,
-                icon_url: command.icon_url,
-                redirect_uris: command.redirect_uris,
-                scopes: command.scopes,
-                grant_types: command.grant_types,
-                granted_permissions: command.granted_permissions,
-            },
+        let locale = self.effective_locale(context)?;
+        let app = oauth_apps::scope_runtime_copy_locale(
+            locale,
+            OAuthAppService::update_app(
+                &self.db,
+                context.tenant_id,
+                command.id,
+                oauth_app::UpdateOAuthAppInput {
+                    name: command.name,
+                    description: command.description,
+                    icon_url: command.icon_url,
+                    redirect_uris: command.redirect_uris,
+                    scopes: command.scopes,
+                    grant_types: command.grant_types,
+                    granted_permissions: command.granted_permissions,
+                },
+            ),
         )
         .await
         .map_err(map_service_error)?;
-        self.record(app).await
+        self.record(context, app).await
     }
 
     async fn rotate_oauth_app_secret(
@@ -315,7 +353,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(map_service_error)?;
         Ok(OAuthAppSecretResult {
-            app: self.record(result.app).await?,
+            app: self.record(context, result.app).await?,
             client_secret: result.client_secret,
         })
     }
@@ -335,7 +373,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
         let revoked = OAuthAppService::revoke_app(&self.db, app.id)
             .await
             .map_err(map_service_error)?;
-        self.record(revoked).await
+        self.record(context, revoked).await
     }
 
     async fn grant_oauth_app_consent(

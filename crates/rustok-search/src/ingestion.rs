@@ -51,6 +51,14 @@ impl SearchIngestionHandler {
             _ => Ok(()),
         }
     }
+
+    async fn handle_blog_module_toggle(&self, tenant_id: Uuid, enabled: bool) -> HandlerResult {
+        if enabled {
+            self.blog_projector.rebuild_tenant(tenant_id).await
+        } else {
+            self.blog_projector.delete_tenant(tenant_id).await
+        }
+    }
 }
 
 #[async_trait]
@@ -90,6 +98,7 @@ impl EventHandler for SearchIngestionHandler {
             | DomainEvent::TenantUpdated { .. } => true,
             DomainEvent::TagAttached { target_type, .. }
             | DomainEvent::TagDetached { target_type, .. } => target_type == "node",
+            DomainEvent::TenantModuleToggled { module_slug, .. } => module_slug == "blog",
             DomainEvent::ReindexRequested { target_type, .. } => {
                 target_type == "search"
                     || target_type == "content"
@@ -181,6 +190,14 @@ impl EventHandler for SearchIngestionHandler {
                         .delete_post(envelope.tenant_id, *post_id)
                         .await
                 }
+                DomainEvent::TenantModuleToggled {
+                    module_slug,
+                    enabled,
+                    ..
+                } if module_slug == "blog" => {
+                    self.handle_blog_module_toggle(envelope.tenant_id, *enabled)
+                        .await
+                }
                 DomainEvent::LocaleEnabled { .. }
                 | DomainEvent::LocaleDisabled { .. }
                 | DomainEvent::TenantCreated { .. }
@@ -213,6 +230,17 @@ impl EventHandler for SearchIngestionHandler {
                 "blog" => "rebuild_blog_scope",
                 _ => "rebuild_tenant",
             },
+            DomainEvent::TenantModuleToggled {
+                module_slug,
+                enabled,
+                ..
+            } if module_slug == "blog" => {
+                if *enabled {
+                    "rebuild_blog_scope"
+                } else {
+                    "delete_blog_scope"
+                }
+            }
             DomainEvent::ProductCreated { .. }
             | DomainEvent::ProductUpdated { .. }
             | DomainEvent::ProductPublished { .. }
@@ -273,6 +301,11 @@ mod tests {
             target_type: "search".to_string(),
             target_id: None,
         }));
+        assert!(handler.handles(&DomainEvent::TenantModuleToggled {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "blog".to_string(),
+            enabled: false,
+        }));
     }
 
     #[tokio::test]
@@ -287,6 +320,11 @@ mod tests {
             customer_id: None,
             total: 1000,
             currency: "USD".to_string(),
+        }));
+        assert!(!handler.handles(&DomainEvent::TenantModuleToggled {
+            tenant_id: Uuid::new_v4(),
+            module_slug: "forum".to_string(),
+            enabled: false,
         }));
     }
 }
@@ -314,6 +352,17 @@ fn projector_operation_for_event(event: &DomainEvent) -> &'static str {
             "blog" => "rebuild_blog_scope",
             _ => "rebuild_tenant",
         },
+        DomainEvent::TenantModuleToggled {
+            module_slug,
+            enabled,
+            ..
+        } if module_slug == "blog" => {
+            if *enabled {
+                "rebuild_blog_scope"
+            } else {
+                "delete_blog_scope"
+            }
+        }
         DomainEvent::NodeTranslationUpdated { .. } | DomainEvent::BodyUpdated { .. } => {
             "upsert_node_locale"
         }

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { collectDbMultilingualContractFailures } from "./verify-db-multilingual-contract.mjs";
+
 const workspaceRoot = process.cwd();
 const failures = [];
 
@@ -126,6 +128,8 @@ walkDirectory(
     }
   },
 );
+
+failures.push(...collectDbMultilingualContractFailures(workspaceRoot));
 
 if (failures.length > 0) {
   console.error("i18n contract drift detected:");

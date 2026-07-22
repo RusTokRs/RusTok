@@ -365,7 +365,10 @@ impl RusToKModule for ModulesModule {
         ModuleKind::Core
     }
 
-    fn register_runtime_extensions(&self, extensions: &mut rustok_core::ModuleRuntimeExtensions) {
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
         let registrations = extensions
             .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
         registrations.register(std::sync::Arc::new(
@@ -374,5 +377,6 @@ impl RusToKModule for ModulesModule {
         registrations.register(std::sync::Arc::new(
             ArtifactScheduleDeliveryWorkRegistration::default(),
         ));
+        Ok(())
     }
 }

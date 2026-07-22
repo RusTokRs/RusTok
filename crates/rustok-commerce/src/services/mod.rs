@@ -35,6 +35,11 @@ mod marketplace_financial_runtime;
 mod marketplace_paid_event_inbox;
 mod marketplace_paid_order_financial;
 mod marketplace_provider_paid_event_adapter;
+mod marketplace_provider_reversal_backfill;
+mod marketplace_provider_reversal_event_adapter;
+mod marketplace_reversal_adaptation_failure;
+mod marketplace_reversal_event_inbox;
+mod marketplace_reversal_operator;
 mod order_change_orchestration;
 mod paid_order_create_label;
 mod paid_order_create_label_sweep;
@@ -154,6 +159,30 @@ pub(crate) use marketplace_paid_order_financial::MarketplacePaidOrderFinancialHa
 pub use marketplace_provider_paid_event_adapter::{
     MarketplaceProviderPaidEventAdapter, MarketplaceProviderPaidEventAdapterError,
     MarketplaceProviderPaidEventAdapterResult,
+};
+pub use marketplace_provider_reversal_backfill::{
+    MarketplaceProviderReversalBackfillError, MarketplaceProviderReversalBackfillResult,
+    MarketplaceProviderReversalBackfillService,
+};
+pub use marketplace_provider_reversal_event_adapter::{
+    MarketplaceProviderReversalAdaptFailure, MarketplaceProviderReversalAdaptReport,
+    MarketplaceProviderReversalEventAdapter, MarketplaceProviderReversalEventAdapterError,
+    MarketplaceProviderReversalEventAdapterResult,
+};
+pub use marketplace_reversal_adaptation_failure::{
+    MarketplaceReversalAdaptationFailureError, MarketplaceReversalAdaptationFailureJournal,
+    MarketplaceReversalAdaptationFailureResult, MarketplaceReversalAdaptationFailureStatus,
+};
+pub use marketplace_reversal_event_inbox::{
+    IngestMarketplaceReversalEvent, MarketplaceReversalEventInboxError,
+    MarketplaceReversalEventInboxJournal, MarketplaceReversalEventInboxResult,
+    MarketplaceReversalEventInboxService, MarketplaceReversalEventStatus,
+    MarketplaceReversalEventSweepFailure, MarketplaceReversalEventSweepReport,
+};
+pub use marketplace_reversal_operator::{
+    MarketplaceReversalAdaptationFailureOperatorView, MarketplaceReversalEventOperatorView,
+    MarketplaceReversalOperatorError, MarketplaceReversalOperatorResult,
+    MarketplaceReversalOperatorService,
 };
 pub use order_change_orchestration::OrderChangeOrchestrationService;
 pub(crate) use paid_order_create_label::PaidOrderCreateLabelHandler;

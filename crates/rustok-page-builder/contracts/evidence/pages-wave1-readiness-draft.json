@@ -8,6 +8,8 @@
   "metadata": {
     "provider": {
       "module_slug": "page_builder",
+      "builder_contract_version": "1.1",
+      "consumer_min_version": "1.0",
       "health_profile": "ready",
       "degraded_modes": [
         "builder_disabled",

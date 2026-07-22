@@ -23,42 +23,49 @@ boundary and never becomes a second Page Builder domain model.
 ## Current service path
 
 `FlyAdapterBackedPageBuilderService` is the only service implementation owned by this crate.
+`compose_fly_page_builder_handlers` is the default server composition root; the configured variant
+accepts a preconfigured Fly service, explicit port policies and an explicit authorizer.
 
 ```text
 PageBuilderCapabilityRequest
             |
             v
-  FlyProjectInspection
-            |
-   decode + validate
-            |
-   +--------+--------+
-   |                 |
-   v                 v
-preview renderer   project store
-   |                 |
-   +--------+--------+
-            |
- PageBuilderRuntimeCallEvidence
+FlyAdapterBackedPageBuilderService
             |
             v
-PageBuilderCapabilityResponse
+CapabilityGuardedService
+            |
+            v
+AuthorizedPageBuilderHandlers
+            |
+            v
+GraphQL / Leptos server-function envelope
 ```
 
 The service uses these framework-neutral ports:
 
 - `PageBuilderProjectStore` — tenant-scoped load/save;
-- `PageBuilderRenderingAdapter` — preview rendering after Fly validation;
+- `PageBuilderPreviewRenderingPort` — contextual preview rendering after Fly validation;
 - `PageBuilderRuntimeTelemetry` — started/succeeded/failed operation evidence;
 - `PageBuilderScenarioBaselineStore` — optional release baseline lookup.
 
-`CapabilityGuardedService` enforces rollout and port-call policy. `AuthorizedPageBuilderHandlers`
-enforces permissions before transport dispatch. GraphQL and Leptos server-function endpoints use
-the same handlers and canonical envelopes.
+`PreviewPageBuilderInput` carries `PageBuilderPreviewRuntime`, including the selected JSON runtime
+context and optional scenario identity. The service validates that contract after Fly structural
+validation and passes the complete canonical input to `PageBuilderPreviewRenderingPort`. Consumer
+renderers therefore do not define local context or scenario parameters. `PreviewPageBuilderResult`
+returns the scenario identity used for rendering so hosts can reject stale or mismatched responses.
+
+The composition root validates rollout flags before exposing handlers. It then wraps the Fly-backed
+service with `CapabilityGuardedService` for rollout and port-call policy, followed by
+`AuthorizedPageBuilderHandlers` for permission checks. Consumer modules supply concrete ports but do
+not choose a different service/guard order.
+
+GraphQL and Leptos server-function endpoints use the composed handlers and canonical envelopes.
 
 The machine-readable boundary is
 `contracts/page-builder-service-boundary.json`. The corresponding verifier rejects obsolete
-reference services, migration decorators and manual JSON rendering paths.
+reference services, the removed legacy preview port, migration decorators, manual JSON rendering
+paths and composition-order drift.
 
 ## Framework-neutral browser host
 
@@ -75,11 +82,13 @@ source. A future Dioxus renderer can use the same source without copying browser
 
 ## Current entrypoints
 
-- `src/dto.rs` — capability DTOs and typed error catalog;
+- `src/dto.rs` — capability DTOs, preview runtime contract and typed error catalog;
 - `src/adapters.rs` — `FlyProjectInspection` and framework-neutral endpoint payloads;
 - `src/adapters/fly_service.rs` — `FlyAdapterBackedPageBuilderService`;
+- `src/preview_port.rs` — canonical contextual preview rendering port;
+- `src/composition.rs` — current-only server composition root;
 - `src/browser_host.rs` — framework-neutral browser module source;
-- `src/service.rs` — service/port traits, guards and authorized handlers;
+- `src/service.rs` — capability service, persistence port, guards and authorized handlers;
 - `src/transport.rs` — canonical GraphQL and server-function envelopes;
 - `src/runtime_telemetry.rs` — runtime operation evidence;
 - `src/runtime_scenario_release.rs` — optional scenario release gate;

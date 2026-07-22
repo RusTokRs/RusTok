@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 pub const MAX_LEDGER_ENTRIES_PER_PAGE: u64 = 200;
 pub const MAX_LEDGER_REVERSAL_LINES: usize = 500;
+pub const MAX_LEDGER_BALANCE_TRANSFER_LINES: usize = 500;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -142,6 +143,76 @@ impl MarketplaceSellerBalanceBucket {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, Hash, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketplaceSellerBalanceTransferKind {
+    PendingRelease,
+    ReserveHold,
+    ReserveRelease,
+    PayoutSettlement,
+    PayoutReversal,
+}
+
+impl MarketplaceSellerBalanceTransferKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PendingRelease => "pending_release",
+            Self::ReserveHold => "reserve_hold",
+            Self::ReserveRelease => "reserve_release",
+            Self::PayoutSettlement => "payout_settlement",
+            Self::PayoutReversal => "payout_reversal",
+        }
+    }
+
+    pub const fn source_kind(self) -> &'static str {
+        match self {
+            Self::PendingRelease => "seller_balance_pending_release",
+            Self::ReserveHold => "seller_balance_reserve_hold",
+            Self::ReserveRelease => "seller_balance_reserve_release",
+            Self::PayoutSettlement => "seller_balance_payout_settlement",
+            Self::PayoutReversal => "seller_balance_payout_reversal",
+        }
+    }
+
+    pub const fn buckets(
+        self,
+    ) -> (MarketplaceSellerBalanceBucket, MarketplaceSellerBalanceBucket) {
+        match self {
+            Self::PendingRelease => (
+                MarketplaceSellerBalanceBucket::Pending,
+                MarketplaceSellerBalanceBucket::Available,
+            ),
+            Self::ReserveHold => (
+                MarketplaceSellerBalanceBucket::Available,
+                MarketplaceSellerBalanceBucket::Reserved,
+            ),
+            Self::ReserveRelease => (
+                MarketplaceSellerBalanceBucket::Reserved,
+                MarketplaceSellerBalanceBucket::Available,
+            ),
+            Self::PayoutSettlement => (
+                MarketplaceSellerBalanceBucket::Reserved,
+                MarketplaceSellerBalanceBucket::Paid,
+            ),
+            Self::PayoutReversal => (
+                MarketplaceSellerBalanceBucket::Paid,
+                MarketplaceSellerBalanceBucket::Available,
+            ),
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "pending_release" => Some(Self::PendingRelease),
+            "reserve_hold" => Some(Self::ReserveHold),
+            "reserve_release" => Some(Self::ReserveRelease),
+            "payout_settlement" => Some(Self::PayoutSettlement),
+            "payout_reversal" => Some(Self::PayoutReversal),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 pub struct PostMarketplaceOrderLedgerInput {
     pub order_id: Uuid,
@@ -230,6 +301,53 @@ pub struct MarketplaceLedgerReversalResponse {
     pub created_at: DateTime<FixedOffset>,
     pub transaction: MarketplaceLedgerTransactionResponse,
     pub entries: Vec<MarketplaceLedgerReversalEntryResponse>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
+pub struct MarketplaceSellerBalanceTransferLineInput {
+    pub reference_entry_id: Uuid,
+    pub amount: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
+pub struct PostMarketplaceSellerBalanceTransferInput {
+    pub kind: MarketplaceSellerBalanceTransferKind,
+    pub source_id: Uuid,
+    pub seller_id: Uuid,
+    pub currency_code: String,
+    pub transferred_at: DateTime<FixedOffset>,
+    pub lines: Vec<MarketplaceSellerBalanceTransferLineInput>,
+    #[serde(default = "empty_object")]
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
+pub struct MarketplaceSellerBalanceTransferLineResponse {
+    pub reference_entry_id: Uuid,
+    pub amount: i64,
+    pub from_bucket: MarketplaceSellerBalanceBucket,
+    pub to_bucket: MarketplaceSellerBalanceBucket,
+    pub debit_entry: MarketplaceLedgerEntryResponse,
+    pub credit_entry: MarketplaceLedgerEntryResponse,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
+pub struct MarketplaceSellerBalanceTransferResponse {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub transaction_id: Uuid,
+    pub kind: MarketplaceSellerBalanceTransferKind,
+    pub source_id: Uuid,
+    pub seller_id: Uuid,
+    pub currency_code: String,
+    pub from_bucket: MarketplaceSellerBalanceBucket,
+    pub to_bucket: MarketplaceSellerBalanceBucket,
+    pub total_amount: i64,
+    pub transferred_at: DateTime<FixedOffset>,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<FixedOffset>,
+    pub transaction: MarketplaceLedgerTransactionResponse,
+    pub lines: Vec<MarketplaceSellerBalanceTransferLineResponse>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, ToSchema)]

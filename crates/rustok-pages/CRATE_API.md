@@ -23,10 +23,28 @@
 - Published storefront output is selected through immutable landing artifacts.
 - There is no public block entity, block service, block DTO or block mutation.
 
+## Current menu contract
+
+- Base `menus` and `menu_items` rows contain only language-neutral identity,
+  hierarchy, routing and presentation mechanics.
+- Menu names and item titles exist only in tenant-composite translation rows.
+- The host passes an already-resolved effective locale to `MenuService`; the
+  service requires exact menu and item translations for that locale.
+- Missing localized navigation fails visibly. English and arbitrary first-row
+  fallback selection are not part of the Pages menu runtime.
+- Every item created through the service carries exactly the locale set owned by
+  its parent menu.
+- GraphQL exposes `menu(id, locale)` and `createMenu(input, locale)` using the
+  same exact-locale DTO contract.
+- HTTP exposes `GET /api/menus/{id}` and `POST /api/admin/menus`; request locale
+  defaults to the host-resolved `RequestContext.locale`.
+- Menu location is descriptive until a dedicated active-location identity is
+  enforced. Adapters must not choose an arbitrary first menu by location.
+
 ## Events
 
-Page/menu lifecycle events are published through `TransactionalEventBus` in the
-same transaction as the domain mutation.
+Page lifecycle events are published through `TransactionalEventBus` in the same
+transaction as the domain mutation.
 
 ## Domain invariants
 

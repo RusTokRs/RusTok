@@ -3,6 +3,7 @@ pub mod admin;
 pub(crate) mod checkout_operations;
 mod common;
 pub(crate) mod marketplace_financial;
+pub(crate) mod marketplace_reversal_financial;
 pub mod products;
 mod reconciliation;
 pub(crate) mod return_completion_operations;
@@ -47,6 +48,11 @@ impl CommerceHttpRuntime {
     fn marketplace_financial_operator_service(&self) -> crate::MarketplaceFinancialOperatorService {
         self.marketplace_financial_runtime
             .operator_service(self.db_clone(), self.event_bus())
+    }
+
+    fn marketplace_reversal_operator_service(&self) -> crate::MarketplaceReversalOperatorService {
+        self.marketplace_financial_runtime
+            .reversal_operator_service(self.db_clone())
     }
 }
 
@@ -99,7 +105,7 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         )
         .nest(
             "/admin/marketplace-financial",
-            marketplace_financial::axum_router(),
+            marketplace_financial::axum_router().merge(marketplace_reversal_financial::axum_router()),
         )
         .with_state(state))
 }

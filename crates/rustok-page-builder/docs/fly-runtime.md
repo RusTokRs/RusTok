@@ -1,7 +1,8 @@
 # Fly runtime integration
 
 `rustok-page-builder` has one current runtime path. Fly owns project decoding, structural
-validation, tree traversal, component lookup, project hashing and runtime-scenario release policy.
+validation, tree traversal, component lookup, project hashing, runtime materialization and
+runtime-scenario release policy.
 
 ## Project inspection
 
@@ -24,21 +25,47 @@ operation.
 implementation owned by this crate. It uses:
 
 - `PageBuilderProjectStore` for tenant-scoped project persistence;
-- `PageBuilderRenderingAdapter` for preview rendering after Fly validation;
+- `PageBuilderPreviewRenderingPort` for contextual preview rendering after Fly validation;
 - `PageBuilderRuntimeTelemetry` for started, succeeded and failed operation evidence;
 - `PageBuilderScenarioBaselineStore` and `RuntimeScenarioReleasePolicy` for optional release gates;
 - canonical DTOs and transport envelopes from `rustok-page-builder`.
 
-The service performs these operations:
+Preview runtime state is part of the canonical DTO rather than a consumer-specific method
+signature:
+
+```rust
+let input = PreviewPageBuilderInput::new(page_id, project_data).with_runtime(
+    PageBuilderPreviewRuntime::new(runtime_context, selected_scenario_id),
+);
+```
+
+The service requires `runtime.context` to be a JSON object, validates the optional normalized
+scenario identity, then passes the complete `PreviewPageBuilderInput` to the rendering port. The
+result echoes the scenario identity as `runtime_scenario_id`. A host can therefore compare the
+response with its current project, active page, context and scenario before displaying the HTML.
+
+The preview sequence is:
 
 ```text
-request
+PreviewPageBuilderInput
+  -> FlyProjectInspection::decode_with
+  -> inspection.require_valid
+  -> preview runtime DTO validation
+  -> PageBuilderPreviewRenderingPort::render_preview
+  -> runtime materialization in Fly renderer
+  -> PreviewPageBuilderResult { html, runtime_scenario_id }
+```
+
+Publish retains the independent release sequence:
+
+```text
+PublishPageBuilderInput
   -> FlyProjectInspection::decode_with
   -> inspection.require_valid
   -> optional runtime-scenario release gate
-  -> rendering or persistence port
-  -> PageBuilderRuntimeCallEvidence
-  -> typed capability result
+  -> PageBuilderProjectStore::save_project
+  -> persisted-result validation
+  -> PublishPageBuilderResult
 ```
 
 A composition root applies guards outside the service:
@@ -49,14 +76,14 @@ use rustok_page_builder::service::{
     AuthorizedPageBuilderHandlers, CapabilityGuardedService,
 };
 
-let service = FlyAdapterBackedPageBuilderService::new(project_store, rendering_adapter);
+let service = FlyAdapterBackedPageBuilderService::new(project_store, preview_renderer);
 let service = CapabilityGuardedService::new(service, rollout_flags);
 let handlers = AuthorizedPageBuilderHandlers::new(service);
 ```
 
 GraphQL and Leptos server-function endpoints dispatch through the same authorized handlers and
-canonical request/response envelopes. Future Dioxus hosts use the same service and transport
-contracts rather than defining a second provider.
+canonical request/response envelopes. Future Dioxus hosts use the same DTO, service and transport
+contracts rather than defining a second provider or local runtime-context parameters.
 
 ## Browser host boundary
 

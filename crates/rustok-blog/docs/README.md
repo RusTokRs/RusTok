@@ -1,65 +1,96 @@
 # `rustok-blog` Documentation
 
-`rustok-blog` is the domain module for publication and comment scenarios on the blog
-surface. The module already works on blog-owned persistence and uses shared
-platform contracts only where justified by the responsibility boundary.
+`rustok-blog` is the domain module for publication, Blog category, and comment
+scenarios. The module owns its persistence and uses shared platform contracts
+only across explicit boundaries.
 
 All Blog comment lifecycle operations consume the public `CommentsThreadPort`
-with typed actor, locale, deadline, idempotency where required, and error semantics.
-Comments lifecycle events are consumed by Blog's durable idempotent reply-count
-projection, which publishes `BlogPostUpdated` in the same projection transaction.
-Live delivery, retry, and recovery evidence remain pending.
-
-**Contract stability status:** fully achieved. Channel-aware semantics and
-taxonomy sync are confirmed by integration and unit tests.
+with typed actor, locale, deadline, idempotency where required, and error
+semantics. Comments lifecycle events are consumed by Blog's durable idempotent
+reply-count projection, which publishes `BlogPostUpdated` in the same projection
+transaction.
 
 ## Purpose
 
-- publish the canonical blog runtime contract for posts, categories and tag relations;
-- keep blog-owned transport surfaces, domain services and UI packages inside the module;
-- evolve the blog as a channel-aware and taxonomy-aware domain without returning to shared storage.
+- publish the canonical Blog runtime contract for posts, categories, and tag relations;
+- keep Blog-owned transport surfaces, domain services, and UI packages inside the module;
+- evolve the Blog as a channel-aware and taxonomy-aware domain without shared storage;
+- expose distinct `blog_posts:*` and `blog_categories:*` authority resources.
 
 ## Scope
 
-- `PostService`, `CommentService`, `CategoryService`, `TagService` and blog state machine;
-- blog-owned storage for posts, translations, categories and typed relations;
-- transport surfaces: GraphQL, REST, Leptos admin/storefront packages;
-- REST post/comment handlers consume narrow `BlogHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds that state from `HostRuntimeContext` and is mounted by generated host Axum composition without a framework adapter;
-- moderation REST surface: `POST /api/blog/comments/{id}/moderate` for approve/spam/trash transitions with RBAC `blog_posts:manage`;
+- `PostService`, `CommentService`, `CategoryService`, `TagService`, and the Blog state machine;
+- Blog-owned storage for posts, translations, categories, and typed relations;
+- GraphQL, REST, Leptos admin, and storefront transport surfaces;
+- REST handlers consume narrow `BlogHttpRuntime` state with explicit DB/event bus handles; `controllers::axum_router` builds that state from `HostRuntimeContext`;
+- category REST CRUD under `/api/blog/categories` requires `blog_categories:*`;
+- `CategoryService::new(db, event_bus)` is the only category service constructor;
+- category update/delete and tenant Blog-scope reindex publication share one transaction;
+- moderation REST surface `POST /api/blog/comments/{id}/moderate` uses `blog_posts:manage`;
 - channel visibility for publications and integration with `rustok-channel`;
-- reuse shared taxonomy dictionary via `blog_post_tags`, without giving attachment ownership outward;
-- observability via `rustok-telemetry`: `metrics::record_read_path_*` on GraphQL/REST read paths,
-  `#[instrument]` on service methods, span tracking for post lifecycle and visibility filtering.
+- shared taxonomy dictionary reuse via `blog_post_tags`, without transferring attachment ownership;
+- observability via `rustok-telemetry` read-path metrics and instrumented service methods.
+
+## Multilingual storage contract
+
+Blog follows the platform language-agnostic storage model:
+
+- `blog_posts` owns identity, lifecycle, relations, counters, publication state,
+  and the canonical route key;
+- `blog_posts.slug` is an explicitly locale-neutral canonical route identifier.
+  It is stable across requested locales and must not contain translated display
+  copy;
+- localized post title, excerpt, body, and SEO copy belong to
+  `blog_post_translations`;
+- localized category name, slug, and description belong to
+  `blog_category_translations`;
+- post and category translation locale columns use the platform-safe
+  `VARCHAR(32)` contract after
+  `m20260721_000005_expand_blog_locale_storage_columns`;
+- tenant default/effective locale controls resolution only and does not own any
+  localized Blog field.
+
+Changing the canonical post route key is a language-agnostic identity operation.
+A localized alternative URL must be modeled as an explicit alias/projection; it
+must not silently redefine ownership of `blog_posts.slug`.
+
+## Permission boundary
+
+`Resource::BlogCategories` serializes as `blog_categories`. Built-in roles,
+public-read authority, OAuth content scopes, module permission registration,
+HTTP preflight, and owner services use this resource. Catalog `categories:*`
+and post `blog_posts:*` permissions do not grant Blog category access.
 
 ## Integration
 
 - uses `rustok-taxonomy` as a shared vocabulary for tag identity;
 - uses `rustok-comments` as a comment runtime contract;
-- uses `rustok-profiles` for author presentation contract;
-- uses `rustok-channel` for module-level and publication-level visibility on public read-path;
-- uses `rustok-telemetry` for observability on read/write paths;
-- `rustok-blog/admin` already embeds owner-side post SEO panel via `rustok-seo-admin-support`
-  and the shared capability contract of the `rustok-seo` module.
+- uses `rustok-profiles` for author presentation;
+- uses `rustok-channel` for module-level and publication-level public visibility;
+- uses `rustok-telemetry` for read/write observability;
+- `rustok-blog/admin` embeds the owner-side post SEO panel through the shared `rustok-seo` capability contract.
 
 ## Contract Tests
 
-Tests in `tests/contract_surface.rs` and `tests/integration.rs` cover:
+Tests in `tests/contract_surface.rs`, `tests/module.rs`, and `tests/integration.rs` cover:
 
 - **Post lifecycle**: create → draft → publish → archive → restore
-- **Locale fallback**: normalize → requested → en → first available
+- **Locale resolution**: normalize → requested → en → first available
 - **Channel visibility**: typed `blog_post_channel_visibility` allowlists, empty = global
-- **Taxonomy sync**: blog tags ↔ `rustok-taxonomy` vocabulary
-- **RBAC enforcement**: customer cannot create/read draft posts
+- **Taxonomy sync**: Blog tags ↔ `rustok-taxonomy` vocabulary
+- **RBAC enforcement**: distinct post/category resources and denied cross-resource grants
+- **Category invariants**: mandatory event bus, tenant parent/translation scope, slug validation, pagination cap
 - **GraphQL read paths**: public vs authenticated channel gating
-- **Events**: blog.post.created/updated/published/archived/deleted/unpublished
-- **Comments**: thread, locale fallback, status transitions, RBAC
-- **State machine**: BlogPost status transitions, CommentStatus transitions
+- **Events**: Blog post lifecycle and category-triggered Search reindex
+- **Comments**: thread, locale resolution, status transitions, RBAC
+- **State machine**: BlogPost and CommentStatus transitions
 
 ## Verification
 
 - `cargo xtask module validate blog`
 - `cargo xtask module test blog`
-- targeted tests for post lifecycle, tag/category sync, channel visibility and public/admin read-path contracts
+- `node scripts/verify/verify-blog-category-search-reindex.mjs`
+- targeted tests for lifecycle, category authority, outbox rollback, Search refresh, channel visibility, and public/admin read paths
 
 ## Related documents
 
@@ -72,4 +103,8 @@ Tests in `tests/contract_surface.rs` and `tests/integration.rs` cover:
 
 ## FFA UI split
 
-Leptos render adapters for admin and storefront live in `admin/src/ui/leptos.rs` and `storefront/src/ui/leptos.rs`; crate roots only connect module layers and re-export `BlogAdmin` / `BlogView`. Admin operations go through `admin/src/transport.rs`, while the storefront keeps native/GraphQL adapters behind a facade in `storefront/src/transport/`.
+Leptos render adapters for admin and storefront live in `admin/src/ui/leptos.rs`
+and `storefront/src/ui/leptos.rs`. Crate roots connect module layers and
+re-export `BlogAdmin` / `BlogView`. Admin operations go through
+`admin/src/transport.rs`; storefront native and GraphQL adapters remain behind
+the storefront transport facade.

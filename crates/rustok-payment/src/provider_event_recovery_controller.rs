@@ -13,19 +13,24 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    PaymentDomainEventApplier, PaymentError, PaymentProviderEventRecoveryFailure,
-    PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,
+    PaymentError, PaymentObservedDomainEventApplier, PaymentProviderEventObservers,
+    PaymentProviderEventRecoveryFailure, PaymentProviderEventRecoveryReport,
+    PaymentProviderEventRecoveryService,
 };
 
 #[derive(Clone)]
 pub struct PaymentProviderEventRecoveryHttpRuntime {
     db: sea_orm::DatabaseConnection,
+    event_observers: PaymentProviderEventObservers,
 }
 
 impl PaymentProviderEventRecoveryHttpRuntime {
     fn from_host(runtime: &HostRuntimeContext) -> Self {
         Self {
             db: runtime.db_clone(),
+            event_observers: runtime
+                .shared_get::<PaymentProviderEventObservers>()
+                .unwrap_or_default(),
         }
     }
 }
@@ -113,7 +118,10 @@ pub async fn run_provider_event_recovery(
 
     let service = PaymentProviderEventRecoveryService::new(
         runtime.db.clone(),
-        Arc::new(PaymentDomainEventApplier::new(runtime.db)),
+        Arc::new(PaymentObservedDomainEventApplier::new(
+            runtime.db,
+            runtime.event_observers,
+        )),
     );
     let report = service
         .run(

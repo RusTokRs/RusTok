@@ -14,7 +14,7 @@ use crate::dto::{
     MarketplaceSellerBalanceResponse, ReadMarketplaceSellerBalanceRequest,
     RebuildMarketplaceSellerBalanceInput,
 };
-use crate::entities::{entry, reversal_line, seller_balance};
+use crate::entities::{entry, entry_balance_bucket, reversal_line, seller_balance};
 use crate::error::{MarketplaceLedgerError, MarketplaceLedgerResult};
 
 impl MarketplaceLedgerService {
@@ -58,17 +58,30 @@ impl MarketplaceLedgerService {
             .await?;
 
         let entry_ids = entries.iter().map(|model| model.id).collect::<Vec<_>>();
-        let classifications = if entry_ids.is_empty() {
-            HashMap::new()
+        let (explicit_classifications, reversal_classifications) = if entry_ids.is_empty() {
+            (HashMap::new(), HashMap::new())
         } else {
-            reversal_line::Entity::find()
+            let explicit = entry_balance_bucket::Entity::find()
+                .filter(entry_balance_bucket::Column::TenantId.eq(tenant_id))
+                .filter(entry_balance_bucket::Column::EntryId.is_in(entry_ids.clone()))
+                .all(self.database())
+                .await?
+                .into_iter()
+                .map(|model| (model.entry_id, model.balance_bucket))
+                .collect::<HashMap<_, _>>();
+            let reversal = reversal_line::Entity::find()
                 .filter(reversal_line::Column::TenantId.eq(tenant_id))
                 .filter(reversal_line::Column::EntryId.is_in(entry_ids))
                 .all(self.database())
                 .await?
                 .into_iter()
-                .map(|model| (model.entry_id, model))
-                .collect::<HashMap<_, _>>()
+                .filter_map(|model| {
+                    model
+                        .seller_balance_bucket
+                        .map(|bucket| (model.entry_id, bucket))
+                })
+                .collect::<HashMap<_, _>>();
+            (explicit, reversal)
         };
 
         let mut totals = BalanceTotals::default();
@@ -80,10 +93,10 @@ impl MarketplaceLedgerService {
                         model.direction
                     ))
                 })?;
-            let bucket = classifications
+            let bucket = explicit_classifications
                 .get(&model.id)
-                .and_then(|line| line.seller_balance_bucket.as_deref())
-                .map(parse_bucket)
+                .or_else(|| reversal_classifications.get(&model.id))
+                .map(|value| parse_bucket(value.as_str()))
                 .transpose()?
                 .unwrap_or(MarketplaceSellerBalanceBucket::Pending);
             totals.apply(bucket, direction, model.amount)?;

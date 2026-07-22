@@ -1,0 +1,25 @@
+[package]
+name = "rustok-groups"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Social groups, memberships, local roles, privacy, and feature bindings"
+
+[dependencies]
+async-graphql = { workspace = true, optional = true }
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+rustok-notifications-api.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[features]
+default = []
+graphql = ["dep:async-graphql", "rustok-api/server"]

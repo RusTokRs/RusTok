@@ -20,8 +20,8 @@ mod palette_layers;
 mod properties_assets;
 #[cfg(target_arch = "wasm32")]
 mod properties_section;
-#[cfg(target_arch = "wasm32")]
 mod property_helpers;
+mod publish_scenario_selector;
 mod resize_handles;
 mod responsive_styles;
 mod runtime;
@@ -30,6 +30,7 @@ mod runtime_scenario_matrix;
 mod runtime_scenario_regression;
 mod runtime_scenarios;
 mod selection_commands;
+mod server_preview;
 mod shortcut_dispatch;
 mod ssr_actions_forms;
 mod ssr_assets;
@@ -73,6 +74,7 @@ pub(crate) use palette_layers::PaletteLayersPanel;
 pub(crate) use properties_assets::PropertiesAssetsPanel;
 #[cfg(target_arch = "wasm32")]
 pub(crate) use properties_section::PropertiesSection;
+pub(crate) use publish_scenario_selector::PublishScenarioSelectorPanel;
 pub(crate) use resize_handles::ResizeHandles;
 pub(crate) use responsive_styles::ResponsiveStylePanel;
 pub(crate) use runtime::AdminEditorRuntime;
@@ -80,6 +82,7 @@ pub(crate) use runtime_publish_gate::RuntimePublishGatePanel;
 pub(crate) use runtime_scenario_matrix::RuntimeScenarioMatrixPanel;
 pub(crate) use runtime_scenario_regression::RuntimeScenarioRegressionPanel;
 pub(crate) use runtime_scenarios::RuntimeScenarioPanel;
+pub(crate) use server_preview::ServerPreviewPanel;
 pub(crate) use shortcut_dispatch::dispatch_shortcut;
 pub(crate) use ssr_actions_forms::SsrActionsFormsPanel;
 pub(crate) use ssr_assets::SsrAssetPanel;

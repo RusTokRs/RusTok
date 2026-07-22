@@ -57,6 +57,23 @@ pub fn attach_commerce_provider_registries(
         host.with_shared_value(runtime)
     };
 
+    #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+    let host = {
+        let observers = server
+            .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+            .unwrap_or_else(|| {
+                let runtime = server
+                    .shared_get::<rustok_commerce::MarketplaceFinancialRuntime>()
+                    .expect(
+                        "MarketplaceFinancialRuntime must be initialized before payment event observers",
+                    );
+                let observers = runtime.payment_provider_event_observers(server.db_clone());
+                server.shared_insert(observers.clone());
+                observers
+            });
+        host.with_shared_value(observers)
+    };
+
     #[cfg(all(feature = "mod-ai", feature = "mod-order"))]
     let host = if let Some(event_bus) = server.shared_get::<rustok_outbox::TransactionalEventBus>()
     {

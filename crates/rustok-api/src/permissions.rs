@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 
-/// Ресурсы системы
+/// Platform resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resource {
@@ -17,6 +17,7 @@ pub enum Resource {
     Orders,
     Customers,
     Profiles,
+    Groups,
     Regions,
     Payments,
     Fulfillments,
@@ -35,13 +36,11 @@ pub enum Resource {
     Analytics,
     Logs,
     Webhooks,
-    // Blog domain resources
     BlogPosts,
-    // Forum domain resources
+    BlogCategories,
     ForumCategories,
     ForumTopics,
     ForumReplies,
-    // Scripting (alloy)
     Scripts,
     Mcp,
     AiProviders,
@@ -55,7 +54,6 @@ pub enum Resource {
     AiCodeTasks,
     AiAlloyTasks,
     AiMultimodalTasks,
-    // Workflow automation
     Workflows,
     WorkflowExecutions,
 }
@@ -74,6 +72,7 @@ impl fmt::Display for Resource {
             Self::Orders => "orders",
             Self::Customers => "customers",
             Self::Profiles => "profiles",
+            Self::Groups => "groups",
             Self::Regions => "regions",
             Self::Payments => "payments",
             Self::Fulfillments => "fulfillments",
@@ -93,6 +92,7 @@ impl fmt::Display for Resource {
             Self::Logs => "logs",
             Self::Webhooks => "webhooks",
             Self::BlogPosts => "blog_posts",
+            Self::BlogCategories => "blog_categories",
             Self::ForumCategories => "forum_categories",
             Self::ForumTopics => "forum_topics",
             Self::ForumReplies => "forum_replies",
@@ -132,6 +132,7 @@ impl FromStr for Resource {
             "orders" => Ok(Self::Orders),
             "customers" => Ok(Self::Customers),
             "profiles" => Ok(Self::Profiles),
+            "groups" => Ok(Self::Groups),
             "regions" => Ok(Self::Regions),
             "payments" => Ok(Self::Payments),
             "fulfillments" => Ok(Self::Fulfillments),
@@ -151,6 +152,7 @@ impl FromStr for Resource {
             "logs" => Ok(Self::Logs),
             "webhooks" => Ok(Self::Webhooks),
             "blog_posts" => Ok(Self::BlogPosts),
+            "blog_categories" => Ok(Self::BlogCategories),
             "forum_categories" => Ok(Self::ForumCategories),
             "forum_topics" => Ok(Self::ForumTopics),
             "forum_replies" => Ok(Self::ForumReplies),
@@ -174,7 +176,7 @@ impl FromStr for Resource {
     }
 }
 
-/// Действия над ресурсами
+/// Actions over platform resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
@@ -243,7 +245,6 @@ impl FromStr for Action {
     }
 }
 
-/// Permission = Resource + Action
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Permission {
     pub resource: Resource,
@@ -263,9 +264,10 @@ impl FromStr for Permission {
         let (resource, action) = value
             .rsplit_once(':')
             .ok_or_else(|| "Missing action".to_string())?;
-        let resource = Resource::from_str(resource)?;
-        let action = Action::from_str(action)?;
-        Ok(Self { resource, action })
+        Ok(Self {
+            resource: Resource::from_str(resource)?,
+            action: Action::from_str(action)?,
+        })
     }
 }
 
@@ -275,242 +277,215 @@ impl fmt::Display for Permission {
     }
 }
 
+macro_rules! permission_constants {
+    ($( $name:ident => ($resource:ident, $action:ident) ),* $(,)?) => {
+        $(pub const $name: Self = Self::new(Resource::$resource, Action::$action);)*
+    };
+}
+
 impl Permission {
-    pub const USERS_CREATE: Self = Self::new(Resource::Users, Action::Create);
-    pub const USERS_READ: Self = Self::new(Resource::Users, Action::Read);
-    pub const USERS_UPDATE: Self = Self::new(Resource::Users, Action::Update);
-    pub const USERS_DELETE: Self = Self::new(Resource::Users, Action::Delete);
-    pub const USERS_LIST: Self = Self::new(Resource::Users, Action::List);
-    pub const USERS_MANAGE: Self = Self::new(Resource::Users, Action::Manage);
-
-    pub const TENANTS_CREATE: Self = Self::new(Resource::Tenants, Action::Create);
-    pub const TENANTS_READ: Self = Self::new(Resource::Tenants, Action::Read);
-    pub const TENANTS_UPDATE: Self = Self::new(Resource::Tenants, Action::Update);
-    pub const TENANTS_DELETE: Self = Self::new(Resource::Tenants, Action::Delete);
-    pub const TENANTS_LIST: Self = Self::new(Resource::Tenants, Action::List);
-    pub const TENANTS_MANAGE: Self = Self::new(Resource::Tenants, Action::Manage);
-
-    pub const MODULES_READ: Self = Self::new(Resource::Modules, Action::Read);
-    pub const MODULES_LIST: Self = Self::new(Resource::Modules, Action::List);
-    pub const MODULES_MANAGE: Self = Self::new(Resource::Modules, Action::Manage);
-
-    pub const SETTINGS_LIST: Self = Self::new(Resource::Settings, Action::List);
-
-    pub const PRODUCTS_CREATE: Self = Self::new(Resource::Products, Action::Create);
-    pub const PRODUCTS_READ: Self = Self::new(Resource::Products, Action::Read);
-    pub const PRODUCTS_UPDATE: Self = Self::new(Resource::Products, Action::Update);
-    pub const PRODUCTS_DELETE: Self = Self::new(Resource::Products, Action::Delete);
-    pub const PRODUCTS_LIST: Self = Self::new(Resource::Products, Action::List);
-    pub const PRODUCTS_MANAGE: Self = Self::new(Resource::Products, Action::Manage);
-
-    pub const ORDERS_CREATE: Self = Self::new(Resource::Orders, Action::Create);
-    pub const ORDERS_READ: Self = Self::new(Resource::Orders, Action::Read);
-    pub const ORDERS_UPDATE: Self = Self::new(Resource::Orders, Action::Update);
-    pub const ORDERS_DELETE: Self = Self::new(Resource::Orders, Action::Delete);
-    pub const ORDERS_LIST: Self = Self::new(Resource::Orders, Action::List);
-    pub const ORDERS_MANAGE: Self = Self::new(Resource::Orders, Action::Manage);
-
-    pub const CUSTOMERS_CREATE: Self = Self::new(Resource::Customers, Action::Create);
-    pub const CUSTOMERS_READ: Self = Self::new(Resource::Customers, Action::Read);
-    pub const CUSTOMERS_UPDATE: Self = Self::new(Resource::Customers, Action::Update);
-    pub const CUSTOMERS_DELETE: Self = Self::new(Resource::Customers, Action::Delete);
-    pub const CUSTOMERS_LIST: Self = Self::new(Resource::Customers, Action::List);
-    pub const CUSTOMERS_MANAGE: Self = Self::new(Resource::Customers, Action::Manage);
-
-    pub const PROFILES_CREATE: Self = Self::new(Resource::Profiles, Action::Create);
-    pub const PROFILES_READ: Self = Self::new(Resource::Profiles, Action::Read);
-    pub const PROFILES_UPDATE: Self = Self::new(Resource::Profiles, Action::Update);
-    pub const PROFILES_DELETE: Self = Self::new(Resource::Profiles, Action::Delete);
-    pub const PROFILES_LIST: Self = Self::new(Resource::Profiles, Action::List);
-    pub const PROFILES_MANAGE: Self = Self::new(Resource::Profiles, Action::Manage);
-
-    pub const REGIONS_CREATE: Self = Self::new(Resource::Regions, Action::Create);
-    pub const REGIONS_READ: Self = Self::new(Resource::Regions, Action::Read);
-    pub const REGIONS_UPDATE: Self = Self::new(Resource::Regions, Action::Update);
-    pub const REGIONS_DELETE: Self = Self::new(Resource::Regions, Action::Delete);
-    pub const REGIONS_LIST: Self = Self::new(Resource::Regions, Action::List);
-    pub const REGIONS_MANAGE: Self = Self::new(Resource::Regions, Action::Manage);
-
-    pub const TAXONOMY_CREATE: Self = Self::new(Resource::Taxonomy, Action::Create);
-    pub const TAXONOMY_READ: Self = Self::new(Resource::Taxonomy, Action::Read);
-    pub const TAXONOMY_UPDATE: Self = Self::new(Resource::Taxonomy, Action::Update);
-    pub const TAXONOMY_DELETE: Self = Self::new(Resource::Taxonomy, Action::Delete);
-    pub const TAXONOMY_LIST: Self = Self::new(Resource::Taxonomy, Action::List);
-    pub const TAXONOMY_MANAGE: Self = Self::new(Resource::Taxonomy, Action::Manage);
-
-    pub const PAYMENTS_CREATE: Self = Self::new(Resource::Payments, Action::Create);
-    pub const PAYMENTS_READ: Self = Self::new(Resource::Payments, Action::Read);
-    pub const PAYMENTS_UPDATE: Self = Self::new(Resource::Payments, Action::Update);
-    pub const PAYMENTS_DELETE: Self = Self::new(Resource::Payments, Action::Delete);
-    pub const PAYMENTS_LIST: Self = Self::new(Resource::Payments, Action::List);
-    pub const PAYMENTS_MANAGE: Self = Self::new(Resource::Payments, Action::Manage);
-
-    pub const FULFILLMENTS_CREATE: Self = Self::new(Resource::Fulfillments, Action::Create);
-    pub const FULFILLMENTS_READ: Self = Self::new(Resource::Fulfillments, Action::Read);
-    pub const FULFILLMENTS_UPDATE: Self = Self::new(Resource::Fulfillments, Action::Update);
-    pub const FULFILLMENTS_DELETE: Self = Self::new(Resource::Fulfillments, Action::Delete);
-    pub const FULFILLMENTS_LIST: Self = Self::new(Resource::Fulfillments, Action::List);
-    pub const FULFILLMENTS_MANAGE: Self = Self::new(Resource::Fulfillments, Action::Manage);
-
-    pub const MARKETPLACE_SELLERS_CREATE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Create);
-    pub const MARKETPLACE_SELLERS_READ: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Read);
-    pub const MARKETPLACE_SELLERS_UPDATE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Update);
-    pub const MARKETPLACE_SELLERS_DELETE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Delete);
-    pub const MARKETPLACE_SELLERS_LIST: Self =
-        Self::new(Resource::MarketplaceSellers, Action::List);
-    pub const MARKETPLACE_SELLERS_MANAGE: Self =
-        Self::new(Resource::MarketplaceSellers, Action::Manage);
-
-    pub const MARKETPLACE_LISTINGS_CREATE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Create);
-    pub const MARKETPLACE_LISTINGS_READ: Self =
-        Self::new(Resource::MarketplaceListings, Action::Read);
-    pub const MARKETPLACE_LISTINGS_UPDATE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Update);
-    pub const MARKETPLACE_LISTINGS_DELETE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Delete);
-    pub const MARKETPLACE_LISTINGS_LIST: Self =
-        Self::new(Resource::MarketplaceListings, Action::List);
-    pub const MARKETPLACE_LISTINGS_MANAGE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Manage);
-    pub const MARKETPLACE_LISTINGS_PUBLISH: Self =
-        Self::new(Resource::MarketplaceListings, Action::Publish);
-    pub const MARKETPLACE_LISTINGS_MODERATE: Self =
-        Self::new(Resource::MarketplaceListings, Action::Moderate);
-
-    pub const POSTS_CREATE: Self = Self::new(Resource::Posts, Action::Create);
-    pub const POSTS_READ: Self = Self::new(Resource::Posts, Action::Read);
-    pub const POSTS_UPDATE: Self = Self::new(Resource::Posts, Action::Update);
-    pub const POSTS_DELETE: Self = Self::new(Resource::Posts, Action::Delete);
-    pub const POSTS_LIST: Self = Self::new(Resource::Posts, Action::List);
-    pub const POSTS_MANAGE: Self = Self::new(Resource::Posts, Action::Manage);
-
-    pub const NODES_CREATE: Self = Self::new(Resource::Nodes, Action::Create);
-    pub const NODES_READ: Self = Self::new(Resource::Nodes, Action::Read);
-    pub const NODES_UPDATE: Self = Self::new(Resource::Nodes, Action::Update);
-    pub const NODES_DELETE: Self = Self::new(Resource::Nodes, Action::Delete);
-    pub const NODES_LIST: Self = Self::new(Resource::Nodes, Action::List);
-    pub const NODES_MANAGE: Self = Self::new(Resource::Nodes, Action::Manage);
-
-    pub const PAGES_CREATE: Self = Self::new(Resource::Pages, Action::Create);
-    pub const PAGES_READ: Self = Self::new(Resource::Pages, Action::Read);
-    pub const PAGES_UPDATE: Self = Self::new(Resource::Pages, Action::Update);
-    pub const PAGES_DELETE: Self = Self::new(Resource::Pages, Action::Delete);
-    pub const PAGES_LIST: Self = Self::new(Resource::Pages, Action::List);
-    pub const PAGES_MANAGE: Self = Self::new(Resource::Pages, Action::Manage);
-
-    pub const SETTINGS_READ: Self = Self::new(Resource::Settings, Action::Read);
-    pub const SETTINGS_UPDATE: Self = Self::new(Resource::Settings, Action::Update);
-    pub const SETTINGS_MANAGE: Self = Self::new(Resource::Settings, Action::Manage);
-
-    pub const SEO_READ: Self = Self::new(Resource::Seo, Action::Read);
-    pub const SEO_UPDATE: Self = Self::new(Resource::Seo, Action::Update);
-    pub const SEO_PUBLISH: Self = Self::new(Resource::Seo, Action::Publish);
-    pub const SEO_GENERATE: Self = Self::new(Resource::Seo, Action::Execute);
-    pub const SEO_MANAGE: Self = Self::new(Resource::Seo, Action::Manage);
-
-    pub const FLEX_SCHEMAS_CREATE: Self = Self::new(Resource::FlexSchemas, Action::Create);
-    pub const FLEX_SCHEMAS_READ: Self = Self::new(Resource::FlexSchemas, Action::Read);
-    pub const FLEX_SCHEMAS_UPDATE: Self = Self::new(Resource::FlexSchemas, Action::Update);
-    pub const FLEX_SCHEMAS_DELETE: Self = Self::new(Resource::FlexSchemas, Action::Delete);
-    pub const FLEX_SCHEMAS_LIST: Self = Self::new(Resource::FlexSchemas, Action::List);
-    pub const FLEX_SCHEMAS_MANAGE: Self = Self::new(Resource::FlexSchemas, Action::Manage);
-
-    pub const FLEX_ENTRIES_CREATE: Self = Self::new(Resource::FlexEntries, Action::Create);
-    pub const FLEX_ENTRIES_READ: Self = Self::new(Resource::FlexEntries, Action::Read);
-    pub const FLEX_ENTRIES_UPDATE: Self = Self::new(Resource::FlexEntries, Action::Update);
-    pub const FLEX_ENTRIES_DELETE: Self = Self::new(Resource::FlexEntries, Action::Delete);
-    pub const FLEX_ENTRIES_LIST: Self = Self::new(Resource::FlexEntries, Action::List);
-    pub const FLEX_ENTRIES_MANAGE: Self = Self::new(Resource::FlexEntries, Action::Manage);
-
-    pub const ANALYTICS_READ: Self = Self::new(Resource::Analytics, Action::Read);
-    pub const ANALYTICS_EXPORT: Self = Self::new(Resource::Analytics, Action::Export);
-
-    pub const LOGS_READ: Self = Self::new(Resource::Logs, Action::Read);
-    pub const LOGS_LIST: Self = Self::new(Resource::Logs, Action::List);
-
-    pub const BLOG_POSTS_CREATE: Self = Self::new(Resource::BlogPosts, Action::Create);
-    pub const BLOG_POSTS_READ: Self = Self::new(Resource::BlogPosts, Action::Read);
-    pub const BLOG_POSTS_UPDATE: Self = Self::new(Resource::BlogPosts, Action::Update);
-    pub const BLOG_POSTS_DELETE: Self = Self::new(Resource::BlogPosts, Action::Delete);
-    pub const BLOG_POSTS_LIST: Self = Self::new(Resource::BlogPosts, Action::List);
-    pub const BLOG_POSTS_PUBLISH: Self = Self::new(Resource::BlogPosts, Action::Publish);
-    pub const BLOG_POSTS_MANAGE: Self = Self::new(Resource::BlogPosts, Action::Manage);
-
-    pub const FORUM_CATEGORIES_CREATE: Self = Self::new(Resource::ForumCategories, Action::Create);
-    pub const FORUM_CATEGORIES_READ: Self = Self::new(Resource::ForumCategories, Action::Read);
-    pub const FORUM_CATEGORIES_UPDATE: Self = Self::new(Resource::ForumCategories, Action::Update);
-    pub const FORUM_CATEGORIES_DELETE: Self = Self::new(Resource::ForumCategories, Action::Delete);
-    pub const FORUM_CATEGORIES_LIST: Self = Self::new(Resource::ForumCategories, Action::List);
-    pub const FORUM_CATEGORIES_MANAGE: Self = Self::new(Resource::ForumCategories, Action::Manage);
-
-    pub const FORUM_TOPICS_CREATE: Self = Self::new(Resource::ForumTopics, Action::Create);
-    pub const FORUM_TOPICS_READ: Self = Self::new(Resource::ForumTopics, Action::Read);
-    pub const FORUM_TOPICS_UPDATE: Self = Self::new(Resource::ForumTopics, Action::Update);
-    pub const FORUM_TOPICS_DELETE: Self = Self::new(Resource::ForumTopics, Action::Delete);
-    pub const FORUM_TOPICS_LIST: Self = Self::new(Resource::ForumTopics, Action::List);
-    pub const FORUM_TOPICS_MODERATE: Self = Self::new(Resource::ForumTopics, Action::Moderate);
-    pub const FORUM_TOPICS_MANAGE: Self = Self::new(Resource::ForumTopics, Action::Manage);
-
-    pub const FORUM_REPLIES_CREATE: Self = Self::new(Resource::ForumReplies, Action::Create);
-    pub const FORUM_REPLIES_READ: Self = Self::new(Resource::ForumReplies, Action::Read);
-    pub const FORUM_REPLIES_UPDATE: Self = Self::new(Resource::ForumReplies, Action::Update);
-    pub const FORUM_REPLIES_DELETE: Self = Self::new(Resource::ForumReplies, Action::Delete);
-    pub const FORUM_REPLIES_LIST: Self = Self::new(Resource::ForumReplies, Action::List);
-    pub const FORUM_REPLIES_MODERATE: Self = Self::new(Resource::ForumReplies, Action::Moderate);
-    pub const FORUM_REPLIES_MANAGE: Self = Self::new(Resource::ForumReplies, Action::Manage);
-
-    pub const INVENTORY_CREATE: Self = Self::new(Resource::Inventory, Action::Create);
-    pub const INVENTORY_READ: Self = Self::new(Resource::Inventory, Action::Read);
-    pub const INVENTORY_UPDATE: Self = Self::new(Resource::Inventory, Action::Update);
-    pub const INVENTORY_DELETE: Self = Self::new(Resource::Inventory, Action::Delete);
-    pub const INVENTORY_LIST: Self = Self::new(Resource::Inventory, Action::List);
-    pub const INVENTORY_MANAGE: Self = Self::new(Resource::Inventory, Action::Manage);
-
-    pub const SCRIPTS_CREATE: Self = Self::new(Resource::Scripts, Action::Create);
-    pub const SCRIPTS_READ: Self = Self::new(Resource::Scripts, Action::Read);
-    pub const SCRIPTS_UPDATE: Self = Self::new(Resource::Scripts, Action::Update);
-    pub const SCRIPTS_DELETE: Self = Self::new(Resource::Scripts, Action::Delete);
-    pub const SCRIPTS_LIST: Self = Self::new(Resource::Scripts, Action::List);
-    pub const SCRIPTS_EXECUTE: Self = Self::new(Resource::Scripts, Action::Execute);
-    pub const SCRIPTS_MANAGE: Self = Self::new(Resource::Scripts, Action::Manage);
-
-    pub const MCP_CREATE: Self = Self::new(Resource::Mcp, Action::Create);
-    pub const MCP_READ: Self = Self::new(Resource::Mcp, Action::Read);
-    pub const MCP_UPDATE: Self = Self::new(Resource::Mcp, Action::Update);
-    pub const MCP_DELETE: Self = Self::new(Resource::Mcp, Action::Delete);
-    pub const MCP_LIST: Self = Self::new(Resource::Mcp, Action::List);
-    pub const MCP_MANAGE: Self = Self::new(Resource::Mcp, Action::Manage);
-
-    pub const AI_PROVIDERS_READ: Self = Self::new(Resource::AiProviders, Action::Read);
-    pub const AI_PROVIDERS_MANAGE: Self = Self::new(Resource::AiProviders, Action::Manage);
-    pub const AI_TASK_PROFILES_READ: Self = Self::new(Resource::AiTaskProfiles, Action::Read);
-    pub const AI_TASK_PROFILES_MANAGE: Self = Self::new(Resource::AiTaskProfiles, Action::Manage);
-    pub const AI_SESSIONS_READ: Self = Self::new(Resource::AiSessions, Action::Read);
-    pub const AI_SESSIONS_RUN: Self = Self::new(Resource::AiSessions, Action::Run);
-    pub const AI_RUNS_CANCEL: Self = Self::new(Resource::AiRuns, Action::Cancel);
-    pub const AI_APPROVALS_RESOLVE: Self = Self::new(Resource::AiApprovals, Action::Resolve);
-    pub const AI_ROUTER_OVERRIDE: Self = Self::new(Resource::AiRouter, Action::Override);
-    pub const AI_TASKS_TEXT_RUN: Self = Self::new(Resource::AiTextTasks, Action::Run);
-    pub const AI_TASKS_IMAGE_RUN: Self = Self::new(Resource::AiImageTasks, Action::Run);
-    pub const AI_TASKS_CODE_RUN: Self = Self::new(Resource::AiCodeTasks, Action::Run);
-    pub const AI_TASKS_ALLOY_RUN: Self = Self::new(Resource::AiAlloyTasks, Action::Run);
-    pub const AI_TASKS_MULTIMODAL_RUN: Self = Self::new(Resource::AiMultimodalTasks, Action::Run);
-
-    pub const WORKFLOWS_CREATE: Self = Self::new(Resource::Workflows, Action::Create);
-    pub const WORKFLOWS_READ: Self = Self::new(Resource::Workflows, Action::Read);
-    pub const WORKFLOWS_UPDATE: Self = Self::new(Resource::Workflows, Action::Update);
-    pub const WORKFLOWS_DELETE: Self = Self::new(Resource::Workflows, Action::Delete);
-    pub const WORKFLOWS_LIST: Self = Self::new(Resource::Workflows, Action::List);
-    pub const WORKFLOWS_EXECUTE: Self = Self::new(Resource::Workflows, Action::Execute);
-    pub const WORKFLOWS_MANAGE: Self = Self::new(Resource::Workflows, Action::Manage);
-
-    pub const WORKFLOW_EXECUTIONS_READ: Self =
-        Self::new(Resource::WorkflowExecutions, Action::Read);
-    pub const WORKFLOW_EXECUTIONS_LIST: Self =
-        Self::new(Resource::WorkflowExecutions, Action::List);
+    permission_constants! {
+        USERS_CREATE => (Users, Create),
+        USERS_READ => (Users, Read),
+        USERS_UPDATE => (Users, Update),
+        USERS_DELETE => (Users, Delete),
+        USERS_LIST => (Users, List),
+        USERS_MANAGE => (Users, Manage),
+        TENANTS_CREATE => (Tenants, Create),
+        TENANTS_READ => (Tenants, Read),
+        TENANTS_UPDATE => (Tenants, Update),
+        TENANTS_DELETE => (Tenants, Delete),
+        TENANTS_LIST => (Tenants, List),
+        TENANTS_MANAGE => (Tenants, Manage),
+        MODULES_READ => (Modules, Read),
+        MODULES_LIST => (Modules, List),
+        MODULES_MANAGE => (Modules, Manage),
+        SETTINGS_LIST => (Settings, List),
+        SETTINGS_READ => (Settings, Read),
+        SETTINGS_UPDATE => (Settings, Update),
+        SETTINGS_MANAGE => (Settings, Manage),
+        PRODUCTS_CREATE => (Products, Create),
+        PRODUCTS_READ => (Products, Read),
+        PRODUCTS_UPDATE => (Products, Update),
+        PRODUCTS_DELETE => (Products, Delete),
+        PRODUCTS_LIST => (Products, List),
+        PRODUCTS_MANAGE => (Products, Manage),
+        ORDERS_CREATE => (Orders, Create),
+        ORDERS_READ => (Orders, Read),
+        ORDERS_UPDATE => (Orders, Update),
+        ORDERS_DELETE => (Orders, Delete),
+        ORDERS_LIST => (Orders, List),
+        ORDERS_MANAGE => (Orders, Manage),
+        CUSTOMERS_CREATE => (Customers, Create),
+        CUSTOMERS_READ => (Customers, Read),
+        CUSTOMERS_UPDATE => (Customers, Update),
+        CUSTOMERS_DELETE => (Customers, Delete),
+        CUSTOMERS_LIST => (Customers, List),
+        CUSTOMERS_MANAGE => (Customers, Manage),
+        PROFILES_CREATE => (Profiles, Create),
+        PROFILES_READ => (Profiles, Read),
+        PROFILES_UPDATE => (Profiles, Update),
+        PROFILES_DELETE => (Profiles, Delete),
+        PROFILES_LIST => (Profiles, List),
+        PROFILES_MANAGE => (Profiles, Manage),
+        GROUPS_CREATE => (Groups, Create),
+        GROUPS_READ => (Groups, Read),
+        GROUPS_UPDATE => (Groups, Update),
+        GROUPS_DELETE => (Groups, Delete),
+        GROUPS_LIST => (Groups, List),
+        GROUPS_MODERATE => (Groups, Moderate),
+        GROUPS_MANAGE => (Groups, Manage),
+        REGIONS_CREATE => (Regions, Create),
+        REGIONS_READ => (Regions, Read),
+        REGIONS_UPDATE => (Regions, Update),
+        REGIONS_DELETE => (Regions, Delete),
+        REGIONS_LIST => (Regions, List),
+        REGIONS_MANAGE => (Regions, Manage),
+        TAXONOMY_CREATE => (Taxonomy, Create),
+        TAXONOMY_READ => (Taxonomy, Read),
+        TAXONOMY_UPDATE => (Taxonomy, Update),
+        TAXONOMY_DELETE => (Taxonomy, Delete),
+        TAXONOMY_LIST => (Taxonomy, List),
+        TAXONOMY_MANAGE => (Taxonomy, Manage),
+        PAYMENTS_CREATE => (Payments, Create),
+        PAYMENTS_READ => (Payments, Read),
+        PAYMENTS_UPDATE => (Payments, Update),
+        PAYMENTS_DELETE => (Payments, Delete),
+        PAYMENTS_LIST => (Payments, List),
+        PAYMENTS_MANAGE => (Payments, Manage),
+        FULFILLMENTS_CREATE => (Fulfillments, Create),
+        FULFILLMENTS_READ => (Fulfillments, Read),
+        FULFILLMENTS_UPDATE => (Fulfillments, Update),
+        FULFILLMENTS_DELETE => (Fulfillments, Delete),
+        FULFILLMENTS_LIST => (Fulfillments, List),
+        FULFILLMENTS_MANAGE => (Fulfillments, Manage),
+        MARKETPLACE_SELLERS_CREATE => (MarketplaceSellers, Create),
+        MARKETPLACE_SELLERS_READ => (MarketplaceSellers, Read),
+        MARKETPLACE_SELLERS_UPDATE => (MarketplaceSellers, Update),
+        MARKETPLACE_SELLERS_DELETE => (MarketplaceSellers, Delete),
+        MARKETPLACE_SELLERS_LIST => (MarketplaceSellers, List),
+        MARKETPLACE_SELLERS_MANAGE => (MarketplaceSellers, Manage),
+        MARKETPLACE_LISTINGS_CREATE => (MarketplaceListings, Create),
+        MARKETPLACE_LISTINGS_READ => (MarketplaceListings, Read),
+        MARKETPLACE_LISTINGS_UPDATE => (MarketplaceListings, Update),
+        MARKETPLACE_LISTINGS_DELETE => (MarketplaceListings, Delete),
+        MARKETPLACE_LISTINGS_LIST => (MarketplaceListings, List),
+        MARKETPLACE_LISTINGS_MANAGE => (MarketplaceListings, Manage),
+        MARKETPLACE_LISTINGS_PUBLISH => (MarketplaceListings, Publish),
+        MARKETPLACE_LISTINGS_MODERATE => (MarketplaceListings, Moderate),
+        POSTS_CREATE => (Posts, Create),
+        POSTS_READ => (Posts, Read),
+        POSTS_UPDATE => (Posts, Update),
+        POSTS_DELETE => (Posts, Delete),
+        POSTS_LIST => (Posts, List),
+        POSTS_MANAGE => (Posts, Manage),
+        NODES_CREATE => (Nodes, Create),
+        NODES_READ => (Nodes, Read),
+        NODES_UPDATE => (Nodes, Update),
+        NODES_DELETE => (Nodes, Delete),
+        NODES_LIST => (Nodes, List),
+        NODES_MANAGE => (Nodes, Manage),
+        PAGES_CREATE => (Pages, Create),
+        PAGES_READ => (Pages, Read),
+        PAGES_UPDATE => (Pages, Update),
+        PAGES_DELETE => (Pages, Delete),
+        PAGES_LIST => (Pages, List),
+        PAGES_MANAGE => (Pages, Manage),
+        SEO_READ => (Seo, Read),
+        SEO_UPDATE => (Seo, Update),
+        SEO_PUBLISH => (Seo, Publish),
+        SEO_GENERATE => (Seo, Execute),
+        SEO_MANAGE => (Seo, Manage),
+        FLEX_SCHEMAS_CREATE => (FlexSchemas, Create),
+        FLEX_SCHEMAS_READ => (FlexSchemas, Read),
+        FLEX_SCHEMAS_UPDATE => (FlexSchemas, Update),
+        FLEX_SCHEMAS_DELETE => (FlexSchemas, Delete),
+        FLEX_SCHEMAS_LIST => (FlexSchemas, List),
+        FLEX_SCHEMAS_MANAGE => (FlexSchemas, Manage),
+        FLEX_ENTRIES_CREATE => (FlexEntries, Create),
+        FLEX_ENTRIES_READ => (FlexEntries, Read),
+        FLEX_ENTRIES_UPDATE => (FlexEntries, Update),
+        FLEX_ENTRIES_DELETE => (FlexEntries, Delete),
+        FLEX_ENTRIES_LIST => (FlexEntries, List),
+        FLEX_ENTRIES_MANAGE => (FlexEntries, Manage),
+        ANALYTICS_READ => (Analytics, Read),
+        ANALYTICS_EXPORT => (Analytics, Export),
+        LOGS_READ => (Logs, Read),
+        LOGS_LIST => (Logs, List),
+        BLOG_POSTS_CREATE => (BlogPosts, Create),
+        BLOG_POSTS_READ => (BlogPosts, Read),
+        BLOG_POSTS_UPDATE => (BlogPosts, Update),
+        BLOG_POSTS_DELETE => (BlogPosts, Delete),
+        BLOG_POSTS_LIST => (BlogPosts, List),
+        BLOG_POSTS_PUBLISH => (BlogPosts, Publish),
+        BLOG_POSTS_MANAGE => (BlogPosts, Manage),
+        BLOG_CATEGORIES_CREATE => (BlogCategories, Create),
+        BLOG_CATEGORIES_READ => (BlogCategories, Read),
+        BLOG_CATEGORIES_UPDATE => (BlogCategories, Update),
+        BLOG_CATEGORIES_DELETE => (BlogCategories, Delete),
+        BLOG_CATEGORIES_LIST => (BlogCategories, List),
+        BLOG_CATEGORIES_MANAGE => (BlogCategories, Manage),
+        FORUM_CATEGORIES_CREATE => (ForumCategories, Create),
+        FORUM_CATEGORIES_READ => (ForumCategories, Read),
+        FORUM_CATEGORIES_UPDATE => (ForumCategories, Update),
+        FORUM_CATEGORIES_DELETE => (ForumCategories, Delete),
+        FORUM_CATEGORIES_LIST => (ForumCategories, List),
+        FORUM_CATEGORIES_MANAGE => (ForumCategories, Manage),
+        FORUM_TOPICS_CREATE => (ForumTopics, Create),
+        FORUM_TOPICS_READ => (ForumTopics, Read),
+        FORUM_TOPICS_UPDATE => (ForumTopics, Update),
+        FORUM_TOPICS_DELETE => (ForumTopics, Delete),
+        FORUM_TOPICS_LIST => (ForumTopics, List),
+        FORUM_TOPICS_MODERATE => (ForumTopics, Moderate),
+        FORUM_TOPICS_MANAGE => (ForumTopics, Manage),
+        FORUM_REPLIES_CREATE => (ForumReplies, Create),
+        FORUM_REPLIES_READ => (ForumReplies, Read),
+        FORUM_REPLIES_UPDATE => (ForumReplies, Update),
+        FORUM_REPLIES_DELETE => (ForumReplies, Delete),
+        FORUM_REPLIES_LIST => (ForumReplies, List),
+        FORUM_REPLIES_MODERATE => (ForumReplies, Moderate),
+        FORUM_REPLIES_MANAGE => (ForumReplies, Manage),
+        INVENTORY_CREATE => (Inventory, Create),
+        INVENTORY_READ => (Inventory, Read),
+        INVENTORY_UPDATE => (Inventory, Update),
+        INVENTORY_DELETE => (Inventory, Delete),
+        INVENTORY_LIST => (Inventory, List),
+        INVENTORY_MANAGE => (Inventory, Manage),
+        SCRIPTS_CREATE => (Scripts, Create),
+        SCRIPTS_READ => (Scripts, Read),
+        SCRIPTS_UPDATE => (Scripts, Update),
+        SCRIPTS_DELETE => (Scripts, Delete),
+        SCRIPTS_LIST => (Scripts, List),
+        SCRIPTS_EXECUTE => (Scripts, Execute),
+        SCRIPTS_MANAGE => (Scripts, Manage),
+        MCP_CREATE => (Mcp, Create),
+        MCP_READ => (Mcp, Read),
+        MCP_UPDATE => (Mcp, Update),
+        MCP_DELETE => (Mcp, Delete),
+        MCP_LIST => (Mcp, List),
+        MCP_MANAGE => (Mcp, Manage),
+        AI_PROVIDERS_READ => (AiProviders, Read),
+        AI_PROVIDERS_MANAGE => (AiProviders, Manage),
+        AI_TASK_PROFILES_READ => (AiTaskProfiles, Read),
+        AI_TASK_PROFILES_MANAGE => (AiTaskProfiles, Manage),
+        AI_SESSIONS_READ => (AiSessions, Read),
+        AI_SESSIONS_RUN => (AiSessions, Run),
+        AI_RUNS_CANCEL => (AiRuns, Cancel),
+        AI_APPROVALS_RESOLVE => (AiApprovals, Resolve),
+        AI_ROUTER_OVERRIDE => (AiRouter, Override),
+        AI_TASKS_TEXT_RUN => (AiTextTasks, Run),
+        AI_TASKS_IMAGE_RUN => (AiImageTasks, Run),
+        AI_TASKS_CODE_RUN => (AiCodeTasks, Run),
+        AI_TASKS_ALLOY_RUN => (AiAlloyTasks, Run),
+        AI_TASKS_MULTIMODAL_RUN => (AiMultimodalTasks, Run),
+        WORKFLOWS_CREATE => (Workflows, Create),
+        WORKFLOWS_READ => (Workflows, Read),
+        WORKFLOWS_UPDATE => (Workflows, Update),
+        WORKFLOWS_DELETE => (Workflows, Delete),
+        WORKFLOWS_LIST => (Workflows, List),
+        WORKFLOWS_EXECUTE => (Workflows, Execute),
+        WORKFLOWS_MANAGE => (Workflows, Manage),
+        WORKFLOW_EXECUTIONS_READ => (WorkflowExecutions, Read),
+        WORKFLOW_EXECUTIONS_LIST => (WorkflowExecutions, List),
+    }
 }

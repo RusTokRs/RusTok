@@ -33,9 +33,15 @@ pub fn spawn_payment_provider_event_worker(
 ) -> PaymentProviderEventWorkerHandle {
     let instance_id = PAYMENT_PROVIDER_EVENT_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let db = runtime_ctx.db_clone();
+    let observers = runtime_ctx
+        .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+        .unwrap_or_default();
     let recovery = rustok_payment::PaymentProviderEventRecoveryService::new(
         db.clone(),
-        Arc::new(rustok_payment::PaymentDomainEventApplier::new(db.clone())),
+        Arc::new(rustok_payment::PaymentObservedDomainEventApplier::new(
+            db.clone(),
+            observers,
+        )),
     );
     let tenants = rustok_tenant::TenantService::new(db);
 

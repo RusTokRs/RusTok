@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    EntityTrait, ModelTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -9,6 +9,8 @@ use uuid::Uuid;
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
+use rustok_events::DomainEvent;
+use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
     CategoryListItem, CategoryResponse, CreateCategoryInput, ListCategoriesFilter,
@@ -16,15 +18,16 @@ use crate::dto::{
 };
 use crate::entities::{blog_category, blog_category_translation};
 use crate::error::{BlogError, BlogResult};
-use crate::services::rbac::{enforce_owned_scope, enforce_scope};
+use crate::services::rbac::enforce_scope;
 
 pub struct CategoryService {
     db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
 }
 
 impl CategoryService {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
     }
 
     #[instrument(skip(self, security, input))]
@@ -34,11 +37,17 @@ impl CategoryService {
         security: SecurityContext,
         input: CreateCategoryInput,
     ) -> BlogResult<Uuid> {
-        enforce_scope(&security, Resource::Categories, Action::Create)?;
+        enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
         validate_category_name(&input.name)?;
-        let slug = normalize_category_slug(input.slug.as_deref(), &input.name);
+        let slug = normalize_category_slug(input.slug.as_deref(), &input.name)?;
+        let locale = normalize_locale(&input.locale)?;
         let now = Utc::now();
         let id = Uuid::new_v4();
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
+
+        if let Some(parent_id) = input.parent_id {
+            Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
+        }
 
         blog_category::ActiveModel {
             id: Set(id),
@@ -51,25 +60,26 @@ impl CategoryService {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
         blog_category_translation::ActiveModel {
             id: Set(Uuid::new_v4()),
             category_id: Set(id),
             tenant_id: Set(tenant_id),
-            locale: Set(normalize_locale(&input.locale)?),
+            locale: Set(locale),
             name: Set(input.name),
             slug: Set(slug),
             description: Set(input.description),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
+        txn.commit().await.map_err(BlogError::from)?;
         Ok(id)
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, security))]
     pub async fn get(
         &self,
         tenant_id: Uuid,
@@ -77,15 +87,16 @@ impl CategoryService {
         category_id: Uuid,
         locale: &str,
     ) -> BlogResult<CategoryResponse> {
-        enforce_scope(&security, Resource::Categories, Action::Read)?;
+        enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
 
-        let translations = category
-            .find_related(blog_category_translation::Entity)
+        let translations = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
             .all(&self.db)
             .await?;
 
@@ -100,12 +111,13 @@ impl CategoryService {
         security: SecurityContext,
         input: UpdateCategoryInput,
     ) -> BlogResult<CategoryResponse> {
+        enforce_scope(&security, Resource::BlogCategories, Action::Update)?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_owned_scope(&security, Resource::Categories, Action::Update, category.id)?;
 
         let mut active: blog_category::ActiveModel = category.into();
         active.updated_at = Set(Utc::now().into());
@@ -115,13 +127,14 @@ impl CategoryService {
         if let Some(settings) = input.settings {
             active.settings = Set(settings);
         }
-        let category = active.update(&self.db).await?;
+        let category = active.update(&txn).await?;
 
         let locale = normalize_locale(&input.locale)?;
         let existing_translation = blog_category_translation::Entity::find()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
             .filter(blog_category_translation::Column::Locale.eq(&locale))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         match existing_translation {
@@ -131,7 +144,7 @@ impl CategoryService {
                     validate_category_name(name)?;
                     active.name = Set(name.to_string());
                     if input.slug.is_none() {
-                        active.slug = Set(normalize_slug_like(name));
+                        active.slug = Set(normalize_non_empty_slug(name)?);
                     }
                 }
                 if let Some(slug_value) = input.slug.as_deref() {
@@ -140,7 +153,7 @@ impl CategoryService {
                 if input.description.is_some() {
                     active.description = Set(input.description);
                 }
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
             }
             None => {
                 let name = input
@@ -149,7 +162,7 @@ impl CategoryService {
                 validate_category_name(&name)?;
                 let slug = match input.slug.as_deref() {
                     Some(slug_value) => normalize_non_empty_slug(slug_value)?,
-                    None => normalize_slug_like(&name),
+                    None => normalize_non_empty_slug(&name)?,
                 };
 
                 blog_category_translation::ActiveModel {
@@ -161,17 +174,23 @@ impl CategoryService {
                     slug: Set(slug),
                     description: Set(input.description),
                 }
-                .insert(&self.db)
+                .insert(&txn)
                 .await?;
             }
         }
 
-        let translations = blog_category_translation::Entity::find()
-            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-            .all(&self.db)
+        self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
 
-        Ok(to_category_response(category, translations, &locale))
+        let translations = blog_category_translation::Entity::find()
+            .filter(blog_category_translation::Column::CategoryId.eq(category_id))
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .all(&txn)
+            .await?;
+        let response = to_category_response(category, translations, &locale);
+
+        txn.commit().await.map_err(BlogError::from)?;
+        Ok(response)
     }
 
     #[instrument(skip(self, security))]
@@ -181,19 +200,26 @@ impl CategoryService {
         category_id: Uuid,
         security: SecurityContext,
     ) -> BlogResult<()> {
+        enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;
+        let txn = self.db.begin().await.map_err(BlogError::from)?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(category_id))?;
-        enforce_owned_scope(&security, Resource::Categories, Action::Delete, category.id)?;
 
         blog_category_translation::Entity::delete_many()
             .filter(blog_category_translation::Column::CategoryId.eq(category_id))
-            .exec(&self.db)
+            .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
+            .exec(&txn)
             .await?;
 
-        category.delete(&self.db).await?;
+        category.delete(&txn).await?;
+
+        self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
+            .await?;
+
+        txn.commit().await.map_err(BlogError::from)?;
         Ok(())
     }
 
@@ -204,16 +230,17 @@ impl CategoryService {
         security: SecurityContext,
         filter: ListCategoriesFilter,
     ) -> BlogResult<(Vec<CategoryListItem>, u64)> {
-        enforce_scope(&security, Resource::Categories, Action::List)?;
+        enforce_scope(&security, Resource::BlogCategories, Action::List)?;
         let locale = filter
             .locale
             .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
         let page = filter.page.max(1);
+        let per_page = filter.per_page.clamp(1, 100);
 
         let paginator = blog_category::Entity::find()
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .order_by_asc(blog_category::Column::Position)
-            .paginate(&self.db, filter.per_page.max(1));
+            .paginate(&self.db, per_page);
 
         let total = paginator.num_items().await?;
         let categories = paginator.fetch_page(page - 1).await?;
@@ -222,6 +249,7 @@ impl CategoryService {
             Vec::new()
         } else {
             blog_category_translation::Entity::find()
+                .filter(blog_category_translation::Column::TenantId.eq(tenant_id))
                 .filter(blog_category_translation::Column::CategoryId.is_in(category_ids))
                 .all(&self.db)
                 .await?
@@ -272,6 +300,26 @@ impl CategoryService {
         }
         Ok(())
     }
+
+    async fn publish_blog_reindex_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        actor_id: Option<Uuid>,
+    ) -> BlogResult<()> {
+        self.event_bus
+            .publish_in_tx(
+                txn,
+                tenant_id,
+                actor_id,
+                DomainEvent::ReindexRequested {
+                    target_type: "blog".to_string(),
+                    target_id: None,
+                },
+            )
+            .await
+            .map_err(BlogError::from)
+    }
 }
 
 fn validate_category_name(name: &str) -> BlogResult<()> {
@@ -294,18 +342,20 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
     Ok(normalized)
 }
 
-fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> String {
-    input
+fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResult<String> {
+    let value = input
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(normalize_slug_like)
-        .unwrap_or_else(|| normalize_slug_like(fallback_name))
+        .unwrap_or(fallback_name);
+    normalize_non_empty_slug(value)
 }
 
 fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
     let normalized = normalize_slug_like(slug);
     if normalized.is_empty() {
-        return Err(BlogError::validation("Slug cannot be empty"));
+        return Err(BlogError::validation(
+            "Slug must contain at least one ASCII letter or digit",
+        ));
     }
     Ok(normalized)
 }
@@ -341,7 +391,10 @@ fn resolve_category_translation<'a>(
         .copied()
         .find(|translation| translation.locale == PLATFORM_FALLBACK_LOCALE)
     {
-        return (Some(translation), PLATFORM_FALLBACK_LOCALE.to_string());
+        return (
+            Some(translation),
+            PLATFORM_FALLBACK_LOCALE.to_string(),
+        );
     }
     if let Some(translation) = translations.first().copied() {
         return (Some(translation), translation.locale.clone());

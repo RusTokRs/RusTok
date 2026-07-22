@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.0",
+  "module": "groups",
+  "status": "in_progress",
+  "provider": {
+    "owner": "rustok-groups",
+    "contract_version": "groups.access.v1",
+    "context_type": "rustok_api::PortContext",
+    "error_type": "rustok_api::PortError",
+    "ports": [
+      {
+        "name": "GroupSummaryReadPort",
+        "operations": ["read_group", "list_groups"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false
+      },
+      {
+        "name": "GroupMembershipReadPort",
+        "operations": ["read_membership", "list_memberships"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false
+      },
+      {
+        "name": "GroupAccessReadPort",
+        "operations": ["decide_group_access", "enabled_group_features"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false
+      },
+      {
+        "name": "GroupLocalizationReadPort",
+        "operations": ["list_group_translations"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_or_admin_or_platform_manage"
+      },
+      {
+        "name": "GroupInvitationReadPort",
+        "operations": ["list_group_invitations"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_admin_moderator_or_platform_manage"
+      },
+      {
+        "name": "GroupApplicationReadPort",
+        "operations": [
+          "read_group_application_policy",
+          "list_group_membership_applications"
+        ],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "policy_read_authorization": "authenticated_non_banned_request_group_candidate",
+        "application_list_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "exact_locale_only": true
+      },
+      {
+        "name": "GroupApplicationPolicyHistoryReadPort",
+        "operations": ["list_group_application_policy_revisions"],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "active_owner_admin_moderator_or_platform_manage",
+        "append_only_source": "group_membership_policy_revisions"
+      },
+      {
+        "name": "GroupCommandPort",
+        "operations": ["create_group", "join_group", "leave_group", "set_group_feature"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true
+      },
+      {
+        "name": "GroupLocalizationCommandPort",
+        "operations": ["upsert_group_translation", "delete_group_translation"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "authorization": "active_owner_or_admin_or_platform_manage",
+        "exact_locale_only": true,
+        "last_translation_delete": "deny",
+        "transactional_group_version": true,
+        "serialized_group_row": "exclusive_lock_where_supported"
+      },
+      {
+        "name": "GroupInvitationCommandPort",
+        "operations": [
+          "create_group_invitation",
+          "revoke_group_invitation",
+          "accept_group_invitation"
+        ],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "management_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "acceptance_authorization": "authenticated_target_or_authenticated_link_holder",
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "serialized_invitation_row": "exclusive_lock_where_supported"
+      },
+      {
+        "name": "GroupTargetedInvitationCommandPort",
+        "operations": ["accept_targeted_group_invitation"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "authorization": "authenticated_exact_target_only",
+        "targeted_only": true,
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "serialized_invitation_row": "exclusive_lock_where_supported"
+      },
+      {
+        "name": "GroupApplicationCommandPort",
+        "operations": [
+          "upsert_group_application_policy",
+          "submit_group_membership_application",
+          "review_group_membership_application"
+        ],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "policy_management_authorization": "active_owner_admin_or_platform_manage",
+        "submission_authorization": "authenticated_non_banned_request_group_candidate",
+        "review_authorization": "active_owner_admin_moderator_or_platform_manage",
+        "exact_locale_only": true,
+        "transactional_receipt": true,
+        "transactional_audit": true,
+        "transactional_membership": true,
+        "transactional_group_version": true,
+        "serialized_group_row": "exclusive_lock_where_supported",
+        "serialized_application_row": "exclusive_lock_where_supported"
+      },
+      {
+        "name": "GroupGovernanceCommandPort",
+        "operations": ["change_group_role", "transfer_group_ownership"],
+        "policy": "write",
+        "deadline_required": true,
+        "idempotency_key_required": true,
+        "transactional_receipt": true,
+        "transactional_audit": true
+      }
+    ]
+  },
+  "privacy": {
+    "default_on_provider_unavailable": "deny_private_content",
+    "public_summary_degraded_mode": "minimal_safe_summary_or_unavailable",
+    "closed_group_discovery": "summary_shell",
+    "closed_group_private_content": "active_membership_or_platform_manage",
+    "closed_group_redaction": ["translation_body", "feature_bindings"],
+    "secret_group_discovery": "never_disclose",
+    "secret_group_direct_read": "not_found_without_membership_or_platform_manage",
+    "action_split": {
+      "view_summary": "discoverable_shell",
+      "view": "private_content"
+    }
+  },
+  "localization": {
+    "effective_locale_owner": "host_runtime",
+    "module_local_fallback": false,
+    "management_selection": "exact_normalized_locale",
+    "delete_last_translation": "deny",
+    "version_bump": "same_transaction",
+    "mutation_serialization": "base_group_row"
+  },
+  "invitations": {
+    "plaintext_token_storage": "never",
+    "token_digest": "sha256_hex",
+    "token_delivery": "create_response_once",
+    "create_replay_token": "null",
+    "targeted_max_uses": 1,
+    "shareable_max_uses": 100,
+    "minimum_expiry_seconds": 300,
+    "maximum_expiry_seconds": 2592000,
+    "revocation": "owner_state",
+    "acceptance_serialization": "invitation_row_plus_unique_redemption",
+    "membership_activation": "same_transaction",
+    "synchronous_notification_delivery": false,
+    "storefront_acceptance_ui": "implemented",
+    "storefront_token_query_key": "invite",
+    "storefront_targeted_query_key": "invitation",
+    "storefront_token_query_clear": "on_submit",
+    "storefront_targeted_query_clear": "on_submit",
+    "storefront_plaintext_result_rendering": "never",
+    "storefront_transport_fallback": "never",
+    "targeted_acceptance": "authenticated_invitation_id",
+    "targeted_acceptance_wrong_recipient": "not_found",
+    "targeted_domain_event_table": "group_domain_events",
+    "targeted_domain_event_type": "groups.invitation.targeted_created",
+    "targeted_domain_event_atomicity": "same_owner_transaction_via_trigger",
+    "targeted_domain_event_token_fields": "forbidden",
+    "targeted_notification_source": "groups",
+    "targeted_notification_audience_max": 1,
+    "targeted_notification_open_authorization": "active_exact_recipient_only",
+    "shareable_notification_event": false,
+    "notifications_consumer_required_for_create": false
+  },
+  "membership_applications": {
+    "join_policy": "request_only",
+    "secret_group_submission": "not_found",
+    "policy_owner_tables": [
+      "group_membership_policies",
+      "group_membership_policy_translations",
+      "group_membership_policy_revisions"
+    ],
+    "application_owner_table": "group_membership_applications",
+    "policy_locale_selection": "exact_host_effective_locale",
+    "module_local_fallback": false,
+    "policy_revision": "monotonic_per_group",
+    "policy_revision_capture": "same_transaction_database_trigger",
+    "policy_revision_mutation": "append_only",
+    "policy_revision_history_read": "manager_only",
+    "submission_snapshot": "immutable_json_snapshot_on_application",
+    "question_limit": 20,
+    "rule_limit": 20,
+    "required_answers": "owner_revalidated",
+    "required_rule_acknowledgements": "owner_revalidated",
+    "unique_current_application": "tenant_group_user",
+    "approve_membership_state": "active",
+    "reject_membership_state": "left",
+    "approve_member_count": "increment_same_transaction",
+    "review_note_max_chars": 2000,
+    "admin_review_ui": "implemented",
+    "admin_policy_editor": "implemented_source",
+    "admin_policy_stale_preflight": "implemented_source_non_atomic",
+    "atomic_expected_revision_guard": "planned",
+    "storefront_application_ui": "implemented",
+    "storefront_query_key": "apply",
+    "storefront_query_clear": "on_success",
+    "transport_fallback": "never",
+    "bulk_review": "planned",
+    "policy_revision_history": "implemented_source"
+  },
+  "feature_provider": {
+    "identity": "namespaced_key_plus_contract_version",
+    "examples": [
+      "forum.discussions",
+      "blog.posts",
+      "pages.wiki",
+      "marketplace.store",
+      "media.gallery"
+    ],
+    "degraded_modes": ["hidden", "readonly", "unavailable"],
+    "implicit_fallback": false
+  },
+  "transport_profiles": [
+    {
+      "name": "embedded_native",
+      "provider": "GroupsService",
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"]
+    },
+    {
+      "name": "embedded_localization_native",
+      "provider": "GroupLocalizationService",
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "implicit_fallback": false
+    },
+    {
+      "name": "embedded_invitations_native",
+      "provider": "GroupInvitationService",
+      "status": "implemented",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "storefront_core",
+        "storefront_graphql_adapter",
+        "storefront_leptos_ui"
+      ],
+      "implicit_fallback": false
+    },
+    {
+      "name": "embedded_targeted_invitations_native",
+      "provider": "GroupTargetedInvitationService",
+      "status": "implemented",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "storefront_core",
+        "storefront_graphql_adapter",
+        "storefront_leptos_ui",
+        "notification_source_provider"
+      ],
+      "implicit_fallback": false
+    },
+    {
+      "name": "embedded_membership_applications_native",
+      "provider": "GroupApplicationService",
+      "status": "implemented",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "admin_core",
+        "admin_graphql_adapter",
+        "admin_leptos_ui",
+        "storefront_core",
+        "storefront_graphql_adapter",
+        "storefront_leptos_ui"
+      ],
+      "implicit_fallback": false
+    },
+    {
+      "name": "embedded_membership_policy_history_native",
+      "provider": "GroupApplicationPolicyHistoryService",
+      "status": "implemented_source",
+      "surfaces": [
+        "rust_port",
+        "graphql",
+        "leptos_server_function",
+        "admin_graphql_adapter",
+        "admin_leptos_ui"
+      ],
+      "implicit_fallback": false
+    },
+    {
+      "name": "embedded_governance_native",
+      "provider": "GroupGovernanceService",
+      "status": "implemented",
+      "surfaces": ["rust_port", "graphql", "leptos_server_function"],
+      "implicit_fallback": false
+    },
+    {
+      "name": "remote_adapter_placeholder",
+      "provider": null,
+      "status": "planned"
+    }
+  ],
+  "evidence": {
+    "static_boundary": "scripts/verify/verify-groups-boundary.mjs",
+    "localization_static_boundary": "scripts/verify/verify-groups-localization-boundary.mjs",
+    "invitation_static_boundary": "scripts/verify/verify-groups-invitations-boundary.mjs",
+    "invitation_acceptance_ui_static_boundary": "scripts/verify/verify-groups-invitation-acceptance-ui.mjs",
+    "targeted_invitation_delivery_static_boundary": "scripts/verify/verify-groups-targeted-invitation-delivery.mjs",
+    "membership_application_static_boundary": "scripts/verify/verify-groups-membership-applications.mjs",
+    "membership_policy_revision_static_boundary": "scripts/verify/verify-groups-membership-policy-revisions.mjs",
+    "runtime_provider_consumer": null,
+    "runtime_fallback": null,
+    "runtime_retry_recovery": null,
+    "localization_transport_parity": null,
+    "localization_concurrency": null,
+    "invitation_transport_parity": null,
+    "invitation_concurrency": null,
+    "invitation_delivery": null,
+    "targeted_invitation_notification_runtime": null,
+    "membership_application_transport_parity": null,
+    "membership_application_concurrency": null,
+    "membership_application_policy_revision": null,
+    "membership_application_bulk_review": null,
+    "governance_transport_parity": null,
+    "governance_concurrency": null
+  }
+}

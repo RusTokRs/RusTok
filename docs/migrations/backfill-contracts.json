@@ -1,4 +1,127 @@
 {
   "schema_version": 1,
-  "contracts": []
+  "contracts": [
+    {
+      "id": "pages-locale-width-32",
+      "migration": "m20260721_000003_expand_pages_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "DDL-only widening from VARCHAR(16) to VARCHAR(32); existing locale values require no backfill"
+    },
+    {
+      "id": "content-locale-width-32",
+      "migration": "m20260721_000004_expand_content_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-content",
+      "reason": "DDL-only widening of content translation, body, media, and URL locale columns; existing values require no backfill"
+    },
+    {
+      "id": "blog-locale-width-32",
+      "migration": "m20260721_000005_expand_blog_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-blog",
+      "reason": "DDL-only widening of Blog post and category translation locales; existing values require no backfill"
+    },
+    {
+      "id": "taxonomy-locale-width-32",
+      "migration": "m20260721_000006_expand_taxonomy_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-taxonomy",
+      "reason": "DDL-only widening of taxonomy translation and alias locales; existing values require no backfill"
+    },
+    {
+      "id": "comments-locale-width-32",
+      "migration": "m20260721_000007_expand_comment_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-comments",
+      "reason": "DDL-only widening of comment body locales; existing values require no backfill"
+    },
+    {
+      "id": "profiles-locale-width-32",
+      "migration": "m20260721_000009_expand_profile_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-profiles",
+      "reason": "DDL-only widening of profile preference and translation locale columns; existing values require no backfill"
+    },
+    {
+      "id": "profiles-display-name-translations",
+      "migration": "m20260721_000010_move_profile_display_name_to_translations",
+      "mode": "fixture",
+      "owner": "rustok-profiles",
+      "reason": "Legacy base-row display copy without a matching translation must be retained with truthful und provenance before the base column is dropped",
+      "setup_sql": "INSERT INTO profiles (user_id, tenant_id, handle, display_name, preferred_locale, visibility, status, created_at, updated_at) VALUES ('10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 'legacy-profile', 'Legacy Profile', NULL, 'public', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'profiles' AND column_name = 'display_name') AND EXISTS (SELECT 1 FROM profile_translations WHERE profile_user_id = '10000000-0000-0000-0000-000000000001'::uuid AND locale = 'und' AND display_name = 'Legacy Profile')) AS passed"
+    },
+    {
+      "id": "commerce-localized-records-width-32",
+      "migration": "m20260721_000007_align_language_agnostic_locale_contract",
+      "mode": "none",
+      "owner": "rustok-commerce",
+      "reason": "Backend-specific widening of collection and product-category translation locale columns; existing locale values require no semantic backfill"
+    },
+    {
+      "id": "search-query-locale-width-32",
+      "migration": "m20260721_000008_expand_search_query_locale_storage",
+      "mode": "none",
+      "owner": "rustok-search",
+      "reason": "Widen search query log locale attribution to the platform locale width; existing observed locale values require no semantic backfill"
+    },
+    {
+      "id": "index-projection-locale-width-32",
+      "migration": "m20260721_000003_expand_index_locale_storage_columns",
+      "mode": "none",
+      "owner": "rustok-index",
+      "reason": "Widen localized content and product projection locale attribution to the platform locale width; projection rows require no semantic backfill"
+    },
+    {
+      "id": "flex-schema-copy-provenance",
+      "migration": "m20260405_000002_split_flex_schema_localized_fields",
+      "mode": "fixture",
+      "owner": "flex",
+      "reason": "Legacy Flex schema name and description had no source locale and must be preserved under storage-only und before base columns are removed",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('30000000-0000-0000-0000-000000000001', 'Flex fixture tenant', 'flex-fixture-tenant'); INSERT INTO flex_schemas (id, tenant_id, slug, name, description, fields_config, settings, is_active, created_at, updated_at) VALUES ('30000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001', 'legacy-schema', 'Legacy Flex Schema', 'Legacy Flex description', '[]'::jsonb, '{}'::jsonb, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'flex_schemas' AND column_name IN ('name', 'description')) AND EXISTS (SELECT 1 FROM flex_schema_translations WHERE schema_id = '30000000-0000-0000-0000-000000000002'::uuid AND locale = 'und' AND name = 'Legacy Flex Schema' AND description = 'Legacy Flex description')) AS passed"
+    },
+    {
+      "id": "flex-entry-localized-values-provenance",
+      "migration": "m20260407_000001_split_flex_entry_localized_values",
+      "mode": "fixture",
+      "owner": "flex",
+      "reason": "Legacy localized Flex entry JSON had no source locale and must be extracted under storage-only und instead of the tenant fallback locale",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('31000000-0000-0000-0000-000000000001', 'Flex entry fixture tenant', 'flex-entry-fixture-tenant'); INSERT INTO flex_schemas (id, tenant_id, slug, fields_config, settings, is_active, created_at, updated_at) VALUES ('31000000-0000-0000-0000-000000000002', '31000000-0000-0000-0000-000000000001', 'entry-schema', '[{\"field_key\":\"headline\",\"is_localized\":true},{\"field_key\":\"code\",\"is_localized\":false}]'::jsonb, '{}'::jsonb, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT INTO flex_entries (id, tenant_id, schema_id, data, status, created_at, updated_at) VALUES ('31000000-0000-0000-0000-000000000003', '31000000-0000-0000-0000-000000000001', '31000000-0000-0000-0000-000000000002', '{\"headline\":\"Legacy headline\",\"code\":\"A\"}'::jsonb, 'draft', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT (EXISTS (SELECT 1 FROM flex_entry_localized_values WHERE entry_id = '31000000-0000-0000-0000-000000000003'::uuid AND locale = 'und' AND data ->> 'headline' = 'Legacy headline') AND NOT ((SELECT data FROM flex_entries WHERE id = '31000000-0000-0000-0000-000000000003'::uuid) ? 'headline') AND (SELECT data ->> 'code' FROM flex_entries WHERE id = '31000000-0000-0000-0000-000000000003'::uuid) = 'A') AS passed"
+    },
+    {
+      "id": "marketplace-seller-prose-events",
+      "migration": "m20260721_000005_drop_seller_legacy_prose_columns",
+      "mode": "none",
+      "owner": "rustok-marketplace-seller",
+      "reason": "Legacy prose was already preserved as immutable provenance-aware seller events by the preceding backfill migration; the final cutover only drops obsolete base columns"
+    },
+    {
+      "id": "oauth-app-copy-translations",
+      "migration": "m20260721_000009_move_oauth_app_copy_to_translations",
+      "mode": "fixture",
+      "owner": "rustok-auth",
+      "reason": "Legacy OAuth application display copy must be retained with truthful und provenance before name and description are removed from the base table",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('20000000-0000-0000-0000-000000000001', 'OAuth fixture tenant', 'oauth-fixture-tenant'); INSERT INTO oauth_apps (id, tenant_id, name, slug, description, app_type, client_id, redirect_uris, scopes, grant_types) VALUES ('20000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Legacy OAuth App', 'legacy-oauth-app', 'Legacy OAuth description', 'third_party', '20000000-0000-0000-0000-000000000003', '[]'::jsonb, '[]'::jsonb, '[\"authorization_code\"]'::jsonb)",
+      "assertion_sql": "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'oauth_apps' AND column_name IN ('name', 'description')) AND EXISTS (SELECT 1 FROM oauth_app_translations WHERE tenant_id = '20000000-0000-0000-0000-000000000001'::uuid AND app_id = '20000000-0000-0000-0000-000000000002'::uuid AND locale = 'und' AND name = 'Legacy OAuth App' AND description = 'Legacy OAuth description')) AS passed"
+    },
+    {
+      "id": "order-change-source-provenance",
+      "migration": "m20260721_000117_add_order_change_source_locale",
+      "mode": "fixture",
+      "owner": "rustok-order",
+      "reason": "Existing immutable order change prose had no source locale and must receive explicit und attribution while the runtime transport propagation slice remains open",
+      "setup_sql": "INSERT INTO tenants (id, name, slug) VALUES ('32000000-0000-0000-0000-000000000001', 'Order fixture tenant', 'order-fixture-tenant'); INSERT INTO orders (id, tenant_id, status, currency_code, total_amount, tax_total, tax_included, metadata, created_at, updated_at) VALUES ('32000000-0000-0000-0000-000000000002', '32000000-0000-0000-0000-000000000001', 'pending', 'USD', 0, 0, FALSE, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP); INSERT INTO order_changes (id, tenant_id, order_id, created_by, change_type, status, description, preview, metadata, created_at, updated_at) VALUES ('32000000-0000-0000-0000-000000000003', '32000000-0000-0000-0000-000000000001', '32000000-0000-0000-0000-000000000002', '32000000-0000-0000-0000-000000000004', 'manual', 'pending', 'Legacy order change prose', '{}'::jsonb, '{}'::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+      "assertion_sql": "SELECT EXISTS (SELECT 1 FROM order_changes WHERE id = '32000000-0000-0000-0000-000000000003'::uuid AND source_locale = 'und' AND description = 'Legacy order change prose') AS passed"
+    },
+    {
+      "id": "customer-locale-width-32",
+      "migration": "m20260721_000105_expand_customer_locale_contract",
+      "mode": "none",
+      "owner": "rustok-customer",
+      "reason": "Forward locale-width expansion with backend-specific schema preservation; existing locale values require no semantic backfill"
+    }
+  ]
 }

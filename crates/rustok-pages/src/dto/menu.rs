@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MenuLocation {
     Header,
@@ -12,15 +12,27 @@ pub enum MenuLocation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct CreateMenuInput {
+pub struct MenuTranslationInput {
+    pub locale: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct MenuItemTranslationInput {
+    pub locale: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateMenuInput {
+    pub translations: Vec<MenuTranslationInput>,
     pub location: MenuLocation,
     pub items: Vec<MenuItemInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MenuItemInput {
-    pub title: String,
+    pub translations: Vec<MenuItemTranslationInput>,
     pub url: Option<String>,
     pub page_id: Option<Uuid>,
     pub icon: Option<String>,
@@ -31,6 +43,8 @@ pub struct MenuItemInput {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MenuResponse {
     pub id: Uuid,
+    pub effective_locale: String,
+    pub available_locales: Vec<String>,
     pub name: String,
     pub location: MenuLocation,
     pub items: Vec<MenuItemResponse>,
@@ -39,8 +53,17 @@ pub struct MenuResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MenuItemResponse {
     pub id: Uuid,
-    pub title: Option<String>,
+    pub title: String,
     pub url: String,
     pub icon: Option<String>,
     pub children: Vec<MenuItemResponse>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct ActiveMenuBindingResponse {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub channel_id: Uuid,
+    pub location: MenuLocation,
+    pub menu_id: Uuid,
 }

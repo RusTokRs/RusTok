@@ -25,9 +25,14 @@ The platform introduces module-owned runtime capability registration via `rustok
 
 The following rules are adopted:
 
-- `RusToKModule` gets a hook `register_runtime_extensions(&mut ModuleRuntimeExtensions)`;
-- the host (`apps/server`) builds a single shared `ModuleRuntimeExtensions` after `build_registry()` and calls
-  this hook on all registered modules;
+- `RusToKModule` gets a fallible hook
+  `register_runtime_extensions(&mut ModuleRuntimeExtensions) -> rustok_core::Result<()>`;
+- duplicate providers, invalid deployment configuration, and other registration failures must be returned by
+  the owner module rather than converted to `expect`/`panic`;
+- `ModuleRegistry::build_runtime_extensions()` invokes the hook for every registered module and adds the
+  module slug to any returned error;
+- the host (`apps/server`) builds a single shared `ModuleRuntimeExtensions` after `build_registry()` and
+  propagates registration/materialization failures through the application startup result;
 - the resulting `ModuleRuntimeExtensions` is placed in the shared runtime store and into the GraphQL schema data;
 - support/capability crates publish typed registries on top of this mechanism, but do not become
   tenant-aware modules themselves as a result.
@@ -48,6 +53,8 @@ such registration seams remains the Rust-side hook.
 
 - Adding a new SEO-capable backend module no longer requires modifying `rustok-seo` core.
 - A reusable platform pattern emerges for other runtime capabilities, not only for SEO.
+- Invalid provider composition fails deployment startup with an actionable module-owned error instead of
+  terminating through a panic.
 - The host runtime must initialize `ModuleRuntimeExtensions` once and propagate it to all
   shared entrypoints.
 - A support/capability crate is still not considered a platform module solely due to participation in runtime wiring.

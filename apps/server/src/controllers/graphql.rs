@@ -9,7 +9,7 @@ use axum::{
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, header},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::get,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -75,7 +75,7 @@ async fn graphql_handler(
     OptionalCurrentUser(current_user): OptionalCurrentUser,
     headers: HeaderMap,
     Json(req): Json<async_graphql::Request>,
-) -> Json<async_graphql::Response> {
+) -> Response {
     let db = runtime_ctx.db_clone();
     let locale = Locale::parse(&request_context.locale).unwrap_or_default();
     if let Some(hash) = persisted_query_hash(&req) {
@@ -121,7 +121,14 @@ async fn graphql_handler(
     }
 
     let response = with_rbac_request_scope(rbac_scope, schema.execute(request)).await;
-    Json(response)
+    graphql_http_response(response)
+}
+
+fn graphql_http_response(response: async_graphql::Response) -> Response {
+    let graphql_headers = response.http_headers.clone();
+    let mut response = Json(response).into_response();
+    response.headers_mut().extend(graphql_headers);
+    response
 }
 
 fn persisted_query_hash(req: &async_graphql::Request) -> Option<&str> {
@@ -403,16 +410,42 @@ pub fn router() -> crate::routes::ServerRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::graphql_permissions;
+    use super::{graphql_http_response, graphql_permissions};
     use crate::{
         common::settings::RustokSettings, middleware::tenant,
         services::server_runtime_context::ServerRuntimeContext,
     };
+    use axum::http::{HeaderMap, header};
     use rustok_api::{Permission, Resource};
     use rustok_cache::CacheService;
     use rustok_migrations::Migrator;
     use sea_orm::{ActiveModelTrait, Set};
     use serial_test::serial;
+
+    #[test]
+    fn graphql_http_response_preserves_extension_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::RETRY_AFTER, "23".parse().expect("valid header"));
+        let graphql_response = async_graphql::Response::new(async_graphql::Value::Null)
+            .http_headers(headers);
+
+        let http_response = graphql_http_response(graphql_response);
+
+        assert_eq!(
+            http_response
+                .headers()
+                .get(header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok()),
+            Some("23")
+        );
+        assert_eq!(
+            http_response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+    }
 
     #[tokio::test]
     #[serial]

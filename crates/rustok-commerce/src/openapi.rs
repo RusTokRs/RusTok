@@ -74,6 +74,13 @@ use utoipa::openapi::{Content, Ref};
         crate::controllers::marketplace_financial::show_paid_event,
         crate::controllers::marketplace_financial::retry_paid_event,
         crate::controllers::marketplace_financial::run_recovery_sweep,
+        crate::controllers::marketplace_reversal_financial::list_operator_review,
+        crate::controllers::marketplace_reversal_financial::show_event,
+        crate::controllers::marketplace_reversal_financial::retry_event,
+        crate::controllers::marketplace_reversal_financial::run_recovery_sweep,
+        crate::controllers::marketplace_reversal_financial::list_adaptation_failures_operator_review,
+        crate::controllers::marketplace_reversal_financial::show_adaptation_failure,
+        crate::controllers::marketplace_reversal_financial::retry_adaptation_failure,
     ),
     components(
         schemas(
@@ -152,6 +159,11 @@ use utoipa::openapi::{Content, Ref};
             crate::controllers::marketplace_financial::MarketplacePaidEventResponse,
             crate::controllers::marketplace_financial::MarketplaceFinancialSweepFailureResponse,
             crate::controllers::marketplace_financial::MarketplaceFinancialSweepResponse,
+            crate::controllers::marketplace_reversal_financial::MarketplaceReversalSweepInput,
+            crate::controllers::marketplace_reversal_financial::MarketplaceReversalEventResponse,
+            crate::controllers::marketplace_reversal_financial::MarketplaceReversalAdaptationFailureResponse,
+            crate::controllers::marketplace_reversal_financial::MarketplaceReversalSweepFailureResponse,
+            crate::controllers::marketplace_reversal_financial::MarketplaceReversalSweepResponse,
         )
     ),
     modifiers(&CommerceOpenApiAddon),

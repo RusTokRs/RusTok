@@ -274,6 +274,13 @@ impl From<BuilderRolloutError> for PageBuilderServiceError {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderProjectSaveResult {
+    pub page_id: String,
+    pub revision_id: String,
+    pub published: bool,
+}
+
 /// Persistence port used by the current Fly-backed Page Builder service.
 /// Implementations own storage and must preserve tenant isolation from [`PortContext`].
 #[async_trait]
@@ -290,17 +297,7 @@ pub trait PageBuilderProjectStore: Send + Sync {
         page_id: &str,
         revision_id: &str,
         project_data: serde_json::Value,
-    ) -> PageBuilderServiceResult<()>;
-}
-
-/// Preview rendering port used after Fly decode and validation.
-#[async_trait]
-pub trait PageBuilderRenderingAdapter: Send + Sync {
-    async fn render_preview(
-        &self,
-        context: &PortContext,
-        project_data: &serde_json::Value,
-    ) -> PageBuilderServiceResult<String>;
+    ) -> PageBuilderServiceResult<PageBuilderProjectSaveResult>;
 }
 
 pub struct CapabilityGuardedService<S> {
@@ -502,6 +499,7 @@ mod tests {
             Ok(PreviewPageBuilderResult {
                 page_id: input.page_id,
                 html: "<div/>".to_string(),
+                runtime_scenario_id: input.runtime.scenario_id,
             })
         }
 
@@ -562,10 +560,7 @@ mod tests {
     }
 
     fn preview_input() -> PreviewPageBuilderInput {
-        PreviewPageBuilderInput {
-            page_id: "home".to_string(),
-            project_data: serde_json::json!({}),
-        }
+        PreviewPageBuilderInput::new("home", serde_json::json!({}))
     }
 
     fn tree_input() -> BuilderTreeInput {

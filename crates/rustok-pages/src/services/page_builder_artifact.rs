@@ -1,7 +1,9 @@
 use chrono::Utc;
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates};
 use rustok_page_builder::{
-    ComponentRegistryManifest, LandingSectionSnapshot, PageHead, StaticLandingArtifact,
-    StaticLandingBuildIdentity, StaticLandingPage, static_landing::StaticLandingCompiler,
+    ComponentRegistryManifest, LandingSectionSnapshot,
+    PageBuilderMaterializedStaticLandingArtifact, PageBuilderStaticLandingMaterializationIdentity,
+    PageHead, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -26,6 +28,9 @@ pub(crate) struct CompiledLandingArtifact {
     pub locale: String,
     pub artifact: StaticLandingArtifact,
     pub page: StaticLandingPage,
+    pub materialization_hash: String,
+    pub materialization_identity: Value,
+    pub runtime_snapshots: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +39,7 @@ pub struct PublishedLandingArtifact {
     pub locale: String,
     pub build_hash: String,
     pub artifact_hash: String,
+    pub materialization_hash: Option<String>,
     pub document_html: String,
     pub css: String,
     pub content_hash: String,
@@ -49,44 +55,13 @@ impl PageBuilderArtifactService {
         Self { db }
     }
 
-    pub(crate) fn compile_source(
-        locale: &str,
-        content: &str,
-    ) -> PagesResult<CompiledLandingArtifact> {
-        let project_data: Value = serde_json::from_str(content).map_err(|error| {
-            PagesError::validation(format!(
-                "Page Builder project for locale `{locale}` is not valid JSON: {error}"
-            ))
-        })?;
-        let artifact = StaticLandingCompiler::default()
-            .compile_publish(&project_data)
-            .map_err(artifact_compile_error)?;
-        artifact
-            .verify_integrity()
-            .map_err(artifact_integrity_error)?;
-        if artifact.pages.len() != 1 {
-            return Err(PagesError::validation(format!(
-                "A Pages Page Builder body must contain exactly one Fly page; found {}",
-                artifact.pages.len()
-            )));
-        }
-        let page = artifact.pages[0].clone();
-        enforce_size_limits(&page)?;
-        Ok(CompiledLandingArtifact {
-            locale: locale.to_string(),
-            artifact,
-            page,
-        })
-    }
-
     pub(crate) async fn stage_compiled_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         page_id: Uuid,
         compiled: &CompiledLandingArtifact,
     ) -> PagesResult<Uuid> {
-        compiled
-            .artifact
+        compiled_materialization(compiled)?
             .verify_integrity()
             .map_err(artifact_integrity_error)?;
         enforce_size_limits(&compiled.page)?;
@@ -97,6 +72,7 @@ impl PageBuilderArtifactService {
             page_id,
             &compiled.locale,
             &identity.build_hash,
+            &compiled.materialization_hash,
         )
         .await?
         {
@@ -114,6 +90,9 @@ impl PageBuilderArtifactService {
             source_hash: Set(identity.source_hash.clone()),
             build_hash: Set(identity.build_hash.clone()),
             artifact_hash: Set(compiled.artifact.artifact_hash.clone()),
+            materialization_hash: Set(Some(compiled.materialization_hash.clone())),
+            materialization_identity: Set(Some(compiled.materialization_identity.clone())),
+            runtime_snapshots: Set(Some(compiled.runtime_snapshots.clone())),
             renderer_id: Set(identity.renderer.id.clone()),
             renderer_release: Set(identity.renderer.release.clone()),
             identity: Set(to_json(identity, "landing build identity")?),
@@ -141,6 +120,7 @@ impl PageBuilderArtifactService {
                     page_static_landing_artifact::Column::PageId,
                     page_static_landing_artifact::Column::Locale,
                     page_static_landing_artifact::Column::BuildHash,
+                    page_static_landing_artifact::Column::MaterializationHash,
                 ])
                 .do_nothing()
                 .to_owned(),
@@ -154,6 +134,7 @@ impl PageBuilderArtifactService {
             page_id,
             &compiled.locale,
             &identity.build_hash,
+            &compiled.materialization_hash,
         )
         .await?
         .ok_or_else(|| {
@@ -174,6 +155,7 @@ impl PageBuilderArtifactService {
         artifact_id: Uuid,
     ) -> PagesResult<()> {
         let body = page_body::Entity::find()
+            .filter(page_body::Column::TenantId.eq(tenant_id))
             .filter(page_body::Column::PageId.eq(page_id))
             .filter(page_body::Column::Locale.eq(locale))
             .one(txn)
@@ -203,6 +185,9 @@ impl PageBuilderArtifactService {
         {
             Some(existing) => {
                 let mut active: page_published_landing_artifact::ActiveModel = existing.into();
+                active.tenant_id = Set(tenant_id);
+                active.page_id = Set(page_id);
+                active.locale = Set(locale.to_string());
                 active.artifact_id = Set(artifact_id);
                 active.published_at = Set(now);
                 active.update(txn).await?;
@@ -210,30 +195,15 @@ impl PageBuilderArtifactService {
             None => {
                 page_published_landing_artifact::ActiveModel {
                     page_body_id: Set(body.id),
+                    tenant_id: Set(tenant_id),
+                    page_id: Set(page_id),
+                    locale: Set(locale.to_string()),
                     artifact_id: Set(artifact_id),
                     published_at: Set(now),
                 }
                 .insert(txn)
                 .await?;
             }
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn clear_existing_body_binding_in_tx(
-        txn: &DatabaseTransaction,
-        page_id: Uuid,
-        locale: &str,
-    ) -> PagesResult<()> {
-        let body = page_body::Entity::find()
-            .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Locale.eq(locale))
-            .one(txn)
-            .await?;
-        if let Some(body) = body {
-            page_published_landing_artifact::Entity::delete_by_id(body.id)
-                .exec(txn)
-                .await?;
         }
         Ok(())
     }
@@ -263,17 +233,24 @@ impl PageBuilderArtifactService {
         let is_visible = is_published
             && page_is_visible_for_channel_in_tx(&txn, tenant_id, page_id, channel_slug).await?;
         let result = if is_visible {
-            if let Some(artifact) =
-                load_bound_artifact_in_tx(&txn, tenant_id, page_id, locale).await?
-            {
-                Some(artifact)
-            } else if let Some(fallback_locale) =
-                fallback_locale.filter(|fallback| *fallback != locale)
-            {
-                load_bound_artifact_in_tx(&txn, tenant_id, page_id, fallback_locale).await?
-            } else {
-                None
+            let candidates = build_locale_candidates(
+                [
+                    Some(locale),
+                    fallback_locale,
+                    Some(PLATFORM_FALLBACK_LOCALE),
+                ],
+                true,
+            );
+            let mut resolved = None;
+            for candidate in candidates {
+                if let Some(artifact) =
+                    load_bound_artifact_in_tx(&txn, tenant_id, page_id, &candidate).await?
+                {
+                    resolved = Some(artifact);
+                    break;
+                }
             }
+            resolved
         } else {
             None
         };
@@ -321,6 +298,7 @@ async fn load_bound_artifact_in_tx(
     locale: &str,
 ) -> PagesResult<Option<PublishedLandingArtifact>> {
     let Some(body) = page_body::Entity::find()
+        .filter(page_body::Column::TenantId.eq(tenant_id))
         .filter(page_body::Column::PageId.eq(page_id))
         .filter(page_body::Column::Locale.eq(locale))
         .filter(page_body::Column::Format.eq(rustok_core::CONTENT_FORMAT_GRAPESJS))
@@ -330,6 +308,9 @@ async fn load_bound_artifact_in_tx(
         return Ok(None);
     };
     let Some(binding) = page_published_landing_artifact::Entity::find_by_id(body.id)
+        .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
+        .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
+        .filter(page_published_landing_artifact::Column::Locale.eq(locale))
         .one(txn)
         .await?
     else {
@@ -356,12 +337,14 @@ async fn find_artifact_in_tx(
     page_id: Uuid,
     locale: &str,
     build_hash: &str,
+    materialization_hash: &str,
 ) -> PagesResult<Option<page_static_landing_artifact::Model>> {
     Ok(page_static_landing_artifact::Entity::find()
         .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
         .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
         .filter(page_static_landing_artifact::Column::Locale.eq(locale))
         .filter(page_static_landing_artifact::Column::BuildHash.eq(build_hash))
+        .filter(page_static_landing_artifact::Column::MaterializationHash.eq(materialization_hash))
         .one(txn)
         .await?)
 }
@@ -375,6 +358,7 @@ fn published_record(
         locale: record.locale,
         build_hash: record.build_hash,
         artifact_hash: record.artifact_hash,
+        materialization_hash: record.materialization_hash,
         document_html: record.document_html,
         css: record.css,
         content_hash: record.content_hash,
@@ -418,7 +402,57 @@ fn verify_record(record: &page_static_landing_artifact::Model) -> PagesResult<()
             "stored static landing artifact metadata does not match its payload",
         ));
     }
-    Ok(())
+
+    match (
+        record.materialization_hash.as_ref(),
+        record.materialization_identity.as_ref(),
+        record.runtime_snapshots.as_ref(),
+    ) {
+        (None, None, None) => Ok(()),
+        (Some(materialization_hash), Some(materialization_identity), Some(runtime_snapshots)) => {
+            let identity: PageBuilderStaticLandingMaterializationIdentity = from_json(
+                materialization_identity,
+                "Page Builder landing materialization identity",
+            )?;
+            let runtime_snapshots =
+                from_json(runtime_snapshots, "Page Builder landing runtime snapshots")?;
+            let materialized = PageBuilderMaterializedStaticLandingArtifact {
+                identity,
+                runtime_snapshots,
+                artifact,
+            };
+            materialized
+                .verify_integrity()
+                .map_err(artifact_integrity_error)?;
+            if materialization_hash != &materialized.identity.materialization_hash {
+                return Err(PagesError::artifact_integrity(
+                    "stored landing materialization hash does not match its identity",
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(PagesError::artifact_integrity(
+            "stored landing materialization evidence is partial",
+        )),
+    }
+}
+
+fn compiled_materialization(
+    compiled: &CompiledLandingArtifact,
+) -> PagesResult<PageBuilderMaterializedStaticLandingArtifact> {
+    let identity: PageBuilderStaticLandingMaterializationIdentity = from_json(
+        &compiled.materialization_identity,
+        "Page Builder landing materialization identity",
+    )?;
+    let runtime_snapshots = from_json(
+        &compiled.runtime_snapshots,
+        "Page Builder landing runtime snapshots",
+    )?;
+    Ok(PageBuilderMaterializedStaticLandingArtifact {
+        identity,
+        runtime_snapshots,
+        artifact: compiled.artifact.clone(),
+    })
 }
 
 fn ensure_same_artifact(
@@ -430,10 +464,13 @@ fn ensure_same_artifact(
         || record.document_html != compiled.page.document_html
         || record.body_html != compiled.page.body_html
         || record.css != compiled.page.css
+        || record.materialization_hash.as_deref() != Some(compiled.materialization_hash.as_str())
+        || record.materialization_identity.as_ref() != Some(&compiled.materialization_identity)
+        || record.runtime_snapshots.as_ref() != Some(&compiled.runtime_snapshots)
     {
         return Err(PagesError::artifact_integrity(format!(
-            "static landing artifact collision for build hash `{}`",
-            compiled.artifact.identity.build_hash
+            "static landing artifact collision for materialization hash `{}`",
+            compiled.materialization_hash
         )));
     }
     Ok(())
@@ -473,10 +510,6 @@ where
     })
 }
 
-fn artifact_compile_error(error: impl std::fmt::Display) -> PagesError {
-    PagesError::validation(format!("Page Builder static artifact error: {error}"))
-}
-
 fn artifact_integrity_error(error: impl std::fmt::Display) -> PagesError {
     PagesError::artifact_integrity(format!(
         "Page Builder static artifact integrity error: {error}"
@@ -486,46 +519,6 @@ fn artifact_integrity_error(error: impl std::fmt::Display) -> PagesError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn compiler_produces_a_verified_single_page_artifact() {
-        let content = serde_json::json!({
-            "pages": [{
-                "id": "home",
-                "flyPageMeta": {
-                    "title": "Home",
-                    "description": "A stable landing page",
-                    "slug": "home"
-                },
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [{
-                        "id": "title",
-                        "type": "heading",
-                        "tagName": "h1",
-                        "content": "Welcome"
-                    }]
-                }
-            }]
-        })
-        .to_string();
-        let compiled =
-            PageBuilderArtifactService::compile_source("en", &content).expect("compiled artifact");
-        assert_eq!(compiled.locale, "en");
-        assert_eq!(compiled.artifact.pages.len(), 1);
-        assert_eq!(compiled.page, compiled.artifact.pages[0]);
-        compiled
-            .artifact
-            .verify_integrity()
-            .expect("artifact integrity");
-    }
-
-    #[test]
-    fn compiler_requires_exactly_one_fly_page() {
-        let content = serde_json::json!({ "pages": [] }).to_string();
-        assert!(PageBuilderArtifactService::compile_source("en", &content).is_err());
-    }
 
     #[test]
     fn unrestricted_artifact_is_visible_without_a_channel() {

@@ -156,21 +156,17 @@ pub struct NotificationTargetRoute(String);
 impl NotificationTargetRoute {
     pub fn new(value: impl Into<String>) -> Result<Self, NotificationKeyError> {
         let value = value.into();
-        let valid = !value.is_empty()
-            && value.len() <= TARGET_ROUTE_MAX_BYTES
-            && value.starts_with('/')
-            && !value.starts_with("//")
-            && !value.contains("://")
-            && !value.contains('\\')
-            && !value.contains('?')
-            && !value.contains('#')
-            && !value.chars().any(char::is_whitespace)
-            && value
-                .split('/')
-                .all(|segment| segment != "." && segment != "..");
-        if !valid {
+        if value.is_empty() || value.len() > TARGET_ROUTE_MAX_BYTES || value.contains('#') {
             return Err(NotificationKeyError::InvalidRoute);
         }
+
+        let mut parts = value.split('?');
+        let path = parts.next().unwrap_or_default();
+        let query = parts.next();
+        if parts.next().is_some() || !safe_route_path(path) || !query.is_none_or(safe_route_query) {
+            return Err(NotificationKeyError::InvalidRoute);
+        }
+
         Ok(Self(value))
     }
 
@@ -187,6 +183,42 @@ impl<'de> Deserialize<'de> for NotificationTargetRoute {
         let value = String::deserialize(deserializer)?;
         Self::new(value).map_err(serde::de::Error::custom)
     }
+}
+
+fn safe_route_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.starts_with('/')
+        && !path.starts_with("//")
+        && !path.contains("//")
+        && !path.contains("://")
+        && !path.contains('%')
+        && !path.contains('\\')
+        && !path.chars().any(char::is_whitespace)
+        && path
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "/-_.~".contains(character))
+        && path
+            .split('/')
+            .all(|segment| segment != "." && segment != "..")
+}
+
+fn safe_route_query(query: &str) -> bool {
+    !query.is_empty()
+        && query.split('&').all(|pair| {
+            let Some((key, value)) = pair.split_once('=') else {
+                return false;
+            };
+            !key.is_empty()
+                && !value.is_empty()
+                && key.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || matches!(character, '-' | '_')
+                })
+                && value.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+                })
+        })
 }
 
 fn validate_semantic_key(

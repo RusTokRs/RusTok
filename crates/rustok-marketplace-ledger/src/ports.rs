@@ -5,8 +5,9 @@ use uuid::Uuid;
 use crate::dto::{
     ListMarketplaceSellerLedgerEntriesRequest, MarketplaceLedgerEntryListResponse,
     MarketplaceLedgerReversalResponse, MarketplaceLedgerTransactionResponse,
-    MarketplaceSellerBalanceResponse, PostMarketplaceLedgerReversalInput,
-    PostMarketplaceOrderLedgerInput, ReadMarketplaceOrderLedgerRequest,
+    MarketplaceSellerBalanceResponse, MarketplaceSellerBalanceTransferResponse,
+    PostMarketplaceLedgerReversalInput, PostMarketplaceOrderLedgerInput,
+    PostMarketplaceSellerBalanceTransferInput, ReadMarketplaceOrderLedgerRequest,
     ReadMarketplaceSellerBalanceRequest, RebuildMarketplaceSellerBalanceInput,
 };
 use crate::error::MarketplaceLedgerError;
@@ -53,6 +54,17 @@ pub trait MarketplaceLedgerCommandPort: Send + Sync {
         Err(PortError::validation(
             "marketplace_ledger.reversal_not_supported",
             "marketplace ledger provider does not support financial reversals",
+        ))
+    }
+
+    async fn post_seller_balance_transfer(
+        &self,
+        _context: PortContext,
+        _request: PostMarketplaceSellerBalanceTransferInput,
+    ) -> Result<MarketplaceSellerBalanceTransferResponse, PortError> {
+        Err(PortError::validation(
+            "marketplace_ledger.balance_transfer_not_supported",
+            "marketplace ledger provider does not support seller balance transfers",
         ))
     }
 
@@ -139,6 +151,26 @@ impl MarketplaceLedgerCommandPort for crate::MarketplaceLedgerService {
             .map_err(map_owner_error)
     }
 
+    async fn post_seller_balance_transfer(
+        &self,
+        context: PortContext,
+        request: PostMarketplaceSellerBalanceTransferInput,
+    ) -> Result<MarketplaceSellerBalanceTransferResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        let tenant_id = parse_tenant_id(&context)?;
+        let actor_id = parse_actor_id(&context)?;
+        let idempotency_key = parse_idempotency_key(&context)?;
+        self.post_balance_transfer_with_receipt(
+            context,
+            tenant_id,
+            actor_id,
+            idempotency_key,
+            request,
+        )
+        .await
+        .map_err(map_owner_error)
+    }
+
     async fn rebuild_seller_balance(
         &self,
         context: PortContext,
@@ -204,6 +236,10 @@ fn map_owner_error(error: MarketplaceLedgerError) -> PortError {
         MarketplaceLedgerError::ReversalAlreadyPosted(source_id) => PortError::conflict(
             "marketplace_ledger.reversal_already_posted",
             format!("marketplace ledger reversal source {source_id} is already posted"),
+        ),
+        MarketplaceLedgerError::BalanceTransferAlreadyPosted(source_id) => PortError::conflict(
+            "marketplace_ledger.balance_transfer_already_posted",
+            format!("marketplace seller balance transfer source {source_id} is already posted"),
         ),
         MarketplaceLedgerError::SellerBalanceNotFound {
             seller_id,

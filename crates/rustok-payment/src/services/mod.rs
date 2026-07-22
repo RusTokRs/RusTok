@@ -1,8 +1,10 @@
 pub mod payment;
 mod provider_event;
+mod provider_event_chargeback;
 mod provider_event_domain;
 mod provider_event_ingress;
 mod provider_event_lifecycle;
+mod provider_event_observer;
 mod provider_event_recovery;
 mod provider_event_refund;
 pub mod provider_operation;
@@ -15,6 +17,7 @@ pub use provider_event::{
     PROVIDER_EVENT_RECEIVED, PaymentProviderEventJournal, ReceiveProviderEvent,
     VerifiedProviderEvent,
 };
+pub use provider_event_chargeback::ChargebackLifecycleEventApplier;
 pub use provider_event_domain::PaymentDomainEventApplier;
 pub use provider_event_ingress::{
     PaymentProviderEventApplier, PaymentProviderEventApplyError, PaymentProviderEventContext,
@@ -22,6 +25,10 @@ pub use provider_event_ingress::{
     PaymentProviderEventIngressResult, PaymentProviderEventIngressService,
 };
 pub use provider_event_lifecycle::PaymentLifecycleEventApplier;
+pub use provider_event_observer::{
+    PaymentObservedDomainEventApplier, PaymentProviderEventObservers,
+    PaymentProviderProcessedEventObserver,
+};
 pub use provider_event_recovery::{
     PaymentProviderEventRecoveryFailure, PaymentProviderEventRecoveryOutcome,
     PaymentProviderEventRecoveryReport, PaymentProviderEventRecoveryService,

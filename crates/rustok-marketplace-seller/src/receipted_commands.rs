@@ -94,8 +94,6 @@ impl MarketplaceSellerService {
                         onboarding_status: Set(MarketplaceSellerOnboardingStatus::Draft
                             .as_str()
                             .to_string()),
-                        onboarding_note: Set(None),
-                        suspension_reason: Set(None),
                         metadata: Set(metadata.clone()),
                         created_at: Set(now.into()),
                         updated_at: Set(now.into()),
@@ -286,10 +284,6 @@ impl MarketplaceSellerService {
                             ),
                         )
                         .col_expr(
-                            seller::Column::OnboardingNote,
-                            sea_orm::sea_query::Expr::value(note),
-                        )
-                        .col_expr(
                             seller::Column::UpdatedAt,
                             sea_orm::sea_query::Expr::current_timestamp().into(),
                         )
@@ -311,13 +305,15 @@ impl MarketplaceSellerService {
                         "submitted",
                     )
                     .await?;
-                    load_seller_response(
+                    let mut response = load_seller_response(
                         &receipt.transaction,
                         tenant_id,
                         seller_id,
                         locale.as_str(),
                     )
-                    .await
+                    .await?;
+                    response.onboarding_note = note.clone();
+                    Ok(response)
                 }
                 .await;
                 finish_seller_command(receipt, result).await
@@ -390,10 +386,6 @@ impl MarketplaceSellerService {
                             sea_orm::sea_query::Expr::value(next_status.as_str()),
                         )
                         .col_expr(
-                            seller::Column::OnboardingNote,
-                            sea_orm::sea_query::Expr::value(note),
-                        )
-                        .col_expr(
                             seller::Column::UpdatedAt,
                             sea_orm::sea_query::Expr::value(now),
                         )
@@ -420,13 +412,15 @@ impl MarketplaceSellerService {
                         onboarding.as_str(),
                     )
                     .await?;
-                    load_seller_response(
+                    let mut response = load_seller_response(
                         &receipt.transaction,
                         tenant_id,
                         seller_id,
                         locale.as_str(),
                     )
-                    .await
+                    .await?;
+                    response.onboarding_note = note.clone();
+                    Ok(response)
                 }
                 .await;
                 finish_seller_command(receipt, result).await
@@ -481,10 +475,6 @@ impl MarketplaceSellerService {
                             ),
                         )
                         .col_expr(
-                            seller::Column::SuspensionReason,
-                            sea_orm::sea_query::Expr::value(Some(reason)),
-                        )
-                        .col_expr(
                             seller::Column::SuspendedAt,
                             sea_orm::sea_query::Expr::value(Some(now)),
                         )
@@ -506,13 +496,15 @@ impl MarketplaceSellerService {
                         "suspended",
                     )
                     .await?;
-                    load_seller_response(
+                    let mut response = load_seller_response(
                         &receipt.transaction,
                         tenant_id,
                         seller_id,
                         locale.as_str(),
                     )
-                    .await
+                    .await?;
+                    response.suspension_reason = Some(reason.clone());
+                    Ok(response)
                 }
                 .await;
                 finish_seller_command(receipt, result).await
@@ -561,10 +553,6 @@ impl MarketplaceSellerService {
                             ),
                         )
                         .col_expr(
-                            seller::Column::SuspensionReason,
-                            sea_orm::sea_query::Expr::value(Option::<String>::None),
-                        )
-                        .col_expr(
                             seller::Column::SuspendedAt,
                             sea_orm::sea_query::Expr::value(
                                 Option::<chrono::DateTime<chrono::FixedOffset>>::None,
@@ -594,13 +582,15 @@ impl MarketplaceSellerService {
                         "active",
                     )
                     .await?;
-                    load_seller_response(
+                    let mut response = load_seller_response(
                         &receipt.transaction,
                         tenant_id,
                         seller_id,
                         locale.as_str(),
                     )
-                    .await
+                    .await?;
+                    response.suspension_reason = None;
+                    Ok(response)
                 }
                 .await;
                 finish_seller_command(receipt, result).await

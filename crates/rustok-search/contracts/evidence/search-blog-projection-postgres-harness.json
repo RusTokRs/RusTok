@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "module": "search",
+  "surface": "blog_post_projection",
+  "status": "executable_no_run",
+  "compile_policy": "not_run_by_request",
+  "environment": {
+    "primary": "RUSTOK_SEARCH_TEST_DATABASE_URL",
+    "fallback": "DATABASE_URL",
+    "required_backend": "postgresql",
+    "isolation": "unique schema first in search_path with public extensions available"
+  },
+  "test_targets": [
+    "crates/rustok-search/tests/blog_ingestion_contract_test.rs",
+    "crates/rustok-search/tests/blog_projection_postgres_test.rs"
+  ],
+  "production_contract": {
+    "event_handler": "crates/rustok-search/src/ingestion.rs",
+    "projector": "crates/rustok-search/src/blog_projector.rs",
+    "search_migrations": "crates/rustok-search/src/migrations/mod.rs",
+    "source_guardrail": "scripts/verify/verify-search-blog-projection.mjs"
+  },
+  "cases": [
+    {
+      "name": "lifecycle_upsert_delete",
+      "expected": "created, published, and archived source states replace the tenant-local Blog search document; delete removes it"
+    },
+    {
+      "name": "projected_payload",
+      "expected": "slug, author, tags, channels, publication timestamps, counts, and version are projected from Blog-owned tables"
+    },
+    {
+      "name": "full_blog_reindex",
+      "expected": "stale current-tenant Blog documents are replaced from source rows while another tenant remains unchanged"
+    },
+    {
+      "name": "targeted_missing_post_cleanup",
+      "expected": "targeted Blog reindex deletes an existing stale document and inserts nothing when the owner post is absent"
+    },
+    {
+      "name": "module_toggle_cleanup_rebuild",
+      "expected": "Blog module disable removes only the current tenant Blog scope and enable rebuilds it from retained owner rows"
+    },
+    {
+      "name": "schema_search_path",
+      "expected": "Blog source-table availability and unqualified projector SQL resolve through the same active PostgreSQL search_path"
+    },
+    {
+      "name": "event_routing",
+      "expected": "all Blog lifecycle events, Blog module toggles, and targeted/full Blog reindex requests are claimed; unrelated module and reindex targets are ignored"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute both Rust test targets against PostgreSQL",
+    "execute the source guardrail and its fixture target",
+    "retain migration and pg_trgm permission evidence",
+    "retain host event-delivery evidence for disable and enable toggles",
+    "retain query visibility evidence for published_only storefront search"
+  ]
+}

@@ -7,12 +7,15 @@ use fly::{
 };
 use rustok_api::{PortActor, PortContext};
 use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;
-use rustok_page_builder::dto::{PublishPageBuilderInput, PublishPageBuilderResult};
+use rustok_page_builder::dto::{
+    PreviewPageBuilderInput, PublishPageBuilderInput, PublishPageBuilderResult,
+};
+use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
 use rustok_page_builder::runtime_scenario_release::{
     PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE, PageBuilderScenarioBaselineStore,
 };
 use rustok_page_builder::service::{
-    PageBuilderCapabilityService, PageBuilderProjectStore, PageBuilderRenderingAdapter,
+    PageBuilderCapabilityService, PageBuilderProjectSaveResult, PageBuilderProjectStore,
     PageBuilderServiceResult,
 };
 use serde_json::{Value, json};
@@ -39,12 +42,16 @@ impl PageBuilderProjectStore for CountingProjectStore {
     async fn save_project(
         &self,
         _context: &PortContext,
-        _page_id: &str,
+        page_id: &str,
         _revision_id: &str,
         _project_data: Value,
-    ) -> PageBuilderServiceResult<()> {
+    ) -> PageBuilderServiceResult<PageBuilderProjectSaveResult> {
         self.writes.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        Ok(PageBuilderProjectSaveResult {
+            page_id: page_id.to_string(),
+            revision_id: "rev-persisted".to_string(),
+            published: false,
+        })
     }
 }
 
@@ -52,11 +59,11 @@ impl PageBuilderProjectStore for CountingProjectStore {
 struct NoopRenderer;
 
 #[async_trait]
-impl PageBuilderRenderingAdapter for NoopRenderer {
+impl PageBuilderPreviewRenderingPort for NoopRenderer {
     async fn render_preview(
         &self,
         _context: &PortContext,
-        _project_data: &Value,
+        _input: &PreviewPageBuilderInput,
     ) -> PageBuilderServiceResult<String> {
         Ok(String::new())
     }
@@ -162,7 +169,9 @@ async fn stable_baseline_allows_project_write() {
     let result = publish(&service, project("home"))
         .await
         .expect("stable publish");
-    assert!(result.published);
+    assert_eq!(result.page_id, "home");
+    assert_eq!(result.revision_id, "rev-persisted");
+    assert!(!result.published);
     assert_eq!(writes.load(Ordering::SeqCst), 1);
 }
 

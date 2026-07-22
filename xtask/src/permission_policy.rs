@@ -24,18 +24,25 @@ pub(crate) fn load_core_permission_contract(core_root: &Path) -> Result<CorePerm
         .with_context(|| format!("Failed to read {}", permissions_path.display()))?;
 
     let mut contract = CorePermissionContract::default();
-    for capture in regex::Regex::new(
+    let explicit_constant = regex::Regex::new(
         r"pub const ([A-Z0-9_]+): Self = Self::new\(Resource::([A-Za-z0-9_]+), Action::([A-Za-z0-9_]+)\);",
     )
-    .expect("permission constant regex should compile")
-    .captures_iter(&content)
+    .expect("permission constant regex should compile");
+    let macro_constant = regex::Regex::new(
+        r"(?m)^\s*([A-Z0-9_]+)\s*=>\s*\(([A-Za-z0-9_]+),\s*([A-Za-z0-9_]+)\),\s*$",
+    )
+    .expect("permission macro constant regex should compile");
+
+    for captures in explicit_constant
+        .captures_iter(&content)
+        .chain(macro_constant.captures_iter(&content))
     {
         contract.constants.insert(
-            capture[1].to_string(),
+            captures[1].to_string(),
             format!(
                 "{}:{}",
-                type_name_to_permission_segment(&capture[2]),
-                type_name_to_permission_segment(&capture[3])
+                type_name_to_permission_segment(&captures[2]),
+                type_name_to_permission_segment(&captures[3])
             ),
         );
     }
@@ -50,7 +57,7 @@ pub(crate) fn expected_minimum_module_permissions(slug: &str) -> &'static [&'sta
         "auth" => &["users:manage"],
         "tenant" => &["tenants:manage", "modules:manage"],
         "rbac" => &["settings:manage", "logs:read"],
-        "blog" => &["blog_posts:manage"],
+        "blog" => &["blog_posts:manage", "blog_categories:manage"],
         "forum" => &["forum_topics:manage"],
         "customer" => &["customers:manage"],
         "product" => &["products:manage"],

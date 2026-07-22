@@ -2,10 +2,11 @@ use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
     ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
     IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    ResponsiveStylePanel, RuntimePublishGatePanel, RuntimeScenarioMatrixPanel,
-    RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, SsrActionsFormsPanel, SsrAssetPanel,
-    SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
-    SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    PublishScenarioSelectorPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
+    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
+    ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel,
+    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
+    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -86,6 +87,17 @@ pub fn AdminCanvas(
     if let Some(capabilities) = editor_capabilities.or(evaluated_capabilities) {
         runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
     }
+
+    let scenario_baseline = RwSignal::new(runtime_scenario_baseline);
+    let host_baseline_callback = StoredValue::new(on_runtime_scenario_baseline);
+    let baseline_signal = scenario_baseline;
+    let on_baseline_change = Callback::new(move |change: PageBuilderScenarioBaselineChange| {
+        baseline_signal.set(change.baseline.clone());
+        if let Some(callback) = host_baseline_callback.get_value() {
+            callback.run(change);
+        }
+    });
+
     let browser_page_id = runtime
         .controller
         .with(|controller| controller.page_id().to_string());
@@ -98,6 +110,7 @@ pub fn AdminCanvas(
     let root_intent_endpoint = browser_intent_endpoint.clone();
     let root_csrf_token = browser_csrf_token.clone();
     let toolbar_runtime = runtime.clone();
+    let server_preview_runtime = runtime.clone();
     let page_runtime = runtime.clone();
     let palette_runtime = runtime.clone();
     let canvas_runtime = runtime.clone();
@@ -106,6 +119,7 @@ pub fn AdminCanvas(
     let gate_runtime = runtime.clone();
     let scenario_runtime = runtime.clone();
     let scenario_matrix_runtime = runtime.clone();
+    let publish_scenario_runtime = runtime.clone();
     let scenario_regression_runtime = runtime.clone();
     let dynamic_runtime = runtime.clone();
     let context_runtime = runtime.clone();
@@ -143,6 +157,7 @@ pub fn AdminCanvas(
                 csrf_token=browser_csrf_token
             />
             <AuthoringToolbar runtime=toolbar_runtime />
+            <ServerPreviewPanel runtime=server_preview_runtime />
             <div class="grid min-h-[680px] grid-cols-[minmax(240px,300px)_minmax(420px,1fr)_minmax(280px,360px)] gap-3">
                 <div class="space-y-3 overflow-auto">
                     <PageManagerPanel runtime=page_runtime />
@@ -167,10 +182,14 @@ pub fn AdminCanvas(
                     <RuntimePublishGatePanel runtime=gate_runtime />
                     <RuntimeScenarioPanel runtime=scenario_runtime />
                     <RuntimeScenarioMatrixPanel runtime=scenario_matrix_runtime />
+                    <PublishScenarioSelectorPanel
+                        runtime=publish_scenario_runtime
+                        baseline=scenario_baseline
+                    />
                     <RuntimeScenarioRegressionPanel
                         runtime=scenario_regression_runtime
-                        initial_baseline=runtime_scenario_baseline
-                        on_baseline_change=on_runtime_scenario_baseline
+                        initial_baseline=scenario_baseline.get_untracked()
+                        on_baseline_change=Some(on_baseline_change)
                     />
                     <DynamicRuntimePanel runtime=dynamic_runtime />
                     <ContextSchemaPanel runtime=context_runtime />

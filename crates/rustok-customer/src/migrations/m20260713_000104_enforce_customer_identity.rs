@@ -21,7 +21,10 @@ impl MigrationTrait for Migration {
                             CHECK (btrim(email) <> '' AND email = btrim(email)) NOT VALID,
                             ADD CONSTRAINT ck_customers_locale
                             CHECK (
-                                locale IS NULL OR locale ~ '^[A-Za-z]{2,3}([_-][A-Za-z0-9]{1,8})*$'
+                                locale IS NULL OR (
+                                    octet_length(locale) <= 32
+                                    AND locale ~ '^[A-Za-z]{2,8}([_-][A-Za-z0-9]{1,8})*$'
+                                )
                             ) NOT VALID;
                         "#,
                     )
@@ -40,7 +43,7 @@ impl MigrationTrait for Migration {
                             SELECT CASE WHEN trim(NEW.email) = '' OR NEW.email <> trim(NEW.email)
                                 THEN RAISE(ABORT, 'invalid customer email') END;
                             SELECT CASE WHEN NEW.locale IS NOT NULL AND (
-                                length(trim(NEW.locale)) < 2 OR length(trim(NEW.locale)) > 35
+                                length(trim(NEW.locale)) < 2 OR length(trim(NEW.locale)) > 32
                                 OR trim(NEW.locale) GLOB '*[^A-Za-z0-9_-]*'
                             ) THEN RAISE(ABORT, 'invalid customer locale') END;
                         END;
@@ -50,7 +53,7 @@ impl MigrationTrait for Migration {
                             SELECT CASE WHEN trim(NEW.email) = '' OR NEW.email <> trim(NEW.email)
                                 THEN RAISE(ABORT, 'invalid customer email') END;
                             SELECT CASE WHEN NEW.locale IS NOT NULL AND (
-                                length(trim(NEW.locale)) < 2 OR length(trim(NEW.locale)) > 35
+                                length(trim(NEW.locale)) < 2 OR length(trim(NEW.locale)) > 32
                                 OR trim(NEW.locale) GLOB '*[^A-Za-z0-9_-]*'
                             ) THEN RAISE(ABORT, 'invalid customer locale') END;
                         END;

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -39,6 +39,10 @@ pub struct PageTranslation {
     pub locale: String,
     pub title: Option<String>,
     pub slug: Option<String>,
+    #[serde(rename = "metaTitle")]
+    pub meta_title: Option<String>,
+    #[serde(rename = "metaDescription")]
+    pub meta_description: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -55,8 +59,13 @@ pub struct PageBody {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageDetail {
     pub id: String,
+    pub version: i32,
     pub status: String,
     pub template: String,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    #[serde(rename = "availableLocales", default)]
+    pub available_locales: Vec<String>,
     #[serde(rename = "channelSlugs", default)]
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
@@ -66,10 +75,65 @@ pub struct PageDetail {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageMutationResult {
     pub id: String,
+    pub version: i32,
     pub status: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
     pub translation: Option<PageTranslation>,
+}
+
+impl From<&PageDetail> for PageMutationResult {
+    fn from(page: &PageDetail) -> Self {
+        Self {
+            id: page.id.clone(),
+            version: page.version,
+            status: page.status.clone(),
+            updated_at: page.updated_at.clone(),
+            translation: page.translation.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PublishPageReceipt {
+    #[serde(rename = "operationId")]
+    pub operation_id: String,
+    #[serde(rename = "pageId")]
+    pub page_id: String,
+    pub version: i32,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: String,
+    #[serde(rename = "reviewHash")]
+    pub review_hash: String,
+    #[serde(rename = "sanitizedSetHash")]
+    pub sanitized_set_hash: String,
+    #[serde(rename = "artifactSetHash")]
+    pub artifact_set_hash: String,
+    pub replayed: bool,
+    #[serde(rename = "publishedAt")]
+    pub published_at: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum PagePublicationResult {
+    Published(PublishPageReceipt),
+    Unpublished(PageMutationResult),
+}
+
+impl PagePublicationResult {
+    pub fn page_id(&self) -> &str {
+        match self {
+            Self::Published(receipt) => &receipt.page_id,
+            Self::Unpublished(page) => &page.id,
+        }
+    }
+
+    pub fn version(&self) -> i32 {
+        match self {
+            Self::Published(receipt) => receipt.version,
+            Self::Unpublished(page) => page.version,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

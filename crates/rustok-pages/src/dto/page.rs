@@ -4,6 +4,9 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use rustok_content::entities::node::ContentStatus;
+use rustok_page_builder::{
+    PageBuilderPublishRuntimeReviewError, PageBuilderReviewedPublishRuntime,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreatePageInput {
@@ -32,15 +35,82 @@ pub struct PageBodyInput {
     pub content_json: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
-pub struct UpdatePageInput {
-    #[serde(default)]
-    pub expected_version: Option<i32>,
+/// Metadata-only write contract.
+///
+/// This command cannot carry a page body, Fly project or lifecycle transition.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PatchPageMetadataInput {
+    pub expected_version: i32,
     pub translations: Option<Vec<PageTranslationInput>>,
     pub template: Option<String>,
-    pub body: Option<PageBodyInput>,
     pub channel_slugs: Option<Vec<String>>,
-    pub status: Option<ContentStatus>,
+}
+
+/// Current visual-document write contract.
+///
+/// The expected revision is the current body `updated_at` value, or
+/// `page:<page_id>:initial` while the locale has no body yet.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SavePageDocumentInput {
+    pub expected_revision: String,
+    pub body: PageBodyInput,
+}
+
+/// One exact localized document revision reviewed by the publish actor.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PageBodyRevisionInput {
+    pub locale: String,
+    pub revision: String,
+}
+
+/// Transport-safe reviewed runtime used by the atomic Pages publish command.
+///
+/// The runtime context is transient input. Pages persists only the hashes and snapshots produced by
+/// materialization plus the durable publish receipt.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ReviewedPagePublishRuntimeInput {
+    pub format: String,
+    pub scenario_id: String,
+    pub context: Value,
+    pub review_hash: String,
+}
+
+impl TryFrom<ReviewedPagePublishRuntimeInput> for PageBuilderReviewedPublishRuntime {
+    type Error = PageBuilderPublishRuntimeReviewError;
+
+    fn try_from(value: ReviewedPagePublishRuntimeInput) -> Result<Self, Self::Error> {
+        let reviewed = Self {
+            format: value.format,
+            scenario_id: value.scenario_id,
+            context: value.context,
+            review_hash: value.review_hash,
+        };
+        reviewed.validate()?;
+        Ok(reviewed)
+    }
+}
+
+/// One idempotent reviewed publication request.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PublishPageInput {
+    pub expected_version: i32,
+    pub expected_body_revisions: Vec<PageBodyRevisionInput>,
+    pub idempotency_key: String,
+    pub runtime: ReviewedPagePublishRuntimeInput,
+}
+
+/// Durable receipt returned by the atomic reviewed publication service.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct PublishPageResult {
+    pub operation_id: Uuid,
+    pub page_id: Uuid,
+    pub version: i32,
+    pub idempotency_key: String,
+    pub review_hash: String,
+    pub sanitized_set_hash: String,
+    pub artifact_set_hash: String,
+    pub replayed: bool,
+    pub published_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, utoipa::IntoParams)]

@@ -12,7 +12,14 @@ crate-type = ["rlib"]
 default = ["ssr"]
 csr = ["leptos/csr", "leptos-auth/csr", "rustok-page-builder-admin/csr"]
 hydrate = ["leptos/hydrate", "leptos-auth/hydrate", "rustok-page-builder-admin/hydrate"]
-ssr = ["leptos/ssr", "leptos-auth/ssr", "rustok-page-builder-admin/ssr"]
+ssr = [
+  "leptos/ssr",
+  "leptos-auth/ssr",
+  "rustok-page-builder/server",
+  "rustok-page-builder-admin/ssr",
+  "dep:async-trait",
+  "dep:rustok-api",
+]
 
 [dependencies]
 fly = { path = "../../fly" }
@@ -26,6 +33,8 @@ rustok-page-builder = { path = "../../rustok-page-builder", default-features = f
 rustok-page-builder-admin = { path = "../../rustok-page-builder/admin", default-features = false }
 rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true
+async-trait = { workspace = true, optional = true }
+rustok-api = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true

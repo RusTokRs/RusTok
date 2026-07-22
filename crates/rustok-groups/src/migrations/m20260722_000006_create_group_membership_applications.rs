@@ -1,0 +1,426 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .create_table(
+                Table::create()
+                    .table(GroupMembershipPolicies::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::GroupId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::Revision)
+                            .big_integer()
+                            .not_null()
+                            .default(1),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::Enabled)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::CreatedByUserId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::UpdatedByUserId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicies::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .check(Expr::cust("revision >= 1"))
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_membership_policies_tenant_group")
+                            .from(
+                                GroupMembershipPolicies::Table,
+                                GroupMembershipPolicies::TenantId,
+                            )
+                            .from_col(GroupMembershipPolicies::GroupId)
+                            .to(Groups::Table, Groups::TenantId)
+                            .to_col(Groups::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_group_membership_policies_tenant_id")
+                .table(GroupMembershipPolicies::Table)
+                .col(GroupMembershipPolicies::TenantId)
+                .col(GroupMembershipPolicies::Id)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("ux_group_membership_policies_tenant_group")
+                .table(GroupMembershipPolicies::Table)
+                .col(GroupMembershipPolicies::TenantId)
+                .col(GroupMembershipPolicies::GroupId)
+                .unique()
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(GroupMembershipPolicyTranslations::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::PolicyId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::Locale)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::Questions)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::Rules)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipPolicyTranslations::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_membership_policy_translations_tenant_policy")
+                            .from(
+                                GroupMembershipPolicyTranslations::Table,
+                                GroupMembershipPolicyTranslations::TenantId,
+                            )
+                            .from_col(GroupMembershipPolicyTranslations::PolicyId)
+                            .to(
+                                GroupMembershipPolicies::Table,
+                                GroupMembershipPolicies::TenantId,
+                            )
+                            .to_col(GroupMembershipPolicies::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("ux_group_membership_policy_translations_tenant_policy_locale")
+                    .table(GroupMembershipPolicyTranslations::Table)
+                    .col(GroupMembershipPolicyTranslations::TenantId)
+                    .col(GroupMembershipPolicyTranslations::PolicyId)
+                    .col(GroupMembershipPolicyTranslations::Locale)
+                    .unique()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(GroupMembershipApplications::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::TenantId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::GroupId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::UserId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::PolicyId)
+                            .uuid()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::PolicyRevision)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::PolicyLocale)
+                            .string_len(32)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::PolicySnapshot)
+                            .json_binary()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::Answers)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::AcknowledgedRuleKeys)
+                            .json_binary()
+                            .not_null()
+                            .default("[]"),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::Status)
+                            .string_len(24)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::SubmittedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::ReviewedAt)
+                            .timestamp_with_time_zone(),
+                    )
+                    .col(ColumnDef::new(
+                        GroupMembershipApplications::ReviewedByUserId,
+                    ).uuid())
+                    .col(ColumnDef::new(GroupMembershipApplications::ReviewNote).text())
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .col(
+                        ColumnDef::new(GroupMembershipApplications::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(Expr::current_timestamp()),
+                    )
+                    .check(Expr::cust("policy_revision >= 1"))
+                    .check(Expr::cust(
+                        "status IN ('pending', 'approved', 'rejected', 'cancelled')",
+                    ))
+                    .check(Expr::cust(
+                        "(status = 'pending' AND reviewed_at IS NULL AND reviewed_by_user_id IS NULL) OR (status <> 'pending' AND reviewed_at IS NOT NULL)",
+                    ))
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_membership_applications_tenant_group")
+                            .from(
+                                GroupMembershipApplications::Table,
+                                GroupMembershipApplications::TenantId,
+                            )
+                            .from_col(GroupMembershipApplications::GroupId)
+                            .to(Groups::Table, Groups::TenantId)
+                            .to_col(Groups::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk_group_membership_applications_tenant_policy")
+                            .from(
+                                GroupMembershipApplications::Table,
+                                GroupMembershipApplications::TenantId,
+                            )
+                            .from_col(GroupMembershipApplications::PolicyId)
+                            .to(
+                                GroupMembershipPolicies::Table,
+                                GroupMembershipPolicies::TenantId,
+                            )
+                            .to_col(GroupMembershipPolicies::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Restrict),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        for index in [
+            Index::create()
+                .name("ux_group_membership_applications_tenant_group_user")
+                .table(GroupMembershipApplications::Table)
+                .col(GroupMembershipApplications::TenantId)
+                .col(GroupMembershipApplications::GroupId)
+                .col(GroupMembershipApplications::UserId)
+                .unique()
+                .to_owned(),
+            Index::create()
+                .name("idx_group_membership_applications_tenant_group_status_submitted")
+                .table(GroupMembershipApplications::Table)
+                .col(GroupMembershipApplications::TenantId)
+                .col(GroupMembershipApplications::GroupId)
+                .col(GroupMembershipApplications::Status)
+                .col(GroupMembershipApplications::SubmittedAt)
+                .to_owned(),
+            Index::create()
+                .name("idx_group_membership_applications_tenant_user_submitted")
+                .table(GroupMembershipApplications::Table)
+                .col(GroupMembershipApplications::TenantId)
+                .col(GroupMembershipApplications::UserId)
+                .col(GroupMembershipApplications::SubmittedAt)
+                .to_owned(),
+        ] {
+            manager.create_index(index).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(GroupMembershipApplications::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(GroupMembershipPolicyTranslations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(GroupMembershipPolicies::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Groups {
+    Table,
+    Id,
+    TenantId,
+}
+
+#[derive(DeriveIden)]
+enum GroupMembershipPolicies {
+    Table,
+    Id,
+    TenantId,
+    GroupId,
+    Revision,
+    Enabled,
+    CreatedByUserId,
+    UpdatedByUserId,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum GroupMembershipPolicyTranslations {
+    Table,
+    Id,
+    TenantId,
+    PolicyId,
+    Locale,
+    Questions,
+    Rules,
+    CreatedAt,
+    UpdatedAt,
+}
+
+#[derive(DeriveIden)]
+enum GroupMembershipApplications {
+    Table,
+    Id,
+    TenantId,
+    GroupId,
+    UserId,
+    PolicyId,
+    PolicyRevision,
+    PolicyLocale,
+    PolicySnapshot,
+    Answers,
+    AcknowledgedRuleKeys,
+    Status,
+    SubmittedAt,
+    ReviewedAt,
+    ReviewedByUserId,
+    ReviewNote,
+    CreatedAt,
+    UpdatedAt,
+}

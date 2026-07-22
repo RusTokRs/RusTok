@@ -49,6 +49,7 @@ cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
 product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }
 profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles", depends_on = ["taxonomy"] }
+groups = { crate = "rustok-groups", source = "path", path = "crates/rustok-groups" }
 region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
 pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
@@ -66,6 +67,7 @@ marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/ru
 moderation = { crate = "rustok-moderation", source = "path", path = "crates/rustok-moderation" }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
+notifications = { crate = "rustok-notifications", source = "path", path = "crates/rustok-notifications", depends_on = ["outbox"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }

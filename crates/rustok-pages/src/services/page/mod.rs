@@ -1,15 +1,25 @@
 mod create;
+mod document;
 mod helpers;
+mod lifecycle;
+mod metadata;
 mod persistence;
 mod read;
-mod update;
+mod reviewed_publish;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
-use crate::entities::{page_body, page_translation};
+use crate::entities::page_translation;
 
+pub use crate::error::{
+    PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
+    PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
+    PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+};
+pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
+pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
 pub(crate) use helpers::is_page_visible_for_channel;
 
 pub(super) const PAGE_KIND: &str = "page";
@@ -45,15 +55,6 @@ pub(super) enum PageTransition {
 }
 
 impl PageTransition {
-    pub(super) fn from_status(status: Option<&ContentStatus>) -> Option<Self> {
-        match status {
-            Some(ContentStatus::Published) => Some(Self::Publish),
-            Some(ContentStatus::Draft) => Some(Self::Unpublish),
-            Some(ContentStatus::Archived) => Some(Self::Archive),
-            None => None,
-        }
-    }
-
     pub(super) fn status(self) -> ContentStatus {
         match self {
             Self::Publish => ContentStatus::Published,
@@ -65,10 +66,5 @@ impl PageTransition {
 
 pub(super) struct ResolvedTranslationRecord<'a> {
     pub(super) translation: Option<&'a page_translation::Model>,
-    pub(super) effective_locale: String,
-}
-
-pub(super) struct ResolvedBodyRecord<'a> {
-    pub(super) body: Option<&'a page_body::Model>,
     pub(super) effective_locale: String,
 }

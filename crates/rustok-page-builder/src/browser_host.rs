@@ -1,4 +1,18 @@
 pub const PAGE_BUILDER_BROWSER_ADAPTER: &str = "fly_browser";
+pub const PAGE_BUILDER_BROWSER_SCRIPT_TYPE: &str = "module";
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PageBuilderBrowserModuleOptions {
+    pub nonce: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBuilderBrowserModuleDescriptor {
+    pub script_type: &'static str,
+    pub adapter: &'static str,
+    pub nonce: Option<String>,
+    pub source: String,
+}
 
 pub const PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS: &str = r#"
 const __flyDraftQueryKey = "fly_draft";
@@ -119,14 +133,32 @@ const __flyAdapters = globalThis.FlyBrowser?.bootstrap?.(__flyBrowserConfig) || 
 for (const adapter of __flyAdapters) __flyBindSsrAdapter(adapter);
 "#;
 
-pub fn page_builder_browser_module_source(config_json: &str, adapter_js: &str) -> String {
+pub fn page_builder_browser_module(
+    config_json: &str,
+    adapter_js: &str,
+    options: PageBuilderBrowserModuleOptions,
+) -> PageBuilderBrowserModuleDescriptor {
     let config = escape_browser_config_for_inline_script(config_json);
-    [
+    let source = [
         format!("globalThis.__FLY_BROWSER_CONFIG__ = Object.freeze({config});"),
         adapter_js.to_string(),
         PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS.to_string(),
     ]
-    .join("\n")
+    .join("\n");
+
+    PageBuilderBrowserModuleDescriptor {
+        script_type: PAGE_BUILDER_BROWSER_SCRIPT_TYPE,
+        adapter: PAGE_BUILDER_BROWSER_ADAPTER,
+        nonce: normalize_script_nonce(options.nonce),
+        source,
+    }
+}
+
+fn normalize_script_nonce(nonce: Option<String>) -> Option<String> {
+    nonce.and_then(|value| {
+        let value = value.trim();
+        (!value.is_empty()).then(|| value.to_string())
+    })
 }
 
 pub fn escape_browser_config_for_inline_script(json: &str) -> String {
@@ -142,23 +174,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn module_source_orders_config_adapter_and_host_contract() {
-        let source = page_builder_browser_module_source(
+    fn module_descriptor_orders_config_adapter_and_host_contract() {
+        let module = page_builder_browser_module(
             r#"{"autoMount":false}"#,
             "export class FlyBrowserAdapter {}",
+            PageBuilderBrowserModuleOptions {
+                nonce: Some("  csp-nonce  ".to_string()),
+            },
         );
-        let config = source
+        let config = module
+            .source
             .find("globalThis.__FLY_BROWSER_CONFIG__")
             .expect("config source");
-        let adapter = source
+        let adapter = module
+            .source
             .find("export class FlyBrowserAdapter")
             .expect("adapter source");
-        let host = source
+        let host = module
+            .source
             .find("const __flyDraftQueryKey")
             .expect("host source");
         assert!(config < adapter);
         assert!(adapter < host);
-        assert_eq!(PAGE_BUILDER_BROWSER_ADAPTER, "fly_browser");
+        assert_eq!(module.script_type, "module");
+        assert_eq!(module.adapter, "fly_browser");
+        assert_eq!(module.nonce.as_deref(), Some("csp-nonce"));
+    }
+
+    #[test]
+    fn blank_script_nonce_is_omitted() {
+        let module = page_builder_browser_module(
+            "{}",
+            "export class FlyBrowserAdapter {}",
+            PageBuilderBrowserModuleOptions {
+                nonce: Some("   ".to_string()),
+            },
+        );
+        assert_eq!(module.nonce, None);
     }
 
     #[test]

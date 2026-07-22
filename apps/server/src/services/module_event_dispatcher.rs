@@ -11,6 +11,7 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use crate::common::settings::RustokSettings;
+use crate::error::{Error, Result};
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -70,8 +71,21 @@ fn enrich_runtime_extensions_after_event_start(
             });
         let event_bus = transactional_event_bus_from_context(ctx);
         ctx.shared_insert(event_bus.clone());
-        enriched.insert(financial_runtime);
+        enriched.insert(financial_runtime.clone());
         enriched.insert(event_bus);
+
+        #[cfg(feature = "mod-payment")]
+        {
+            let observers = ctx
+                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+                .unwrap_or_else(|| {
+                    let observers =
+                        financial_runtime.payment_provider_event_observers(ctx.db_clone());
+                    ctx.shared_insert(observers.clone());
+                    observers
+                });
+            enriched.insert(observers);
+        }
     }
 
     let enriched = Arc::new(enriched);
@@ -159,8 +173,12 @@ fn ensure_stop_handle(ctx: &ServerRuntimeContext) {
 pub fn build_shared_runtime_extensions(
     registry: &ModuleRegistry,
     settings: &RustokSettings,
-) -> Arc<ModuleRuntimeExtensions> {
-    let mut extensions = registry.build_runtime_extensions();
+) -> Result<Arc<ModuleRuntimeExtensions>> {
+    let mut extensions = registry.build_runtime_extensions().map_err(|error| {
+        Error::Message(format!(
+            "module runtime extension initialization failed: {error}"
+        ))
+    })?;
     let indexer_runtime = IndexerRuntimeConfig::new(
         settings.search.reindex.parallelism,
         settings.search.reindex.entity_budget,
@@ -185,7 +203,7 @@ pub fn build_shared_runtime_extensions(
         settings.search.reindex.yield_every,
     );
     extensions.insert(indexer_runtime);
-    Arc::new(extensions)
+    Ok(Arc::new(extensions))
 }
 
 pub fn build_shared_runtime_extensions_with_host_providers(
@@ -193,8 +211,8 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     settings: &RustokSettings,
     runtime_ctx: ServerRuntimeContext,
     auth_config: AuthConfig,
-) -> Arc<ModuleRuntimeExtensions> {
-    let base = build_shared_runtime_extensions(registry, settings);
+) -> Result<Arc<ModuleRuntimeExtensions>> {
+    let base = build_shared_runtime_extensions(registry, settings)?;
     let mut extensions = base.as_ref().clone();
     let db = runtime_ctx.db_clone();
 
@@ -226,7 +244,20 @@ pub fn build_shared_runtime_extensions_with_host_providers(
                 runtime_ctx.shared_insert(runtime.clone());
                 runtime
             });
-        extensions.insert(financial_runtime);
+        extensions.insert(financial_runtime.clone());
+
+        #[cfg(feature = "mod-payment")]
+        {
+            let observers = runtime_ctx
+                .shared_get::<rustok_payment::PaymentProviderEventObservers>()
+                .unwrap_or_else(|| {
+                    let observers =
+                        financial_runtime.payment_provider_event_observers(db.clone());
+                    runtime_ctx.shared_insert(observers.clone());
+                    observers
+                });
+            extensions.insert(observers);
+        }
     }
 
     let auth_admin_provider = Arc::new(
@@ -262,12 +293,27 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     );
     let mcp_management_provider = Arc::new(
         crate::services::mcp_management_guard::GuardedMcpManagementProvider::new(
-            db,
+            db.clone(),
             mcp_management_provider,
         ),
     );
     extensions.insert(McpManagementRuntime::new(mcp_management_provider));
-    Arc::new(extensions)
+
+    #[cfg(feature = "mod-notifications")]
+    {
+        let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
+        rustok_notifications::api::materialize_notification_source_registry(
+            &mut extensions,
+            &host,
+        )
+        .map_err(|error| {
+            Error::Message(format!(
+                "notification source provider materialization failed: {error}"
+            ))
+        })?;
+    }
+
+    Ok(Arc::new(extensions))
 }
 
 pub fn build_module_event_dispatcher(
@@ -315,7 +361,8 @@ mod tests {
         #[cfg(feature = "mod-workflow")]
         let registry = registry.register(rustok_workflow::WorkflowModule);
         let settings = RustokSettings::default();
-        let extensions = build_shared_runtime_extensions(&registry, &settings);
+        let extensions = build_shared_runtime_extensions(&registry, &settings)
+            .expect("runtime extensions should initialize");
 
         let db = Database::connect("sqlite::memory:")
             .await
@@ -344,13 +391,21 @@ mod tests {
             &settings,
             runtime_ctx.clone(),
             AuthConfig::new("test-secret-key-for-unit-tests-only-32bytes!".to_string()),
-        );
+        )
+        .expect("host runtime extensions should initialize");
 
         assert!(extensions.contains::<rustok_auth::AuthLifecycleRuntime>());
         assert!(extensions.contains::<rustok_auth::AuthUserBackfillRuntime>());
         assert!(extensions.contains::<rustok_auth::OAuthAdminRuntime>());
         assert!(extensions.contains::<rustok_auth::UserAdminMutationRuntime>());
         assert!(extensions.contains::<rustok_mcp::McpManagementRuntime>());
+        #[cfg(feature = "mod-notifications")]
+        assert!(
+            rustok_notifications::api::notification_source_registry_from_extensions(
+                extensions.as_ref()
+            )
+            .is_some()
+        );
         #[cfg(feature = "mod-fulfillment")]
         {
             assert!(
@@ -364,5 +419,7 @@ mod tests {
         }
         #[cfg(feature = "mod-commerce")]
         assert!(extensions.contains::<rustok_commerce::MarketplaceFinancialRuntime>());
+        #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
+        assert!(extensions.contains::<rustok_payment::PaymentProviderEventObservers>());
     }
 }

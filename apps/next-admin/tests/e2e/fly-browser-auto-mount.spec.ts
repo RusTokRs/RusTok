@@ -8,7 +8,9 @@ const adapterPath = resolve(
 );
 
 type FlyAdapter = {
-  stop: () => void;
+  lifecycleState: "created" | "started" | "stopped";
+  start: () => FlyAdapter;
+  stop: () => FlyAdapter;
 };
 
 type BrowserScope = typeof globalThis & {
@@ -17,7 +19,6 @@ type BrowserScope = typeof globalThis & {
   FlyBrowser?: {
     bootstrap?: (options?: Record<string, unknown>) => FlyAdapter[];
     mountAll?: (options?: Record<string, unknown>) => FlyAdapter[];
-    unmountAll?: () => void;
   };
 };
 
@@ -95,7 +96,7 @@ async function loadManualBrowser(page: Page) {
   ).toHaveCount(1);
 }
 
-test("autoMount false stays inert until an idempotent manual mount", async ({
+test("autoMount false supports an idempotent one-shot adapter lifecycle", async ({
   page,
 }) => {
   await loadManualBrowser(page);
@@ -111,11 +112,16 @@ test("autoMount false stays inert until an idempotent manual mount", async ({
     const second = scope.FlyBrowser?.mountAll?.(config) ?? [];
     return {
       sameAdapter: first[0] === second[0],
+      lifecycleState: first[0]?.lifecycleState,
       readyEvents: scope.__flyReadyEvents ?? 0,
     };
   });
 
-  expect(mountState).toEqual({ sameAdapter: true, readyEvents: 1 });
+  expect(mountState).toEqual({
+    sameAdapter: true,
+    lifecycleState: "started",
+    readyEvents: 1,
+  });
   await expect(root).toHaveAttribute("data-fly-browser-mounted", "true");
   await expect(page.locator("[data-fly-browser-overlay]")).toHaveCount(3);
 
@@ -135,8 +141,61 @@ test("autoMount false stays inert until an idempotent manual mount", async ({
     });
   await expect(root).toHaveAttribute("data-fly-canvas-connected", "true");
 
-  await page.evaluate(() => {
-    (globalThis as BrowserScope).FlyBrowser?.unmountAll?.();
+  const lifecycle = await page.evaluate(() => {
+    const scope = globalThis as BrowserScope;
+    const config = scope.__FLY_BROWSER_CONFIG__ ?? {};
+    const adapter = scope.FlyBrowser?.mountAll?.(config)[0];
+    if (!adapter) throw new Error("Fly adapter unavailable");
+
+    const repeatedStartIsSame = adapter.start() === adapter;
+    const readyAfterRepeatedStart = scope.__flyReadyEvents ?? 0;
+    const firstStopIsSame = adapter.stop() === adapter;
+    const secondStopIsSame = adapter.stop() === adapter;
+
+    let restartError: { name?: string; code?: string } | null = null;
+    try {
+      adapter.start();
+    } catch (error) {
+      restartError = {
+        name: error instanceof Error ? error.name : undefined,
+        code:
+          typeof error === "object" && error !== null && "code" in error
+            ? String(error.code)
+            : undefined,
+      };
+    }
+
+    const replacement = scope.FlyBrowser?.mountAll?.(config)[0];
+    if (!replacement) throw new Error("replacement Fly adapter unavailable");
+    const replacementIsFresh = replacement !== adapter;
+    const replacementState = replacement.lifecycleState;
+    const readyAfterReplacement = scope.__flyReadyEvents ?? 0;
+    replacement.stop();
+
+    return {
+      repeatedStartIsSame,
+      readyAfterRepeatedStart,
+      firstStopIsSame,
+      secondStopIsSame,
+      restartError,
+      replacementIsFresh,
+      replacementState,
+      readyAfterReplacement,
+    };
+  });
+
+  expect(lifecycle).toEqual({
+    repeatedStartIsSame: true,
+    readyAfterRepeatedStart: 1,
+    firstStopIsSame: true,
+    secondStopIsSame: true,
+    restartError: {
+      name: "FlyBrowserLifecycleError",
+      code: "ADAPTER_STOPPED",
+    },
+    replacementIsFresh: true,
+    replacementState: "started",
+    readyAfterReplacement: 2,
   });
   await expect(root).toHaveAttribute("data-fly-browser-mounted", "false");
   await expect(root).toHaveAttribute("data-fly-canvas-connected", "false");

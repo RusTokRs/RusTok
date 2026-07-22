@@ -2,6 +2,8 @@ use sea_orm_migration::prelude::*;
 
 use sea_orm_migration::sea_orm::DatabaseBackend;
 
+const LEGACY_UNDETERMINED_LOCALE: &str = "und";
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -73,37 +75,27 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_index(
-                Index::create()
-                    .name("idx_flex_entry_localized_values_owner")
-                    .table(FlexEntryLocalizedValues::Table)
-                    .col(FlexEntryLocalizedValues::TenantId)
-                    .col(FlexEntryLocalizedValues::EntryId)
-                    .to_owned(),
-            )
-            .await?;
-
         if manager.get_database_backend() == DatabaseBackend::Postgres {
+            // The legacy JSON object did not retain a source locale. Tenant defaults
+            // are runtime selection policy and must not fabricate provenance.
             manager
                 .get_connection()
-                .execute_unprepared(
+                .execute_unprepared(&format!(
                     r#"
 INSERT INTO flex_entry_localized_values (entry_id, locale, tenant_id, data, created_at, updated_at)
 SELECT
     entry_row.id,
-    COALESCE(NULLIF(tenant.default_locale, ''), 'en'),
+    '{LEGACY_UNDETERMINED_LOCALE}',
     entry_row.tenant_id,
     COALESCE(
         jsonb_object_agg(localized_kv.field_key, localized_kv.field_value)
             FILTER (WHERE localized_kv.field_value IS NOT NULL),
-        '{}'::jsonb
+        '{{}}'::jsonb
     ),
     entry_row.created_at,
     entry_row.updated_at
 FROM flex_entries AS entry_row
 JOIN flex_schemas AS schema_row ON schema_row.id = entry_row.schema_id
-JOIN tenants AS tenant ON tenant.id = entry_row.tenant_id
 LEFT JOIN LATERAL (
     SELECT
         field_definition ->> 'field_key' AS field_key,
@@ -115,15 +107,14 @@ LEFT JOIN LATERAL (
 GROUP BY
     entry_row.id,
     entry_row.tenant_id,
-    COALESCE(NULLIF(tenant.default_locale, ''), 'en'),
     entry_row.created_at,
     entry_row.updated_at
 ON CONFLICT (entry_id, locale) DO UPDATE
 SET
     data = EXCLUDED.data,
     updated_at = EXCLUDED.updated_at
-"#,
-                )
+"#
+                ))
                 .await?;
 
             manager

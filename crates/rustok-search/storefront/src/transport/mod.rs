@@ -1,6 +1,5 @@
 pub mod graphql_adapter;
 pub mod native_server_adapter;
-mod navigation;
 
 use crate::model::{
     SearchFilterPreset, SearchPreviewFilters, SearchPreviewPayload, SearchSuggestion,
@@ -76,7 +75,7 @@ pub async fn fetch_search(
     let native_locale = locale.clone();
     let native_preset_key = preset_key.clone();
     let native_filters = filters.clone();
-    let mut payload = execute_selected_transport(
+    execute_selected_transport(
         "search",
         selected_transport_path(),
         move || {
@@ -89,9 +88,7 @@ pub async fn fetch_search(
         },
         move || graphql_adapter::fetch_search(query, locale, preset_key, filters),
     )
-    .await?;
-    navigation::enrich_search_result_urls(&mut payload);
-    Ok(payload)
+    .await
 }
 
 pub async fn fetch_suggestions(
@@ -149,7 +146,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_test_profile_uses_graphql_transport_without_native_fallback() {
+    fn default_test_profile_uses_graphql_transport() {
         assert_eq!(selected_transport_path(), UiTransportPath::Graphql);
     }
 }
