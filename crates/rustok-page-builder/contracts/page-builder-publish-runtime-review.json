@@ -92,6 +92,24 @@
         "result_version",
         "published_at"
       ],
+      "manifest": {
+        "entity": "page_publish_operation_artifact",
+        "entity_source": "crates/rustok-pages/src/entities/page_publish_operation_artifact.rs",
+        "writer_source": "crates/rustok-pages/src/services/page/publish_manifest.rs",
+        "migration": "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+        "unique_key": [
+          "operation_id",
+          "locale"
+        ],
+        "identity": [
+          "locale",
+          "artifact_hash",
+          "materialization_hash"
+        ],
+        "persistence": "same_transaction_after_publish_receipt_insert",
+        "hash_match_required": true,
+        "legacy_missing_manifest": "rollback_target_unavailable"
+      },
       "replay": "stored_receipt_without_rebuild_or_duplicate_events"
     },
     "new_operation_order": [
@@ -155,6 +173,66 @@
       },
       "create_publish": "rejected_in_domain",
       "source_guard": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
+      "executed_evidence": "pending"
+    },
+    "rollback": {
+      "state": "service_and_public_transport_integrated",
+      "source": "crates/rustok-pages/src/services/page/rollback.rs",
+      "artifact_set_source": "crates/rustok-pages/src/services/page/artifact_set.rs",
+      "input": "RollbackPageInput",
+      "result": "RollbackPageResult",
+      "entrypoint": "rollback_to_previous",
+      "selection": "latest_distinct_publish_artifact_set",
+      "requires_current_status": "published",
+      "concurrency": "expected_page_version",
+      "idempotency_unique_key": [
+        "tenant_id",
+        "page_id",
+        "idempotency_key"
+      ],
+      "request_identity": [
+        "format",
+        "tenant_id",
+        "page_id",
+        "expected_version",
+        "target_publish_operation_id"
+      ],
+      "receipt_entity": "page_rollback_operation",
+      "receipt_source": "crates/rustok-pages/src/entities/page_rollback_operation.rs",
+      "migration": "crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs",
+      "operation_order": [
+        "find_page_for_update",
+        "find_rollback_operation_in_tx",
+        "enforce_expected_version",
+        "load_current_published_set_in_tx",
+        "find_previous_publish_target_in_tx",
+        "replace_current_published_set_in_tx",
+        "DomainEvent::NodeUpdated",
+        "DomainEvent::NodePublished",
+        "insert_rollback_operation_in_tx",
+        "commit"
+      ],
+      "artifact_policy": {
+        "sanitize": false,
+        "materialize": false,
+        "compile": false,
+        "target_manifest_required": true,
+        "canonical_binding_integrity_verification": true,
+        "complete_binding_replacement": true
+      },
+      "transport": {
+        "graphql": "rollbackPage",
+        "http": "/api/admin/pages/{id}/rollback",
+        "admin": "transport_connected_ui_action_pending"
+      },
+      "cache_invalidation": "existing_NodePublished_generation_rotation",
+      "error_codes": [
+        "PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT",
+        "PAGE_ROLLBACK_OPERATION_INTEGRITY",
+        "PAGE_ROLLBACK_TARGET_UNAVAILABLE",
+        "PAGE_ROLLBACK_REQUIRES_PUBLISHED"
+      ],
+      "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
       "executed_evidence": "pending"
     },
     "non_builder_lifecycle": {
@@ -239,5 +317,6 @@
   },
   "verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
   "transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
-  "cache_invalidation_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs"
+  "cache_invalidation_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+  "rollback_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs"
 }
