@@ -81,8 +81,8 @@ requireMarkers("crates/rustok-groups/src/graphql_invitations.rs", [
   "with_idempotency_key",
 ]);
 requireMarkers("crates/rustok-groups/rustok-module.toml", [
-  'query = "graphql_policy_history::GroupsQueryRoot"',
-  'mutation = "graphql_policy_history::GroupsMutationRoot"',
+  'query = "graphql_application_cas::GroupsQueryRoot"',
+  'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
 requireMarkers("crates/rustok-groups/src/lib.rs", [
   "register_notification_source_provider_factory",
@@ -150,4 +150,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups targeted invitation owner-event, exact-recipient, acceptance, FFA, and no-token boundary checks passed.");
+console.log("Groups targeted invitation owner-event, exact-recipient, CAS composition, acceptance, FFA, and no-token boundary checks passed.");
