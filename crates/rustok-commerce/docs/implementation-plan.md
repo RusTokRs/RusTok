@@ -103,21 +103,33 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Preserve the pre-cutover `payment_collection:{collection_id}:cancel` provider
   key and immutable request payload so upgraded retry adopts one journal row instead
   of issuing a second provider cancellation.
+- [x] Publish `CheckoutPaymentExecutionPort` for collection prepare, authorize,
+  capture, and recovery reads with payment-owned provider journal and lifecycle policy.
+- [x] Publish `CheckoutFulfillmentExecutionPort` for typed fulfillment set
+  create/adopt/read without commerce SQL over fulfillment tables.
+- [x] Publish `CheckoutOrderPaymentSettlementPort` for owner-local paid transition and
+  payment-reference replay validation.
+- [x] Cut mounted payment and fulfillment stages plus pipeline recovery over to the
+  payment, fulfillment, and order owner ports.
+- [x] Preserve canonical authorize/capture provider keys and legacy immutable request
+  payload values so upgraded retries adopt existing provider-operation journal rows.
+- [x] Keep payment provider result checkpointing, local collection mutation,
+  fulfillment persistence/recovery, and order paid transition inside owner modules.
 - [x] Add focused owner-port source tests and static commerce/order identity and
   completion-cutover boundary verifiers.
-- [x] Add a static compensation boundary guard and versioned order/payment workflow
-  contracts without promoting FBA/FFA status.
+- [x] Add static compensation and owner-stage guards plus versioned order/payment/
+  fulfillment workflow contracts without promoting FBA/FFA status.
 - [x] Execute isolated unit fixtures for the completion-cutover verifier: 3/3 pass.
-- [ ] Execute order identity/completion/compensation Rust tests and the full static
-  verifier set against a repository checkout.
+- [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
+  the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
-  legacy adoption, completion/compensation kill-point, restart, and remote-profile
-  evidence on SQLite, PostgreSQL, and MySQL.
-- [ ] Remove the temporary order-owner metadata adoption bridge and superseded
-  creation/confirmation/compensation source after all completion and recovery
-  consumers use typed identity.
-- [ ] Replace remaining direct foreign owner service construction in payment and
-  fulfillment stages with typed owner ports or explicit owner-provided local adapters.
+  legacy adoption, completion/compensation/payment/fulfillment kill-point, restart,
+  and remote-profile evidence on SQLite, PostgreSQL, and MySQL.
+- [ ] Remove the temporary owner metadata adoption bridges and superseded
+  creation/confirmation/compensation/pipeline source after all recovery consumers use
+  typed owner identity.
+- [ ] Replace remaining direct foreign owner service construction outside the mounted
+  staged checkout path with typed owner ports or explicit owner-provided adapters.
 - [ ] Remove raw DB/provider/internal text from all public ecommerce port errors and
   retain internal structured logs with correlation identity.
 - [ ] Propagate typed lifecycle statuses through owner ports and remove string status
@@ -153,8 +165,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Require stable checkout idempotency across REST, GraphQL, native, and UI.
 - [x] Route production checkout through staged recovery orchestration.
 - [ ] Resolve cart, product, pricing, inventory, order, payment, and fulfillment only
-  through typed owner boundaries; staged order and compensation paths are cut over,
-  while direct payment and fulfillment stage service construction remains open.
+  through typed owner boundaries on every production path; the mounted staged checkout
+  path is cut over, while other ecommerce orchestration paths still require audit.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
 - [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
@@ -194,13 +206,26 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   preserve the canonical pre-cutover cancel identity for upgraded replay.
 - [x] Keep order identity resolution, cancellation, and lifecycle replay inside order
   owner; paid/shipped/delivered states fail closed into manual reconciliation.
-- [x] Add static guards for order identity, completion, and compensation consumer cutovers.
-- [ ] Remove the temporary metadata write/adoption bridge and old executor/compensation
-  source after upgraded/restart evidence proves every recovery path uses typed identity.
-- [ ] Remove remaining direct `PaymentService` and `FulfillmentService` construction
-  from commerce payment and fulfillment stages.
-- [ ] Retain order completion/adoption and compensation parity, kill-point, restart,
-  and PostgreSQL/MySQL contention evidence.
+- [x] Cut payment prepare/authorize/capture/read over to
+  `CheckoutPaymentExecutionPort`; commerce owns only stage checkpoints.
+- [x] Cut fulfillment create/adopt/read over to
+  `CheckoutFulfillmentExecutionPort`; commerce no longer queries fulfillment storage.
+- [x] Cut order paid transition/replay over to
+  `CheckoutOrderPaymentSettlementPort`.
+- [x] Mount owner-port pipeline recovery so payment and fulfillment state reloads use
+  the same owner stages as live execution.
+- [x] Preserve canonical provider authorize/capture keys and pre-cutover request payload
+  values for upgraded journal replay.
+- [x] Add static guards for order identity, completion, compensation, and mounted
+  payment/fulfillment/pipeline owner boundaries.
+- [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
+  concurrency-safe uniqueness constraint.
+- [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
+  pipeline source after upgraded/restart evidence proves every recovery path uses typed
+  identity.
+- [ ] Retain order completion/adoption, payment execution, fulfillment execution,
+  settlement, and compensation parity, kill-point, restart, and PostgreSQL/MySQL
+  contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
 ### Return completion
@@ -385,6 +410,12 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   provider-journal replay, external cancel, local cancel, and safe outcome projection.
 - [x] Preserve the canonical pre-port provider cancel key and immutable request payload
   so upgraded compensation retries do not duplicate the PSP call.
+- [x] Publish `CheckoutPaymentExecutionPort` for owner-local collection prepare,
+  authorize, capture, and recovery reads.
+- [x] Preserve canonical authorize/capture keys and immutable legacy payload values so
+  upgraded staged checkout retries adopt existing provider journal rows.
+- [x] Checkpoint normalized provider success before local collection mutation and route
+  local persistence failure after provider success to reconciliation.
 - [x] Guard provider operations through the provider registry with CAS journals and
   explicit reconciliation outcomes.
 - [x] Route uncertain external outcomes to reconciliation and forbid auto-reclaim.
@@ -400,8 +431,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Keep marketplace reversal consumers free of raw provider payloads and signatures.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
-- [ ] Execute checkout compensation provider cancel replay, crash, concurrent claim,
-  unknown-outcome, and reconciliation-required evidence.
+- [ ] Execute checkout compensation and payment execution provider replay, crash,
+  concurrent claim, unknown-outcome, and reconciliation-required evidence.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
@@ -425,9 +456,11 @@ Source inspection is not execution evidence.
 - [x] `node --test scripts/verify/verify-commerce-checkout-completion-cutover.test.mjs`
   (isolated fixture execution: 3/3 pass)
 - [ ] `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
+- [ ] `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
+- [ ] `cargo xtask module validate fulfillment`
 - [ ] `cargo xtask module validate marketplace`
 - [ ] `cargo xtask module validate marketplace_seller`
 - [ ] `cargo xtask module validate marketplace_listing`
@@ -438,8 +471,9 @@ Source inspection is not execution evidence.
   `OrderService` in the staged order stage/pipeline.
 - [x] Add a static guard that forbids direct order/payment services and payment provider
   journal access in the mounted compensation source.
-- [ ] Extend static guards to forbid direct `PaymentService::new` and
-  `FulfillmentService::new` after payment/fulfillment stage cutovers.
+- [x] Add a static guard that forbids `PaymentService`, `FulfillmentService`,
+  `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
+  fulfillment, and pipeline source.
 - [ ] Add a static guard for public `PortError` construction from raw `DbErr`/SDK errors.
 
 ### Compile/tests
@@ -450,9 +484,13 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-order --test order_checkout_identity`
 - [ ] `cargo test -p rustok-order --test checkout_order_identity_port`
 - [ ] `cargo test -p rustok-order --test checkout_completion_port`
-- [ ] Targeted staged checkout completion/adoption/replay and compensation tests.
+- [ ] Targeted staged checkout completion/adoption/replay, compensation, and order
+  payment settlement tests.
 - [ ] `cargo check -p rustok-payment --all-features`
-- [ ] Targeted payment compensation canonical-key and legacy-payload replay tests.
+- [ ] Targeted payment compensation and execution canonical-key/legacy-payload replay tests.
+- [ ] `cargo check -p rustok-fulfillment --all-features`
+- [ ] Targeted fulfillment create/adopt/read, duplicate identity, partial set, and
+  concurrent create tests.
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
 - [ ] `cargo test -p rustok-marketplace-ledger`
@@ -463,9 +501,10 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-marketplace-listing`
 - [ ] `cargo check -p rustok-marketplace-listing-admin --all-features`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
-- [ ] Targeted checkout, order identity/completion/compensation, return-completion,
-  payment, marketplace financial recovery, seller balance transfer, remaining
-  seller/listing lifecycle, localization, outbox replay/rollback, and tenant-isolation tests.
+- [ ] Targeted checkout, order identity/completion/compensation/settlement,
+  payment/fulfillment execution, return-completion, marketplace financial recovery,
+  seller balance transfer, remaining seller/listing lifecycle, localization, outbox
+  replay/rollback, and tenant-isolation tests.
 
 ### Database/runtime
 
@@ -475,9 +514,12 @@ Source inspection is not execution evidence.
   immutability, tenant/order linkage, and cleanup on all supported backends.
 - [ ] Prove order checkout identity backfill truthfulness, tenant/order integrity,
   operation/order/cart uniqueness, monotonic enrichment, rollback, legacy adoption,
-  completion replay, compensation identity, and owner-port recovery on all supported backends.
-- [ ] Prove payment compensation adopts the pre-cutover provider journal row and never
-  repeats an executing, succeeded, or reconciliation-required external effect.
+  completion replay, compensation identity, payment settlement, and owner-port recovery
+  on all supported backends.
+- [ ] Prove payment compensation/execution adopts pre-cutover provider journal rows and
+  never repeats an executing, succeeded, or reconciliation-required external effect.
+- [ ] Prove fulfillment create/adopt/read returns one exact immutable set under duplicate,
+  concurrent, process-exit, restart, and upgraded metadata scenarios.
 - [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
@@ -500,7 +542,8 @@ Source inspection is not execution evidence.
 7. [x] Cut staged checkout order creation/confirmation over to the completed owner port.
 8. [x] Cut compensation over to typed order/payment owner ports and remove foreign
    services/journal access from the mounted compensation path.
-9. [ ] Cut payment and fulfillment stages over to explicit owner adapters/ports.
+9. [x] Cut payment and fulfillment stages plus pipeline recovery over to explicit
+   payment, fulfillment, and order owner ports.
 10. [ ] Remove raw public ecommerce port error leakage and add correlation-safe logging.
 11. [ ] Introduce typed lifecycle status snapshots and remove critical string matching.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
@@ -537,6 +580,8 @@ Source inspection is not execution evidence.
 - [x] Add seller event history to native and GraphQL FFA transports.
 - [x] Cut mounted checkout compensation over to typed order/payment owner ports while
   retaining fail-closed manual reconciliation for uncertain external outcomes.
+- [x] Cut mounted payment, fulfillment, order settlement, and pipeline recovery over to
+  owner ports while preserving canonical provider replay identities.
 
 ## Change rules
 
@@ -555,9 +600,13 @@ Source inspection is not execution evidence.
 - [Commerce documentation](./README.md)
 - [Commerce FBA registry](../contracts/commerce-fba-registry.json)
 - [Checkout compensation owner cutover](./checkout-compensation-owner-cutover.md)
+- [Checkout owner stage cutover](./checkout-owner-stage-cutover.md)
 - [Order checkout compensation contract](../../rustok-order/contracts/order-checkout-compensation-v1.json)
+- [Order checkout payment settlement contract](../../rustok-order/contracts/order-checkout-payment-settlement-v1.json)
 - [Payment FBA registry](../../rustok-payment/contracts/payment-fba-registry.json)
 - [Payment checkout compensation contract](../../rustok-payment/contracts/payment-checkout-compensation-v1.json)
+- [Payment checkout execution contract](../../rustok-payment/contracts/payment-checkout-execution-v1.json)
+- [Fulfillment checkout execution contract](../../rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json)
 - [Marketplace root plan](../../rustok-marketplace/docs/implementation-plan.md)
 - [Marketplace root FBA registry](../../rustok-marketplace/contracts/marketplace-fba-registry.json)
 - [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json)
