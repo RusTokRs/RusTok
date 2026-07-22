@@ -1,0 +1,65 @@
+name: Pages Active Menu Transport Apply
+
+on:
+  pull_request:
+    paths:
+      - "scripts/temporary/apply_active_menu_transport.py"
+      - ".github/workflows/pages-active-menu-transport-apply.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.96
+        with:
+          components: rustfmt
+      - name: Apply current-scope transport patch
+        run: python scripts/temporary/apply_active_menu_transport.py
+      - name: Format changed Rust files only
+        run: |
+          rustfmt --edition 2024 \
+            crates/rustok-pages/src/dto/menu.rs \
+            crates/rustok-pages/src/dto/mod.rs \
+            crates/rustok-pages/src/graphql/types.rs \
+            crates/rustok-pages/src/graphql/query.rs \
+            crates/rustok-pages/src/graphql/mutation.rs \
+            crates/rustok-pages/src/controllers/mod.rs \
+            crates/rustok-pages/src/openapi.rs \
+            crates/rustok-pages/tests/menu_transport_contract.rs
+      - name: Publish product-only commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          product_files=(
+            crates/rustok-pages/src/dto/menu.rs
+            crates/rustok-pages/src/dto/mod.rs
+            crates/rustok-pages/src/graphql/types.rs
+            crates/rustok-pages/src/graphql/query.rs
+            crates/rustok-pages/src/graphql/mutation.rs
+            crates/rustok-pages/src/controllers/mod.rs
+            crates/rustok-pages/src/openapi.rs
+            crates/rustok-pages/tests/menu_transport_contract.rs
+          )
+          git diff --check
+          git add "${product_files[@]}"
+          git rm scripts/temporary/apply_active_menu_transport.py
+          git rm .github/workflows/pages-active-menu-transport-apply.yml
+          expected=$(printf '%s\n' "${product_files[@]}" | sort)
+          actual=$(git diff --cached --name-only --diff-filter=ACMR | sort)
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Unexpected staged product files"
+            diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") || true
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(pages): expose active menu transport"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
