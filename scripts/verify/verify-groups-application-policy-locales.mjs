@@ -36,6 +36,8 @@ for (const relative of [
   "crates/rustok-groups/src/ports.rs",
   "crates/rustok-groups/admin/src/application_model.rs",
   "crates/rustok-groups/admin/src/application_core.rs",
+  "crates/rustok-groups/admin/src/policy_locale_compat.rs",
+  "crates/rustok-groups/admin/src/lib.rs",
   "crates/rustok-groups/admin/src/transport.rs",
   "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
   "crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
@@ -92,6 +94,21 @@ requireMarkers("crates/rustok-groups/admin/src/application_core.rs", [
   "prepare_group_application_policy_locale_catalog_query",
   "prepare_group_application_policy_query",
   "normalize_locale_tag(locale)",
+]);
+requireMarkers("crates/rustok-groups/admin/src/policy_locale_compat.rs", [
+  "pub async fn load_group_admin_application_policy",
+  "load_group_admin_application_policy_for_management",
+  "selected membership application policy translation does not exist",
+  "UiTransportError::native",
+  "UiTransportError::graphql",
+]);
+forbidMarkers("crates/rustok-groups/admin/src/policy_locale_compat.rs", [
+  "fallback_failed",
+  "load_group_application_policy(",
+]);
+requireMarkers("crates/rustok-groups/admin/src/lib.rs", [
+  "mod policy_locale_compat;",
+  "pub use policy_locale_compat::*;",
 ]);
 requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
   "load_group_admin_application_policy_locale_catalog",
@@ -183,4 +200,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups application policy locale catalog, explicit selected-locale management, host-locale separation, CAS, FFA/FBA, and no-fallback checks passed.");
+console.log("Groups application policy locale catalog, explicit selected-locale management, host-locale separation, compatibility API, CAS, FFA/FBA, and no-fallback checks passed.");
