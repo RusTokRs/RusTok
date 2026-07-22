@@ -5,32 +5,30 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_page_builder::runtime_scenario_release::{
-    evaluate_page_builder_runtime_scenario_release, PageBuilderRuntimeScenarioReleaseRequest,
+    PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE, PageBuilderRuntimeScenarioReleaseRequest,
     RuntimeScenarioReleaseBaseline, RuntimeScenarioReleaseEvaluation, RuntimeScenarioReleasePolicy,
-    PAGE_BUILDER_SCENARIO_REGRESSION_BLOCKED_ERROR_CODE,
+    evaluate_page_builder_runtime_scenario_release,
 };
 use rustok_page_builder::{
-    compile_materialized_static_landing, sanitize_static_landing_project,
     PageBuilderReviewedPublishRuntime, PageBuilderStaticLandingMaterializationError,
     PageBuilderStaticLandingSanitizationError, StaticLandingPage,
+    compile_materialized_static_landing, sanitize_static_landing_project,
 };
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::dto::{PageBodyRevisionInput, PublishPageInput, PublishPageResult};
-use crate::entities::{
-    page, page_body, page_builder_scenario_baseline, page_publish_operation,
-};
+use crate::entities::{page, page_body, page_builder_scenario_baseline, page_publish_operation};
 use crate::error::{PagesError, PagesResult};
+use crate::services::PageBuilderArtifactService;
 use crate::services::page_builder_artifact::CompiledLandingArtifact;
 use crate::services::rbac::enforce_owned_scope;
-use crate::services::PageBuilderArtifactService;
 
 use super::document::document_revision_conflict;
 use super::helpers::{
@@ -116,24 +114,14 @@ impl PageService {
             ));
         }
 
-        let builder_sources = require_builder_sources(collect_builder_sources(
-            &current_bodies,
-            None,
-            true,
-        ))?;
+        let builder_sources =
+            require_builder_sources(collect_builder_sources(&current_bodies, None, true))?;
         let project_values = parse_builder_project_values(&builder_sources)?;
         ensure_builder_publish_enabled_in_tx(&txn, tenant_id).await?;
-        ensure_candidates_allowed_in_tx(
-            &txn,
-            tenant_id,
-            page_id,
-            &reviewed,
-            project_values,
-        )
-        .await?;
+        ensure_candidates_allowed_in_tx(&txn, tenant_id, page_id, &reviewed, project_values)
+            .await?;
 
-        let compiled =
-            compile_builder_sources_with_reviewed_runtime(builder_sources, &reviewed)?;
+        let compiled = compile_builder_sources_with_reviewed_runtime(builder_sources, &reviewed)?;
         let sanitized_set_hash = sanitized_set_hash(&compiled)?;
         let artifact_set_hash = artifact_set_hash(&compiled)?;
         for item in &compiled {
@@ -212,9 +200,7 @@ fn require_builder_sources(sources: BuilderSourceSet) -> PagesResult<BuilderSour
     Ok(sources)
 }
 
-fn parse_builder_project_values(
-    sources: &BuilderSourceSet,
-) -> PagesResult<Vec<serde_json::Value>> {
+fn parse_builder_project_values(sources: &BuilderSourceSet) -> PagesResult<Vec<serde_json::Value>> {
     sources
         .iter()
         .map(|(locale, content)| {
@@ -245,16 +231,14 @@ fn compile_builder_sources_with_reviewed_runtime(
                     "Page Builder project for locale `{locale}` is not valid JSON: {error}"
                 ))
             })?;
-            let sanitized = sanitize_static_landing_project(&project_data)
-                .map_err(sanitization_error)?;
+            let sanitized =
+                sanitize_static_landing_project(&project_data).map_err(sanitization_error)?;
             sanitized
                 .verify_integrity()
                 .map_err(sanitization_integrity_error)?;
-            let materialized = compile_materialized_static_landing(
-                sanitized.project_data(),
-                runtime.clone(),
-            )
-            .map_err(artifact_compile_error)?;
+            let materialized =
+                compile_materialized_static_landing(sanitized.project_data(), runtime.clone())
+                    .map_err(artifact_compile_error)?;
             materialized
                 .verify_integrity()
                 .map_err(artifact_integrity_error)?;
@@ -273,20 +257,18 @@ fn compile_builder_sources_with_reviewed_runtime(
             let page = materialized.artifact.pages[0].clone();
             enforce_size_limits(&page)?;
             let materialization_hash = materialized.identity.materialization_hash.clone();
-            let materialization_identity = serde_json::to_value(&materialized.identity).map_err(
-                |error| {
+            let materialization_identity =
+                serde_json::to_value(&materialized.identity).map_err(|error| {
                     PagesError::artifact_integrity(format!(
                         "unable to encode reviewed landing materialization identity: {error}"
                     ))
-                },
-            )?;
-            let runtime_snapshots = serde_json::to_value(&materialized.runtime_snapshots).map_err(
-                |error| {
+                })?;
+            let runtime_snapshots =
+                serde_json::to_value(&materialized.runtime_snapshots).map_err(|error| {
                     PagesError::artifact_integrity(format!(
                         "unable to encode reviewed landing runtime snapshots: {error}"
                     ))
-                },
-            )?;
+                })?;
             Ok(ReviewedCompiledLanding {
                 sanitized_hash: sanitized.sanitized_hash().to_string(),
                 compiled: CompiledLandingArtifact {
@@ -343,12 +325,12 @@ async fn ensure_candidates_allowed_in_tx(
     let Some(model) = model else {
         return Ok(());
     };
-    let baseline: RuntimeScenarioReleaseBaseline =
-        serde_json::from_value(model.baseline.clone()).map_err(|error| {
-            PagesError::validation(format!(
-                "Stored Page Builder scenario baseline is invalid: {error}"
-            ))
-        })?;
+    let baseline: RuntimeScenarioReleaseBaseline = serde_json::from_value(model.baseline.clone())
+        .map_err(|error| {
+        PagesError::validation(format!(
+            "Stored Page Builder scenario baseline is invalid: {error}"
+        ))
+    })?;
     if !baseline.validate().is_empty()
         || baseline.baseline_hash != model.baseline_hash
         || baseline.source_project_hash != model.source_project_hash
@@ -368,7 +350,7 @@ async fn ensure_candidates_allowed_in_tx(
             reviewed.scenario_id
         )));
     };
-    if &selected.context != &reviewed.context {
+    if selected.context != reviewed.context {
         return Err(PagesError::publish_runtime_review_invalid(format!(
             "reviewed scenario `{}` context does not match the promoted runtime baseline",
             reviewed.scenario_id
@@ -467,7 +449,7 @@ async fn insert_publish_operation_in_tx(
         sanitized_set_hash: Set(sanitized_set_hash),
         artifact_set_hash: Set(artifact_set_hash),
         result_version: Set(result_version),
-        published_at: Set(timestamp.clone()),
+        published_at: Set(timestamp),
         created_at: Set(timestamp),
     }
     .insert(txn)
@@ -692,9 +674,7 @@ mod tests {
         .expect("reviewed runtime");
         reviewed.context = json!({ "page": { "title": "Changed" } });
 
-        assert!(
-            compile_builder_sources_with_reviewed_runtime(BTreeMap::new(), &reviewed).is_err()
-        );
+        assert!(compile_builder_sources_with_reviewed_runtime(BTreeMap::new(), &reviewed).is_err());
     }
 
     #[test]

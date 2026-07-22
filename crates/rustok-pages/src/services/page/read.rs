@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use tracing::instrument;
 use uuid::Uuid;
 

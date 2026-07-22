@@ -1,10 +1,9 @@
 use chrono::Utc;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates};
 use rustok_page_builder::{
-    ComponentRegistryManifest, LandingSectionSnapshot, PageBuilderMaterializedStaticLandingArtifact,
-    PageBuilderPreviewRuntime, PageBuilderStaticLandingMaterializationIdentity, PageHead,
-    StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
-    compile_materialized_static_landing,
+    ComponentRegistryManifest, LandingSectionSnapshot,
+    PageBuilderMaterializedStaticLandingArtifact, PageBuilderStaticLandingMaterializationIdentity,
+    PageHead, StaticLandingArtifact, StaticLandingBuildIdentity, StaticLandingPage,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -54,50 +53,6 @@ pub struct PageBuilderArtifactService {
 impl PageBuilderArtifactService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
-    }
-
-    pub(crate) fn compile_source(
-        locale: &str,
-        content: &str,
-    ) -> PagesResult<CompiledLandingArtifact> {
-        let project_data: Value = serde_json::from_str(content).map_err(|error| {
-            PagesError::validation(format!(
-                "Page Builder project for locale `{locale}` is not valid JSON: {error}"
-            ))
-        })?;
-        let materialized = compile_materialized_static_landing(
-            &project_data,
-            PageBuilderPreviewRuntime::default(),
-        )
-        .map_err(artifact_compile_error)?;
-        materialized
-            .verify_integrity()
-            .map_err(artifact_integrity_error)?;
-        if materialized.artifact.pages.len() != 1 {
-            return Err(PagesError::validation(format!(
-                "A Pages Page Builder body must contain exactly one Fly page; found {}",
-                materialized.artifact.pages.len()
-            )));
-        }
-        let page = materialized.artifact.pages[0].clone();
-        enforce_size_limits(&page)?;
-        let materialization_hash = materialized.identity.materialization_hash.clone();
-        let materialization_identity = to_json(
-            &materialized.identity,
-            "Page Builder landing materialization identity",
-        )?;
-        let runtime_snapshots = to_json(
-            &materialized.runtime_snapshots,
-            "Page Builder landing runtime snapshots",
-        )?;
-        Ok(CompiledLandingArtifact {
-            locale: locale.to_string(),
-            artifact: materialized.artifact,
-            page,
-            materialization_hash,
-            materialization_identity,
-            runtime_snapshots,
-        })
     }
 
     pub(crate) async fn stage_compiled_in_tx(
@@ -249,24 +204,6 @@ impl PageBuilderArtifactService {
                 .insert(txn)
                 .await?;
             }
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn clear_existing_body_binding_in_tx(
-        txn: &DatabaseTransaction,
-        page_id: Uuid,
-        locale: &str,
-    ) -> PagesResult<()> {
-        let body = page_body::Entity::find()
-            .filter(page_body::Column::PageId.eq(page_id))
-            .filter(page_body::Column::Locale.eq(locale))
-            .one(txn)
-            .await?;
-        if let Some(body) = body {
-            page_published_landing_artifact::Entity::delete_by_id(body.id)
-                .exec(txn)
-                .await?;
         }
         Ok(())
     }
@@ -477,10 +414,8 @@ fn verify_record(record: &page_static_landing_artifact::Model) -> PagesResult<()
                 materialization_identity,
                 "Page Builder landing materialization identity",
             )?;
-            let runtime_snapshots = from_json(
-                runtime_snapshots,
-                "Page Builder landing runtime snapshots",
-            )?;
+            let runtime_snapshots =
+                from_json(runtime_snapshots, "Page Builder landing runtime snapshots")?;
             let materialized = PageBuilderMaterializedStaticLandingArtifact {
                 identity,
                 runtime_snapshots,
@@ -529,8 +464,7 @@ fn ensure_same_artifact(
         || record.document_html != compiled.page.document_html
         || record.body_html != compiled.page.body_html
         || record.css != compiled.page.css
-        || record.materialization_hash.as_deref()
-            != Some(compiled.materialization_hash.as_str())
+        || record.materialization_hash.as_deref() != Some(compiled.materialization_hash.as_str())
         || record.materialization_identity.as_ref() != Some(&compiled.materialization_identity)
         || record.runtime_snapshots.as_ref() != Some(&compiled.runtime_snapshots)
     {
@@ -576,10 +510,6 @@ where
     })
 }
 
-fn artifact_compile_error(error: impl std::fmt::Display) -> PagesError {
-    PagesError::validation(format!("Page Builder static artifact error: {error}"))
-}
-
 fn artifact_integrity_error(error: impl std::fmt::Display) -> PagesError {
     PagesError::artifact_integrity(format!(
         "Page Builder static artifact integrity error: {error}"
@@ -589,49 +519,6 @@ fn artifact_integrity_error(error: impl std::fmt::Display) -> PagesError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn compiler_produces_a_verified_single_page_materialization() {
-        let content = serde_json::json!({
-            "pages": [{
-                "id": "home",
-                "flyPageMeta": {
-                    "title": "Home",
-                    "description": "A stable landing page",
-                    "slug": "home"
-                },
-                "component": {
-                    "id": "root",
-                    "type": "wrapper",
-                    "components": [{
-                        "id": "title",
-                        "type": "heading",
-                        "tagName": "h1",
-                        "content": "Welcome"
-                    }]
-                }
-            }]
-        })
-        .to_string();
-        let compiled =
-            PageBuilderArtifactService::compile_source("en", &content).expect("compiled artifact");
-        assert_eq!(compiled.locale, "en");
-        assert_eq!(compiled.artifact.pages.len(), 1);
-        assert_eq!(compiled.page, compiled.artifact.pages[0]);
-        assert_eq!(compiled.materialization_hash.len(), 64);
-        let materialized = compiled_materialization(&compiled).expect("materialized artifact");
-        assert_eq!(materialized.identity.runtime_scenario_id, None);
-        assert_eq!(materialized.runtime_snapshots.len(), 1);
-        materialized
-            .verify_integrity()
-            .expect("materialization integrity");
-    }
-
-    #[test]
-    fn compiler_requires_exactly_one_fly_page() {
-        let content = serde_json::json!({ "pages": [] }).to_string();
-        assert!(PageBuilderArtifactService::compile_source("en", &content).is_err());
-    }
 
     #[test]
     fn unrestricted_artifact_is_visible_without_a_channel() {
