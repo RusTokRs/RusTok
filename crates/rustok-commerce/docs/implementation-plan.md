@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-21
+Last reviewed: 2026-07-22
 
 ## Source of truth
 
@@ -9,7 +9,8 @@ order, completion marks, verification state, and promotion gates.
 
 Rules:
 
-- `[x]` means source or retained execution evidence exists in `main`.
+- `[x]` means source or retained execution evidence exists in `main` or in the
+  implementation branch that updates this plan.
 - `[ ]` means implementation or required evidence is still missing.
 - Source implementation and runtime verification are separate tasks.
 - Local owner plans and FBA registries may contain owner detail but must not
@@ -17,6 +18,7 @@ Rules:
 - No FBA or FFA status is promoted from source inspection alone.
 - Newly discovered work is recorded here before or with implementation.
 - Legacy migrations must not invent actor, locale, provider, or financial facts.
+- A broad invariant must be reopened when one production path still violates it.
 
 `rustok-commerce` owns cross-domain ecommerce orchestration. Product, cart,
 customer, region, pricing, inventory, order, payment, fulfillment, tax, promotion,
@@ -26,6 +28,7 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 
 ## Current boundary
 
+- Ecommerce audit gate: `reopened_p0`.
 - Ecommerce FFA: `in_progress`.
 - Ecommerce FBA: `boundary_ready`.
 - Payment FFA: `in_progress`.
@@ -43,21 +46,61 @@ the explicit `rustok-marketplace-*` family and must never be folded into
   migrations, tenant isolation, contention, restart, mounted transports, remote
   profiles, and financial reconciliation evidence are retained.
 
+## Audit 2026-07-22: reopened P0 work
+
+The following items were rechecked against current `main` after the staged checkout,
+payment webhook, marketplace allocation, commission, and ledger source waves.
+
+- [x] Reinspect the current checkout, compensation, order port, payment boundary,
+  marketplace economics checkpoint, and master implementation plan.
+- [x] Confirm that `CheckoutCompletionPort` still ignores `cart_id` and
+  `shipping_option_id`, creates and confirms an order through separate calls, and
+  returns `order.checkout_result_projection_unavailable` for recovery reads.
+- [x] Confirm that staged checkout and compensation still construct foreign
+  `OrderService`, `PaymentService`, and `FulfillmentService` instances directly.
+- [x] Confirm that checkout order creation and compensation query the owner-owned
+  `orders` table directly through JSON metadata instead of a typed order owner port.
+- [x] Confirm that multiple ecommerce port mappers still place raw database/internal
+  error text into public `PortError.message`.
+- [x] Confirm that checkout/order/payment/fulfillment orchestration still relies on
+  string lifecycle matching in critical paths.
+- [x] Confirm that the marketplace economics checkpoint migration omitted MySQL
+  integrity/immutability guards and left the PostgreSQL trigger function behind on
+  rollback.
+- [x] Harden the checkpoint migration source with PostgreSQL/SQLite/MySQL guard
+  parity, fully immutable update behavior, and explicit backend cleanup before down.
+- [ ] Run clean/upgraded/down/reapply checkpoint migration tests on SQLite,
+  PostgreSQL, and MySQL; retain evidence.
+- [ ] Make economics checkpoint admission concurrency-safe: duplicate concurrent
+  inserts with identical evidence must adopt the committed row, while conflicting
+  evidence must return a typed conflict rather than a raw unique-violation error.
+- [ ] Replace cross-owner order metadata/SQL identity lookup with an owner-owned
+  checkout operation identity and typed read/command port.
+- [ ] Complete `CheckoutCompletionPort` idempotency and recovery semantics, including
+  lookup by checkout operation and cart.
+- [ ] Replace direct foreign owner service construction in staged checkout and
+  compensation with typed owner ports or explicit owner-provided local adapters.
+- [ ] Remove raw DB/provider/internal text from all public ecommerce port errors and
+  retain internal structured logs with correlation identity.
+- [ ] Propagate typed lifecycle statuses through owner ports and remove string status
+  matching from critical checkout, compensation, order, payment, and fulfillment paths.
+
 ## FBA/FFA architecture invariants
 
 - [x] Keep owner persistence, lifecycle policy, receipts, events, and provider policy
   inside owner modules.
-- [x] Use typed FBA ports rather than foreign entities or cross-module DB access.
+- [ ] Use typed FBA ports rather than foreign entities, direct foreign service
+  construction, or cross-module DB access on every production orchestration path.
 - [x] Carry tenant, actor, effective locale, channel, correlation, deadline, and
-  idempotency context across owner calls.
+  idempotency context across published owner calls.
 - [x] Keep in-process providers behind the same contracts expected by remote adapters.
 - [x] Build FFA as module-owned core/model/transport/i18n/thin-UI packages; hosts only
   compose them.
 - [x] Require explicit native/GraphQL transport selection; silent fallback is
   forbidden unless explicitly contracted and verified.
 - [x] Use `core_only -> core_transport -> core_transport_ui`.
-- [x] Keep provider raw payloads, signatures, SQL errors, SDK errors, and KYC raw
-  payloads out of owner persistence and public errors.
+- [ ] Keep provider raw payloads, signatures, SQL errors, SDK errors, and internal
+  invariant details out of owner persistence and public errors on every ecommerce port.
 - [x] Preserve unknown historical attribution as typed unknown provenance rather than
   sentinel UUIDs or guessed locales.
 - [x] Allow request-scoped hosts to inject typed owner ports, authorization, and
@@ -71,21 +114,33 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 
 - [x] Require stable checkout idempotency across REST, GraphQL, native, and UI.
 - [x] Route production checkout through staged recovery orchestration.
-- [x] Resolve cart, product, pricing, inventory, order, payment, and fulfillment
-  through owner boundaries.
+- [ ] Resolve cart, product, pricing, inventory, order, payment, and fulfillment only
+  through typed owner boundaries; remove the remaining direct service and SQL paths.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
 - [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
   column introduced by the checkout lifecycle migration.
-- [x] Resume persisted stages and adopt already committed owner outcomes.
+- [x] Resume persisted stages and adopt already committed owner outcomes where owner
+  identity is available.
 - [x] Prevent a second active checkout for the same cart.
-- [x] Provide safe compensation and block provider execution during reconciliation.
+- [x] Provide durable compensation state and block provider execution during open
+  reconciliation.
 - [x] Persist typed marketplace cart/checkout snapshots and fail closed when marketplace
   identity or economics are missing.
 - [x] Run marketplace allocation and commission assessment before payment capture.
 - [x] Persist a lease-bound allocation/commission economics checkpoint and adopt it on replay.
 - [x] Post marketplace ledger after capture through a durable financial operation and gate
   fulfillment on saved ledger evidence.
+- [x] Add backend-parity source guards and reversible cleanup for the marketplace
+  economics checkpoint migration.
+- [ ] Add concurrent economics-checkpoint admission/adoption and conflict tests.
+- [ ] Move checkout order identity from JSON metadata into owner-owned typed columns or
+  an owner operation table with tenant-safe uniqueness.
+- [ ] Make order creation plus placement one idempotent owner command and expose durable
+  checkout-result reads by operation/cart.
+- [ ] Remove direct `orders` table reads from checkout creation and compensation.
+- [ ] Remove direct `OrderService`, `PaymentService`, and `FulfillmentService`
+  construction from commerce orchestration.
 - [ ] Retain admission parity, kill-point, restart, and PostgreSQL contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
@@ -285,6 +340,7 @@ the explicit `rustok-marketplace-*` family and must never be folded into
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
+- [ ] Remove raw database/provider error strings from payment-facing public port errors.
 
 ## Verification and promotion checklist
 
@@ -299,15 +355,21 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-marketplace-listing-event-contract.mjs`
 - [ ] `node scripts/verify/verify-marketplace-listing-provenance-cutover.mjs`
 - [ ] `cargo xtask module validate commerce`
+- [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
 - [ ] `cargo xtask module validate marketplace`
 - [ ] `cargo xtask module validate marketplace_seller`
 - [ ] `cargo xtask module validate marketplace_listing`
 - [ ] Inspect marketplace ledger v3 and seller-balance-transfer v1 source guards.
+- [ ] Add a static guard that forbids `FROM orders`, `OrderService::new`,
+  `PaymentService::new`, and `FulfillmentService::new` in commerce orchestration after
+  the owner-port cutover.
+- [ ] Add a static guard for public `PortError` construction from raw `DbErr`/SDK errors.
 
 ### Compile/tests
 
 - [ ] `cargo check -p rustok-commerce --lib`
+- [ ] `cargo check -p rustok-order --all-features`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
@@ -319,53 +381,71 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-marketplace-listing`
 - [ ] `cargo check -p rustok-marketplace-listing-admin --all-features`
 - [ ] `cargo check -p rustok-server --features mod-marketplace`
-- [ ] Targeted checkout, return-completion, payment, marketplace financial recovery,
-  seller balance transfer, remaining seller/listing lifecycle, localization, outbox
-  replay/rollback, and tenant-isolation tests.
+- [ ] Targeted checkout, order completion, compensation, return-completion, payment,
+  marketplace financial recovery, seller balance transfer, remaining seller/listing
+  lifecycle, localization, outbox replay/rollback, and tenant-isolation tests.
 
 ### Database/runtime
 
 - [ ] Apply clean/upgraded SQLite/PostgreSQL/MySQL and rollback/reapply paths, respecting the
   intentionally irreversible listing provenance cutover.
-- [ ] Execute receipt/event/outbox/provider-operation contention and restart scenarios.
+- [ ] Specifically prove marketplace economics checkpoint identity, amount,
+  immutability, tenant/order linkage, and cleanup on all supported backends.
+- [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
 - [ ] Execute seller balance transfer replay, duplicate source, cumulative reference capacity,
   concurrent admission, projection rebuild, and append-only trigger scenarios.
 - [ ] Prove declared routers and module-owned UI packages are mounted.
-- [ ] Exercise authenticated checkout, recovery, seller admin, listing admin,
+- [ ] Exercise authenticated checkout, recovery, compensation, seller admin, listing admin,
   reconciliation, and replay.
 - [ ] Retain remote-profile and real payment/provider evidence.
 
 ## Immediate execution order
 
-1. [x] Complete durable return-completion admission and operator recovery source.
-2. [x] Create Marketplace root, seller owner, and seller FFA source.
-3. [x] Add seller receipts and exact-locale multilingual storage.
-4. [x] Create listing owner with terms, receipts, eligibility, and opt-in composition.
-5. [x] Add complete listing lifecycle events and remove direct write bypasses.
-6. [x] Backfill truthful legacy listing snapshots and remove mutable note columns.
-7. [x] Publish the initial module-owned listing FFA source package.
-8. [x] Define and atomically publish the sealed listing transactional outbox events.
-9. [x] Add listing permissions and workspace/admin feature registration.
-10. [x] Add immutable seller lifecycle/moderation event storage and bounded timeline reads.
-11. [x] Route onboarding review, suspension, and reactivation through atomic seller
-    state + event + receipt completion.
-12. [x] Add typed marketplace allocation, commission, post-capture ledger, reversal recovery,
-    adaptation-failure recovery, seller balance projections, and bucket-transfer primitives.
-13. [x] Extend seller event production to create/profile/onboarding-submit/member commands.
-14. [x] Add seller event history to native and GraphQL FFA transports.
-15. [ ] Mount authenticated request-scoped listing native composition.
-16. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
-17. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
+1. [x] Reaudit current checkout/order/payment/marketplace source and reopen false-complete P0s.
+2. [x] Harden marketplace economics checkpoint migration source for backend parity and rollback.
+3. [ ] Add economics checkpoint concurrent insert adoption and exact conflict classification.
+4. [ ] Add owner-owned checkout operation identity to order storage and migration.
+5. [ ] Replace JSON metadata order lookup and direct `orders` SQL with typed order reads.
+6. [ ] Complete idempotent `CheckoutCompletionPort` create/place/read semantics.
+7. [ ] Cut staged checkout order creation/confirmation over to the completed owner port.
+8. [ ] Cut compensation over to typed order/payment owner ports and remove foreign services.
+9. [ ] Cut payment and fulfillment stages over to explicit owner adapters/ports.
+10. [ ] Remove raw public ecommerce port error leakage and add correlation-safe logging.
+11. [ ] Introduce typed lifecycle status snapshots and remove critical string matching.
+12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
+13. [ ] Run checkpoint clean/upgraded/down/reapply evidence on all supported databases.
+14. [ ] Mount authenticated request-scoped listing native composition.
+15. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
+16. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
     reconciliation surfaces.
-18. [ ] Run static verifiers and fix remaining source drift.
-19. [ ] Compile remaining commerce/payment/Marketplace packages and server features.
-20. [ ] Apply clean/upgraded migrations and targeted regression tests.
-21. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
+17. [ ] Run static verifiers and fix remaining source drift.
+18. [ ] Compile remaining commerce/order/payment/Marketplace packages and server features.
+19. [ ] Apply clean/upgraded migrations and targeted regression tests.
+20. [ ] Run contention, restart, kill-point, tenant, locale, provenance, outbox, ledger
     transfer, and mounted transport scenarios.
-22. [ ] Execute production-like payment and payout provider evidence.
-23. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+21. [ ] Execute production-like payment and payout provider evidence.
+22. [ ] Reassess FBA/FFA promotion strictly from retained evidence.
+
+## Completed source waves retained for history
+
+- [x] Complete durable return-completion admission and operator recovery source.
+- [x] Create Marketplace root, seller owner, and seller FFA source.
+- [x] Add seller receipts and exact-locale multilingual storage.
+- [x] Create listing owner with terms, receipts, eligibility, and opt-in composition.
+- [x] Add complete listing lifecycle events and remove direct write bypasses.
+- [x] Backfill truthful legacy listing snapshots and remove mutable note columns.
+- [x] Publish the initial module-owned listing FFA source package.
+- [x] Define and atomically publish the sealed listing transactional outbox events.
+- [x] Add listing permissions and workspace/admin feature registration.
+- [x] Add immutable seller lifecycle/moderation event storage and bounded timeline reads.
+- [x] Route onboarding review, suspension, and reactivation through atomic seller
+  state + event + receipt completion.
+- [x] Add typed marketplace allocation, commission, post-capture ledger, reversal recovery,
+  adaptation-failure recovery, seller balance projections, and bucket-transfer primitives.
+- [x] Extend seller event production to create/profile/onboarding-submit/member commands.
+- [x] Add seller event history to native and GraphQL FFA transports.
 
 ## Change rules
 
@@ -376,6 +456,8 @@ Source inspection is not execution evidence.
 5. Do not invent legacy actor, locale, provider, or financial facts during migration.
 6. Update `docs/modules/registry.md` only when an FFA/FBA status changes.
 7. Marketplace names must preserve `rustok-marketplace-*` / `marketplace_*` identity.
+8. Do not restore a `[x]` for an audited invariant until every production path and the
+   required retained evidence satisfy it.
 
 ## References
 
