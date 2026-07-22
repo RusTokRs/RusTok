@@ -13,353 +13,193 @@ last_reviewed: 2026-07-22
 
 ## Canonical-source policy
 
-This file is the single source of truth for the Groups roadmap, implementation
-backlog, FFA/FBA status, integration gates, and release evidence. Do not create
-parallel group roadmaps, phpFox parity documents, remediation plans, or duplicated
-task ledgers. Issues and pull requests are execution records only.
-
-Every change that modifies Groups behavior must update this plan in the same
-change: task status, remaining scope, definition of done, verification evidence,
-and degraded-mode notes.
+This file is the single source of truth for the Groups roadmap, implementation backlog,
+FFA/FBA status, integration gates, and release evidence. Issues and pull requests are
+execution records only. Source presence never counts as runtime evidence.
 
 ## Scope
 
-Build phpFox-class social groups as modular micro-social networks while preserving
-RusToK ownership boundaries:
-
-- public, closed, and secret groups;
-- categories, stable handles, localized presentation, media references, and SEO;
-- open join, application, invitation, ban, ownership transfer, and local-role
-  workflows;
-- localized group rules and membership questions;
-- owner/admin/moderator/member permissions;
-- provider-owned Wall, Forum, Blog, Pages/Wiki, Media, Events, Marketplace, and Chat
-  sections;
-- visibility-aware search, notifications, moderation, feed, and analytics;
-- module-owned admin/storefront FFA packages;
-- in-process and remote-ready FBA boundaries with fail-closed privacy.
+Groups provides phpFox-class social communities while preserving RusToK owner-module,
+multilingual, FFA/FBA, tenant-isolation, and fail-closed privacy boundaries. Scope
+includes public/closed/secret groups, localized identity, memberships, applications,
+invitations, roles, bans, provider-owned feature sections, integrations, and
+module-owned admin/storefront packages.
 
 ## Status vocabulary
 
-- `planned`: contract or implementation is not yet source-complete.
-- `in_progress`: useful source exists, but one or more required runtime, parity,
-  concurrency, security, accessibility, migration, or degraded-mode gates remain
-  open.
+- `planned`: contract or implementation is not source-complete.
+- `in_progress`: useful source exists, but runtime, parity, concurrency, security,
+  accessibility, migration, or degraded-mode gates remain open.
 - `done`: implementation and every declared gate have executable evidence.
-- `blocked`: an external owner capability is required before work can continue.
-
-Source presence alone never promotes FFA or FBA readiness to `done`.
+- `blocked`: an external owner capability is required.
 
 ## Architectural invariants
 
-### Ownership
+Groups owns group identity, exact-locale presentation, memberships, local roles, join
+policy, invitations, membership applications, questions/rules, bans, feature bindings,
+receipts, audit, and Groups semantic events. It does not own profiles, media binaries,
+provider content, comments, notification inboxes, search documents, feed entries,
+checkout, payments, orders, or fulfillment. Optional modules use typed identifiers,
+ports, semantic events, and host composition, never Groups foreign keys.
 
-Groups owns group identity, localized group presentation, memberships, local roles,
-join policy, invitations, membership applications, rules/questions, bans, feature
-bindings, command receipts, audit, and Groups semantic events.
+Language-neutral state belongs to base tables. Localized business copy belongs to
+exact-locale rows selected from the host-resolved locale. There is no English,
+first-row, or module-local fallback.
 
-Groups does not own profile presentation, media binaries, forum topics, blog posts,
-Pages documents, marketplace listings, products, comments, notification inboxes,
-search documents, feed entries, checkout, payment, orders, or fulfillment.
+Writes require deadline plus idempotency key. Owner services repeat authorization and
+invariants inside transactions. Successful state, group version, receipt, and audit
+commit together where declared.
 
-Optional modules never receive database foreign keys from Groups. Cross-module
-composition uses typed identifiers, typed ports, semantic events, and host-owned UI
-composition.
+Policy save and candidate submit use `GroupApplicationCasCommandPort` with
+`policy_id`, `revision`, and exact `locale`. The group row is locked and the
+precondition is checked before owner-state writes. Stale input returns
+`groups.application_policy_changed`. Receipt replay is checked before the
+precondition is re-evaluated.
 
-### Multilingual storage
-
-Language-neutral state belongs to base tables. Canonical localized business copy
-belongs to exact-locale translation tables. The host resolves the effective locale;
-Groups normalizes and selects only that row. There is no English, first-row, or
-module-local fallback.
-
-Membership-application policies follow the same rule:
-
-- `group_membership_policies` stores language-neutral revision/enabled state;
-- `group_membership_policy_translations` stores ordered bounded questions and rules
-  by exact locale;
-- `group_membership_policy_revisions` stores append-only exact-locale snapshots of
-  successful policy writes;
-- a submitted application stores the policy revision, locale, and immutable
-  question/rule snapshot seen by the candidate.
-
-The current visual editor and storefront application form are bound to the
-host-resolved exact locale. An explicit multi-locale management picker requires a
-future manager read contract carrying the selected locale.
-
-### Privacy
-
-- public groups expose their localized shell and enabled public features;
-- closed groups expose a localized summary shell but gate body, members, features,
-  and provider content behind active membership or platform authority;
-- secret groups are undisclosed to non-members and cannot be reached through public
-  discovery or the membership-application flow;
-- provider unavailability fails closed for private content;
-- no transport fallback may bypass an owner denial or timeout.
-
-### Commands and concurrency
-
-Writes require deadline plus idempotency key. Owner services repeat authorization
-and invariant checks inside the transaction. Successful command state, group
-version, receipt, and audit commit together where the contract declares them.
-
-Policy revision capture is performed by a database trigger after the owner-managed
-translation INSERT/UPDATE, so the current policy write and append-only history row
-commit or roll back together. The history table rejects UPDATE and DELETE.
-
-Interactive policy save and candidate submit use
-`GroupApplicationCasCommandPort`. Each command carries the policy ID, revision, and
-exact locale that the client rendered. The owner locks the group row, reloads the
-current exact-locale policy, and checks the precondition before writing policy,
-membership, application, version, audit, or receipt state. A mismatch returns the
-stable conflict code `groups.application_policy_changed`.
-
-Idempotent receipt replay is checked before the precondition is re-evaluated. An
-already-committed identical command therefore replays its result even when the
-policy has subsequently advanced.
-
-The older unconditional methods on `GroupApplicationCommandPort` remain public only
-for Rust source compatibility. Module-owned admin and storefront FFA do not use them
-for policy save or candidate submit. The final GraphQL root does not expose the
-legacy unconditional policy-save or candidate-submit mutations; it composes the
-pre-application mutation root with CAS save/submit and review. Removing or versioning
-those legacy Rust methods remains a separate API migration gate.
+Candidate cancellation and manager reopen use `GroupApplicationLifecycleCommandPort`.
+Both check receipt replay first, lock application then group, and commit application,
+membership, group version, audit, and receipt atomically. Legacy unconditional Rust
+save/submit methods remain compatibility-only and are absent from final GraphQL and
+module-owned FFA.
 
 ## Current implementation state
 
-The following source exists:
+Source includes group identity/privacy/localization, memberships and governance,
+invitations and targeted delivery source, exact-locale application policies,
+append-only policy history, CAS save/submit, approve/reject review, and application
+lifecycle:
 
-- Groups module manifest, migrations, RBAC, module registration, admin/storefront
-  package registration, and generated host composition;
-- tenant-scoped groups, exact-locale translations, memberships, local roles,
-  feature bindings, receipts, and immutable audit;
-- public/closed/secret discovery and private-content access split;
-- group creation, join/leave, feature bindings, exact-locale management, role
-  delegation, and ownership transfer;
-- bounded token invitations, revocation, token acceptance, targeted accept-by-ID,
-  one-time plaintext delivery, SHA-256-only storage, redemption, and membership
-  activation;
-- append-only `groups.invitation.targeted_created` owner events and a neutral
-  Notifications source provider resolving one exact recipient;
-- owner-owned membership-application policy, exact-locale questions/rules, candidate
-  submission snapshot, required answer/rule validation, pending listing, and
-  approve/reject review;
-- append-only membership policy revision storage, manager-only history port, native
-  and GraphQL history adapters, and a localized visual policy editor;
-- atomic expected-policy CAS for admin policy save and candidate submit under the
-  owner group lock, with a stable conflict code and idempotent replay semantics;
-- final GraphQL no-bypass composition exposing CAS save/submit and review while
-  omitting the legacy unconditional application mutations;
-- admin stale-save handling that requires an explicit reload after conflict;
-- storefront stale-submit handling that preserves the `apply` route, blocks repeated
-  submit, clears old answers on explicit reload, and reloads the exact-locale policy;
-- Rust ports, final merged GraphQL roots, native Leptos server functions, explicit
-  native/GraphQL transport selection, admin review UI, and storefront application UI;
-- EN/RU copy, FBA registry, live README contracts, and focused static guards.
+- `GroupApplicationLifecycleReadPort` returns only the exact candidate's current
+  tenant/group application;
+- candidate cancellation changes only `pending` to `cancelled`, moves membership to
+  `left`, and preserves the submitted snapshot;
+- manager reopen changes only `rejected` or `cancelled` to `pending`, restores pending
+  membership, and preserves policy identity, snapshot, answers, and acknowledgements;
+- fresh resubmit from `rejected` or `cancelled` remains a separate current-policy CAS
+  command and replaces the snapshot only after successful submission;
+- final `graphql_application_cas` roots compose CAS, review, lifecycle query, cancel,
+  and reopen without exposing legacy unconditional application mutations;
+- admin FFA supports status filtering and reopen controls;
+- storefront FFA shows current status, permits pending cancellation, blocks approved
+  duplicate submission, and permits fresh rejected/cancelled resubmit;
+- cancellation preserves `apply=<group_uuid>`; successful fresh submit clears it;
+- native and GraphQL paths remain explicitly selected and never fall back.
 
-The following evidence remains open and must not be inferred:
-
-- compilation and executed unit/integration tests;
-- PostgreSQL and SQLite migration execution/rollback evidence;
-- native/GraphQL result, stable-code, and error parity;
-- policy history backfill, trigger atomicity, append-only rejection, and pagination
-  execution;
-- atomic stale policy save/submit race execution and lock-order evidence;
-- idempotency replay, concurrent submit/review/policy-write, and recovery evidence;
-- removal or versioned deprecation of the legacy unconditional Rust methods;
-- bulk-review limits, confirmation, partial-failure, and audit evidence;
-- accessibility and keyboard/screen-reader execution;
-- Notifications consumer ingestion/fan-out/retry/recovery evidence;
-- fail-closed remote-provider and disabled-module runtime evidence.
+Compilation, tests, migrations, parity, replay, lifecycle race, lock-order,
+accessibility, security, retry, and recovery evidence remain open.
 
 ## Program ledger
 
 | ID | Status | Scope | Remaining gate |
 |---|---|---|---|
-| GROUPS-00 | in_progress | ADR, ownership map, phpFox parity map, FFA/FBA contracts | executable architecture review |
-| GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
-| GROUPS-02 | in_progress | group identity, localized presentation, visibility, join policy, feature bindings, receipts/audit, targeted source events | lifecycle/runtime/concurrency evidence |
-| GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | request/bans/concurrency completion |
-| GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, application-CAS, governance ports | provider/consumer/fallback runtime matrix |
-| GROUPS-05 | in_progress | GraphQL/native transports, storefront discovery, invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
-| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, stale recovery UX | legacy Rust-port migration, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
-| GROUPS-07 | planned | bans, suspension, expiry, reason, bulk moderation, moderation adapter | all implementation/evidence |
-| GROUPS-08 | planned | dynamic feature-provider registry and group navigation | registry/runtime degradation evidence |
-| GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
-| GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner integration and privacy evidence |
-| GROUPS-11 | planned | Marketplace/Store seller context and listing composition | seller/checkout boundary evidence |
-| GROUPS-12 | planned | Media gallery, avatar/cover, Events and Chat providers | provider lifecycle/degradation evidence |
-| GROUPS-13 | in_progress | notifications, search/SEO, moderation, profiles/media integration | consumer runtime and privacy evidence |
-| GROUPS-14 | in_progress | storefront/admin UX, localization, loading/error/success states | pickers, confirmation, accessibility, parity |
-| GROUPS-15 | planned | group feed/wall aggregation without ownership leakage | feed owner contract and ranking evidence |
-| GROUPS-16 | planned | analytics and operator observability | privacy-safe metrics/evidence |
-| GROUPS-17 | planned | import/export, retention, deletion, tenant lifecycle | compliance/recovery evidence |
-| GROUPS-18 | planned | remote adapter profile and degraded modes | remote provider/fallback/recovery evidence |
-| GROUPS-19 | in_progress | release verification matrix and evidence registry | all open evidence keys resolved |
+| GROUPS-00 | in_progress | architecture, ownership, parity, FFA/FBA contracts | executable review |
+| GROUPS-01 | in_progress | skeleton, manifest, RBAC, migrations, host composition | build/module evidence |
+| GROUPS-02 | in_progress | identity, localization, privacy, bindings, receipts/audit, events | runtime/concurrency evidence |
+| GROUPS-03 | in_progress | memberships, join/leave, roles, ownership transfer | bans/concurrency completion |
+| GROUPS-04 | in_progress | typed read/write/CAS/lifecycle/governance ports | provider/consumer matrix |
+| GROUPS-05 | in_progress | GraphQL/native and storefront/invitation transports | runtime parity/consumer evidence |
+| GROUPS-06 | in_progress | localized policy, snapshots, CAS, review, history, candidate cancellation, manager reopen, resubmit UX | legacy migration, bulk safety, profiles/events, parity, concurrency, accessibility |
+| GROUPS-07 | planned | bans and moderation | implementation/evidence |
+| GROUPS-08 | planned | dynamic feature registry/navigation | runtime degradation evidence |
+| GROUPS-09 | planned | Forum spaces and ACL | Forum integration evidence |
+| GROUPS-10 | planned | Blog and Pages/Wiki contexts | owner integration evidence |
+| GROUPS-11 | planned | Marketplace seller context | checkout boundary evidence |
+| GROUPS-12 | planned | Media, Events, Chat providers | provider lifecycle evidence |
+| GROUPS-13 | in_progress | notifications, search, moderation, profiles/media | consumer privacy evidence |
+| GROUPS-14 | in_progress | storefront/admin UX | pickers, accessibility, parity |
+| GROUPS-15 | planned | feed/wall aggregation | feed owner evidence |
+| GROUPS-16 | planned | analytics/observability | privacy-safe evidence |
+| GROUPS-17 | planned | import/export, retention, deletion | compliance/recovery evidence |
+| GROUPS-18 | planned | remote adapters/degraded modes | fallback/recovery evidence |
+| GROUPS-19 | in_progress | release verification registry | all open evidence resolved |
 
-## GROUPS-06 membership-application contract
-
-### Owner tables
-
-- `group_membership_policies` — one current language-neutral policy per group with a
-  monotonic revision and enabled flag;
-- `group_membership_policy_translations` — exact-locale ordered questions/rules;
-- `group_membership_policy_revisions` — append-only `(tenant, policy, revision,
-  locale)` snapshots containing enabled state, ordered questions/rules, actor, and
-  timestamp;
-- `group_membership_applications` — one current tenant/group/user application with
-  policy identity, revision, locale, immutable policy snapshot, answers,
-  acknowledgements, status, and review metadata.
-
-### Owner ports
+## GROUPS-06 owner ports
 
 - `GroupApplicationReadPort::read_group_application_policy`;
 - `GroupApplicationReadPort::list_group_membership_applications`;
 - `GroupApplicationPolicyHistoryReadPort::list_group_application_policy_revisions`;
+- `GroupApplicationLifecycleReadPort::read_my_group_membership_application`;
 - `GroupApplicationCasCommandPort::upsert_group_application_policy_if_current`;
 - `GroupApplicationCasCommandPort::submit_group_membership_application_if_current`;
+- `GroupApplicationLifecycleCommandPort::cancel_group_membership_application`;
+- `GroupApplicationLifecycleCommandPort::reopen_group_membership_application`;
 - `GroupApplicationCommandPort::review_group_membership_application`.
 
-The history read port uses the same active owner/admin/moderator or platform-manage
-authorization boundary as application review. Candidates cannot enumerate policy
-history.
+Candidates cannot enumerate another candidate's application or policy history.
+Manager listing/history/review/reopen uses declared owner/admin/moderator or platform
+authority.
 
-`GroupApplicationCommandPort::upsert_group_application_policy` and
-`submit_group_membership_application` remain Rust compatibility methods. They are not
-used by module-owned FFA and are not exposed by the final GraphQL root.
+## Lifecycle invariants
 
-### Policy invariants
+### Candidate cancellation
 
-- policy management requires active owner/admin or platform `groups:manage`;
-- questions and rules use stable normalized keys;
-- each policy contains at most 20 questions and 20 rules;
-- prompts, help text, rule titles/bodies, and answer limits are bounded by Unicode
-  scalar count;
-- policy reads require the host-resolved exact locale and never select another row;
-- a CAS update requires either no expected policy when no policy exists, or a matching
-  policy ID, positive revision, and exact locale when a policy exists;
-- the comparison occurs after the group lock and before policy state mutation;
-- a mismatch returns `groups.application_policy_changed` and writes no owner state;
-- successful policy upsert increments policy revision and group version atomically
-  with receipt and audit;
-- policy revision capture occurs in the same database transaction through PostgreSQL
-  or SQLite triggers;
-- current policy rows remain mutable owner state while revision rows are append-only;
-- history ordering is revision descending and locale ascending within a tenant/group.
+- only the exact candidate may cancel; a different actor receives not-found semantics;
+- only `pending` may be cancelled;
+- membership must still be `pending` and not banned;
+- membership becomes `left`, `left_at` is recorded, application becomes `cancelled`;
+- review metadata is cleared while policy snapshot, answers, and acknowledgements remain;
+- audit `group.membership_application_cancelled`, version, and receipt commit together;
+- storefront cancellation keeps `apply`, allowing a fresh CAS resubmit.
 
-### Submission invariants
+### Manager reopen
 
-- only active `request` join-policy groups accept applications;
-- secret groups return not-found semantics;
-- the actor must be an authenticated, non-banned, non-active candidate;
-- submit requires the policy ID, revision, and exact locale that produced the form;
-- the owner compares that precondition after the group lock and before membership or
-  application lookup/write;
-- stale forms return `groups.application_policy_changed` without creating or changing
-  membership, application, group version, audit, or receipt state;
-- required answers must be non-empty and within the per-question limit;
-- unknown answer keys and unknown rule acknowledgements are rejected;
-- every required rule key must be acknowledged;
-- a pending or already-approved application cannot be submitted again;
-- rejected applications may be resubmitted and receive a fresh snapshot;
-- application snapshot, pending membership, group version, audit, and receipt commit
-  in one owner transaction.
+- manager reopen requires active owner/admin/moderator or platform authority;
+- only `rejected` or `cancelled` may be reopened;
+- group must remain active, non-secret, and `request` join policy;
+- membership must be `left`, not banned, and not active;
+- membership/application become `pending`; previous review metadata is cleared;
+- submitted timestamp, policy identity/revision/locale, snapshot, answers, and
+  acknowledgements are preserved;
+- audit `group.membership_application_reopened`, version, and receipt commit together;
+- later manager review uses the preserved snapshot; fresh candidate resubmit instead
+  captures the current CAS policy.
 
-### Review invariants
+### Other application invariants
 
-- listing/review requires active owner/admin/moderator or platform authority;
-- only a pending application may be reviewed;
-- approve moves membership to `active`, records `joined_at`, increments member count,
-  and marks the application approved;
-- reject moves membership to `left`, records `left_at`, and marks the application
-  rejected;
-- review note is optional and bounded to 2,000 characters;
-- application, membership, group version, audit, and receipt commit together;
-- application and group rows use exclusive locks where supported.
+- exact-locale policy reads never select fallback rows;
+- stale policy writes/submits produce no owner-state mutation;
+- required questions/rules are owner-revalidated;
+- secret/non-request/banned/active candidates are denied as declared;
+- pending/approved cannot be freshly resubmitted;
+- approve activates membership and increments member count once;
+- reject moves membership to `left`;
+- application then group lock order is used by review/cancel/reopen where supported.
 
-### FFA surfaces
+## FFA surfaces
 
-- admin framework-neutral policy/history/review models and preparation core;
-- admin native and GraphQL CAS policy/history/list/review adapters through one facade;
-- localized visual policy editor for adding/removing/reordering questions and rules;
-- editor history list with revision, locale, actor, timestamp, enabled state, and item
-  counts;
-- host-resolved locale rendered read-only in the current editor;
-- editor submits its loaded policy identity to owner CAS and requires explicit reload
-  after `groups.application_policy_changed`;
-- localized pending review workspace displaying candidate, policy revision/locale,
-  answers, and acknowledged rules;
-- storefront request-group links using `apply=<group_uuid>`;
-- storefront framework-neutral dynamic-form validation and policy precondition capture;
-- native and GraphQL CAS submit adapters through one facade;
-- stale storefront forms block repeated submit, preserve the route, and expose explicit
-  reload that clears old answers and acknowledgements;
-- `apply` query removal only after successful submission;
+- admin selected-transport policy/history/list/review/reopen facade;
+- admin status filter for pending, approved, rejected, and cancelled rows;
+- reopen controls appear only for rejected/cancelled rows;
+- storefront exact-candidate application read plus exact-locale policy load;
+- pending status and candidate cancel; approved duplicate-submit blocking;
+- rejected/cancelled fresh current-policy CAS form;
+- stale form reload clears prior answers and preserves route;
+- successful submit clears `apply`; cancellation never clears it;
 - no implicit native/GraphQL fallback.
 
-### GROUPS-06 remaining work
+## Remaining GROUPS-06 work
 
-- remove or version-deprecate the legacy unconditional Rust policy save/submit methods
-  after all external Rust consumers migrate to `GroupApplicationCasCommandPort`;
-- explicit multi-locale admin picker backed by an owner manager read contract carrying
-  the selected exact locale;
-- candidate cancellation and manager reopen/resubmit policy;
-- bulk review with bounded selection, confirmation, per-item results, and audit;
-- profile-backed candidate summaries through `ProfilesReader` without copying profile
-  state;
-- application submitted/reviewed semantic events and optional Notifications consumer;
-- operator filtering, pagination controls, pickers, and audit/receipt history;
+- remove or version-deprecate legacy unconditional Rust save/submit methods;
+- explicit multi-locale manager picker and selected-locale owner read;
+- bounded bulk review with confirmation, per-item results, and audit;
+- ProfilesReader candidate summaries without copied profile state;
+- submitted/reviewed/cancelled/reopened semantic events and optional consumers;
+- pagination controls, pickers, audit/receipt history;
 - keyboard, focus, validation association, and screen-reader evidence;
-- executed parity, replay, stale-race, concurrency, lock-order, migration, security,
+- executed parity, replay, CAS/lifecycle concurrency, lock-order, migration, security,
   retry, and recovery evidence.
-
-## Other open Groups contracts
-
-Localization remains `in_progress`: localization idempotent receipts/replay,
-last-translation delete rejection execution, localization idempotency replay, and
-native/GraphQL concurrency evidence remain open.
-
-targeted invitation delivery remains `in_progress`: the owner emits
-`groups.invitation.targeted_created`, exposes `GroupTargetedInvitationCommandPort`,
-and registers a neutral source provider, while targeted invitation notification
-runtime, fan-out, retry, and recovery evidence remain open.
-
-## Feature-provider integration order
-
-1. `forum.discussions` — group space/category owned by Forum, access checked through
-   Groups ports.
-2. `blog.posts` — Blog-owned group-context posts and CommentsThreadPort.
-3. `pages.wiki` — Pages-owned documents and Page Builder artifacts linked by typed
-   group context.
-4. `marketplace.store` — Marketplace Seller/Listing ownership with Commerce checkout
-   and order ownership unchanged.
-5. `media.gallery`, `events.calendar`, and `chat.room` — provider-owned lifecycle and
-   UI contributions.
-
-A feature binding expresses policy/configuration only. It never transfers persistence
-ownership and Groups never embeds another module's business UI directly.
 
 ## Degraded modes
 
-- Groups access provider unavailable: deny private content.
-- Application exact-locale policy unavailable: application form/editor is unavailable;
-  do not select another locale.
-- Policy CAS conflict: write no owner state, preserve the selected transport error, and
-  require explicit reload before retry.
-- Policy history unavailable: current owner policy remains authoritative; hide history
-  and do not synthesize revisions.
-- Native or GraphQL application transport failure: surface the selected-path error;
-  never retry through the other path.
-- Profiles unavailable: show stable UUID/placeholder, never copy canonical profile
-  fields into Groups.
-- Notifications unavailable: Groups command succeeds and owner state remains the
-  source of truth.
-- Search/index unavailable: group/application owner writes succeed; projections may
-  catch up asynchronously once their owner integration exists.
+- Groups unavailable: deny private content.
+- Exact-locale policy unavailable: disable form/editor; never choose another locale.
+- CAS conflict: write no state and require explicit reload.
+- current-application read unavailable: do not guess status or expose submit controls;
+- lifecycle transport failure: preserve selected-path error and route, never fall back;
+- Profiles unavailable: use UUID/placeholder without copying canonical data;
+- Notifications/search unavailable: owner writes remain authoritative.
 
 ## Verification matrix
-
-The following commands are required before any affected status may become `done`:
 
 ```bash
 cargo xtask module validate groups
@@ -375,56 +215,28 @@ node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
 node scripts/verify/verify-groups-application-policy-cas.mjs
+node scripts/verify/verify-groups-application-lifecycle.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
 
-Additional executable evidence required for GROUPS-06 promotion:
-
-- PostgreSQL and SQLite migration up/down or documented irreversible-policy evidence;
-- policy revision backfill, capture trigger, append-only update/delete rejection, and
-  manager authorization;
-- policy exact-locale read and missing-locale failure;
-- required/optional question and rule validation;
-- banned, active-member, secret-group, and non-request-group denial;
-- idempotent CAS policy save, CAS submit, and review replay;
-- concurrent policy writers with one successful revision and stable stale conflict;
-- policy change racing candidate submit with no stale membership/application write;
-- concurrent duplicate submit;
-- concurrent approve/reject with one terminal outcome;
-- approve member-count correctness and no double increment;
-- native/GraphQL result, conflict-code, and error parity;
-- selected-transport no-fallback behavior;
-- EN/RU editor/form/review rendering and accessibility execution.
+Lifecycle promotion additionally requires exact-candidate isolation, pending-only
+cancel, rejected/cancelled-only manager reopen, banned/active denial, snapshot
+preservation, fresh CAS resubmit replacement, idempotent replay, concurrent terminal
+outcomes, native/GraphQL parity, no fallback, and EN/RU accessibility.
 
 ## Evidence state for this change
 
-No build, test, migration, verifier, runtime parity, concurrency, accessibility,
-security, retry, or recovery command was executed for this source slice. Therefore:
+No build, test, migration, verifier, GraphQL schema, parity, concurrency,
+accessibility, security, retry, or recovery command was executed. FFA, FBA,
+GROUPS-06, and GROUPS-19 remain `in_progress`; `membership_application_lifecycle`
+remains `null`.
 
-- FFA remains `in_progress`;
-- FBA remains `in_progress`;
-- GROUPS-06 remains `in_progress`;
-- GROUPS-19 remains `in_progress`;
-- `membership_application_transport_parity` remains `null`;
-- `membership_application_concurrency` remains `null`;
-- `membership_application_policy_revision` remains `null`;
-- `membership_application_policy_cas` remains `null`;
-- `membership_application_bulk_review` remains `null`.
+## Release-ready Groups MVP
 
-## Definition of release-ready Groups MVP
-
-The Groups MVP is release-ready only when all of the following have executable
-evidence:
-
-- public/closed/secret privacy and tenant isolation;
-- localized identity and exact-locale management;
-- open join, application, invitation, leave, role, ownership, and ban workflows;
-- dynamic provider registry with Forum first and safe degraded modes;
-- public/admin storefront FFA with native/GraphQL parity and accessibility;
-- semantic integrations for notifications, search/SEO, moderation, profiles/media,
-  and audit/observability;
-- PostgreSQL/SQLite migrations, replay, concurrency, security, and recovery gates;
-- no direct cross-module SQL, no embedded foreign business UI, no implicit transport
-  fallback, and no false readiness claims.
+Release readiness requires executable evidence for tenant isolation, privacy,
+localized identity, membership/invitation/role/ban workflows, provider integration,
+native/GraphQL parity, accessibility, semantic integrations, PostgreSQL/SQLite,
+replay, concurrency, security, recovery, and no direct cross-module persistence or
+implicit fallback.
