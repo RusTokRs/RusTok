@@ -4,17 +4,15 @@ use rustok_content::entities::node::ContentStatus;
 use rustok_core::SecurityContext;
 use rustok_seo_targets::SeoTargetImageRecord;
 use rustok_seo_targets::{
-    builtin_slug, populate_image_template_fields, schema, SeoBulkSummaryRecord,
-    SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord, SeoTargetAlternateRoute,
-    SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest, SeoTargetLoadScope,
-    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
+    SeoBulkSummaryRecord, SeoLoadedTargetRecord, SeoRouteMatchRecord, SeoSitemapCandidateRecord,
+    SeoTargetAlternateRoute, SeoTargetBulkListRequest, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoTargetLoadScope, SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRouteResolveRequest,
     SeoTargetRuntimeContext, SeoTargetSitemapRequest, SeoTargetSlug, SeoTemplateFieldMap,
+    builtin_slug, populate_image_template_fields, schema,
 };
 use url::Url;
 
-use crate::{
-    BlockPayload, ListPagesFilter, PageListItem, PageResponse, PageService, PageTranslationResponse,
-};
+use crate::{ListPagesFilter, PageListItem, PageResponse, PageService, PageTranslationResponse};
 
 const BULK_FETCH_SIZE: u64 = 48;
 
@@ -337,45 +335,61 @@ fn page_primary_image_descriptor(
     fallback_alt: &str,
 ) -> Option<SeoTargetImageRecord> {
     let fallback_alt = normalize_image_text(Some(fallback_alt.to_string()));
+    let document = page.body.as_ref()?.content_json.as_ref()?;
+    find_image_descriptor(document, fallback_alt.as_deref())
+}
 
-    for block in &page.blocks {
-        let Ok(payload) = BlockPayload::from_block_type(&block.block_type, block.data.clone())
-        else {
-            continue;
-        };
-        let descriptor = match payload {
-            BlockPayload::Hero(data) => data.background_image_url.and_then(|url| {
-                SeoTargetImageRecord::from_parts(url, fallback_alt.clone(), None, None, None)
-            }),
-            BlockPayload::Image(data) => SeoTargetImageRecord::from_parts(
-                data.src,
-                normalize_image_text(data.alt)
-                    .or_else(|| normalize_image_text(data.caption))
-                    .or_else(|| fallback_alt.clone()),
-                None,
-                None,
-                None,
-            ),
-            BlockPayload::Gallery(data) => data.images.into_iter().find_map(|image| {
-                SeoTargetImageRecord::from_parts(
-                    image.src,
-                    normalize_image_text(image.alt)
-                        .or_else(|| normalize_image_text(image.caption))
-                        .or_else(|| fallback_alt.clone()),
-                    None,
-                    None,
-                    None,
-                )
-            }),
-            _ => None,
-        };
-
-        if descriptor.is_some() {
-            return descriptor;
+fn find_image_descriptor(
+    value: &serde_json::Value,
+    fallback_alt: Option<&str>,
+) -> Option<SeoTargetImageRecord> {
+    match value {
+        serde_json::Value::Array(items) => items
+            .iter()
+            .find_map(|item| find_image_descriptor(item, fallback_alt)),
+        serde_json::Value::Object(object) => {
+            let local_alt = ["alt", "caption", "title"]
+                .iter()
+                .find_map(|key| object.get(*key).and_then(serde_json::Value::as_str))
+                .and_then(|text| normalize_image_text(Some(text.to_string())))
+                .or_else(|| fallback_alt.map(str::to_string));
+            let image_component = object
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|kind| matches!(kind, "image" | "hero" | "gallery"))
+                || object
+                    .get("tagName")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|tag| tag.eq_ignore_ascii_case("img"));
+            let explicit_keys = [
+                "background_image_url",
+                "backgroundImage",
+                "background-image",
+                "image_url",
+                "imageUrl",
+            ];
+            let image_url = explicit_keys
+                .iter()
+                .find_map(|key| object.get(*key).and_then(serde_json::Value::as_str))
+                .or_else(|| {
+                    image_component
+                        .then(|| object.get("src").and_then(serde_json::Value::as_str))
+                        .flatten()
+                })
+                .map(str::trim)
+                .filter(|url| !url.is_empty());
+            if let Some(url) = image_url
+                && let Some(record) =
+                    SeoTargetImageRecord::from_parts(url.to_string(), local_alt, None, None, None)
+            {
+                return Some(record);
+            }
+            object
+                .values()
+                .find_map(|item| find_image_descriptor(item, fallback_alt))
         }
+        _ => None,
     }
-
-    None
 }
 
 fn normalize_image_text(value: Option<String>) -> Option<String> {

@@ -19,20 +19,18 @@ use crate::dto::PageResponse;
 use crate::entities::{page, page_body, page_translation};
 use crate::error::{
     FEATURE_BUILDER_ENABLED, FEATURE_BUILDER_PREVIEW_ENABLED, FEATURE_BUILDER_PROPERTIES_ENABLED,
-    FEATURE_BUILDER_PUBLISH_ENABLED, PagesError, PagesResult,
+    PagesError, PagesResult,
 };
 use crate::services::rbac::enforce_owned_scope;
 
 use super::document::document_revision_conflict;
 use super::helpers::{
     apply_transition, collect_builder_sources, enforce_expected_version, is_builder_enabled,
-    is_builder_preview_enabled, is_builder_properties_enabled, is_builder_publish_enabled,
-    transition_event,
+    is_builder_preview_enabled, is_builder_properties_enabled, transition_event,
 };
 use super::{PAGE_KIND, PageService, PageTransition};
 
-pub const PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED: &str =
-    "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED";
+pub const PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED: &str = "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED";
 
 type BodyRevisionSnapshot = Vec<(String, String)>;
 
@@ -299,20 +297,6 @@ impl PageService {
         self.get(tenant_id, security, page_id).await
     }
 
-    pub(super) async fn ensure_builder_publish_enabled(&self, tenant_id: Uuid) -> PagesResult<()> {
-        let module = self.load_tenant_pages_module(tenant_id).await?;
-        let enabled = module
-            .as_ref()
-            .map(is_builder_publish_enabled)
-            .unwrap_or(true);
-        if !enabled {
-            return Err(PagesError::feature_disabled(
-                FEATURE_BUILDER_PUBLISH_ENABLED,
-            ));
-        }
-        Ok(())
-    }
-
     pub(super) async fn ensure_builder_enabled(&self, tenant_id: Uuid) -> PagesResult<()> {
         let module = self.load_tenant_pages_module(tenant_id).await?;
         let enabled = module.as_ref().map(is_builder_enabled).unwrap_or(true);
@@ -371,12 +355,22 @@ fn body_revision_snapshot(bodies: &[page_body::Model]) -> BodyRevisionSnapshot {
             let digest = Sha256::digest(format!("{}\0{}", body.format, body.content).as_bytes());
             (
                 body.locale.clone(),
-                format!("{}:{digest:x}", body.updated_at),
+                format!("{}:{}", body.updated_at, encode_digest(&digest)),
             )
         })
         .collect::<Vec<_>>();
     revisions.sort();
     revisions
+}
+
+fn encode_digest(digest: &[u8]) -> String {
+    use std::fmt::Write as _;
+
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
 }
 
 fn format_body_revisions(revisions: &BodyRevisionSnapshot) -> String {

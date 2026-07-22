@@ -23,8 +23,6 @@ use rustok_events::DomainEvent;
 use crate::dto::{PageBodyInput, PageBodyResponse, PageTranslationInput, PageTranslationResponse};
 use crate::entities::{page, page_body, page_channel_visibility, page_translation};
 use crate::error::{PagesError, PagesResult};
-use crate::services::PageBuilderArtifactService;
-use crate::services::page_builder_artifact::CompiledLandingArtifact;
 
 use super::{PageTransition, PreparedPageBody, ResolvedTranslationRecord};
 
@@ -201,23 +199,6 @@ pub(super) fn body_for_locale<'a>(
         .find(|body| locale_tags_match(body.locale.as_str(), locale))
 }
 
-pub(super) fn collect_builder_project_values(
-    existing_bodies: &[page_body::Model],
-    candidate: Option<&PreparedPageBody>,
-    include_existing: bool,
-) -> PagesResult<Vec<serde_json::Value>> {
-    collect_builder_sources(existing_bodies, candidate, include_existing)
-        .into_iter()
-        .map(|(locale, content)| {
-            serde_json::from_str(&content).map_err(|error| {
-                PagesError::validation(format!(
-                    "Page Builder project for locale `{locale}` is not valid JSON: {error}"
-                ))
-            })
-        })
-        .collect()
-}
-
 pub(super) fn collect_builder_sources(
     existing_bodies: &[page_body::Model],
     candidate: Option<&PreparedPageBody>,
@@ -241,25 +222,14 @@ pub(super) fn collect_builder_sources(
     sources
 }
 
-pub(super) fn compile_builder_sources(
-    existing_bodies: &[page_body::Model],
-    candidate: Option<&PreparedPageBody>,
-    include_existing: bool,
-) -> PagesResult<Vec<CompiledLandingArtifact>> {
-    collect_builder_sources(existing_bodies, candidate, include_existing)
-        .into_iter()
-        .map(|(locale, content)| PageBuilderArtifactService::compile_source(&locale, &content))
-        .collect()
-}
-
 pub(super) fn enforce_expected_version(expected: Option<i32>, actual: i32) -> PagesResult<()> {
-    if let Some(expected_version) = expected {
-        if expected_version != actual {
-            return Err(PagesError::VersionConflict {
-                expected_version,
-                actual_version: actual,
-            });
-        }
+    if let Some(expected_version) = expected
+        && expected_version != actual
+    {
+        return Err(PagesError::VersionConflict {
+            expected_version,
+            actual_version: actual,
+        });
     }
     Ok(())
 }
