@@ -3,6 +3,7 @@ use rustok_api::Permission;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+pub mod checkout_execution;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -11,6 +12,7 @@ pub mod ports;
 pub mod providers;
 pub mod services;
 
+pub use checkout_execution::*;
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
