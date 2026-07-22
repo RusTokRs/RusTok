@@ -69,10 +69,12 @@ for (const marker of [
   "ForumQuoteTargetKindInput",
   "ForumQuoteReferenceInput",
   "SetForumQuotesInput",
-  "#[serde(default)]",
+  "pub quotes: Vec<ForumQuoteReferenceInput>",
 ]) {
   requireText(dto, marker, `quote command DTO is missing ${marker}`);
 }
+reject(dto, /serde\s*\(\s*default/, "omitting quotes must not silently clear relations");
+reject(graphql, /graphql\s*\(\s*default/, "omitting GraphQL quotes must not silently clear relations");
 
 for (const marker of [
   "pub struct ForumQuoteCommandService",
