@@ -30,6 +30,7 @@ const forbidMarkers = (relative, markers) => {
 
 for (const relative of [
   "crates/rustok-groups/src/applications.rs",
+  "crates/rustok-groups/src/applications_cas.rs",
   "crates/rustok-groups/src/applications_lifecycle.rs",
   "crates/rustok-groups/src/graphql_application_cas.rs",
   "crates/rustok-groups/src/graphql_application_lifecycle.rs",
@@ -89,6 +90,29 @@ for (const method of ["cancel_application_owned", "reopen_application_owned"]) {
   if (!(replay > start && replay < applicationLock)) {
     failures.push(`${method}: idempotent replay must precede lifecycle state locks`);
   }
+}
+const reopenStart = lifecycle.indexOf("async fn reopen_application_owned");
+const reopenGroupLock = lifecycle.indexOf("find_group_for_update", reopenStart);
+const reopenAuthorization = lifecycle.indexOf("authorize_application_review", reopenGroupLock);
+const reopenStatusRead = lifecycle.indexOf("let previous_status", reopenAuthorization);
+if (!(reopenStart >= 0 && reopenGroupLock > reopenStart && reopenAuthorization > reopenGroupLock && reopenStatusRead > reopenAuthorization)) {
+  failures.push("manager reopen must authorize before exposing or validating application status");
+}
+
+requireMarkers("crates/rustok-groups/src/applications_cas.rs", [
+  "find_candidate_application_for_update",
+  "prelocked_application",
+  '"application_lock_order": "application_then_group_when_existing"',
+]);
+const cas = read("crates/rustok-groups/src/applications_cas.rs");
+const submitStart = cas.indexOf("async fn submit_application_if_current_owned");
+const firstCandidateLock = cas.indexOf("find_candidate_application_for_update", submitStart);
+const submitGroupLock = cas.indexOf("find_group_for_update", firstCandidateLock);
+const submitPrecondition = cas.indexOf("ensure_loaded_policy_precondition", submitGroupLock);
+const secondCandidateRead = cas.indexOf("find_candidate_application_for_update", firstCandidateLock + 1);
+const submitStateWrite = cas.indexOf("membership::ActiveModel", secondCandidateRead);
+if (!(submitStart >= 0 && firstCandidateLock > submitStart && submitGroupLock > firstCandidateLock && submitPrecondition > submitGroupLock && secondCandidateRead > submitPrecondition && submitStateWrite > secondCandidateRead)) {
+  failures.push("CAS resubmit must lock an existing application before the group and re-read first submissions after the group lock before state writes");
 }
 
 requireMarkers("crates/rustok-groups/src/graphql_application_lifecycle.rs", [
@@ -200,4 +224,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups membership application cancel, reopen, resubmit, snapshot, FFA/FBA, and no-fallback boundary checks passed.");
+console.log("Groups membership application cancel, reopen, resubmit, snapshot, privacy, lock-order, FFA/FBA, and no-fallback boundary checks passed.");
