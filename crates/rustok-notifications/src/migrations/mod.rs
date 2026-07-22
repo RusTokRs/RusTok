@@ -1,5 +1,6 @@
 mod m20260721_000010_create_notification_persistence;
 mod m20260722_000011_create_notification_source_inbox;
+mod m20260722_000012_add_candidate_processing;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -8,6 +9,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
         Box::new(m20260721_000010_create_notification_persistence::Migration),
         Box::new(m20260722_000011_create_notification_source_inbox::Migration),
+        Box::new(m20260722_000012_add_candidate_processing::Migration),
     ]
 }
 
@@ -20,6 +22,10 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20260722_000011_create_notification_source_inbox",
             vec!["m20260721_000010_create_notification_persistence"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20260722_000012_add_candidate_processing",
+            vec!["m20260722_000011_create_notification_source_inbox"],
         ),
     ]
 }
