@@ -355,36 +355,44 @@ async fn publish_forum_mention_event_in_tx(
             source_revision_id,
             source_locale,
             mentioned_user_id,
-        } => (
-            source_kind,
-            source_id,
-            "forum.mention.user_added".to_string(),
-            serde_json::json!({
-                "source_kind": target_kind_value_from_str(&source_kind),
+        } => {
+            let aggregate_type = source_kind.clone();
+            let payload = serde_json::json!({
+                "source_kind": source_kind,
                 "source_id": source_id,
                 "source_revision_id": source_revision_id,
                 "source_locale": source_locale,
                 "mentioned_user_id": mentioned_user_id,
-            }),
-        ),
+            });
+            (
+                aggregate_type,
+                source_id,
+                "forum.mention.user_added".to_string(),
+                payload,
+            )
+        }
         ForumMentionEvent::AudienceMentionAdded {
             source_kind,
             source_id,
             source_revision_id,
             source_locale,
             audience,
-        } => (
-            source_kind,
-            source_id,
-            "forum.mention.audience_added".to_string(),
-            serde_json::json!({
-                "source_kind": target_kind_value_from_str(&source_kind),
+        } => {
+            let aggregate_type = source_kind.clone();
+            let payload = serde_json::json!({
+                "source_kind": source_kind,
                 "source_id": source_id,
                 "source_revision_id": source_revision_id,
                 "source_locale": source_locale,
                 "audience": audience,
-            }),
-        ),
+            });
+            (
+                aggregate_type,
+                source_id,
+                "forum.mention.audience_added".to_string(),
+                payload,
+            )
+        }
     };
 
     forum_domain_event::ActiveModel {
@@ -402,14 +410,6 @@ async fn publish_forum_mention_event_in_tx(
     .insert(txn)
     .await?;
     Ok(())
-}
-
-fn target_kind_value_from_str(value: &str) -> &str {
-    match value {
-        "topic" => "topic",
-        "reply" => "reply",
-        _ => value,
-    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
