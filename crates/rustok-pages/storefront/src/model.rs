@@ -4,6 +4,39 @@ use serde::{Deserialize, Serialize};
 pub struct StorefrontPagesData {
     pub selected_page: Option<PageDetail>,
     pub pages: PageList,
+    #[serde(rename = "activeHeaderMenu")]
+    pub active_header_menu: Option<StorefrontMenu>,
+    #[serde(rename = "activeFooterMenu")]
+    pub active_footer_menu: Option<StorefrontMenu>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontMenu {
+    pub id: String,
+    #[serde(rename = "effectiveLocale")]
+    pub effective_locale: String,
+    pub name: String,
+    pub location: StorefrontMenuLocation,
+    pub items: Vec<StorefrontMenuItem>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum StorefrontMenuLocation {
+    Header,
+    Footer,
+    Sidebar,
+    Mobile,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct StorefrontMenuItem {
+    pub id: String,
+    pub title: String,
+    pub url: String,
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub children: Vec<StorefrontMenuItem>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
