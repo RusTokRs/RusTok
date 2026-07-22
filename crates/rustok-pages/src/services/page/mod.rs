@@ -1,11 +1,14 @@
+mod artifact_set;
 mod create;
 mod document;
 mod helpers;
 mod lifecycle;
 mod metadata;
 mod persistence;
+pub(crate) mod publish_manifest;
 mod read;
 mod reviewed_publish;
+mod rollback;
 
 use rustok_content::entities::node::ContentStatus;
 use rustok_outbox::TransactionalEventBus;
@@ -17,6 +20,8 @@ pub use crate::error::{
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT, PAGE_ROLLBACK_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_REQUIRES_PUBLISHED, PAGE_ROLLBACK_TARGET_UNAVAILABLE,
 };
 pub use document::{PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE};
 pub use lifecycle::PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED;
