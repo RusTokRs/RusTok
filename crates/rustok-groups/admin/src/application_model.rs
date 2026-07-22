@@ -31,6 +31,7 @@ pub struct GroupsAdminApplicationPolicy {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupsAdminApplicationPolicyQuery {
     pub group_id: String,
+    pub locale: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
