@@ -26,8 +26,7 @@ use crate::{
 
 const PORT_DEADLINE: Duration = Duration::from_secs(5);
 
-#[derive(MergedObject, Default)]
-pub struct GroupsQueryRoot(GroupsBaseQueryRoot);
+pub type GroupsQueryRoot = GroupsBaseQueryRoot;
 
 #[derive(MergedObject, Default)]
 pub struct GroupsMutationRoot(GroupsBaseMutationRoot, GroupsApplicationCasMutation);
