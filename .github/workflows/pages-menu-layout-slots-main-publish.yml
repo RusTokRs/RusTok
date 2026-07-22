@@ -23,6 +23,12 @@ jobs:
         run: |
           set -euo pipefail
           cp scripts/temporary/apply_pages_menu_layout_slots.py /tmp/apply_pages_menu_layout_slots.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("/tmp/apply_pages_menu_layout_slots.py")
+          source = path.read_text()
+          path.write_text(source.replace(r"\n", r"\\n"))
+          PY
       - name: Apply and commit directly to main
         shell: bash
         run: |
