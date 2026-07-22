@@ -2,185 +2,155 @@
 
 ## Purpose
 
-`rustok-search` owns product-facing search contracts for RusToK.
+`rustok-search` owns normalized search, projection ingestion, ranking, result
+navigation, dictionaries, analytics, diagnostics, and provider contracts for
+RusToK.
 
 ## Responsibilities
 
 - Provide `SearchModule` metadata for the runtime registry.
-- Define canonical search engine selection and connector metadata.
-- Keep PostgreSQL as the default search engine contract.
-- Own search settings persistence and future connector-facing runtime contracts.
-- Own module-local `search_documents` storage and execute PostgreSQL FTS with `tsvector`,
-  `websearch_to_tsquery`, `ts_rank_cd`, highlights, and facet aggregation.
-- Consume product-owned highload projections from `rustok-index` for catalog search:
-  category/virtual-category assignments from `index_product_categories` and
-  channel-scoped normalized attribute facet/search/sort rows from
-  `index_product_attribute_values`.
-- Serve as the home for storefront/admin/global-search capabilities, separate from `rustok-index`.
+- Keep PostgreSQL as the default search engine and own connector selection.
+- Own module-local `search_documents`, settings, dictionaries, query rules,
+  analytics, diagnostics, and rebuild behavior.
+- Execute PostgreSQL FTS with `tsvector`, `websearch_to_tsquery`, `ts_rank_cd`,
+  highlights, typo-tolerant fallback, filters, sorting, and facets.
+- Consume product-owned high-load projections from `rustok-index` without
+  exposing index runtime types to Search consumers.
+- Consume Blog lifecycle and scoped rebuild events into Search-owned documents.
+- Own canonical application URLs for normalized `SearchResultItem` values through
+  `canonical_search_result_url`.
+- Serve storefront Search, admin preview, and host global-search capabilities.
+- Publish transport-neutral `SearchQueryPort` and `SearchSuggestionPort` provider
+  boundaries.
+
+## Result navigation ownership
+
+`canonical_search_result_url` is the only application-route policy for Search
+results. It derives product, content, and Blog routes before transport
+serialization.
+
+Blog navigation requires the canonical `source_module=blog` /
+`entity_type=blog_post` pair and a bounded ASCII slug from the Blog projector.
+Missing, malformed, spoofed, traversal, whitespace, and overlong slugs fail
+closed. Content source-module values are validated before they can enter a query
+string.
+
+GraphQL Search, storefront native Search, Search admin preview, and admin global
+search all delegate to this function. The storefront transport facade returns the
+selected payload unchanged. There is no post-transport navigation enrichment,
+transport-local Blog route builder, or compatibility URL implementation.
 
 ## Interactions
 
-- Depends on `rustok-core` for module contracts.
-- May ingest from domain tables or neutral read models, but keeps its own search storage and runtime.
-- Content-document tag keywords/payload are now derived from `nodes.metadata.tags` during
-  projection, not from legacy `taggables` joins.
-- Is used by `apps/server` as a core platform capability.
-- Owns its GraphQL query/mutation/types under `rustok_search::graphql`; `apps/server`
-  only composes those roots and provides host runtime data such as the rate-limit adapter.
-- Publishes module-owned admin and storefront UI packages for host composition.
-- Keeps external engine integrations behind dedicated connector crates, rather than forcing domain modules to talk to provider SDKs directly.
-- Search is a whole-module remote extraction pilot. PostgreSQL and future
-  Meilisearch/Typesense/Algolia connectors remain internal `SearchEngine`
-  implementations inside the search deployment; consumers use only
-  `SearchQueryPort` and `SearchSuggestionPort`.
+- Depends on `rustok-core` for module and event contracts.
+- Uses `rustok-api` provider contexts and errors at the FBA boundary.
+- May ingest domain tables or neutral read models but keeps its own search storage
+  and runtime.
+- Content document tags are projected from `nodes.metadata.tags`; Search does not
+  read the removed taggable join model.
+- Is composed by `apps/server`, `apps/admin`, and `apps/storefront` through module
+  contracts rather than host-owned Search logic.
+- Keeps external engine integrations behind Search-owned connector crates.
+- Is a whole-module remote extraction pilot: PostgreSQL and future
+  Meilisearch/Typesense/Algolia engines remain internal `SearchEngine`
+  implementations, while consumers use only Search ports.
 
 ## Entry points
 
 - `SearchModule`
-- `SearchEngineKind`
+- `SearchEngine` / `SearchEngineKind`
 - `SearchConnectorDescriptor`
-- `SearchSettingsRecord`
 - `PgSearchEngine`
 - `SearchQueryPort`
 - `SearchSuggestionPort`
-- `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot` (feature `graphql`)
+- `canonical_search_result_url`
+- `graphql::SearchQueryRoot` / `graphql::SearchMutationRoot`
 
 ## Capability matrix
 
-| Capability | Primary surface | Consumer | Scope and guardrails |
+| Capability | Primary surface | Consumer | Boundary |
 |---|---|---|---|
-| Public search results | `storefrontSearch` | Leptos/Next storefront | Tenant-scoped, read-only, published/public documents only |
-| Public autocomplete | `storefrontSearchSuggestions` | Leptos/Next storefront | Tenant-scoped, read-only, same public visibility boundary as storefront search |
-| Public click tracking | `trackSearchClick` | Storefront hosts | Best-effort analytics write for CTR/abandonment, no rebuild side effects |
-| Admin search preview | `searchPreview` | Leptos/Next admin package | Authenticated tenant-scoped control-plane preview with filters/facets and ranking override |
-| Host quick search | `adminGlobalSearch` | Leptos header search / Next KBar | Authenticated tenant-scoped quick-open surface, separate from preview telemetry |
-| Diagnostics | `searchDiagnostics`, `searchLaggingDocuments`, `searchConsistencyIssues` | Admin/operators | Authenticated tenant-scoped operational inspection |
-| Analytics | `searchAnalytics` | Admin/operators | Authenticated tenant-scoped query intelligence and slow-query analysis |
-| Dictionaries and merchandising | `searchDictionarySnapshot` plus synonym/stop-word/pin-rule mutations | Admin/operators | Authenticated tenant-scoped control plane for normalization and exact-query pinning |
-| Settings and rebuild control | `searchSettingsPreview`, `updateSearchSettings`, `triggerSearchRebuild` | Admin/operators | Authenticated tenant-scoped control plane; settings and rebuild actions emit audit events |
+| Public search | `storefrontSearch` | Storefronts | Tenant-scoped, published/public documents only |
+| Suggestions | `storefrontSearchSuggestions` | Storefronts | Same public visibility boundary as search |
+| Click tracking | `trackSearchClick` | Storefronts/admin | Best-effort analytics write using canonical href |
+| Admin preview | `searchPreview` | Admin packages | Authenticated tenant-scoped control plane |
+| Host quick search | `adminGlobalSearch` | Admin shell/KBar | Permission-filtered canonical results |
+| Diagnostics | diagnostics queries | Operators | Tenant-scoped lag and consistency inspection |
+| Analytics | `searchAnalytics` | Operators | Query, CTR, abandonment, and latency analysis |
+| Dictionaries | dictionary queries/mutations | Operators | Tenant-owned synonyms, stop words, and pin rules |
+| Settings/rebuild | settings and rebuild mutations | Operators | Permission-gated and event-published |
 
-## Error catalog and validation policy
+## Validation and error policy
 
-- `Validation`: caller input is rejected for unsupported engines or ranking profiles, unknown preset keys, malformed preset surfaces/keys/values, empty synonym or stop-word values, and empty query-rule targets. These are non-retriable caller bugs.
-- `NotFound`: product-facing search remains read-only, but merchandising writes can fail when a pinned document is absent from `search_documents`. Operators should reindex or choose another target instead of retrying blindly.
-- `Forbidden` / `Auth`: admin/control-plane surfaces require authenticated tenant-scoped access. Storefront search surfaces stay public and read-only.
-- `Database` / `External`: projector and dictionary/runtime services require PostgreSQL. Storage failures or unsupported backends are operational failures, not validation errors.
-- Search settings validation is centralized in `SearchSettingsService::save`, so raw JSON config and structured editors share the same checks for `ranking_profiles` and `filter_presets`.
-- Ranking-profile surfaces accept only stable identifiers and only the built-in profiles `balanced`, `exact`, `fresh`, `catalog`, and `content`.
-- Filter-preset surfaces accept only stable ASCII identifiers, normalize values to lowercase, and reject duplicates or oversized lists instead of silently truncating them.
-- Query normalization trims whitespace, lowercases tokens, removes configured stop words, and expands tenant-owned synonym groups before PostgreSQL FTS execution.
+- Invalid engines, ranking profiles, presets, filters, dictionary values, UUIDs,
+  and malformed route payloads are rejected before execution.
+- Admin/control-plane surfaces require authenticated tenant-scoped authority.
+- Public storefront surfaces remain read-only.
+- Storage and connector failures are operational failures, not caller validation
+  errors.
+- Ranking profiles use stable identifiers: `balanced`, `exact`, `fresh`,
+  `catalog`, and `content`.
+- Filter/preset keys use bounded normalized ASCII identifiers.
+- Query normalization trims input, removes configured stop words, and expands
+  tenant-owned synonyms before FTS execution.
 
 ## FBA provider boundary
 
-- `SearchQueryPort` and `SearchSuggestionPort` define the transport-neutral `search.query.v1` provider boundary for storefront/admin consumers.
-- The in-process PostgreSQL provider is `PgSearchEngine`; both query execution and suggestions require read deadline semantics, use `PortContext.locale` as the fallback locale, and map module errors to `PortError`.
-- `contracts/search-fba-registry.json`, `contracts/evidence/search-contract-test-static-matrix.json`, `contracts/evidence/search-runtime-fallback-smoke.json`, `contracts/evidence/search-runtime-contract-smoke.json`, and `contracts/evidence/search-runtime-invocation-trace.json` are checked by `npm run verify:search:fba` without compiling the workspace.
+- `SearchQueryPort` and `SearchSuggestionPort` define `search.query.v1`.
+- The in-process provider is `PgSearchEngine`; provider calls use shared read
+  deadline semantics, locale fallback, and `PortError` mapping.
+- Provider registry:
+  `contracts/search-fba-registry.json`.
+- Static evidence:
+  `contracts/evidence/search-contract-test-static-matrix.json`.
+- Runtime fallback evidence:
+  `contracts/evidence/search-runtime-fallback-smoke.json`.
+- Runtime contract evidence:
+  `contracts/evidence/search-runtime-contract-smoke.json`.
+- Invocation evidence:
+  `contracts/evidence/search-runtime-invocation-trace.json`.
+- Canonical URL evidence:
+  `contracts/evidence/search-canonical-url-contract.json`.
+- `npm run verify:search:fba` checks provider contracts and current-only canonical
+  URL ownership without compiling the workspace.
 
-## Current status
+## Current architecture
 
-- Admin GraphQL exposes engine availability, effective settings preview, and an FTS-backed
-  `searchPreview` surface with filters and facets.
-- Admin GraphQL also exposes dedicated `adminGlobalSearch`, so host-level admin
-  quick search does not get mixed into control-plane preview telemetry.
-- Admin GraphQL and both admin packages now ship a real settings editor for
-  `active_engine`, `fallback_engine`, and tenant-local JSON config persistence.
-- Storefront GraphQL exposes public `storefrontSearch`, limited to published content/products.
-- Storefront/admin GraphQL search inputs now accept optional `channelId`, `categoryIds`,
-  `attributeFilters`, `sortAttributeCode`, and `sortDesc`. PostgreSQL search applies
-  these filters against normalized product projections, so materialized virtual categories
-  participate in category filters and effective filterable attributes produce `attr:<code>`
-  facet groups. Facet buckets keep stable `value` keys and may include localized `label`.
-- Leptos admin/storefront transport DTOs carry the same catalog filter and sort fields.
-  Admin native `#[server]` maps them into `SearchQuery` while GraphQL remains available
-  in parallel, and facet UI prefers the host-locale projection label with stable-value fallback.
-- Leptos and Next admin/storefront surfaces now expose visible catalog filter/sort controls
-  over the same contract; Leptos storefront persists route state through typed
-  `snake_case` query keys while Next packages consume only host-provided locale props.
-- Search UI surfaces accept optional host-provided category/attribute option lists and render
-  datalist picker hints without importing `rustok-product`; product-owned transport remains
-  the source of those labels/values at host composition time.
-- The Next admin host now composes real product-owned category/attribute option metadata
-  into `SearchAdminPage` through `packages/rustok-product` GraphQL helpers and the
-  host effective locale.
-- Search queries are read-only and no longer trigger bootstrap rebuilds on the request path.
-- PostgreSQL search reads from `search_documents`, not from `rustok-index` tables.
-- Search GraphQL now also exposes `searchDictionarySnapshot` plus admin mutations
-  for synonyms, stop words, and exact-query pinned-result rules.
-- Query rewrite now applies tenant-owned stop words and synonym expansion before
-  PostgreSQL FTS execution, while exact-query pin rules can promote curated
-  results on both admin preview and storefront search.
-- `SearchIngestionHandler` updates `search_documents` asynchronously from domain events and supports rebuild requests.
-- Search rebuilds now execute transactionally so operators do not see half-rebuilt tenant indexes.
-- Admin GraphQL exposes `searchDiagnostics`, `searchLaggingDocuments`, and
-  `triggerSearchRebuild` for lag/state inspection, raw stale-document diagnostics,
-  and queued tenant-wide or scoped rebuilds.
-- Admin diagnostics now also surface missing/orphaned projection counts and a
-  raw `searchConsistencyIssues` feed, so operators can distinguish lag from
-  true search/source drift.
-- Admin GraphQL now also exposes `searchAnalytics` backed by module-local
-  `search_query_logs`, including top queries and zero-result analysis.
-- Search GraphQL now exposes `trackSearchClick`, and result payloads include
-  `queryLogId` plus a best-effort target URL so CTR and abandonment can be
-  measured from real result clicks.
-- Search GraphQL now also exposes `storefrontSearchSuggestions`, backed by
-  successful storefront query history and matching `search_documents` titles so
-  autocomplete can stay on the same module-owned contract as full search.
-- PostgreSQL search now applies typo-tolerant fallback over `pg_trgm` when the
-  primary FTS pass returns zero hits, so minor misspellings can still surface
-  relevant products and content without making fuzzy matching the default path.
-- PostgreSQL search now also supports built-in ranking profiles (`balanced`,
-  `exact`, `fresh`, `catalog`, `content`) with per-surface defaults from
-  `search_settings.config.ranking_profiles`, and admin preview can override the
-  profile explicitly for tuning work.
-- Search GraphQL now enforces tenant-local scope and validates engine/filter input before execution.
-- Search settings persistence now also validates `ranking_profiles` and
-  `filter_presets` structure before saving, so raw JSON and structured editors
-  go through the same backend contract.
-- Public storefront search and suggestions now run behind a dedicated
-  server-side rate limiter, and admin settings/rebuild actions emit best-effort
-  audit events through the outbox.
-- Search ingestion now runs with dispatcher retries, and diagnostics treat truly empty tenants as healthy instead of degraded.
-- Prometheus telemetry now exposes query volume, latency, zero-result, indexing,
-  fleet-level lag metrics, dedicated storefront rate-limit outcomes, and audit
-  publication counters for `rustok-search`.
-- Search analytics and admin dashboards now also surface slow-query rate and a
-  dedicated slow-query leaderboard from `search_query_logs`.
-- The module now ships a local observability runbook for rebuilds, lag triage,
-  and `/metrics` interpretation.
-- Leptos admin and storefront packages are wired to the live GraphQL search contract.
-- The Leptos storefront package now ships a real query form and autocomplete
-  dropdown that navigate through the same `?q=` route contract and public
-  search/suggestions endpoints.
-- The Leptos admin package now ships separate overview, playground, diagnostics,
-  analytics, and dictionaries surfaces under the module route, including live
-  settings, synonym/stop-word/pin-rule editors, CTR, abandonment, low-CTR,
-  query-intelligence views, a structured relevance editor for ranking defaults
-  and filter presets, and is also exposed as a first-class admin sidebar entry.
-- The Leptos admin host now also uses `rustok-search` for header-level global
-  admin search with module-aware quick navigation and a fallback into the full
-  search control plane.
-- The Next admin package mirrors the same control-plane surfaces and uses the same
-  GraphQL contract for settings, diagnostics, analytics, click tracking,
-  rebuilds, FTS preview, search dictionary management, and structured relevance
-  settings.
-- The Next admin host now wires `rustok-search` into KBar so global admin
-  search and command-palette quick-open use the same search contract and
-  analytics surface.
-- The Next storefront package now mirrors the same live search and
-  suggestions/autocomplete contract for parallel UI development.
-- The product-owned Leptos admin package now exposes neutral catalog search
-  option DTOs and a locale-required build-profile-selected native/GraphQL metadata
-  helper. The Leptos admin host composes that public contract into `SearchAdmin`
-  while checking product module enablement; search UI remains product-independent.
-- The Leptos storefront host now composes the public-safe product catalog option
-  contract into `SearchView`, using native server functions first and the
-  locale-required `storefrontCatalogSearchOptions` GraphQL query in parallel.
-- The Next storefront host mirrors that boundary through `src/features/search`:
-  product-owned `packages/rustok-product` reads
-  `storefrontCatalogSearchOptions(locale: String!)`, while the search package
-  still receives only host-provided option props.
+- Search queries are read-only and never bootstrap indexes on request paths.
+- `SearchIngestionHandler` updates `search_documents` asynchronously from domain
+  events and handles targeted/full rebuilds and module toggles.
+- Rebuilds are transactional so consumers do not observe partial tenant indexes.
+- Blog projection follows the active PostgreSQL `search_path` and removes stale
+  documents before source lookup.
+- Product filters use normalized category, channel, and attribute projections.
+- GraphQL and native Leptos transports expose the same normalized query/result
+  fields.
+- The Search admin native adapter is split into focused API, read, write,
+  normalization, pipeline, mapping, and support parts. Its mapping part delegates
+  result URLs to the Search owner policy.
+- Admin global search admits canonical Blog result types only under
+  `BLOG_POSTS_READ` and fails closed for unknown source/entity pairs.
+- Storefront transport selection does not mutate returned result URLs.
+- Dictionaries and exact-query pin rules are tenant-owned.
+- Diagnostics expose lagging, missing, orphaned, and inconsistent documents.
+- Analytics expose volume, zero-result rate, latency, CTR, abandonment, and query
+  intelligence.
+- External engines cannot bypass Search ports, owner URL mapping, or connector
+  credentials isolation.
+
+## Verification
+
+- `npm run verify:search:fba`
+- `npm run verify:search:ui-boundary`
+- `node scripts/verify/verify-search-canonical-url-contract.mjs`
+- `node scripts/verify/verify-search-canonical-url-contract.test.mjs`
+- `node scripts/verify/verify-search-blog-projection.mjs`
+- `node scripts/verify/verify-search-blog-projection.test.mjs`
+- `cargo test -p rustok-search engine::tests::canonical_url`
+- `cargo xtask module validate search`
 
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Implementation plan](./docs/implementation-plan.md)
 - [Platform docs index](../../docs/index.md)
