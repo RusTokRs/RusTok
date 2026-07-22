@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS notification_source_inbox (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_notification_source_inbox_event
-    ON notification_source_inbox (tenant_id, source_slug, source_event_id, event_type);
+    ON notification_source_inbox (tenant_id, source_slug, source_event_id);
 CREATE INDEX IF NOT EXISTS idx_notification_source_inbox_recovery
     ON notification_source_inbox (status, next_attempt_at, lease_expires_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_notification_source_inbox_job
@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS notification_source_inbox (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_notification_source_inbox_event
-    ON notification_source_inbox (tenant_id, source_slug, source_event_id, event_type);
+    ON notification_source_inbox (tenant_id, source_slug, source_event_id);
 CREATE INDEX IF NOT EXISTS idx_notification_source_inbox_recovery
     ON notification_source_inbox (status, next_attempt_at, lease_expires_at, updated_at);
 CREATE INDEX IF NOT EXISTS idx_notification_source_inbox_job
