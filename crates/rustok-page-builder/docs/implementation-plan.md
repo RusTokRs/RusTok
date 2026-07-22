@@ -27,19 +27,24 @@ same validator and resource limits are reused when it becomes `PageBuilderPrevie
 change after review invalidates the hash. Raw context is deliberately absent from durable artifact
 and publish-receipt evidence.
 
-`sanitize_static_landing_project` is the authoritative pre-materialization publish policy. It calls
+`sanitize_static_landing_project` is the authoritative pre-materialization publish boundary. It calls
 `StaticLandingCompiler::prepare_document`, decodes and validates the current Fly document, assigns
-deterministic stable component ids, checks secure public resources and returns
-`PageBuilderSanitizedStaticLandingProject`. Its SHA-256 binds the sanitizer format and exact
-sanitized project, separating policy evidence from runtime materialization without a second document
-model or renderer.
+deterministic stable component ids and applies `PageBuilderStaticPublishPolicy`. The fail-closed
+policy rejects renderer-fallback tags/component types, markup-bearing or non-renderable opaque
+content, dropped/unsafe attributes, unsafe URL schemes, unsupported or orphaned CSS rules, CSS
+`url()`/`@import`/`expression`/legacy behavior tokens, invalid assets and unsafe localized page
+metadata URLs. Fly's built-in `link` component remains valid because it renders as `<a>`. The
+`PageBuilderSanitizedStaticLandingProject` v2 envelope binds `policy_format + policy_hash + exact
+sanitized project` through SHA-256; integrity verification re-decodes and revalidates the project.
 
 `compile_materialized_static_landing` provides deterministic runtime-bound compilation. It captures
 one Fly `RuntimeScenarioRenderSnapshot` per page, materializes through
 `materialize_project_with_runtime_context`, compiles the exact resulting document and rechecks the
-public resource policy. `PageBuilderMaterializedStaticLandingArtifact` contains SHA-256 context,
-snapshot, build/artifact and final materialization hashes. Snapshot `document_hash` remains Fly's
-compact `ProjectHash`, while static page content keeps its independent SHA-256 identity.
+complete static publish policy on that exact materialized document. Runtime-injected attributes,
+URLs or CSS therefore cannot bypass the reviewed pre-materialization policy.
+`PageBuilderMaterializedStaticLandingArtifact` contains SHA-256 context, snapshot, build/artifact and
+final materialization hashes. Snapshot `document_hash` remains Fly's compact `ProjectHash`, while
+static page content keeps its independent SHA-256 identity.
 
 The capability contract is `1.1`; `consumer_min_version` remains `1.0`. Pages adopts `1.1` because it
 consumes runtime context/scenario fields. Deferred consumers may remain on compatible `1.0` until
@@ -69,7 +74,8 @@ PublishPageInput
 ```
 
 The durable receipt is unique by `(tenant_id, page_id, idempotency_key)` and stores SHA-256 request,
-sanitization-set and artifact-set hashes, the review hash and result version. Exact replay returns the
+sanitization-set and artifact-set hashes, the review hash and result version. The sanitization-set hash
+therefore transitively binds the versioned static policy hash for every locale. Exact replay returns the
 stored receipt without rebuilding artifacts or emitting duplicate events. Reusing the key for a
 different version/body-revision/runtime review fails closed. The selected reviewed scenario/context
 must also match the promoted runtime baseline when one exists. Every new receipt snapshots the exact
@@ -98,11 +104,14 @@ Pages public publication crosses the reviewed boundary:
 - `PageService::create` cannot publish or compile through a default runtime.
 
 Pages also owns an immutable rollback boundary. `PageService::rollback_to_previous` locks the
-published page, verifies the active artifact set and the latest distinct publish manifest, replaces
-all locale bindings, advances the page version, emits `NodeUpdated` and `NodePublished`, and stores a
-separate idempotent rollback receipt in one transaction. Rollback reuses immutable artifacts only: it
-does not call the Page Builder sanitizer, runtime materializer or compiler. GraphQL, HTTP, OpenAPI and
-the Pages admin transport are connected; the workspace action remains a small UI follow-up.
+published page, verifies the active artifact set, resolves the latest activation receipt by page result
+version and follows rollback receipts to their referenced publish operation. It then selects only an
+older distinct publish receipt, verifies its immutable manifest, replaces every locale binding,
+advances the page version, emits `NodeUpdated` and `NodePublished`, and stores a separate idempotent
+rollback receipt in one transaction. A matching artifact hash without a publish/rollback activation
+receipt is rejected. Rollback reuses immutable artifacts only: it does not call the Page Builder
+sanitizer, runtime materializer or compiler. GraphQL, HTTP, OpenAPI, browser retry identity and the
+Pages admin prepare/confirm control are connected.
 
 The mixed legacy lifecycle has been removed. Non-builder pages use explicitly named
 `publish_non_builder` / `publish_non_builder_if_current`; both check before and inside the transaction
@@ -122,13 +131,15 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 ## Machine-readable contracts
 
 - `contracts/page-builder-service-boundary.json` records capability/preview ports and composition.
-- `contracts/page-builder-fba-registry.json` records provider/consumer versions, materialization
-  persistence, exact publish manifests, immutable rollback and the Pages cache consumer boundary.
-- `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, sanitizer, Pages
-  atomic publish/rollback services, body revision identity, receipt schemas, replay semantics, public
-  transport cutover, explicit ephemeral scenario selection, isolated non-builder lifecycle and cache
-  invalidation/read state.
-- `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks core atomic invariants.
+- `contracts/page-builder-fba-registry.json` records provider/consumer versions, policy-bound
+  sanitization/materialization persistence, exact publish manifests, immutable rollback and the Pages
+  cache consumer boundary.
+- `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, the static publish
+  policy and sanitizer v2 evidence, Pages atomic publish/rollback services, body revision identity,
+  receipt schemas, replay semantics, public transport cutover, explicit ephemeral scenario selection,
+  isolated non-builder lifecycle and cache invalidation/read state.
+- `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks reviewed runtime,
+  policy-bound sanitization, exact materialized rechecks and core atomic invariants.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
   non-builder lifecycle boundaries.
@@ -136,22 +147,26 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
   of cache scopes/keys, event-driven invalidation, neutral server capabilities and authorization/cache/
   owner-source ordering in storefront and artifact readers.
 - `crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs` source-locks exact publish
-  manifests, rollback ordering, immutable-only reuse, typed receipts and public transports.
+  manifests, activation-cursor rollback ordering, immutable-only reuse, typed receipts and public
+  transports.
 
 ## FFA/FBA status
 
 - **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
-  rollback transport and generation-aware Pages storefront/artifact readers are connected; the
-  workspace rollback action, typed metadata properties and inline edit mode remain open.
-- **FBA:** `boundary_ready` for preview/materialization and
+  rollback transport and generation-aware Pages storefront/artifact readers are connected; typed
+  metadata properties and inline edit mode remain open.
+- **FBA:** `boundary_ready` for preview and policy-bound sanitization/materialization, and
   `service_and_public_transport_integrated` for Pages reviewed publication and immutable rollback. The
   default-runtime lifecycle is removed and source-level cache invalidation/read boundaries are
-  connected; executed rollback/cache proof, verification and observed rollout evidence remain open.
+  connected; executed sanitizer/rollback/cache proof, verification and observed rollout evidence
+  remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability and
   publish contracts.
 - **Evidence:**
   - `src/publish_runtime.rs`;
+  - `src/static_publish_policy.rs`;
   - `src/publish_sanitization.rs`;
+  - `src/static_landing.rs`;
   - `src/static_landing_materialization.rs`;
   - `contracts/page-builder-publish-runtime-review.json`;
   - `contracts/page-builder-fba-registry.json`;
@@ -182,16 +197,18 @@ rotation. Cache failures fail open to source reads. Accepted execution evidence 
 
 ## Open results
 
-1. Add the typed rollback action to the Pages workspace header and retain an accepted packet
-   correlating rollback receipt, `NodePublished`, handler receipt, generation rotation and storefront/
-   artifact cache miss/refill.
-2. Retain the equivalent accepted publish cache packet.
-3. Connect the next production consumer's concrete tenant-scoped store and contextual preview
+1. Retain an accepted sanitizer packet covering unsafe authoring input and runtime-injected URL/CSS
+   rejection with policy hash, reviewed publish receipt and zero persisted artifact/event side effects.
+2. Retain accepted publish and rollback cache packets correlating receipt, `NodePublished`, handler
+   receipt, generation rotation and storefront/artifact cache miss/refill.
+3. Implement consumer-owned typed metadata property contributions in the Fly properties surface and
+   remove the separate Pages metadata form without transferring page persistence ownership.
+4. Connect the next production consumer's concrete tenant-scoped store and contextual preview
    renderer to the canonical composition root without consumer-local authorization or save-result
    side channels.
-4. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
+5. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
-5. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
+6. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
    sanitizer identity, materialization, Pages publish/rollback receipts, cache generation and
    storefront read.
 
