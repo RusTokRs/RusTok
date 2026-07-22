@@ -170,33 +170,48 @@ impl TopicService {
         }
         let relation_service =
             super::mention_relation::MentionRelationService::new(self.db.clone());
-        let prepared_relations = if let Some(body) = prepared_relation_body.as_ref() {
-            let quotes = super::relation_quote_input::resolve_inline_update_quotes(
-                &self.db,
+        let (prepared_relations, quote_expectation) =
+            if let Some(body) = prepared_relation_body.as_ref() {
+                let resolved = super::relation_quote_input::resolve_inline_update_quotes(
+                    &self.db,
+                    tenant_id,
+                    crate::mentions::ForumContentTarget::topic(topic_id),
+                    &locale,
+                    quote_inputs,
+                )
+                .await?;
+                let (quotes, expectation) = resolved.into_parts();
+                (
+                    Some(
+                        relation_service
+                            .prepare(
+                                tenant_id,
+                                crate::mentions::ForumContentTarget::topic(topic_id),
+                                &locale,
+                                &body.body,
+                                &body.format,
+                                &security,
+                                quotes,
+                            )
+                            .await?,
+                    ),
+                    Some(expectation),
+                )
+            } else {
+                (None, None)
+            };
+
+        let txn = self.db.begin().await?;
+        if let Some(expectation) = quote_expectation {
+            super::relation_quote_input::lock_source_and_assert_latest_in_tx(
+                &txn,
                 tenant_id,
                 crate::mentions::ForumContentTarget::topic(topic_id),
                 &locale,
-                quote_inputs,
+                expectation,
             )
             .await?;
-            Some(
-                relation_service
-                    .prepare(
-                        tenant_id,
-                        crate::mentions::ForumContentTarget::topic(topic_id),
-                        &locale,
-                        &body.body,
-                        &body.format,
-                        &security,
-                        quotes,
-                    )
-                    .await?,
-            )
-        } else {
-            None
-        };
-
-        let txn = self.db.begin().await?;
+        }
         let mut active: forum_topic::ActiveModel = topic.into();
         active.updated_at = Set(Utc::now().into());
         if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref() {
