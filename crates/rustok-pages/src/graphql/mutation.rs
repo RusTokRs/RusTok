@@ -11,12 +11,13 @@ use uuid::Uuid;
 use crate::{
     CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreateMenuInput, CreatePageInput, MenuBindingService,
     MenuItemInput, MenuItemTranslationInput, MenuLocation, MenuService, MenuTranslationInput,
-    PageBodyInput,
-    PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
-    PublishPageInput, ReviewedPagePublishRuntimeInput, SavePageDocumentInput,
     PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH,
     PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID, PAGE_BUILDER_PUBLISH_SANITIZE_FAILED,
     PAGE_PUBLISH_IDEMPOTENCY_CONFLICT, PAGE_PUBLISH_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT, PAGE_ROLLBACK_OPERATION_INTEGRITY,
+    PAGE_ROLLBACK_REQUIRES_PUBLISHED, PAGE_ROLLBACK_TARGET_UNAVAILABLE, PageBodyInput,
+    PageBodyRevisionInput, PageService, PageTranslationInput, PagesError, PatchPageMetadataInput,
+    PublishPageInput, ReviewedPagePublishRuntimeInput, RollbackPageInput, SavePageDocumentInput,
 };
 
 use super::types::*;
@@ -221,6 +222,36 @@ impl PagesMutation {
             .map_err(map_pages_error)
     }
 
+    async fn rollback_page(
+        &self,
+        ctx: &Context<'_>,
+        id: Uuid,
+        input: RollbackGqlPageInput,
+        tenant_id: Option<Uuid>,
+    ) -> Result<GqlRollbackPageResult> {
+        require_module_enabled(ctx, MODULE_SLUG).await?;
+        let db = ctx.data::<DatabaseConnection>()?;
+        let event_bus = ctx.data::<TransactionalEventBus>()?;
+        let auth =
+            require_pages_permission(ctx, Permission::new(Resource::Pages, Action::Publish))?;
+        let tenant = ctx.data::<TenantContext>()?;
+        let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
+
+        PageService::new(db.clone(), event_bus.clone())
+            .rollback_to_previous(
+                tenant_id,
+                page_security(&auth),
+                id,
+                RollbackPageInput {
+                    expected_version: input.expected_version,
+                    idempotency_key: input.idempotency_key,
+                },
+            )
+            .await
+            .map(Into::into)
+            .map_err(map_pages_error)
+    }
+
     async fn unpublish_page(
         &self,
         ctx: &Context<'_>,
@@ -384,6 +415,10 @@ fn map_pages_error(error: PagesError) -> async_graphql::Error {
         }
         PagesError::PublishIdempotencyConflict(_) => PAGE_PUBLISH_IDEMPOTENCY_CONFLICT,
         PagesError::PublishOperationIntegrity(_) => PAGE_PUBLISH_OPERATION_INTEGRITY,
+        PagesError::RollbackIdempotencyConflict(_) => PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT,
+        PagesError::RollbackOperationIntegrity(_) => PAGE_ROLLBACK_OPERATION_INTEGRITY,
+        PagesError::RollbackTargetUnavailable(_) => PAGE_ROLLBACK_TARGET_UNAVAILABLE,
+        PagesError::RollbackRequiresPublished => PAGE_ROLLBACK_REQUIRES_PUBLISHED,
         PagesError::Rich(rich) => rich
             .error_code
             .as_deref()
