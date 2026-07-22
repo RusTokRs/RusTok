@@ -62,11 +62,15 @@
     "service": "crates/rustok-forum/src/services/quote_command.rs",
     "dto": "crates/rustok-forum/src/dto/relation.rs",
     "source_body_mode": "exact_locale_existing_body",
+    "quotes_field_required": true,
     "replace_full_set": true,
     "empty_set_clears": true,
     "deduplicate": true,
-    "max_quotes": 32,
+    "max_raw_quotes": 32,
+    "max_unique_quotes": 32,
+    "reject_deleted_source": true,
     "same_owner_transaction": true,
+    "response_before_commit": true,
     "rest": [
       "PUT /api/forum/topics/{id}/quotes",
       "PUT /api/forum/replies/{id}/quotes"
@@ -95,7 +99,7 @@
   "deferred": [
     "inline quote input on topic and reply create or body edit commands",
     "Notifications delivery",
-    "blocked private deleted source and target visibility rechecks",
+    "blocked private deleted source and target visibility rechecks for notification consumption and target opening",
     "PostgreSQL concurrency and delivery runtime evidence"
   ]
 }
