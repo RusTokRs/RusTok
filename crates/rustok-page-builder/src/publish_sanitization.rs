@@ -99,20 +99,21 @@ pub fn sanitize_static_landing_project(
     project_data: &Value,
 ) -> Result<PageBuilderSanitizedStaticLandingProject, PageBuilderStaticLandingSanitizationError> {
     let document = StaticLandingCompiler::default().prepare_document(project_data)?;
-    let policy_evidence = validate_static_publish_document(&document)?;
+    let PageBuilderStaticPublishPolicyEvidence {
+        format: policy_format,
+        policy_hash,
+    } = validate_static_publish_document(&document)?;
     let sanitized_project = serde_json::to_value(document.project).map_err(|error| {
         PageBuilderStaticLandingSanitizationError::Encode(error.to_string())
     })?;
+    let sanitized_hash =
+        sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
-        policy_format: policy_evidence.format,
-        policy_hash: policy_evidence.policy_hash,
-        sanitized_hash: sanitization_hash(
-            &sanitized_project,
-            &policy_evidence.format,
-            &policy_evidence.policy_hash,
-        )?,
+        policy_format,
+        policy_hash,
         sanitized_project,
+        sanitized_hash,
     };
     result.verify_integrity()?;
     Ok(result)
@@ -249,9 +250,12 @@ mod tests {
         });
 
         let error = sanitize_static_landing_project(&project).expect_err("policy rejection");
-        let PageBuilderStaticLandingSanitizationError::Policy(policy_error) = error else {
-            panic!("expected static publish policy error");
+        let PageBuilderStaticLandingSanitizationError::Landing(
+            LandingProjectError::Validation { diagnostics },
+        ) = error
+        else {
+            panic!("expected compiler policy validation error");
         };
-        assert!(policy_error.diagnostics().len() >= 3);
+        assert!(diagnostics.len() >= 3);
     }
 }
