@@ -17,6 +17,20 @@
       "error": "rustok_api::ports::PortError",
       "idempotency_required": true,
       "deadline_required": true
+    },
+    {
+      "name": "CheckoutOrderIdentityPort",
+      "owner": "order",
+      "operations": [
+        "read_by_operation",
+        "read_by_cart",
+        "bind",
+        "adopt_legacy"
+      ],
+      "context": "rustok_api::ports::PortContext",
+      "error": "rustok_api::ports::PortError",
+      "idempotency_required": true,
+      "deadline_required": true
     }
   ],
   "consumers": [
@@ -92,6 +106,52 @@
           "typed_port_error_mapping",
           "context_deadline_preserved"
         ]
+      },
+      {
+        "operation": "read_by_operation",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "read_by_cart",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved"
+        ]
+      },
+      {
+        "operation": "bind",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
+      },
+      {
+        "operation": "adopt_legacy",
+        "profiles": [
+          "in_process",
+          "remote_adapter_placeholder"
+        ],
+        "assertions": [
+          "typed_port_error_mapping",
+          "context_deadline_preserved",
+          "write_idempotency_required"
+        ]
       }
     ],
     "fallback_smoke": {
@@ -116,6 +176,17 @@
       "read_checkout_result keeps typed unavailable until cart-id projection lands"
     ]
   },
+  "checkout_identity_provider_impl": {
+    "service": "InProcessCheckoutOrderIdentityPort",
+    "source": "crates/rustok-order/src/ports.rs",
+    "status": "source_implemented_unvalidated",
+    "notes": [
+      "typed reads use order-owned order_checkout_identities persistence",
+      "bind requires write idempotency and rejects conflicting operation/order/cart facts",
+      "adopt_legacy keeps temporary metadata lookup inside the owner compatibility adapter",
+      "commerce consumers no longer query orders or inspect checkout identity metadata directly"
+    ]
+  },
   "runtime_evidence": {
     "checkout_completion_owner_path": {
       "status": "runtime_verified",
@@ -130,6 +201,12 @@
         "read_order_status_enforces_read_policy",
         "read_checkout_result_returns_typed_unavailable_until_cart_projection_lands"
       ]
+    },
+    "checkout_identity_owner_path": {
+      "status": "source_ready_unvalidated",
+      "source": "crates/rustok-order/src/ports.rs",
+      "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
+      "verification_scope": "planned_cases_locked_no_runtime_promotion"
     }
   }
 }
