@@ -1,6 +1,8 @@
 use rustok_api::{normalize_locale_tag, Action, Resource};
 use rustok_core::SecurityContext;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -65,6 +67,7 @@ impl ForumRelationReadService {
                 forum_user_mention::Column::SourceRevisionId.eq(revision.revision_id),
             )
             .order_by_asc(forum_user_mention::Column::MentionedUserId)
+            .limit((MAX_MENTIONS_PER_REVISION + 1) as u64)
             .all(&self.db)
             .await?;
         let audience_rows = forum_audience_mention::Entity::find()
@@ -76,6 +79,7 @@ impl ForumRelationReadService {
                 forum_audience_mention::Column::SourceRevisionId.eq(revision.revision_id),
             )
             .order_by_asc(forum_audience_mention::Column::Audience)
+            .limit((MAX_MENTIONS_PER_REVISION + 1) as u64)
             .all(&self.db)
             .await?;
         let quote_rows = forum_quote::Entity::find()
@@ -87,6 +91,7 @@ impl ForumRelationReadService {
             .order_by_asc(forum_quote::Column::QuotedKind)
             .order_by_asc(forum_quote::Column::QuotedId)
             .order_by_asc(forum_quote::Column::QuotedRevisionId)
+            .limit((MAX_QUOTES_PER_REVISION + 1) as u64)
             .all(&self.db)
             .await?;
 
