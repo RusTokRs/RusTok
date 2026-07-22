@@ -15,6 +15,7 @@ mod m20260713_000114_enforce_order_money_integrity;
 mod m20260713_000115_serialize_order_lifecycle;
 mod m20260713_000116_enforce_checkout_operation_identity;
 mod m20260721_000117_add_order_change_source_locale;
+mod m20260722_000118_create_order_checkout_identities;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -37,5 +38,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260713_000115_serialize_order_lifecycle::Migration),
         Box::new(m20260713_000116_enforce_checkout_operation_identity::Migration),
         Box::new(m20260721_000117_add_order_change_source_locale::Migration),
+        Box::new(m20260722_000118_create_order_checkout_identities::Migration),
     ]
 }
