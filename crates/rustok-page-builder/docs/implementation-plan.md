@@ -64,7 +64,7 @@ PublishPageInput
   -> immutable artifact persistence and bindings
   -> published page state
   -> transactional NodeUpdated/NodePublished outbox
-  -> page_publish_operations receipt
+  -> page_publish_operations receipt + exact immutable artifact manifest
   -> commit
 ```
 
@@ -72,7 +72,9 @@ The durable receipt is unique by `(tenant_id, page_id, idempotency_key)` and sto
 sanitization-set and artifact-set hashes, the review hash and result version. Exact replay returns the
 stored receipt without rebuilding artifacts or emitting duplicate events. Reusing the key for a
 different version/body-revision/runtime review fails closed. The selected reviewed scenario/context
-must also match the promoted runtime baseline when one exists.
+must also match the promoted runtime baseline when one exists. Every new receipt snapshots the exact
+locale-to-artifact membership in `page_publish_operation_artifacts`; its canonical hash must equal the
+receipt artifact-set hash in the same transaction.
 
 Immutable landing records retain nullable `materialization_hash`, `materialization_identity` and
 `runtime_snapshots`. New records require all three and use a five-part key ending in
@@ -80,7 +82,7 @@ Immutable landing records retain nullable `materialization_hash`, `materializati
 valid Fly artifact; partial evidence is rejected. Storefront reads reconstruct and verify the full
 materialization envelope before returning HTML.
 
-Pages public publication now crosses the reviewed boundary:
+Pages public publication crosses the reviewed boundary:
 
 - GraphQL requires `PublishGqlPageInput` and returns `GqlPublishPageResult`;
 - HTTP exposes `POST /api/admin/pages/{id}/publish` with
@@ -95,6 +97,13 @@ Pages public publication now crosses the reviewed boundary:
   selection, and a missing, stale or foreign selection fails closed in the Pages transport;
 - `PageService::create` cannot publish or compile through a default runtime.
 
+Pages also owns an immutable rollback boundary. `PageService::rollback_to_previous` locks the
+published page, verifies the active artifact set and the latest distinct publish manifest, replaces
+all locale bindings, advances the page version, emits `NodeUpdated` and `NodePublished`, and stores a
+separate idempotent rollback receipt in one transaction. Rollback reuses immutable artifacts only: it
+does not call the Page Builder sanitizer, runtime materializer or compiler. GraphQL, HTTP, OpenAPI and
+the Pages admin transport are connected; the workspace action remains a small UI follow-up.
+
 The mixed legacy lifecycle has been removed. Non-builder pages use explicitly named
 `publish_non_builder` / `publish_non_builder_if_current`; both check before and inside the transaction
 that no GrapesJS/Fly body exists. A builder document receives
@@ -107,18 +116,18 @@ Pages owns the post-commit cache boundary. `PageCacheInvalidationEventHandler` c
 acknowledging success. `PagesCacheReadRuntime` supplies generation-aware bounded JSON reads. The
 composite storefront response binds all three generations; artifact HTTP delivery binds the artifact
 generation. Module/channel authorization precedes lookup, and cache fill follows owner source and
-artifact-integrity checks. Cache failures fail open to source reads. Accepted execution evidence
-remains open.
+artifact-integrity checks. Publish and rollback reuse the same post-commit `NodePublished` generation
+rotation. Cache failures fail open to source reads. Accepted execution evidence remains open.
 
 ## Machine-readable contracts
 
 - `contracts/page-builder-service-boundary.json` records capability/preview ports and composition.
 - `contracts/page-builder-fba-registry.json` records provider/consumer versions, materialization
-  persistence and the Pages cache consumer boundary.
+  persistence, exact publish manifests, immutable rollback and the Pages cache consumer boundary.
 - `contracts/page-builder-publish-runtime-review.json` records reviewed runtime, sanitizer, Pages
-  atomic service, body revision identity, receipt schema, replay semantics, public transport cutover,
-  explicit ephemeral scenario selection, isolated non-builder lifecycle and cache invalidation/read
-  state.
+  atomic publish/rollback services, body revision identity, receipt schemas, replay semantics, public
+  transport cutover, explicit ephemeral scenario selection, isolated non-builder lifecycle and cache
+  invalidation/read state.
 - `scripts/verify/verify-page-builder-publish-runtime-review.mjs` source-locks core atomic invariants.
 - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs` forbids public legacy/default
   publication and source-locks GraphQL, HTTP, admin reviewed DTO/receipt, scenario-selection and
@@ -126,16 +135,18 @@ remains open.
 - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs` source-locks Pages ownership
   of cache scopes/keys, event-driven invalidation, neutral server capabilities and authorization/cache/
   owner-source ordering in storefront and artifact readers.
+- `crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs` source-locks exact publish
+  manifests, rollback ordering, immutable-only reuse, typed receipts and public transports.
 
 ## FFA/FBA status
 
-- **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection and
-  generation-aware Pages storefront/artifact readers are connected; typed metadata properties and
-  inline edit mode remain open.
+- **FFA:** `core_transport_ui` for the browser-host slice. Explicit promoted-scenario selection,
+  rollback transport and generation-aware Pages storefront/artifact readers are connected; the
+  workspace rollback action, typed metadata properties and inline edit mode remain open.
 - **FBA:** `boundary_ready` for preview/materialization and
-  `service_and_public_transport_integrated` for Pages reviewed publication. The default-runtime
-  lifecycle is removed and source-level cache invalidation/read boundaries are connected; rollback,
-  executed cache proof, verification and observed rollout evidence remain open.
+  `service_and_public_transport_integrated` for Pages reviewed publication and immutable rollback. The
+  default-runtime lifecycle is removed and source-level cache invalidation/read boundaries are
+  connected; executed rollback/cache proof, verification and observed rollout evidence remain open.
 - **Structural shape:** `core_transport_ui` for browser host and `core_transport` for capability and
   publish contracts.
 - **Evidence:**
@@ -148,6 +159,9 @@ remains open.
   - `admin/src/editor/publish_scenario_selector.rs`;
   - `crates/rustok-pages/src/dto/page.rs`;
   - `crates/rustok-pages/src/services/page/reviewed_publish.rs`;
+  - `crates/rustok-pages/src/services/page/rollback.rs`;
+  - `crates/rustok-pages/src/services/page/artifact_set.rs`;
+  - `crates/rustok-pages/src/services/page/publish_manifest.rs`;
   - `crates/rustok-pages/src/services/page/lifecycle.rs`;
   - `crates/rustok-pages/src/cache_invalidation.rs`;
   - `crates/rustok-pages/storefront/src/transport/native_server_adapter.rs`;
@@ -158,24 +172,28 @@ remains open.
   - `crates/rustok-pages/src/http.rs`;
   - `crates/rustok-pages/admin/src/transport/graphql_adapter.rs`;
   - `crates/rustok-pages/src/entities/page_publish_operation.rs`;
-  - `crates/rustok-pages/src/migrations/m20260721_000007_create_page_publish_operations.rs`;
+  - `crates/rustok-pages/src/entities/page_publish_operation_artifact.rs`;
+  - `crates/rustok-pages/src/entities/page_rollback_operation.rs`;
+  - `crates/rustok-pages/src/migrations/m20260722_000009_create_page_rollback_operations.rs`;
   - `scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
   - `scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
-  - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`.
+  - `crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
+  - `crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`.
 
 ## Open results
 
-1. Retain an accepted packet correlating `NodePublished`, handler receipt, generation rotation and
-   storefront/artifact cache miss/refill.
-2. Add rollback to a previous immutable artifact set with its own idempotent receipt and outbox
-   semantics.
+1. Add the typed rollback action to the Pages workspace header and retain an accepted packet
+   correlating rollback receipt, `NodePublished`, handler receipt, generation rotation and storefront/
+   artifact cache miss/refill.
+2. Retain the equivalent accepted publish cache packet.
 3. Connect the next production consumer's concrete tenant-scoped store and contextual preview
    renderer to the canonical composition root without consumer-local authorization or save-result
    side channels.
 4. Add the first Dioxus host renderer after Dioxus enters the workspace. It must render
    `PageBuilderBrowserModuleDescriptor` and reuse the canonical runtime DTO.
 5. Replace synthetic Wave evidence with observed tenant packets correlating preview context,
-   sanitizer identity, materialization, Pages receipt, cache generation and storefront read.
+   sanitizer identity, materialization, Pages publish/rollback receipts, cache generation and
+   storefront read.
 
 ## Verification
 
@@ -183,6 +201,7 @@ remains open.
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs`;
 - `node crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs`;
+- `node crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-adapter-seams.mjs`;
 - `node crates/rustok-page-builder/scripts/verify/verify-page-builder-fba-baseline.mjs`;
 - `cargo test -p rustok-page-builder --all-targets --all-features`;
@@ -194,7 +213,7 @@ remains open.
 - Fly owns the project domain, runtime materialization and validation/rendering semantics.
 - Page Builder owns capability delivery, preview/review/sanitization/materialization contracts,
   ports, authorization, transport envelopes, feature profiles and server composition order.
-- Consumer modules own persistence, publication lifecycle, receipts, cache scope/key policy and
-  concrete tenant-scoped ports.
+- Consumer modules own persistence, publication lifecycle, exact artifact manifests, rollback,
+  receipts, cache scope/key policy and concrete tenant-scoped ports.
 - Cache/server infrastructure owns shared connection, byte storage and generation primitives only.
 - Host frameworks render or bind module surfaces and do not define provider-local contracts.
