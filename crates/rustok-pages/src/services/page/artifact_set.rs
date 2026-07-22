@@ -1,7 +1,6 @@
 use rustok_core::CONTENT_FORMAT_GRAPESJS;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -52,36 +51,6 @@ pub(super) fn artifact_set_hash(members: &[ArtifactSetMember]) -> PagesResult<St
         .collect::<Vec<_>>();
     identity.sort_by(|left, right| left.0.cmp(right.0));
     stable_hash(&identity)
-}
-
-pub(super) async fn insert_publish_manifest_in_tx(
-    txn: &DatabaseTransaction,
-    operation: &page_publish_operation::Model,
-    members: &[ArtifactSetMember],
-) -> PagesResult<()> {
-    verify_members_in_tx(txn, operation.tenant_id, operation.page_id, members).await?;
-    let manifest_hash = artifact_set_hash(members)?;
-    if manifest_hash != operation.artifact_set_hash {
-        return Err(PagesError::publish_operation_integrity(
-            "publish artifact manifest does not match the durable artifact_set_hash",
-        ));
-    }
-    for member in members {
-        page_publish_operation_artifact::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            operation_id: Set(operation.id),
-            tenant_id: Set(operation.tenant_id),
-            page_id: Set(operation.page_id),
-            locale: Set(member.locale.clone()),
-            artifact_id: Set(member.artifact_id),
-            artifact_hash: Set(member.artifact_hash.clone()),
-            materialization_hash: Set(member.materialization_hash.clone()),
-            created_at: Set(operation.created_at),
-        }
-        .insert(txn)
-        .await?;
-    }
-    Ok(())
 }
 
 pub(super) async fn load_publish_manifest_in_tx(
