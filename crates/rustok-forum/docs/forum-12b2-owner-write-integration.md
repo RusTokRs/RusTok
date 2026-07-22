@@ -35,8 +35,9 @@ relation revision, counters and existing event writes together.
 
 The public `TopicService` and `ReplyService` facades continue to route through
 module-owned owner services. Raw compatibility services remain crate-private.
-The small `topic_relation_integration.rs` and `reply_relation_integration.rs`
-extensions share their raw module scope only to reuse existing private write
+Relation-aware topic methods live directly in `topic.rs`; relation-aware reply
+edit methods live directly in `reply.rs`, while reply create remains in
+`reply_owner.rs`. This direct-module layout preserves access to private write
 helpers without widening the crate API.
 
 ## Compatibility
@@ -47,8 +48,9 @@ rollout `legacy` identity first; the active projection is appended in the same
 transaction immediately afterward.
 
 Quote command DTOs are intentionally unchanged in this slice, so active commands
-pass an empty quote set. Versioned mention events, outbox publication, bounded
-owner reads and Notifications delivery remain FORUM-12C / NOTIFY scope.
+pass an empty quote set. Versioned mention events, outbox publication and bounded
+owner reads are delivered separately in FORUM-12C; Notifications delivery remains
+downstream NOTIFY scope.
 
 ## Guardrail
 

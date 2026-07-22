@@ -1,15 +1,15 @@
 {
-  "schema_version": 1,
-  "slice": "FORUM-12B2",
+  "schema_version": 2,
+  "slice": "FORUM-12C",
   "owner_entrypoints": {
     "topic_create": {
       "owner": "crates/rustok-forum/src/services/topic_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/topic_relation_integration.rs",
+      "implementation": "crates/rustok-forum/src/services/topic.rs",
       "delegate": "create_with_relations"
     },
     "topic_update": {
       "owner": "crates/rustok-forum/src/services/topic_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/topic_relation_integration.rs",
+      "implementation": "crates/rustok-forum/src/services/topic.rs",
       "delegate": "update_with_relations"
     },
     "reply_create": {
@@ -19,7 +19,7 @@
     },
     "reply_update": {
       "owner": "crates/rustok-forum/src/services/reply_owner.rs",
-      "implementation": "crates/rustok-forum/src/services/reply_relation_integration.rs",
+      "implementation": "crates/rustok-forum/src/services/reply.rs",
       "delegate": "update_with_relations"
     }
   },
@@ -27,9 +27,37 @@
     "prepare relation projection before opening the owner transaction",
     "persist canonical topic translation or reply body",
     "persist relation projection in the same owner transaction",
+    "publish events only for newly added targets",
+    "write the same event identity to transactional outbox and Forum journal",
     "run existing counters and semantic event writes",
     "commit the owner transaction"
   ],
+  "event_contract": {
+    "family": "crates/rustok-events/src/forum_mention.rs",
+    "payload_registry": "crates/rustok-events/src/contract.rs",
+    "event_types": [
+      "forum.mention.user_added",
+      "forum.mention.audience_added"
+    ],
+    "schema_version": 1
+  },
+  "owner_journal": {
+    "entity": "crates/rustok-forum/src/entities/forum_domain_event.rs",
+    "migration": "crates/rustok-forum/src/migrations/m20260722_000006_add_forum_mention_events.rs",
+    "same_event_id_as_outbox": true,
+    "append_only": true
+  },
+  "owner_read": {
+    "service": "crates/rustok-forum/src/services/relation_read.rs",
+    "dto": "crates/rustok-forum/src/dto/relation.rs",
+    "latest_or_exact_revision": true,
+    "max_mentions": 32,
+    "max_quotes": 32,
+    "forbidden_fields": [
+      "handle_snapshot",
+      "projection_fingerprint"
+    ]
+  },
   "source_entrypoints": {
     "topic": "crates/rustok-forum/src/services/topic.rs",
     "reply": "crates/rustok-forum/src/services/reply.rs"
@@ -43,12 +71,13 @@
     "PreparedMentionRelations",
     "persist_in_tx",
     "create_with_relations",
-    "update_with_relations"
+    "update_with_relations",
+    "publish_contract_in_tx_with_envelope_id"
   ],
   "deferred": [
     "quote command DTOs",
-    "mention semantic events and outbox publication",
-    "bounded relation owner reads",
-    "Notifications delivery"
+    "Notifications delivery",
+    "blocked private deleted source and target visibility rechecks",
+    "PostgreSQL concurrency and delivery runtime evidence"
   ]
 }
