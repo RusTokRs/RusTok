@@ -210,6 +210,8 @@ impl CheckoutOrderCreationExecutor {
                                     checkout_operation_id: operation_id,
                                     order_id: order.id,
                                     cart_id: operation.cart_id,
+                                    payment_collection_id: None,
+                                    shipping_option_id: None,
                                     snapshot_hash: snapshot_hash.to_string(),
                                     request_hash: request_hash.clone(),
                                 },
