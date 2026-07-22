@@ -51,10 +51,9 @@ impl NotificationError {
 
     pub const fn is_retryable(&self) -> bool {
         match self {
+            Self::SourceUnavailable | Self::LeaseUnavailable | Self::Database(_) => true,
             Self::ProviderFailure { retryable } => *retryable,
-            Self::LeaseUnavailable | Self::Database(_) => true,
-            Self::SourceUnavailable
-            | Self::UnsupportedEvent
+            Self::UnsupportedEvent
             | Self::InvalidEvent
             | Self::ProviderRejected
             | Self::SourceIdentityConflict
