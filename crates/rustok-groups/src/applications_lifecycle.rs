@@ -224,18 +224,6 @@ impl GroupApplicationService {
             request.application_id,
         )
         .await?;
-        let previous_status = GroupApplicationStatus::from_str(&application_model.status)
-            .map_err(GroupsError::Invariant)?;
-        if !matches!(
-            previous_status,
-            GroupApplicationStatus::Rejected | GroupApplicationStatus::Cancelled
-        ) {
-            return Err(GroupsError::Conflict(
-                "only a rejected or cancelled membership application can be reopened"
-                    .to_string(),
-            ));
-        }
-
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
         require_application_group(&group_model)?;
@@ -247,6 +235,18 @@ impl GroupApplicationService {
             actor_user_id,
         )
         .await?;
+
+        let previous_status = GroupApplicationStatus::from_str(&application_model.status)
+            .map_err(GroupsError::Invariant)?;
+        if !matches!(
+            previous_status,
+            GroupApplicationStatus::Rejected | GroupApplicationStatus::Cancelled
+        ) {
+            return Err(GroupsError::Conflict(
+                "only a rejected or cancelled membership application can be reopened"
+                    .to_string(),
+            ));
+        }
 
         let membership_model = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
