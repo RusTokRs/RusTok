@@ -5,6 +5,7 @@ use rustok_core::CONTENT_FORMAT_MARKDOWN;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use super::ForumQuoteReferenceInput;
 use crate::state_machine::TopicStatus;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -23,6 +24,62 @@ pub struct CreateTopicInput {
     pub channel_slugs: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateTopicCommandInput {
+    pub locale: String,
+    pub category_id: Uuid,
+    pub title: String,
+    pub slug: Option<String>,
+    pub body: String,
+    #[serde(default = "default_content_format")]
+    pub body_format: String,
+    pub content_json: Option<Value>,
+    #[serde(default)]
+    pub metadata: Value,
+    pub tags: Vec<String>,
+    pub channel_slugs: Option<Vec<String>>,
+    #[serde(default)]
+    pub quotes: Vec<ForumQuoteReferenceInput>,
+}
+
+impl CreateTopicCommandInput {
+    pub fn into_parts(self) -> (CreateTopicInput, Vec<ForumQuoteReferenceInput>) {
+        (
+            CreateTopicInput {
+                locale: self.locale,
+                category_id: self.category_id,
+                title: self.title,
+                slug: self.slug,
+                body: self.body,
+                body_format: self.body_format,
+                content_json: self.content_json,
+                metadata: self.metadata,
+                tags: self.tags,
+                channel_slugs: self.channel_slugs,
+            },
+            self.quotes,
+        )
+    }
+}
+
+impl From<CreateTopicInput> for CreateTopicCommandInput {
+    fn from(input: CreateTopicInput) -> Self {
+        Self {
+            locale: input.locale,
+            category_id: input.category_id,
+            title: input.title,
+            slug: input.slug,
+            body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
+            metadata: input.metadata,
+            tags: input.tags,
+            channel_slugs: input.channel_slugs,
+            quotes: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdateTopicInput {
     pub locale: String,
@@ -33,6 +90,53 @@ pub struct UpdateTopicInput {
     pub metadata: Option<Value>,
     pub tags: Option<Vec<String>>,
     pub channel_slugs: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
+pub struct UpdateTopicCommandInput {
+    pub locale: String,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub body_format: Option<String>,
+    pub content_json: Option<Value>,
+    pub metadata: Option<Value>,
+    pub tags: Option<Vec<String>>,
+    pub channel_slugs: Option<Vec<String>>,
+    pub quotes: Option<Vec<ForumQuoteReferenceInput>>,
+}
+
+impl UpdateTopicCommandInput {
+    pub fn into_parts(self) -> (UpdateTopicInput, Option<Vec<ForumQuoteReferenceInput>>) {
+        (
+            UpdateTopicInput {
+                locale: self.locale,
+                title: self.title,
+                body: self.body,
+                body_format: self.body_format,
+                content_json: self.content_json,
+                metadata: self.metadata,
+                tags: self.tags,
+                channel_slugs: self.channel_slugs,
+            },
+            self.quotes,
+        )
+    }
+}
+
+impl From<UpdateTopicInput> for UpdateTopicCommandInput {
+    fn from(input: UpdateTopicInput) -> Self {
+        Self {
+            locale: input.locale,
+            title: input.title,
+            body: input.body,
+            body_format: input.body_format,
+            content_json: input.content_json,
+            metadata: input.metadata,
+            tags: input.tags,
+            channel_slugs: input.channel_slugs,
+            quotes: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, IntoParams)]
@@ -128,7 +232,7 @@ pub struct TopicListItem {
 
 #[cfg(test)]
 mod tests {
-    use super::{ListTopicsFilter, TopicResponse};
+    use super::{ListTopicsFilter, TopicResponse, UpdateTopicCommandInput};
     use crate::state_machine::TopicStatus;
     use serde_json::json;
     use uuid::Uuid;
@@ -183,6 +287,18 @@ mod tests {
         let filter: ListTopicsFilter =
             serde_json::from_value(json!({"per_page": 50_000})).expect("deserialize page size");
         assert_eq!(filter.per_page, crate::dto::MAX_FORUM_READ_LIMIT);
+    }
+
+    #[test]
+    fn update_command_distinguishes_omitted_quotes_from_explicit_clear() {
+        let omitted: UpdateTopicCommandInput = serde_json::from_value(json!({"locale": "en"}))
+            .expect("omitted quotes should deserialize");
+        assert!(omitted.quotes.is_none());
+
+        let clear: UpdateTopicCommandInput =
+            serde_json::from_value(json!({"locale": "en", "quotes": []}))
+                .expect("explicit clear should deserialize");
+        assert_eq!(clear.quotes, Some(Vec::new()));
     }
 
     #[test]
