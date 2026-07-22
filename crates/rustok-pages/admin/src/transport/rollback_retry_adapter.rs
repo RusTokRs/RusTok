@@ -117,7 +117,23 @@ fn rollback_idempotency_key(page: &PageDetail) -> Result<String, GraphqlHttpErro
 
 fn is_definitive_rejection(error: &GraphqlHttpError) -> bool {
     match error {
-        GraphqlHttpError::Graphql(_) | GraphqlHttpError::Unauthorized => true,
+        GraphqlHttpError::Graphql(message) => {
+            let message = message.to_ascii_lowercase();
+            [
+                "idempotency conflict",
+                "target unavailable",
+                "requires a published page",
+                "only a currently published page",
+                "version conflict",
+                "validation error",
+                "permission denied",
+                "forbidden",
+                "not found",
+            ]
+            .iter()
+            .any(|marker| message.contains(marker))
+        }
+        GraphqlHttpError::Unauthorized => true,
         GraphqlHttpError::Http(status) => status.trim_start().starts_with('4'),
         GraphqlHttpError::Network => false,
     }
@@ -161,26 +177,30 @@ fn load_pending_attempt(
     page_id: &str,
 ) -> Result<Option<PendingRollbackAttempt>, GraphqlHttpError> {
     let storage = retry_storage()?;
-    let Some(raw) = storage
-        .get_item(&retry_storage_key(page_id))
-        .map_err(|_| {
-            GraphqlHttpError::Graphql(
-                "Unable to read rollback retry identity from session storage".to_string(),
-            )
-        })?
+    let key = retry_storage_key(page_id);
+    let Some(raw) = storage.get_item(&key).map_err(|_| {
+        GraphqlHttpError::Graphql(
+            "Unable to read rollback retry identity from session storage".to_string(),
+        )
+    })?
     else {
         return Ok(None);
     };
-    let attempt = serde_json::from_str::<PendingRollbackAttempt>(&raw).map_err(|error| {
-        GraphqlHttpError::Graphql(format!(
-            "Stored rollback retry identity is invalid: {error}"
-        ))
-    })?;
-    if attempt.expected_version <= 0 || attempt.idempotency_key.trim().is_empty() {
-        return Err(GraphqlHttpError::Graphql(
-            "Stored rollback retry identity failed validation".to_string(),
-        ));
-    }
+    let attempt = match serde_json::from_str::<PendingRollbackAttempt>(&raw) {
+        Ok(attempt)
+            if attempt.expected_version > 0 && !attempt.idempotency_key.trim().is_empty() =>
+        {
+            attempt
+        }
+        _ => {
+            storage.remove_item(&key).map_err(|_| {
+                GraphqlHttpError::Graphql(
+                    "Unable to clear invalid rollback retry identity".to_string(),
+                )
+            })?;
+            return Ok(None);
+        }
+    };
     Ok(Some(attempt))
 }
 
