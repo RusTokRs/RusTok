@@ -6,6 +6,7 @@ use sea_orm_migration::MigrationTrait;
 #[cfg(feature = "server")]
 pub mod controllers;
 pub mod checkout_compensation;
+pub mod checkout_execution;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -23,6 +24,7 @@ pub mod services;
 pub mod stripe_provider;
 
 pub use checkout_compensation::*;
+pub use checkout_execution::*;
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
