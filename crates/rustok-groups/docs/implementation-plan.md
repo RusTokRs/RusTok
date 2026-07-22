@@ -119,9 +119,11 @@ already-committed identical command therefore replays its result even when the
 policy has subsequently advanced.
 
 The older unconditional methods on `GroupApplicationCommandPort` remain public only
-for source compatibility. Module-owned admin and storefront FFA do not use them for
-policy save or candidate submit. Removing or versioning those legacy methods remains
-a separate API migration gate.
+for Rust source compatibility. Module-owned admin and storefront FFA do not use them
+for policy save or candidate submit. The final GraphQL root does not expose the
+legacy unconditional policy-save or candidate-submit mutations; it composes the
+pre-application mutation root with CAS save/submit and review. Removing or versioning
+those legacy Rust methods remains a separate API migration gate.
 
 ## Current implementation state
 
@@ -146,6 +148,8 @@ The following source exists:
   and GraphQL history adapters, and a localized visual policy editor;
 - atomic expected-policy CAS for admin policy save and candidate submit under the
   owner group lock, with a stable conflict code and idempotent replay semantics;
+- final GraphQL no-bypass composition exposing CAS save/submit and review while
+  omitting the legacy unconditional application mutations;
 - admin stale-save handling that requires an explicit reload after conflict;
 - storefront stale-submit handling that preserves the `apply` route, blocks repeated
   submit, clears old answers on explicit reload, and reloads the exact-locale policy;
@@ -162,7 +166,7 @@ The following evidence remains open and must not be inferred:
   execution;
 - atomic stale policy save/submit race execution and lock-order evidence;
 - idempotency replay, concurrent submit/review/policy-write, and recovery evidence;
-- removal or versioned deprecation of the legacy unconditional policy write methods;
+- removal or versioned deprecation of the legacy unconditional Rust methods;
 - bulk-review limits, confirmation, partial-failure, and audit evidence;
 - accessibility and keyboard/screen-reader execution;
 - Notifications consumer ingestion/fan-out/retry/recovery evidence;
@@ -178,7 +182,7 @@ The following evidence remains open and must not be inferred:
 | GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | request/bans/concurrency completion |
 | GROUPS-04 | in_progress | summary, membership, access, localization, invitation, application, policy-history, application-CAS, governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, storefront discovery, invitation acceptance/delivery source | runtime parity and Notifications consumer evidence |
-| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, stale recovery UX | legacy-port migration, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
+| GROUPS-06 | in_progress | localized policy, ordered questions/rules, snapshots, submit/review, append-only history, visual editor, atomic policy CAS, stale recovery UX | legacy Rust-port migration, cancellation, bulk safety, profiles/events, parity, concurrency, accessibility |
 | GROUPS-07 | planned | bans, suspension, expiry, reason, bulk moderation, moderation adapter | all implementation/evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and group navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
@@ -221,8 +225,8 @@ authorization boundary as application review. Candidates cannot enumerate policy
 history.
 
 `GroupApplicationCommandPort::upsert_group_application_policy` and
-`submit_group_membership_application` are legacy compatibility methods and are not
-used by module-owned FFA after this slice.
+`submit_group_membership_application` remain Rust compatibility methods. They are not
+used by module-owned FFA and are not exposed by the final GraphQL root.
 
 ### Policy invariants
 
@@ -295,8 +299,8 @@ used by module-owned FFA after this slice.
 
 ### GROUPS-06 remaining work
 
-- remove or version-deprecate the legacy unconditional policy save/submit methods after
-  all external consumers migrate to `GroupApplicationCasCommandPort`;
+- remove or version-deprecate the legacy unconditional Rust policy save/submit methods
+  after all external Rust consumers migrate to `GroupApplicationCasCommandPort`;
 - explicit multi-locale admin picker backed by an owner manager read contract carrying
   the selected exact locale;
 - candidate cancellation and manager reopen/resubmit policy;
@@ -315,7 +319,7 @@ Localization remains `in_progress`: localization idempotent receipts/replay,
 last-translation delete rejection execution, localization idempotency replay, and
 native/GraphQL concurrency evidence remain open.
 
-Targeted invitation delivery remains `in_progress`: the owner emits
+targeted invitation delivery remains `in_progress`: the owner emits
 `groups.invitation.targeted_created`, exposes `GroupTargetedInvitationCommandPort`,
 and registers a neutral source provider, while targeted invitation notification
 runtime, fan-out, retry, and recovery evidence remain open.
@@ -366,6 +370,7 @@ cargo test -p rustok-groups
 node scripts/verify/verify-groups-boundary.mjs
 node scripts/verify/verify-groups-localization-boundary.mjs
 node scripts/verify/verify-groups-invitations-boundary.mjs
+node scripts/verify/verify-groups-invitation-acceptance-ui.mjs
 node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
 node scripts/verify/verify-groups-membership-applications.mjs
 node scripts/verify/verify-groups-membership-policy-revisions.mjs
