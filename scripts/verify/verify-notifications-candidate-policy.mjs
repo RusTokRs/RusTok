@@ -84,7 +84,7 @@ for (const marker of [
   "ADD COLUMN IF NOT EXISTS lease_owner",
   "ADD COLUMN IF NOT EXISTS lease_expires_at",
   "status IN ('pending', 'processing', 'processed', 'skipped', 'retryable_error', 'failed')",
-  "LeaseExpiresAt",
+  "lease_expires_at",
   "notification_fanout_item_tenant_guard_insert",
   "notification_fanout_item_tenant_guard_update",
   "idx_notification_fanout_item_recovery",
