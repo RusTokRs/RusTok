@@ -67,7 +67,7 @@ requireMarkers("crates/rustok-groups/src/graphql_policy_history.rs", [
 ]);
 requireMarkers("crates/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsBaseQueryRoot",
-  "GroupsBaseMutationRoot",
+  "GroupsPreApplicationMutationRoot",
   "GroupsApplicationCasMutation",
 ]);
 
@@ -147,4 +147,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups exact-locale localization, CAS composition, FBA, FFA, last-row, and no-fallback boundary checks passed.");
+console.log("Groups exact-locale localization, no-bypass CAS composition, FBA, FFA, last-row, and no-fallback boundary checks passed.");
