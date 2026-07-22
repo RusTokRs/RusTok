@@ -35,8 +35,8 @@ export function verifyCommerceOrderIdentityBoundary({ root = defaultRoot } = {})
     if (source.includes("find_order_id_by_operation")) {
       failures.push(`${name}: legacy local order lookup helper is forbidden`);
     }
-    if (/metadata[\s\S]{0,160}checkout[\s\S]{0,160}operation_id/.test(source)) {
-      failures.push(`${name}: checkout identity must not be validated from order metadata`);
+    if (/\border\s*\.\s*metadata\b/.test(source)) {
+      failures.push(`${name}: order metadata identity reads are forbidden`);
     }
     for (const marker of [
       "CheckoutOrderIdentityPort",
