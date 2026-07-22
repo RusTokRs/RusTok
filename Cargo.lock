@@ -12937,6 +12937,7 @@ dependencies = [
  "rustok-media",
  "rustok-moderation",
  "rustok-modules",
+ "rustok-navigation",
  "rustok-notifications",
  "rustok-order",
  "rustok-outbox",
@@ -13874,16 +13875,62 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-navigation"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-graphql",
+ "async-trait",
+ "axum",
+ "chrono",
+ "rustok-api",
+ "rustok-channel",
+ "rustok-core",
+ "rustok-tenant",
+ "rustok-test-utils",
+ "rustok-web",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-navigation-storefront"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-channel",
+ "rustok-core",
+ "rustok-graphql",
+ "rustok-navigation",
+ "rustok-tenant",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
+ "thiserror 2.0.18",
+ "web-sys",
+]
+
+[[package]]
 name = "rustok-notifications"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "rustok-core",
  "rustok-notifications-api",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
 ]
@@ -13924,6 +13971,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "flex",
+ "hex",
  "rust_decimal",
  "rustok-api",
  "rustok-core",
@@ -13934,6 +13982,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -14069,7 +14118,6 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "chrono",
- "hex",
  "rustok-api",
  "rustok-channel",
  "rustok-content",
@@ -14140,6 +14188,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -14798,6 +14847,7 @@ dependencies = [
  "rustok-migrations",
  "rustok-moderation",
  "rustok-modules",
+ "rustok-navigation",
  "rustok-notifications",
  "rustok-order",
  "rustok-outbox",
@@ -14915,6 +14965,7 @@ dependencies = [
  "rustok-fulfillment-storefront",
  "rustok-graphql",
  "rustok-groups-storefront",
+ "rustok-navigation-storefront",
  "rustok-notifications-storefront",
  "rustok-order-storefront",
  "rustok-outbox",
