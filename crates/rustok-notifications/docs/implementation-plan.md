@@ -3,8 +3,8 @@
 The canonical cross-module task order and status remain in
 `crates/rustok-forum/docs/implementation-plan.md`. This file does not duplicate
 that backlog; it records the owner-local gates that future notification slices
-must preserve. `NOTIFY-00` and `NOTIFY-01` remain `in_progress` until
-maintainer-run verification and canonical-plan promotion are recorded.
+must preserve. `NOTIFY-00`, `NOTIFY-01`, and `NOTIFY-03` remain `in_progress`
+until maintainer-run verification and canonical-plan promotion are recorded.
 
 ## Scope
 
@@ -16,18 +16,21 @@ is implemented incrementally.
 
 The neutral API, bounded source/provider registries, deferred host factory
 materialization, optional owner composition, and explicit admin/storefront
-foundation states exist. Forum publishes the first real source provider for
-`forum.topic.created`.
+foundation states exist. Forum publishes live providers for
+`forum.topic.created` and `forum.mention.user_added`.
 
-The first owner persistence migration now exists for PostgreSQL and SQLite. It
-creates notification, delivery-attempt, fan-out, preference, digest, and
-encrypted push-subscription tables with typed Rust/DB values, tenant-composite
-recipient integrity, bounded payloads, stable dedupe/idempotency keys, and
-lease/completion guards.
+The owner persistence migrations now create notification, delivery-attempt,
+fan-out, preference, digest, encrypted push-subscription, and durable source-inbox
+storage for PostgreSQL and SQLite. Typed Rust/DB values, tenant-composite recipient
+integrity, bounded payloads, stable dedupe/idempotency keys, lease/completion
+guards, and source-event conflict detection are enforced.
 
-Global server migrator registration, transactional owner commands, durable
-source-event consumption, retention/reconciliation state, and all inbox/delivery
-APIs remain open.
+`NotificationFanoutService` now durably accepts source events, materializes a
+bounded provider descriptor into one fan-out job, and persists one cursor page of
+idempotent pending candidates under recoverable leases. It deliberately creates
+no final notification or delivery row. Preference, profile/block privacy,
+recipient-specific source authorization, retention/reconciliation, and all
+inbox/delivery APIs remain open.
 
 ## Milestones
 
@@ -85,17 +88,49 @@ APIs remain open.
 - static fixtures reject missing composite recipient integrity, raw contact or
   source-private fields, and plaintext push endpoint columns.
 
+### Delivered in `NOTIFY-01B/03A`
+
+- module-owned PostgreSQL/SQLite migration
+  `m20260722_000011_create_notification_source_inbox` ordered after `NOTIFY-01A`;
+- durable source inbox dedupe by tenant/source/event identity with changed
+  event-type or source-revision conflict;
+- typed pending/processing/completed/suppressed/retryable/rejected states,
+  bounded error metadata, retry timing, leases, expired-lease recovery, and a
+  retained fan-out job link;
+- provider-independent event acceptance followed by leased descriptor
+  materialization, so temporary source-factory absence is retryable rather than
+  data loss;
+- one descriptor-bound fan-out job per source event and notification type with
+  replay equality checks;
+- bounded cursor pages capped at 256 and fail-closed non-advancing cursors;
+- idempotent pending candidate items deduplicated by tenant/job/recipient;
+- no final notification row or delivery attempt before preference/privacy policy;
+- Forum `forum.mention.user_added` provider bound to the exact immutable relation
+  row, with source visibility checks at describe/audience/open time, retryable
+  pending replies, self-mention suppression, and closed/deleted/hidden/channel
+  fail-closed behavior;
+- SQLite owner scenarios for source replay/conflict, two-page fan-out, terminal
+  replay, zero notification rows, and Forum user-mention provider behavior;
+- machine contract and source verifier under
+  `contracts/notifications-source-fanout.json` and
+  `scripts/verify/verify-notifications-source-fanout.mjs`.
+
 ### Remaining `NOTIFY-01` scope
 
 - global server migrator registration after maintainer verification of the
   module-local PostgreSQL/SQLite schema;
-- transactional persistence services with conflict-safe idempotent create/update
-  behavior;
+- final notification persistence commands after preference/privacy decisions;
 - explicit retention and reconciliation metadata/commands;
-- durable source consumer inbox remains coordinated with `NOTIFY-03` rather than
-  being inferred from fan-out rows;
 - inbox, preference, digest, and delivery transport APIs remain closed until the
   owner command semantics are implemented.
+
+### Remaining `NOTIFY-03` scope
+
+- wire production outbox relay consumption into `enqueue_source_event`;
+- process pending candidates through preference, block/profile privacy, source
+  authorization, dedupe/grouping, notification creation, and channel enqueue;
+- add bounded moderator-audience expansion through an owner directory port;
+- add PostgreSQL lease/concurrency/retry runtime evidence and DLQ/replay controls.
 
 ### UI gate
 
@@ -110,6 +145,8 @@ cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications-api --all-targets --all-features
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications --all-targets
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
+cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
 node scripts/verify/verify-notifications-foundation.mjs
@@ -118,8 +155,12 @@ node scripts/verify/verify-notifications-runtime.mjs
 node scripts/verify/verify-notifications-runtime.test.mjs
 node scripts/verify/verify-notifications-persistence.mjs
 node scripts/verify/verify-notifications-persistence.test.mjs
+node scripts/verify/verify-notifications-source-fanout.mjs
 cargo xtask module validate notifications
 ```
+
+The commands above are the maintainer verification set. They were not executed
+while publishing the `NOTIFY-01B/03A` source slice.
 
 ## Update Rules
 
@@ -128,5 +169,7 @@ cargo xtask module validate notifications
 - never move producer subscriptions, contact data, or channel SDKs into this
   owner;
 - never add synchronous notification calls to producer transactions;
+- never create final notification or delivery rows before preference/privacy
+  policy has accepted a pending candidate;
 - add persistence and UI behavior only with matching owner contracts, migrations,
   degraded-mode notes, and verification commands.
