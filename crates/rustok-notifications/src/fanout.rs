@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_notifications_api::{
     DescribeNotificationRequest, NotificationAudienceCursor, NotificationSemanticDescriptor,
-    NotificationSourceEventRef, NotificationSourceRegistry, NotificationSourceSlug,
-    NotificationTypeKey, ResolveNotificationAudienceRequest,
+    NotificationSourceEventRef, NotificationSourceProvider, NotificationSourceRegistry,
+    NotificationSourceSlug, NotificationTypeKey, ResolveNotificationAudienceRequest,
     notification_source_registry_from_extensions,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
     IntoActiveModel, QueryFilter, TransactionTrait,
+    sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -64,19 +65,22 @@ impl NotificationFanoutService {
         Self::new(db, registry)
     }
 
+    /// Durably accepts one source event independently of provider availability.
+    ///
+    /// A later materialization pass performs provider discovery. This preserves
+    /// the event while an optional source factory is temporarily unavailable.
     pub async fn enqueue_source_event(
         &self,
         event: NotificationSourceEventRef,
     ) -> NotificationResult<NotificationSourceInboxReceipt> {
         validate_source_event(&event)?;
-        self.provider_for_event(&event)?;
 
         if let Some(existing) = self.find_inbox(&event).await? {
             ensure_inbox_identity(&existing, &event)?;
             return Ok(receipt(existing, true));
         }
 
-        let now = Utc::now().into();
+        let now = now();
         let candidate = source_inbox::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(event.tenant_id()),
@@ -110,28 +114,34 @@ impl NotificationFanoutService {
         }
     }
 
+    /// Describes a durably accepted source event and creates its fan-out job.
     pub async fn materialize_source_event(
         &self,
         inbox_id: Uuid,
         worker_id: &str,
     ) -> NotificationResult<NotificationSourceInboxReceipt> {
         validate_worker_id(worker_id)?;
-        let inbox = source_inbox::Entity::find_by_id(inbox_id)
+        let initial = source_inbox::Entity::find_by_id(inbox_id)
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
+        if is_terminal_inbox(initial.status) {
+            return Ok(receipt(initial, true));
+        }
+
+        let inbox = self.claim_inbox(inbox_id, worker_id).await?;
         if is_terminal_inbox(inbox.status) {
             return Ok(receipt(inbox, true));
         }
 
-        self.claim_inbox(inbox_id, worker_id).await?;
-        let inbox = source_inbox::Entity::find_by_id(inbox_id)
-            .one(&self.db)
-            .await?
-            .ok_or(NotificationError::InvalidEvent)?;
-        let event = event_from_inbox(&inbox)?;
-        let provider = self.provider_for_event(&event)?;
-
+        let event = match event_from_inbox(&inbox) {
+            Ok(event) => event,
+            Err(error) => return self.fail_inbox(&inbox, worker_id, error).await,
+        };
+        let provider = match self.provider_for_event(&event) {
+            Ok(provider) => provider,
+            Err(error) => return self.fail_inbox(&inbox, worker_id, error).await,
+        };
         let descriptor = match provider
             .describe_event(DescribeNotificationRequest {
                 event: event.clone(),
@@ -140,9 +150,9 @@ impl NotificationFanoutService {
         {
             Ok(descriptor) => descriptor,
             Err(provider_error) => {
-                let error = NotificationError::from(provider_error);
-                self.finish_inbox_error(&inbox, worker_id, &error).await?;
-                return Err(error);
+                return self
+                    .fail_inbox(&inbox, worker_id, NotificationError::from(provider_error))
+                    .await;
             }
         };
 
@@ -157,12 +167,29 @@ impl NotificationFanoutService {
                 .await?;
             return Ok(receipt(completed, false));
         };
-        validate_descriptor(&event, &descriptor)?;
-        let descriptor_json = serde_json::to_value(&descriptor)?;
-        if serde_json::to_vec(&descriptor_json)?.len() > MAX_DESCRIPTOR_BYTES {
-            let error = NotificationError::InvalidDescriptor;
-            self.finish_inbox_error(&inbox, worker_id, &error).await?;
-            return Err(error);
+        if let Err(error) = validate_descriptor(&event, &descriptor) {
+            return self.fail_inbox(&inbox, worker_id, error).await;
+        }
+        let descriptor_json = match serde_json::to_value(&descriptor) {
+            Ok(value) => value,
+            Err(error) => {
+                return self
+                    .fail_inbox(&inbox, worker_id, NotificationError::Serialization(error))
+                    .await;
+            }
+        };
+        match serde_json::to_vec(&descriptor_json) {
+            Ok(bytes) if bytes.len() <= MAX_DESCRIPTOR_BYTES => {}
+            Ok(_) => {
+                return self
+                    .fail_inbox(&inbox, worker_id, NotificationError::InvalidDescriptor)
+                    .await;
+            }
+            Err(error) => {
+                return self
+                    .fail_inbox(&inbox, worker_id, NotificationError::Serialization(error))
+                    .await;
+            }
         }
 
         let job = match self
@@ -170,10 +197,7 @@ impl NotificationFanoutService {
             .await
         {
             Ok(job) => job,
-            Err(error) => {
-                self.finish_inbox_error(&inbox, worker_id, &error).await?;
-                return Err(error);
-            }
+            Err(error) => return self.fail_inbox(&inbox, worker_id, error).await,
         };
         let completed = self
             .finish_inbox_terminal(
@@ -186,6 +210,11 @@ impl NotificationFanoutService {
         Ok(receipt(completed, false))
     }
 
+    /// Resolves and persists one bounded page of candidate recipients.
+    ///
+    /// Candidate items deliberately remain `pending`. Preference, privacy,
+    /// blocking and channel policy must run before a final notification row is
+    /// created by a later owner command.
     pub async fn process_fanout_page(
         &self,
         job_id: Uuid,
@@ -209,18 +238,40 @@ impl NotificationFanoutService {
                 completed: true,
             });
         }
-        let event = event_from_job(&claimed)?;
+
+        let event = match self.load_event_for_job(&claimed).await {
+            Ok(event) => event,
+            Err(error) => return self.fail_job(&claimed, worker_id, error).await,
+        };
         let descriptor: NotificationSemanticDescriptor =
-            serde_json::from_value(claimed.descriptor_json.clone())
-                .map_err(|_| NotificationError::InvalidDescriptor)?;
-        validate_descriptor(&event, &descriptor)?;
-        let provider = self.provider_for_event(&event)?;
-        let cursor = claimed
+            match serde_json::from_value(claimed.descriptor_json.clone()) {
+                Ok(descriptor) => descriptor,
+                Err(_) => {
+                    return self
+                        .fail_job(&claimed, worker_id, NotificationError::InvalidDescriptor)
+                        .await;
+                }
+            };
+        if let Err(error) = validate_descriptor(&event, &descriptor) {
+            return self.fail_job(&claimed, worker_id, error).await;
+        }
+        let provider = match self.provider_for_event(&event) {
+            Ok(provider) => provider,
+            Err(error) => return self.fail_job(&claimed, worker_id, error).await,
+        };
+        let cursor = match claimed
             .audience_cursor
             .as_ref()
             .map(|cursor| NotificationAudienceCursor::new(cursor.clone()))
             .transpose()
-            .map_err(|_| NotificationError::InvalidEvent)?;
+        {
+            Ok(cursor) => cursor,
+            Err(_) => {
+                return self
+                    .fail_job(&claimed, worker_id, NotificationError::InvalidEvent)
+                    .await;
+            }
+        };
 
         let page = match provider
             .resolve_audience(ResolveNotificationAudienceRequest {
@@ -233,102 +284,39 @@ impl NotificationFanoutService {
         {
             Ok(page) => page,
             Err(provider_error) => {
-                let error = NotificationError::from(provider_error);
-                self.finish_job_error(&claimed, worker_id, &error).await?;
-                return Err(error);
+                return self
+                    .fail_job(&claimed, worker_id, NotificationError::from(provider_error))
+                    .await;
             }
         };
         let (recipients, next_cursor) = page.into_parts();
         let next_cursor = next_cursor.map(|cursor| cursor.as_str().to_string());
         if next_cursor.is_some() && next_cursor == claimed.audience_cursor {
-            let error = NotificationError::CursorDidNotAdvance;
-            self.finish_job_error(&claimed, worker_id, &error).await?;
-            return Err(error);
+            return self
+                .fail_job(&claimed, worker_id, NotificationError::CursorDidNotAdvance)
+                .await;
         }
 
-        let txn = self.db.begin().await?;
-        let current = fanout_job::Entity::find_by_id(job_id)
-            .one(&txn)
-            .await?
-            .ok_or(NotificationError::InvalidEvent)?;
-        ensure_job_lease(&current, worker_id)?;
-
-        let mut inserted_items = 0usize;
-        for candidate in &recipients {
-            let existing = fanout_item::Entity::find()
-                .filter(fanout_item::Column::TenantId.eq(current.tenant_id))
-                .filter(fanout_item::Column::FanoutJobId.eq(current.id))
-                .filter(fanout_item::Column::RecipientId.eq(candidate.recipient_id))
-                .one(&txn)
-                .await?;
-            if existing.is_some() {
-                continue;
-            }
-            let now = Utc::now().into();
-            let item = fanout_item::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(current.tenant_id),
-                fanout_job_id: Set(current.id),
-                recipient_id: Set(candidate.recipient_id),
-                status: Set(FanoutItemStatus::Pending),
-                notification_id: Set(None),
-                idempotency_key: Set(format!(
-                    "fanout:{}:{}",
-                    current.id, candidate.recipient_id
-                )),
-                last_error_code: Set(None),
-                created_at: Set(now),
-                updated_at: Set(now),
-                processed_at: Set(None),
-            };
-            match item.insert(&txn).await {
-                Ok(_) => inserted_items += 1,
-                Err(insert_error) => {
-                    let duplicate = fanout_item::Entity::find()
-                        .filter(fanout_item::Column::TenantId.eq(current.tenant_id))
-                        .filter(fanout_item::Column::FanoutJobId.eq(current.id))
-                        .filter(fanout_item::Column::RecipientId.eq(candidate.recipient_id))
-                        .one(&txn)
-                        .await?;
-                    if duplicate.is_none() {
-                        return Err(insert_error.into());
-                    }
-                }
-            }
+        match self
+            .persist_fanout_page(&claimed, worker_id, &recipients, next_cursor.clone())
+            .await
+        {
+            Ok(inserted_items) => Ok(NotificationFanoutPageResult {
+                job_id,
+                candidates: recipients.len(),
+                inserted_items,
+                completed: next_cursor.is_none(),
+                next_cursor,
+            }),
+            Err(NotificationError::LeaseUnavailable) => Err(NotificationError::LeaseUnavailable),
+            Err(error) => self.fail_job(&claimed, worker_id, error).await,
         }
-
-        let complete = next_cursor.is_none();
-        let now = Utc::now().into();
-        let mut update = current.into_active_model();
-        update.audience_cursor = Set(next_cursor.clone());
-        update.status = Set(if complete {
-            NotificationJobStatus::Completed
-        } else {
-            NotificationJobStatus::Pending
-        });
-        update.lease_owner = Set(None);
-        update.lease_expires_at = Set(None);
-        update.next_attempt_at = Set(None);
-        update.last_error_code = Set(None);
-        update.last_error_message = Set(None);
-        update.completed_at = Set(complete.then_some(now));
-        update.updated_at = Set(now);
-        update.update(&txn).await?;
-        txn.commit().await?;
-
-        Ok(NotificationFanoutPageResult {
-            job_id,
-            candidates: recipients.len(),
-            inserted_items,
-            next_cursor,
-            completed: complete,
-        })
     }
 
-    async fn provider_for_event(
+    fn provider_for_event(
         &self,
         event: &NotificationSourceEventRef,
-    ) -> NotificationResult<Arc<dyn rustok_notifications_api::NotificationSourceProvider>> {
+    ) -> NotificationResult<Arc<dyn NotificationSourceProvider>> {
         let provider = self
             .registry
             .get(event.source())
@@ -351,22 +339,32 @@ impl NotificationFanoutService {
             .filter(source_inbox::Column::TenantId.eq(event.tenant_id()))
             .filter(source_inbox::Column::SourceSlug.eq(event.source().as_str()))
             .filter(source_inbox::Column::SourceEventId.eq(event.event_id()))
-            .filter(source_inbox::Column::EventType.eq(event.event_type().as_str()))
             .one(&self.db)
             .await?)
     }
 
-    async fn claim_inbox(&self, inbox_id: Uuid, worker_id: &str) -> NotificationResult<()> {
-        let now = Utc::now();
-        let lease_expires = (now + Duration::seconds(DEFAULT_LEASE_SECONDS)).into();
+    async fn claim_inbox(
+        &self,
+        inbox_id: Uuid,
+        worker_id: &str,
+    ) -> NotificationResult<source_inbox::Model> {
+        let current = source_inbox::Entity::find_by_id(inbox_id)
+            .one(&self.db)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        if is_terminal_inbox(current.status) {
+            return Ok(current);
+        }
+
+        let now = now();
         let result = source_inbox::Entity::update_many()
             .set(source_inbox::ActiveModel {
                 status: Set(NotificationSourceInboxStatus::Processing),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(lease_expires)),
+                lease_expires_at: Set(Some(now + Duration::seconds(DEFAULT_LEASE_SECONDS))),
                 next_attempt_at: Set(None),
                 completed_at: Set(None),
-                updated_at: Set(now.into()),
+                updated_at: Set(now),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(inbox_id))
@@ -402,11 +400,24 @@ impl NotificationFanoutService {
                 .await?
                 .ok_or(NotificationError::InvalidEvent)?;
             if is_terminal_inbox(current.status) {
-                return Ok(());
+                return Ok(current);
             }
             return Err(NotificationError::LeaseUnavailable);
         }
-        Ok(())
+        source_inbox::Entity::find_by_id(inbox_id)
+            .one(&self.db)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)
+    }
+
+    async fn fail_inbox<T>(
+        &self,
+        inbox: &source_inbox::Model,
+        worker_id: &str,
+        error: NotificationError,
+    ) -> NotificationResult<T> {
+        self.finish_inbox_error(inbox, worker_id, &error).await?;
+        Err(error)
     }
 
     async fn finish_inbox_terminal(
@@ -416,7 +427,7 @@ impl NotificationFanoutService {
         status: NotificationSourceInboxStatus,
         fanout_job_id: Option<Uuid>,
     ) -> NotificationResult<source_inbox::Model> {
-        let now = Utc::now().into();
+        let now = now();
         let result = source_inbox::Entity::update_many()
             .set(source_inbox::ActiveModel {
                 status: Set(status),
@@ -451,7 +462,7 @@ impl NotificationFanoutService {
         error: &NotificationError,
     ) -> NotificationResult<()> {
         let retryable = error.is_retryable();
-        let now = Utc::now();
+        let now = now();
         let result = source_inbox::Entity::update_many()
             .set(source_inbox::ActiveModel {
                 status: Set(if retryable {
@@ -460,8 +471,9 @@ impl NotificationFanoutService {
                     NotificationSourceInboxStatus::Rejected
                 }),
                 attempt_count: Set(inbox.attempt_count.saturating_add(1)),
-                next_attempt_at: Set(retryable
-                    .then_some((now + Duration::seconds(RETRY_DELAY_SECONDS)).into())),
+                next_attempt_at: Set(
+                    retryable.then_some(now + Duration::seconds(RETRY_DELAY_SECONDS)),
+                ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(truncate(error.stable_code(), MAX_ERROR_CODE_BYTES))),
@@ -469,8 +481,8 @@ impl NotificationFanoutService {
                     &error.to_string(),
                     MAX_ERROR_MESSAGE_BYTES,
                 ))),
-                completed_at: Set((!retryable).then_some(now.into())),
-                updated_at: Set(now.into()),
+                completed_at: Set((!retryable).then_some(now)),
+                updated_at: Set(now),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(inbox.id))
@@ -494,7 +506,7 @@ impl NotificationFanoutService {
             ensure_job_identity(&existing, event, &descriptor_json)?;
             return Ok(existing);
         }
-        let now = Utc::now().into();
+        let now = now();
         let candidate = fanout_job::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(event.tenant_id()),
@@ -554,17 +566,15 @@ impl NotificationFanoutService {
         if existing.status == NotificationJobStatus::Completed {
             return Ok(existing);
         }
-        let now = Utc::now();
+        let now = now();
         let result = fanout_job::Entity::update_many()
             .set(fanout_job::ActiveModel {
                 status: Set(NotificationJobStatus::Leased),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(
-                    (now + Duration::seconds(DEFAULT_LEASE_SECONDS)).into(),
-                )),
+                lease_expires_at: Set(Some(now + Duration::seconds(DEFAULT_LEASE_SECONDS))),
                 next_attempt_at: Set(None),
                 completed_at: Set(None),
-                updated_at: Set(now.into()),
+                updated_at: Set(now),
                 ..Default::default()
             })
             .filter(fanout_job::Column::Id.eq(job_id))
@@ -607,6 +617,98 @@ impl NotificationFanoutService {
             .ok_or(NotificationError::InvalidEvent)
     }
 
+    async fn load_event_for_job(
+        &self,
+        job: &fanout_job::Model,
+    ) -> NotificationResult<NotificationSourceEventRef> {
+        let inbox = source_inbox::Entity::find()
+            .filter(source_inbox::Column::TenantId.eq(job.tenant_id))
+            .filter(source_inbox::Column::FanoutJobId.eq(job.id))
+            .one(&self.db)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        event_from_inbox(&inbox)
+    }
+
+    async fn persist_fanout_page(
+        &self,
+        claimed: &fanout_job::Model,
+        worker_id: &str,
+        recipients: &[rustok_notifications_api::NotificationAudienceCandidate],
+        next_cursor: Option<String>,
+    ) -> NotificationResult<usize> {
+        let txn = self.db.begin().await?;
+        let current = fanout_job::Entity::find_by_id(claimed.id)
+            .one(&txn)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        ensure_job_lease(&current, worker_id)?;
+
+        let mut inserted_items = 0usize;
+        for candidate in recipients {
+            let timestamp = now();
+            let item = fanout_item::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tenant_id: Set(current.tenant_id),
+                fanout_job_id: Set(current.id),
+                recipient_id: Set(candidate.recipient_id),
+                status: Set(FanoutItemStatus::Pending),
+                notification_id: Set(None),
+                idempotency_key: Set(format!(
+                    "fanout:{}:{}",
+                    current.id, candidate.recipient_id
+                )),
+                last_error_code: Set(None),
+                created_at: Set(timestamp),
+                updated_at: Set(timestamp),
+                processed_at: Set(None),
+            };
+            let inserted = fanout_item::Entity::insert(item)
+                .on_conflict(
+                    OnConflict::columns([
+                        fanout_item::Column::TenantId,
+                        fanout_item::Column::FanoutJobId,
+                        fanout_item::Column::RecipientId,
+                    ])
+                    .do_nothing()
+                    .to_owned(),
+                )
+                .exec_without_returning(&txn)
+                .await?;
+            inserted_items = inserted_items.saturating_add(inserted as usize);
+        }
+
+        let complete = next_cursor.is_none();
+        let timestamp = now();
+        let mut update = current.into_active_model();
+        update.audience_cursor = Set(next_cursor);
+        update.status = Set(if complete {
+            NotificationJobStatus::Completed
+        } else {
+            NotificationJobStatus::Pending
+        });
+        update.lease_owner = Set(None);
+        update.lease_expires_at = Set(None);
+        update.next_attempt_at = Set(None);
+        update.last_error_code = Set(None);
+        update.last_error_message = Set(None);
+        update.completed_at = Set(complete.then_some(timestamp));
+        update.updated_at = Set(timestamp);
+        update.update(&txn).await?;
+        txn.commit().await?;
+        Ok(inserted_items)
+    }
+
+    async fn fail_job<T>(
+        &self,
+        job: &fanout_job::Model,
+        worker_id: &str,
+        error: NotificationError,
+    ) -> NotificationResult<T> {
+        self.finish_job_error(job, worker_id, &error).await?;
+        Err(error)
+    }
+
     async fn finish_job_error(
         &self,
         job: &fanout_job::Model,
@@ -614,7 +716,7 @@ impl NotificationFanoutService {
         error: &NotificationError,
     ) -> NotificationResult<()> {
         let retryable = error.is_retryable();
-        let now = Utc::now();
+        let timestamp = now();
         let result = fanout_job::Entity::update_many()
             .set(fanout_job::ActiveModel {
                 status: Set(if retryable {
@@ -623,8 +725,9 @@ impl NotificationFanoutService {
                     NotificationJobStatus::DeadLetter
                 }),
                 attempt_count: Set(job.attempt_count.saturating_add(1)),
-                next_attempt_at: Set(retryable
-                    .then_some((now + Duration::seconds(RETRY_DELAY_SECONDS)).into())),
+                next_attempt_at: Set(
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
+                ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(truncate(error.stable_code(), MAX_ERROR_CODE_BYTES))),
@@ -633,7 +736,7 @@ impl NotificationFanoutService {
                     MAX_ERROR_MESSAGE_BYTES,
                 ))),
                 completed_at: Set(None),
-                updated_at: Set(now.into()),
+                updated_at: Set(timestamp),
                 ..Default::default()
             })
             .filter(fanout_job::Column::Id.eq(job.id))
@@ -669,9 +772,8 @@ fn validate_descriptor(
     event: &NotificationSourceEventRef,
     descriptor: &NotificationSemanticDescriptor,
 ) -> NotificationResult<()> {
-    if &descriptor.notification_type != event.event_type()
-        || descriptor.target.id.is_nil()
-        || descriptor.target.owner != *event.source()
+    if descriptor.target.id.is_nil()
+        || descriptor.target.owner.as_str() != event.source().as_str()
     {
         return Err(NotificationError::InvalidDescriptor);
     }
@@ -695,24 +797,13 @@ fn event_from_inbox(inbox: &source_inbox::Model) -> NotificationResult<Notificat
     .map_err(|_| NotificationError::InvalidEvent)
 }
 
-fn event_from_job(job: &fanout_job::Model) -> NotificationResult<NotificationSourceEventRef> {
-    NotificationSourceEventRef::new(
-        job.tenant_id,
-        job.source_event_id,
-        NotificationSourceSlug::new(job.source_slug.clone())
-            .map_err(|_| NotificationError::InvalidEvent)?,
-        NotificationTypeKey::new(job.notification_type.clone())
-            .map_err(|_| NotificationError::InvalidEvent)?,
-        u64::try_from(job.source_revision).map_err(|_| NotificationError::InvalidEvent)?,
-    )
-    .map_err(|_| NotificationError::InvalidEvent)
-}
-
 fn ensure_inbox_identity(
     inbox: &source_inbox::Model,
     event: &NotificationSourceEventRef,
 ) -> NotificationResult<()> {
-    if inbox.source_revision != source_revision_i64(event)? {
+    if inbox.source_revision != source_revision_i64(event)?
+        || inbox.event_type != event.event_type().as_str()
+    {
         return Err(NotificationError::SourceIdentityConflict);
     }
     Ok(())
@@ -754,6 +845,10 @@ fn receipt(inbox: source_inbox::Model, replayed: bool) -> NotificationSourceInbo
         fanout_job_id: inbox.fanout_job_id,
         replayed,
     }
+}
+
+fn now() -> DateTime<FixedOffset> {
+    Utc::now().fixed_offset()
 }
 
 fn truncate(value: &str, max_bytes: usize) -> String {
