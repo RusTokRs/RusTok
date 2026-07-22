@@ -79,8 +79,14 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   evidence in addition to the SQLite source coverage.
 - [ ] Run clean/upgraded/down/reapply checkpoint migration tests on SQLite,
   PostgreSQL, and MySQL; retain evidence.
-- [ ] Replace cross-owner order metadata/SQL identity lookup with an owner-owned
-  checkout operation identity and typed read/command port.
+- [x] Add owner-owned `order_checkout_identities` storage and an immutable order-local
+  journal with typed reads by checkout operation, order, and known source cart.
+- [x] Backfill only valid checkout operation and hash facts from legacy order metadata;
+  keep an unknown historical cart or missing hashes as `NULL`.
+- [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
+  and restart evidence on SQLite, PostgreSQL, and MySQL.
+- [ ] Cut staged checkout creation/recovery over to the order-owned identity and remove
+  direct JSON metadata/SQL lookup from commerce.
 - [ ] Complete `CheckoutCompletionPort` idempotency and recovery semantics, including
   lookup by checkout operation and cart.
 - [ ] Replace direct foreign owner service construction in staged checkout and
@@ -140,8 +146,10 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   economics checkpoint migration.
 - [x] Add concurrent economics-checkpoint admission/adoption and typed conflict source
   coverage without promoting runtime evidence.
-- [ ] Move checkout order identity from JSON metadata into owner-owned typed columns or
-  an owner operation table with tenant-safe uniqueness.
+- [x] Add order-owned typed checkout operation identity storage, truthful legacy
+  backfill, immutable guards, and owner-local reads/journal source.
+- [ ] Populate and adopt the order-owned identity from staged checkout before removing
+  the temporary JSON metadata bridge.
 - [ ] Make order creation plus placement one idempotent owner command and expose durable
   checkout-result reads by operation/cart.
 - [ ] Remove direct `orders` table reads from checkout creation and compensation.
@@ -377,6 +385,7 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-commerce --lib`
 - [ ] `cargo test -p rustok-commerce --test checkout_marketplace_economics_checkpoint`
 - [ ] `cargo check -p rustok-order --all-features`
+- [ ] `cargo test -p rustok-order --test order_checkout_identity`
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
@@ -398,6 +407,8 @@ Source inspection is not execution evidence.
   intentionally irreversible listing provenance cutover.
 - [ ] Specifically prove marketplace economics checkpoint identity, amount,
   immutability, tenant/order linkage, and cleanup on all supported backends.
+- [ ] Prove order checkout identity backfill truthfulness, tenant/order integrity,
+  operation/order/cart uniqueness, immutability, and rollback on all supported backends.
 - [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
@@ -413,8 +424,8 @@ Source inspection is not execution evidence.
 1. [x] Reaudit current checkout/order/payment/marketplace source and reopen false-complete P0s.
 2. [x] Harden marketplace economics checkpoint migration source for backend parity and rollback.
 3. [x] Add economics checkpoint concurrent insert adoption and exact conflict classification source.
-4. [ ] Add owner-owned checkout operation identity to order storage and migration.
-5. [ ] Replace JSON metadata order lookup and direct `orders` SQL with typed order reads.
+4. [x] Add order-owned checkout operation identity storage, migration, journal, and typed reads.
+5. [ ] Populate/adopt typed order identity from staged checkout and replace JSON metadata/direct SQL reads.
 6. [ ] Complete idempotent `CheckoutCompletionPort` create/place/read semantics.
 7. [ ] Cut staged checkout order creation/confirmation over to the completed owner port.
 8. [ ] Cut compensation over to typed order/payment owner ports and remove foreign services.
@@ -422,7 +433,7 @@ Source inspection is not execution evidence.
 10. [ ] Remove raw public ecommerce port error leakage and add correlation-safe logging.
 11. [ ] Introduce typed lifecycle status snapshots and remove critical string matching.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
-13. [ ] Run checkpoint clean/upgraded/down/reapply and contention evidence on all supported databases.
+13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
 15. [ ] Publish listing GraphQL roots and replace the declared-unmounted adapter.
 16. [ ] Add payout provider journal, webhook inbox, multi-order settlement orchestration, and
