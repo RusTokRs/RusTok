@@ -180,7 +180,7 @@ for (const marker of [
   "NotificationFanoutPageResult",
   "NotificationSourceInboxReceipt",
   "NotificationError",
-  "module.migrations().len(), 2",
+  "module.migrations().len(), 3",
 ]) {
   requireText(library, marker, `notifications public owner facade is missing ${marker}`);
 }
