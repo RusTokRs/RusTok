@@ -11,6 +11,7 @@
     "receipt_table": "marketplace_payout_receipts",
     "operation_table": "marketplace_payout_operations",
     "operation_transfer_table": "marketplace_payout_operation_transfers",
+    "provider_operation_table": "marketplace_payout_provider_operations",
     "cross_module_foreign_keys": false,
     "owner_internal_tenant_foreign_keys": true,
     "one_payout_per_ledger_entry": true,
@@ -72,6 +73,23 @@
     "runtime_orchestration_implemented": true,
     "host_composition_ready": true
   },
+  "provider_contract": {
+    "spi_ready": true,
+    "registry_ready": true,
+    "manual_baseline_ready": true,
+    "manual_submit_result": "submitted",
+    "manual_implicit_paid_forbidden": true,
+    "typed_submit_lookup_cancel": true,
+    "request_and_result_validation": true,
+    "provider_operation_schema_ready": true,
+    "provider_scoped_idempotency": true,
+    "lease_revision_attempt_state": true,
+    "safe_error_code_only": true,
+    "runtime_submission_ready": false,
+    "host_provider_registry_ready": false,
+    "verified_webhook_inbox_ready": false,
+    "settlement_ready": false
+  },
   "execution": {
     "included_in_this_slice": false,
     "external_reference_initially_null": true,
@@ -90,12 +108,14 @@
     "ledger_read_and_command_owner_identity": "same_process_instance"
   },
   "known_gaps": [
-    "live runtime and restart evidence",
-    "provider account and execution lifecycle",
+    "journaled provider submit executor",
+    "provider registry host composition",
+    "provider account and destination ownership",
     "verified provider webhook inbox",
     "lookup recovery",
     "ledger settlement posting",
     "external events",
+    "live runtime and restart evidence",
     "postgres contention evidence",
     "clean and upgraded multi-backend migration evidence",
     "admin and seller surfaces"

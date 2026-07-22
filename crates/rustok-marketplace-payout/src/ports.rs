@@ -161,6 +161,43 @@ fn map_owner_error(error: MarketplacePayoutError) -> PortError {
             "marketplace_payout.operation_corrupt",
             format!("marketplace payout operation {operation_id} is corrupt"),
         ),
+        MarketplacePayoutError::ProviderConfiguration { provider_id } => PortError::conflict(
+            "marketplace_payout.provider_configuration",
+            format!("payout provider `{provider_id}` is not configured for this operation"),
+        ),
+        MarketplacePayoutError::ProviderUnavailable {
+            provider_id,
+            operation,
+        } => PortError::new(
+            PortErrorKind::Unavailable,
+            "marketplace_payout.provider_unavailable",
+            format!("payout provider `{provider_id}` cannot execute `{operation}` right now"),
+            true,
+        ),
+        MarketplacePayoutError::ProviderRejected {
+            provider_id,
+            operation,
+            code,
+        } => PortError::conflict(
+            "marketplace_payout.provider_rejected",
+            format!("payout provider `{provider_id}` rejected `{operation}` with code `{code}`"),
+        ),
+        MarketplacePayoutError::ProviderInvalidResponse {
+            provider_id,
+            operation,
+        } => PortError::invariant_violation(
+            "marketplace_payout.provider_invalid_response",
+            format!("payout provider `{provider_id}` returned an invalid `{operation}` response"),
+        ),
+        MarketplacePayoutError::ProviderOutcomeUnknown {
+            provider_id,
+            operation,
+        } => PortError::invariant_violation(
+            "marketplace_payout.provider_outcome_unknown",
+            format!(
+                "payout provider `{provider_id}` outcome for `{operation}` requires reconciliation"
+            ),
+        ),
         MarketplacePayoutError::Validation(message) => {
             PortError::validation("marketplace_payout.validation", message)
         }

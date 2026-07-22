@@ -8,8 +8,8 @@ use rustok_marketplace_ledger::{
     MarketplaceSellerBalanceTransferResponse, PostMarketplaceSellerBalanceTransferInput,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel, QueryFilter,
-    QueryOrder, Set, TransactionTrait, sea_query::Expr,
+    sea_query::Expr, ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -27,7 +27,7 @@ use crate::{
     },
     error::{MarketplacePayoutError, MarketplacePayoutResult},
     receipts::{normalize_idempotency_key, replay_existing, schedule_request_hash},
-    service::{MarketplacePayoutService, normalize_schedule_input},
+    service::{normalize_schedule_input, MarketplacePayoutService},
 };
 
 const OPERATION_LEASE_SECONDS: i64 = 300;
@@ -1261,6 +1261,21 @@ fn payout_error_code(error: &MarketplacePayoutError) -> String {
         }
         MarketplacePayoutError::OperationCorrupt(_) => {
             "marketplace_payout.operation_corrupt".to_string()
+        }
+        MarketplacePayoutError::ProviderConfiguration { .. } => {
+            "marketplace_payout.provider_configuration".to_string()
+        }
+        MarketplacePayoutError::ProviderUnavailable { .. } => {
+            "marketplace_payout.provider_unavailable".to_string()
+        }
+        MarketplacePayoutError::ProviderRejected { .. } => {
+            "marketplace_payout.provider_rejected".to_string()
+        }
+        MarketplacePayoutError::ProviderInvalidResponse { .. } => {
+            "marketplace_payout.provider_invalid_response".to_string()
+        }
+        MarketplacePayoutError::ProviderOutcomeUnknown { .. } => {
+            "marketplace_payout.provider_outcome_unknown".to_string()
         }
         MarketplacePayoutError::PayoutNotFound(_) => "marketplace_payout.not_found".to_string(),
         MarketplacePayoutError::ReceiptCorrupt => "marketplace_payout.receipt_corrupt".to_string(),

@@ -29,9 +29,12 @@ through a payout provider SPI and journal before changing payout state.
 - [x] Reverse-order `reserve_release` compensation.
 - [x] Create payout only from confirmed ledger transfer responses.
 - [x] Process-owned server composition for ledger read/command and payout services.
+- [x] Typed payout provider SPI and registry contracts.
+- [x] Manual provider baseline that returns `submitted`, never implicit `paid`.
+- [x] Durable provider operation journal schema with tenant-scoped payout ownership.
 - [ ] Cancellation and reservation release workflow.
 - [ ] Payout provider accounts and destination ownership.
-- [ ] Provider operation journal and idempotent submission.
+- [ ] Journaled provider submission runtime.
 - [ ] Provider lookup recovery and verified webhook inbox.
 - [ ] `payout_settlement` and `payout_reversal` ledger posting.
 - [ ] Accounting, operator, and seller surfaces.
@@ -69,6 +72,45 @@ A ledger balance-transfer command intentionally accepts references from one orde
 Multi-order payouts therefore create multiple child rows. Compensation executes
 confirmed reserve rows in descending sequence order.
 
+### `marketplace_payout_provider_operations`
+
+Stores one durable provider operation per payout and operation kind:
+
+- tenant and payout owner identity;
+- `submit`, `lookup`, or `cancel` operation kind;
+- provider identity and provider-scoped idempotency key;
+- immutable request hash and request JSON;
+- typed pending/executing/provider-result/reconciliation/committed state;
+- provider reference and normalized result only after a confirmed response;
+- attempt count, optimistic revision, lease owner/expiry;
+- safe error code only;
+- provider-completed and local-committed checkpoints.
+
+A provider success is not a local payout commit. `provider_succeeded` records the
+external result; `committed` is allowed only after the owner persists the local state
+that follows from that result. Unknown outcomes remain `reconciliation_required` and
+must not trigger automatic settlement.
+
+## Provider contract
+
+`PayoutProvider` exposes typed `submit`, `lookup`, and `cancel` operations. The
+registry validates provider identity, capabilities, health, request identity, minor
+unit amount, currency, metadata shape, external references, and result status.
+
+The manual baseline exists for operator-driven flows. A manual submit produces
+`submitted`, not `paid`; an operator or later verified fact must explicitly advance
+the payout. This prevents the baseline adapter from fabricating external completion.
+
+This slice intentionally does not call a provider. Runtime execution must first:
+
+1. admit or replay a provider operation by provider-scoped idempotency key;
+2. claim the row through revision and lease semantics;
+3. execute the provider with the persisted request;
+4. checkpoint the normalized provider result;
+5. reconcile unknown outcomes through lookup or operator review;
+6. commit payout state only from a confirmed result;
+7. post Reserved-to-Paid settlement only after confirmed `paid` state.
+
 ## Host composition contract
 
 `apps/server` owns one process-scoped `MarketplacePayoutRuntime`. Its in-process
@@ -105,7 +147,9 @@ Required evidence:
 - [ ] clean MySQL apply/down/reapply;
 - [ ] mixed legacy/canonical state fails closed;
 - [ ] existing payout data survives rename;
-- [ ] tenant composite foreign keys reject cross-tenant links.
+- [ ] tenant composite foreign keys reject cross-tenant links;
+- [ ] provider operation checks reject invalid lease/result/commit states;
+- [ ] provider-scoped idempotency rejects duplicate external effects.
 
 ## Execution order
 
@@ -118,12 +162,14 @@ Required evidence:
 7. [x] Complete operation and replay the resulting payout.
 8. [x] Add reverse-order `reserve_release` compensation.
 9. [x] Compose ledger read/command and payout services in the server host.
-10. [ ] Add cancellation.
-11. [ ] Add provider accounts and provider operation journal.
-12. [ ] Add transfer submission, lookup recovery, webhook inbox.
-13. [ ] Add settlement/reversal ledger transfers.
-14. [ ] Add operator/seller transports and UI.
-15. [ ] Retain contention, restart, reconciliation, and remote-profile evidence.
+10. [x] Add payout provider SPI, registry, and durable provider-operation schema.
+11. [ ] Add provider account and destination ownership.
+12. [ ] Add journaled provider submit execution.
+13. [ ] Add lookup recovery and verified webhook inbox.
+14. [ ] Add settlement/reversal ledger transfers.
+15. [ ] Add cancellation and reservation release workflow.
+16. [ ] Add operator/seller transports and UI.
+17. [ ] Retain contention, restart, reconciliation, and remote-profile evidence.
 
 ## Promotion gate
 
@@ -143,4 +189,15 @@ reconciliation, mounted transports, and operator workflows.
 - retryable compensation and operator reconciliation states
 - process-owned server composition of the payout and ledger command path
 
-External provider submission and Reserved-to-Paid settlement remain separate follow-up slices.
+## Implemented provider-contract slice
+
+- typed provider capabilities, descriptor, health, registration, and registry
+- typed submit, lookup, cancel requests and normalized result
+- manual provider baseline without implicit payment completion
+- provider identity and response validation
+- durable provider operation entity and migration
+- provider-scoped idempotency and one operation-kind row per payout
+- lease/revision/attempt and provider/local completion checkpoints
+- safe provider boundary errors and source/schema regression tests
+
+External provider execution and Reserved-to-Paid settlement remain separate follow-up slices.

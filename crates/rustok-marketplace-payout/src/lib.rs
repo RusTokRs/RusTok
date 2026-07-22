@@ -13,11 +13,13 @@ pub mod entities;
 pub mod error;
 pub mod migrations;
 pub mod ports;
+pub mod providers;
 pub mod service;
 
 pub use dto::*;
 pub use error::{MarketplacePayoutError, MarketplacePayoutResult};
 pub use ports::*;
+pub use providers::*;
 pub use service::MarketplacePayoutService;
 
 /// Owns seller payout scheduling and ledger-entry assignment.

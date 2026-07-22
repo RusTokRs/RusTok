@@ -30,6 +30,29 @@ pub enum MarketplacePayoutError {
     ReconciliationRequired(Uuid),
     #[error("marketplace payout operation {0} is incomplete or corrupt")]
     OperationCorrupt(Uuid),
+    #[error("payout provider `{provider_id}` is not configured")]
+    ProviderConfiguration { provider_id: String },
+    #[error("payout provider `{provider_id}` cannot execute `{operation}`")]
+    ProviderUnavailable {
+        provider_id: String,
+        operation: String,
+    },
+    #[error("payout provider `{provider_id}` rejected `{operation}` with code `{code}`")]
+    ProviderRejected {
+        provider_id: String,
+        operation: String,
+        code: String,
+    },
+    #[error("payout provider `{provider_id}` returned an invalid `{operation}` response")]
+    ProviderInvalidResponse {
+        provider_id: String,
+        operation: String,
+    },
+    #[error("payout provider `{provider_id}` outcome for `{operation}` is unknown")]
+    ProviderOutcomeUnknown {
+        provider_id: String,
+        operation: String,
+    },
     #[error("marketplace payout validation failed: {0}")]
     Validation(String),
     #[error("ledger boundary `{code}` failed: {message}")]
