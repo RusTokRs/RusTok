@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use rustok_core::CONTENT_FORMAT_GRAPESJS;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
@@ -13,7 +12,7 @@ use crate::entities::{
     page_published_landing_artifact, page_static_landing_artifact,
 };
 use crate::error::{PagesError, PagesResult};
-use crate::services::page_builder_artifact::verify_record;
+use crate::services::PageBuilderArtifactService;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ArtifactSetMember {
@@ -67,7 +66,6 @@ pub(super) async fn insert_publish_manifest_in_tx(
             "publish artifact manifest does not match the durable artifact_set_hash",
         ));
     }
-    let created_at = operation.created_at;
     for member in members {
         page_publish_operation_artifact::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -78,7 +76,7 @@ pub(super) async fn insert_publish_manifest_in_tx(
             artifact_id: Set(member.artifact_id),
             artifact_hash: Set(member.artifact_hash.clone()),
             materialization_hash: Set(member.materialization_hash.clone()),
-            created_at: Set(created_at),
+            created_at: Set(operation.created_at),
         }
         .insert(txn)
         .await?;
@@ -163,7 +161,6 @@ pub(super) async fn load_current_published_set_in_tx(
                     binding.page_body_id
                 ))
             })?;
-        verify_record(&record)?;
         members.push(ArtifactSetMember::new(
             record.locale,
             record.id,
@@ -180,7 +177,6 @@ pub(super) async fn replace_current_published_set_in_tx(
     tenant_id: Uuid,
     page_id: Uuid,
     members: &[ArtifactSetMember],
-    changed_at: DateTime<Utc>,
 ) -> PagesResult<()> {
     verify_members_in_tx(txn, tenant_id, page_id, members).await?;
     let body_query = || {
@@ -195,18 +191,16 @@ pub(super) async fn replace_current_published_set_in_tx(
             body_query().lock_exclusive().all(txn).await?
         }
     };
-    let mut replacements = Vec::with_capacity(members.len());
     for member in members {
-        let body = bodies
+        if !bodies
             .iter()
-            .find(|body| body.locale == member.locale && body.format == CONTENT_FORMAT_GRAPESJS)
-            .ok_or_else(|| {
-                PagesError::rollback_target_unavailable(format!(
-                    "rollback target locale `{}` has no current Page Builder body",
-                    member.locale
-                ))
-            })?;
-        replacements.push((body.id, member));
+            .any(|body| body.locale == member.locale && body.format == CONTENT_FORMAT_GRAPESJS)
+        {
+            return Err(PagesError::rollback_target_unavailable(format!(
+                "rollback target locale `{}` has no current Page Builder body",
+                member.locale
+            )));
+        }
     }
 
     page_published_landing_artifact::Entity::delete_many()
@@ -215,17 +209,14 @@ pub(super) async fn replace_current_published_set_in_tx(
         .exec(txn)
         .await?;
 
-    let published_at: sea_orm::prelude::DateTimeWithTimeZone = changed_at.into();
-    for (page_body_id, member) in replacements {
-        page_published_landing_artifact::ActiveModel {
-            page_body_id: Set(page_body_id),
-            tenant_id: Set(tenant_id),
-            page_id: Set(page_id),
-            locale: Set(member.locale.clone()),
-            artifact_id: Set(member.artifact_id),
-            published_at: Set(published_at),
-        }
-        .insert(txn)
+    for member in members {
+        PageBuilderArtifactService::bind_existing_body_in_tx(
+            txn,
+            tenant_id,
+            page_id,
+            &member.locale,
+            member.artifact_id,
+        )
         .await?;
     }
     Ok(())
@@ -251,7 +242,6 @@ async fn verify_members_in_tx(
                     member.artifact_id, member.locale
                 ))
             })?;
-        verify_record(&record)?;
         if record.artifact_hash != member.artifact_hash
             || record.materialization_hash != member.materialization_hash
         {
