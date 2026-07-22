@@ -4,7 +4,7 @@ use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_marketplace_allocation::MarketplaceAllocationCommandPort;
 use rustok_marketplace_commission::MarketplaceCommissionCommandPort;
 use rustok_marketplace_ledger::MarketplaceLedgerCommandPort;
-use rustok_order::{OrderError, OrderResponse, OrderService};
+use rustok_order::OrderResponse;
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::PaymentProviderRegistry;
@@ -53,8 +53,6 @@ pub enum CheckoutStagePipelineError {
     #[error(transparent)]
     Finalization(#[from] CheckoutFinalizationError),
     #[error(transparent)]
-    Order(#[from] OrderError),
-    #[error(transparent)]
     Payment(#[from] PaymentError),
     #[error(transparent)]
     Fulfillment(#[from] FulfillmentError),
@@ -82,7 +80,6 @@ pub struct CheckoutStagePipeline {
     payment_stage: CheckoutPaymentStageExecutor,
     fulfillment_stage: CheckoutFulfillmentStageExecutor,
     finalization: CheckoutFinalizationExecutor,
-    order_service: OrderService,
     payment_service: PaymentService,
     fulfillment_service: FulfillmentService,
 }
@@ -109,9 +106,8 @@ impl CheckoutStagePipeline {
                 CheckoutMarketplaceEconomicsCheckpointJournal::new(db.clone()),
             marketplace_financial_stage: None,
             payment_stage: CheckoutPaymentStageExecutor::new(db.clone()),
-            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus.clone()),
+            fulfillment_stage: CheckoutFulfillmentStageExecutor::new(db.clone(), event_bus),
             finalization: CheckoutFinalizationExecutor::new(db.clone(), cart_checkout_port),
-            order_service: OrderService::new(db.clone(), event_bus),
             payment_service: PaymentService::new(db.clone()),
             fulfillment_service: FulfillmentService::new(db),
         }
@@ -381,28 +377,10 @@ impl CheckoutStagePipeline {
         tenant_id: Uuid,
         operation_id: Uuid,
     ) -> CheckoutStagePipelineResult<CheckoutPaymentReadyState> {
-        let operation = self.operation_journal.get(tenant_id, operation_id).await?;
-        let plan = self.plan_journal.get(tenant_id, operation_id).await?;
-        let order_id = operation.order_id.ok_or_else(|| {
-            CheckoutStagePipelineError::Conflict(format!(
-                "checkout operation {} has no persisted order id",
-                operation.id
-            ))
-        })?;
-        let order = self
-            .order_service
-            .get_order_with_locale_fallback(
-                tenant_id,
-                order_id,
-                plan.payload.context.locale.as_str(),
-                Some(plan.payload.context.default_locale.as_str()),
-            )
-            .await?;
-        Ok(CheckoutPaymentReadyState {
-            operation_id,
-            order,
-            plan,
-        })
+        self.order_stage
+            .load_payment_ready_state(tenant_id, operation_id)
+            .await
+            .map_err(Into::into)
     }
 
     async fn load_payment_captured_state(
