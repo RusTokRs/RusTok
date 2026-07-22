@@ -113,6 +113,27 @@ pub struct PublishPageResult {
     pub published_at: String,
 }
 
+/// Idempotent command that restores the previous distinct immutable publish artifact set.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RollbackPageInput {
+    pub expected_version: i32,
+    pub idempotency_key: String,
+}
+
+/// Durable receipt returned by the atomic page rollback service.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RollbackPageResult {
+    pub operation_id: Uuid,
+    pub page_id: Uuid,
+    pub version: i32,
+    pub idempotency_key: String,
+    pub target_publish_operation_id: Uuid,
+    pub source_artifact_set_hash: String,
+    pub target_artifact_set_hash: String,
+    pub replayed: bool,
+    pub rolled_back_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema, utoipa::IntoParams)]
 pub struct ListPagesFilter {
     pub status: Option<ContentStatus>,
