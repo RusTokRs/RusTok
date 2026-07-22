@@ -2,6 +2,27 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ForumQuoteTargetKindInput {
+    Topic,
+    Reply,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
+pub struct ForumQuoteReferenceInput {
+    pub target_kind: ForumQuoteTargetKindInput,
+    pub target_id: Uuid,
+    pub revision_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SetForumQuotesInput {
+    pub locale: String,
+    #[serde(default)]
+    pub quotes: Vec<ForumQuoteReferenceInput>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ForumRelationSnapshotQuery {
     pub target_kind: String,
