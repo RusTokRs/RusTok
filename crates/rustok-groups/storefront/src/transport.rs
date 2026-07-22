@@ -131,7 +131,7 @@ pub async fn submit_groups_storefront_membership_application(
     let tenant = context.tenant_slug.clone();
     let native_command = command.clone();
     execute_selected_transport(
-        "groups.storefront.applications.submit",
+        "groups.storefront.applications.submit_if_current",
         context.path(),
         move || {
             native_applications_adapter::submit_group_membership_application(native_command)

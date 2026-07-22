@@ -6,12 +6,12 @@
 membership, local roles, invitations, membership applications, feature bindings,
 and group access policy for RusToK. Exact-locale translation management, bounded
 invitation tokens, targeted invitation source events, localized application policies,
-append-only policy revision history, application review, role delegation, ownership
-transfer, command receipts, immutable audit, and native/GraphQL transports are
-implemented at source level.
+append-only policy revision history, atomic policy preconditions, application review,
+role delegation, ownership transfer, command receipts, immutable audit, and
+native/GraphQL transports are implemented at source level.
 
-Bans, bulk review, atomic expected-revision enforcement, multi-locale policy
-selection, consumer-side notification fan-out, and full runtime evidence remain
+Bans, bulk review, multi-locale policy selection, legacy application-command API
+migration, consumer-side notification fan-out, and full runtime evidence remain
 plan-led work.
 
 A group is a social container and policy owner. It is not the persistence owner for
@@ -40,16 +40,25 @@ assets, comments, notification inbox/delivery, or search documents.
 - Revalidate required answers and rule acknowledgements in the owner service. Only
   active `request` groups accept applications, and secret groups use not-found
   semantics.
-- Review applications through owner/admin/moderator authorization. Approval activates
-  membership and increments member count; rejection moves membership to `left`.
 - Capture every successful policy translation INSERT/UPDATE in
   `group_membership_policy_revisions` in the same database transaction. Revision rows
   reject UPDATE and DELETE.
 - Publish manager-only policy history through typed Rust, GraphQL, native server
   function, and admin FFA surfaces.
-- Publish a visual policy editor for add/remove/reorder operations in the
-  host-resolved locale. Its revision reread is a disclosed non-atomic stale preflight,
-  not an atomic compare-and-swap guarantee.
+- Publish `GroupApplicationCasCommandPort` for interactive policy saves and candidate
+  submissions. Commands carry the rendered policy ID, revision, and exact locale.
+- Lock the group row and compare the expected policy before changing policy,
+  membership, application, group version, audit, or receipt state. A mismatch returns
+  `groups.application_policy_changed`.
+- Check an identical idempotent receipt before re-evaluating the policy precondition,
+  so a committed command can replay after later policy revisions.
+- Publish a visual policy editor that sends its loaded policy identity directly to the
+  owner CAS transaction and requires an explicit reload after a stale conflict.
+- Publish storefront stale-form recovery that preserves `apply=<group_uuid>`, blocks
+  repeated submission, clears old answers on explicit reload, and loads the current
+  exact-locale policy.
+- Review applications through owner/admin/moderator authorization. Approval activates
+  membership and increments member count; rejection moves membership to `left`.
 - Persist successful governance, invitation, and membership-application commands with
   idempotency receipts and immutable audit evidence. Localization replay receipts
   remain pending.
@@ -62,6 +71,11 @@ assets, comments, notification inbox/delivery, or search documents.
 - Publish module-owned Leptos admin/storefront FFA packages with framework-neutral
   core, transport facade, native `#[server]`, GraphQL, and thin UI bindings.
 - Publish the typed RBAC surface for `groups:*`.
+
+The older unconditional policy-save and candidate-submit methods on
+`GroupApplicationCommandPort` remain available for source compatibility. Module-owned
+admin and storefront FFA no longer use them. Their removal or versioned deprecation is
+a separate API migration gate.
 
 ## Entry points
 
@@ -80,15 +94,16 @@ assets, comments, notification inbox/delivery, or search documents.
 - `GroupInvitationReadPort`
 - `GroupApplicationReadPort`
 - `GroupApplicationPolicyHistoryReadPort`
+- `GroupApplicationCasCommandPort`
 - `GroupCommandPort`
 - `GroupLocalizationCommandPort`
 - `GroupInvitationCommandPort`
 - `GroupTargetedInvitationCommandPort`
-- `GroupApplicationCommandPort`
+- `GroupApplicationCommandPort` for compatibility and review commands
 - `GroupGovernanceCommandPort`
-- `graphql_policy_history::GroupsQueryRoot` with the `graphql` feature
-- `graphql_policy_history::GroupsMutationRoot` with core, localization, governance,
-  invitations, applications, and policy-history composition
+- `graphql_application_cas::GroupsQueryRoot` with the `graphql` feature
+- `graphql_application_cas::GroupsMutationRoot` with core, localization, governance,
+  invitations, applications, policy history, and application CAS composition
 - `rustok_groups_admin::GroupsAdmin`
 - `rustok_groups_admin::load_group_admin_application_policy`
 - `rustok_groups_admin::upsert_group_admin_application_policy`
@@ -130,10 +145,10 @@ assets, comments, notification inbox/delivery, or search documents.
 
 ## Readiness
 
-Source presence does not prove migration, runtime, parity, replay, concurrency,
-security, accessibility, retry, or recovery behavior. FFA, FBA, GROUPS-06, and
-GROUPS-19 remain `in_progress`; the policy-revision runtime evidence key remains
-`null`.
+Source presence does not prove migration, runtime, stable-code parity, replay,
+concurrency, lock ordering, security, accessibility, retry, or recovery behavior.
+FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; policy-revision and
+application-policy-CAS runtime evidence keys remain `null`.
 
 ## Documentation
 

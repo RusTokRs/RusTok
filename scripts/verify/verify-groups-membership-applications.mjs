@@ -9,14 +9,20 @@ const failures = [];
 const required = [
   "crates/rustok-groups/src/application_entities.rs",
   "crates/rustok-groups/src/applications.rs",
+  "crates/rustok-groups/src/applications_legacy.rs",
+  "crates/rustok-groups/src/applications_cas.rs",
   "crates/rustok-groups/src/graphql_applications.rs",
   "crates/rustok-groups/src/graphql_policy_history.rs",
+  "crates/rustok-groups/src/graphql_application_cas.rs",
   "crates/rustok-groups/src/migrations/m20260722_000006_create_group_membership_applications.rs",
   "crates/rustok-groups/admin/src/application_core.rs",
   "crates/rustok-groups/admin/src/application_model.rs",
   "crates/rustok-groups/admin/src/transport/native_applications_adapter.rs",
+  "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
   "crates/rustok-groups/admin/src/transport/graphql_applications_adapter.rs",
+  "crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
   "crates/rustok-groups/admin/src/ui/applications.rs",
+  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
   "crates/rustok-groups/storefront/src/application_core.rs",
   "crates/rustok-groups/storefront/src/application_model.rs",
   "crates/rustok-groups/storefront/src/transport/native_applications_adapter.rs",
@@ -46,9 +52,9 @@ if (exists(migrationPath)) {
   }
 }
 
-const servicePath = "crates/rustok-groups/src/applications.rs";
-if (exists(servicePath)) {
-  const service = read(servicePath);
+const legacyPath = "crates/rustok-groups/src/applications_legacy.rs";
+if (exists(legacyPath)) {
+  const service = read(legacyPath);
   for (const marker of [
     "GroupApplicationReadPort",
     "GroupApplicationCommandPort",
@@ -81,6 +87,23 @@ if (exists(servicePath)) {
   }
 }
 
+const casPath = "crates/rustok-groups/src/applications_cas.rs";
+if (exists(casPath)) {
+  const cas = read(casPath);
+  for (const marker of [
+    "GroupApplicationCasCommandPort",
+    "GroupApplicationPolicyPrecondition",
+    "upsert_group_application_policy_if_current",
+    "submit_group_membership_application_if_current",
+    "GROUP_APPLICATION_POLICY_CHANGED_CODE",
+    "find_group_for_update",
+    "ensure_policy_update_precondition",
+    "ensure_loaded_policy_precondition",
+  ]) {
+    if (!cas.includes(marker)) failures.push(`membership application CAS service is missing marker: ${marker}`);
+  }
+}
+
 const graphqlPath = "crates/rustok-groups/src/graphql_applications.rs";
 if (exists(graphqlPath)) {
   const graphql = read(graphqlPath);
@@ -88,8 +111,6 @@ if (exists(graphqlPath)) {
     "MergedObject",
     "group_application_policy",
     "group_membership_applications",
-    "upsert_group_application_policy",
-    "submit_group_membership_application",
     "review_group_membership_application",
     "GroupApplicationCommandPort",
     "GroupApplicationReadPort",
@@ -99,12 +120,26 @@ if (exists(graphqlPath)) {
   }
 }
 
+const casGraphqlPath = "crates/rustok-groups/src/graphql_application_cas.rs";
+if (exists(casGraphqlPath)) {
+  const graphql = read(casGraphqlPath);
+  for (const marker of [
+    "GroupsApplicationCasMutation",
+    "upsert_group_application_policy_if_current",
+    "submit_group_membership_application_if_current",
+    "GroupApplicationPolicyPreconditionInputGql",
+    "GroupApplicationCasCommandPort",
+  ]) {
+    if (!graphql.includes(marker)) failures.push(`membership application CAS GraphQL surface is missing marker: ${marker}`);
+  }
+}
+
 const manifestPath = "crates/rustok-groups/rustok-module.toml";
 if (exists(manifestPath)) {
   const manifest = read(manifestPath);
   for (const marker of [
-    'query = "graphql_policy_history::GroupsQueryRoot"',
-    'mutation = "graphql_policy_history::GroupsMutationRoot"',
+    'query = "graphql_application_cas::GroupsQueryRoot"',
+    'mutation = "graphql_application_cas::GroupsMutationRoot"',
     'subpath = "applications"',
   ]) {
     if (!manifest.includes(marker)) failures.push(`Groups manifest is missing application composition marker: ${marker}`);
@@ -122,12 +157,13 @@ for (const corePath of [
 
 for (const uiPath of [
   "crates/rustok-groups/admin/src/ui/applications.rs",
+  "crates/rustok-groups/admin/src/ui/policy_editor.rs",
   "crates/rustok-groups/storefront/src/ui/application.rs",
 ]) {
   if (!exists(uiPath)) continue;
   const ui = read(uiPath);
   if (!ui.includes("crate::transport")) failures.push(`membership application UI must consume the transport facade: ${uiPath}`);
-  if (/graphql_applications_adapter|native_applications_adapter/.test(ui)) {
+  if (/graphql_(?:applications|policy_locale)_adapter|native_(?:applications|policy_locale)_adapter/.test(ui)) {
     failures.push(`membership application UI must not import raw adapters: ${uiPath}`);
   }
 }
@@ -148,9 +184,16 @@ if (exists(registryPath)) {
   const registry = JSON.parse(read(registryPath));
   const readPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationReadPort");
   const commandPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationCommandPort");
+  const casPort = registry?.provider?.ports?.find((port) => port?.name === "GroupApplicationCasCommandPort");
   if (!readPort?.exact_locale_only) failures.push("GroupApplicationReadPort must declare exact-locale selection");
   if (!commandPort?.transactional_receipt || !commandPort?.transactional_audit || !commandPort?.transactional_membership) {
     failures.push("GroupApplicationCommandPort must declare transactional receipt, audit, and membership state");
+  }
+  if (!casPort?.operations?.includes("submit_group_membership_application_if_current")) {
+    failures.push("GroupApplicationCasCommandPort must publish candidate submit CAS");
+  }
+  if (casPort?.conflict_code !== "groups.application_policy_changed") {
+    failures.push("GroupApplicationCasCommandPort must publish the stable conflict code");
   }
   if (registry?.membership_applications?.module_local_fallback !== false) {
     failures.push("membership application policy must not own locale fallback");
@@ -162,6 +205,7 @@ if (exists(registryPath)) {
     "membership_application_transport_parity",
     "membership_application_concurrency",
     "membership_application_policy_revision",
+    "membership_application_policy_cas",
     "membership_application_bulk_review",
   ]) {
     if (registry?.evidence?.[evidenceKey] !== null) {
@@ -190,4 +234,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups membership application owner, FBA, FFA, exact-locale, snapshot, and no-fallback boundary checks passed.");
+console.log("Groups membership application owner, CAS, FBA, FFA, exact-locale, snapshot, and no-fallback boundary checks passed.");

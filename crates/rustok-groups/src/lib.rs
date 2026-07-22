@@ -13,6 +13,8 @@ pub mod error;
 #[cfg(feature = "graphql")]
 pub mod graphql;
 #[cfg(feature = "graphql")]
+pub mod graphql_application_cas;
+#[cfg(feature = "graphql")]
 pub mod graphql_applications;
 #[cfg(feature = "graphql")]
 pub mod graphql_governance;

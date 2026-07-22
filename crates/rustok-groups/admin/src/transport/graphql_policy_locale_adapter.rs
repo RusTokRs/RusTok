@@ -4,9 +4,10 @@ use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
-    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
-    GroupsAdminApplicationQuestion, GroupsAdminApplicationRule,
-    GroupsAdminUpsertApplicationPolicyResult, UpsertGroupApplicationPolicyCommand,
+    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyPrecondition,
+    GroupsAdminApplicationPolicyQuery, GroupsAdminApplicationQuestion,
+    GroupsAdminApplicationRule, GroupsAdminUpsertApplicationPolicyResult,
+    UpsertGroupApplicationPolicyCommand,
 };
 
 pub type GraphqlGroupsPolicyLocaleError = String;
@@ -18,7 +19,7 @@ fn policy_query() -> String {
 }
 
 fn upsert_policy_mutation() -> String {
-    format!("mutation GroupsAdminUpsertApplicationPolicyLocale($idempotencyKey: String!, $groupId: UUID!, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicy(idempotencyKey: $idempotencyKey, groupId: $groupId, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}")
+    format!("mutation GroupsAdminUpsertApplicationPolicyIfCurrent($idempotencyKey: String!, $groupId: UUID!, $expectedPolicy: GroupApplicationPolicyPreconditionInputGql, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicyIfCurrent(idempotencyKey: $idempotencyKey, groupId: $groupId, expectedPolicy: $expectedPolicy, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}")
 }
 
 #[derive(Debug, Serialize)]
@@ -33,7 +34,27 @@ struct UpsertVariables {
     idempotency_key: String,
     #[serde(rename = "groupId")]
     group_id: String,
+    #[serde(rename = "expectedPolicy")]
+    expected_policy: Option<PolicyPreconditionInput>,
     input: UpsertInput,
+}
+
+#[derive(Debug, Serialize)]
+struct PolicyPreconditionInput {
+    #[serde(rename = "policyId")]
+    policy_id: String,
+    revision: u64,
+    locale: String,
+}
+
+impl From<GroupsAdminApplicationPolicyPrecondition> for PolicyPreconditionInput {
+    fn from(value: GroupsAdminApplicationPolicyPrecondition) -> Self {
+        Self {
+            policy_id: value.policy_id,
+            revision: value.revision,
+            locale: value.locale,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -145,22 +166,31 @@ pub async fn upsert_group_application_policy(
             Some(UpsertVariables {
                 idempotency_key: command.idempotency_key,
                 group_id: command.group_id,
+                expected_policy: command.expected_policy.map(Into::into),
                 input: UpsertInput {
                     locale: command.locale,
                     enabled: command.enabled,
-                    questions: command.questions.into_iter().map(|question| QuestionInput {
-                        key: question.key,
-                        prompt: question.prompt,
-                        help_text: question.help_text,
-                        required: question.required,
-                        max_answer_chars: question.max_answer_chars.min(i32::MAX as u32) as i32,
-                    }).collect(),
-                    rules: command.rules.into_iter().map(|rule| RuleInput {
-                        key: rule.key,
-                        title: rule.title,
-                        body: rule.body,
-                        required: rule.required,
-                    }).collect(),
+                    questions: command
+                        .questions
+                        .into_iter()
+                        .map(|question| QuestionInput {
+                            key: question.key,
+                            prompt: question.prompt,
+                            help_text: question.help_text,
+                            required: question.required,
+                            max_answer_chars: question.max_answer_chars.min(i32::MAX as u32) as i32,
+                        })
+                        .collect(),
+                    rules: command
+                        .rules
+                        .into_iter()
+                        .map(|rule| RuleInput {
+                            key: rule.key,
+                            title: rule.title,
+                            body: rule.body,
+                            required: rule.required,
+                        })
+                        .collect(),
                 },
             }),
         ),
