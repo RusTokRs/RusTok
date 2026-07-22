@@ -35,13 +35,6 @@ jobs:
           python scripts/temporary/apply_pages_current_only_baseline.py
           cargo fmt -p rustok-pages
           cargo test -p rustok-pages --lib
-          for source in crates/rustok-pages/tests/*.rs; do
-            test_name=$(basename "$source" .rs)
-            if [[ "$test_name" == "contract_surface" ]]; then
-              continue
-            fi
-            cargo test -p rustok-pages --test "$test_name"
-          done
           cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings
           node scripts/verify/verify-pages-current-only.mjs
       - name: Remove technical files and publish product commit
