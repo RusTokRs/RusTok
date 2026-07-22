@@ -32,9 +32,10 @@ through a payout provider SPI and journal before changing payout state.
 - [x] Typed payout provider SPI and registry contracts.
 - [x] Manual provider baseline that returns `submitted`, never implicit `paid`.
 - [x] Durable provider operation journal schema with tenant-scoped payout ownership.
+- [x] Journaled provider submission admission, lease, checkpoint, and replay runtime.
+- [x] Process-owned provider registry and submission-service host composition.
 - [ ] Cancellation and reservation release workflow.
 - [ ] Payout provider accounts and destination ownership.
-- [x] Journaled provider submission admission, lease, checkpoint, and replay runtime.
 - [ ] Provider lookup recovery and verified webhook inbox.
 - [ ] `payout_settlement` and `payout_reversal` ledger posting.
 - [ ] Accounting, operator, and seller surfaces.
@@ -121,11 +122,15 @@ composition is:
 2. `MarketplaceCommissionService` as `MarketplaceCommissionReadPort`;
 3. one `MarketplaceLedgerService` exposed as both `MarketplaceLedgerReadPort` and
    `MarketplaceLedgerCommandPort`;
-4. one `MarketplacePayoutService` configured with those two ledger interfaces.
+4. one `MarketplacePayoutService` configured with those two ledger interfaces;
+5. one process-scoped `PayoutProviderRegistry`, defaulting to the manual baseline;
+6. one `MarketplacePayoutProviderSubmissionService` using that exact registry instance.
 
 The runtime is stored in `ServerRuntimeContext` and attached to every
-`HostRuntimeContext`. Repeated host initialization reuses the same payout and ledger
-service instances instead of rebuilding an independent command owner.
+`HostRuntimeContext`. Repeated host initialization reuses the same ledger, payout,
+provider registry, and provider submission service instances. A deployment-supplied
+runtime or `Arc<PayoutProviderRegistry>` wins over the manual default. Conflicting
+provider registries fail closed instead of splitting external-effect ownership.
 
 ## Migration contract
 
@@ -166,11 +171,12 @@ Required evidence:
 10. [x] Add payout provider SPI, registry, and durable provider-operation schema.
 11. [ ] Add provider account and destination ownership.
 12. [x] Add journaled provider submit execution and durable result replay.
-13. [ ] Add lookup recovery and verified webhook inbox.
-14. [ ] Add settlement/reversal ledger transfers.
-15. [ ] Add cancellation and reservation release workflow.
-16. [ ] Add operator/seller transports and UI.
-17. [ ] Retain contention, restart, reconciliation, and remote-profile evidence.
+13. [x] Compose provider registry and submission service in the server host.
+14. [ ] Add lookup recovery and verified webhook inbox.
+15. [ ] Add settlement/reversal ledger transfers.
+16. [ ] Add cancellation and reservation release workflow.
+17. [ ] Add operator/seller transports and UI.
+18. [ ] Retain contention, restart, reconciliation, and remote-profile evidence.
 
 ## Promotion gate
 
@@ -201,7 +207,6 @@ reconciliation, mounted transports, and operator workflows.
 - lease/revision/attempt and provider/local completion checkpoints
 - safe provider boundary errors and source/schema regression tests
 
-
 ## Implemented provider-submission slice
 
 - provider-scoped admission and immutable request-hash replay
@@ -213,5 +218,7 @@ reconciliation, mounted transports, and operator workflows.
 - normalized `unknown` results retain provider reference, result JSON, and completion time
 - expired executing leases never automatically resubmit
 - payout status, `paid_at`, and ledger settlement remain unchanged
+- host-first provider registry composition with one process-owned submission service
 
-Provider host composition, lookup recovery, local payout commit, and Reserved-to-Paid settlement remain separate follow-up slices.
+Provider account ownership, lookup recovery, local payout commit, and Reserved-to-Paid
+settlement remain separate follow-up slices.

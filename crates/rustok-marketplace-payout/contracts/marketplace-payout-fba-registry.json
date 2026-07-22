@@ -86,7 +86,8 @@
     "lease_revision_attempt_state": true,
     "safe_error_code_only": true,
     "runtime_submission_ready": true,
-    "host_provider_registry_ready": false,
+    "host_provider_registry_ready": true,
+    "provider_submission_service_ready": true,
     "verified_webhook_inbox_ready": false,
     "settlement_ready": false,
     "journal_admission_replay_ready": true,
@@ -114,12 +115,16 @@
     "process_scope": "ServerRuntimeContext",
     "shared_services": [
       "MarketplaceLedgerService",
-      "MarketplacePayoutService"
+      "MarketplacePayoutService",
+      "PayoutProviderRegistry",
+      "MarketplacePayoutProviderSubmissionService"
     ],
-    "ledger_read_and_command_owner_identity": "same_process_instance"
+    "ledger_read_and_command_owner_identity": "same_process_instance",
+    "provider_registry_owner_identity": "same_process_instance",
+    "host_registry_precedence": true,
+    "conflicting_registry_policy": "fail_closed"
   },
   "known_gaps": [
-    "provider registry host composition",
     "provider account and destination ownership",
     "verified provider webhook inbox",
     "lookup recovery",
