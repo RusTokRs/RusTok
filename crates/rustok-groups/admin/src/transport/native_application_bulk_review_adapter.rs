@@ -110,9 +110,11 @@ async fn groups_admin_bulk_review_membership_applications_native(
         .await
         .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
 
+        let succeeded = result.succeeded;
+        let failed = result.failed;
+        let items = result.items;
         Ok(GroupsAdminBulkReviewApplicationsResult {
-            items: result
-                .items
+            items: items
                 .into_iter()
                 .map(|item| GroupsAdminBulkReviewApplicationItemResult {
                     application_id: item.application_id.to_string(),
@@ -124,8 +126,8 @@ async fn groups_admin_bulk_review_membership_applications_native(
                     }),
                 })
                 .collect(),
-            succeeded: result.succeeded,
-            failed: result.failed,
+            succeeded,
+            failed,
         })
     }
     #[cfg(not(feature = "ssr"))]
