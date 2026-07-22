@@ -164,7 +164,23 @@ async fn find_previous_publish_target_in_tx(
         DbBackend::Sqlite => query().all(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_shared().all(txn).await?,
     };
-    for operation in operations {
+
+    let mut current_index = None;
+    for (index, operation) in operations.iter().enumerate() {
+        verify_publish_operation_for_rollback(operation)?;
+        if operation.artifact_set_hash == current_artifact_set_hash {
+            load_publish_manifest_in_tx(txn, operation).await?;
+            current_index = Some(index);
+            break;
+        }
+    }
+    let current_index = current_index.ok_or_else(|| {
+        PagesError::rollback_target_unavailable(
+            "the active immutable artifact set is not traceable to a verified publish manifest",
+        )
+    })?;
+
+    for operation in operations.into_iter().skip(current_index + 1) {
         verify_publish_operation_for_rollback(&operation)?;
         if operation.artifact_set_hash == current_artifact_set_hash {
             continue;
@@ -173,7 +189,7 @@ async fn find_previous_publish_target_in_tx(
         return Ok((operation, manifest));
     }
     Err(PagesError::rollback_target_unavailable(
-        "no previous distinct immutable publish artifact set is available",
+        "no older distinct immutable publish artifact set is available",
     ))
 }
 
