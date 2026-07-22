@@ -38,10 +38,13 @@ const required = [
   "crates/rustok-groups/src/graphql_policy_history.rs",
   "crates/rustok-groups/src/lib.rs",
   "crates/rustok-groups/rustok-module.toml",
+  "crates/rustok-groups/admin/src/application_core.rs",
   "crates/rustok-groups/admin/src/application_model.rs",
   "crates/rustok-groups/admin/src/transport.rs",
   "crates/rustok-groups/admin/src/transport/native_policy_history_adapter.rs",
   "crates/rustok-groups/admin/src/transport/graphql_policy_history_adapter.rs",
+  "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
+  "crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
   "crates/rustok-groups/admin/src/ui/policy_editor.rs",
   "crates/rustok-groups/admin/src/ui/root.rs",
   "crates/rustok-groups/admin/locales/en.json",
@@ -60,6 +63,7 @@ requireMarkers(
     "groups_membership_policy_revision_capture_insert",
     "groups_membership_policy_revision_capture_update",
     "group membership policy revisions are append-only",
+    "policy revision must advance before changing localized policy",
     "INSERT OR IGNORE INTO group_membership_policy_revisions",
     "ON CONFLICT DO NOTHING",
     "DbBackend::Postgres",
@@ -102,9 +106,19 @@ requireMarkers("crates/rustok-groups/src/lib.rs", [
   "assert_eq!(module.migrations().len(), 7)",
 ]);
 
+requireMarkers("crates/rustok-groups/admin/src/application_core.rs", [
+  "prepare_group_application_policy_query",
+  "normalize_locale_tag(locale)",
+]);
+requireMarkers("crates/rustok-groups/admin/src/application_model.rs", [
+  "pub struct GroupsAdminApplicationPolicyQuery",
+  "pub locale: String",
+]);
 requireMarkers("crates/rustok-groups/admin/src/transport.rs", [
   "graphql_policy_history_adapter",
   "native_policy_history_adapter",
+  "graphql_policy_locale_adapter",
+  "native_policy_locale_adapter",
   "load_group_admin_application_policy_revisions",
   '"groups.admin.applications.policy.history"',
   'GROUPS_ADMIN_TRANSPORT_FALLBACK_POLICY: &str = "never falls back"',
@@ -126,20 +140,43 @@ requireMarkers(
     "POLICY_HISTORY_QUERY",
   ],
 );
+requireMarkers(
+  "crates/rustok-groups/admin/src/transport/native_policy_locale_adapter.rs",
+  [
+    "groups/admin/applications/policy-locale",
+    "query.locale",
+    "GroupApplicationReadPort",
+  ],
+);
+requireMarkers(
+  "crates/rustok-groups/admin/src/transport/graphql_policy_locale_adapter.rs",
+  [
+    "GroupsAdminApplicationPolicyLocale",
+    "Some(query.locale.clone())",
+    "Some(command.locale.clone())",
+    "execute_graphql",
+  ],
+);
 requireMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
   "GroupsPolicyEditorAdmin",
+  "prepare_group_application_policy_query",
   "prepare_upsert_group_application_policy",
   "load_group_admin_application_policy_revisions",
   "move_item",
   "loaded_revision",
   "copy.stale",
+  "readonly",
+  "unwrap_or_default",
   "GroupsAdminApplicationQuestion",
   "GroupsAdminApplicationRule",
 ]);
 forbidMarkers("crates/rustok-groups/admin/src/ui/policy_editor.rs", [
   "graphql_policy_history_adapter",
   "native_policy_history_adapter",
+  "graphql_policy_locale_adapter",
+  "native_policy_locale_adapter",
   "membership_policy_revision::Entity",
+  'unwrap_or_else(|| "en"',
 ]);
 requireMarkers("crates/rustok-groups/admin/src/ui/root.rs", [
   "GroupsPolicyEditorAdmin",
@@ -229,4 +266,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups membership policy revision boundary checks passed.");
+console.log("Groups membership policy revision, exact-locale transport, editor, and append-only boundary checks passed.");
