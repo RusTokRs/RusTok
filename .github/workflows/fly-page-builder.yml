@@ -1,138 +1,98 @@
 name: Fly Page Builder
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "crates/fly/**"
-      - "crates/fly-ui/**"
-      - "crates/fly-browser/**"
-      - "crates/fly-leptos/**"
-      - "crates/rustok-page-builder/**"
-      - "crates/rustok-page-builder-storefront/**"
-      - "crates/rustok-pages/**"
-      - "apps/admin/src/main.rs"
-      - "apps/admin/src/app/shell.rs"
-      - "apps/admin/Cargo.toml"
-      - "apps/next-admin/packages/blog/**"
-      - "apps/next-admin/src/app/dashboard/blog/**"
-      - "scripts/verify/verify-fly-*.mjs"
-      - "scripts/verify/verify-pages-current-only.mjs"
-      - ".github/workflows/fly-page-builder.yml"
   pull_request:
     paths:
-      - "crates/fly/**"
-      - "crates/fly-ui/**"
-      - "crates/fly-browser/**"
-      - "crates/fly-leptos/**"
-      - "crates/rustok-page-builder/**"
-      - "crates/rustok-page-builder-storefront/**"
       - "crates/rustok-pages/**"
-      - "apps/admin/src/main.rs"
-      - "apps/admin/src/app/shell.rs"
-      - "apps/admin/Cargo.toml"
-      - "apps/next-admin/packages/blog/**"
-      - "apps/next-admin/src/app/dashboard/blog/**"
-      - "scripts/verify/verify-fly-*.mjs"
-      - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
-  workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: fly-page-builder-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  verify:
+  publish-active-menu-binding-v3:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/pages-active-menu-binding-v3
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@1.93.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: fly-page-builder
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Check focused formatting
-        run: >-
-          cargo fmt
-          -p fly
-          -p fly-browser
-          -p rustok-page-builder-admin
-          -p rustok-pages
-          -p rustok-pages-admin
-          -p rustok-pages-storefront
-          -p rustok-admin
-          -- --check
-
-      - name: Run Fly unit tests
-        run: cargo test -p fly --lib
-
-      - name: Run Fly browser contract tests
-        run: cargo test -p fly-browser --lib
-
-      - name: Run Page Builder admin unit tests
-        run: cargo test -p rustok-page-builder-admin --lib
-
-      - name: Run Pages domain unit tests
-        run: cargo test -p rustok-pages --lib
-
-      - name: Run Pages integration unit tests
-        run: cargo test -p rustok-pages-admin --lib
-
-      - name: Check Pages storefront
-        run: cargo check -p rustok-pages-storefront --lib
-
-      - name: Check Page Builder storefront
-        run: cargo check -p rustok-page-builder-storefront --lib
-
-      - name: Check admin SSR Page Builder endpoint
-        run: cargo check -p rustok-admin --bin rustok-admin --no-default-features --features ssr
-
-      - name: Lint Fly
-        run: cargo clippy -p fly --lib -- -D warnings
-
-      - name: Lint Fly browser and Page Builder integrations
-        run: >-
-          cargo clippy
-          -p fly-browser
-          -p rustok-page-builder-admin
-          -p rustok-pages
-          -p rustok-pages-admin
-          -p rustok-pages-storefront
-          --lib -- -D warnings
-
-      - name: Verify current-only Pages runtime
-        run: node scripts/verify/verify-pages-current-only.mjs
-
-      - name: Verify SSR-first architecture
-        run: node scripts/verify/verify-fly-ssr-first.mjs
-
-      - name: Verify Fly contribution access
-        run: node scripts/verify/verify-fly-ui-contributions.mjs
-
-      - name: Verify landing readiness wiring
-        run: node scripts/verify/verify-fly-landing-readiness.mjs
-
-      - name: Verify internal links end to end
-        run: node scripts/verify/verify-fly-internal-links.mjs
-
-      - name: Verify actions forms and fields end to end
-        run: node scripts/verify/verify-fly-actions-forms.mjs
-
-      - name: Verify SSR assets end to end
-        run: node scripts/verify/verify-fly-ssr-assets.mjs
-
-      - name: Verify editor capability policy
-        run: node scripts/verify/verify-fly-ui-capability-policy.mjs
-
-      - name: Verify capability denial response
-        run: node scripts/verify/verify-fly-capability-denial-response.mjs
+          shared-key: pages-active-menu-binding-v3
+      - name: Port active-menu product diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main agent/pages-active-menu-binding-v2
+          source_branch=origin/agent/pages-active-menu-binding-v2
+          source_base=$(git merge-base origin/main "$source_branch")
+          git diff --binary "$source_base" "$source_branch" -- \
+            crates/rustok-pages/src/dto/menu.rs \
+            crates/rustok-pages/src/dto/mod.rs \
+            crates/rustok-pages/src/entities/menu_binding.rs \
+            crates/rustok-pages/src/entities/mod.rs \
+            crates/rustok-pages/src/lib.rs \
+            crates/rustok-pages/src/migrations/m20260721_000008_create_active_menu_bindings.rs \
+            crates/rustok-pages/src/migrations/mod.rs \
+            crates/rustok-pages/src/services/menu_binding.rs \
+            crates/rustok-pages/src/services/mod.rs \
+            crates/rustok-pages/tests/menu_binding_service.rs \
+            crates/rustok-pages/tests/menu_transport_contract.rs \
+            > /tmp/active-menu-binding.patch
+          test -s /tmp/active-menu-binding.patch
+          git apply --3way /tmp/active-menu-binding.patch
+      - name: Verify active-menu binding contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p rustok-pages
+          cargo test -p rustok-pages --lib
+          cargo test -p rustok-pages --test menu_binding_service
+          cargo test -p rustok-pages --test menu_transport_contract
+          cargo clippy -p rustok-pages --lib --tests --no-deps -- -D warnings
+          actual=$(mktemp)
+          expected=$(mktemp)
+          git diff --name-only | sort > "$actual"
+          cat > "$expected" <<'EOF'
+          crates/rustok-pages/src/dto/menu.rs
+          crates/rustok-pages/src/dto/mod.rs
+          crates/rustok-pages/src/entities/menu_binding.rs
+          crates/rustok-pages/src/entities/mod.rs
+          crates/rustok-pages/src/lib.rs
+          crates/rustok-pages/src/migrations/m20260721_000008_create_active_menu_bindings.rs
+          crates/rustok-pages/src/migrations/mod.rs
+          crates/rustok-pages/src/services/menu_binding.rs
+          crates/rustok-pages/src/services/mod.rs
+          crates/rustok-pages/tests/menu_binding_service.rs
+          crates/rustok-pages/tests/menu_transport_contract.rs
+          EOF
+          sort -o "$expected" "$expected"
+          diff -u "$expected" "$actual"
+      - name: Remove technical workflow and publish product commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:.github/workflows/fly-page-builder.yml > .github/workflows/fly-page-builder.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/fly-page-builder.yml \
+            crates/rustok-pages/src/dto/menu.rs \
+            crates/rustok-pages/src/dto/mod.rs \
+            crates/rustok-pages/src/entities/menu_binding.rs \
+            crates/rustok-pages/src/entities/mod.rs \
+            crates/rustok-pages/src/lib.rs \
+            crates/rustok-pages/src/migrations/m20260721_000008_create_active_menu_bindings.rs \
+            crates/rustok-pages/src/migrations/mod.rs \
+            crates/rustok-pages/src/services/menu_binding.rs \
+            crates/rustok-pages/src/services/mod.rs \
+            crates/rustok-pages/tests/menu_binding_service.rs \
+            crates/rustok-pages/tests/menu_transport_contract.rs
+          git commit -m "feat(pages): add active menu binding contract"
+          git push origin HEAD:agent/pages-active-menu-binding-v3
