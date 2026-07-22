@@ -105,7 +105,7 @@ impl OrderCheckoutIdentityJournal {
         .one(&transaction)
         .await?
         {
-            return enrich_existing_identity(transaction, existing, &input).await;
+            return enrich_existing_identity(&self.db, transaction, existing, &input).await;
         }
 
         let insert = order_checkout_identity::ActiveModel {
@@ -142,7 +142,7 @@ impl OrderCheckoutIdentityJournal {
                         )));
                     }
                     let transaction = self.db.begin().await?;
-                    return enrich_existing_identity(transaction, existing, &input).await;
+                    return enrich_existing_identity(&self.db, transaction, existing, &input).await;
                 }
                 if let Some(existing) = self
                     .get_by_order(input.tenant_id, input.order_id)
@@ -169,6 +169,7 @@ impl OrderCheckoutIdentityJournal {
 }
 
 async fn enrich_existing_identity(
+    db: &DatabaseConnection,
     transaction: sea_orm::DatabaseTransaction,
     existing: order_checkout_identity::Model,
     input: &RecordOrderCheckoutIdentity,
@@ -210,16 +211,18 @@ async fn enrich_existing_identity(
         Err(update_error) => {
             transaction.rollback().await?;
             let current = order_checkout_identity::Entity::find_by_id(input.checkout_operation_id)
-                .one(existing_connection_placeholder())
-                .await;
-            drop(current);
+                .one(db)
+                .await?;
+            let Some(current) = current else {
+                return Err(OrderCheckoutIdentityError::Database(update_error));
+            };
+            ensure_compatible_identity(&current, input)?;
+            if ensure_exact_identity(&current, input).is_ok() {
+                return Ok(current);
+            }
             Err(OrderCheckoutIdentityError::Database(update_error))
         }
     }
-}
-
-fn existing_connection_placeholder() -> &'static DatabaseConnection {
-    panic!("identity reload requires journal connection")
 }
 
 fn normalize_input(
