@@ -11,6 +11,7 @@ const files = {
   graphqlRoot: "crates/rustok-groups/src/graphql_application_cas.rs",
   graphql: "crates/rustok-groups/src/graphql_application_bulk_review.rs",
   ports: "crates/rustok-groups/src/ports.rs",
+  fbaRegistry: "crates/rustok-groups/contracts/groups-fba-registry.json",
   adminCore: "crates/rustok-groups/admin/src/application_bulk_core.rs",
   adminModel: "crates/rustok-groups/admin/src/application_bulk_model.rs",
   adminTransport: "crates/rustok-groups/admin/src/application_bulk_transport.rs",
@@ -94,6 +95,18 @@ if (failures.length === 0) {
     "retryable",
   ]);
   requireMarkers(files.ports, ['"GroupApplicationBulkReviewCommandPort"']);
+  requireMarkers(files.fbaRegistry, [
+    '"name": "GroupApplicationReviewCommandPort"',
+    '"status_disclosure": "after_manager_authorization"',
+    '"name": "GroupApplicationBulkReviewCommandPort"',
+    '"maximum_items": 50',
+    '"atomicity": "partial_result_one_owner_transaction_per_item"',
+    '"item_idempotency_key": "sha256_batch_key_plus_application_uuid_order_independent"',
+    '"bulk_review": "implemented_source"',
+    '"bulk_review_admin_ffa": "implemented_source"',
+    '"bulk_review_native_graphql_deadline_seconds": 30',
+    '"membership_application_bulk_review": null',
+  ]);
 
   requireMarkers(files.adminCore, [
     "MAX_BULK_REVIEW_ITEMS: usize = 50",
@@ -168,4 +181,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Groups bounded partial-result bulk review, 50-row FFA query, deadline parity, localization, and authorization-order source checks passed.");
+console.log("Groups bounded partial-result bulk review, FBA registry, 50-row FFA query, deadline parity, localization, and authorization-order source checks passed.");
