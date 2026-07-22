@@ -27,7 +27,10 @@ pub use entities::*;
 pub use ports::*;
 
 pub use error::{OrderError, OrderResult};
-pub use services::OrderService;
+pub use services::{
+    OrderCheckoutIdentityError, OrderCheckoutIdentityJournal, OrderCheckoutIdentityResult,
+    OrderService, RecordOrderCheckoutIdentity,
+};
 
 pub struct OrderModule;
 
