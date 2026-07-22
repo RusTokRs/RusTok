@@ -8,8 +8,8 @@ use rustok_notifications_api::{
     NotificationTargetRef,
 };
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait,
-    DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    QueryFilter, TransactionTrait,
     sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
