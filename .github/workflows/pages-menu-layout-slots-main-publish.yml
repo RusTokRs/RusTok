@@ -27,6 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee /tmp/pages-menu-layout-publisher.log) 2>&1
           product_files=(
             apps/storefront/build.rs
             apps/storefront/src/app/mod.rs
@@ -70,3 +71,10 @@ jobs:
             echo "main moved during publish attempt ${attempt}; retrying"
           done
           exit 1
+      - name: Upload publisher diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-menu-layout-publisher-log
+          path: /tmp/pages-menu-layout-publisher.log
+          if-no-files-found: error
