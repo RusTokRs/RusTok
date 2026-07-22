@@ -29,7 +29,6 @@ pub struct GqlForumQuoteReferenceInput {
 #[derive(InputObject)]
 pub struct SetForumQuoteRelationsInput {
     pub locale: String,
-    #[graphql(default)]
     pub quotes: Vec<GqlForumQuoteReferenceInput>,
 }
 
