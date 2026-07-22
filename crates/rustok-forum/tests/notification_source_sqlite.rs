@@ -1,11 +1,14 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use chrono::Utc;
 use rustok_api::HostRuntimeContext;
 use rustok_core::{
     MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole,
 };
-use rustok_forum::entities::forum_domain_event;
+use rustok_forum::entities::{
+    forum_domain_event, forum_relation_revision, forum_user_mention,
+};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ModerationService,
     SubscriptionService, TopicService,
@@ -22,6 +25,8 @@ use rustok_notifications_api::{
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder,
 };
@@ -29,7 +34,7 @@ use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
+async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
     let (db, event_bus) = setup().await;
     let tenant_id = Uuid::new_v4();
     let author_id = Uuid::new_v4();
@@ -100,7 +105,7 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         .await
         .expect("topic creation must succeed in notifications-off profile");
 
-    let event = forum_domain_event::Entity::find()
+    let topic_event = forum_domain_event::Entity::find()
         .filter(forum_domain_event::Column::TenantId.eq(tenant_id))
         .filter(forum_domain_event::Column::EventType.eq("forum.topic.created"))
         .order_by_desc(forum_domain_event::Column::SequenceNo)
@@ -108,15 +113,7 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         .await
         .expect("forum event query should succeed")
         .expect("topic-created event should be journaled");
-    let revision = u64::try_from(event.sequence_no).expect("event sequence should be positive");
-    let source_event = NotificationSourceEventRef::new(
-        tenant_id,
-        event.event_id,
-        NotificationSourceSlug::new("forum").expect("source slug"),
-        NotificationTypeKey::new("forum.topic.created").expect("event type"),
-        revision,
-    )
-    .expect("source event reference");
+    let topic_source_event = source_event_ref(&topic_event);
 
     let on_registry = ModuleRegistry::new()
         .register(NotificationsModule)
@@ -131,10 +128,22 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
     let provider = providers
         .get_by_str("forum")
         .expect("Forum source should be discoverable");
+    let supported_types = provider
+        .supported_types()
+        .into_iter()
+        .map(|event_type| event_type.into_string())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        supported_types,
+        BTreeSet::from([
+            "forum.mention.user_added".to_string(),
+            "forum.topic.created".to_string(),
+        ])
+    );
 
     let descriptor = provider
         .describe_event(DescribeNotificationRequest {
-            event: source_event.clone(),
+            event: topic_source_event.clone(),
         })
         .await
         .expect("topic event should be described")
@@ -146,7 +155,7 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
 
     let first_page = provider
         .resolve_audience(ResolveNotificationAudienceRequest {
-            event: source_event.clone(),
+            event: topic_source_event.clone(),
             descriptor: descriptor.clone(),
             cursor: None,
             limit: 1,
@@ -160,7 +169,7 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         .expect("bounded first page should expose a cursor");
     let second_page = provider
         .resolve_audience(ResolveNotificationAudienceRequest {
-            event: source_event.clone(),
+            event: topic_source_event.clone(),
             descriptor: descriptor.clone(),
             cursor: Some(cursor),
             limit: 1,
@@ -198,6 +207,44 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }
 
+    let mention_event = seed_user_mention_event(
+        &db,
+        tenant_id,
+        author_id,
+        topic.id,
+        first_recipient,
+    )
+    .await;
+    let mention_source_event = source_event_ref(&mention_event);
+    let mention_descriptor = provider
+        .describe_event(DescribeNotificationRequest {
+            event: mention_source_event.clone(),
+        })
+        .await
+        .expect("user mention event should be described")
+        .expect("visible user mention should be notifiable");
+    assert_eq!(
+        mention_descriptor.notification_type.as_str(),
+        "forum.mention.user_added"
+    );
+    assert_eq!(mention_descriptor.target.id, topic.id);
+    assert_eq!(
+        mention_descriptor.template_data.get("source_kind"),
+        Some("topic")
+    );
+    let mention_page = provider
+        .resolve_audience(ResolveNotificationAudienceRequest {
+            event: mention_source_event.clone(),
+            descriptor: mention_descriptor.clone(),
+            cursor: None,
+            limit: 1,
+        })
+        .await
+        .expect("user mention audience should resolve");
+    assert_eq!(mention_page.recipients().len(), 1);
+    assert_eq!(mention_page.recipients()[0].recipient_id, first_recipient);
+    assert!(mention_page.is_complete());
+
     let cross_tenant = provider
         .authorize_target_open(AuthorizeNotificationTargetRequest {
             tenant_id: Uuid::new_v4(),
@@ -221,13 +268,24 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         .await
         .expect("closed target authorization should fail closed");
     assert_eq!(closed, NotificationOpenAuthorization::Unavailable);
+    let closed_mention_page = provider
+        .resolve_audience(ResolveNotificationAudienceRequest {
+            event: mention_source_event,
+            descriptor: mention_descriptor,
+            cursor: None,
+            limit: 1,
+        })
+        .await
+        .expect("closed mention source should fail closed without provider error");
+    assert!(closed_mention_page.recipients().is_empty());
+    assert!(closed_mention_page.is_complete());
 
     db.execute_unprepared("DROP TABLE forum_domain_events")
         .await
         .expect("test should remove the source journal");
     let error = provider
         .describe_event(DescribeNotificationRequest {
-            event: source_event,
+            event: topic_source_event,
         })
         .await
         .expect_err("database failure should be classified");
@@ -235,6 +293,72 @@ async fn forum_topic_source_supports_notifications_off_and_on_profiles() {
         error,
         NotificationProviderError::Internal { retryable: true }
     );
+}
+
+fn source_event_ref(event: &forum_domain_event::Model) -> NotificationSourceEventRef {
+    NotificationSourceEventRef::new(
+        event.tenant_id,
+        event.event_id,
+        NotificationSourceSlug::new("forum").expect("source slug"),
+        NotificationTypeKey::new(event.event_type.clone()).expect("event type"),
+        u64::try_from(event.sequence_no).expect("event sequence should be positive"),
+    )
+    .expect("source event reference")
+}
+
+async fn seed_user_mention_event(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    topic_id: Uuid,
+    mentioned_user_id: Uuid,
+) -> forum_domain_event::Model {
+    let revision = forum_relation_revision::Entity::find()
+        .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
+        .filter(forum_relation_revision::Column::TargetKind.eq("topic"))
+        .filter(forum_relation_revision::Column::TargetId.eq(topic_id))
+        .filter(forum_relation_revision::Column::Locale.eq("en"))
+        .order_by_desc(forum_relation_revision::Column::RevisionId)
+        .one(db)
+        .await
+        .expect("relation revision query should succeed")
+        .expect("topic relation revision should exist");
+
+    forum_user_mention::ActiveModel {
+        tenant_id: Set(tenant_id),
+        source_kind: Set("topic".to_string()),
+        source_id: Set(topic_id),
+        source_locale: Set("en".to_string()),
+        source_revision_id: Set(revision.revision_id),
+        mentioned_user_id: Set(mentioned_user_id),
+        handle_snapshot: Set("member-one".to_string()),
+        created_at: Set(Utc::now().into()),
+    }
+    .insert(db)
+    .await
+    .expect("user mention relation should persist");
+
+    forum_domain_event::ActiveModel {
+        sequence_no: NotSet,
+        event_id: Set(Uuid::new_v4()),
+        tenant_id: Set(tenant_id),
+        aggregate_type: Set("topic".to_string()),
+        aggregate_id: Set(topic_id),
+        event_type: Set("forum.mention.user_added".to_string()),
+        schema_version: Set(1),
+        actor_id: Set(Some(actor_id)),
+        payload: Set(serde_json::json!({
+            "source_kind": "topic",
+            "source_id": topic_id,
+            "source_revision_id": revision.revision_id,
+            "source_locale": "en",
+            "mentioned_user_id": mentioned_user_id,
+        })),
+        created_at: Set(Utc::now().into()),
+    }
+    .insert(db)
+    .await
+    .expect("user mention event should persist")
 }
 
 async fn setup() -> (DatabaseConnection, TransactionalEventBus) {
