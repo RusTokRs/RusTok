@@ -23,12 +23,32 @@
       "raw_context_persisted": false
     },
     "static_sanitization_contract": {
-      "format": "page_builder_static_publish_sanitization_v1",
+      "format": "page_builder_static_publish_sanitization_v2",
       "function": "sanitize_static_landing_project",
       "envelope": "PageBuilderSanitizedStaticLandingProject",
       "hash_algorithm": "sha256",
+      "hash_payload": ["format", "policy_format", "policy_hash", "sanitized_project"],
+      "policy": {
+        "format": "page_builder_static_publish_policy_v1",
+        "source": "crates/rustok-page-builder/src/static_publish_policy.rs",
+        "dto": "PageBuilderStaticPublishPolicy",
+        "evidence": "PageBuilderStaticPublishPolicyEvidence",
+        "hash_algorithm": "sha256",
+        "failure_mode": "reject_not_drop",
+        "domains": [
+          "tags_component_types_and_markup_content",
+          "attributes_and_url_schemes",
+          "component_and_project_css",
+          "assets_and_page_metadata_urls"
+        ],
+        "pre_materialization": true,
+        "exact_materialized_document": true,
+        "exact_materialized_recheck_source": "crates/rustok-page-builder/src/static_landing.rs"
+      },
       "stable_component_ids": true,
-      "secure_public_resources": true
+      "secure_public_resources": true,
+      "integrity_revalidates_project": true,
+      "executed_evidence": "pending"
     },
     "static_materialization_contract": {
       "format": "page_builder_static_runtime_materialization_v1",
@@ -101,6 +121,10 @@
         "result": "PublishPageResult",
         "service": "PageService::publish_reviewed",
         "sanitizer": "sanitize_static_landing_project",
+        "sanitization_format": "page_builder_static_publish_sanitization_v2",
+        "policy_format": "page_builder_static_publish_policy_v1",
+        "policy_hash_bound": true,
+        "exact_materialized_policy_recheck": true,
         "receipt_entity": "page_publish_operation",
         "artifact_manifest_entity": "page_publish_operation_artifact",
         "artifact_manifest_identity": ["locale", "artifact_hash", "materialization_hash"],
