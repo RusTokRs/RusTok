@@ -166,7 +166,6 @@ pub fn GroupsPolicyEditorAdmin() -> impl IntoView {
             if let Some(expected) = expected_revision {
                 match load_group_admin_application_policy(preflight_context, query).await {
                     Ok(current) if current.revision != expected => {
-                        loaded_revision.set(Some(current.revision));
                         error.set(Some(format!(
                             "{} · {} {}",
                             copy.stale, copy.revision, current.revision
