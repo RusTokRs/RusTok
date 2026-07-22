@@ -53,7 +53,8 @@ pub async fn create_topic(
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
-        (status = 404, description = "Topic not found")
+        (status = 404, description = "Topic not found"),
+        (status = 409, description = "Relation revision changed concurrently")
     )
 )]
 pub async fn update_topic(
@@ -118,7 +119,8 @@ pub async fn create_reply(
         (status = 400, description = "Invalid input"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
-        (status = 404, description = "Reply not found")
+        (status = 404, description = "Reply not found"),
+        (status = 409, description = "Relation revision changed concurrently")
     )
 )]
 pub async fn update_reply(
@@ -175,6 +177,11 @@ fn command_error(error: crate::ForumError) -> HttpError {
         crate::ForumError::ReplyNotFound(id) => HttpError::not_found(
             "forum_reply_not_found",
             format!("Reply not found: {id}"),
+        ),
+        crate::ForumError::RelationRevisionConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            "FORUM_RELATION_REVISION_CONFLICT",
+            "Forum relation revision changed concurrently",
         ),
         error => HttpError::bad_request(error.stable_code(), error.to_string()),
     }
