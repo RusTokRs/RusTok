@@ -41,6 +41,10 @@ function requireMarker(source, marker, label) {
   if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
 }
 
+function forbidMarker(source, marker, label) {
+  if (source.includes(marker)) fail(`${label} still contains ${marker}`);
+}
+
 function requireOrderedMarkers(source, markers, label) {
   let previous = -1;
   for (const marker of markers) {
@@ -102,35 +106,6 @@ if (
 ) {
   fail("static publish policy must fail closed before and after materialization");
 }
-if (
-  contract.pages_consumer.builder_sources.required !== true ||
-  contract.pages_consumer.builder_sources.ordering !== "normalized_locale_ascending"
-) {
-  fail("atomic reviewed publish must require an ordered Page Builder source set");
-}
-const gateReads = contract.pages_consumer.transactional_gate_reads;
-if (
-  gateReads?.feature_settings !== "shared_lock_when_supported" ||
-  gateReads?.scenario_baseline !== "shared_lock_when_present" ||
-  gateReads?.sqlite !== "transaction_serialization"
-) {
-  fail("transactional feature/scenario gate read policy is invalid");
-}
-if (
-  contract.pages_consumer.atomic_pipeline !==
-  "service_and_public_transport_integrated"
-) {
-  fail("Pages reviewed publish service and public transports are not integrated");
-}
-if (
-  contract.pages_consumer.public_transport !==
-  "graphql_http_admin_reviewed_cutover"
-) {
-  fail("reviewed publish public transport cutover is not recorded");
-}
-if (contract.pages_consumer.transport.executed_evidence !== "pending") {
-  fail("executed transport evidence must remain pending until verification runs");
-}
 
 for (const marker of [
   `pub struct ${contract.provider.dto}`,
@@ -157,42 +132,86 @@ for (const marker of [
 ]) {
   requireMarker(sanitizer, marker, "authoritative publish sanitizer");
 }
+
 for (const marker of [
   "pub struct PageBuilderStaticPublishPolicy",
   "pub struct PageBuilderStaticPublishPolicyEvidence",
   "pub struct PageBuilderStaticPublishPolicyDiagnostic",
   "pub enum PageBuilderStaticPublishPolicyError",
   "pub fn validate_static_publish_document",
-  "validate_component(component, path, &policy, &mut diagnostics)",
+  "ComponentChildren",
+  "ComponentNode",
+  "validate_component_node(",
+  "validate_opaque_node(",
   "validate_style_rules(document, &policy, &mut diagnostics)",
   "validate_assets(document, &policy, &mut diagnostics)",
   "validate_page_metadata(document, &policy, &mut diagnostics)",
+  "UrlKind::for_attribute(attribute).is_none()",
   "landing_event_handler_forbidden",
+  "landing_false_boolean_attribute_omitted",
+  "landing_opaque_node_not_renderable",
+  "landing_component_children_opaque",
   "landing_url_rejected",
   "landing_css_value_rejected",
   "landing_style_rule_unbound",
+  "landing_style_rule_orphaned",
+  "landing_style_rule_empty",
   "landing_asset_url_rejected",
   "landing_metadata_url_rejected",
+  "landing_metadata_url_invalid",
+  "if values.is_empty()",
   "protocol-relative URLs are forbidden",
-  "hash_match_without_activation_receipt",
 ]) {
-  if (marker === "hash_match_without_activation_receipt") {
-    requireMarker(
-      JSON.stringify(contract.pages_consumer.rollback),
-      marker,
-      "rollback activation contract",
-    );
-  } else {
-    requireMarker(publishPolicy, marker, "static publish policy");
-  }
+  requireMarker(publishPolicy, marker, "static publish policy");
 }
+const dangerousTypes = sliceBetween(
+  publishPolicy,
+  "const DANGEROUS_COMPONENT_TYPES",
+  "const FORBIDDEN_ATTRIBUTES",
+  "dangerous component type policy",
+);
+forbidMarker(
+  dangerousTypes,
+  '"link"',
+  "Fly link component must remain publishable",
+);
+
+const prepareDocument = sliceBetween(
+  staticLanding,
+  "pub(crate) fn prepare_document",
+  "pub(crate) fn compile_prepared_document",
+  "static landing prepare checkpoint",
+);
+requireOrderedMarkers(
+  prepareDocument,
+  [
+    "document.ensure_stable_ids",
+    "require_secure_resource_urls(&document)?;",
+    "require_static_publish_policy(&document)?;",
+  ],
+  "pre-materialization static publish policy order",
+);
+const compilePrepared = sliceBetween(
+  staticLanding,
+  "pub(crate) fn compile_prepared_document",
+  "pub(crate) fn render_policy",
+  "exact materialized compiler checkpoint",
+);
+requireOrderedMarkers(
+  compilePrepared,
+  [
+    "require_secure_resource_urls(document)?;",
+    "require_static_publish_policy(document)?;",
+    "build_static_landing_artifact_with_renderer",
+  ],
+  "exact materialized static publish policy order",
+);
 for (const marker of [
-  "require_static_publish_policy(&document)?;",
-  "require_static_publish_policy(document)?;",
+  "PageBuilderStaticPublishPolicyError::Rejected",
   "landing_static_publish_policy_integrity",
-  "landing_css_value_rejected",
+  "ValidationSeverity::Error",
 ]) {
-  requireMarker(staticLanding, marker, "exact static publish policy enforcement");
+  requireMarker(staticLanding, marker, "typed static publish policy mapping");
 }
 requireMarker(providerLib, "pub mod publish_sanitization;", "sanitizer export");
 requireMarker(providerLib, "pub mod static_publish_policy;", "publish policy export");
@@ -201,6 +220,32 @@ requireMarker(
   "PageBuilderStaticPublishPolicyEvidence",
   "publish policy evidence export",
 );
+
+if (
+  contract.pages_consumer.builder_sources.required !== true ||
+  contract.pages_consumer.builder_sources.ordering !== "normalized_locale_ascending"
+) {
+  fail("atomic reviewed publish must require an ordered Page Builder source set");
+}
+const gateReads = contract.pages_consumer.transactional_gate_reads;
+if (
+  gateReads?.feature_settings !== "shared_lock_when_supported" ||
+  gateReads?.scenario_baseline !== "shared_lock_when_present" ||
+  gateReads?.sqlite !== "transaction_serialization"
+) {
+  fail("transactional feature/scenario gate read policy is invalid");
+}
+if (
+  contract.pages_consumer.atomic_pipeline !==
+    "service_and_public_transport_integrated" ||
+  contract.pages_consumer.public_transport !==
+    "graphql_http_admin_reviewed_cutover"
+) {
+  fail("reviewed publish service/public transport integration is not recorded");
+}
+if (contract.pages_consumer.transport.executed_evidence !== "pending") {
+  fail("executed transport evidence must remain pending until verification runs");
+}
 
 for (const marker of [
   `pub struct ${contract.pages_consumer.input}`,
@@ -235,12 +280,16 @@ requireOrderedMarkers(
   contract.pages_consumer.new_operation_order,
   "Pages new publish operation",
 );
-if (pages.includes("pub async fn publish_reviewed_if_current")) {
-  fail("reviewed publish must expose one atomic service entrypoint");
-}
-if (pages.includes("PageBuilderPreviewRuntime::default()")) {
-  fail("reviewed publish must not use the default runtime");
-}
+forbidMarker(
+  pages,
+  "pub async fn publish_reviewed_if_current",
+  "reviewed publish service",
+);
+forbidMarker(
+  pages,
+  "PageBuilderPreviewRuntime::default()",
+  "reviewed publish service",
+);
 for (const marker of [
   "type BuilderSourceSet = BTreeMap<String, String>",
   "atomic reviewed publish requires at least one Page Builder body",
@@ -288,6 +337,12 @@ for (const code of contract.pages_consumer.error_codes) {
   requireMarker(pagesServices, code, "Pages service error export");
   requireMarker(pagesLib, code, "Pages crate error export");
 }
+
+requireMarker(
+  JSON.stringify(contract.pages_consumer.rollback),
+  "hash_match_without_activation_receipt",
+  "rollback activation contract",
+);
 
 for (const forbidden of [
   "runtime_context: Set(",
