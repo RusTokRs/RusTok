@@ -52,10 +52,7 @@ async fn groups_storefront_application_policy_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
-        };
+        use rustok_api::{AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext};
         use rustok_groups::{
             GroupApplicationReadPort, GroupApplicationService, ReadGroupApplicationPolicyRequest,
         };
@@ -69,9 +66,6 @@ async fn groups_storefront_application_policy_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let request = leptos_axum::extract::<RequestContext>()
-            .await
-            .map_err(ServerFnError::new)?;
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
@@ -80,7 +74,7 @@ async fn groups_storefront_application_policy_native(
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
-            request.locale,
+            query.locale,
             format!("groups-storefront-applications-native-{}", Uuid::new_v4()),
         )
         .with_deadline(Duration::from_secs(5));
@@ -93,7 +87,7 @@ async fn groups_storefront_application_policy_native(
             ReadGroupApplicationPolicyRequest { group_id },
         )
         .await
-        .map_err(|error| ServerFnError::new(error.message))?;
+        .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
         Ok(map_policy(result))
     }
     #[cfg(not(feature = "ssr"))]
@@ -107,7 +101,7 @@ async fn groups_storefront_application_policy_native(
 
 #[server(
     prefix = "/api/fn",
-    endpoint = "groups/storefront/applications/submit"
+    endpoint = "groups/storefront/applications/submit-if-current"
 )]
 async fn groups_storefront_submit_application_native(
     command: SubmitGroupMembershipApplicationCommand,
@@ -115,12 +109,10 @@ async fn groups_storefront_submit_application_native(
     #[cfg(feature = "ssr")]
     {
         use leptos::prelude::expect_context;
-        use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
-        };
+        use rustok_api::{AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext};
         use rustok_groups::{
-            GroupApplicationCommandPort, GroupApplicationService,
+            GroupApplicationCasCommandPort, GroupApplicationPolicyPrecondition,
+            GroupApplicationService, SubmitGroupMembershipApplicationIfCurrentRequest,
             SubmitGroupMembershipApplicationRequest,
         };
         use std::time::Duration;
@@ -133,14 +125,13 @@ async fn groups_storefront_submit_application_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        let request = leptos_axum::extract::<RequestContext>()
-            .await
-            .map_err(ServerFnError::new)?;
         if auth.tenant_id != tenant.id {
             return Err(ServerFnError::new("groups tenant mismatch"));
         }
         let group_id = Uuid::parse_str(&command.group_id)
             .map_err(|_| ServerFnError::new("group_id must be a UUID"))?;
+        let expected_policy_id = Uuid::parse_str(&command.expected_policy.policy_id)
+            .map_err(|_| ServerFnError::new("policy_id must be a UUID"))?;
         let answers = command
             .answers
             .into_iter()
@@ -149,25 +140,33 @@ async fn groups_storefront_submit_application_native(
         let mut context = PortContext::new(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
-            request.locale,
-            format!("groups-storefront-applications-native-{}", Uuid::new_v4()),
+            command.expected_policy.locale.clone(),
+            format!("groups-storefront-application-cas-native-{}", Uuid::new_v4()),
         )
         .with_deadline(Duration::from_secs(5))
         .with_idempotency_key(command.idempotency_key);
         for permission in auth.permissions {
             context = context.with_claim(permission.to_string());
         }
-        let result = GroupApplicationCommandPort::submit_group_membership_application(
-            &GroupApplicationService::new(runtime.db_clone()),
-            context,
-            SubmitGroupMembershipApplicationRequest {
-                group_id,
-                answers,
-                acknowledged_rule_keys: command.acknowledged_rule_keys,
-            },
-        )
-        .await
-        .map_err(|error| ServerFnError::new(error.message))?;
+        let result =
+            GroupApplicationCasCommandPort::submit_group_membership_application_if_current(
+                &GroupApplicationService::new(runtime.db_clone()),
+                context,
+                SubmitGroupMembershipApplicationIfCurrentRequest {
+                    expected_policy: GroupApplicationPolicyPrecondition {
+                        policy_id: expected_policy_id,
+                        revision: command.expected_policy.revision,
+                        locale: command.expected_policy.locale,
+                    },
+                    submission: SubmitGroupMembershipApplicationRequest {
+                        group_id,
+                        answers,
+                        acknowledged_rule_keys: command.acknowledged_rule_keys,
+                    },
+                },
+            )
+            .await
+            .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
         Ok(GroupsStorefrontSubmitApplicationResult {
             application: GroupsStorefrontMembershipApplication {
                 id: result.application.id.to_string(),
