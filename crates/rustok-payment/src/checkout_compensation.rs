@@ -124,7 +124,6 @@ impl InProcessCheckoutPaymentCompensationPort {
 
     async fn execute_provider_cancel(
         &self,
-        context: &PortContext,
         tenant_id: Uuid,
         checkout_operation_id: Uuid,
         collection: &PaymentCollectionResponse,
@@ -135,24 +134,17 @@ impl InProcessCheckoutPaymentCompensationPort {
             .provider_id
             .clone()
             .unwrap_or_else(|| MANUAL_PAYMENT_PROVIDER_ID.to_string());
-        let idempotency_key = context
-            .idempotency_key
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                format!(
-                    "checkout:{checkout_operation_id}:compensation:payment:{}",
-                    collection.id
-                )
-            });
+        // This key is intentionally identical to the pre-port
+        // PaymentOrchestrationService key. Upgraded retries must adopt the
+        // existing provider journal row instead of executing a second cancel.
+        let idempotency_key = format!("payment_collection:{}:cancel", collection.id);
+        // This request metadata is intentionally identical to the legacy
+        // journaled cancel payload for the same reason.
         let mut provider_metadata = merge_metadata(
             metadata,
             serde_json::json!({
-                "checkout": {
-                    "operation_id": checkout_operation_id,
-                    "compensation": true,
+                "commerce_orchestration": {
+                    "operation": "cancel_payment_collection",
                     "reason": reason,
                 }
             }),
@@ -449,7 +441,6 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
         let provider_cancel = if should_cancel_provider(&collection) {
             Some(
                 self.execute_provider_cancel(
-                    &context,
                     tenant_id,
                     request.checkout_operation_id,
                     &collection,
