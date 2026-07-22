@@ -1,7 +1,11 @@
 #[path = "transport/graphql_adapter.rs"]
 mod graphql_adapter;
+#[path = "transport/graphql_application_lifecycle_adapter.rs"]
+mod graphql_application_lifecycle_adapter;
 #[path = "transport/graphql_applications_adapter.rs"]
 mod graphql_applications_adapter;
+#[path = "transport/native_application_lifecycle_adapter.rs"]
+mod native_application_lifecycle_adapter;
 #[path = "transport/native_applications_adapter.rs"]
 mod native_applications_adapter;
 #[path = "transport/native_server_adapter.rs"]
@@ -10,7 +14,9 @@ mod native_server_adapter;
 use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
 
 use crate::application_model::{
+    CancelGroupMembershipApplicationCommand, GroupsStorefrontApplicationLifecycleResult,
     GroupsStorefrontApplicationPolicy, GroupsStorefrontApplicationPolicyQuery,
+    GroupsStorefrontMembershipApplication, GroupsStorefrontMyApplicationQuery,
     GroupsStorefrontSubmitApplicationResult, SubmitGroupMembershipApplicationCommand,
 };
 use crate::core::GroupsStorefrontTransportProfile;
@@ -123,6 +129,30 @@ pub async fn load_groups_storefront_application_policy(
     .await
 }
 
+pub async fn load_groups_storefront_my_application(
+    context: GroupsStorefrontTransportContext,
+    query: GroupsStorefrontMyApplicationQuery,
+) -> UiTransportResult<Option<GroupsStorefrontMembershipApplication>> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_query = query.clone();
+    execute_selected_transport(
+        "groups.storefront.applications.my",
+        context.path(),
+        move || {
+            native_application_lifecycle_adapter::load_my_group_membership_application(
+                native_query,
+            )
+        },
+        move || {
+            graphql_application_lifecycle_adapter::load_my_group_membership_application(
+                token, tenant, query,
+            )
+        },
+    )
+    .await
+}
+
 pub async fn submit_groups_storefront_membership_application(
     context: GroupsStorefrontTransportContext,
     command: SubmitGroupMembershipApplicationCommand,
@@ -138,6 +168,30 @@ pub async fn submit_groups_storefront_membership_application(
         },
         move || {
             graphql_applications_adapter::submit_group_membership_application(
+                token, tenant, command,
+            )
+        },
+    )
+    .await
+}
+
+pub async fn cancel_groups_storefront_membership_application(
+    context: GroupsStorefrontTransportContext,
+    command: CancelGroupMembershipApplicationCommand,
+) -> UiTransportResult<GroupsStorefrontApplicationLifecycleResult> {
+    let token = context.access_token.clone();
+    let tenant = context.tenant_slug.clone();
+    let native_command = command.clone();
+    execute_selected_transport(
+        "groups.storefront.applications.cancel",
+        context.path(),
+        move || {
+            native_application_lifecycle_adapter::cancel_group_membership_application(
+                native_command,
+            )
+        },
+        move || {
+            graphql_application_lifecycle_adapter::cancel_group_membership_application(
                 token, tenant, command,
             )
         },
