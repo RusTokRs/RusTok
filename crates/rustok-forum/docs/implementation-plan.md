@@ -202,7 +202,7 @@ at the end of this file remain authoritative.
 | `FORUM-09` | `done` | Forum-owned versioned event catalog and journal, merged through PR #1732. |
 | `FORUM-10` | `done` | Bounded cursor read models and capped compatibility reads, PRs #1734/#1735. |
 | `FORUM-11` | `done` | Subscription levels and participation policy, PR #1736; verification repairs in #1737. |
-| `FORUM-12` | `in_progress` | FORUM-12A defines bounded extraction and revision diffs; FORUM-12B1 adds append-only mention/quote relation revisions and a transaction-scoped persistence seam. Active owner integration, events, reads and delivery integration remain. |
+| `FORUM-12` | `in_progress` | FORUM-12A/B1/B2/C deliver bounded extraction, append-only relations, active owner integration, versioned mention events and bounded reads; FORUM-12D1 adds exact-locale quote replacement commands. Inline D2 input, visibility/privacy integration and runtime evidence remain. |
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
@@ -297,7 +297,7 @@ verified; they are no longer active execution items.
 
 ### Wave C — participation product
 
-1. finish `FORUM-12B2` owner write integration, then `FORUM-12C` events and reads;
+1. finish `FORUM-12D2` inline quote input, then complete visibility/privacy and executable notification/runtime evidence for `FORUM-12`;
 2. `FORUM-16`;
 3. `FORUM-17`;
 4. `FORUM-18`;
@@ -526,28 +526,67 @@ quoted target and quoted revision so edits do not rewrite history.
 - a source verifier rejects notification/event publication, profile internals
   and public exposure of the persistence service.
 
+### Delivered in `FORUM-12B2`
+
+- active topic and reply create/edit owner commands prepare relation projections
+  before opening their transaction;
+- canonical topic translations and reply bodies are written before
+  `persist_in_tx`, while relation revisions, counters, lifecycle events and the
+  source command commit atomically;
+- public topic/reply facades remain the only command entrypoints and transports
+  cannot invoke the persistence seam;
+- source INSERT seed triggers remain compatible during rollout and active owner
+  writes append the canonical projection after the seed identity.
+
+### Delivered in `FORUM-12C`
+
+- the sealed v1 `ForumMentionEvent` family publishes
+  `forum.mention.user_added` and `forum.mention.audience_added` with source
+  revision and target identity only;
+- only the exact persisted added-target diff produces events; replay, removed
+  targets and unchanged targets emit nothing;
+- the same event UUID is written to the transactional outbox and append-only
+  Forum domain-event journal in the owner transaction;
+- PostgreSQL and SQLite journal constraints accept the mention event types and
+  preserve immutable update/delete guards;
+- `ForumRelationReadService` returns latest or exact tenant/source/locale
+  snapshots bounded to 32 mention targets and 32 quotes without exposing handle
+  snapshots or replay fingerprints;
+- invalid or foreign relation identities use
+  `FORUM_RELATION_REVISION_UNAVAILABLE` without an existence oracle.
+
+### Delivered in `FORUM-12D1`
+
+- `SetForumQuotesInput` defines an exact source locale and a full replacement
+  list of typed target kind, target ID and quoted revision ID references;
+- `ForumQuoteCommandService` replaces quotes for an existing topic translation
+  or reply body under the corresponding update owner scope;
+- raw and unique quote input is bounded to 32, exact duplicates are normalized,
+  and an empty list explicitly clears quotes while preserving mentions parsed
+  from the unchanged canonical body;
+- preparation occurs before transaction start, while immutable relation
+  persistence and bounded response materialization complete before commit;
+- identical replacement replays the current relation revision and missing,
+  cross-tenant or mismatched quote identities use the existing safe failure;
+- REST, GraphQL and OpenAPI expose dedicated topic/reply quote replacement
+  commands without transport access to `MentionRelationService`.
+
 ### Compatibility and degraded mode
 
-FORUM-12B1 adds durable storage but does not change active topic/reply command
-behavior. Existing streams receive only an empty `legacy` relation revision;
-the migration deliberately does not infer historical mentions. Profile lookup
-remains a required owner preparation step only when a future command supplies a
-new relation projection. Notifications remain an optional downstream consumer
-and are not called from the persistence transaction.
+Existing source locales retain their `legacy` seed identity until an active
+owner write appends a canonical relation revision. Existing topic/reply
+create/edit DTOs remain source-compatible; D1 adds a separate quote replacement
+command rather than adding mandatory fields to Rust DTO literals. Notifications
+remain an optional downstream consumer and are never called synchronously from
+Forum transactions.
 
 ### Remaining scope
 
 FORUM-12 remains `in_progress` until all of the following are delivered:
 
-- `FORUM-12B2` composes preparation and `persist_in_tx` into the current
-  `TopicService` and `ReplyService` create/edit transactions after the source
-  body write and before commit;
-- owner command DTOs define quote input only when the facade contract is ready,
-  and transport adapters consume that facade rather than the persistence seam;
-- `FORUM-12C` publishes versioned Forum owner events to the domain-event journal
-  and transactional outbox using only added targets; Forum never calls
-  Notifications synchronously;
-- expose bounded owner reads after active persistence is stable;
+- `FORUM-12D2` composes optional inline quote input into topic/reply create and
+  body-edit owner commands without weakening the separate D1 replacement
+  semantics or breaking existing callers;
 - recheck blocked/private/deleted target and source visibility for notification
   consumption and target opening under NOTIFY-03/07;
 - add PostgreSQL runtime, concurrent owner-write, deletion/purge and executable
@@ -557,26 +596,31 @@ FORUM-12 remains `in_progress` until all of the following are delivered:
 
 - mention resolution is tenant/profile scoped and idempotent by source revision;
 - the source event contains target identity, not recipient contact data;
+- quote commands retain immutable target revision identity and are bounded;
 - blocked, private, deleted and unauthorized targets cannot generate or open a
   notification;
-- tests cover edit diffs, duplicate handles, code blocks, escaping, caps and
-  replay.
+- tests cover edit diffs, duplicate handles, code blocks, escaping, caps, quote
+  replacement/clear and replay.
 
 ### Verification
 
 ```bash
 cargo test -p rustok-forum --test mention_contract
 cargo test -p rustok-forum mention_relation
+cargo test -p rustok-forum quote_command
 node scripts/verify/verify-forum-mention-contract.mjs
 node scripts/verify/verify-forum-mention-contract.test.mjs
 node scripts/verify/verify-forum-mention-persistence.mjs
 node scripts/verify/verify-forum-mention-persistence.test.mjs
+node scripts/verify/verify-forum-mention-integration.mjs
+node scripts/verify/verify-forum-mention-events.mjs
+node scripts/verify/verify-forum-quote-commands.mjs
 cargo xtask module validate forum
 ```
 
-The commands above are the maintainer verification set for FORUM-12A/B1. This
-slice records source and test contracts but does not claim executable
-verification until the maintainer runs them.
+The commands above are the maintainer verification set for FORUM-12. Source and
+contract records do not claim executable verification until the maintainer runs
+them.
 
 ## `FORUM-13` — category icon and image integration
 
@@ -1397,6 +1441,7 @@ cargo test -p rustok-forum --test soft_delete_revision_sqlite
 cargo test -p rustok-forum --test owner_lifecycle_sqlite
 cargo test -p rustok-forum --test mention_contract
 cargo test -p rustok-forum mention_relation
+cargo test -p rustok-forum quote_command
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1410,6 +1455,9 @@ node scripts/verify/verify-forum-mention-contract.mjs
 node scripts/verify/verify-forum-mention-contract.test.mjs
 node scripts/verify/verify-forum-mention-persistence.mjs
 node scripts/verify/verify-forum-mention-persistence.test.mjs
+node scripts/verify/verify-forum-mention-integration.mjs
+node scripts/verify/verify-forum-mention-events.mjs
+node scripts/verify/verify-forum-quote-commands.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -1437,21 +1485,20 @@ keeping each PR independently safe.
 
 Recommended next slices:
 
-1. `FORUM-12B2`: compose mention/quote persistence into active topic/reply owner transactions;
-2. `FORUM-12C`: publish versioned mention events, replay-safe journal/outbox rows and bounded owner reads;
-3. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
-4. `NOTIFY-01`: inbox/preferences schema;
-5. `NOTIFY-03`: durable consumer and bounded fan-out;
-6. `NOTIFY-07`: privacy/open authorization;
-7. `FORUM-13`: category media references after Media lifecycle state exists;
-8. `FORUM-14`: attachment relations and upload sessions;
-9. `FORUM-15`: batched member/avatar projection;
-10. `LINK-FORUM-02`: profiles/media runtime proof;
-11. `FORUM-16`: read/unread state;
-12. `FORUM-19`: reports/moderation/restrictions;
-13. `FORUM-20`: ACL and visibility policy;
-14. `FORUM-23`: index projections;
-15. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
+1. `FORUM-12D2`: compose optional inline quote input into topic/reply create and body-edit owner commands;
+2. `NOTIFY-00`: runtime composition plus first source-provider/fallback proof;
+3. `NOTIFY-01`: inbox/preferences schema;
+4. `NOTIFY-03`: durable consumer and bounded fan-out;
+5. `NOTIFY-07`: privacy/open authorization;
+6. `FORUM-13`: category media references after Media lifecycle state exists;
+7. `FORUM-14`: attachment relations and upload sessions;
+8. `FORUM-15`: batched member/avatar projection;
+9. `LINK-FORUM-02`: profiles/media runtime proof;
+10. `FORUM-16`: read/unread state;
+11. `FORUM-19`: reports/moderation/restrictions;
+12. `FORUM-20`: ACL and visibility policy;
+13. `FORUM-23`: index projections;
+14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.
 
 # Decisions that must not be reopened without an ADR
@@ -1486,8 +1533,7 @@ possible.
 
 # Immediate next action
 
-Implement `FORUM-12B2`: compose `MentionRelationService::prepare` and
-`persist_in_tx` into the current topic/reply facade transactions after source
-body persistence and before commit. Keep transports behind those facades and
-keep mention event/journal/outbox publication in `FORUM-12C`; never call
-Notifications from the Forum write path.
+Implement `FORUM-12D2`: add optional inline quote input to topic/reply create and
+body-edit owner commands without weakening the D1 full-replacement command,
+breaking existing Rust callers, or exposing the relation persistence seam to
+REST or GraphQL. Keep Notifications an optional downstream consumer.
