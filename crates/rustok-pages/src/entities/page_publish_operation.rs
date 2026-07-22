@@ -34,4 +34,17 @@ impl Related<super::page::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn after_save<C>(model: Model, db: &C, insert: bool) -> Result<Model, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if insert {
+            crate::services::page::publish_manifest::persist_publish_manifest_after_save(db, &model)
+                .await
+                .map_err(|error| DbErr::Custom(error.to_string()))?;
+        }
+        Ok(model)
+    }
+}
