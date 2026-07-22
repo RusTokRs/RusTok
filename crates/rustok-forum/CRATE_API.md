@@ -11,6 +11,10 @@
 - `pub struct ForumQuoteCommandService`
 - `ForumQuoteCommandService::set_topic_quotes(tenant_id, topic_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
 - `ForumQuoteCommandService::set_reply_quotes(tenant_id, reply_id, security, SetForumQuotesInput) -> ForumRelationSnapshotResponse`
+- `TopicService::create_command(tenant_id, security, CreateTopicCommandInput) -> TopicResponse`
+- `TopicService::update_command(tenant_id, topic_id, security, UpdateTopicCommandInput) -> TopicResponse`
+- `ReplyService::create_command(tenant_id, security, topic_id, CreateReplyCommandInput) -> ReplyResponse`
+- `ReplyService::update_command(tenant_id, reply_id, security, UpdateReplyCommandInput) -> ReplyResponse`
 - `CategoryService::tree(tenant_id, security, CategoryTreeQuery) -> CategoryTreeResponse`
 - `CategoryService::move_category(tenant_id, category_id, security, MoveCategoryInput) -> MoveCategoryResponse`
 - `CategoryService::reorder_siblings(tenant_id, security, ReorderCategorySiblingsInput) -> ReorderCategorySiblingsResponse`
@@ -27,6 +31,7 @@
 - `diff_forum_mentions(previous, current) -> ForumResult<ForumMentionDiff>`
 - `ForumRevisionIdentity`, `ForumMentionRevisionProjection`, `ForumMentionEventCandidate`, `ForumQuoteReference`
 - `ForumQuoteTargetKindInput`, `ForumQuoteReferenceInput`, `SetForumQuotesInput`
+- `CreateTopicCommandInput`, `UpdateTopicCommandInput`, `CreateReplyCommandInput`, `UpdateReplyCommandInput`
 - `ForumRelationSnapshotQuery`, `ForumRelationSnapshotResponse`, `ForumRelationQuoteResponse`
 - `pub mod graphql` -> `ForumQuery`, `ForumMutation`
 - `pub mod controllers` -> `routes()`
@@ -127,7 +132,16 @@
 - Identical replacement replays the current relation revision; missing, cross-tenant or mismatched quote targets use `FORUM_QUOTE_TARGET_UNAVAILABLE`.
 - REST entry points: `PUT /api/forum/topics/{id}/quotes` and `PUT /api/forum/replies/{id}/quotes`.
 - GraphQL entry points: `setForumTopicQuotes` and `setForumReplyQuotes`.
-- Inline quote input for source create/body edit remains a later compatibility slice.
+- Run `node scripts/verify/verify-forum-quote-commands.mjs` after changing this boundary.
+### Inline quote create and edit commands
+- Separate `Create*CommandInput` and `Update*CommandInput` DTOs add typed quote references without changing existing Rust create/update structs.
+- Create commands treat omitted quotes as an empty initial set.
+- Update commands preserve the latest exact-locale quote set when `quotes` is omitted, explicitly clear with `quotes: []`, and fully replace with a non-empty list.
+- Existing `TopicService::create/update` and `ReplyService::create/update` convert legacy DTOs to command DTOs, so legacy body edits preserve quotes.
+- Omitted-update preservation records the expected relation revision, locks the active source inside the transaction and returns retryable `FORUM_RELATION_REVISION_CONFLICT` if the stream changed concurrently.
+- REST uses the existing topic/reply create and update routes with command DTOs.
+- GraphQL adds `createForumTopicWithQuotes`, `updateForumTopicWithQuotes`, `createForumReplyWithQuotes` and `updateForumReplyWithQuotes` while retaining legacy mutations.
+- Soft-deleted sources reject inline relation updates; quote references remain bounded to 32 raw entries.
 - Run `node scripts/verify/verify-forum-quote-commands.mjs` after changing this boundary.
 ### CreateTopicInput
 - Added: `slug: Option<String>`
@@ -150,7 +164,7 @@
 ## Locale fallback chain
 Translation lookup order: `requested → explicit fallback → "en" → first available`.
 The `effective_locale` field indicates which locale was actually returned.
-Quote owner commands intentionally require an exact existing source locale and do not use fallback.
+Quote owner commands and inline quote preservation intentionally use an exact existing source locale and do not use fallback.
 
 ## Slug contract
 - `CategoryResponse` / `CategoryListItem` return locale-aware slug at the `forum_category_translation` level; the slug follows the same resolved translation as `name` / `description`.
@@ -175,8 +189,9 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Public facades expose explicit create/read/update/list methods and never implement `Deref` to an implementation service.
 - Topic/reply deletion must use facade `delete` methods so tombstones, counters and semantic events remain atomic.
 - Active mention/quote persistence and added-target event publication are composed by the same owner write transaction; transports must never invoke `MentionRelationService` or event publishing directly.
-- Quote replacement is exposed only through `ForumQuoteCommandService`; REST and GraphQL do not access the persistence seam.
-- Relation snapshots are read only through `ForumRelationReadService` or materialized inside the active quote owner transaction.
+- Quote replacement is exposed only through `ForumQuoteCommandService`; inline quote create/edit is exposed through topic/reply command facades.
+- The legacy facade methods convert into command DTOs and preserve existing quotes on body updates.
+- Relation snapshots are read only through `ForumRelationReadService` or materialized inside an active owner transaction.
 - Run `node scripts/verify/verify-forum-owner-boundary.mjs` after changing topic/reply service visibility or workspace consumers.
 
 ## Dependencies on Other RusToK Crates
@@ -209,6 +224,8 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Removes the source INSERT seed triggers before active owner writes are composed.
 - Persists a prepared relation projection without revalidating the source body inside the owner transaction.
 - Lets quote transports import `MentionRelationService`, `PreparedMentionRelations` or `persist_in_tx`.
+- Treats omitted update quotes as an empty list and silently clears relations.
+- Preserves an out-of-date quote snapshot without expected-revision CAS.
 - Returns a quote command response through a post-commit read that can fail after the write committed.
 - Imports raw topic/reply implementation modules instead of the root owner facades.
 - Passes methods to `ModerationService` without `tenant_id` — it is now required.
@@ -216,8 +233,9 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
-- All changes to existing create/update DTO fields are considered breaking changes; FORUM-12D1 therefore uses a separate quote replacement DTO.
+- Existing `CreateTopicInput`, `UpdateTopicInput`, `CreateReplyInput` and `UpdateReplyInput` remain source-compatible.
+- Separate command DTOs carry inline quotes and are consumed by transport adapters and facade conversions.
+- All changes to existing create/update DTO fields are considered breaking changes.
 
 ### Domain Invariants
 - Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
@@ -236,6 +254,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Mention events and their relation revision are committed atomically with one identity shared between outbox and Forum journal.
 - Bounded relation reads are tenant/source/locale scoped and never expose handle snapshots or replay fingerprints.
 - Quote replacement is exact-locale, owner-scoped, bounded to 32 references and materializes its response before commit.
+- Inline body edits preserve omitted quotes by expected relation revision and conflict rather than overwrite a concurrent replacement.
 - Quote relations retain target revision identity, reject source/target mismatches and cannot self-reference their own source revision.
 - Public topic/reply access is restricted to explicit owner facades; persistence modules and owner implementations are not part of the external contract.
 
@@ -243,7 +262,7 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
 - `forum.mention.user_added` and `forum.mention.audience_added` are emitted only for targets added by a newly persisted relation revision.
-- Quote-only replacement emits nothing for unchanged mentions and never calls Notifications synchronously.
+- Quote-only replacement and preserved body edits emit nothing for unchanged mentions and never call Notifications synchronously.
 - Forum records the same event UUID in the canonical outbox and append-only owner journal.
 
 ### Errors / Failure Codes
@@ -253,3 +272,4 @@ Legacy Forum lifecycle events remain root `DomainEvent` variants. Mention events
 - Missing or unauthorized mention targets share `FORUM_MENTION_TARGET_UNAVAILABLE` so the contract does not expose a profile-existence oracle.
 - Missing or mismatched quoted relation revisions share `FORUM_QUOTE_TARGET_UNAVAILABLE` so quote validation does not expose a cross-tenant existence oracle.
 - Invalid, absent or foreign relation revision identities share `FORUM_RELATION_REVISION_UNAVAILABLE`.
+- A stale omitted-update quote snapshot returns retryable `FORUM_RELATION_REVISION_CONFLICT`; REST maps it to HTTP 409.
