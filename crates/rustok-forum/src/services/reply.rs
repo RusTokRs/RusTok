@@ -48,7 +48,7 @@ impl ReplyService {
                 format: body.body_format,
             }
         };
-        let quotes = super::relation_quote_input::resolve_inline_update_quotes(
+        let resolved = super::relation_quote_input::resolve_inline_update_quotes(
             &self.db,
             tenant_id,
             crate::mentions::ForumContentTarget::reply(reply_id),
@@ -56,6 +56,7 @@ impl ReplyService {
             quote_inputs,
         )
         .await?;
+        let (quotes, quote_expectation) = resolved.into_parts();
         let relation_service =
             super::mention_relation::MentionRelationService::new(self.db.clone());
         let prepared_relations = relation_service
@@ -71,6 +72,14 @@ impl ReplyService {
             .await?;
 
         let txn = self.db.begin().await?;
+        super::relation_quote_input::lock_source_and_assert_latest_in_tx(
+            &txn,
+            tenant_id,
+            crate::mentions::ForumContentTarget::reply(reply_id),
+            &locale,
+            quote_expectation,
+        )
+        .await?;
         self.upsert_body_in_tx(
             &txn,
             tenant_id,
