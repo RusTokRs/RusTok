@@ -128,7 +128,7 @@ pub async fn bulk_review_group_membership_applications(
     let response: BulkReviewResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &bulk_review_mutation(),
+            bulk_review_mutation(),
             Some(BulkReviewVariables {
                 idempotency_key: command.idempotency_key,
                 input: BulkReviewInput {
@@ -146,10 +146,13 @@ pub async fn bulk_review_group_membership_applications(
     .await
     .map_err(|error| error.to_string())?;
 
+    let BulkReviewWire {
+        items,
+        succeeded,
+        failed,
+    } = response.bulk_review_group_membership_applications;
     Ok(GroupsAdminBulkReviewApplicationsResult {
-        items: response
-            .bulk_review_group_membership_applications
-            .items
+        items: items
             .into_iter()
             .map(|item| GroupsAdminBulkReviewApplicationItemResult {
                 application_id: item.application_id,
@@ -161,8 +164,8 @@ pub async fn bulk_review_group_membership_applications(
                 }),
             })
             .collect(),
-        succeeded: response.bulk_review_group_membership_applications.succeeded,
-        failed: response.bulk_review_group_membership_applications.failed,
+        succeeded,
+        failed,
     })
 }
 
