@@ -129,6 +129,13 @@
         "service": "PageService::publish_reviewed",
         "sanitizer": "sanitize_static_landing_project",
         "receipt_entity": "page_publish_operation",
+        "artifact_manifest_entity": "page_publish_operation_artifact",
+        "artifact_manifest_identity": [
+          "locale",
+          "artifact_hash",
+          "materialization_hash"
+        ],
+        "artifact_manifest_persistence": "same_transaction_after_receipt_insert",
         "idempotency_unique_key": [
           "tenant_id",
           "page_id",
@@ -149,6 +156,35 @@
         "legacy_default_publish": "removed_non_builder_lifecycle_split",
         "non_builder_publish": "publish_non_builder_if_current_rejects_grapesjs_with_PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED",
         "raw_context_persisted": false
+      },
+      "artifact_rollback": {
+        "state": "service_and_public_transport_integrated_ui_action_pending",
+        "input": "RollbackPageInput",
+        "result": "RollbackPageResult",
+        "service": "PageService::rollback_to_previous",
+        "selection": "latest_distinct_publish_artifact_set",
+        "target_manifest_required": true,
+        "receipt_entity": "page_rollback_operation",
+        "idempotency_unique_key": [
+          "tenant_id",
+          "page_id",
+          "idempotency_key"
+        ],
+        "request_identity": [
+          "expected_version",
+          "target_publish_operation_id"
+        ],
+        "immutable_reuse_only": true,
+        "sanitize": false,
+        "materialize": false,
+        "compile": false,
+        "transactional_outbox": [
+          "NodeUpdated",
+          "NodePublished"
+        ],
+        "cache_invalidation": "existing_NodePublished_generation_rotation",
+        "public_transport": "graphql_http_admin_transport_connected",
+        "executed_evidence": "pending"
       },
       "cache_consumer": {
         "state": "source_connected_execution_pending",
@@ -193,7 +229,11 @@
         "materialization_mismatch": "PAGE_BUILDER_PUBLISH_RUNTIME_MATERIALIZATION_MISMATCH",
         "idempotency_conflict": "PAGE_PUBLISH_IDEMPOTENCY_CONFLICT",
         "receipt_integrity": "PAGE_PUBLISH_OPERATION_INTEGRITY",
-        "reviewed_publish_required": "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED"
+        "reviewed_publish_required": "PAGE_BUILDER_REVIEWED_PUBLISH_REQUIRED",
+        "rollback_idempotency_conflict": "PAGE_ROLLBACK_IDEMPOTENCY_CONFLICT",
+        "rollback_receipt_integrity": "PAGE_ROLLBACK_OPERATION_INTEGRITY",
+        "rollback_target_unavailable": "PAGE_ROLLBACK_TARGET_UNAVAILABLE",
+        "rollback_requires_published": "PAGE_ROLLBACK_REQUIRES_PUBLISHED"
       },
       "degraded_mode_errors": {
         "builder_disabled": "FEATURE_DISABLED",
@@ -231,6 +271,7 @@
     "reviewed_publish_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-runtime-review.mjs",
     "publish_transport_verifier": "crates/rustok-page-builder/scripts/verify/verify-page-builder-publish-transport-cutover.mjs",
     "pages_cache_verifier": "crates/rustok-pages/scripts/verify/verify-pages-cache-invalidation.mjs",
+    "pages_rollback_verifier": "crates/rustok-pages/scripts/verify/verify-pages-artifact-rollback.mjs",
     "runtime_order_smoke": "crates/rustok-page-builder/contracts/evidence/page-builder-orchestrator-runtime-order-smoke.json",
     "runtime_order_smoke_runner": "scripts/verify/verify-orchestrator-fba-runtime-order.mjs"
   }
