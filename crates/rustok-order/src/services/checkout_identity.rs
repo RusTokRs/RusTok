@@ -14,6 +14,8 @@ pub struct RecordOrderCheckoutIdentity {
     pub checkout_operation_id: Uuid,
     pub order_id: Uuid,
     pub source_cart_id: Uuid,
+    pub payment_collection_id: Option<Uuid>,
+    pub shipping_option_id: Option<Uuid>,
     pub snapshot_hash: String,
     pub request_hash: String,
 }
@@ -112,6 +114,8 @@ impl OrderCheckoutIdentityJournal {
             tenant_id: Set(input.tenant_id),
             order_id: Set(input.order_id),
             source_cart_id: Set(Some(input.source_cart_id)),
+            payment_collection_id: Set(input.payment_collection_id),
+            shipping_option_id: Set(input.shipping_option_id),
             snapshot_hash: Set(Some(input.snapshot_hash.clone())),
             request_hash: Set(Some(input.request_hash.clone())),
             created_at: Set(Utc::now().fixed_offset()),
@@ -172,9 +176,11 @@ fn normalize_input(
         || input.checkout_operation_id.is_nil()
         || input.order_id.is_nil()
         || input.source_cart_id.is_nil()
+        || input.payment_collection_id.is_some_and(|id| id.is_nil())
+        || input.shipping_option_id.is_some_and(|id| id.is_nil())
     {
         return Err(OrderCheckoutIdentityError::Validation(
-            "tenant, checkout operation, order, and cart identities must be non-nil UUIDs"
+            "tenant, checkout operation, order, cart, payment, and shipping identities must be valid UUIDs"
                 .to_string(),
         ));
     }
@@ -209,6 +215,8 @@ fn ensure_same_identity(
         || existing.checkout_operation_id != input.checkout_operation_id
         || existing.order_id != input.order_id
         || existing.source_cart_id != Some(input.source_cart_id)
+        || existing.payment_collection_id != input.payment_collection_id
+        || existing.shipping_option_id != input.shipping_option_id
         || existing.snapshot_hash.as_deref() != Some(input.snapshot_hash.as_str())
         || existing.request_hash.as_deref() != Some(input.request_hash.as_str())
     {
