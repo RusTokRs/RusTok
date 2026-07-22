@@ -94,10 +94,11 @@ pub async fn reopen_group_membership_application(
     tenant_slug: Option<String>,
     command: ReopenGroupMembershipApplicationCommand,
 ) -> Result<GroupsAdminReviewApplicationResult, GraphqlGroupsApplicationLifecycleError> {
+    let mutation = reopen_application_mutation();
     let response: ReopenResponse = execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(
-            &reopen_application_mutation(),
+            mutation,
             Some(ReopenVariables {
                 idempotency_key: command.idempotency_key,
                 application_id: command.application_id,
