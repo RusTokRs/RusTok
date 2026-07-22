@@ -192,7 +192,7 @@ jobs:
           ACTIVE_MENU_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
         run: |
           set +e
-          cargo test --locked \
+          cargo test \
             -p rustok-pages \
             --test active_menu_postgres_diagnostic \
             -- --nocapture 2>&1 | tee /tmp/active-menu-postgres.log
