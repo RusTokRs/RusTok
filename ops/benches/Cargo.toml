@@ -6,12 +6,18 @@ license.workspace = true
 description = "Performance benchmarks for RusToK platform"
 publish = false
 
+[features]
+default = []
+content-benches = ["dep:rustok-content"]
+commerce-benches = ["dep:rustok-commerce"]
+state-machine-benches = ["content-benches", "commerce-benches"]
+
 [dependencies]
 criterion = { workspace = true }
 tokio = { workspace = true }
 rustok-core = { workspace = true }
-rustok-content = { workspace = true }
-rustok-commerce = { workspace = true }
+rustok-content = { workspace = true, optional = true }
+rustok-commerce = { workspace = true, optional = true }
 rustok-index = { workspace = true }
 sea-orm = { workspace = true }
 anyhow = { workspace = true }
@@ -41,6 +47,7 @@ harness = false
 [[bench]]
 name = "state_machine"
 harness = false
+required-features = ["state-machine-benches"]
 
 [[bench]]
 name = "event_bus"
@@ -49,7 +56,9 @@ harness = false
 [[bench]]
 name = "content_operations"
 harness = false
+required-features = ["content-benches"]
 
 [[bench]]
 name = "order_operations"
 harness = false
+required-features = ["commerce-benches"]
