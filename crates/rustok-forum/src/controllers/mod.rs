@@ -1,8 +1,9 @@
 use anyhow::Context;
-use axum::Router;
+use axum::{Router, http::StatusCode};
 use axum::routing::get;
 use rustok_api::HostRuntimeContext;
 use rustok_outbox::TransactionalEventBus;
+use rustok_web::HttpError;
 use sea_orm::DatabaseConnection;
 
 pub mod categories;
@@ -43,6 +44,53 @@ impl ForumHttpRuntime {
             db: runtime.db_clone(),
             event_bus,
         })
+    }
+}
+
+/// Map forum domain failures to stable HTTP semantics without exposing storage,
+/// connector or internal implementation details.
+pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
+    use crate::ForumError;
+
+    let code = error.stable_code();
+    match error {
+        ForumError::CategoryNotFound(_)
+        | ForumError::TopicNotFound(_)
+        | ForumError::ReplyNotFound(_)
+        | ForumError::SolutionNotFound(_) => HttpError::not_found(
+            code,
+            "The requested forum resource was not found",
+        ),
+        ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
+        ForumError::RelationRevisionConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            code,
+            "Forum relation revision changed concurrently",
+        ),
+        ForumError::TopicClosed
+        | ForumError::TopicArchived
+        | ForumError::TopicLocked
+        | ForumError::TopicDeleted
+        | ForumError::ReplyDeleted => HttpError::new(
+            StatusCode::CONFLICT,
+            code,
+            "The forum resource state does not allow this operation",
+        ),
+        ForumError::CapabilityUnavailable { .. } | ForumError::CapabilityFailure { .. } => {
+            HttpError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                code,
+                "A required forum capability is temporarily unavailable",
+            )
+        }
+        ForumError::Database(_) | ForumError::Content(_) | ForumError::Internal(_) => {
+            HttpError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                code,
+                "The forum operation could not be completed",
+            )
+        }
+        error => HttpError::bad_request(code, error.to_string()),
     }
 }
 
