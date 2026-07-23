@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "slice": "NOTIFY-07B",
+  "promoted_by_slice": "SOCIAL-01A/NOTIFY-07C",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "profile_owner_port": {
@@ -16,11 +17,12 @@
   },
   "relation_owner_ports": {
     "contract": "crates/rustok-notifications/src/recipient_policy.rs",
+    "concrete_owner_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
     "block_runtime": "NotificationBlockReadRuntime",
     "mute_runtime": "NotificationMuteReadRuntime",
     "permissive_default_forbidden": true,
     "missing_provider_is_retryable": true,
-    "concrete_social_graph_owner_deferred": true
+    "concrete_social_graph_owner_deferred": false
   },
   "server_composition": {
     "adapter": "apps/server/src/services/notification_recipient_policy.rs",
@@ -35,20 +37,21 @@
     "block_suppresses": true,
     "mute_suppresses": true,
     "actorless_events_skip_relation_checks": true,
-    "relation_ports_ready_requires_both": true
+    "relation_ports_ready_requires_both": true,
+    "baseline_relation_ports_ready": true
   },
   "worker_gate": {
     "candidate_worker_enabled": false,
     "requires_relation_ports_ready": true,
-    "missing_ports_must_not_allow_delivery": true
+    "missing_ports_must_not_allow_delivery": true,
+    "readiness_separate_from_enablement": true
   },
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-recipient-policy-runtime.mjs",
+    "concrete_owner_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "concrete social-graph block provider",
-    "concrete social-graph mute provider",
     "candidate worker startup",
     "privacy recheck on inbox open",
     "privacy recheck before delayed delivery",
