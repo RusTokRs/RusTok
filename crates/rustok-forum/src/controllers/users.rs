@@ -43,7 +43,7 @@ pub async fn get_user_stats(
             user_id,
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(stats))
 }
 
