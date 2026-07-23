@@ -298,8 +298,13 @@ async fn commit_policy_revision_change_rolls_back_notification_and_retries_candi
     )
     .expect("guarded candidate worker should compose");
 
+    let observed_defaults = vec!["notifications".to_string()];
     let error = worker
-        .process_candidate_with_policy_revision(item_id, OBSERVED_POLICY_REVISION)
+        .process_candidate_with_policy_revision(
+            item_id,
+            OBSERVED_POLICY_REVISION,
+            observed_defaults.as_slice(),
+        )
         .await
         .expect_err("changed policy revision must reject final notification commit");
     assert_eq!(
