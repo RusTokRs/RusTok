@@ -106,6 +106,7 @@ rustok-cart      = { workspace = true, optional = true }
 rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
 rustok-profiles  = { workspace = true, optional = true }
+rustok-social-graph = { path = "../../crates/rustok-social-graph" }
 rustok-groups = { path = "../../crates/rustok-groups", default-features = false, optional = true }
 rustok-region    = { workspace = true, optional = true }
 rustok-pricing   = { workspace = true, optional = true }
