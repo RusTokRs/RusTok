@@ -27,6 +27,7 @@ pub use fanout::{
 pub use fanout_worker::{
     DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE, DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE,
     MAX_NOTIFICATION_FANOUT_BATCH_SIZE, MAX_NOTIFICATION_FANOUT_PAGE_SIZE,
+    NotificationFanoutJobWorkItem, NotificationFanoutSourceWorkItem,
     NotificationFanoutWorker, NotificationFanoutWorkerBatchResult,
     NotificationFanoutWorkerFailure, NotificationFanoutWorkerStage,
 };
