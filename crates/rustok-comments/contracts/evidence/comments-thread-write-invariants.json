@@ -10,16 +10,21 @@
     "counter_owner": "crates/rustok-comments/src/entities/comment_thread.rs",
     "repair_migration": "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs",
     "migration_registry": "crates/rustok-comments/src/migrations/mod.rs",
-    "executable_test": "crates/rustok-comments/tests/thread_write_invariants.rs"
+    "executable_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
+    "postgres_environment": "RUSTOK_COMMENTS_TEST_DATABASE_URL"
   },
   "cases": [
     {
       "name": "serialized_position_allocation",
-      "expected": "every ActiveModel comment insert locks the tenant thread row before reading the highest position and overwrites caller-supplied position with the next checked value"
+      "expected": "transactional ActiveModel comment inserts lock the tenant thread row before reading the highest position and overwrite caller-supplied position with the next checked value"
     },
     {
       "name": "exact_active_comment_count",
-      "expected": "every existing thread ActiveModel save locks the tenant thread row and replaces caller-supplied comment_count with the number of tenant comments whose deleted_at is null"
+      "expected": "explicit transactional counter refreshes lock the tenant thread row and replace caller-supplied comment_count with the number of tenant comments whose deleted_at is null"
+    },
+    {
+      "name": "status_only_update_preserves_count",
+      "expected": "thread status, timestamp, and metadata updates that do not explicitly set comment_count leave the stored counter unchanged"
     },
     {
       "name": "historical_counter_repair",
@@ -32,11 +37,15 @@
     {
       "name": "bulk_bypass_rejection",
       "expected": "a unique thread_id plus position index rejects direct Entity insert paths that bypass ActiveModelBehavior"
+    },
+    {
+      "name": "postgres_concurrent_create_delete",
+      "expected": "two independent PostgreSQL connections preserve positions 1..3 and an exact active count across concurrent create/create and create/soft-delete phases"
     }
   ],
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-comments --test thread_write_invariants",
-    "execute concurrent PostgreSQL create and soft-delete transactions against one existing thread",
+    "execute the env-gated PostgreSQL case with RUSTOK_COMMENTS_TEST_DATABASE_URL",
     "retain final active-row count and gap-free unique position evidence",
     "retain migration output for a fixture containing stale counters and duplicate positions"
   ]
