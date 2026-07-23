@@ -1,6 +1,8 @@
-//! RusToK Index - Cross-module read model
+//! RusToK Index - cross-module relational Index Engine.
 //!
-//! Denormalized indexes for fast reads, linking, and cross-module filtering.
+//! The new engine core is implemented under [`domain`]. Existing source-specific
+//! indexers and v1 ports are legacy compatibility code scheduled for removal by
+//! the live implementation plan.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -10,6 +12,7 @@ use rustok_core::{
 use sea_orm_migration::MigrationTrait;
 
 pub mod content;
+pub mod domain;
 pub mod error;
 pub mod flex;
 pub mod migrations;
@@ -36,7 +39,7 @@ impl RusToKModule for IndexModule {
     }
 
     fn description(&self) -> &'static str {
-        "Cross-module index and read-model substrate."
+        "Cross-module relational index and query engine."
     }
 
     fn version(&self) -> &'static str {
@@ -56,7 +59,7 @@ impl RusToKModule for IndexModule {
             .extensions
             .get::<IndexerRuntimeConfig>()
             .cloned()
-            .expect("index module requires IndexerRuntimeConfig in ModuleRuntimeExtensions");
+            .unwrap_or_else(IndexerRuntimeConfig::load);
         registry.register(content::ContentIndexer::with_runtime(
             ctx.db.clone(),
             runtime.clone(),
