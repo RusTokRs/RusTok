@@ -25,7 +25,9 @@ pub use fanout::{
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
+    NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
     NotificationOutboxIntakeBatchResult, NotificationOutboxIntakeFailure,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeRejection,
     NotificationOutboxIntakeResult, NotificationOutboxIntakeWorker,
 };
 pub use recipient_policy::{
@@ -96,8 +98,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 4);
-        assert_eq!(module.migration_dependencies().len(), 4);
+        assert_eq!(module.migrations().len(), 5);
+        assert_eq!(module.migration_dependencies().len(), 5);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module
