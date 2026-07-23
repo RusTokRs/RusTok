@@ -21,7 +21,7 @@ use rustok_notifications::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, Statement, TryGetable,
+    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, Statement,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
