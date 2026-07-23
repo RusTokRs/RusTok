@@ -42,10 +42,8 @@ CREATE TABLE IF NOT EXISTS notification_outbox_intake_rejections (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_notification_outbox_intake_rejection_event FOREIGN KEY (outbox_event_id)
         REFERENCES sys_events(id) ON DELETE CASCADE,
-    CONSTRAINT ck_notification_outbox_intake_rejection CHECK (
-        schema_version > 0
-        AND btrim(event_type) <> ''
-        AND btrim(error_code) <> ''
+    CONSTRAINT ck_notification_outbox_intake_rejection_error CHECK (
+        btrim(error_code) <> ''
     )
 );
 
@@ -57,11 +55,11 @@ const SQLITE_UP: &str = r#"
 CREATE TABLE IF NOT EXISTS notification_outbox_intake_rejections (
     outbox_event_id TEXT PRIMARY KEY NOT NULL,
     event_type TEXT NOT NULL,
-    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+    schema_version INTEGER NOT NULL,
     error_code TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (outbox_event_id) REFERENCES sys_events(id) ON DELETE CASCADE,
-    CHECK (length(trim(event_type)) BETWEEN 1 AND 128),
+    CHECK (length(event_type) <= 128),
     CHECK (length(trim(error_code)) BETWEEN 1 AND 100)
 );
 
