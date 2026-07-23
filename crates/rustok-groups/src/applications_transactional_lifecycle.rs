@@ -31,12 +31,6 @@ impl GroupApplicationService {
         if application_model.user_id != actor_user_id {
             return Err(GroupsError::NotFound);
         }
-        if application_model.status != GroupApplicationStatus::Pending.as_str() {
-            return Err(GroupsError::Conflict(
-                "only a pending membership application can be cancelled".to_string(),
-            ));
-        }
-
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
         require_active_group(&group_model)?;
@@ -48,6 +42,11 @@ impl GroupApplicationService {
             false,
         )
         .await?;
+        if application_model.status != GroupApplicationStatus::Pending.as_str() {
+            return Err(GroupsError::Conflict(
+                "only a pending membership application can be cancelled".to_string(),
+            ));
+        }
         let membership_model = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(application_model.group_id))
@@ -160,6 +159,14 @@ impl GroupApplicationService {
             crate::effective_membership_guard::GroupManagerCapability::Moderate,
         )
         .await?;
+        crate::effective_membership_guard::require_user_not_denied_owned(
+            &transaction,
+            tenant_id,
+            application_model.group_id,
+            application_model.user_id,
+            true,
+        )
+        .await?;
 
         let previous_status = GroupApplicationStatus::from_str(&application_model.status)
             .map_err(GroupsError::Invariant)?;
@@ -171,14 +178,6 @@ impl GroupApplicationService {
                 "only a rejected or cancelled membership application can be reopened".to_string(),
             ));
         }
-        crate::effective_membership_guard::require_user_not_denied_owned(
-            &transaction,
-            tenant_id,
-            application_model.group_id,
-            application_model.user_id,
-            true,
-        )
-        .await?;
         let membership_model = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(application_model.group_id))
