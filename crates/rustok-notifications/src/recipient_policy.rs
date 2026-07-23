@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_notifications_api::{PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
