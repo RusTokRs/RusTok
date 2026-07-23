@@ -55,8 +55,8 @@ const candidateTest = read(contract.tests?.[0] ?? "");
 const moduleTest = read(contract.tests?.[1] ?? "");
 const library = read("crates/rustok-notifications/src/lib.rs");
 
-if (contract.slice !== "NOTIFY-03C" || contract.schema_version !== 5) {
-  failures.push("candidate worker contract must identify NOTIFY-03C schema 5");
+if (contract.slice !== "NOTIFY-03C" || contract.schema_version !== 6) {
+  failures.push("candidate worker contract must identify NOTIFY-03C schema 6");
 }
 if (!contract.promoted_by_slices?.includes("NOTIFY-03H")) {
   failures.push("candidate worker contract must record NOTIFY-03H commit guard promotion");
@@ -75,13 +75,14 @@ if (contract.bounded_loop?.default_batch_size !== 32
   failures.push("candidate worker bounded tenant-scoped selection contract is invalid");
 }
 if (contract.tenant_capability_gate?.preclaim_authority
-    !== "EffectiveModulePolicyService::resolve"
+    !== "EffectiveModulePolicyService::resolve_snapshot"
   || contract.tenant_capability_gate?.checked_before_each_candidate_claim !== true
   || contract.tenant_capability_gate?.observed_policy_revision_forwarded_to_commit !== true
+  || contract.tenant_capability_gate?.observed_manifest_defaults_forwarded_to_commit !== true
   || contract.tenant_capability_gate?.policy_error_fails_closed !== true
   || contract.tenant_capability_gate?.disabled_tenant_calls_recipient_policy !== false
   || contract.tenant_capability_gate?.disabled_tenant_calls_source_provider !== false) {
-  failures.push("candidate worker preclaim gate must resolve and forward the effective policy revision");
+  failures.push("candidate worker preclaim gate must forward one effective policy snapshot");
 }
 for (const field of [
   "inside_final_notification_transaction",
@@ -89,6 +90,7 @@ for (const field of [
   "before_preference_recheck",
   "before_notification_insert",
   "module_owner_resolves_tenant_overrides",
+  "uses_observed_manifest_defaults",
   "revision_match_required",
   "enabled_module_required",
   "revision_change_retryable",
@@ -101,10 +103,12 @@ for (const field of [
 }
 if (contract.commit_time_guard?.lifecycle_cursor_consumer_key !== "module.lifecycle"
   || contract.commit_time_guard?.server_reads_tenant_modules_directly !== false
+  || contract.commit_time_guard?.manifest_read_inside_final_transaction !== false
+  || contract.commit_time_guard?.extra_pool_connection_inside_final_transaction !== false
   || contract.commit_time_guard?.rejected_commit_creates_notification !== false
   || contract.commit_time_guard?.sqlite_behavioral_evidence_only !== true
   || contract.commit_time_guard?.atomic_with_manifest_or_security_mutation !== false) {
-  failures.push("candidate commit guard scope or degraded evidence contract is invalid");
+  failures.push("candidate commit guard scope or connection contract is invalid");
 }
 for (const field of [
   "candidate_transitions_to_retryable_error",
@@ -135,6 +139,7 @@ for (const marker of [
   "claimable_candidate_ids",
   "defer_candidate",
   "process_candidate_with_policy_revision",
+  "observed_default_enabled_modules",
   "FanoutItemStatus::Pending",
   "FanoutItemStatus::RetryableError",
   "FanoutItemStatus::Processing",
@@ -154,9 +159,11 @@ reject(
 for (const marker of [
   "pub trait NotificationTenantCapabilityCommitGuard",
   "NotificationTenantCapabilityCommitRequest",
+  "observed_default_enabled_modules: Vec<String>",
   "NotificationTenantCapabilityCommitDecision",
   "new_with_commit_guard",
   "process_candidate_with_policy_revision",
+  "validate_default_enabled_modules",
   "commit_guard.evaluate",
   "TenantCapabilityDisabled",
   "TenantPolicyRevisionChanged",
@@ -225,15 +232,17 @@ for (const marker of [
   "relation_ports_ready()",
   "candidate_worker_ready()",
   "shared_get::<ModuleRegistry>()",
-  "EffectiveModulePolicyService::resolve",
-  "policy.policy_revision().to_string()",
+  "EffectiveModulePolicyService::resolve_snapshot",
+  "snapshot.policy.policy_revision().to_string()",
+  "snapshot.default_enabled_modules",
+  "TenantPolicyObservation",
   "ServerNotificationTenantCapabilityCommitGuard",
-  "PlatformCompositionService::active_manifest",
+  "request.observed_default_enabled_modules",
   "SeaOrmModulePolicyRevisionConsumer::new",
   "lock_and_resolve_static_policy_in_transaction",
   "MODULE_LIFECYCLE_POLICY_CONSUMER",
   "NotificationCandidateWorker::new_with_commit_guard",
-  "candidate_work_policy_revision",
+  "candidate_work_policy_observation",
   "process_candidate_with_policy_revision",
   "NotificationError::LeaseUnavailable",
   "policy lookup failed closed",
@@ -259,15 +268,15 @@ requireOrder(
   [
     "for work in work_items",
     "if *stop_rx.borrow()",
-    "candidate_work_policy_revision",
+    "candidate_work_policy_observation",
     "process_candidate_with_policy_revision",
   ],
-  "shutdown and revisioned tenant policy must precede each canonical candidate claim",
+  "shutdown and observed tenant policy must precede each canonical candidate claim",
 );
 reject(
   server,
-  /tenant_modules|notification_fanout_items|candidate_item::Entity|Column::LeaseOwner|SELECT\s/i,
-  "server worker must not read module or Notifications private tables directly",
+  /tenant_modules|notification_fanout_items|candidate_item::Entity|Column::LeaseOwner|SELECT\s|PlatformCompositionService::active_manifest/i,
+  "server candidate worker must not read private tables or reload manifest inside its guard",
 );
 
 requireOrder(
@@ -296,6 +305,7 @@ for (const marker of [
   "commit_policy_revision_change_rolls_back_notification_and_retries_candidate",
   "RevisionChangedCommitGuard",
   "new_with_commit_guard",
+  "observed_defaults",
   "process_candidate_with_policy_revision",
   "NOTIFICATION_TENANT_POLICY_REVISION_CHANGED",
   "revision rejection must not create notifications",
