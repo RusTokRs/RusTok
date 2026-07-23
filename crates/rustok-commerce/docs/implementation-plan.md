@@ -131,11 +131,13 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Cut payment checkout compensation over to `PaymentCollectionStatusKind`, including
   cancel-race adoption, captured/manual-reconciliation routing, and provider-cancel
   admission.
+- [x] Cut payment owner checkout execution authorize/capture admission and replay over
+  to `PaymentCollectionStatusKind`; unknown states require manual reconciliation.
 - [x] Cut the mounted commerce payment stage over to typed payment collection and order
   lifecycle views for authorization, capture, replay, and order admission.
-- [ ] Cut the remaining payment execution, fulfillment stage/recovery, order recovery,
-  cart completion/compensation, and other audited critical lifecycle paths over to
-  canonical typed owner statuses.
+- [ ] Cut the remaining fulfillment stage/recovery, order recovery, cart
+  completion/compensation, payment recovery/provider adaptation, and other audited
+  critical lifecycle paths over to canonical typed owner statuses.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -239,8 +241,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   values for upgraded journal replay.
 - [x] Add static guards for order identity, completion, compensation, and mounted
   payment/fulfillment/pipeline owner boundaries.
-- [x] Use canonical typed order/payment collection lifecycle views in mounted payment
-  execution and owner compensation/settlement paths; unknown values fail closed.
+- [x] Use canonical typed order/payment collection lifecycle views in payment owner
+  execution/compensation and mounted payment execution; unknown values fail closed.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
@@ -452,10 +454,11 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   only after payment owner application, and mark provider events processed only after observers
   succeed.
 - [x] Keep marketplace reversal consumers free of raw provider payloads and signatures.
-- [x] Use `PaymentCollectionStatusKind` in checkout compensation and the mounted payment
-  stage; unknown collection states require manual reconciliation or fail closed.
-- [ ] Replace remaining raw payment lifecycle matching in execution/recovery and provider
-  adaptation paths with canonical typed owner states.
+- [x] Use `PaymentCollectionStatusKind` in checkout execution, checkout compensation,
+  and the mounted payment stage; unknown collection states require manual reconciliation
+  or fail closed.
+- [ ] Replace remaining raw payment lifecycle matching in recovery/provider adaptation
+  paths with canonical typed owner states.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
 - [ ] Execute checkout compensation and payment execution provider replay, crash,
@@ -502,8 +505,8 @@ Source inspection is not execution evidence.
   `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
   fulfillment, and pipeline source.
 - [x] Add static guards for fail-closed public `PortError` transport sanitization and
-  typed order/payment lifecycle use in checkout settlement, compensation, and mounted
-  payment stages.
+  typed order/payment lifecycle use in checkout execution, settlement, compensation,
+  and mounted payment stages.
 - [ ] Execute the new public-error and typed-lifecycle static guards against a repository
   checkout and retain their output.
 
@@ -577,10 +580,10 @@ Source inspection is not execution evidence.
    payment, fulfillment, and order owner ports.
 10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
     central fail-closed construction/serde sanitization and source guards are complete.
-11. [ ] Finish typed lifecycle cutover; canonical owner views plus order settlement,
-    order/payment compensation, and mounted payment-stage source are complete, while
-    payment execution/recovery, fulfillment, order recovery, and remaining critical
-    string matching stay open.
+11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment execution,
+    order settlement, order/payment compensation, and mounted payment-stage source are
+    complete, while payment recovery/provider adaptation, fulfillment, order recovery,
+    and remaining critical string matching stay open.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -619,8 +622,8 @@ Source inspection is not execution evidence.
   owner ports while preserving canonical provider replay identities.
 - [x] Add fail-closed public `PortError` transport sanitization and canonical typed
   lifecycle owner views without changing persisted or transport status strings.
-- [x] Cut order settlement, order/payment compensation, and mounted payment execution
-  admission/replay over to typed owner lifecycle status views.
+- [x] Cut payment owner execution, order settlement, order/payment compensation, and
+  mounted payment execution admission/replay over to typed owner lifecycle status views.
 
 ## Change rules
 
