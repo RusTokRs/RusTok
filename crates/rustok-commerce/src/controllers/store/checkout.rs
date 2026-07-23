@@ -140,6 +140,7 @@ pub async fn complete_cart_checkout(
 ) -> HttpResult<Json<CompleteCheckoutResponse>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
     let idempotency_key = required_idempotency_key(&headers)?;
+    let actor_id = super::checkout_actor_id(auth.0.as_ref());
     let checkout_input = CompleteCheckoutInput {
         cart_id,
         shipping_option_id: input.shipping_option_id,
@@ -174,7 +175,17 @@ pub async fn complete_cart_checkout(
         checkout_input,
     )
     .await
-    .map_err(storefront_checkout_http_error)?;
+    .map_err(|error| {
+        tracing::error!(
+            tenant_id = %tenant.id,
+            cart_id = %cart_id,
+            actor_id = %actor_id,
+            code = error.public_code(),
+            retryable = error.retryable(),
+            "storefront checkout request failed"
+        );
+        storefront_checkout_http_error(error)
+    })?;
 
     Ok(Json(response))
 }
