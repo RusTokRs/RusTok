@@ -14,6 +14,12 @@ pub enum RecordValidationError {
     #[error("schema is not registered: {0}")]
     SchemaNotFound(SchemaRef),
 
+    #[error("record tenant id must not be nil")]
+    NilTenantId,
+
+    #[error("record entity id must not be nil")]
+    NilEntityId,
+
     #[error("schema {0} requires a locale")]
     LocaleRequired(SchemaRef),
 
@@ -71,6 +77,15 @@ pub enum QueryValidationError {
     #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
 
+    #[error("query tenant id must not be nil")]
+    NilTenantId,
+
+    #[error("schema {0} requires a query locale")]
+    LocaleRequired(SchemaRef),
+
+    #[error("schema {0} does not permit a query locale")]
+    LocaleForbidden(SchemaRef),
+
     #[error("schema {schema} has no link named {link}")]
     UnknownLink { schema: SchemaRef, link: LinkName },
 
@@ -110,12 +125,17 @@ impl SchemaRegistry {
             .ok_or_else(|| RecordValidationError::SchemaNotFound(record.key.schema.clone()))?;
         let schema = &registered.schema;
 
-        validate_locale_mode(
+        if record.key.tenant_id.is_nil() {
+            return Err(RecordValidationError::NilTenantId);
+        }
+        if record.key.entity_id.is_nil() {
+            return Err(RecordValidationError::NilEntityId);
+        }
+        validate_record_locale(
             &schema.reference,
             schema.locale_mode,
             record.key.locale.is_some(),
         )?;
-
         if record.source_version == 0 {
             return Err(RecordValidationError::ZeroSourceVersion);
         }
@@ -173,6 +193,9 @@ impl SchemaRegistry {
 
             let mut targets = BTreeSet::new();
             for target in &link_value.targets {
+                if target.entity_id.is_nil() {
+                    return Err(RecordValidationError::NilEntityId);
+                }
                 if target.schema != definition.target_schema {
                     return Err(RecordValidationError::LinkTargetSchemaMismatch {
                         schema: schema.reference.clone(),
@@ -181,7 +204,6 @@ impl SchemaRegistry {
                         actual: target.schema.clone(),
                     });
                 }
-
                 if !targets.insert(target.clone()) {
                     return Err(RecordValidationError::DuplicateLinkTarget {
                         schema: schema.reference.clone(),
@@ -210,11 +232,18 @@ impl SchemaRegistry {
 
     pub fn validate_query(&self, query: &IndexQuery) -> Result<(), QueryValidationError> {
         query.validate_shape()?;
-        if self.get(&query.schema).is_none() {
-            return Err(QueryValidationError::Registry(
-                SchemaRegistryError::SchemaNotFound(query.schema.clone()),
-            ));
+        if query.scope.tenant_id.is_nil() {
+            return Err(QueryValidationError::NilTenantId);
         }
+
+        let root = self
+            .get(&query.schema)
+            .ok_or_else(|| SchemaRegistryError::SchemaNotFound(query.schema.clone()))?;
+        validate_query_locale(
+            &root.schema.reference,
+            root.schema.locale_mode,
+            query.scope.locale.is_some(),
+        )?;
 
         for path in &query.fields {
             let (schema, field) = self.resolve_field(&query.schema, path)?;
@@ -336,7 +365,7 @@ impl SchemaRegistry {
                 operator,
             });
         }
-        if !scalar_matches_type(value, field.value_type) && !matches!(value, IndexValue::Null) {
+        if matches!(value, IndexValue::Null) || !scalar_matches_type(value, field.value_type) {
             return Err(QueryValidationError::InvalidFilterValue {
                 schema: schema.clone(),
                 field: field.name.clone(),
@@ -398,7 +427,7 @@ impl SchemaRegistry {
     }
 }
 
-fn validate_locale_mode(
+fn validate_record_locale(
     schema: &SchemaRef,
     mode: LocaleMode,
     has_locale: bool,
@@ -408,6 +437,20 @@ fn validate_locale_mode(
             Err(RecordValidationError::LocaleRequired(schema.clone()))
         }
         (LocaleMode::None, true) => Err(RecordValidationError::LocaleForbidden(schema.clone())),
+        _ => Ok(()),
+    }
+}
+
+fn validate_query_locale(
+    schema: &SchemaRef,
+    mode: LocaleMode,
+    has_locale: bool,
+) -> Result<(), QueryValidationError> {
+    match (mode, has_locale) {
+        (LocaleMode::Required, false) => {
+            Err(QueryValidationError::LocaleRequired(schema.clone()))
+        }
+        (LocaleMode::None, true) => Err(QueryValidationError::LocaleForbidden(schema.clone())),
         _ => Ok(()),
     }
 }
@@ -466,8 +509,8 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        EntityKey, EntityName, IndexLink, IndexLinkValue, LinkedEntityKey, ModuleName,
-        OrderDirection, OrderExpr, Pagination, SchemaVersion,
+        EntityKey, EntityName, IndexLink, IndexLinkValue, IndexQueryScope, LinkedEntityKey,
+        ModuleName, OrderDirection, OrderExpr, Pagination, SchemaVersion,
     };
 
     fn reference(entity: &str) -> SchemaRef {
@@ -491,13 +534,13 @@ mod tests {
     }
 
     fn registry() -> SchemaRegistry {
-        let channel = IndexSchema {
+        let channel = crate::domain::IndexSchema {
             reference: reference("sales_channel"),
             locale_mode: LocaleMode::None,
             fields: vec![field("id", IndexValueType::Uuid)],
             links: Vec::new(),
         };
-        let product = IndexSchema {
+        let product = crate::domain::IndexSchema {
             reference: reference("product"),
             locale_mode: LocaleMode::Required,
             fields: vec![
@@ -575,6 +618,10 @@ mod tests {
     fn validates_linked_query_fields_filters_and_ordering() {
         let registry = registry();
         let query = IndexQuery {
+            scope: IndexQueryScope {
+                tenant_id: Uuid::new_v4(),
+                locale: Some(crate::domain::LocaleKey::new("en-US").unwrap()),
+            },
             schema: reference("product"),
             fields: vec![FieldPath::linked(
                 [LinkName::new("sales_channel").unwrap()],
