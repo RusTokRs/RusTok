@@ -17,6 +17,12 @@ pub enum NotificationError {
     ProviderFailure { retryable: bool },
     #[error("notification recipient policy is unavailable")]
     RecipientPolicyFailure { retryable: bool },
+    #[error("notification tenant capability is disabled at commit time")]
+    TenantCapabilityDisabled,
+    #[error("notification tenant policy revision changed before commit")]
+    TenantPolicyRevisionChanged,
+    #[error("notification tenant policy commit guard failed")]
+    TenantPolicyCommitFailure { retryable: bool },
     #[error("notification source event identity conflicts with an existing inbox record")]
     SourceIdentityConflict,
     #[error("notification fan-out lease is unavailable")]
@@ -42,6 +48,9 @@ impl NotificationError {
             Self::ProviderRejected => "NOTIFICATION_SOURCE_EVENT_REJECTED",
             Self::ProviderFailure { .. } => "NOTIFICATION_SOURCE_PROVIDER_FAILURE",
             Self::RecipientPolicyFailure { .. } => "NOTIFICATION_RECIPIENT_POLICY_FAILURE",
+            Self::TenantCapabilityDisabled => "NOTIFICATION_TENANT_CAPABILITY_DISABLED",
+            Self::TenantPolicyRevisionChanged => "NOTIFICATION_TENANT_POLICY_REVISION_CHANGED",
+            Self::TenantPolicyCommitFailure { .. } => "NOTIFICATION_TENANT_POLICY_COMMIT_FAILURE",
             Self::SourceIdentityConflict => "NOTIFICATION_SOURCE_IDENTITY_CONFLICT",
             Self::LeaseUnavailable => "NOTIFICATION_FANOUT_LEASE_UNAVAILABLE",
             Self::CursorDidNotAdvance => "NOTIFICATION_FANOUT_CURSOR_STALLED",
@@ -54,10 +63,14 @@ impl NotificationError {
 
     pub const fn is_retryable(&self) -> bool {
         match self {
-            Self::SourceUnavailable | Self::LeaseUnavailable | Self::Database(_) => true,
-            Self::ProviderFailure { retryable } | Self::RecipientPolicyFailure { retryable } => {
-                *retryable
-            }
+            Self::SourceUnavailable
+            | Self::LeaseUnavailable
+            | Self::Database(_)
+            | Self::TenantCapabilityDisabled
+            | Self::TenantPolicyRevisionChanged => true,
+            Self::ProviderFailure { retryable }
+            | Self::RecipientPolicyFailure { retryable }
+            | Self::TenantPolicyCommitFailure { retryable } => *retryable,
             Self::UnsupportedEvent
             | Self::InvalidEvent
             | Self::ProviderRejected

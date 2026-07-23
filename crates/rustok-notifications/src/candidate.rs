@@ -8,8 +8,8 @@ use rustok_notifications_api::{
     NotificationTargetRef,
 };
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait, sea_query::OnConflict,
+    ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -24,8 +24,10 @@ const DEFAULT_LEASE_SECONDS: i64 = 60;
 const RETRY_DELAY_SECONDS: i64 = 30;
 const MAX_WORKER_ID_BYTES: usize = 191;
 const MAX_ERROR_CODE_BYTES: usize = 100;
+const MAX_POLICY_REVISION_BYTES: usize = 128;
 const DEFAULT_SOURCE_SCOPE: &str = "*";
 const DEFAULT_TYPE_SCOPE: &str = "*";
+const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
 const PREFERENCE_DISABLED_CODE: &str = "NOTIFICATION_PREFERENCE_DISABLED";
 const SOURCE_TARGET_UNAVAILABLE_CODE: &str = "NOTIFICATION_SOURCE_TARGET_UNAVAILABLE";
 
@@ -128,6 +130,48 @@ pub trait NotificationRecipientPolicy: Send + Sync {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationTenantCapabilityCommitRequest {
+    pub tenant_id: Uuid,
+    pub module_slug: String,
+    pub observed_policy_revision: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationTenantCapabilityCommitDecision {
+    Allow,
+    Disabled,
+    RevisionChanged,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationTenantCapabilityCommitError {
+    pub retryable: bool,
+}
+
+impl NotificationTenantCapabilityCommitError {
+    pub const fn retryable() -> Self {
+        Self { retryable: true }
+    }
+
+    pub const fn permanent() -> Self {
+        Self { retryable: false }
+    }
+}
+
+#[async_trait]
+pub trait NotificationTenantCapabilityCommitGuard: Send + Sync {
+    async fn evaluate(
+        &self,
+        transaction: &DatabaseTransaction,
+        request: NotificationTenantCapabilityCommitRequest,
+    ) -> Result<
+        NotificationTenantCapabilityCommitDecision,
+        NotificationTenantCapabilityCommitError,
+    >;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationCandidateProcessResult {
     pub item_id: Uuid,
     pub status: FanoutItemStatus,
@@ -140,6 +184,7 @@ pub struct NotificationCandidateService {
     db: DatabaseConnection,
     registry: Arc<NotificationSourceRegistry>,
     policy: Arc<dyn NotificationRecipientPolicy>,
+    commit_guard: Option<Arc<dyn NotificationTenantCapabilityCommitGuard>>,
 }
 
 impl NotificationCandidateService {
@@ -152,19 +197,54 @@ impl NotificationCandidateService {
             db,
             registry,
             policy,
+            commit_guard: None,
         }
     }
 
-    /// Processes one pending fan-out candidate through preferences, recipient
-    /// privacy policy and current source authorization before creating an in-app
-    /// notification row.
-    ///
-    /// The injected policy is mandatory. There is deliberately no allow-all
-    /// default and this command never creates channel delivery attempts.
+    pub fn new_with_commit_guard(
+        db: DatabaseConnection,
+        registry: Arc<NotificationSourceRegistry>,
+        policy: Arc<dyn NotificationRecipientPolicy>,
+        commit_guard: Arc<dyn NotificationTenantCapabilityCommitGuard>,
+    ) -> Self {
+        Self {
+            db,
+            registry,
+            policy,
+            commit_guard: Some(commit_guard),
+        }
+    }
+
+    /// Trusted compatibility path for callers that establish tenant capability
+    /// outside this command. Production workers should use
+    /// `process_candidate_with_policy_revision`.
     pub async fn process_candidate(
         &self,
         item_id: Uuid,
         worker_id: &str,
+    ) -> NotificationResult<NotificationCandidateProcessResult> {
+        self.process_candidate_inner(item_id, worker_id, None).await
+    }
+
+    /// Processes one candidate with the exact effective-policy revision observed
+    /// before claim. The revision is revalidated under the lifecycle cursor lock
+    /// inside the final notification transaction.
+    pub async fn process_candidate_with_policy_revision(
+        &self,
+        item_id: Uuid,
+        worker_id: &str,
+        observed_policy_revision: &str,
+    ) -> NotificationResult<NotificationCandidateProcessResult> {
+        validate_policy_revision(observed_policy_revision)?;
+        self.process_candidate_inner(item_id, worker_id, Some(observed_policy_revision))
+            .await
+    }
+
+    async fn process_candidate_inner(
+        &self,
+        item_id: Uuid,
+        worker_id: &str,
+        observed_policy_revision: Option<&str>,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         validate_worker_id(worker_id)?;
         let initial = candidate_item::Entity::find_by_id(item_id)
@@ -267,7 +347,13 @@ impl NotificationCandidateService {
         }
 
         match self
-            .persist_final_notification(&item, &job, descriptor, worker_id)
+            .persist_final_notification(
+                &item,
+                &job,
+                descriptor,
+                worker_id,
+                observed_policy_revision,
+            )
             .await
         {
             Ok(result) => Ok(result),
@@ -452,7 +538,7 @@ impl NotificationCandidateService {
                 notification_id: Set(None),
                 attempt_count: Set(item.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(
-                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS))
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
                 ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
@@ -479,6 +565,7 @@ impl NotificationCandidateService {
         job: &fanout_job::Model,
         descriptor: NotificationSemanticDescriptor,
         worker_id: &str,
+        observed_policy_revision: Option<&str>,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         let txn = self.db.begin().await?;
         let current = candidate_item::Entity::find_by_id(item.id)
@@ -486,6 +573,35 @@ impl NotificationCandidateService {
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_candidate_lease(&current, worker_id)?;
+
+        if let Some(observed_policy_revision) = observed_policy_revision {
+            let Some(commit_guard) = self.commit_guard.as_ref() else {
+                txn.rollback().await?;
+                return Err(NotificationError::TenantPolicyCommitFailure { retryable: true });
+            };
+            let request = NotificationTenantCapabilityCommitRequest {
+                tenant_id: current.tenant_id,
+                module_slug: NOTIFICATIONS_MODULE_SLUG.to_string(),
+                observed_policy_revision: observed_policy_revision.to_string(),
+            };
+            match commit_guard.evaluate(&txn, request).await {
+                Ok(NotificationTenantCapabilityCommitDecision::Allow) => {}
+                Ok(NotificationTenantCapabilityCommitDecision::Disabled) => {
+                    txn.rollback().await?;
+                    return Err(NotificationError::TenantCapabilityDisabled);
+                }
+                Ok(NotificationTenantCapabilityCommitDecision::RevisionChanged) => {
+                    txn.rollback().await?;
+                    return Err(NotificationError::TenantPolicyRevisionChanged);
+                }
+                Err(error) => {
+                    txn.rollback().await?;
+                    return Err(NotificationError::TenantPolicyCommitFailure {
+                        retryable: error.retryable,
+                    });
+                }
+            }
+        }
 
         if !self.preference_allows_in_app(&txn, &current, job).await? {
             let completion_time = now();
@@ -691,6 +807,19 @@ fn validate_worker_id(worker_id: &str) -> NotificationResult<()> {
         return Err(NotificationError::Validation(format!(
             "worker id must contain between 1 and {MAX_WORKER_ID_BYTES} bytes"
         )));
+    }
+    Ok(())
+}
+
+fn validate_policy_revision(policy_revision: &str) -> NotificationResult<()> {
+    if policy_revision.trim().is_empty()
+        || policy_revision != policy_revision.trim()
+        || policy_revision.len() > MAX_POLICY_REVISION_BYTES
+        || policy_revision.chars().any(char::is_control)
+    {
+        return Err(NotificationError::Validation(
+            "observed tenant policy revision is invalid".to_string(),
+        ));
     }
     Ok(())
 }

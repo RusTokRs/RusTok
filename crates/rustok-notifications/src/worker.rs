@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::candidate::{
     NotificationCandidateProcessResult, NotificationCandidateService, NotificationRecipientPolicy,
+    NotificationTenantCapabilityCommitGuard,
 };
 use crate::error::{NotificationError, NotificationResult};
 use crate::model::FanoutItemStatus;
@@ -117,6 +118,8 @@ impl std::fmt::Debug for NotificationCandidateWorker {
 }
 
 impl NotificationCandidateWorker {
+    /// Trusted compatibility constructor. Executable production hosts must use
+    /// `new_with_commit_guard` so the final inbox write is revision-guarded.
     pub fn new(
         db: DatabaseConnection,
         registry: Arc<NotificationSourceRegistry>,
@@ -124,15 +127,31 @@ impl NotificationCandidateWorker {
         worker_id: impl Into<String>,
         batch_size: usize,
     ) -> NotificationResult<Self> {
-        let worker_id = worker_id.into();
-        validate_worker_id(&worker_id)?;
-        if !(1..=MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE).contains(&batch_size) {
-            return Err(NotificationError::Validation(format!(
-                "candidate worker batch size must contain between 1 and {MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE} items"
-            )));
-        }
+        let worker_id = validate_worker_configuration(worker_id.into(), batch_size)?;
         Ok(Self {
             service: NotificationCandidateService::new(db.clone(), registry, policy),
+            db,
+            worker_id,
+            batch_size,
+        })
+    }
+
+    pub fn new_with_commit_guard(
+        db: DatabaseConnection,
+        registry: Arc<NotificationSourceRegistry>,
+        policy: Arc<dyn NotificationRecipientPolicy>,
+        commit_guard: Arc<dyn NotificationTenantCapabilityCommitGuard>,
+        worker_id: impl Into<String>,
+        batch_size: usize,
+    ) -> NotificationResult<Self> {
+        let worker_id = validate_worker_configuration(worker_id.into(), batch_size)?;
+        Ok(Self {
+            service: NotificationCandidateService::new_with_commit_guard(
+                db.clone(),
+                registry,
+                policy,
+                commit_guard,
+            ),
             db,
             worker_id,
             batch_size,
@@ -226,7 +245,7 @@ impl NotificationCandidateWorker {
         Ok(())
     }
 
-    /// Claims and processes one candidate through the canonical service lease CAS.
+    /// Trusted compatibility path without a transaction-bound policy revision.
     pub async fn process_candidate(
         &self,
         item_id: Uuid,
@@ -236,10 +255,24 @@ impl NotificationCandidateWorker {
             .await
     }
 
+    pub async fn process_candidate_with_policy_revision(
+        &self,
+        item_id: Uuid,
+        observed_policy_revision: &str,
+    ) -> NotificationResult<NotificationCandidateProcessResult> {
+        self.service
+            .process_candidate_with_policy_revision(
+                item_id,
+                self.worker_id.as_str(),
+                observed_policy_revision,
+            )
+            .await
+    }
+
     /// Convenience bounded batch path for trusted callers that have already
     /// established tenant capability. Deployment-owned loops should use
     /// `claimable_candidate_work`, check shutdown and tenant capability between
-    /// items, then call `process_candidate`.
+    /// items, then call `process_candidate_with_policy_revision`.
     pub async fn process_next_batch(&self) -> NotificationResult<NotificationCandidateBatchResult> {
         let work_items = self.claimable_candidate_work().await?;
         let mut result = NotificationCandidateBatchResult {
@@ -287,6 +320,19 @@ fn claimable_condition(timestamp: DateTime<FixedOffset>) -> Condition {
                 .add(candidate_item::Column::Status.eq(FanoutItemStatus::Processing))
                 .add(candidate_item::Column::LeaseExpiresAt.lt(timestamp)),
         )
+}
+
+fn validate_worker_configuration(
+    worker_id: String,
+    batch_size: usize,
+) -> NotificationResult<String> {
+    validate_worker_id(&worker_id)?;
+    if !(1..=MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE).contains(&batch_size) {
+        return Err(NotificationError::Validation(format!(
+            "candidate worker batch size must contain between 1 and {MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE} items"
+        )));
+    }
+    Ok(worker_id)
 }
 
 fn validate_worker_id(worker_id: &str) -> NotificationResult<()> {

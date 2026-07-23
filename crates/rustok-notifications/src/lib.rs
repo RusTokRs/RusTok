@@ -19,6 +19,8 @@ pub use candidate::{
     NotificationCandidateProcessResult, NotificationCandidateService, NotificationRecipientPolicy,
     NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
     NotificationRecipientPolicyRequest, NotificationRecipientSuppression,
+    NotificationTenantCapabilityCommitDecision, NotificationTenantCapabilityCommitError,
+    NotificationTenantCapabilityCommitGuard, NotificationTenantCapabilityCommitRequest,
 };
 pub use error::{NotificationError, NotificationResult};
 pub use fanout::{
