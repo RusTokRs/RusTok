@@ -109,10 +109,34 @@ jobs:
               if old not in source:
                   raise SystemExit(f"replacement anchor missing in {path}")
               target.write_text(source.replace(old, new, 1))
+
+          generic_forum_error = '.map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;'
+          typed_forum_error = '.map_err(crate::controllers::map_forum_error)?;'
+          topics = Path("crates/rustok-forum/src/controllers/topics.rs")
+          source = topics.read_text()
+          replacements = source.count(generic_forum_error)
+          if replacements < 10:
+              raise SystemExit(f"expected at least 10 topic error mappings, found {replacements}")
+          source = source.replace(generic_forum_error, typed_forum_error)
+          source = source.replace("HttpError::unauthorized(", "HttpError::forbidden(")
+          topics.write_text(source)
           PY
 
           targets=(
+            crates/rustok-forum/src/controllers/categories.rs
+            crates/rustok-forum/src/controllers/category_commands.rs
+            crates/rustok-forum/src/controllers/category_lifecycle.rs
+            crates/rustok-forum/src/controllers/category_policy.rs
+            crates/rustok-forum/src/controllers/category_tree.rs
+            crates/rustok-forum/src/controllers/content_commands.rs
+            crates/rustok-forum/src/controllers/mod.rs
+            crates/rustok-forum/src/controllers/quote_commands.rs
+            crates/rustok-forum/src/controllers/replies.rs
+            crates/rustok-forum/src/controllers/topics.rs
+            crates/rustok-forum/src/controllers/users.rs
             crates/rustok-forum/src/graphql/query.rs
+            crates/rustok-forum/src/services/category.rs
+            crates/rustok-forum/src/services/category_lifecycle.rs
             crates/rustok-forum/src/services/category_owner.rs
             crates/rustok-forum/src/services/read_model.rs
             crates/rustok-forum/src/services/subscription/category.rs
@@ -120,6 +144,8 @@ jobs:
             crates/rustok-forum/src/services/subscription/policy.rs
             crates/rustok-forum/src/services/subscription/topic.rs
             crates/rustok-forum/src/state_machine.rs
+            crates/rustok-forum/tests/category_atomicity_sqlite.rs
+            crates/rustok-forum/tests/known_regressions.rs
             crates/rustok-forum/tests/reply_position_integrity_sqlite.rs
             crates/rustok-forum/tests/soft_delete_revision_postgres.rs
             crates/rustok-forum/tests/soft_delete_revision_sqlite.rs
