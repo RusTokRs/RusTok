@@ -44,6 +44,9 @@ pub enum SchemaRegistryError {
     #[error(transparent)]
     InvalidSchema(#[from] DomainError),
 
+    #[error("schema registration batch must not be empty")]
+    EmptyRegistrationBatch,
+
     #[error("schema batch contains duplicate reference: {0}")]
     DuplicateBatchReference(SchemaRef),
 
@@ -57,7 +60,7 @@ pub enum SchemaRegistryError {
     },
 
     #[error(
-        "schema version must increase for {identity}: latest is {latest}, attempted {attempted}"
+        "schema version must increase for {identity}: latest is {latest:?}, attempted {attempted:?}"
     )]
     NonMonotonicVersion {
         identity: SchemaIdentity,
@@ -78,6 +81,16 @@ pub enum SchemaRegistryError {
         link: LinkName,
         target: SchemaRef,
         field: FieldName,
+    },
+
+    #[error(
+        "schema {source} link {link} joins incompatible fields {source_field} and {target_field}"
+    )]
+    LinkFieldTypeMismatch {
+        source: SchemaRef,
+        link: LinkName,
+        source_field: FieldName,
+        target_field: FieldName,
     },
 
     #[error("schema is not registered: {0}")]
@@ -137,10 +150,10 @@ impl SchemaRegistry {
         &mut self,
         schema: IndexSchema,
     ) -> Result<RegistrationOutcome, SchemaRegistryError> {
-        self.register_batch([schema])?
-            .into_iter()
-            .next()
-            .ok_or_else(|| unreachable_registry_error())
+        let mut outcomes = self.register_batch([schema])?;
+        outcomes
+            .pop()
+            .ok_or(SchemaRegistryError::EmptyRegistrationBatch)
     }
 
     /// Atomically validates and registers a group of schemas.
@@ -206,17 +219,33 @@ impl SchemaRegistry {
                         target: link.target_schema.clone(),
                     })?;
 
-                for target_field in &link.target_fields {
-                    if !target
+                for (source_field_name, target_field_name) in
+                    link.source_fields.iter().zip(&link.target_fields)
+                {
+                    let source_field = schema
                         .fields
                         .iter()
-                        .any(|field| field.name == *target_field)
-                    {
-                        return Err(SchemaRegistryError::UnknownTargetField {
+                        .find(|field| field.name == *source_field_name)
+                        .ok_or_else(|| SchemaRegistryError::InvalidSchema(
+                            DomainError::UnknownLinkSourceField(source_field_name.to_string()),
+                        ))?;
+                    let target_field = target
+                        .fields
+                        .iter()
+                        .find(|field| field.name == *target_field_name)
+                        .ok_or_else(|| SchemaRegistryError::UnknownTargetField {
                             source: source_reference.clone(),
                             link: link.name.clone(),
                             target: link.target_schema.clone(),
-                            field: target_field.clone(),
+                            field: target_field_name.clone(),
+                        })?;
+
+                    if source_field.value_type != target_field.value_type {
+                        return Err(SchemaRegistryError::LinkFieldTypeMismatch {
+                            source: source_reference.clone(),
+                            link: link.name.clone(),
+                            source_field: source_field_name.clone(),
+                            target_field: target_field_name.clone(),
                         });
                     }
                 }
@@ -303,7 +332,10 @@ impl SchemaRegistry {
                 }
                 previous.insert(target, (node, link));
                 if target == goal {
-                    return Ok(reconstruct_path(&self.graph, start, goal, &previous));
+                    if let Some(path) = reconstruct_path(&self.graph, start, goal, &previous) {
+                        return Ok(path);
+                    }
+                    break;
                 }
                 queue.push_back(target);
             }
@@ -316,15 +348,10 @@ impl SchemaRegistry {
     }
 
     fn rebuild_graph(&mut self) {
-        self.graph = DiGraph::new();
-        self.nodes.clear();
-
-        for registered in self.iter() {
-            let reference = registered.schema.reference.clone();
-            let node = self.graph.add_node(reference.clone());
-            self.nodes.insert(reference, node);
-        }
-
+        let references = self
+            .iter()
+            .map(|registered| registered.schema.reference.clone())
+            .collect::<Vec<_>>();
         let mut edges = self
             .iter()
             .flat_map(|registered| {
@@ -338,6 +365,14 @@ impl SchemaRegistry {
             })
             .collect::<Vec<_>>();
         edges.sort();
+
+        self.graph = DiGraph::new();
+        self.nodes.clear();
+
+        for reference in references {
+            let node = self.graph.add_node(reference.clone());
+            self.nodes.insert(reference, node);
+        }
 
         for (source, link, target) in edges {
             if let (Some(source), Some(target)) =
@@ -354,14 +389,12 @@ fn reconstruct_path(
     start: NodeIndex,
     goal: NodeIndex,
     previous: &HashMap<NodeIndex, (NodeIndex, LinkName)>,
-) -> Vec<LinkPathStep> {
+) -> Option<Vec<LinkPathStep>> {
     let mut reversed = Vec::new();
     let mut cursor = goal;
 
     while cursor != start {
-        let (parent, link) = previous
-            .get(&cursor)
-            .expect("path predecessor must exist after successful traversal");
+        let (parent, link) = previous.get(&cursor)?;
         reversed.push(LinkPathStep {
             source: graph[*parent].clone(),
             link: link.clone(),
@@ -371,11 +404,7 @@ fn reconstruct_path(
     }
 
     reversed.reverse();
-    reversed
-}
-
-fn unreachable_registry_error() -> SchemaRegistryError {
-    SchemaRegistryError::InvalidSchema(DomainError::EmptySchema)
+    Some(reversed)
 }
 
 #[cfg(test)]
