@@ -17,6 +17,7 @@ const cart = read('crates/rustok-cart/src/dto/status.rs');
 const cartLib = read('crates/rustok-cart/src/lib.rs');
 const order = read('crates/rustok-order/src/status.rs');
 const orderLib = read('crates/rustok-order/src/lib.rs');
+const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs');
 const payment = read('crates/rustok-payment/src/dto/payment.rs');
 const paymentStage = read('crates/rustok-commerce/src/services/checkout_payment_stages.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/status.rs');
@@ -40,6 +41,10 @@ for (const [source, value, label] of [
   [order, 'pub fn status_kind(&self) -> OrderStatusKind', 'order typed accessor'],
   [order, '_ => Self::Unknown', 'order unknown mapping'],
   [orderLib, 'pub mod status;', 'order status module export'],
+  [orderRecovery, 'match order.status_kind()', 'typed order recovery dispatch'],
+  [orderRecovery, 'OrderStatusKind::Pending', 'typed pending recovery'],
+  [orderRecovery, 'OrderStatusKind::Cancelled', 'typed cancelled recovery'],
+  [orderRecovery, 'OrderStatusKind::Unknown', 'typed unknown recovery'],
   [payment, 'pub enum PaymentCollectionStatusKind', 'payment collection status enum'],
   [payment, 'pub enum PaymentStatusKind', 'payment status enum'],
   [payment, 'pub enum RefundStatusKind', 'refund status enum'],
@@ -79,6 +84,14 @@ for (const value of [
   'order.status.as_str()',
 ]) {
   forbidText(paymentStage, value, 'mounted payment stage raw lifecycle status');
+}
+
+for (const value of [
+  'match order.status.as_str()',
+  '"pending" =>',
+  '"confirmed" | "paid" | "shipped" | "delivered"',
+]) {
+  forbidText(orderRecovery, value, 'order checkout recovery raw lifecycle status');
 }
 
 forbidText(
