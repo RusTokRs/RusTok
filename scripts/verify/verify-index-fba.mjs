@@ -25,6 +25,7 @@ const benchmarkSql = [
   'ops/benches/src/index_storage/sql/hot.rs',
 ].map(read).join('\n');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
+const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
 const serverDispatcher = read('apps/server/src/services/module_event_dispatcher.rs');
 
 for (const obsolete of [
@@ -95,7 +96,10 @@ for (const marker of [
   '- [x] Prototype a specialized hot typed projection as the comparison baseline.',
   '- [x] Verify source/candidate entity and link cardinality before timing.',
   '- [x] Verify identical workload result digests across all candidates.',
-  '- [ ] Run and archive 100k Product-locale row evidence.',
+  '- [x] Add deterministic Product batch update and delete workloads for all models.',
+  '- [x] Isolate every measured mutation in its own rolled-back transaction.',
+  '- [ ] Run and archive 100k Product-locale row read and mutation evidence.',
+  '- [ ] Add persistent update/delete churn for dead tuples, relation bloat, and',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
   if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
@@ -112,6 +116,8 @@ for (const marker of [
   'idx_bench_hot',
   'two_hop_channel_filter',
   'keyset_page',
+  'update_product_batch',
+  'delete_product_batch',
   'CREATE TABLE {schema}.link',
 ]) {
   if (!benchmarkSql.includes(marker)) fail(`benchmark SQL missing ${marker}`);
@@ -126,11 +132,29 @@ for (const marker of [
 ]) {
   if (!benchmarkRunner.includes(marker)) fail(`benchmark runner missing ${marker}`);
 }
-if (!benchmarkCargo.includes('name = "index-storage-benchmark"')) {
-  fail('benchmark executable is not registered');
+for (const marker of [
+  'TransactionTrait',
+  'transaction.rollback().await',
+  'affected_entities',
+  'affected_links',
+  'maximum_node_wal_records',
+  'maximum_node_wal_fpi',
+  'maximum_node_wal_bytes',
+  'EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)',
+  'write_mutation_report',
+]) {
+  if (!mutationRunner.includes(marker)) fail(`mutation runner missing ${marker}`);
+}
+for (const binary of ['index-storage-benchmark', 'index-storage-mutation-benchmark']) {
+  if (!benchmarkCargo.includes(`name = "${binary}"`)) {
+    fail(`benchmark executable is not registered: ${binary}`);
+  }
 }
 if (!benchmarkDoc.includes('Production migrations: intentionally absent')) {
   fail('benchmark documentation must preserve the production-migration boundary');
 }
+if (!benchmarkDoc.includes('Persistent churn, dead tuple growth')) {
+  fail('benchmark documentation must keep vacuum/bloat evidence open');
+}
 
-console.log('[verify-index-fba] Index core boundary and M2 benchmark separation are consistent');
+console.log('[verify-index-fba] Index core boundary and M2 read/mutation benchmark separation are consistent');

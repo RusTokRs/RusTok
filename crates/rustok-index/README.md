@@ -41,7 +41,9 @@ a rewrite goal.
 - FBA status: `in_progress`
 - M0 code reset: complete
 - M1 generic domain/application core: complete
-- M2 benchmark harness: implemented
+- M2 read/query benchmark harness: implemented
+- M2 transactional mutation/WAL harness: implemented
+- M2 persistent churn/VACUUM harness: pending
 - M2 PostgreSQL evidence and storage ADR: pending
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
@@ -81,10 +83,15 @@ Variant, SalesChannel, locale, tag, price, timestamp, and link data. It compares
 JSONB, normalized typed EAV, and specialized hot-projection candidates using the
 same equality, range, multi-value, two-hop link, keyset, and exact-count
 workloads. Reports contain load time, schema size, PostgreSQL settings, executed
-SQL, and repeated full JSON `EXPLAIN ANALYZE` evidence.
+SQL, result digests, and repeated full JSON `EXPLAIN ANALYZE` evidence.
 
-No candidate is selected until the 100k and 1m runs, update/delete amplification,
-vacuum behavior, comparison report, and storage ADR are complete.
+A separate transactional mutation runner applies the same deterministic Product
+batch update/delete workload to every candidate, validates equal affected entity
+and link counts, records BUFFERS/WAL plans, and rolls each measured transaction
+back. It measures write-path amplification without corrupting later repetitions.
+
+No candidate is selected until smoke/100k/1m read and mutation runs, persistent
+churn/dead-tuple/VACUUM evidence, comparison, and the storage ADR are complete.
 
 ## Docs
 
