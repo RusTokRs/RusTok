@@ -76,7 +76,7 @@ pub async fn list_categories(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     metrics::record_read_path_query(
         "http",
         "forum.list_categories",
@@ -121,8 +121,8 @@ pub async fn get_category(
 ) -> HttpResult<Json<CategoryResponse>> {
     ensure_forum_permission(
         &auth,
-        &[Permission::FORUM_CATEGORIES_LIST],
-        "Permission denied: forum_categories:list required",
+        &[Permission::FORUM_CATEGORIES_READ],
+        "Permission denied: forum_categories:read required",
     )?;
 
     let locale = params
@@ -138,7 +138,7 @@ pub async fn get_category(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(category))
 }
 
@@ -170,7 +170,7 @@ pub async fn create_category(
     let category = service
         .create(tenant.id, forum_security(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok((StatusCode::CREATED, Json(category)))
 }
 
@@ -204,7 +204,7 @@ pub async fn update_category(
     let category = service
         .update(tenant.id, id, forum_security(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(category))
 }
 
@@ -236,7 +236,7 @@ pub async fn delete_category(
     service
         .delete(tenant.id, id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -267,7 +267,7 @@ pub async fn subscribe_category(
     SubscriptionService::new(runtime.db_clone())
         .set_category_subscription(tenant.id, id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
     let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
@@ -278,7 +278,7 @@ pub async fn subscribe_category(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(category))
 }
 
@@ -309,7 +309,7 @@ pub async fn unsubscribe_category(
     SubscriptionService::new(runtime.db_clone())
         .clear_category_subscription(tenant.id, id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
     let category = CategoryService::new(runtime.db_clone())
         .get_with_locale_fallback(
@@ -320,7 +320,7 @@ pub async fn unsubscribe_category(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(category))
 }
 
