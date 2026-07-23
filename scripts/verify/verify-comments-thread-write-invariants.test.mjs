@@ -85,7 +85,7 @@ function fixture({
       DatabaseBackend::Postgres;
       DatabaseBackend::Sqlite;
       UPDATE comment_threads;
-      COUNT(comment.id)::INTEGER;
+      COUNT(comment_row.id)::INTEGER;
       ROW_NUMBER() OVER;
       PARTITION BY thread_id;
       ORDER BY position ASC, created_at ASC, id ASC;
