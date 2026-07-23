@@ -1,9 +1,9 @@
 from pathlib import Path
 
 
-def replace_line(text: str, prefix: str, replacement: str, label: str) -> str:
+def replace_matching_line(text: str, predicate, replacement: str, label: str) -> str:
     lines = text.splitlines(keepends=True)
-    matches = [index for index, line in enumerate(lines) if line.startswith(prefix)]
+    matches = [index for index, line in enumerate(lines) if predicate(line)]
     if len(matches) != 1:
         raise SystemExit(f"{label}: expected exactly one line, found {len(matches)}")
     index = matches[0]
@@ -35,9 +35,9 @@ def replace_paragraph(text: str, prefix: str, replacement: str, label: str) -> s
 
 registry_path = Path("docs/modules/registry.md")
 registry = registry_path.read_text()
-registry = replace_line(
+registry = replace_matching_line(
     registry,
-    "| `index` |",
+    lambda line: line.startswith("| `index` |") and "index-fba-registry.json" in line,
     "| `index` | admin | `in_progress` | `in_progress` | `core_transport_ui` | [Live plan](../../crates/rustok-index/docs/implementation-plan.md); Index v1 ports, registry, runtime evidence, projections, and read-model contracts were removed completely. The replacement is the generic cross-module relational Index Engine; FBA remains `in_progress` until new query/rebuild contracts and provider-consumer evidence are published. |",
     "central Index readiness row",
 )
@@ -82,18 +82,30 @@ overview = replace_span(
     "The former Index v1 document-ingestion/read-model boundary was removed\ncompletely. The replacement `rustok-index` is a generic cross-module relational\nIndex Engine whose query/rebuild contracts remain `in_progress`; Search integration\nand any remote ingestion split are deferred until the replacement contracts have\ncompiled and live replay, lag, rebuild, and recovery evidence.",
     "Search/Index extraction description",
 )
-overview = overview.replace("`index.read_model.v1` / `index.rebuild.v1`", "the removed Index v1 contracts")
-overview = overview.replace("`index.read_model.v1` and `index.rebuild.v1`", "the removed Index v1 contracts")
-for forbidden in ("index.read_model.v1", "index.rebuild.v1", "owns canonical document ingestion and read models"):
+overview = replace_span(
+    overview,
+    "4. Remove Search query-time SQL access to `index_product_categories`",
+    "`IndexReadModelPort` only for optional enrichment.",
+    "4. Remove Search query-time SQL access to the removed Index v1 projection tables. Populate the needed category and facet fields in Search-owned projections during ingestion. Do not depend on removed Index v1 ports; reconnect only through replacement Index Engine contracts after the first vertical slice.",
+    "Search extraction Index v1 port step",
+)
+overview = overview.replace("index.read_model.v1", "removed Index v1 read-model contract")
+overview = overview.replace("index.rebuild.v1", "removed Index v1 rebuild contract")
+for forbidden in (
+    "index.read_model.v1",
+    "index.rebuild.v1",
+    "IndexReadModelPort",
+    "owns canonical document ingestion and read models",
+):
     if forbidden in overview:
         raise SystemExit(f"FBA overview still contains removed Index v1 reference: {forbidden}")
 overview_path.write_text(overview)
 
 plan_path = Path("crates/rustok-index/docs/implementation-plan.md")
 plan = plan_path.read_text()
-plan = replace_line(
+plan = replace_matching_line(
     plan,
-    "- [ ] Synchronize the central module registry and historical FBA overview.",
+    lambda line: line.startswith("- [ ] Synchronize the central module registry and historical FBA overview."),
     "- [x] Synchronize the central module registry and historical FBA overview.",
     "M0 checkbox",
 )
