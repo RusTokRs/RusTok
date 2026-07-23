@@ -1,7 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slice": "NOTIFY-03C",
-  "promoted_by_slice": "NOTIFY-03D",
+  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "owner_driver": "crates/rustok-notifications/src/worker.rs",
@@ -11,6 +11,7 @@
   "policy_composition": "apps/server/src/services/notification_recipient_policy.rs",
   "bootstrap": "apps/server/src/services/server_bootstrap.rs",
   "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
   "enablement": {
     "environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
     "default_enabled": false,
@@ -43,22 +44,27 @@
   },
   "upstream_runtime": {
     "outbox_intake_delivered": true,
-    "source_inbox_materialization_worker_deferred": true
+    "source_inbox_materialization_worker_delivered": true,
+    "fanout_page_worker_delivered": true,
+    "tenant_effective_policy_gate_delivered": true,
+    "upstream_workers_default_enabled": false
   },
   "tests": [
     "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
-    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs"
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "outbox_intake_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
+    "fanout_worker_verifier": "scripts/verify/verify-notifications-fanout-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "production source inbox materialization and bounded fanout page worker",
-    "parallel candidate worker concurrency",
+    "parallel candidate worker concurrency evidence",
     "PostgreSQL lease and recovery evidence",
     "worker health and lag metrics",
+    "default deployment enablement",
     "grouping and channel delivery"
   ]
 }
