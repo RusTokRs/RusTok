@@ -1,4 +1,4 @@
-use super::{Workload, WorkloadContext};
+use super::{MutationWorkload, Workload, WorkloadContext};
 
 pub fn prototype_sql() -> String {
     r#"
@@ -114,6 +114,30 @@ pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
             sql: format!(
                 "SELECT count(*)::bigint AS result_count FROM idx_bench_hot.product WHERE tenant_id = {tenant} AND locale = {locale} AND status = 'published'"
             ),
+        },
+    ]
+}
+
+pub fn mutation_workloads(context: &WorkloadContext) -> Vec<MutationWorkload> {
+    let tenant = context.tenant;
+    let locale = &context.locale;
+    let batch = context.mutation_batch;
+    let deleted_links = context.expected_deleted_links();
+
+    vec![
+        MutationWorkload {
+            name: "update_product_batch",
+            sql: format!(
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), updated AS (UPDATE idx_bench_hot.product AS product SET source_version = product.source_version + 1, price_minor = product.price_minor + 17, rating_milli = product.rating_milli + 1 FROM targets WHERE product.tenant_id = {tenant} AND product.locale = {locale} AND product.product_id = targets.product_id RETURNING product.product_id) SELECT count(*)::bigint AS affected_entities FROM updated"
+            ),
+            expected_affected_entities: i64::from(batch),
+        },
+        MutationWorkload {
+            name: "delete_product_batch",
+            sql: format!(
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), deleted_links AS (DELETE FROM idx_bench_hot.link AS link USING targets WHERE link.tenant_id = {tenant} AND link.source_entity = 'product' AND link.source_locale = {locale} AND link.source_entity_id = targets.product_id RETURNING 1), deleted_entities AS (DELETE FROM idx_bench_hot.product AS product USING targets WHERE product.tenant_id = {tenant} AND product.locale = {locale} AND product.product_id = targets.product_id RETURNING product.product_id) SELECT (SELECT count(*) FROM deleted_entities)::bigint AS affected_entities, (SELECT count(*) FROM deleted_links)::bigint AS affected_links, {deleted_links}::bigint AS expected_links"
+            ),
+            expected_affected_entities: i64::from(batch),
         },
     ]
 }
