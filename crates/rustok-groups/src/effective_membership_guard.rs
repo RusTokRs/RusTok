@@ -1,9 +1,10 @@
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::domain::{GroupMembershipEffectiveStatus, GroupRole};
+use crate::error::{GroupsError, GroupsResult};
 use crate::governance_entities::command_receipt;
 use crate::membership_enforcement::resolve_group_membership_enforcement;
 
@@ -35,14 +36,13 @@ pub(crate) fn has_platform_manage(context: &PortContext) -> bool {
     context
         .claims
         .iter()
-        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
+        .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
 }
 
-/// Receipt-first replay compatibility guard.
+/// Receipt-first replay compatibility guard used by public facades.
 ///
-/// When the idempotency key already exists, the effective facade delegates immediately. The
-/// legacy owner transaction then returns the matching replay or the existing changed-request
-/// conflict before re-evaluating current membership authority.
+/// Existing receipts are delegated before current effective-state evaluation so identical replay
+/// and changed-request conflict semantics remain owned by the command transaction.
 pub(crate) async fn has_existing_receipt(
     db: &DatabaseConnection,
     context: &PortContext,
@@ -70,38 +70,43 @@ pub(crate) async fn has_existing_receipt(
         })
 }
 
-pub(crate) async fn require_effective_manager(
-    db: &DatabaseConnection,
+/// Canonical transaction-aware manager authorization.
+///
+/// Call this with the same owner transaction that will mutate invitation/application state. The
+/// resolver reads the membership and enforcement projection through that transaction, eliminating
+/// the facade-precheck-to-mutation authorization race.
+pub(crate) async fn require_effective_manager_owned<C>(
+    connection: &C,
     context: &PortContext,
+    tenant_id: Uuid,
     group_id: Uuid,
+    actor_user_id: Uuid,
     capability: GroupManagerCapability,
-) -> Result<(), PortError> {
+) -> GroupsResult<()>
+where
+    C: ConnectionTrait,
+{
     if has_platform_manage(context) {
         return Ok(());
     }
 
-    let tenant_id = tenant_id(context)?;
-    let actor_user_id = actor_user_id(context)?;
     let effective = resolve_group_membership_enforcement(
-        db,
+        connection,
         tenant_id,
         group_id,
         actor_user_id,
         Utc::now(),
     )
-    .await
-    .map_err(PortError::from)?;
+    .await?;
 
     if effective.effective_status == GroupMembershipEffectiveStatus::Suspended {
-        return Err(PortError::forbidden(
-            "groups.membership_suspended",
-            "the actor's group membership is suspended",
+        return Err(GroupsError::Forbidden(
+            "the actor's group membership is suspended".to_string(),
         ));
     }
     if effective.effective_status == GroupMembershipEffectiveStatus::LegacyBanned {
-        return Err(PortError::forbidden(
-            "groups.membership_banned",
-            "the actor's group membership is banned",
+        return Err(GroupsError::Forbidden(
+            "the actor's group membership is banned".to_string(),
         ));
     }
 
@@ -122,8 +127,55 @@ pub(crate) async fn require_effective_manager(
                 "an active group owner or administrator role is required"
             }
         };
-        Err(PortError::forbidden("groups.manager_required", message))
+        Err(GroupsError::Forbidden(message.to_string()))
     }
+}
+
+/// Canonical transaction-aware candidate/subject authorization.
+pub(crate) async fn require_user_not_denied_owned<C>(
+    connection: &C,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_id: Uuid,
+    reject_active_member: bool,
+) -> GroupsResult<()>
+where
+    C: ConnectionTrait,
+{
+    let effective =
+        resolve_group_membership_enforcement(connection, tenant_id, group_id, user_id, Utc::now())
+            .await?;
+
+    match effective.effective_status {
+        GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::Forbidden(
+            "group membership is suspended".to_string(),
+        )),
+        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::Forbidden(
+            "group membership is banned".to_string(),
+        )),
+        GroupMembershipEffectiveStatus::Active if reject_active_member => Err(
+            GroupsError::Conflict("user is already an active group member".to_string()),
+        ),
+        _ => Ok(()),
+    }
+}
+
+pub(crate) async fn require_effective_manager(
+    db: &DatabaseConnection,
+    context: &PortContext,
+    group_id: Uuid,
+    capability: GroupManagerCapability,
+) -> Result<(), PortError> {
+    require_effective_manager_owned(
+        db,
+        context,
+        tenant_id(context)?,
+        group_id,
+        actor_user_id(context)?,
+        capability,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 pub(crate) async fn require_candidate_not_denied(
@@ -132,13 +184,11 @@ pub(crate) async fn require_candidate_not_denied(
     group_id: Uuid,
     reject_active_member: bool,
 ) -> Result<(), PortError> {
-    let tenant_id = tenant_id(context)?;
-    let actor_user_id = actor_user_id(context)?;
     require_user_not_denied(
         db,
-        tenant_id,
+        tenant_id(context)?,
         group_id,
-        actor_user_id,
+        actor_user_id(context)?,
         reject_active_member,
     )
     .await
@@ -151,25 +201,13 @@ pub(crate) async fn require_user_not_denied(
     user_id: Uuid,
     reject_active_member: bool,
 ) -> Result<(), PortError> {
-    let effective = resolve_group_membership_enforcement(db, tenant_id, group_id, user_id, Utc::now())
-        .await
-        .map_err(PortError::from)?;
-
-    match effective.effective_status {
-        GroupMembershipEffectiveStatus::Suspended => Err(PortError::forbidden(
-            "groups.membership_suspended",
-            "group membership is suspended",
-        )),
-        GroupMembershipEffectiveStatus::LegacyBanned => Err(PortError::forbidden(
-            "groups.membership_banned",
-            "group membership is banned",
-        )),
-        GroupMembershipEffectiveStatus::Active if reject_active_member => Err(
-            PortError::conflict(
-                "groups.membership_already_active",
-                "user is already an active group member",
-            ),
-        ),
-        _ => Ok(()),
-    }
+    require_user_not_denied_owned(
+        db,
+        tenant_id,
+        group_id,
+        user_id,
+        reject_active_member,
+    )
+    .await
+    .map_err(Into::into)
 }
