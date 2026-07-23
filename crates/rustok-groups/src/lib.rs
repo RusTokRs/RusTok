@@ -34,6 +34,8 @@ pub mod group_event_entities;
 pub mod invitation_entities;
 pub mod invitations;
 pub mod localization;
+pub mod membership_enforcement;
+pub mod membership_enforcement_entities;
 pub mod migrations;
 mod notification_source;
 pub mod policy_history;
@@ -48,6 +50,7 @@ pub use error::{GroupsError, GroupsResult};
 pub use governance::*;
 pub use invitations::*;
 pub use localization::GroupLocalizationService;
+pub use membership_enforcement::GroupMembershipEnforcementService;
 pub use policy_history::*;
 pub use ports::*;
 pub use service::GroupsService;
@@ -120,7 +123,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 7);
+        assert_eq!(module.migrations().len(), 8);
         assert_eq!(module.permissions().len(), 7);
     }
 
@@ -130,5 +133,10 @@ mod tests {
         assert_eq!(descriptor.contract_version, "groups.access.v1");
         assert_eq!(descriptor.private_content_fallback, "deny");
         assert!(!descriptor.implicit_transport_fallback);
+        assert!(
+            descriptor
+                .ports
+                .contains(&"GroupMembershipEnforcementReadPort")
+        );
     }
 }
