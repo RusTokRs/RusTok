@@ -8,7 +8,8 @@ use crate::checkout_execution::{
     CheckoutFulfillmentExecutionPort, EnsureCheckoutFulfillmentsRequest,
     InProcessCheckoutFulfillmentExecutionPort, ReadCheckoutFulfillmentsRequest,
 };
-use crate::{FulfillmentResponse, FulfillmentStatusKind};
+use crate::dto::FulfillmentResponse;
+use crate::status::FulfillmentStatusKind;
 
 /// Mounted in-process fulfillment boundary with fail-closed lifecycle validation.
 ///
@@ -111,13 +112,15 @@ mod tests {
             status: status.to_string(),
             carrier: None,
             tracking_number: None,
-            shipped_at: None,
-            delivered_at: None,
-            cancelled_at: None,
+            delivered_note: None,
+            cancellation_reason: None,
+            items: Vec::new(),
             metadata: json!({}),
             created_at: Utc::now(),
             updated_at: Utc::now(),
-            items: Vec::new(),
+            shipped_at: None,
+            delivered_at: None,
+            cancelled_at: None,
         }
     }
 
