@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::PaymentCollectionResponse;
+use crate::{PaymentCollectionResponse, PaymentCollectionStatusKind};
 
 /// Transport-neutral owner boundary for payment collection create/reuse flows.
 #[async_trait]
@@ -60,6 +60,10 @@ impl PaymentCollectionStatusSnapshot {
             captured_amount: response.captured_amount,
             provider_id: response.provider_id.clone(),
         }
+    }
+
+    pub fn status_kind(&self) -> PaymentCollectionStatusKind {
+        PaymentCollectionStatusKind::from_raw(self.status.as_str())
     }
 }
 
