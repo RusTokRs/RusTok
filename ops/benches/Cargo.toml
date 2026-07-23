@@ -30,6 +30,10 @@ path = "src/bin/index_storage_benchmark.rs"
 name = "index-storage-mutation-benchmark"
 path = "src/bin/index_storage_mutation_benchmark.rs"
 
+[[bin]]
+name = "index-storage-maintenance-benchmark"
+path = "src/bin/index_storage_maintenance_benchmark.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false
