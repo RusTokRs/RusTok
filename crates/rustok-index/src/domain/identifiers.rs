@@ -211,20 +211,38 @@ pub struct EntityKey {
     pub locale: Option<LocaleKey>,
 }
 
+/// Typed path through zero or more schema links to one terminal field.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct FieldPath(Vec<FieldName>);
+pub struct FieldPath {
+    links: Vec<LinkName>,
+    field: FieldName,
+}
 
 impl FieldPath {
-    pub fn new(parts: impl IntoIterator<Item = FieldName>) -> Result<Self, DomainError> {
-        let parts = parts.into_iter().collect::<Vec<_>>();
-        if parts.is_empty() {
-            return Err(DomainError::EmptyIdentifier { kind: "field path" });
+    pub fn new(field: FieldName) -> Self {
+        Self {
+            links: Vec::new(),
+            field,
         }
-        Ok(Self(parts))
     }
 
-    pub fn parts(&self) -> &[FieldName] {
-        &self.0
+    pub fn linked(links: impl IntoIterator<Item = LinkName>, field: FieldName) -> Self {
+        Self {
+            links: links.into_iter().collect(),
+            field,
+        }
+    }
+
+    pub fn links(&self) -> &[LinkName] {
+        &self.links
+    }
+
+    pub fn field(&self) -> &FieldName {
+        &self.field
+    }
+
+    pub fn depth(&self) -> usize {
+        self.links.len()
     }
 }
 
@@ -276,5 +294,17 @@ mod tests {
 
         assert_eq!(reference.identity().to_string(), "rustok-product::product");
         assert_eq!(reference.to_string(), "rustok-product::product@7");
+    }
+
+    #[test]
+    fn field_path_separates_links_from_terminal_field() {
+        let path = FieldPath::linked(
+            [LinkName::new("sales_channel").unwrap()],
+            FieldName::new("id").unwrap(),
+        );
+
+        assert_eq!(path.links()[0].as_str(), "sales_channel");
+        assert_eq!(path.field().as_str(), "id");
+        assert_eq!(path.depth(), 1);
     }
 }
