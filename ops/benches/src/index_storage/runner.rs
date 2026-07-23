@@ -2,13 +2,13 @@ use std::{fs, path::Path, time::Instant};
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TryGetable};
 use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    BenchmarkConfig, DatasetConfig, Prototype, Workload, full_prototype_sql, source_dataset_sql,
-    workloads,
+    BenchmarkConfig, DatasetConfig, Prototype, Workload, connect_benchmark_database,
+    full_prototype_sql, source_dataset_sql, workloads,
 };
 
 #[derive(Debug, Serialize)]
@@ -77,9 +77,7 @@ struct ResultDigest {
 }
 
 pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
-    let db = Database::connect(config.database_url.as_str())
-        .await
-        .context("failed to connect to PostgreSQL")?;
+    let db = connect_benchmark_database(&config.database_url).await?;
     configure_session(&db).await?;
     let database = read_database_metadata(&db).await?;
 
