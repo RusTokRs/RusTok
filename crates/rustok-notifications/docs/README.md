@@ -20,8 +20,8 @@ tables. The executable server injects envelope decoding and composes cross-owner
 policy. Producer transactions remain independent from notification availability.
 
 Notifications remains absent from `settings.default_enabled`; tenants must have an
-effective `notifications` capability before provider materialization or audience
-resolution.
+effective `notifications` capability before provider materialization, audience
+resolution, or candidate processing.
 
 ## Persistence
 
@@ -86,8 +86,16 @@ delivery attempts.
 
 ### Candidate policy and inbox creation
 
-`NotificationCandidateService` requires an injected `NotificationRecipientPolicy`.
-One candidate is processed in this order:
+`NotificationCandidateWorker` selects bounded tenant-scoped work without acquiring
+a lease. Before every canonical candidate claim, the server rechecks effective
+`notifications` capability through `EffectiveModulePolicyService::is_enabled`.
+Disabled work receives a 300-second owner-side retry backoff; temporary policy
+lookup failure receives 30 seconds. The CAS increments attempt count, clears lease
+state, persists a stable error code, and removes the candidate from the bounded
+queue head without calling recipient privacy or source providers.
+
+For enabled work, `NotificationCandidateService` requires an injected
+`NotificationRecipientPolicy` and processes one candidate in this order:
 
 1. claim/recover its lease;
 2. resolve exact preference scopes before wildcard scopes;
@@ -97,10 +105,14 @@ One candidate is processed in this order:
 6. insert or validate one in-app notification and complete the candidate under the
    same lease CAS.
 
-`NotificationCandidateWorker` is default-off behind
+The executable loop is default-off behind
 `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`. It requires a materialized source
-registry and ready relation-policy ports. Candidate finalization creates no
-channel delivery attempt.
+registry, ready relation-policy ports, and `ModuleRegistry`. Candidate finalization
+creates no channel delivery attempt.
+
+The pre-claim capability decision is fail-closed but is not atomic with a tenant
+disable committed concurrently after the check. A future control-plane revision
+token or transactional guard is required for that stronger guarantee.
 
 The server starts workers in intake → fanout → candidate order. Invalid or
 unreadable flags remain disabled.
@@ -116,6 +128,7 @@ closed. Moderator audience expansion remains deferred.
 
 ## Pending capabilities
 
+- atomic control-plane revision guard for concurrent tenant disable;
 - PostgreSQL contention/recovery evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
 - channel delivery enqueue and transports;
@@ -145,7 +158,7 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-These commands were not run while publishing `NOTIFY-03D/03E/03F`.
+These commands were not run while publishing `NOTIFY-03D/03E/03F/03G`.
 
 ## Related documents
 
