@@ -106,14 +106,12 @@ pub fn analyze_sql(prototype: Prototype) -> String {
         + "\n"
 }
 
-pub fn vacuum_sql(prototype: Prototype) -> String {
+pub fn vacuum_statements(prototype: Prototype) -> Vec<String> {
     prototype
         .relations()
         .iter()
         .map(|relation| format!("VACUUM (ANALYZE) {}.{relation};", prototype.schema()))
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n"
+        .collect()
 }
 
 pub(super) struct WorkloadContext {
@@ -174,7 +172,9 @@ mod tests {
             assert!(sql.contains("target_entity"));
             assert!(!sql.contains(&format!("ANALYZE {};", prototype.schema())));
             assert!(churn_cycle_sql(prototype, &config).contains("DELETE FROM"));
-            assert!(vacuum_sql(prototype).contains("VACUUM (ANALYZE)"));
+            let vacuum = vacuum_statements(prototype);
+            assert_eq!(vacuum.len(), prototype.relations().len());
+            assert!(vacuum.iter().all(|sql| sql.starts_with("VACUUM (ANALYZE)")));
         }
     }
 
