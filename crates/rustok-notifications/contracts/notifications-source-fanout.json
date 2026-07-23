@@ -1,30 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slice": "NOTIFY-01B/03A",
-  "promoted_by_slice": "NOTIFY-03D",
+  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
   "migration": "crates/rustok-notifications/src/migrations/m20260722_000011_create_notification_source_inbox.rs",
   "service": "crates/rustok-notifications/src/fanout.rs",
   "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
   "source_inbox": {
     "table": "notification_source_inbox",
-    "dedupe_identity": [
-      "tenant_id",
-      "source_slug",
-      "source_event_id"
-    ],
+    "dedupe_identity": ["tenant_id", "source_slug", "source_event_id"],
     "changed_event_type_or_revision_conflicts": true,
     "provider_absence_retryable_after_enqueue": true,
     "lease_seconds": 60,
     "expired_lease_cannot_finish": true,
-    "terminal_states": [
-      "completed",
-      "suppressed",
-      "rejected"
-    ],
+    "terminal_states": ["completed", "suppressed", "rejected"],
     "production_outbox_intake_delivered": true,
-    "production_materialization_worker_deferred": true
+    "production_materialization_worker_delivered": true
   },
   "fanout_job": {
     "existing_table": "notification_fanout_jobs",
@@ -36,15 +29,14 @@
     "cursor_must_advance": true,
     "lease_recovery": true,
     "expired_lease_cannot_finish": true,
-    "descriptor_replay_must_match": true
+    "descriptor_replay_must_match": true,
+    "production_page_worker_delivered": true,
+    "tenant_effective_policy_checked_before_provider": true,
+    "worker_default_enabled": false
   },
   "candidate_items": {
     "existing_table": "notification_fanout_items",
-    "dedupe_identity": [
-      "tenant_id",
-      "fanout_job_id",
-      "recipient_id"
-    ],
+    "dedupe_identity": ["tenant_id", "fanout_job_id", "recipient_id"],
     "initial_status": "pending",
     "creates_notification_rows": false,
     "creates_delivery_attempts": false,
@@ -67,20 +59,22 @@
   "tests": [
     "crates/rustok-notifications/tests/fanout_sqlite.rs",
     "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
     "crates/rustok-forum/tests/notification_source_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-source-fanout.mjs",
     "outbox_intake_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
+    "fanout_worker_verifier": "scripts/verify/verify-notifications-fanout-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "production source inbox materialization and fanout page worker",
-    "tenant capability enforcement before materialization and delivery",
+    "durable disabled-tenant backoff",
     "recipient-specific channel and group authorization",
     "delivery-attempt enqueue",
     "forum moderator audience expansion",
     "PostgreSQL lease concurrency evidence",
+    "worker health and lag metrics",
     "retention and reconciliation commands"
   ]
 }
