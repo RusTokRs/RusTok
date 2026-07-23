@@ -15,8 +15,8 @@ use rustok_notifications::api::{
 use rustok_notifications::entities::{fanout_item, fanout_job, notification};
 use rustok_notifications::model::{FanoutItemStatus, NotificationJobStatus};
 use rustok_notifications::{
-    MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE, NotificationCandidateWorker,
-    NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
+    MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE, NotificationCandidatePolicyDeferral,
+    NotificationCandidateWorker, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
     NotificationRecipientPolicyError, NotificationRecipientPolicyRequest, NotificationsModule,
 };
 use sea_orm::{
@@ -114,20 +114,21 @@ async fn worker_selection_is_bounded_and_uses_candidate_lease_path() {
     .expect("bounded worker should compose");
 
     let selected = worker
-        .claimable_candidate_ids()
+        .claimable_candidate_work()
         .await
         .expect("claimable candidate selection should succeed");
     assert_eq!(selected.len(), 32);
-    assert!(selected.iter().all(|item_id| item_ids.contains(item_id)));
+    assert!(selected.iter().all(|work| work.tenant_id == tenant_id));
+    assert!(selected.iter().all(|work| item_ids.contains(&work.item_id)));
 
     let processed = worker
-        .process_candidate(selected[0])
+        .process_candidate(selected[0].item_id)
         .await
         .expect("worker must process through the canonical candidate service");
     assert_eq!(processed.status, FanoutItemStatus::Processed);
     assert!(processed.notification_id.is_some());
 
-    let row = fanout_item::Entity::find_by_id(selected[0])
+    let row = fanout_item::Entity::find_by_id(selected[0].item_id)
         .one(&db)
         .await
         .expect("candidate row should be readable")
@@ -150,6 +151,72 @@ async fn worker_selection_is_bounded_and_uses_candidate_lease_path() {
     )
     .expect_err("worker batches above the hard limit must be rejected");
     assert_eq!(oversized.stable_code(), "NOTIFICATION_VALIDATION_ERROR");
+}
+
+#[tokio::test]
+async fn tenant_policy_deferral_removes_candidate_from_bounded_head() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+
+    for _ in 0..2 {
+        let recipient_id = Uuid::new_v4();
+        insert_user(&db, tenant_id, recipient_id).await;
+        seed_candidate(&db, tenant_id, recipient_id).await;
+    }
+
+    let worker = NotificationCandidateWorker::new(
+        db.clone(),
+        Arc::new(NotificationSourceRegistry::default()),
+        Arc::new(AllowPolicy),
+        "candidate-policy-deferral",
+        1,
+    )
+    .expect("candidate deferral worker should compose");
+
+    let first_page = worker
+        .claimable_candidate_work()
+        .await
+        .expect("first bounded candidate page should load");
+    assert_eq!(first_page.len(), 1);
+    let deferred = first_page[0];
+
+    worker
+        .defer_candidate(
+            deferred,
+            NotificationCandidatePolicyDeferral::TenantDisabled,
+        )
+        .await
+        .expect("disabled tenant candidate should receive durable backoff");
+
+    let deferred_row = fanout_item::Entity::find_by_id(deferred.item_id)
+        .one(&db)
+        .await
+        .expect("deferred candidate should load")
+        .expect("deferred candidate should exist");
+    assert_eq!(deferred_row.status, FanoutItemStatus::RetryableError);
+    assert_eq!(deferred_row.attempt_count, 1);
+    assert!(deferred_row.next_attempt_at.is_some());
+    assert!(deferred_row.lease_owner.is_none());
+    assert!(deferred_row.lease_expires_at.is_none());
+    assert_eq!(
+        deferred_row.last_error_code.as_deref(),
+        Some("NOTIFICATION_TENANT_CAPABILITY_DISABLED")
+    );
+
+    let next_page = worker
+        .claimable_candidate_work()
+        .await
+        .expect("later enabled work should reach bounded head");
+    assert_eq!(next_page.len(), 1);
+    assert_ne!(next_page[0].item_id, deferred.item_id);
+    assert_eq!(
+        notification::Entity::find()
+            .count(&db)
+            .await
+            .expect("tenant deferral must not create notifications"),
+        0
+    );
 }
 
 async fn seed_candidate(
