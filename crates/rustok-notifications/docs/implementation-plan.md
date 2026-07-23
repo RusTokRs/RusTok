@@ -20,19 +20,25 @@ Forum publishes live neutral providers for `forum.topic.created` and
 migrations covering persistence, durable source intake, candidate processing,
 outbox acceptance receipts, and permanent intake quarantine.
 
-The runtime pipeline now has three independent, default-off stages:
+The runtime pipeline has three independent, default-off stages:
 
 1. outbox envelope intake into `notification_source_inbox`;
 2. source descriptor materialization and bounded audience fanout;
 3. recipient preference/privacy/source-policy candidate processing.
 
 The server starts these stages in intake → fanout → candidate order. Each stage
-uses the shared stop signal and its own explicit environment flag. Fanout checks
-the authoritative effective module policy for the exact tenant before every
-source or job claim. Disabled or temporarily unresolved tenant work is moved to
-durable retry backoff before any provider call, preventing bounded queue
-starvation. No fanout stage creates final notifications or delivery attempts;
-candidate finalization creates at most one in-app row and no channel work.
+uses the shared stop signal and its own explicit environment flag. Fanout and
+candidate workers expose tenant-scoped work and recheck the authoritative
+effective module policy before producer, recipient-policy, or source-provider
+calls. Disabled work receives a 300-second durable retry backoff; temporary
+control-plane lookup failure receives 30 seconds. Both owner-side CAS paths clear
+lease state, increment attempts, persist stable error codes, and keep later work
+reachable in bounded selection.
+
+Candidate capability recheck immediately precedes canonical claim but is not
+atomic with a tenant disable committed concurrently after the check. A future
+control-plane revision token or transaction-compatible guard is required for that
+stronger guarantee.
 
 ## Invariants
 
@@ -41,11 +47,12 @@ candidate finalization creates at most one in-app row and no channel work.
 - Notifications never reads producer-private tables;
 - executable hosts decode platform envelopes and compose cross-owner policy;
 - audience resolution is cursor-based and capped at 256 recipients per page;
-- final notification creation requires preference, privacy, and current source
-  authorization;
+- final notification creation requires preference, privacy, current source
+  authorization, and a current pre-claim tenant capability decision;
 - no allow-all recipient policy exists;
 - disabled or unresolved tenant capability fails closed before provider calls;
-- tenant-policy deferral must leave later tenants reachable in bounded selection;
+- tenant-policy deferral must leave later work reachable in bounded selection;
+- server workers never read Notifications private tables directly;
 - delivery work remains outside candidate finalization;
 - worker enablement is never inferred from provider readiness.
 
@@ -123,64 +130,67 @@ candidate finalization creates at most one in-app row and no channel work.
 
 ### `NOTIFY-03D`
 
-- migration `m20260723_000013_add_outbox_intake_receipts`;
-- migration `m20260723_000014_add_outbox_intake_rejections`;
-- owner intake selects committed supported `sys_events` envelopes without reading
+- migrations `m20260723_000013_add_outbox_intake_receipts` and
+  `m20260723_000014_add_outbox_intake_rejections`;
+- owner intake selects supported committed `sys_events` envelopes without reading
   or mutating relay status;
-- event decoding is injected by the executable host, so the owner has no direct
-  `rustok-events`, `rustok-outbox`, or producer dependency;
+- event decoding is injected by the executable host;
 - root topic identity is `topic_id/1`; sealed mention identity is envelope ID plus
   relation revision;
 - source inbox and accepted receipt commit in one transaction;
-- permanent invalid envelopes enter durable owner-local quarantine, retryable
-  failures receive no terminal record, and both outcomes are anti-joined from
-  later selection;
-- accepted receipt replays re-decode the envelope and validate full semantic source
-  identity;
-- accepted and rejected terminal outcomes are mutually exclusive; PostgreSQL uses
-  a per-event transaction advisory lock and both backends enforce cross-table
-  insert guards;
+- permanent invalid envelopes enter durable owner-local quarantine while retryable
+  failures receive no terminal record;
+- accepted replay re-decodes the envelope and validates full semantic identity;
+- accepted/rejected outcomes are mutually exclusive with PostgreSQL advisory lock
+  and backend insert guards;
 - default-off host flag `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`;
 - contract `contracts/notifications-outbox-intake.json` and verifier
   `scripts/verify/verify-notifications-outbox-intake.mjs`.
 
 ### `NOTIFY-03E`
 
-- bounded `NotificationFanoutWorker`, default/hard batch 32/64 and audience page
-  256;
-- tenant-scoped source and job work projections preserve the owner boundary;
-- pending, due retryable, and expired leased records are selected in stable
-  `created_at/id` order without acquiring a lease;
-- every source and job delegates to `NotificationFanoutService`, which remains the
-  only claim/materialization/page-persistence authority;
+- bounded `NotificationFanoutWorker`, default/hard batch 32/64 and page 256;
+- tenant-scoped source/job work projections;
+- stable pending/due-retry/expired-lease selection without acquiring leases;
+- every source and job delegates to canonical `NotificationFanoutService`;
 - default-off host flag `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`;
-- startup requires a background-worker host, materialized non-empty source
-  registry, and module registry;
-- `EffectiveModulePolicyService::is_enabled` is checked for `notifications` before
-  every provider materialization and audience resolution; disabled/error policy
-  fails closed;
-- shared shutdown is checked between source records and jobs;
-- SQLite evidence covers bounded multi-poll source/job processing, four pending
-  candidates, and zero notification/delivery rows;
+- startup requires background-worker host, source registry, and module registry;
+- effective tenant policy is checked before descriptor/audience provider calls;
+- SQLite evidence covers bounded multi-poll fanout, pending candidates, and zero
+  final notification/delivery rows;
 - contract `contracts/notifications-fanout-worker.json` and verifier
   `scripts/verify/verify-notifications-fanout-worker.mjs`.
 
 ### `NOTIFY-03F`
 
-- `NotificationFanoutPolicyDeferral` defines stable tenant-disabled and
+- `NotificationFanoutPolicyDeferral` defines tenant-disabled and
   policy-unavailable outcomes;
-- disabled tenant work enters `retryable_error` for 300 seconds; policy lookup
-  failures enter `retryable_error` for 30 seconds;
-- source inbox and fanout job deferrals increment attempt count, persist stable
-  error metadata, clear lease fields, and set a future `next_attempt_at`;
-- CAS checks tenant, record ID, prior attempt count, and current claimability, so a
-  concurrent canonical claim wins without being overwritten;
-- deferral runs before producer descriptor or audience provider calls;
-- bounded selection can immediately advance to later tenant work rather than
-  repeatedly selecting disabled tenant rows;
-- SQLite evidence is
-  `tests/fanout_policy_deferral_sqlite.rs`; the machine contract remains
-  `contracts/notifications-fanout-worker.json`.
+- disabled work enters `retryable_error` for 300 seconds; policy lookup failure
+  receives 30 seconds;
+- source/job deferrals increment attempts, persist stable metadata, clear leases,
+  and set future `next_attempt_at`;
+- CAS checks tenant, record ID, prior attempt count, and claimability;
+- deferral runs before producer providers and prevents bounded queue starvation;
+- SQLite evidence is `tests/fanout_policy_deferral_sqlite.rs`.
+
+### `NOTIFY-03G`
+
+- `NotificationCandidateWorkItem` exposes only candidate ID and tenant ID for host
+  policy gating while preserving owner-private persistence;
+- `claimable_candidate_work` selects bounded tenant-scoped work without a lease;
+  `claimable_candidate_ids` remains a trusted compatibility projection;
+- the server requires `ModuleRegistry` and calls
+  `EffectiveModulePolicyService::is_enabled(..., "notifications")` after selection
+  and before every canonical candidate claim;
+- disabled work invokes neither recipient policy nor source provider;
+- `NotificationCandidatePolicyDeferral` moves disabled work to
+  `retryable_error` for 300 seconds and policy-unavailable work for 30 seconds;
+- owner CAS increments attempts, clears lease state, retains no notification ID,
+  records stable error code, and cannot overwrite a concurrent canonical claim;
+- SQLite evidence proves tenant-scoped selection, bounded head advancement,
+  retry metadata, and zero notification rows after deferral;
+- machine contract schema 4 explicitly records that pre-claim policy is not atomic
+  with a concurrent control-plane disable.
 
 ## Remaining `NOTIFY-01`
 
@@ -193,6 +203,8 @@ candidate finalization creates at most one in-app row and no channel work.
 
 ## Remaining `NOTIFY-03`
 
+- atomic control-plane revision or transaction-compatible guard for tenant disable
+  concurrent with candidate claim;
 - grouping policy and bounded moderator-directory expansion;
 - channel work enqueue only after candidate policy acceptance;
 - PostgreSQL lease/contention/retry evidence for intake, fanout, and candidates;
@@ -244,9 +256,9 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-These commands were not executed while publishing the `NOTIFY-03D/03E/03F`
-source slices. `Cargo.lock` was not regenerated because the owner dependency set
-was restored to the already locked package graph.
+These commands were not executed while publishing the
+`NOTIFY-03D/03E/03F/03G` source slices. `Cargo.lock` was not regenerated because
+this work does not change the package dependency graph.
 
 ## Update rules
 
