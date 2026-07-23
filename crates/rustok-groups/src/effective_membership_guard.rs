@@ -145,14 +145,10 @@ fn require_manager_state(
     capability: GroupManagerCapability,
 ) -> GroupsResult<()> {
     if effective.effective_status == GroupMembershipEffectiveStatus::Suspended {
-        return Err(GroupsError::Forbidden(
-            "the actor's group membership is suspended".to_string(),
-        ));
+        return Err(GroupsError::MembershipSuspended);
     }
     if effective.effective_status == GroupMembershipEffectiveStatus::LegacyBanned {
-        return Err(GroupsError::Forbidden(
-            "the actor's group membership is banned".to_string(),
-        ));
+        return Err(GroupsError::MembershipBanned);
     }
 
     let role_allowed = match capability {
@@ -172,7 +168,7 @@ fn require_manager_state(
                 "an active group owner or administrator role is required"
             }
         };
-        Err(GroupsError::Forbidden(message.to_string()))
+        Err(GroupsError::ManagerRequired(message.to_string()))
     }
 }
 
@@ -181,15 +177,11 @@ fn require_candidate_state(
     reject_active_member: bool,
 ) -> GroupsResult<()> {
     match effective_status {
-        GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::Forbidden(
-            "group membership is suspended".to_string(),
-        )),
-        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::Forbidden(
-            "group membership is banned".to_string(),
-        )),
-        GroupMembershipEffectiveStatus::Active if reject_active_member => Err(
-            GroupsError::Conflict("user is already an active group member".to_string()),
-        ),
+        GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::MembershipSuspended),
+        GroupMembershipEffectiveStatus::LegacyBanned => Err(GroupsError::MembershipBanned),
+        GroupMembershipEffectiveStatus::Active if reject_active_member => {
+            Err(GroupsError::MembershipAlreadyActive)
+        }
         _ => Ok(()),
     }
 }
