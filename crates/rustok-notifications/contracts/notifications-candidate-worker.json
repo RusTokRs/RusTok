@@ -1,7 +1,7 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "slice": "NOTIFY-03C",
-  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E"],
+  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03G"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "owner_driver": "crates/rustok-notifications/src/worker.rs",
@@ -18,13 +18,15 @@
     "invalid_value_enabled": false,
     "requires_background_worker_host": true,
     "requires_relation_ports_ready": true,
-    "requires_candidate_worker_ready": true
+    "requires_candidate_worker_ready": true,
+    "requires_module_registry": true
   },
   "bounded_loop": {
     "default_batch_size": 32,
     "maximum_batch_size": 64,
     "stable_order": ["created_at", "id"],
     "claimable_states": ["pending", "due_retryable_error", "expired_processing"],
+    "tenant_scoped_work_item": true,
     "one_page_per_poll": true,
     "poll_interval_ms": 500
   },
@@ -34,6 +36,26 @@
     "lease_cas_preserved": true,
     "contention_is_nonfatal": true,
     "durable_candidate_failure_preserved": true
+  },
+  "tenant_capability_gate": {
+    "authority": "EffectiveModulePolicyService::is_enabled",
+    "module_slug": "notifications",
+    "checked_before_each_candidate_claim": true,
+    "policy_error_fails_closed": true,
+    "disabled_tenant_calls_recipient_policy": false,
+    "disabled_tenant_calls_source_provider": false,
+    "direct_module_table_read_forbidden": true
+  },
+  "tenant_policy_backoff": {
+    "disabled_retry_seconds": 300,
+    "policy_unavailable_retry_seconds": 30,
+    "candidate_transitions_to_retryable_error": true,
+    "attempt_count_incremented": true,
+    "lease_fields_cleared": true,
+    "stable_error_code_persisted": true,
+    "cas_rejects_concurrent_claim": true,
+    "prevents_disabled_tenant_head_of_line_starvation": true,
+    "prevents_disable_after_fanout_inbox_creation": true
   },
   "shutdown": {
     "shared_stop_handle": true,
@@ -46,7 +68,7 @@
     "outbox_intake_delivered": true,
     "source_inbox_materialization_worker_delivered": true,
     "fanout_page_worker_delivered": true,
-    "tenant_effective_policy_gate_delivered": true,
+    "fanout_tenant_effective_policy_gate_delivered": true,
     "upstream_workers_default_enabled": false
   },
   "tests": [
