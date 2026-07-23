@@ -29,9 +29,10 @@ The runtime pipeline now has three independent, default-off stages:
 The server starts these stages in intake → fanout → candidate order. Each stage
 uses the shared stop signal and its own explicit environment flag. Fanout checks
 the authoritative effective module policy for the exact tenant before every
-source or job claim. No fanout stage creates final notifications or delivery
-attempts; candidate finalization creates at most one in-app row and no channel
-work.
+source or job claim. Disabled or temporarily unresolved tenant work is moved to
+durable retry backoff before any provider call, preventing bounded queue
+starvation. No fanout stage creates final notifications or delivery attempts;
+candidate finalization creates at most one in-app row and no channel work.
 
 ## Invariants
 
@@ -44,6 +45,7 @@ work.
   authorization;
 - no allow-all recipient policy exists;
 - disabled or unresolved tenant capability fails closed before provider calls;
+- tenant-policy deferral must leave later tenants reachable in bounded selection;
 - delivery work remains outside candidate finalization;
 - worker enablement is never inferred from provider readiness.
 
@@ -133,6 +135,8 @@ work.
 - permanent invalid envelopes enter durable owner-local quarantine, retryable
   failures receive no terminal record, and both outcomes are anti-joined from
   later selection;
+- accepted receipt replays re-decode the envelope and validate full semantic source
+  identity;
 - accepted and rejected terminal outcomes are mutually exclusive; PostgreSQL uses
   a per-event transaction advisory lock and both backends enforce cross-table
   insert guards;
@@ -161,6 +165,23 @@ work.
 - contract `contracts/notifications-fanout-worker.json` and verifier
   `scripts/verify/verify-notifications-fanout-worker.mjs`.
 
+### `NOTIFY-03F`
+
+- `NotificationFanoutPolicyDeferral` defines stable tenant-disabled and
+  policy-unavailable outcomes;
+- disabled tenant work enters `retryable_error` for 300 seconds; policy lookup
+  failures enter `retryable_error` for 30 seconds;
+- source inbox and fanout job deferrals increment attempt count, persist stable
+  error metadata, clear lease fields, and set a future `next_attempt_at`;
+- CAS checks tenant, record ID, prior attempt count, and current claimability, so a
+  concurrent canonical claim wins without being overwritten;
+- deferral runs before producer descriptor or audience provider calls;
+- bounded selection can immediately advance to later tenant work rather than
+  repeatedly selecting disabled tenant rows;
+- SQLite evidence is
+  `tests/fanout_policy_deferral_sqlite.rs`; the machine contract remains
+  `contracts/notifications-fanout-worker.json`.
+
 ## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
@@ -172,7 +193,6 @@ work.
 
 ## Remaining `NOTIFY-03`
 
-- durable backoff or suppression policy for work belonging to disabled tenants;
 - grouping policy and bounded moderator-directory expansion;
 - channel work enqueue only after candidate policy acceptance;
 - PostgreSQL lease/contention/retry evidence for intake, fanout, and candidates;
@@ -206,6 +226,7 @@ cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
@@ -223,9 +244,9 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-These commands were not executed while publishing the `NOTIFY-03D/03E` source
-slices. `Cargo.lock` was not regenerated because the owner dependency set was
-restored to the already locked package graph.
+These commands were not executed while publishing the `NOTIFY-03D/03E/03F`
+source slices. `Cargo.lock` was not regenerated because the owner dependency set
+was restored to the already locked package graph.
 
 ## Update rules
 
