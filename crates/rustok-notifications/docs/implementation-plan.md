@@ -34,10 +34,11 @@ in-app notification can be created. It creates no delivery attempt.
 
 The server composes tenant-scoped Profiles privacy with concrete Social Graph
 block/mute owner adapters inside `NotificationRecipientPolicyRuntime`. Relation
-ports are ready in the baseline distribution, while candidate worker enablement
-remains a separate explicit false gate. The production outbox runner, grouping,
-channel delivery, retention/reconciliation, inbox APIs, and PostgreSQL runtime
-evidence remain open.
+ports are ready in the baseline distribution. A production candidate worker now
+exists, but remains fail-closed and disabled by default until
+`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` is explicitly enabled on a
+background-worker host. The production outbox runner, grouping, channel delivery,
+retention/reconciliation, inbox APIs, and PostgreSQL runtime evidence remain open.
 
 ## Milestones
 
@@ -159,6 +160,29 @@ evidence remain open.
   `crates/rustok-social-graph/contracts/social-graph-notification-policy.json`
   and `scripts/verify/verify-social-graph-notification-policy.mjs`.
 
+### Delivered in `NOTIFY-03C`
+
+- `NotificationCandidateWorker` owns bounded claimable selection and delegates
+  every item to the canonical `NotificationCandidateService` lease/CAS path;
+- one poll selects at most 32 candidates, with a hard constructor limit of 64;
+- ordering is stable by `created_at`, then candidate `id`;
+- pending, due retryable, and expired processing candidates are eligible;
+- selection does not acquire a lease, so concurrent workers contend only through
+  the existing per-item claim CAS;
+- the host worker is disabled by default and requires the explicit
+  `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` environment flag;
+- invalid or unreadable enable values fail closed;
+- startup additionally requires a background-worker host, materialized source
+  registry, ready block/mute ports, and `candidate_worker_ready()`;
+- the shared `StopHandle` is checked before selection and between candidates;
+  work already executing completes its canonical transaction, while no later
+  candidate is claimed after shutdown is observed;
+- SQLite evidence covers bounded selection, canonical candidate processing, one
+  final notification, and rejection above the hard batch limit;
+- machine contract and verifier are
+  `contracts/notifications-candidate-worker.json` and
+  `scripts/verify/verify-notifications-candidate-worker.mjs`.
+
 ### Remaining `NOTIFY-01` scope
 
 - promote module-local migrations into verified global server migration
@@ -170,11 +194,12 @@ evidence remain open.
 ### Remaining `NOTIFY-03` scope
 
 - wire production outbox relay consumption into durable source enqueue;
-- explicitly enable, compose, and start the production candidate worker;
 - add grouping policy and bounded moderator-audience expansion;
 - enqueue channel work only after policy acceptance and outside owner provider
   calls;
-- add PostgreSQL lease/concurrency/retry evidence and DLQ/replay controls.
+- add PostgreSQL lease/concurrency/retry evidence and DLQ/replay controls;
+- add worker health, queue lag, and recovery metrics before enabling the flag in
+  a default deployment profile.
 
 ### Remaining `NOTIFY-07` scope
 
@@ -201,6 +226,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
+cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
@@ -215,11 +241,12 @@ node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
 node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
 node scripts/verify/verify-social-graph-notification-policy.mjs
+node scripts/verify/verify-notifications-candidate-worker.mjs
 cargo xtask module validate notifications
 ```
 
 The commands above are the maintainer verification set. They were not executed
-while publishing the `SOCIAL-01A / NOTIFY-07C` source slice.
+while publishing the `NOTIFY-03C` source slice.
 
 ## Update Rules
 
