@@ -22,7 +22,6 @@ pub const MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 64;
 const FORUM_SOURCE: &str = "forum";
 const FORUM_TOPIC_CREATED: &str = "forum.topic.created";
 const FORUM_USER_MENTION_ADDED: &str = "forum.mention.user_added";
-const SUPPORTED_OUTBOX_EVENT_TYPES: [&str; 2] = [FORUM_TOPIC_CREATED, FORUM_USER_MENTION_ADDED];
 
 mod intake_receipt {
     use sea_orm::entity::prelude::*;
@@ -110,7 +109,11 @@ impl NotificationOutboxIntakeWorker {
             .into_query();
         let rows = outbox_event::Entity::find()
             .filter(outbox_event::Column::Status.eq(SysEventStatus::Dispatched))
-            .filter(outbox_event::Column::EventType.is_in(SUPPORTED_OUTBOX_EVENT_TYPES))
+            .filter(
+                Condition::any()
+                    .add(outbox_event::Column::EventType.eq(FORUM_TOPIC_CREATED))
+                    .add(outbox_event::Column::EventType.eq(FORUM_USER_MENTION_ADDED)),
+            )
             .filter(outbox_event::Column::Id.not_in_subquery(receipts))
             .order_by_asc(outbox_event::Column::DispatchedAt)
             .order_by_asc(outbox_event::Column::CreatedAt)
@@ -143,11 +146,12 @@ impl NotificationOutboxIntakeWorker {
             .one(&txn)
             .await?
         {
-            ensure_receipt_identity(&existing, &source_event)?;
+            ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
             txn.commit().await?;
             return Ok(intake_result(existing, true));
         }
 
+        let timestamp = now();
         source_inbox::Entity::insert(source_inbox::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(source_event.tenant_id()),
@@ -164,8 +168,8 @@ impl NotificationOutboxIntakeWorker {
             last_error_code: Set(None),
             last_error_message: Set(None),
             completed_at: Set(None),
-            created_at: Set(now()),
-            updated_at: Set(now()),
+            created_at: Set(timestamp),
+            updated_at: Set(timestamp),
         })
         .on_conflict(
             OnConflict::columns([
@@ -196,7 +200,7 @@ impl NotificationOutboxIntakeWorker {
             source_event_id: Set(source_event.event_id()),
             source_revision: Set(source_revision),
             source_inbox_id: Set(inbox.id),
-            created_at: Set(now()),
+            created_at: Set(timestamp),
         })
         .on_conflict(
             OnConflict::column(intake_receipt::Column::OutboxEventId)
@@ -210,7 +214,7 @@ impl NotificationOutboxIntakeWorker {
             .one(&txn)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
-        ensure_receipt_identity(&receipt, &source_event)?;
+        ensure_receipt_identity(&receipt, outbox_event_id, &source_event)?;
         txn.commit().await?;
         Ok(intake_result(receipt, false))
     }
@@ -281,8 +285,10 @@ fn decode_source_event(row: &outbox_event::Model) -> NotificationResult<Notifica
         return Err(NotificationError::InvalidEvent);
     }
     match envelope.event {
-        DomainEvent::ForumTopicCreated { .. } if row.event_type == FORUM_TOPIC_CREATED => {
-            source_event_ref(envelope.tenant_id, envelope.id, FORUM_TOPIC_CREATED, 1)
+        DomainEvent::ForumTopicCreated { topic_id, .. }
+            if row.event_type == FORUM_TOPIC_CREATED =>
+        {
+            source_event_ref(envelope.tenant_id, topic_id, FORUM_TOPIC_CREATED, 1)
         }
         _ => Err(NotificationError::InvalidEvent),
     }
@@ -325,9 +331,10 @@ fn ensure_source_inbox_identity(
 
 fn ensure_receipt_identity(
     receipt: &intake_receipt::Model,
+    outbox_event_id: Uuid,
     event: &NotificationSourceEventRef,
 ) -> NotificationResult<()> {
-    if receipt.outbox_event_id != event.event_id()
+    if receipt.outbox_event_id != outbox_event_id
         || receipt.tenant_id != event.tenant_id()
         || receipt.event_type != event.event_type().as_str()
         || receipt.source_slug != event.source().as_str()
