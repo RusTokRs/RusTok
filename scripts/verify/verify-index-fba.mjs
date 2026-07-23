@@ -13,10 +13,13 @@ const domain = read('crates/rustok-index/src/domain/mod.rs');
 const cargo = read('crates/rustok-index/Cargo.toml');
 const manifest = read('crates/rustok-index/rustok-module.toml');
 const plan = read('crates/rustok-index/docs/implementation-plan.md');
+const serverDispatcher = read('apps/server/src/services/module_event_dispatcher.rs');
 
 for (const obsolete of [
   'crates/rustok-index/src/ports.rs',
   'crates/rustok-index/src/models.rs',
+  'crates/rustok-index/src/error.rs',
+  'crates/rustok-index/src/traits.rs',
   'crates/rustok-index/src/content',
   'crates/rustok-index/src/product',
   'crates/rustok-index/src/flex',
@@ -35,11 +38,36 @@ for (const marker of ['pub mod domain;', 'pub use domain::*;']) {
 for (const marker of ['IndexSchema', 'IndexRecord', 'IndexMutation', 'IndexQuery', 'FilterExpr']) {
   if (!domain.includes(marker)) fail(`domain surface missing ${marker}`);
 }
-for (const dependency of ['rustok-api', 'rustok-events', 'rustok-product', 'rustok-content']) {
+for (const dependency of [
+  'rustok-api',
+  'rustok-events',
+  'rustok-product',
+  'rustok-content',
+  'rustok-telemetry',
+]) {
   if (cargo.includes(dependency)) fail(`Index core must not depend on ${dependency}`);
 }
-for (const sourceModule of ['pub mod content;', 'pub mod product;', 'pub mod flex;', 'pub mod search;', 'pub mod migrations;']) {
-  if (lib.includes(sourceModule)) fail(`legacy source module export returned: ${sourceModule}`);
+for (const sourceModule of [
+  'pub mod content;',
+  'pub mod product;',
+  'pub mod flex;',
+  'pub mod search;',
+  'pub mod migrations;',
+  'pub mod traits;',
+  'pub mod error;',
+]) {
+  if (lib.includes(sourceModule)) fail(`legacy module export returned: ${sourceModule}`);
+}
+for (const runtimeMarker of [
+  'IndexerRuntimeConfig',
+  'content_indexer',
+  'product_indexer',
+  'flex_indexer',
+  'record_index_reindex_runtime_config',
+]) {
+  if (serverDispatcher.includes(runtimeMarker)) {
+    fail(`server dispatcher still contains legacy Index marker: ${runtimeMarker}`);
+  }
 }
 if (manifest.includes('[fba.provider]')) fail('legacy FBA provider metadata must not return');
 if (!plan.includes('- FBA status: `in_progress`')) fail('plan must keep FBA status in_progress during rewrite');
@@ -47,4 +75,4 @@ if (!plan.includes('Backward compatibility with the rejected implementation is n
   fail('plan must preserve destructive rewrite policy');
 }
 
-console.log('[verify-index-fba] Index rewrite boundary is generic and legacy/source-domain artifacts are absent');
+console.log('[verify-index-fba] Index boundary contains only generic engine core and module metadata');
