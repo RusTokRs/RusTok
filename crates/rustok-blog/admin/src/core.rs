@@ -1077,19 +1077,7 @@ mod tests {
     }
 
     #[test]
-    fn admin_warning_and_posts_load_views_keep_adapter_policy_in_core() {
-        let markdown = blog_post_admin_raw_body_warning_view("markdown", "warn".to_string());
-        assert!(!markdown.visible);
-        assert_eq!(markdown.class, "hidden");
-        assert_eq!(markdown.message, "warn");
-
-        let raw = blog_post_admin_raw_body_warning_view("rt_json_v1", "warn".to_string());
-        assert!(raw.visible);
-        assert_eq!(
-            raw.class,
-            "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-        );
-
+    fn admin_posts_load_views_keep_adapter_policy_in_core() {
         let loaded = blog_post_admin_posts_load_view(
             Ok((vec![sample_list_item("post-1")], 1)),
             false,
@@ -1150,13 +1138,13 @@ mod tests {
 
     #[test]
     fn blog_post_draft_builder_normalizes_form_state_without_ui_runtime() {
+        let content = RichTextDocument::empty();
         let draft = build_blog_post_draft(BlogPostFormInput {
             locale: " ru ",
             title: "  Launch Notes  ",
             slug: " launch-notes ",
             excerpt: "  short summary  ",
-            body: "  body text  ",
-            body_format: "markdown",
+            content: &content,
             publish: true,
             tags: " news, launch ,, release ",
         });
@@ -1165,8 +1153,7 @@ mod tests {
         assert_eq!(draft.title, "Launch Notes");
         assert_eq!(draft.slug, "launch-notes");
         assert_eq!(draft.excerpt, "short summary");
-        assert_eq!(draft.body, "body text");
-        assert_eq!(draft.body_format, "markdown");
+        assert_eq!(draft.content, content);
         assert!(draft.publish);
         assert_eq!(
             draft.tags,
@@ -1184,7 +1171,7 @@ mod tests {
 
         assert_eq!(empty.editing_post_id, None);
         assert_eq!(empty.locale, "ru");
-        assert_eq!(empty.body_format, "markdown");
+        assert_eq!(empty.content, RichTextDocument::empty());
         assert!(!empty.publish_now);
 
         let post = BlogPostDetail {
@@ -1195,9 +1182,8 @@ mod tests {
             title: "Launch".to_string(),
             slug: Some("launch".to_string()),
             excerpt: None,
-            body: Some("Body".to_string()),
-            body_format: "markdown".to_string(),
-            content_json: None,
+            content: None,
+            content_plain_text: None,
             status: "published".to_string(),
             created_at: "2026-06-13T00:00:00Z".to_string(),
             updated_at: "2026-06-13T00:00:00Z".to_string(),
@@ -1213,20 +1199,20 @@ mod tests {
         assert_eq!(state.editing_post_id, Some("post-1".to_string()));
         assert_eq!(state.slug, "launch");
         assert_eq!(state.excerpt, "");
-        assert_eq!(state.body, "Body");
+        assert_eq!(state.content, RichTextDocument::empty());
         assert_eq!(state.tags_input, "news, release");
         assert!(state.publish_now);
     }
 
     #[test]
     fn prepare_save_command_rejects_missing_required_fields() {
+        let content = RichTextDocument::empty();
         let draft = build_blog_post_draft(BlogPostFormInput {
             locale: "en",
             title: "   ",
             slug: "draft",
             excerpt: "summary",
-            body: "body",
-            body_format: "markdown",
+            content: &content,
             publish: false,
             tags: "",
         });
@@ -1240,13 +1226,13 @@ mod tests {
 
     #[test]
     fn prepare_save_command_selects_create_operation() {
+        let content = RichTextDocument::single_paragraph("Hello world");
         let draft = build_blog_post_draft(BlogPostFormInput {
             locale: "en",
             title: "Launch",
             slug: "launch",
             excerpt: "summary",
-            body: "body",
-            body_format: "markdown",
+            content: &content,
             publish: true,
             tags: "news",
         });
@@ -1257,17 +1243,18 @@ mod tests {
         assert_eq!(command.operation, BlogPostSaveOperation::Create);
         assert_eq!(command.busy_key, "create");
         assert_eq!(command.draft.title, "Launch");
+        assert_eq!(command.draft.content, content);
     }
 
     #[test]
     fn prepare_save_command_selects_update_operation() {
+        let content = RichTextDocument::single_paragraph("Hello world");
         let draft = build_blog_post_draft(BlogPostFormInput {
             locale: "en",
             title: "Launch",
             slug: "launch",
             excerpt: "summary",
-            body: "body",
-            body_format: "markdown",
+            content: &content,
             publish: false,
             tags: "news",
         });
@@ -1465,28 +1452,6 @@ mod tests {
     }
 
     #[test]
-    fn body_format_select_view_model_keeps_options_without_ui_runtime() {
-        let selected = blog_post_admin_body_format_select_view(" RT_JSON_V1 ");
-
-        assert_eq!(selected.options.len(), 2);
-        assert_eq!(selected.options[0].value, "markdown");
-        assert_eq!(selected.options[0].label, "markdown");
-        assert!(!selected.options[0].selected);
-        assert_eq!(selected.options[1].value, "rt_json_v1");
-        assert_eq!(selected.options[1].label, "rt_json_v1");
-        assert!(selected.options[1].selected);
-
-        let fallback = blog_post_admin_body_format_select_view("unknown");
-        assert!(fallback.options[0].selected);
-
-        let changed = blog_post_admin_body_format_change_view(" RT_JSON_V1 ".to_string());
-        assert_eq!(changed.body_format, "rt_json_v1");
-
-        let unknown = blog_post_admin_body_format_change_view("unknown".to_string());
-        assert_eq!(unknown.body_format, "markdown");
-    }
-
-    #[test]
     fn slugify_normalizes_text() {
         assert_eq!(slugify("Hello, Rustok UI!"), "hello-rustok-ui");
     }
@@ -1628,14 +1593,11 @@ mod tests {
         assert!(should_publish_now(true));
         assert!(!should_publish_now(false));
         assert_eq!(locale_arg("en"), Some("en".to_string()));
-        assert!(has_required_draft_fields("Title", "Body"));
-        assert!(!has_required_draft_fields("", "Body"));
-        assert!(!has_required_draft_fields("Title", ""));
-        assert!(is_markdown_format("markdown"));
-        assert!(is_markdown_format(" Markdown "));
-        assert!(!is_markdown_format("rt_json_v1"));
-        assert!(should_show_raw_body_warning("rt_json_v1"));
-        assert!(!should_show_raw_body_warning("markdown"));
+        let empty_doc = RichTextDocument::empty();
+        let valid_doc = RichTextDocument::single_paragraph("Body");
+        assert!(has_required_draft_fields("Title", &valid_doc));
+        assert!(!has_required_draft_fields("", &valid_doc));
+        assert!(!has_required_draft_fields("Title", &empty_doc));
         assert_eq!(
             issue_banner_class(WritePathIssueKind::Validation),
             "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
@@ -1765,9 +1727,8 @@ mod tests {
             title_label: "Title".to_string(),
             slug_label: "Slug".to_string(),
             locale_label: "Locale".to_string(),
-            body_format_label: "Body format".to_string(),
             excerpt_label: "Excerpt".to_string(),
-            body_label: "Body".to_string(),
+            content_label: "Content".to_string(),
             tags_label: "Tags".to_string(),
             tags_placeholder: "news, launch".to_string(),
             publish_now_label: "Publish immediately".to_string(),

@@ -14098,6 +14098,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tracing",
  "uuid",
  "web-sys",
 ]

@@ -106,7 +106,7 @@ fn is_richtext_frame_surface(path: &str) -> bool {
 
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
     if is_richtext_frame_surface(path) {
-        RICHTEXT_FRAME_CSP.to_string()
+        return RICHTEXT_FRAME_CSP.to_string();
     } else if is_api_surface(path) {
         return API_CSP.to_string();
     }
