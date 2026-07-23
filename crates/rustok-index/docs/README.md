@@ -17,12 +17,15 @@ without runtime fan-out.
 
 ## Scope
 
-- schema and link registry;
+- versioned schema and link registry;
 - generic records and mutations;
+- explicit tenant/locale query scope;
+- registry-backed record and query validation;
+- deterministic link graph and field paths;
+- versioned keyset cursors;
 - incremental ingestion and inbox deduplication;
 - PostgreSQL storage and distributed coordination;
-- link-aware validation, planning, and SQL compilation;
-- cursor pagination, exact count, and bounded offset compatibility;
+- SQL planning/compilation;
 - rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
 
@@ -38,22 +41,41 @@ without runtime fan-out.
 
 Backward compatibility with the rejected implementation is not a goal.
 Conflicting code is deleted instead of preserved through compatibility layers.
+M0 removed the complete source-specific implementation and its migrations,
+contracts, runtime scheduler, server wiring, and admin table reads.
 
-M0 removed the complete old implementation: v1 ports and evidence, catch-all
-documents, query placeholders, Content/Product/Flex indexers and models, direct
-source SQL, all legacy migrations, admin table reads, source-domain dependencies,
-old runtime configuration/scheduler/errors, and server dispatcher composition.
+## Implemented core
+
+M1 provides:
+
+- bounded lowercase schema identifiers;
+- ICU4X locale parsing and UTS #35/CLDR alias canonicalization;
+- stable SHA-256 schema fingerprints;
+- atomic versioned schema registration with idempotency and conflict detection;
+- link target/type/cardinality validation;
+- deterministic shortest-path graph resolution through `petgraph`;
+- typed root and linked field paths;
+- explicit tenant and locale query scope;
+- select/filter/order/operator/type validation and bounded query complexity;
+- rejection of ambiguous ordering through `many` links;
+- checksummed postcard/Base64 keyset cursors bound to query scope and schema
+  fingerprint;
+- a test-only mutation/query reference engine and property invariants for later
+  PostgreSQL equivalence testing.
 
 ## Status
 
 - Rewrite: `in_progress`
-- Current milestone: `M1 - domain core and schema registry`
+- Current milestone: `M2 - PostgreSQL storage benchmark`
 - FFA: `in_progress`
 - FBA: `in_progress`
 - M0 code reset: `complete`
-- Active public core: `rustok_index::domain`
+- M1 generic core: `complete`
+- Production migrations: intentionally absent pending M2 benchmark evidence
 
 ## Verification
+
+The repository owner runs the checks during this rewrite:
 
 - `cargo fmt --all -- --check`
 - `cargo check --workspace --all-targets --all-features`
