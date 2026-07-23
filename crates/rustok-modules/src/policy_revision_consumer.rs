@@ -41,6 +41,24 @@ impl SeaOrmModulePolicyRevisionConsumer {
         Ok(outcome)
     }
 
+    /// Locks the durable cursor row on an owner-open transaction and returns its
+    /// current revision. Other owner workflows can use the same row as a
+    /// tenant-policy serialization point without reading lifecycle-private state.
+    pub async fn lock_current_revision_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        consumer_key: &str,
+    ) -> Result<Option<String>, ModulePolicyRevisionConsumerError> {
+        validate_request(tenant_id, consumer_key)?;
+        configure_tenant_scope(transaction, tenant_id)
+            .await
+            .map_err(storage_error)?;
+        let backend = transaction.get_database_backend();
+        ensure_cursor_row(transaction, backend, tenant_id, consumer_key).await?;
+        load_cursor_revision(transaction, backend, tenant_id, consumer_key).await
+    }
+
     /// Applies a predecessor-bound transition on an owner-open transaction.
     ///
     /// Owner state mutation, outbox append, and cursor advancement can therefore
@@ -53,17 +71,13 @@ impl SeaOrmModulePolicyRevisionConsumer {
         consumer_key: &str,
         transition: &ModulePolicyRevisionTransition,
     ) -> Result<ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionConsumerError> {
-        validate_request(tenant_id, consumer_key)?;
-        configure_tenant_scope(transaction, tenant_id)
-            .await
-            .map_err(storage_error)?;
-        let backend = transaction.get_database_backend();
-        ensure_cursor_row(transaction, backend, tenant_id, consumer_key).await?;
-        let current_revision =
-            load_cursor_revision(transaction, backend, tenant_id, consumer_key).await?;
+        let current_revision = self
+            .lock_current_revision_in_transaction(transaction, tenant_id, consumer_key)
+            .await?;
         let mut gate = ModulePolicyRevisionGate::new(current_revision)?;
         let outcome = gate.apply(transition)?;
         if outcome == ModulePolicyRevisionApplyOutcome::Applied {
+            let backend = transaction.get_database_backend();
             let updated = transaction
                 .execute(Statement::from_sql_and_values(
                     backend,
