@@ -253,8 +253,10 @@ async fn insert_outbox_event(
     sequence: u32,
 ) {
     let payload = payload.to_string().replace('\'', "''");
+    let minute = (sequence / 60) % 60;
+    let second = sequence % 60;
     db.execute_unprepared(&format!(
-        "INSERT INTO sys_events (id, event_type, schema_version, payload, created_at) VALUES ('{outbox_event_id}', '{EVENT_TYPE}', {schema_version}, '{payload}', '2026-07-23T12:00:{sequence:02}Z')"
+        "INSERT INTO sys_events (id, event_type, schema_version, payload, created_at) VALUES ('{outbox_event_id}', '{EVENT_TYPE}', {schema_version}, '{payload}', '2026-07-23T12:{minute:02}:{second:02}Z')"
     ))
     .await
     .expect("outbox fixture should persist");
