@@ -9,26 +9,17 @@ const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
 const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-const providerContract = read(
-  "crates/rustok-page-builder/admin/src/consumer_properties.rs",
+const contract = JSON.parse(
+  read("crates/rustok-page-builder/contracts/page-builder-consumer-properties.json"),
 );
-const providerPanel = read(
-  "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
-);
-const providerFacade = read(
-  "crates/rustok-page-builder/admin/src/transport/mod.rs",
-);
-const providerCanvas = read(
-  "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
-);
-const pagesContributions = read(
-  "crates/rustok-pages/admin/src/contributions.rs",
-);
-const pagesOwnerPort = read(
-  "crates/rustok-pages/admin/src/metadata_properties.rs",
-);
-const pagesBoundary = read("crates/rustok-pages/admin/src/lib.rs");
-const pagesComposition = read("crates/rustok-pages/admin/src/composition.rs");
+const providerContract = read(contract.provider.contract_source);
+const providerPanel = read(contract.provider.panel_source);
+const providerFacade = read(contract.provider.facade_source);
+const providerCanvas = read(contract.provider.composition_source);
+const pagesContributions = read(contract.pages_consumer.contribution_source);
+const pagesOwnerPort = read(contract.pages_consumer.owner_port_source);
+const pagesBoundary = read(contract.pages_consumer.composition_source);
+const pagesComposition = read(contract.pages_consumer.legacy_form.source);
 
 function fail(message) {
   console.error(`[verify-pages-metadata-properties] ${message}`);
@@ -50,6 +41,23 @@ function requireOrderedMarkers(source, markers, label) {
     if (index < 0) fail(`${label} is missing or out of order at ${marker}`);
     previous = index;
   }
+}
+
+if (
+  contract.status !== "source_connected_legacy_form_pending" ||
+  contract.format !== "page_builder_consumer_properties_v1" ||
+  contract.pages_consumer.owner_persistence !== "pages" ||
+  contract.pages_consumer.document_revision_independent !== true ||
+  contract.pages_consumer.fly_document_write !== false ||
+  contract.executed_evidence !== "pending"
+) {
+  fail("consumer metadata property contract status or ownership is invalid");
+}
+if (
+  contract.pages_consumer.legacy_form.state !== "pending_removal" ||
+  contract.pages_consumer.legacy_form.component !== "PageMetadataEditor"
+) {
+  fail("legacy metadata form cutover must remain explicit until the form is removed");
 }
 
 for (const marker of [
@@ -109,9 +117,9 @@ for (const marker of [
 }
 
 for (const marker of [
-  'PAGES_METADATA_CONTRIBUTION_ID: &str = "rustok.pages.metadata"',
-  'PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "rustok.pages.metadata.editor"',
-  'PAGES_METADATA_COMPONENT_TYPE: &str = "rustok-pages-metadata"',
+  `PAGES_METADATA_CONTRIBUTION_ID: &str = "${contract.pages_consumer.contribution_id}"`,
+  `PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "${contract.pages_consumer.property_editor_id}"`,
+  `PAGES_METADATA_COMPONENT_TYPE: &str = "${contract.pages_consumer.component_type}"`,
   "pub fn pages_metadata_property_schema()",
   "PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT",
   "pub fn pages_metadata_contribution()",
@@ -121,6 +129,13 @@ for (const marker of [
   "registered_schema.validate()",
 ]) {
   requireMarker(pagesContributions, marker, "Pages metadata contribution");
+}
+for (const field of contract.pages_consumer.fields) {
+  requireMarker(
+    pagesContributions,
+    `"${field}"`,
+    "Pages metadata contribution fields",
+  );
 }
 
 for (const marker of [
@@ -163,6 +178,7 @@ for (const marker of [
 const legacyFormPresent =
   pagesComposition.includes("fn PageMetadataEditor(") ||
   pagesComposition.includes("<PageMetadataEditor");
-console.log(
-  `[verify-pages-metadata-properties] PASS legacy_form_pending=${legacyFormPresent}`,
-);
+if (!legacyFormPresent) {
+  fail("machine contract still says pending removal, but the legacy metadata form is absent");
+}
+console.log("[verify-pages-metadata-properties] PASS legacy_form_pending=true");
