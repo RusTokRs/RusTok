@@ -2,48 +2,53 @@
 
 ## Purpose
 
-`rustok-index` owns read-model and indexing contracts for RusToK.
+`rustok-index` is RusToK's cross-module relational Index Engine. Source modules
+publish indexable schemas, records, mutations, and links; Index materializes
+them into optimized storage and executes filtering, projection, sorting,
+counting, and pagination without runtime fan-out to source modules.
+
+The current source-specific CQRS/read-model implementation is being replaced.
+Backward compatibility with rejected internal Index APIs is not a rewrite goal.
 
 ## Responsibilities
 
-- Provide `IndexModule` metadata for the runtime registry.
-- Define indexer traits and indexing runtime contracts.
-- Own index migrations and index rebuild helpers.
-- Serve as the long-term cross-module index/read-model substrate rather than the
-  product-facing search module.
+- Own the generic index schema and link registry.
+- Own incremental ingestion, deduplication, rebuild, reconciliation, and drift
+  control.
+- Own PostgreSQL index storage and distributed coordination.
+- Validate and plan cross-module queries.
+- Compile filtering, projection, sorting, count, and pagination to Index storage
+  queries.
+- Publish stable query, rebuild, and operator contracts.
+- Keep product-facing search relevance and ranking in `rustok-search`.
 
-## Interactions
+## Boundaries
 
-- Depends on `rustok-core` for module contracts and `rustok-api` for shared transport-agnostic port context/error/policy primitives.
-- Consumes domain events published by content, commerce, blog, forum, pages, workflow, and Flex standalone paths.
-- Content-node tag extraction now reads `nodes.metadata.tags` directly and no longer depends on
-  legacy `tags` / `taggables` joins from `rustok-content`.
-- Used by `apps/server` runtime wiring for index rebuild and cross-module index integrations.
-- Publishes its event-driven consumers through `IndexModule::register_event_listeners(...)` and the shared module event dispatcher path.
-- Current live event-driven consumers are `content_indexer`, `product_indexer`, and `flex_indexer`.
-- Exposes a module-owned Leptos admin overview through `rustok-index-admin`.
-- Does not publish its own RBAC surface.
-- Admin access to indexing operations is enforced by `apps/server` through the permissions
-  of the domain being managed, not through direct role checks inside the module.
-- Product-facing search belongs to `rustok-search`; this crate does not expose a second
-  search-engine contract.
-- During the first Search extraction pilot, Index remains the canonical
-  ingestion/read-model owner in the modular monolith. A later worker split is
-  allowed only after replay, deduplication, lag, rebuild, and recovery evidence.
+- Index core must not depend on Product, Content, Flex, Pricing, Inventory, or
+  other source-domain crates.
+- Source modules own conversion from domain state/events into generic Index
+  records and mutations.
+- Index must not read source-module tables directly.
+- `rustok-search` may consume Index contracts but owns ranking, typo tolerance,
+  autocomplete, synonyms, search UX, and external search-engine connectors.
+
+## Rewrite status
+
+- Current milestone: `M0 - hard reset and architecture lock`
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Legacy `index.read_model.v1` / `index.rebuild.v1` contracts remain temporary
+  until the new engine boundary is implemented and consumers are migrated.
 
 ## Entry points
 
-- `IndexModule`
-- `Indexer`
-- `LocaleIndexer`
-- `IndexerContext`
-- `IndexerRuntimeConfig`
-- `IndexReadModelPort` / `IndexRebuildPort`
-- `validate_index_read_request`, `validate_index_list_request`, `validate_index_rebuild_request` and `ensure_index_document_tenant_scope` for adapter-side FBA guardrails
+During the rewrite, new domain types live under `rustok_index::domain`. Existing
+`Indexer`, `LocaleIndexer`, `IndexReadModelPort`, and `IndexRebuildPort` APIs are
+legacy and scheduled for removal.
 
 ## Docs
 
-- [Module docs](./docs/README.md)
-- [Runtime fallback smoke evidence](./contracts/evidence/index-runtime-fallback-smoke.json)
-- [Media and Search extraction ADR](../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md)
+- [Module documentation](./docs/README.md)
+- [Live implementation plan](./docs/implementation-plan.md)
+- [Index Engine rewrite ADR](../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Platform docs index](../../docs/index.md)
