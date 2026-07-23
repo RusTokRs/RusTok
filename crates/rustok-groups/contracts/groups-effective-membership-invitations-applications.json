@@ -30,6 +30,7 @@
     "suspended_or_legacy_banned_acceptance": "forbidden"
   },
   "application_paths": {
+    "secret_candidate_surface": "not_found_before_membership_specific_denial",
     "candidate_policy_read": "effective_candidate_not_suspended_or_legacy_banned",
     "candidate_current_application_read": "effective_candidate_not_suspended_or_legacy_banned",
     "legacy_submit": "effective_candidate_reentry_check",
