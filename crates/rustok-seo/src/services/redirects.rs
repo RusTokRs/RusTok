@@ -18,8 +18,8 @@ use crate::{SeoError, SeoResult};
 
 use super::{normalize_route, SeoService, REDIRECT_CACHE};
 
-const DELIVERY_STATUS_PENDING: &str = "pending";
-const INDEX_DELIVERY_STATUS_PENDING: &str = "pending";
+const DELIVERY_STATUS_SENT: &str = "sent";
+const INDEX_DELIVERY_STATUS_SENT: &str = "sent";
 const INDEX_TARGET_SCOPE_KIND: &str = "kind";
 const INDEX_SCOPE_KEY_ALL: &str = "*";
 const INDEX_CURSOR_REPLAY_MODE_NOT_STARTED: &str = "not_started";
@@ -127,12 +127,12 @@ impl SeoService {
             idempotency_key: Set(idempotency_key.clone()),
             source_kind: Set(Some("redirect".to_string())),
             source_id: Set(Some(record.id)),
-            status: Set(DELIVERY_STATUS_PENDING.to_string()),
+            status: Set(DELIVERY_STATUS_SENT.to_string()),
             outbox_event_id: Set(Some(outbox_event_id)),
             last_error: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
-            dispatched_at: Set(None),
+            dispatched_at: Set(Some(now)),
         }
         .insert(txn)
         .await?;
@@ -196,15 +196,15 @@ impl SeoService {
             target_id: Set(None),
             target_scope: Set(INDEX_TARGET_SCOPE_KIND.to_string()),
             target_scope_key: Set(INDEX_SCOPE_KEY_ALL.to_string()),
-            status: Set(INDEX_DELIVERY_STATUS_PENDING.to_string()),
-            attempt_count: Set(0),
+            status: Set(INDEX_DELIVERY_STATUS_SENT.to_string()),
+            attempt_count: Set(1),
             outbox_event_id: Set(Some(outbox_event_id)),
             next_attempt_at: Set(None),
             last_error: Set(None),
             dead_lettered_at: Set(None),
             created_at: Set(observed_at),
             updated_at: Set(observed_at),
-            dispatched_at: Set(None),
+            dispatched_at: Set(Some(observed_at)),
         }
         .insert(txn)
         .await?;
