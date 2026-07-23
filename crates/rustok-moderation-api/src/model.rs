@@ -8,96 +8,57 @@ pub const MODERATION_DECISION_EFFECT_SCHEMA_V1: u16 = 1;
 pub const MAX_MODERATION_EFFECT_CAPABILITIES: usize = 32;
 pub const MAX_MODERATION_CAPABILITY_KEY_BYTES: usize = 120;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationSubjectKind {
-    ForumTopic,
-    ForumPost,
-    BlogPost,
-    Comment,
-    Group,
-    GroupMembership,
-    Review,
-    ReviewResponse,
-    Product,
-    MarketplaceListing,
-    SellerProfile,
-    Message,
-    MediaAsset,
-    UserProfile,
+macro_rules! string_enum {
+    ($vis:vis enum $name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        $vis enum $name {
+            $($variant),+
+        }
+
+        impl $name {
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $value),+
+                }
+            }
+
+            pub fn parse(value: &str) -> Option<Self> {
+                match value {
+                    $($value => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+        }
+    };
 }
 
-impl ModerationSubjectKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::ForumTopic => "forum_topic",
-            Self::ForumPost => "forum_post",
-            Self::BlogPost => "blog_post",
-            Self::Comment => "comment",
-            Self::Group => "group",
-            Self::GroupMembership => "group_membership",
-            Self::Review => "review",
-            Self::ReviewResponse => "review_response",
-            Self::Product => "product",
-            Self::MarketplaceListing => "marketplace_listing",
-            Self::SellerProfile => "seller_profile",
-            Self::Message => "message",
-            Self::MediaAsset => "media_asset",
-            Self::UserProfile => "user_profile",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "forum_topic" => Some(Self::ForumTopic),
-            "forum_post" => Some(Self::ForumPost),
-            "blog_post" => Some(Self::BlogPost),
-            "comment" => Some(Self::Comment),
-            "group" => Some(Self::Group),
-            "group_membership" => Some(Self::GroupMembership),
-            "review" => Some(Self::Review),
-            "review_response" => Some(Self::ReviewResponse),
-            "product" => Some(Self::Product),
-            "marketplace_listing" => Some(Self::MarketplaceListing),
-            "seller_profile" => Some(Self::SellerProfile),
-            "message" => Some(Self::Message),
-            "media_asset" => Some(Self::MediaAsset),
-            "user_profile" => Some(Self::UserProfile),
-            _ => None,
-        }
+string_enum! {
+    pub enum ModerationSubjectKind {
+        ForumTopic => "forum_topic",
+        ForumPost => "forum_post",
+        BlogPost => "blog_post",
+        Comment => "comment",
+        Group => "group",
+        GroupMembership => "group_membership",
+        Review => "review",
+        ReviewResponse => "review_response",
+        Product => "product",
+        MarketplaceListing => "marketplace_listing",
+        SellerProfile => "seller_profile",
+        Message => "message",
+        MediaAsset => "media_asset",
+        UserProfile => "user_profile",
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationScopeKind {
-    Platform,
-    Group,
-    Page,
-    ForumCategory,
-    MarketplaceStore,
-}
-
-impl ModerationScopeKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Platform => "platform",
-            Self::Group => "group",
-            Self::Page => "page",
-            Self::ForumCategory => "forum_category",
-            Self::MarketplaceStore => "marketplace_store",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "platform" => Some(Self::Platform),
-            "group" => Some(Self::Group),
-            "page" => Some(Self::Page),
-            "forum_category" => Some(Self::ForumCategory),
-            "marketplace_store" => Some(Self::MarketplaceStore),
-            _ => None,
-        }
+string_enum! {
+    pub enum ModerationScopeKind {
+        Platform => "platform",
+        Group => "group",
+        Page => "page",
+        ForumCategory => "forum_category",
+        MarketplaceStore => "marketplace_store",
     }
 }
 
@@ -124,126 +85,42 @@ pub struct ModerationSubjectRef {
     pub revision: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationReasonCode {
-    Spam,
-    Fraud,
-    Harassment,
-    HateOrAbuse,
-    Threats,
-    SexualContent,
-    Violence,
-    IllegalGoods,
-    Counterfeit,
-    Misinformation,
-    PersonalDataExposure,
-    Copyright,
-    Impersonation,
-    ManipulatedRating,
-    OffTopic,
-    DuplicateContent,
-    Other,
-}
-
-impl ModerationReasonCode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Spam => "spam",
-            Self::Fraud => "fraud",
-            Self::Harassment => "harassment",
-            Self::HateOrAbuse => "hate_or_abuse",
-            Self::Threats => "threats",
-            Self::SexualContent => "sexual_content",
-            Self::Violence => "violence",
-            Self::IllegalGoods => "illegal_goods",
-            Self::Counterfeit => "counterfeit",
-            Self::Misinformation => "misinformation",
-            Self::PersonalDataExposure => "personal_data_exposure",
-            Self::Copyright => "copyright",
-            Self::Impersonation => "impersonation",
-            Self::ManipulatedRating => "manipulated_rating",
-            Self::OffTopic => "off_topic",
-            Self::DuplicateContent => "duplicate_content",
-            Self::Other => "other",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "spam" => Some(Self::Spam),
-            "fraud" => Some(Self::Fraud),
-            "harassment" => Some(Self::Harassment),
-            "hate_or_abuse" => Some(Self::HateOrAbuse),
-            "threats" => Some(Self::Threats),
-            "sexual_content" => Some(Self::SexualContent),
-            "violence" => Some(Self::Violence),
-            "illegal_goods" => Some(Self::IllegalGoods),
-            "counterfeit" => Some(Self::Counterfeit),
-            "misinformation" => Some(Self::Misinformation),
-            "personal_data_exposure" => Some(Self::PersonalDataExposure),
-            "copyright" => Some(Self::Copyright),
-            "impersonation" => Some(Self::Impersonation),
-            "manipulated_rating" => Some(Self::ManipulatedRating),
-            "off_topic" => Some(Self::OffTopic),
-            "duplicate_content" => Some(Self::DuplicateContent),
-            "other" => Some(Self::Other),
-            _ => None,
-        }
+string_enum! {
+    pub enum ModerationReasonCode {
+        Spam => "spam",
+        Fraud => "fraud",
+        Harassment => "harassment",
+        HateOrAbuse => "hate_or_abuse",
+        Threats => "threats",
+        SexualContent => "sexual_content",
+        Violence => "violence",
+        IllegalGoods => "illegal_goods",
+        Counterfeit => "counterfeit",
+        Misinformation => "misinformation",
+        PersonalDataExposure => "personal_data_exposure",
+        Copyright => "copyright",
+        Impersonation => "impersonation",
+        ManipulatedRating => "manipulated_rating",
+        OffTopic => "off_topic",
+        DuplicateContent => "duplicate_content",
+        Other => "other",
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationDecisionKind {
-    NoViolation,
-    Warning,
-    Hide,
-    Unpublish,
-    Remove,
-    Lock,
-    RestrictInteraction,
-    RequireEdit,
-    RejectPublication,
-    SuspendSubject,
-    Escalate,
-    AccountSanctionRecommended,
-}
-
-impl ModerationDecisionKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::NoViolation => "no_violation",
-            Self::Warning => "warning",
-            Self::Hide => "hide",
-            Self::Unpublish => "unpublish",
-            Self::Remove => "remove",
-            Self::Lock => "lock",
-            Self::RestrictInteraction => "restrict_interaction",
-            Self::RequireEdit => "require_edit",
-            Self::RejectPublication => "reject_publication",
-            Self::SuspendSubject => "suspend_subject",
-            Self::Escalate => "escalate",
-            Self::AccountSanctionRecommended => "account_sanction_recommended",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "no_violation" => Some(Self::NoViolation),
-            "warning" => Some(Self::Warning),
-            "hide" => Some(Self::Hide),
-            "unpublish" => Some(Self::Unpublish),
-            "remove" => Some(Self::Remove),
-            "lock" => Some(Self::Lock),
-            "restrict_interaction" => Some(Self::RestrictInteraction),
-            "require_edit" => Some(Self::RequireEdit),
-            "reject_publication" => Some(Self::RejectPublication),
-            "suspend_subject" => Some(Self::SuspendSubject),
-            "escalate" => Some(Self::Escalate),
-            "account_sanction_recommended" => Some(Self::AccountSanctionRecommended),
-            _ => None,
-        }
+string_enum! {
+    pub enum ModerationDecisionKind {
+        NoViolation => "no_violation",
+        Warning => "warning",
+        Hide => "hide",
+        Unpublish => "unpublish",
+        Remove => "remove",
+        Lock => "lock",
+        RestrictInteraction => "restrict_interaction",
+        RequireEdit => "require_edit",
+        RejectPublication => "reject_publication",
+        SuspendSubject => "suspend_subject",
+        Escalate => "escalate",
+        AccountSanctionRecommended => "account_sanction_recommended",
     }
 }
 
@@ -254,15 +131,15 @@ pub struct ModerationCapabilityKey(String);
 impl ModerationCapabilityKey {
     pub fn new(value: impl Into<String>) -> Result<Self, ModerationEffectValidationError> {
         let value = value.into();
-        let valid = !value.is_empty()
-            && value.len() <= MAX_MODERATION_CAPABILITY_KEY_BYTES
-            && value.bytes().all(|byte| {
-                byte.is_ascii_lowercase()
-                    || byte.is_ascii_digit()
-                    || matches!(byte, b'.' | b':' | b'_' | b'-')
-            })
-            && !value.starts_with(['.', ':', '_', '-'])
-            && !value.ends_with(['.', ':', '_', '-']);
+        if value.is_empty() || value.len() > MAX_MODERATION_CAPABILITY_KEY_BYTES {
+            return Err(ModerationEffectValidationError::InvalidCapabilityKey);
+        }
+        let bytes = value.as_bytes();
+        let separator = |byte: u8| matches!(byte, b'.' | b':' | b'_' | b'-');
+        let valid = bytes.iter().copied().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || separator(byte)
+        }) && !separator(bytes[0])
+            && !separator(bytes[bytes.len() - 1]);
         if !valid {
             return Err(ModerationEffectValidationError::InvalidCapabilityKey);
         }
@@ -288,29 +165,37 @@ impl From<ModerationCapabilityKey> for String {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationVisibilityState {
-    Hidden,
-    Unpublished,
-    Removed,
+string_enum! {
+    pub enum ModerationVisibilityState {
+        Hidden => "hidden",
+        Unpublished => "unpublished",
+        Removed => "removed",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ModerationDecisionEffectAction {
     NoDomainMutation,
-    SetVisibility { state: ModerationVisibilityState },
-    Lock { effective_until: Option<DateTime<Utc>> },
+    SetVisibility {
+        state: ModerationVisibilityState,
+    },
+    Lock {
+        effective_until: Option<DateTime<Utc>>,
+    },
     RestrictInteraction {
         capabilities: Vec<ModerationCapabilityKey>,
         effective_until: Option<DateTime<Utc>>,
     },
     RequireEdit,
     RejectPublication,
-    SuspendSubject { effective_until: Option<DateTime<Utc>> },
+    SuspendSubject {
+        effective_until: Option<DateTime<Utc>>,
+    },
     Escalate,
-    AccountSanctionRecommended { capabilities: Vec<ModerationCapabilityKey> },
+    AccountSanctionRecommended {
+        capabilities: Vec<ModerationCapabilityKey>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -320,7 +205,9 @@ pub struct ModerationDecisionEffect {
 }
 
 impl ModerationDecisionEffect {
-    pub fn v1(action: ModerationDecisionEffectAction) -> Result<Self, ModerationEffectValidationError> {
+    pub fn v1(
+        action: ModerationDecisionEffectAction,
+    ) -> Result<Self, ModerationEffectValidationError> {
         let effect = Self {
             schema_version: MODERATION_DECISION_EFFECT_SCHEMA_V1,
             action,
@@ -413,7 +300,10 @@ fn validate_capabilities(
     if unique.len() != capabilities.len() {
         return Err(ModerationEffectValidationError::DuplicateCapability);
     }
-    if capabilities.windows(2).any(|pair| pair[0] >= pair[1]) {
+    if capabilities
+        .windows(2)
+        .any(|pair| pair[0].as_str() >= pair[1].as_str())
+    {
         return Err(ModerationEffectValidationError::CapabilitiesNotCanonical);
     }
     Ok(())
@@ -452,4 +342,44 @@ pub struct ModerationDecisionApplication {
     pub subject: ModerationSubjectRef,
     pub applied_revision: i64,
     pub applied_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn suspension_requires_matching_decision_kind() {
+        let effect = ModerationDecisionEffect::v1(
+            ModerationDecisionEffectAction::SuspendSubject {
+                effective_until: None,
+            },
+        )
+        .expect("valid effect");
+        assert!(
+            effect
+                .validate_for_decision_kind(ModerationDecisionKind::SuspendSubject)
+                .is_ok()
+        );
+        assert!(
+            effect
+                .validate_for_decision_kind(ModerationDecisionKind::Warning)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn capability_sets_must_be_canonical() {
+        let capabilities = vec![
+            ModerationCapabilityKey::new("groups.comment").expect("key"),
+            ModerationCapabilityKey::new("groups.post").expect("key"),
+        ];
+        let effect = ModerationDecisionEffect::v1(
+            ModerationDecisionEffectAction::RestrictInteraction {
+                capabilities,
+                effective_until: None,
+            },
+        );
+        assert!(effect.is_ok());
+    }
 }
