@@ -1,22 +1,15 @@
 //! RusToK Index - cross-module relational Index Engine.
 //!
-//! The database-independent engine core lives under [`domain`]. Source-specific
-//! indexers and migrations remain temporarily while M0 removes the legacy storage
-//! implementation in controlled steps.
+//! The active implementation is the database-independent generic engine core
+//! under [`domain`]. Storage, ingestion, rebuild, and query infrastructure are
+//! introduced only through the milestones in the live implementation plan.
 
 use async_trait::async_trait;
-use rustok_core::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
-    ModuleRuntimeExtensions, RusToKModule,
-};
+use rustok_core::{MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
-pub mod content;
 pub mod domain;
 pub mod error;
-pub mod flex;
-pub mod migrations;
-pub mod product;
 pub mod traits;
 
 pub use domain::*;
@@ -47,34 +40,12 @@ impl RusToKModule for IndexModule {
         ModuleKind::Core
     }
 
-    fn register_event_listeners(
-        &self,
-        registry: &mut ModuleEventListenerRegistry,
-        ctx: &ModuleEventListenerContext<'_>,
-    ) {
-        let runtime = ctx
-            .extensions
-            .get::<IndexerRuntimeConfig>()
-            .cloned()
-            .unwrap_or_else(IndexerRuntimeConfig::load);
-        registry.register(content::ContentIndexer::with_runtime(
-            ctx.db.clone(),
-            runtime.clone(),
-        ));
-        registry.register(flex::FlexIndexer::with_runtime(
-            ctx.db.clone(),
-            runtime.clone(),
-        ));
-        registry.register(product::ProductIndexer::with_runtime(
-            ctx.db.clone(),
-            runtime,
-        ));
-    }
-
     fn register_runtime_extensions(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
     ) -> rustok_core::Result<()> {
+        // Temporary host compatibility only. M0 removes this legacy runtime
+        // configuration after server composition stops inserting it.
         extensions.get_or_insert_with(IndexerRuntimeConfig::load);
         Ok(())
     }
@@ -82,7 +53,7 @@ impl RusToKModule for IndexModule {
 
 impl MigrationSource for IndexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
+        Vec::new()
     }
 }
 
