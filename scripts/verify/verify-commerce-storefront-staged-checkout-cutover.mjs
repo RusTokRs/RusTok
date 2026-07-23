@@ -103,16 +103,12 @@ for (const [source, value, label] of [
   [restCheckout, 'err.to_string()', 'REST raw payment error display'],
   [graphqlCheckout, 'Error::new(error.to_string())', 'GraphQL raw checkout error display'],
   [graphqlCheckout, '.find_reusable_collection_by_cart(tenant_id, cart.id)\n            .await?', 'GraphQL raw reusable payment error propagation'],
-  [graphqlCheckout, '.create_collection(\n', 'GraphQL payment collection creation presence'],
   [nativeCheckout, 'ServerFnError::new(error.to_string())', 'native raw checkout error display'],
   [nativeCheckout, 'ServerFn(error.to_string())', 'native transport raw server error display'],
   [stagedRuntime, '#[error("checkout request is invalid: {0}")]', 'runtime validation detail display'],
   [orderPorts, 'match order.status.as_str()', 'raw checkout order lifecycle matching'],
   [orderPorts, '"confirmed" | "paid" | "shipped" | "delivered"', 'raw checkout order lifecycle alternatives'],
 ]) {
-  if (label === 'GraphQL payment collection creation presence') {
-    continue;
-  }
   forbidText(source, value, label);
 }
 
