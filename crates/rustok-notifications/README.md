@@ -5,9 +5,9 @@
 `rustok-notifications` owns notification inbox state, recipient preferences,
 bounded fan-out, grouping, digests, retention, and channel delivery attempts.
 The current implementation provides the neutral source boundary, optional runtime
-composition, durable source intake, bounded candidate fan-out, and a policy-gated
-command that can create one final in-app notification. Channel delivery remains a
-separate later workflow.
+composition, durable outbox intake, durable source state, bounded candidate
+fan-out, and a policy-gated command that can create one final in-app
+notification. Channel delivery remains a separate later workflow.
 
 ## Responsibilities
 
@@ -28,17 +28,21 @@ separate later workflow.
 - producer subscriptions and source lifecycle;
 - SMTP, push-vendor, or SMS SDK implementation;
 - authentication identity and contact data;
-- source-private tables or Profiles-owned block/profile persistence;
+- source-private tables or Profiles/Social Graph persistence;
 - synchronous notification calls inside producer transactions.
 
 ## Entry points
 
 - `NotificationsModule`
 - `NotificationsService`
+- `NotificationOutboxIntakeWorker`
 - `NotificationFanoutService`
 - `NotificationCandidateService`
+- `NotificationCandidateWorker`
 - `NotificationRecipientPolicy`
+- `NotificationRecipientPolicyRuntime`
 - `NotificationSourceInboxReceipt`
+- `NotificationOutboxIntakeResult`
 - `NotificationFanoutPageResult`
 - `NotificationCandidateProcessResult`
 - `rustok_notifications::api` re-export of the neutral source contract
@@ -59,6 +63,9 @@ inbox deduplicated by tenant, source slug, and source event ID.
 fan-out candidates, typed retryable/terminal states, and recovery indexes while
 preserving SQLite tenant-integrity triggers.
 
+`m20260723_000013_add_outbox_intake_receipts` binds each accepted committed
+outbox envelope to its semantic source identity and durable source-inbox row.
+
 The database enforces tenant-composite recipient integrity, source-event and
 idempotency dedupe, typed state/channel/mode values, read-implies-seen semantics,
 lease/completion timestamps, bounded JSON/error/cursor fields, and encrypted push
@@ -68,11 +75,19 @@ payload, or plaintext push endpoint is persisted.
 The migrations are exposed through `NotificationsModule::migrations`. Global
 `rustok-migrations` server composition remains a verification-gated follow-up.
 
-## Durable source and candidate processing
+## Durable outbox, source, and candidate processing
+
+`NotificationOutboxIntakeWorker` selects supported committed `sys_events` rows
+without an intake receipt and accepts them into the source inbox. Selection is
+bounded to 32 by default and 64 maximum, ordered by `created_at/id`, and does not
+read or mutate general relay status. Source inbox and receipt commit in one
+transaction. The current mappings are root `forum.topic.created → topic_id/1`
+and sealed `forum.mention.user_added → envelope_id/source_revision_id`.
 
 `NotificationFanoutService` separates source processing into durable event
 acceptance, descriptor materialization, and bounded cursor fan-out. Its output is
-an idempotent set of `pending` candidates, not inbox rows.
+an idempotent set of `pending` candidates, not inbox rows. A production worker
+that leases pending source rows and drives materialization/pages remains open.
 
 `NotificationCandidateService` requires an explicitly injected
 `NotificationRecipientPolicy`; there is no allow-all default. For one candidate it:
@@ -90,9 +105,15 @@ Disabled preferences, privacy suppression, and unavailable targets become stable
 Changed semantic replay fails closed. No channel delivery attempt is created by
 this workflow.
 
-The production Profiles/block adapter remains deferred. Privacy and source
-visibility must be checked again when an inbox item is opened and before delayed
-delivery.
+The server composes Profiles privacy and Social Graph block/mute owner ports into
+the production policy runtime. Outbox intake and candidate processing have
+separate default-off runtime flags:
+
+- `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`;
+- `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`.
+
+Privacy and source visibility must be checked again when an inbox item is opened
+and before delayed delivery.
 
 ## Interactions
 
@@ -102,12 +123,13 @@ server materializes those factories only after database-backed host services are
 available. Delivery and identity/contact providers remain separate owner
 capabilities.
 
-Forum supports `forum.topic.created` and `forum.mention.user_added`. The user
-mention provider binds the event to the exact immutable `forum_user_mentions`
-row, rechecks current topic/reply visibility, defers pending replies, suppresses
-self-mentions, and fails closed for deleted, hidden, closed, or channel-restricted
-sources. Moderator audience expansion remains deferred until a bounded owner
-directory port exists.
+Forum supports `forum.topic.created` and `forum.mention.user_added`. Its provider
+accepts legacy journal identity/revision references and semantic identities from
+the committed outbox envelopes. The user mention provider still binds the event
+to the exact immutable `forum_user_mentions` row, rechecks current topic/reply
+visibility, defers pending replies, suppresses self-mentions, and fails closed for
+deleted, hidden, closed, or channel-restricted sources. Moderator audience
+expansion remains deferred until a bounded owner directory port exists.
 
 Forum commands continue to succeed when the notifications owner is tenant-
 disabled or absent. Notifications remains outside `settings.default_enabled`.
@@ -118,5 +140,7 @@ until inbox APIs exist.
 
 - [Live module contract](docs/README.md)
 - [Module-local implementation gates](docs/implementation-plan.md)
+- [Outbox intake machine contract](contracts/notifications-outbox-intake.json)
+- [Candidate worker machine contract](contracts/notifications-candidate-worker.json)
 - Canonical cross-module status:
   `crates/rustok-forum/docs/implementation-plan.md`
