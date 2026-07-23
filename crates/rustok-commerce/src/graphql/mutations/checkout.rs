@@ -2,7 +2,7 @@ use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, graphql::require_module_enabled};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
-use rustok_payment::PaymentService;
+use rustok_payment::{PaymentError, PaymentService};
 use uuid::Uuid;
 
 use crate::ShippingProfileService;
@@ -76,12 +76,34 @@ impl CommerceCheckoutMutation {
                 currency_code: Some(cart.currency_code.clone()),
             },
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                error = ?error,
+                tenant_id = %tenant_id,
+                cart_id = %cart.id,
+                operation = "resolve_store_context",
+                "storefront payment collection context resolution failed"
+            );
+            async_graphql::Error::new("Store context is temporarily unavailable")
+                .extend_with(|_, extensions| {
+                    extensions.set("code", "store_context_unavailable");
+                    extensions.set("retryable", true);
+                })
+        })?;
 
         let service = PaymentService::new(db.clone());
         if let Some(existing) = service
             .find_reusable_collection_by_cart(tenant_id, cart.id)
-            .await?
+            .await
+            .map_err(|error| {
+                payment_collection_graphql_error(
+                    tenant_id,
+                    cart.id,
+                    "find_reusable_collection_by_cart",
+                    error,
+                )
+            })?
         {
             return Ok(existing.into());
         }
@@ -101,7 +123,15 @@ impl CommerceCheckoutMutation {
                     ),
                 },
             )
-            .await?;
+            .await
+            .map_err(|error| {
+                payment_collection_graphql_error(
+                    tenant_id,
+                    cart.id,
+                    "create_collection",
+                    error,
+                )
+            })?;
 
         Ok(collection.into())
     }
@@ -270,5 +300,72 @@ fn storefront_checkout_graphql_error(
     async_graphql::Error::new(message).extend_with(|_, extensions| {
         extensions.set("code", code);
         extensions.set("retryable", retryable);
+    })
+}
+
+fn payment_collection_graphql_error(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    operation: &'static str,
+    error: PaymentError,
+) -> async_graphql::Error {
+    tracing::error!(
+        error = ?error,
+        tenant_id = %tenant_id,
+        cart_id = %cart_id,
+        operation,
+        "storefront payment collection GraphQL operation failed"
+    );
+    let (code, message, retryable, reconciliation_required) = match error {
+        PaymentError::Validation(_) => (
+            "payment_request_invalid",
+            "Payment collection request is invalid",
+            false,
+            false,
+        ),
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => (
+            "payment_resource_not_found",
+            "Payment resource was not found",
+            false,
+            false,
+        ),
+        PaymentError::InvalidTransition { .. } => (
+            "payment_state_conflict",
+            "Payment lifecycle conflicts with the requested operation",
+            false,
+            false,
+        ),
+        PaymentError::ProviderUnavailable { .. } | PaymentError::ProviderConfiguration { .. } => (
+            "payment_temporarily_unavailable",
+            "Payment service is temporarily unavailable",
+            true,
+            false,
+        ),
+        PaymentError::ProviderRejected { .. } => (
+            "payment_provider_rejected",
+            "Payment provider rejected the requested operation",
+            false,
+            false,
+        ),
+        PaymentError::ProviderInvalidResponse { .. }
+        | PaymentError::ProviderOutcomeUnknown { .. } => (
+            "payment_reconciliation_required",
+            "Payment operation requires reconciliation",
+            false,
+            true,
+        ),
+        PaymentError::Database(_) => (
+            "payment_storage_unavailable",
+            "Payment service is temporarily unavailable",
+            true,
+            false,
+        ),
+    };
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", retryable);
+        extensions.set("reconciliation_required", reconciliation_required);
     })
 }
