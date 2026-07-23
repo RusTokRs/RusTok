@@ -43,6 +43,21 @@ impl ModuleEffectivePolicyTransitionCoordinator {
         }
     }
 
+    /// Acquires the same tenant-scoped durable cursor lock used by transition
+    /// advancement. Lifecycle writers call this before mutating tenant module
+    /// state so commit guards can serialize against the complete state change.
+    pub async fn lock_current_revision(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        consumer_key: &str,
+    ) -> Result<Option<String>, ModuleEffectivePolicyTransitionCoordinatorError> {
+        self.consumer
+            .lock_current_revision_in_transaction(transaction, tenant_id, consumer_key)
+            .await
+            .map_err(ModuleEffectivePolicyTransitionCoordinatorError::Consumer)
+    }
+
     pub async fn publish_and_advance(
         &self,
         transaction: &DatabaseTransaction,
