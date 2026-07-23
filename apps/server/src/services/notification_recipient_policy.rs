@@ -21,6 +21,8 @@ use rustok_social_graph::{
 };
 use sea_orm::DatabaseConnection;
 
+pub const NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV: &str =
+    "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED";
 const RECIPIENT_POLICY_DEADLINE: Duration = Duration::from_secs(2);
 const RECIPIENT_POLICY_ACTOR: &str = "notifications-recipient-policy";
 
@@ -118,6 +120,7 @@ impl ServerNotificationRecipientPolicy {
         };
 
         NotificationRecipientPolicyRuntime::new(Arc::new(policy), true)
+            .with_candidate_worker_enabled(candidate_worker_enabled_from_environment())
     }
 
     fn port_context(request: &NotificationRecipientPolicyRequest) -> PortContext {
@@ -209,6 +212,32 @@ impl NotificationRecipientPolicy for ServerNotificationRecipientPolicy {
         }
 
         Ok(NotificationRecipientPolicyDecision::Allow)
+    }
+}
+
+fn candidate_worker_enabled_from_environment() -> bool {
+    match std::env::var(NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV) {
+        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "" | "0" | "false" | "no" | "off" => false,
+            _ => {
+                tracing::warn!(
+                    variable = NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV,
+                    value,
+                    "Invalid notification candidate worker enable flag; keeping worker disabled"
+                );
+                false
+            }
+        },
+        Err(std::env::VarError::NotPresent) => false,
+        Err(error) => {
+            tracing::warn!(
+                variable = NOTIFICATION_CANDIDATE_WORKER_ENABLED_ENV,
+                error = %error,
+                "Notification candidate worker enable flag is unreadable; keeping worker disabled"
+            );
+            false
+        }
     }
 }
 
