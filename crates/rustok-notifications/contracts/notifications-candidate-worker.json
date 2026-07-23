@@ -1,7 +1,7 @@
 {
-  "schema_version": 4,
+  "schema_version": 6,
   "slice": "NOTIFY-03C",
-  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03G"],
+  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03G", "NOTIFY-03H"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "owner_driver": "crates/rustok-notifications/src/worker.rs",
@@ -10,6 +10,8 @@
   "server_worker": "apps/server/src/services/notification_candidate_worker.rs",
   "policy_composition": "apps/server/src/services/notification_recipient_policy.rs",
   "bootstrap": "apps/server/src/services/server_bootstrap.rs",
+  "module_policy_consumer": "crates/rustok-modules/src/policy_revision_consumer.rs",
+  "module_policy_transition": "crates/rustok-modules/src/policy_transition_event.rs",
   "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
   "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
   "enablement": {
@@ -19,7 +21,8 @@
     "requires_background_worker_host": true,
     "requires_relation_ports_ready": true,
     "requires_candidate_worker_ready": true,
-    "requires_module_registry": true
+    "requires_module_registry": true,
+    "production_uses_guarded_constructor": true
   },
   "bounded_loop": {
     "default_batch_size": 32,
@@ -38,14 +41,36 @@
     "durable_candidate_failure_preserved": true
   },
   "tenant_capability_gate": {
-    "authority": "EffectiveModulePolicyService::is_enabled",
+    "preclaim_authority": "EffectiveModulePolicyService::resolve_snapshot",
     "module_slug": "notifications",
     "checked_before_each_candidate_claim": true,
+    "observed_policy_revision_forwarded_to_commit": true,
+    "observed_manifest_defaults_forwarded_to_commit": true,
     "policy_error_fails_closed": true,
     "disabled_tenant_calls_recipient_policy": false,
     "disabled_tenant_calls_source_provider": false,
-    "direct_module_table_read_forbidden": true,
-    "atomic_with_concurrent_tenant_disable": false
+    "direct_module_table_read_forbidden": true
+  },
+  "commit_time_guard": {
+    "trait": "NotificationTenantCapabilityCommitGuard",
+    "inside_final_notification_transaction": true,
+    "after_candidate_lease_validation": true,
+    "before_preference_recheck": true,
+    "before_notification_insert": true,
+    "lifecycle_cursor_consumer_key": "module.lifecycle",
+    "module_owner_resolves_tenant_overrides": true,
+    "server_reads_tenant_modules_directly": false,
+    "uses_observed_manifest_defaults": true,
+    "manifest_read_inside_final_transaction": false,
+    "extra_pool_connection_inside_final_transaction": false,
+    "revision_match_required": true,
+    "enabled_module_required": true,
+    "revision_change_retryable": true,
+    "disabled_commit_retryable": true,
+    "rejected_commit_creates_notification": false,
+    "postgres_serializes_with_lifecycle_tenant_toggle": true,
+    "sqlite_behavioral_evidence_only": true,
+    "atomic_with_manifest_or_security_mutation": false
   },
   "tenant_policy_backoff": {
     "disabled_retry_seconds": 300,
@@ -74,6 +99,7 @@
   },
   "tests": [
     "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
+    "crates/rustok-modules/tests/policy_commit_guard_sqlite.rs",
     "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
     "crates/rustok-notifications/tests/fanout_worker_sqlite.rs"
   ],
@@ -84,8 +110,8 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "atomic control-plane revision guard for tenant disable concurrent with candidate claim",
-    "parallel candidate worker concurrency evidence",
+    "atomic serialization with active-manifest, artifact security, and maintenance policy mutations",
+    "parallel candidate worker PostgreSQL concurrency evidence",
     "PostgreSQL lease and recovery evidence",
     "worker health and lag metrics",
     "default deployment enablement",

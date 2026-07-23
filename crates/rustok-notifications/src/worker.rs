@@ -166,9 +166,6 @@ impl NotificationCandidateWorker {
         self.batch_size
     }
 
-    /// Selects at most one bounded page of currently claimable candidate work.
-    /// Selection itself never acquires a lease; tenant identity is exposed so the
-    /// executable host can enforce current capability before recipient/source calls.
     pub async fn claimable_candidate_work(
         &self,
     ) -> NotificationResult<Vec<NotificationCandidateWorkItem>> {
@@ -189,8 +186,6 @@ impl NotificationCandidateWorker {
             .collect())
     }
 
-    /// Compatibility projection for trusted callers that already enforce tenant
-    /// capability. Executable hosts should use `claimable_candidate_work`.
     pub async fn claimable_candidate_ids(&self) -> NotificationResult<Vec<Uuid>> {
         Ok(self
             .claimable_candidate_work()
@@ -200,10 +195,6 @@ impl NotificationCandidateWorker {
             .collect())
     }
 
-    /// Defers claimable candidate work before canonical processing when current
-    /// tenant capability is disabled or temporarily unresolved. The update is a
-    /// compare-and-set against tenant, attempt count, and claimable state, so a
-    /// concurrent canonical claim remains authoritative.
     pub async fn defer_candidate(
         &self,
         work: NotificationCandidateWorkItem,
@@ -245,7 +236,6 @@ impl NotificationCandidateWorker {
         Ok(())
     }
 
-    /// Trusted compatibility path without a transaction-bound policy revision.
     pub async fn process_candidate(
         &self,
         item_id: Uuid,
@@ -259,20 +249,18 @@ impl NotificationCandidateWorker {
         &self,
         item_id: Uuid,
         observed_policy_revision: &str,
+        observed_default_enabled_modules: &[String],
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         self.service
             .process_candidate_with_policy_revision(
                 item_id,
                 self.worker_id.as_str(),
                 observed_policy_revision,
+                observed_default_enabled_modules,
             )
             .await
     }
 
-    /// Convenience bounded batch path for trusted callers that have already
-    /// established tenant capability. Deployment-owned loops should use
-    /// `claimable_candidate_work`, check shutdown and tenant capability between
-    /// items, then call `process_candidate_with_policy_revision`.
     pub async fn process_next_batch(&self) -> NotificationResult<NotificationCandidateBatchResult> {
         let work_items = self.claimable_candidate_work().await?;
         let mut result = NotificationCandidateBatchResult {

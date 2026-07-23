@@ -54,6 +54,10 @@
 - `NotificationRecipientPolicyDecision`
 - `NotificationRecipientPolicyError`
 - `NotificationRecipientSuppression`
+- `NotificationTenantCapabilityCommitGuard`
+- `NotificationTenantCapabilityCommitRequest`
+- `NotificationTenantCapabilityCommitDecision`
+- `NotificationTenantCapabilityCommitError`
 - `NotificationRecipientPolicyRuntime`
 - `NotificationBlockReadPort` / `NotificationBlockReadRuntime`
 - `NotificationMuteReadPort` / `NotificationMuteReadRuntime`
@@ -144,41 +148,54 @@ nor delivery attempts.
 `NotificationCandidateWorker::claimable_candidate_work` returns bounded
 `NotificationCandidateWorkItem { item_id, tenant_id }` values in stable
 `created_at/id` order without acquiring a lease. The legacy
-`claimable_candidate_ids` remains a compatibility projection for trusted callers
-that already enforce tenant capability.
+`claimable_candidate_ids` remains a compatibility projection for trusted callers.
 
-Before `process_candidate`, the executable server resolves current effective
-`notifications` capability through `EffectiveModulePolicyService::is_enabled`.
-Disabled or unresolved work does not invoke recipient privacy policy or the source
-provider. Instead `NotificationCandidatePolicyDeferral` performs an owner-side CAS:
+Before claim, the server calls `EffectiveModulePolicyService::resolve_snapshot`,
+requires the `notifications` capability, and observes one coherent token containing
+`ModuleEffectivePolicy::policy_revision` plus the exact manifest default-enabled
+module set used for that computation. Disabled or unresolved work does not invoke
+recipient privacy policy or a source provider; it receives the existing
+300/30-second owner CAS backoff.
 
-- `TenantDisabled`: retry after 300 seconds with
-  `NOTIFICATION_TENANT_CAPABILITY_DISABLED`;
-- `PolicyUnavailable`: retry after 30 seconds with
-  `NOTIFICATION_TENANT_POLICY_UNAVAILABLE`.
+Production hosts construct the worker with
+`NotificationCandidateWorker::new_with_commit_guard` and process enabled work with
+`process_candidate_with_policy_revision(item_id, revision, observed_defaults)`.
+The legacy `new` and `process_candidate` methods remain trusted compatibility paths
+for callers that establish an equivalent transaction boundary themselves.
 
-The CAS sets `retryable_error`, increments attempt count, clears lease state,
-retains `notification_id = NULL`, and sets future `next_attempt_at`. It matches the
-same tenant, item ID, prior attempt count, and current claimable state, so a
-concurrent canonical claim remains authoritative and disabled tenants do not hold
-the bounded queue head.
+`NotificationCandidateService` performs preference, recipient-policy, and source
+authorization checks before opening the final transaction. Inside that transaction
+it:
 
-For enabled work, `NotificationCandidateService::new(db, registry, policy)`
-requires an explicit recipient policy; no permissive default exists.
-`process_candidate`:
+1. validates the active candidate lease;
+2. invokes `NotificationTenantCapabilityCommitGuard` with the observed revision and
+   manifest defaults;
+3. requires an `Allow` decision;
+4. rechecks preferences;
+5. inserts or validates one idempotent notification;
+6. completes the candidate under the same lease CAS.
 
-1. claims a pending, due retryable, or expired-processing candidate;
-2. resolves exact source/type preference scopes before wildcard scopes;
-3. evaluates recipient/profile/block/mute/tenant privacy;
-4. invokes recipient-specific source authorization;
-5. rechecks preferences inside the final transaction;
-6. inserts or validates one idempotent in-app notification and completes the
-   candidate under the same lease CAS.
+`Disabled`, `RevisionChanged`, and retryable guard failures roll back the final
+transaction. The existing durable candidate failure path then clears the lease,
+sets `retryable_error`, increments attempt count, records a stable code, and
+schedules a retry. No notification or channel delivery attempt survives rejection.
 
-No channel delivery attempt is created by candidate finalization. The tenant
-capability check is fail-closed and immediately precedes the canonical claim, but
-it is not atomic with a control-plane disable committed concurrently after that
-check. A revision-token or transactional control-plane guard remains deferred.
+The server guard delegates tenant override reads to
+`SeaOrmModulePolicyRevisionConsumer::lock_and_resolve_static_policy_in_transaction`.
+It supplies the observed manifest defaults rather than reloading the manifest after
+the final transaction has started. Therefore the guard uses no second pool
+connection while holding the candidate transaction.
+
+On PostgreSQL the Modules owner locks the `module.lifecycle` cursor row with
+`FOR UPDATE`, resolves `tenant_modules` on the same transaction, and compares the
+current policy revision. The lifecycle transition advances the same cursor in its
+tenant-state transaction. This serializes final candidate commits with production
+lifecycle tenant enable/disable commits in commit order.
+
+SQLite evidence covers transaction-bound resolution and rollback decisions only;
+it is not PostgreSQL row-lock concurrency evidence. Active-manifest,
+artifact-security, maintenance, and node-readiness changes are not serialized by
+the lifecycle cursor.
 
 ## Runtime flags
 

@@ -25,6 +25,8 @@ const RETRY_DELAY_SECONDS: i64 = 30;
 const MAX_WORKER_ID_BYTES: usize = 191;
 const MAX_ERROR_CODE_BYTES: usize = 100;
 const MAX_POLICY_REVISION_BYTES: usize = 128;
+const MAX_DEFAULT_ENABLED_MODULES: usize = 512;
+const MAX_MODULE_SLUG_BYTES: usize = 191;
 const DEFAULT_SOURCE_SCOPE: &str = "*";
 const DEFAULT_TYPE_SCOPE: &str = "*";
 const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
@@ -134,6 +136,7 @@ pub struct NotificationTenantCapabilityCommitRequest {
     pub tenant_id: Uuid,
     pub module_slug: String,
     pub observed_policy_revision: String,
+    pub observed_default_enabled_modules: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -223,21 +226,30 @@ impl NotificationCandidateService {
         item_id: Uuid,
         worker_id: &str,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
-        self.process_candidate_inner(item_id, worker_id, None).await
+        self.process_candidate_inner(item_id, worker_id, None, None)
+            .await
     }
 
-    /// Processes one candidate with the exact effective-policy revision observed
-    /// before claim. The revision is revalidated under the lifecycle cursor lock
-    /// inside the final notification transaction.
+    /// Processes one candidate with the exact effective-policy revision and
+    /// manifest defaults observed before claim. The final transaction revalidates
+    /// tenant overrides under the lifecycle cursor without opening another pool
+    /// connection while the candidate transaction is active.
     pub async fn process_candidate_with_policy_revision(
         &self,
         item_id: Uuid,
         worker_id: &str,
         observed_policy_revision: &str,
+        observed_default_enabled_modules: &[String],
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         validate_policy_revision(observed_policy_revision)?;
-        self.process_candidate_inner(item_id, worker_id, Some(observed_policy_revision))
-            .await
+        validate_default_enabled_modules(observed_default_enabled_modules)?;
+        self.process_candidate_inner(
+            item_id,
+            worker_id,
+            Some(observed_policy_revision),
+            Some(observed_default_enabled_modules),
+        )
+        .await
     }
 
     async fn process_candidate_inner(
@@ -245,6 +257,7 @@ impl NotificationCandidateService {
         item_id: Uuid,
         worker_id: &str,
         observed_policy_revision: Option<&str>,
+        observed_default_enabled_modules: Option<&[String]>,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         validate_worker_id(worker_id)?;
         let initial = candidate_item::Entity::find_by_id(item_id)
@@ -353,6 +366,7 @@ impl NotificationCandidateService {
                 descriptor,
                 worker_id,
                 observed_policy_revision,
+                observed_default_enabled_modules,
             )
             .await
         {
@@ -566,6 +580,7 @@ impl NotificationCandidateService {
         descriptor: NotificationSemanticDescriptor,
         worker_id: &str,
         observed_policy_revision: Option<&str>,
+        observed_default_enabled_modules: Option<&[String]>,
     ) -> NotificationResult<NotificationCandidateProcessResult> {
         let txn = self.db.begin().await?;
         let current = candidate_item::Entity::find_by_id(item.id)
@@ -579,10 +594,15 @@ impl NotificationCandidateService {
                 txn.rollback().await?;
                 return Err(NotificationError::TenantPolicyCommitFailure { retryable: true });
             };
+            let Some(observed_default_enabled_modules) = observed_default_enabled_modules else {
+                txn.rollback().await?;
+                return Err(NotificationError::TenantPolicyCommitFailure { retryable: false });
+            };
             let request = NotificationTenantCapabilityCommitRequest {
                 tenant_id: current.tenant_id,
                 module_slug: NOTIFICATIONS_MODULE_SLUG.to_string(),
                 observed_policy_revision: observed_policy_revision.to_string(),
+                observed_default_enabled_modules: observed_default_enabled_modules.to_vec(),
             };
             match commit_guard.evaluate(&txn, request).await {
                 Ok(NotificationTenantCapabilityCommitDecision::Allow) => {}
@@ -819,6 +839,22 @@ fn validate_policy_revision(policy_revision: &str) -> NotificationResult<()> {
     {
         return Err(NotificationError::Validation(
             "observed tenant policy revision is invalid".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_default_enabled_modules(default_enabled_modules: &[String]) -> NotificationResult<()> {
+    if default_enabled_modules.len() > MAX_DEFAULT_ENABLED_MODULES
+        || default_enabled_modules.iter().any(|module_slug| {
+            module_slug.trim().is_empty()
+                || module_slug != module_slug.trim()
+                || module_slug.len() > MAX_MODULE_SLUG_BYTES
+                || module_slug.chars().any(char::is_control)
+        })
+    {
+        return Err(NotificationError::Validation(
+            "observed default-enabled module set is invalid".to_string(),
         ));
     }
     Ok(())
