@@ -16,7 +16,7 @@ pub use mutation_runner::{
 pub use runner::{BenchmarkReport, run, write_report};
 pub use sql::{
     MutationWorkload, Prototype, Workload, analyze_sql, churn_cycle_sql, full_prototype_sql,
-    mutation_workloads, prototype_sql, source_dataset_sql, vacuum_sql, workloads,
+    mutation_workloads, prototype_sql, source_dataset_sql, vacuum_statements, workloads,
 };
 
 pub async fn run_from_env() -> anyhow::Result<BenchmarkReport> {
