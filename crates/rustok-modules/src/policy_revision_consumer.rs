@@ -1,3 +1,4 @@
+use rustok_core::ModuleRegistry;
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
@@ -6,9 +7,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::data::{configure_tenant_scope, now_expression, placeholder, uuid_value};
+use crate::policy::ModuleEffectivePolicyQuery;
 use crate::{
-    ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate, ModulePolicyRevisionGateError,
-    ModulePolicyRevisionTransition,
+    ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleEffectivePolicy,
+    ModuleLifecycleDbWriterError, ModulePolicyRevisionApplyOutcome, ModulePolicyRevisionGate,
+    ModulePolicyRevisionGateError, ModulePolicyRevisionTransition, TenantModuleOverride,
 };
 
 const MAX_CONSUMER_KEY_BYTES: usize = 128;
@@ -57,6 +60,47 @@ impl SeaOrmModulePolicyRevisionConsumer {
         let backend = transaction.get_database_backend();
         ensure_cursor_row(transaction, backend, tenant_id, consumer_key).await?;
         load_cursor_revision(transaction, backend, tenant_id, consumer_key).await
+    }
+
+    /// Locks the lifecycle policy cursor and resolves the static registry policy
+    /// from tenant overrides on the same transaction. This is the commit-time
+    /// owner boundary for consumers that must serialize with tenant lifecycle
+    /// changes without reading `tenant_modules` themselves.
+    pub async fn lock_and_resolve_static_policy_in_transaction(
+        &self,
+        transaction: &DatabaseTransaction,
+        tenant_id: Uuid,
+        consumer_key: &str,
+        registry: &ModuleRegistry,
+        default_enabled_modules: impl IntoIterator<Item = String>,
+    ) -> Result<ModuleEffectivePolicy, ModuleLifecycleDbWriterError> {
+        self.lock_current_revision_in_transaction(transaction, tenant_id, consumer_key)
+            .await
+            .map_err(|error| ModuleLifecycleDbWriterError::PolicyTransition(error.to_string()))?;
+
+        let catalog = ModuleDefinitionCatalog::from_static_registry(registry)
+            .map_err(ModuleLifecycleDbWriterError::Definition)?;
+        if catalog
+            .definitions()
+            .any(|definition| matches!(&definition.source, ModuleDefinitionSource::Artifact { .. }))
+        {
+            return Err(ModuleLifecycleDbWriterError::Configuration(
+                "transaction-bound static policy resolver cannot evaluate artifact definitions"
+                    .to_string(),
+            ));
+        }
+
+        ModuleEffectivePolicyQuery::new_with_context(
+            &catalog,
+            default_enabled_modules,
+            load_tenant_overrides(transaction, tenant_id).await?,
+            Vec::new(),
+            None,
+            None,
+            None,
+        )
+        .execute()
+        .map_err(ModuleLifecycleDbWriterError::Policy)
     }
 
     /// Applies a predecessor-bound transition on an owner-open transaction.
@@ -199,6 +243,39 @@ async fn load_cursor_revision<C: ConnectionTrait>(
         .map_err(storage_error)?
         .ok_or(ModulePolicyRevisionConsumerError::CursorLost)?;
     row.try_get("", "current_revision").map_err(storage_error)
+}
+
+async fn load_tenant_overrides<C: ConnectionTrait>(
+    connection: &C,
+    tenant_id: Uuid,
+) -> Result<Vec<TenantModuleOverride>, ModuleLifecycleDbWriterError> {
+    let backend = connection.get_database_backend();
+    let sql = match backend {
+        DbBackend::Postgres => {
+            "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = $1"
+        }
+        _ => "SELECT module_slug, enabled FROM tenant_modules WHERE tenant_id = ?1",
+    };
+    connection
+        .query_all(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![uuid_value(tenant_id, backend)],
+        ))
+        .await
+        .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?
+        .into_iter()
+        .map(|row| {
+            Ok(TenantModuleOverride {
+                module_slug: row
+                    .try_get("", "module_slug")
+                    .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?,
+                enabled: row
+                    .try_get("", "enabled")
+                    .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?,
+            })
+        })
+        .collect()
 }
 
 fn validate_request(
