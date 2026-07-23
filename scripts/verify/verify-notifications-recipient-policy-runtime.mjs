@@ -54,11 +54,14 @@ if (contract.slice !== "NOTIFY-07B") {
 if (contract.relation_owner_ports?.permissive_default_forbidden !== true) {
   failures.push("block/mute owner ports must not have a permissive default");
 }
-if (contract.worker_gate?.candidate_worker_enabled !== false) {
-  failures.push("candidate worker must remain disabled in NOTIFY-07B");
+if (contract.worker_gate?.candidate_worker_default_enabled !== false) {
+  failures.push("candidate worker must remain disabled by default");
 }
 if (contract.worker_gate?.requires_relation_ports_ready !== true) {
   failures.push("candidate worker readiness must require both relation ports");
+}
+if (contract.worker_gate?.readiness_separate_from_enablement !== true) {
+  failures.push("relation readiness must remain separate from worker enablement");
 }
 
 for (const marker of [
@@ -78,7 +81,9 @@ for (const marker of [
   "pub struct NotificationMuteReadRuntime",
   "pub struct NotificationRecipientPolicyRuntime",
   "relation_ports_ready",
+  "candidate_worker_enabled",
   "candidate_worker_ready",
+  "self.relation_ports_ready && self.candidate_worker_enabled",
 ]) {
   requireText(relationPorts, marker, `recipient policy runtime contract is missing ${marker}`);
 }
@@ -92,6 +97,7 @@ for (const marker of [
   "NotificationRecipientSuppression::ProfileRestricted",
   "NotificationRecipientSuppression::Blocked",
   "NotificationRecipientSuppression::Muted",
+  "with_candidate_worker_enabled(candidate_worker_enabled_from_environment())",
 ]) {
   requireText(adapter, marker, `server recipient policy adapter is missing ${marker}`);
 }
