@@ -121,8 +121,14 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   fulfillment workflow contracts without promoting FBA/FFA status.
 - [x] Execute isolated unit fixtures for the completion-cutover verifier: 3/3 pass.
 - [x] Add fail-closed `PortError` sanitization for unavailable/invariant failures at
-  construction and serde transport boundaries, plus static source guards; owner-local
-  correlation-aware logging and mapper cleanup remain open.
+  construction and serde transport boundaries, plus static source guards.
+- [x] Harden pricing read/write port mapping: technical causes are internal-only and
+  logged with correlation id, tenant, owner operation, and stable error code.
+- [x] Harden `PaymentCollectionPort` create/reuse/status mapping with correlation-aware
+  validation, lifecycle, provider, and database logging plus stable public messages.
+- [ ] Finish correlation-safe mapper cleanup for order, payment execution/compensation,
+  fulfillment, inventory, customer, tax, promotion, remaining ecommerce adapters, and
+  non-`PortError` public envelopes.
 - [x] Publish canonical typed lifecycle views for cart, order, order change, order
   return, payment collection, payment, refund, and fulfillment while preserving
   backward-compatible string transport fields and fail-closing unknown values.
@@ -163,8 +169,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   typed owner identity.
 - [ ] Replace remaining direct foreign owner service construction outside the mounted
   staged checkout path with typed owner ports or explicit owner-provided adapters.
-- [ ] Remove raw DB/provider/internal text from all public ecommerce port errors and
-  retain internal structured logs with correlation identity.
 - [ ] Propagate typed lifecycle statuses through owner ports and remove string status
   matching from critical checkout, compensation, order, payment, and fulfillment paths.
 
@@ -495,8 +499,11 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   mounted fulfillment captured-state recovery.
 - [x] Remove production storefront completion use of the legacy `CheckoutService`;
   mounted REST, GraphQL, native, and root completion use staged payment-owner execution.
-- [ ] Audit remaining payment admin/provider adapters and remove the compatibility
-  checkout service/journal source after retained compile and replay evidence.
+- [x] Make `PaymentCollectionPort` error mapping correlation-aware and keep validation,
+  lifecycle, provider, configuration, outcome, and storage causes out of public messages.
+- [ ] Audit payment execution/compensation and remaining admin/provider adapters, then
+  remove the compatibility checkout service/journal source after retained compile and
+  replay evidence.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
 - [ ] Execute checkout compensation and payment execution provider replay, crash,
@@ -504,7 +511,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
-- [ ] Remove raw database/provider error strings from payment-facing public port errors.
 
 ## Verification and promotion checklist
 
@@ -526,6 +532,7 @@ Source inspection is not execution evidence.
 - [ ] `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - [ ] `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
 - [ ] `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
+- [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -550,6 +557,8 @@ Source inspection is not execution evidence.
 - [x] Add a storefront staged-cutover guard that forbids `CheckoutService` and
   `JournaledCheckoutService` construction in mounted REST, GraphQL, native, root, and
   staged completion paths.
+- [x] Extend the public-error guard to pricing and `PaymentCollectionPort`, including
+  correlation, tenant, operation, stable code, and raw-cause bans.
 - [ ] Execute the new public-error, typed-lifecycle, and storefront-cutover static guards
   against a repository checkout and retain their output.
 
@@ -565,9 +574,13 @@ Source inspection is not execution evidence.
   payment settlement tests.
 - [ ] Targeted REST/GraphQL/native staged checkout parity, idempotency conflict, provider
   registry composition, and reconciliation mapping tests.
+- [ ] `cargo check -p rustok-pricing --all-features`
+- [ ] Targeted pricing database, validation, rich/core invariant, correlation, and
+  transport round-trip tests.
 - [ ] `cargo check -p rustok-payment --all-features`
-- [ ] Targeted payment owner lifecycle, compensation/execution canonical-key,
-  legacy-payload replay, refund admission, and webhook adaptation tests.
+- [ ] Targeted payment collection error mapping plus owner lifecycle,
+  compensation/execution canonical-key, legacy-payload replay, refund admission, and
+  webhook adaptation tests.
 - [ ] `cargo check -p rustok-fulfillment --all-features`
 - [ ] Targeted fulfillment create/adopt/read, cancelled/unknown lifecycle, duplicate
   identity, partial set, and concurrent create tests.
@@ -631,7 +644,9 @@ Source inspection is not execution evidence.
 9. [x] Cut payment and fulfillment stages plus pipeline recovery over to explicit
    payment, fulfillment, and order owner ports.
 10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
-    central fail-closed construction/serde sanitization and source guards are complete.
+    central fail-closed transport sanitization plus channel, region, cart checkout,
+    pricing, and payment collection mapper hardening are complete. Remaining owners and
+    non-`PortError` envelopes stay open.
 11. [x] Finish typed lifecycle and mounted storefront checkout source cutover: REST,
     GraphQL, native, root completion, payment owner/provider/webhook policy, order
     recovery/settlement/compensation, typed fulfillment recovery, and cart
@@ -687,6 +702,8 @@ Source inspection is not execution evidence.
   to canonical typed lifecycle views without changing persisted status strings.
 - [x] Cut mounted REST, GraphQL, native, and root storefront checkout completion over to
   one staged recovery runtime with explicit idempotency and host provider composition.
+- [x] Harden pricing and payment collection owner-port errors with stable public
+  messages plus correlation-aware internal logging.
 
 ## Change rules
 
@@ -706,6 +723,7 @@ Source inspection is not execution evidence.
 - [Commerce FBA registry](../contracts/commerce-fba-registry.json)
 - [Checkout compensation owner cutover](./checkout-compensation-owner-cutover.md)
 - [Checkout owner stage cutover](./checkout-owner-stage-cutover.md)
+- [Public ecommerce port error safety](./public-port-error-safety.md)
 - [Order checkout compensation contract](../../rustok-order/contracts/order-checkout-compensation-v1.json)
 - [Order checkout payment settlement contract](../../rustok-order/contracts/order-checkout-payment-settlement-v1.json)
 - [Payment FBA registry](../../rustok-payment/contracts/payment-fba-registry.json)
