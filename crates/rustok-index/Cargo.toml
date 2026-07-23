@@ -14,11 +14,16 @@ sea-orm-migration.workspace = true
 
 # Domain model
 chrono.workspace = true
+hex.workspace = true
+icu_locale_core = "2.2"
+petgraph = "0.8.3"
 rust_decimal.workspace = true
 serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 sea-orm.workspace = true
 tokio.workspace = true
