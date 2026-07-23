@@ -2,6 +2,7 @@ mod common;
 mod eav;
 mod hot;
 mod jsonb;
+mod maintenance;
 mod source;
 
 use serde::Serialize;
@@ -92,12 +93,7 @@ pub fn mutation_workloads(
 }
 
 pub fn churn_cycle_sql(prototype: Prototype, config: &DatasetConfig) -> String {
-    let context = WorkloadContext::new(config);
-    match prototype {
-        Prototype::Jsonb => jsonb::churn_cycle_sql(&context),
-        Prototype::TypedEav => eav::churn_cycle_sql(&context),
-        Prototype::HotProjection => hot::churn_cycle_sql(&context),
-    }
+    maintenance::churn_cycle_sql(prototype, &WorkloadContext::new(config))
 }
 
 pub fn analyze_sql(prototype: Prototype) -> String {
