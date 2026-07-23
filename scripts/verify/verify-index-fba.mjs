@@ -20,12 +20,14 @@ const benchmarkSql = [
   'ops/benches/src/index_storage/sql/mod.rs',
   'ops/benches/src/index_storage/sql/source.rs',
   'ops/benches/src/index_storage/sql/common.rs',
+  'ops/benches/src/index_storage/sql/maintenance.rs',
   'ops/benches/src/index_storage/sql/jsonb.rs',
   'ops/benches/src/index_storage/sql/eav.rs',
   'ops/benches/src/index_storage/sql/hot.rs',
 ].map(read).join('\n');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
+const maintenanceRunner = read('ops/benches/src/index_storage/maintenance_runner.rs');
 const serverDispatcher = read('apps/server/src/services/module_event_dispatcher.rs');
 
 for (const obsolete of [
@@ -98,8 +100,9 @@ for (const marker of [
   '- [x] Verify identical workload result digests across all candidates.',
   '- [x] Add deterministic Product batch update and delete workloads for all models.',
   '- [x] Isolate every measured mutation in its own rolled-back transaction.',
-  '- [ ] Run and archive 100k Product-locale row read and mutation evidence.',
-  '- [ ] Add persistent update/delete churn for dead tuples, relation bloat, and',
+  '- [x] Add committed update plus delete/reinsert churn cycles for every candidate.',
+  '- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.',
+  '- [ ] Run and archive 100k Product-locale row read, mutation, and maintenance',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
   if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
@@ -118,6 +121,8 @@ for (const marker of [
   'keyset_page',
   'update_product_batch',
   'delete_product_batch',
+  'churn_cycle_sql',
+  'VACUUM (ANALYZE)',
   'CREATE TABLE {schema}.link',
 ]) {
   if (!benchmarkSql.includes(marker)) fail(`benchmark SQL missing ${marker}`);
@@ -145,7 +150,25 @@ for (const marker of [
 ]) {
   if (!mutationRunner.includes(marker)) fail(`mutation runner missing ${marker}`);
 }
-for (const binary of ['index-storage-benchmark', 'index-storage-mutation-benchmark']) {
+for (const marker of [
+  'churn_cycle_sql',
+  'transaction.commit().await',
+  'VACUUM (ANALYZE)',
+  'pg_stat_user_tables',
+  'estimated_dead_tuples',
+  'schema_bytes',
+  'vacuum_duration_ms',
+  'write_maintenance_report',
+]) {
+  if (!maintenanceRunner.includes(marker) && !benchmarkSql.includes(marker)) {
+    fail(`maintenance benchmark missing ${marker}`);
+  }
+}
+for (const binary of [
+  'index-storage-benchmark',
+  'index-storage-mutation-benchmark',
+  'index-storage-maintenance-benchmark',
+]) {
   if (!benchmarkCargo.includes(`name = "${binary}"`)) {
     fail(`benchmark executable is not registered: ${binary}`);
   }
@@ -153,8 +176,11 @@ for (const binary of ['index-storage-benchmark', 'index-storage-mutation-benchma
 if (!benchmarkDoc.includes('Production migrations: intentionally absent')) {
   fail('benchmark documentation must preserve the production-migration boundary');
 }
-if (!benchmarkDoc.includes('Persistent churn, dead tuple growth')) {
-  fail('benchmark documentation must keep vacuum/bloat evidence open');
+if (!benchmarkDoc.includes('It deliberately does not use `VACUUM FULL`')) {
+  fail('benchmark documentation must reject VACUUM FULL as a health assumption');
+}
+if (!benchmarkDoc.includes('Evidence runs: pending repository-owner execution')) {
+  fail('benchmark documentation must keep real evidence runs pending');
 }
 
-console.log('[verify-index-fba] Index core boundary and M2 read/mutation benchmark separation are consistent');
+console.log('[verify-index-fba] Index core boundary and M2 read/mutation/maintenance benchmark separation are consistent');
