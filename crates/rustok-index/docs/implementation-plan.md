@@ -38,16 +38,17 @@ record which checks were not run.
 ## Current status
 
 - Rewrite status: `in_progress`
-- Current milestone: `M1 - domain core and schema registry`
+- Current milestone: `M2 - PostgreSQL storage benchmark`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: `complete`
-- Legacy v1 contracts, source indexers, migrations, scheduler, and server runtime
-  composition: **deleted**
+- M1 domain/application core: `complete`
+- Persistence: intentionally absent until M2 selects a measured storage model
 
-The active crate now contains only the generic database-independent domain core,
-`IndexModule` metadata, and an intentionally empty migration source. New
-persistence is not introduced until the M2 storage benchmark selects a model.
+The active crate now contains the generic domain and application core,
+`IndexModule` metadata, and an intentionally empty migration source. All legacy
+v1 contracts, source indexers, projections, migrations, scheduler, errors, and
+server composition are deleted.
 
 ## Ownership
 
@@ -82,11 +83,6 @@ source modules
 src/
   domain/
   application/
-    registry.rs
-    ingestion.rs
-    rebuild.rs
-    reconcile.rs
-    ports.rs
   infrastructure/
     postgres/
     events/
@@ -110,10 +106,16 @@ Use existing workspace libraries where possible:
 - `proptest` and `criterion` for invariants and benchmarks;
 - `moka` only for immutable schema/compiled-plan local caching.
 
+Selected additions:
+
+- `petgraph` for deterministic schema/link graph traversal;
+- `icu_locale` with compiled ICU4X data for UTS #35/CLDR locale alias
+  canonicalization;
+- `sha2` for stable schema fingerprints and cursor checksums;
+- `postcard` plus URL-safe Base64 for versioned keyset cursors.
+
 Add when required:
 
-- `petgraph` for schema/link planning;
-- `icu_locale_core` for locale canonicalization;
 - `tokio-util` for cancellation/task tracking;
 - `backon` for classified retries;
 - `testcontainers-modules` with PostgreSQL;
@@ -148,43 +150,57 @@ Forbidden in Index core:
 - [x] Remove all direct source-table SQL from Index.
 - [x] Delete all legacy Index migrations, including the misplaced search table.
 - [x] Remove source-domain Cargo dependencies.
-- [x] Delete `Indexer`, `LocaleIndexer`, `IndexerContext`,
-      `IndexerRuntimeConfig`, the old scheduler, and operational `IndexError`.
+- [x] Delete the legacy runtime config, scheduler, and operational errors.
 - [x] Remove legacy server dispatcher config and metrics.
-- [x] Add repository verification preventing legacy/source-domain artifacts from
-      returning.
+- [x] Add repository guards preventing legacy/source-domain artifacts returning.
 - [ ] Synchronize the central module registry and historical FBA overview.
 
-Code acceptance criterion is complete: the crate contains only generic engine
-code and intentional module metadata. The remaining unchecked item is a
-cross-repository documentation synchronization task, not a code dependency.
+The code acceptance criterion is complete. The remaining unchecked item is
+cross-cutting documentation cleanup and does not preserve a runtime dependency.
 
 ### M1 - Domain core and schema registry
 
-- [x] Add strong module/schema/entity/field/link/locale/version identifiers.
+- [x] Add bounded lowercase identifiers for modules, schemas, entities, fields,
+      links, locales, and versions.
 - [x] Add `IndexValue`, `IndexRecord`, and `IndexMutation`.
-- [x] Add `IndexSchema`, field/link metadata, and base validation.
-- [x] Add `IndexQuery`, field paths, filter AST, ordering, and pagination.
-- [ ] Add locale canonicalization.
-- [ ] Add stable schema hashing/versioning.
-- [ ] Add schema registry conflict/version rules.
-- [ ] Add link graph validation and deterministic path resolution.
-- [ ] Add an in-memory reference evaluator used only by tests.
-- [ ] Add property tests for tenant isolation, locale normalization, mutation
-      idempotency, cursor round-trip, and deterministic planning.
+- [x] Add `IndexSchema`, field/link metadata, and contract validation.
+- [x] Add explicit tenant/locale query scope.
+- [x] Add typed link-aware field paths, filter AST, ordering, and pagination.
+- [x] Add ICU4X locale syntax and CLDR alias canonicalization.
+- [x] Add stable order-independent SHA-256 schema fingerprints.
+- [x] Add atomic versioned schema registration and conflict rules.
+- [x] Validate link targets, target fields, join-field types, and cardinality.
+- [x] Add deterministic shortest-path resolution through `petgraph`.
+- [x] Validate records against registered schemas and locale/cardinality rules.
+- [x] Validate query selectability, filterability, sortability, operators, types,
+      scope, and complexity limits.
+- [x] Reject ambiguous sorting through `many` links until aggregation is explicit.
+- [x] Add versioned, checksummed, query-scoped keyset cursor encoding.
+- [x] Add a test-only in-memory reference mutation/query engine.
+- [x] Add property tests for tenant isolation, redelivery idempotency, stale
+      tombstones, locale normalization, cursor round-trip, and deterministic
+      planning.
 
-Done when Product and SalesChannel can be represented entirely through generic
-schemas and records with no Product-specific engine code.
+Acceptance criterion is complete: Product and SalesChannel are representable by
+ordinary generic schemas and links with no Product-specific engine code.
 
 ### M2 - PostgreSQL storage benchmark
 
-- [ ] Prototype JSONB plus typed expression indexes.
-- [ ] Prototype typed field-value storage.
-- [ ] Prototype a specialized hot-entity projection.
+Goal: select physical storage from evidence before creating production
+migrations.
+
+- [ ] Define a deterministic benchmark dataset generator.
+- [ ] Prototype JSONB entity rows plus typed expression indexes.
+- [ ] Prototype normalized typed field-value rows.
+- [ ] Prototype a specialized hot-entity projection as the comparison baseline.
+- [ ] Represent links independently from entity payload storage.
 - [ ] Benchmark 100k and 1m multi-tenant/multi-locale entities.
-- [ ] Measure equality/range/multi-value/link filters, sorting, keyset pagination,
-      ingestion throughput, index size, and write amplification.
+- [ ] Measure equality/range/multi-value/link filters, two-hop traversal,
+      sorting, keyset pagination, count, ingestion throughput, index size,
+      vacuum impact, and write amplification.
+- [ ] Capture `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` evidence.
 - [ ] Record the selected model and rejected alternatives in an ADR.
+- [ ] Delete benchmark prototypes that are not selected.
 
 ### M3 - PostgreSQL storage engine
 
@@ -199,13 +215,13 @@ schemas and records with no Product-specific engine code.
 
 ### M4 - Query engine v1
 
-- [ ] Validate schemas, fields, links, filters, ordering, and complexity.
-- [ ] Resolve link paths and produce deterministic plans.
+- [ ] Produce deterministic executable query plans from validated queries.
+- [ ] Resolve explicit link paths and assign stable aliases.
 - [ ] Compile plans through SeaQuery or controlled SQL.
 - [ ] Support nested projection, filtering, sorting, exact count, and keyset
       pagination.
 - [ ] Keep offset pagination bounded and compatibility-only.
-- [ ] Add plan/SQL snapshots and reference-evaluator equivalence tests.
+- [ ] Add plan/SQL snapshots and PostgreSQL/reference-engine equivalence tests.
 
 ### M5 - Incremental ingestion
 
@@ -285,11 +301,10 @@ npm run verify:index:runtime-fallback-smoke
 
 - 2026-07-23: accepted the destructive rewrite and added the initial generic
   domain core.
-- 2026-07-23: deleted empty query services, catch-all document types, duplicate
-  read adapters, legacy v1 ports/FBA evidence, and the FTS helper.
-- 2026-07-23: detached admin from legacy index/search tables.
-- 2026-07-23: deleted all Content/Product/Flex indexers, projection models,
-  source SQL, and legacy migrations.
-- 2026-07-23: removed source-domain dependencies and added regression guards.
-- 2026-07-23: removed the final legacy runtime/scheduler/error tail and its
-  server dispatcher composition. M0 code reset is complete.
+- 2026-07-23: deleted every legacy query, projection, indexer, migration, port,
+  adapter, scheduler, runtime config, error type, and server composition path.
+- 2026-07-23: completed M1 with canonical identifiers/locales, schema
+  fingerprints, atomic registry, deterministic link graph, scoped validation,
+  bounded queries, keyset cursors, reference evaluator, and property invariants.
+- 2026-07-23: moved the active milestone to the PostgreSQL storage benchmark;
+  no production persistence will be added before the benchmark ADR.
