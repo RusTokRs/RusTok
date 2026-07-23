@@ -1,62 +1,57 @@
 # Documentation `rustok-index`
 
-`rustok-index` is the platform-owned cross-module relational Index Engine. Its
-functional target is the same problem class as the Medusa Index Module: source
-modules publish schemas, records, and links; Index materializes them into an
-optimized relational store and serves structured cross-module queries without
-runtime fan-out.
+`rustok-index` is the platform-owned cross-module relational Index Engine. It
+addresses the same problem class as the Medusa Index Module: source modules
+publish generic schemas, records, mutations, and links; Index materializes them
+into optimized relational storage and serves structured cross-module queries
+without runtime fan-out.
 
 ## Purpose
 
-- publish the canonical schema, mutation, query, and rebuild contracts;
-- keep ingestion, storage, query planning, rebuild, and consistency semantics
-  inside the module;
-- provide server, storefront, admin, and `rustok-search` with a stable internal
-  substrate for cross-module filtering, projection, sorting, count, and
-  pagination;
+- publish canonical schema, mutation, query, source, and rebuild contracts;
+- keep ingestion, storage, query planning, rebuild, and consistency semantics in
+  the module;
+- provide server, storefront, admin, and `rustok-search` with a stable substrate
+  for cross-module filtering, projection, sorting, count, and pagination;
 - scale reads and rebuilds independently from source-module query paths.
 
 ## Scope
 
 - schema and link registry;
-- generic index records and mutations;
+- generic records and mutations;
 - incremental ingestion and inbox deduplication;
-- PostgreSQL index storage and distributed coordination;
-- link-aware query validation, planning, and SQL compilation;
-- cursor pagination, count, and bounded compatibility offset pagination;
+- PostgreSQL storage and distributed coordination;
+- link-aware validation, planning, and SQL compilation;
+- cursor pagination, exact count, and bounded offset compatibility;
 - bootstrap, rebuild, checkpointing, reconciliation, and drift repair;
-- operator-facing health, lag, failure, and rebuild controls.
+- operator health, lag, failure, and rebuild controls.
 
 ## Excluded scope
 
 - text relevance and ranking;
 - typo tolerance, synonyms, autocomplete, and search UX;
 - external search-engine connectors;
-- direct reads of source-module tables from Index core;
+- source-module table reads from Index core;
 - source-specific Product, Content, or Flex logic in the generic engine.
-
-Those search concerns remain owned by `rustok-search`. Source modules own their
-schema declarations and conversion from domain state/events to generic Index
-records and mutations.
 
 ## Rewrite policy
 
-The existing source-specific CQRS/read-model implementation is legacy. Because
-the project is in early development, rejected internal APIs, migrations, tests,
-adapters, and projections may be deleted or replaced rather than preserved by
-compatibility layers.
+Backward compatibility with the rejected source-specific implementation is not
+a goal. Conflicting code, migrations, ports, adapters, tests, evidence, and
+documentation are deleted rather than preserved through compatibility layers.
 
-Every implementation PR must update the task checkboxes and progress log in the
-live implementation plan.
+The old v1 read/rebuild ports, fallback adapters, FBA registry/evidence,
+catch-all document model, empty query services, and search-specific FTS helper
+have been removed. Source-specific indexers and migrations are the next M0
+deletion target.
 
 ## Status
 
 - Rewrite: `in_progress`
-- Current milestone: `M0 - hard reset and architecture lock`
+- Current milestone: `M0/M1 - hard reset and domain core`
 - FFA: `in_progress`
 - FBA: `in_progress`
-- Legacy FBA contracts remain temporary until the new engine contracts have
-  compiled and live provider-consumer evidence.
+- Active public core: `rustok_index::domain`
 
 ## Verification
 
@@ -66,8 +61,9 @@ live implementation plan.
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
 - `npm run verify:index:fba`
+- `npm run verify:index:runtime-fallback-smoke`
 - PostgreSQL integration, property, planner snapshot, rebuild recovery, and
-  benchmark suites introduced by the milestones.
+  benchmark suites introduced by later milestones.
 
 ## Related documents
 
