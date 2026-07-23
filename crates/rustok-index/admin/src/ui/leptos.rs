@@ -37,10 +37,10 @@ pub fn IndexAdmin() -> impl IntoView {
                         {t(locale.as_deref(), "index.badge", "index")}
                     </span>
                     <h1 class="text-2xl font-semibold text-card-foreground">
-                        {t(locale.as_deref(), "index.title", "Index Runtime")}
+                        {t(locale.as_deref(), "index.title", "Index Engine")}
                     </h1>
                     <p class="max-w-3xl text-sm text-muted-foreground">
-                        {t(locale.as_deref(), "index.subtitle", "Module-owned overview for tenant-scoped read-model tables and index substrate coverage.")}
+                        {t(locale.as_deref(), "index.subtitle", "Cross-module relational index and query engine status.")}
                     </p>
                 </div>
             </header>
@@ -56,26 +56,9 @@ pub fn IndexAdmin() -> impl IntoView {
                             view! {
                                 <section class="grid gap-4 lg:grid-cols-4">
                                     {view_model
-                                        .tenant_cards
+                                        .info_cards
                                         .into_iter()
                                         .map(|card| view! { <InfoCard label=card.label value=card.value /> })
-                                        .collect_view()}
-                                </section>
-
-                                <section class="grid gap-4 lg:grid-cols-3">
-                                    {view_model
-                                        .counter_cards
-                                        .into_iter()
-                                        .map(|counter| {
-                                            view! {
-                                                <div class="rounded-2xl border border-border bg-card p-6 shadow-sm">
-                                                    <div class="text-sm text-muted-foreground">{counter.label}</div>
-                                                    <div class="mt-2 text-3xl font-semibold text-card-foreground">
-                                                        {counter.value}
-                                                    </div>
-                                                </div>
-                                            }
-                                        })
                                         .collect_view()}
                                 </section>
 
