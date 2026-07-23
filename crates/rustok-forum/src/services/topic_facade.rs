@@ -9,7 +9,7 @@ use crate::dto::{
     UpdateTopicCommandInput, UpdateTopicInput,
 };
 use crate::entities::forum_topic;
-use crate::error::ForumResult;
+use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::topic_owner;
@@ -44,7 +44,11 @@ impl TopicService {
         security: SecurityContext,
         input: CreateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
-        self.inner.create_command(tenant_id, security, input).await
+        let response = self
+            .inner
+            .create_command(tenant_id, security, input)
+            .await?;
+        require_localized_topic_response(response)
     }
 
     pub async fn get(
@@ -54,7 +58,8 @@ impl TopicService {
         topic_id: Uuid,
         locale: &str,
     ) -> ForumResult<TopicResponse> {
-        self.inner.get(tenant_id, security, topic_id, locale).await
+        let response = self.inner.get(tenant_id, security, topic_id, locale).await?;
+        require_localized_topic_response(response)
     }
 
     pub async fn get_with_locale_fallback(
@@ -65,9 +70,11 @@ impl TopicService {
         locale: &str,
         fallback_locale: Option<&str>,
     ) -> ForumResult<TopicResponse> {
-        self.inner
+        let response = self
+            .inner
             .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
-            .await
+            .await?;
+        require_localized_topic_response(response)
     }
 
     pub async fn update(
@@ -88,9 +95,11 @@ impl TopicService {
         security: SecurityContext,
         input: UpdateTopicCommandInput,
     ) -> ForumResult<TopicResponse> {
-        self.inner
+        let response = self
+            .inner
             .update_command(tenant_id, topic_id, security, input)
-            .await
+            .await?;
+        require_localized_topic_response(response)
     }
 
     pub async fn delete(
@@ -108,7 +117,8 @@ impl TopicService {
         security: SecurityContext,
         filter: ListTopicsFilter,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        self.inner.list(tenant_id, security, filter).await
+        let page = self.inner.list(tenant_id, security, filter).await?;
+        require_localized_topic_page(page)
     }
 
     pub async fn list_with_locale_fallback(
@@ -118,9 +128,11 @@ impl TopicService {
         filter: ListTopicsFilter,
         fallback_locale: Option<&str>,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        self.inner
+        let page = self
+            .inner
             .list_with_locale_fallback(tenant_id, security, filter, fallback_locale)
-            .await
+            .await?;
+        require_localized_topic_page(page)
     }
 
     pub async fn list_storefront_visible_with_locale_fallback(
@@ -131,7 +143,8 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
-        self.inner
+        let page = self
+            .inner
             .list_storefront_visible_with_locale_fallback(
                 tenant_id,
                 security,
@@ -139,7 +152,8 @@ impl TopicService {
                 fallback_locale,
                 channel_slug,
             )
-            .await
+            .await?;
+        require_localized_topic_page(page)
     }
 
     pub(crate) async fn find_topic(
@@ -193,4 +207,30 @@ impl TopicService {
     ) -> ForumResult<()> {
         topic_owner::TopicService::set_status_in_tx(txn, tenant_id, topic_id, status).await
     }
+}
+
+fn require_localized_topic_response(response: TopicResponse) -> ForumResult<TopicResponse> {
+    if response.available_locales.is_empty() || response.title.is_empty() {
+        return Err(ForumError::Validation(format!(
+            "Topic {} has no localized translation",
+            response.id
+        )));
+    }
+    Ok(response)
+}
+
+fn require_localized_topic_page(
+    page: (Vec<TopicListItem>, u64),
+) -> ForumResult<(Vec<TopicListItem>, u64)> {
+    let (items, total) = page;
+    if let Some(item) = items
+        .iter()
+        .find(|item| item.available_locales.is_empty() || item.title.is_empty())
+    {
+        return Err(ForumError::Validation(format!(
+            "Topic {} has no localized translation",
+            item.id
+        )));
+    }
+    Ok((items, total))
 }
