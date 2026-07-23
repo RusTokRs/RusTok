@@ -1,0 +1,57 @@
+name: Ecommerce Hardening
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  public-error-contracts:
+    name: Checkout public error contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Verify mounted checkout cutover
+        run: node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs
+      - name: Verify ecommerce public port errors
+        run: npm run verify:ecommerce:public-port-errors
+      - name: Run public error negative fixtures
+        run: npm run test:verify:ecommerce:public-port-errors
+
+  focused-rust-check:
+    name: Checkout focused Rust check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check checkout owner and transport crates
+        run: >-
+          cargo check
+          -p rustok-order
+          -p rustok-commerce
+          -p rustok-order-storefront
+          --all-features
+        env:
+          PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"

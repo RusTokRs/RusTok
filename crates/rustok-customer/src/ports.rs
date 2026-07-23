@@ -88,10 +88,11 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let owner_operation = "read_customer_projection";
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.get_customer(tenant_id, request.customer_id)
             .await
-            .map_err(customer_error_to_port_error)
+            .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))
     }
 
     async fn read_customer_projection_by_user(
@@ -100,10 +101,11 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerUserProjectionRequest,
     ) -> Result<CustomerResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let owner_operation = "read_customer_projection_by_user";
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.get_customer_by_user(tenant_id, request.user_id)
             .await
-            .map_err(customer_error_to_port_error)
+            .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))
     }
 
     async fn list_customer_projections(
@@ -112,8 +114,9 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerListProjectionRequest,
     ) -> Result<CustomerListProjectionResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        validate_customer_list_projection_request(&request)?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let owner_operation = "list_customer_projections";
+        validate_customer_list_projection_request(&context, owner_operation, &request)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let (items, total) = self
             .list_customers(
                 tenant_id,
@@ -124,7 +127,7 @@ impl CustomerReadPort for crate::CustomerService {
                 },
             )
             .await
-            .map_err(customer_error_to_port_error)?;
+            .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))?;
         Ok(CustomerListProjectionResponse { items, total })
     }
 
@@ -134,74 +137,164 @@ impl CustomerReadPort for crate::CustomerService {
         request: CustomerProfileEnrichmentRequest,
     ) -> Result<Vec<CustomerProfileEnrichment>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let owner_operation = "list_profile_enrichment";
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         crate::CustomerService::list_profile_enrichment(self, tenant_id, &request.user_ids)
             .await
-            .map_err(customer_error_to_port_error)
+            .map_err(|error| customer_error_to_port_error(&context, owner_operation, error))
     }
 }
 
 fn validate_customer_list_projection_request(
+    context: &PortContext,
+    owner_operation: &'static str,
     request: &CustomerListProjectionRequest,
 ) -> Result<(), PortError> {
     if request.page == 0 {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "customer.page_invalid",
+            "customer projection page is invalid"
+        );
         return Err(PortError::validation(
             "customer.page_invalid",
-            "customer projection page must be greater than zero",
+            "customer projection page is invalid",
         ));
     }
     if !(1..=MAX_CUSTOMERS_PER_PAGE).contains(&request.per_page) {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "customer.per_page_invalid",
+            "customer projection page size is invalid"
+        );
         return Err(PortError::validation(
             "customer.per_page_invalid",
-            format!("customer projection per_page must be between 1 and {MAX_CUSTOMERS_PER_PAGE}"),
+            "customer projection page size is invalid",
         ));
     }
     Ok(())
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+fn parse_port_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "customer.context_invalid",
+            "customer port context is invalid"
+        );
         PortError::validation(
-            "customer.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for customer ports",
+            "customer.context_invalid",
+            "customer request context is invalid",
         )
     })
 }
 
-fn customer_error_to_port_error(error: CustomerError) -> PortError {
+fn customer_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: CustomerError,
+) -> PortError {
     match error {
-        CustomerError::Database(error) => PortError::unavailable(
-            "customer.database_unavailable",
-            format!("customer storage unavailable: {error}"),
-        ),
-        CustomerError::CustomerNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "customer.customer_not_found",
-            format!("customer {id} not found"),
-            false,
-        ),
-        CustomerError::CustomerByUserNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "customer.customer_by_user_not_found",
-            format!("customer for user {id} not found"),
-            false,
-        ),
-        CustomerError::DuplicateEmail(email) => PortError::new(
-            rustok_api::PortErrorKind::Conflict,
-            "customer.duplicate_email",
-            format!("duplicate customer email `{email}`"),
-            false,
-        ),
-        CustomerError::DuplicateUserLink(user_id) => PortError::new(
-            rustok_api::PortErrorKind::Conflict,
-            "customer.duplicate_user_link",
-            format!("customer already linked to user {user_id}"),
-            false,
-        ),
-        CustomerError::Validation(message) => PortError::validation("customer.validation", message),
-        CustomerError::Profile(error) => PortError::unavailable(
-            "customer.profile_unavailable",
-            format!("customer profile projection unavailable: {error}"),
-        ),
+        CustomerError::Database(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.database_unavailable",
+                "customer owner storage operation failed"
+            );
+            PortError::unavailable(
+                "customer.database_unavailable",
+                "customer storage is temporarily unavailable",
+            )
+        }
+        CustomerError::CustomerNotFound(customer_id) => {
+            tracing::warn!(
+                customer_id = %customer_id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.customer_not_found",
+                "customer projection was not found"
+            );
+            PortError::not_found("customer.customer_not_found", "customer was not found")
+        }
+        CustomerError::CustomerByUserNotFound(user_id) => {
+            tracing::warn!(
+                user_id = %user_id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.customer_by_user_not_found",
+                "customer projection was not found for user"
+            );
+            PortError::not_found(
+                "customer.customer_by_user_not_found",
+                "customer was not found for the requested user",
+            )
+        }
+        CustomerError::DuplicateEmail(_) => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.duplicate_email",
+                "customer email conflict"
+            );
+            PortError::conflict(
+                "customer.duplicate_email",
+                "customer email is already in use",
+            )
+        }
+        CustomerError::DuplicateUserLink(user_id) => {
+            tracing::warn!(
+                user_id = %user_id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.duplicate_user_link",
+                "customer user link conflict"
+            );
+            PortError::conflict(
+                "customer.duplicate_user_link",
+                "customer user link already exists",
+            )
+        }
+        CustomerError::Validation(message) => {
+            tracing::warn!(
+                error = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.validation",
+                "customer owner validation failed"
+            );
+            PortError::validation("customer.validation", "customer request is invalid")
+        }
+        CustomerError::Profile(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "customer.profile_unavailable",
+                "customer profile projection failed"
+            );
+            PortError::unavailable(
+                "customer.profile_unavailable",
+                "customer profile projection is temporarily unavailable",
+            )
+        }
     }
 }

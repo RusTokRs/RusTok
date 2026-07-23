@@ -13,7 +13,16 @@ pub async fn complete_checkout_server(
 ) -> Result<CheckoutCompletion, CheckoutCompletionTransportError> {
     storefront_order_complete_checkout_native(request)
         .await
-        .map_err(|error| CheckoutCompletionTransportError::ServerFn(error.to_string()))
+        .map_err(|error| {
+            tracing::error!(
+                error = ?error,
+                operation = "complete_checkout_server",
+                "native checkout transport failed"
+            );
+            CheckoutCompletionTransportError::ServerFn(
+                "Checkout transport is temporarily unavailable".to_string(),
+            )
+        })
 }
 
 #[server(prefix = "/api/fn", endpoint = "order/complete-checkout")]
@@ -35,9 +44,12 @@ async fn storefront_order_complete_checkout_native(
         let event_bus = runtime_ctx
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
-                ServerFnError::new(
-                    "order/complete-checkout requires TransactionalEventBus in host runtime context",
-                )
+                tracing::error!(
+                    operation = "complete_storefront_checkout",
+                    dependency = "TransactionalEventBus",
+                    "native checkout runtime dependency is missing"
+                );
+                ServerFnError::new("Checkout service is temporarily unavailable")
             })?;
         let payment_provider_registry = runtime_ctx
             .shared_get::<PaymentProviderRegistry>()
@@ -45,20 +57,18 @@ async fn storefront_order_complete_checkout_native(
         let runtime = StorefrontCheckoutRuntime::new(runtime_ctx.db_clone(), event_bus);
         let request_context = leptos_axum::extract::<rustok_api::RequestContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| native_context_error("extract_request_context", error))?;
         let tenant = leptos_axum::extract::<rustok_api::TenantContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| native_context_error("extract_tenant_context", error))?;
         let auth = leptos_axum::extract::<rustok_api::OptionalAuthContext>()
             .await
-            .map_err(ServerFnError::new)?;
+            .map_err(|error| native_context_error("extract_auth_context", error))?;
         let cart_id = Uuid::parse_str(request.cart_id.trim())
-            .map_err(|_| ServerFnError::new("cart_id must be a valid UUID"))?;
+            .map_err(|_| ServerFnError::new("Checkout request is invalid"))?;
         let idempotency_key = request.idempotency_key.trim().to_string();
         if idempotency_key.is_empty() || idempotency_key.len() > 191 {
-            return Err(ServerFnError::new(
-                "checkout idempotency key must contain 1 to 191 bytes",
-            ));
+            return Err(ServerFnError::new("Checkout request is invalid"));
         }
         let metadata = request.metadata;
 
@@ -82,17 +92,39 @@ async fn storefront_order_complete_checkout_native(
             },
         )
         .await
-        .map_err(|error| ServerFnError::new(error.to_string()))?;
+        .map_err(native_checkout_runtime_error)?;
 
         Ok(map_checkout_completion(completion))
     }
     #[cfg(not(feature = "ssr"))]
     {
         let _ = request;
-        Err(ServerFnError::new(
-            "order/complete-checkout requires the `ssr` feature",
-        ))
+        Err(ServerFnError::new("Checkout service is unavailable"))
     }
+}
+
+#[cfg(feature = "ssr")]
+fn native_context_error(
+    operation: &'static str,
+    error: impl std::fmt::Display,
+) -> ServerFnError {
+    tracing::error!(
+        error = %error,
+        operation,
+        "native checkout request context extraction failed"
+    );
+    ServerFnError::new("Checkout request context is unavailable")
+}
+
+#[cfg(feature = "ssr")]
+fn native_checkout_runtime_error(
+    error: rustok_commerce::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
+) -> ServerFnError {
+    ServerFnError::new(format!(
+        "{}: {}",
+        error.public_code(),
+        error.public_message()
+    ))
 }
 
 #[cfg(feature = "ssr")]

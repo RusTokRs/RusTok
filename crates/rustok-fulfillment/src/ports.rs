@@ -65,11 +65,17 @@ impl ShippingSelectionPort for crate::FulfillmentService {
         request: ListSellerShippingOptionsRequest,
     ) -> Result<SellerShippingOptionsSnapshot, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, "list_seller_shipping_options")?;
         let options = self
             .list_shipping_options(tenant_id, Some(&context.locale), Some(&context.locale))
             .await
-            .map_err(fulfillment_error_to_port_error)?
+            .map_err(|error| {
+                fulfillment_error_to_port_error(
+                    &context,
+                    "list_seller_shipping_options",
+                    error,
+                )
+            })?
             .into_iter()
             .filter(|option| {
                 request
@@ -101,7 +107,7 @@ impl ShippingSelectionPort for crate::FulfillmentService {
     ) -> Result<SelectedShippingOptionSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, "select_shipping_option")?;
         let option = self
             .get_shipping_option(
                 tenant_id,
@@ -110,7 +116,9 @@ impl ShippingSelectionPort for crate::FulfillmentService {
                 Some(&context.locale),
             )
             .await
-            .map_err(fulfillment_error_to_port_error)?;
+            .map_err(|error| {
+                fulfillment_error_to_port_error(&context, "select_shipping_option", error)
+            })?;
 
         Ok(SelectedShippingOptionSnapshot {
             cart_id: request.cart_id,
@@ -132,41 +140,103 @@ impl ShippingOptionProjection {
     }
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+fn parse_port_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(&context.tenant_id).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "fulfillment.context_invalid",
+            "fulfillment port request context is invalid"
+        );
         PortError::validation(
-            "fulfillment.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for fulfillment ports",
+            "fulfillment.context_invalid",
+            "fulfillment request context is invalid",
         )
     })
 }
 
-fn fulfillment_error_to_port_error(error: crate::FulfillmentError) -> PortError {
+fn fulfillment_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: crate::FulfillmentError,
+) -> PortError {
     match error {
         crate::FulfillmentError::Validation(message) => {
-            PortError::validation("fulfillment.validation", message)
+            tracing::warn!(
+                error = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "fulfillment.validation",
+                "fulfillment owner validation failed"
+            );
+            PortError::validation("fulfillment.validation", "fulfillment request is invalid")
         }
-        crate::FulfillmentError::ShippingOptionNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "fulfillment.shipping_option_not_found",
-            format!("shipping option {id} not found"),
-            false,
-        ),
-        crate::FulfillmentError::FulfillmentNotFound(id) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "fulfillment.fulfillment_not_found",
-            format!("fulfillment {id} not found"),
-            false,
-        ),
-        crate::FulfillmentError::InvalidTransition { from, to } => PortError::new(
-            rustok_api::PortErrorKind::Conflict,
-            "fulfillment.invalid_transition",
-            format!("invalid fulfillment transition from `{from}` to `{to}`"),
-            false,
-        ),
-        crate::FulfillmentError::Database(error) => PortError::unavailable(
-            "fulfillment.database_unavailable",
-            format!("fulfillment storage unavailable: {error}"),
-        ),
+        crate::FulfillmentError::ShippingOptionNotFound(id) => {
+            tracing::warn!(
+                resource_id = %id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "fulfillment.shipping_option_not_found",
+                "fulfillment shipping option was not found"
+            );
+            PortError::new(
+                rustok_api::PortErrorKind::NotFound,
+                "fulfillment.shipping_option_not_found",
+                "shipping option was not found",
+                false,
+            )
+        }
+        crate::FulfillmentError::FulfillmentNotFound(id) => {
+            tracing::warn!(
+                resource_id = %id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "fulfillment.fulfillment_not_found",
+                "fulfillment resource was not found"
+            );
+            PortError::new(
+                rustok_api::PortErrorKind::NotFound,
+                "fulfillment.fulfillment_not_found",
+                "fulfillment was not found",
+                false,
+            )
+        }
+        crate::FulfillmentError::InvalidTransition { from, to } => {
+            tracing::warn!(
+                from = %from,
+                to = %to,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "fulfillment.invalid_transition",
+                "fulfillment lifecycle transition was rejected"
+            );
+            PortError::conflict(
+                "fulfillment.invalid_transition",
+                "fulfillment lifecycle transition conflicts with the current state",
+            )
+        }
+        crate::FulfillmentError::Database(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "fulfillment.database_unavailable",
+                "fulfillment storage operation failed"
+            );
+            PortError::unavailable(
+                "fulfillment.database_unavailable",
+                "fulfillment storage is temporarily unavailable",
+            )
+        }
     }
 }
