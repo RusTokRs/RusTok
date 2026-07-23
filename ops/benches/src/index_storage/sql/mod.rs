@@ -28,6 +28,14 @@ impl Prototype {
             Self::HotProjection => "idx_bench_hot",
         }
     }
+
+    pub const fn relations(self) -> &'static [&'static str] {
+        match self {
+            Self::Jsonb => &["entity", "link"],
+            Self::TypedEav => &["entity", "field_value", "link"],
+            Self::HotProjection => &["product", "variant", "sales_channel", "link"],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,17 +66,7 @@ pub fn prototype_sql(prototype: Prototype) -> String {
 pub fn full_prototype_sql(prototype: Prototype) -> String {
     let mut sql = prototype_sql(prototype);
     sql.push_str(&common::link_sql(prototype.schema()));
-    sql.push_str(match prototype {
-        Prototype::Jsonb => {
-            "\nANALYZE idx_bench_jsonb.entity;\nANALYZE idx_bench_jsonb.link;\n"
-        }
-        Prototype::TypedEav => {
-            "\nANALYZE idx_bench_eav.entity;\nANALYZE idx_bench_eav.field_value;\nANALYZE idx_bench_eav.link;\n"
-        }
-        Prototype::HotProjection => {
-            "\nANALYZE idx_bench_hot.product;\nANALYZE idx_bench_hot.variant;\nANALYZE idx_bench_hot.sales_channel;\nANALYZE idx_bench_hot.link;\n"
-        }
-    });
+    sql.push_str(&analyze_sql(prototype));
     sql
 }
 
@@ -93,24 +91,56 @@ pub fn mutation_workloads(
     }
 }
 
+pub fn churn_cycle_sql(prototype: Prototype, config: &DatasetConfig) -> String {
+    let context = WorkloadContext::new(config);
+    match prototype {
+        Prototype::Jsonb => jsonb::churn_cycle_sql(&context),
+        Prototype::TypedEav => eav::churn_cycle_sql(&context),
+        Prototype::HotProjection => hot::churn_cycle_sql(&context),
+    }
+}
+
+pub fn analyze_sql(prototype: Prototype) -> String {
+    prototype
+        .relations()
+        .iter()
+        .map(|relation| format!("ANALYZE {}.{relation};", prototype.schema()))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+pub fn vacuum_sql(prototype: Prototype) -> String {
+    prototype
+        .relations()
+        .iter()
+        .map(|relation| format!("VACUUM (ANALYZE) {}.{relation};", prototype.schema()))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
 pub(super) struct WorkloadContext {
     pub tenant: &'static str,
     pub locale: String,
     pub anchor_price: i64,
     pub anchor_id: String,
     pub mutation_batch: u32,
+    pub churn_first_product: u32,
     pub variants_per_product: u32,
 }
 
 impl WorkloadContext {
     fn new(config: &DatasetConfig) -> Self {
         let anchor_no = (config.products_per_tenant / 2).max(1);
+        let mutation_batch = config.products_per_tenant.min(1_000).max(1);
         Self {
             tenant: "md5('tenant:1')::uuid",
             locale: sql_literal(&config.locales[0]),
             anchor_price: 500 + ((i64::from(anchor_no) * 7919 + 101) % 200000),
             anchor_id: format!("md5('product:1:{anchor_no}')::uuid"),
-            mutation_batch: config.products_per_tenant.min(1_000).max(1),
+            mutation_batch,
+            churn_first_product: config.products_per_tenant - mutation_batch + 1,
             variants_per_product: config.variants_per_product,
         }
     }
@@ -147,6 +177,8 @@ mod tests {
             assert!(sql.contains("source_entity"));
             assert!(sql.contains("target_entity"));
             assert!(!sql.contains(&format!("ANALYZE {};", prototype.schema())));
+            assert!(churn_cycle_sql(prototype, &config).contains("DELETE FROM"));
+            assert!(vacuum_sql(prototype).contains("VACUUM (ANALYZE)"));
         }
     }
 
@@ -177,5 +209,17 @@ mod tests {
                 expected_mutations
             );
         }
+    }
+
+    #[test]
+    fn churn_batch_uses_the_tail_of_large_datasets() {
+        let config = DatasetConfig::for_scale(
+            DatasetScale::Rows100k,
+            vec!["en-US".to_owned(), "ru-RU".to_owned()],
+        )
+        .unwrap();
+        let context = WorkloadContext::new(&config);
+        assert_eq!(context.mutation_batch, 1_000);
+        assert_eq!(context.churn_first_product, 4_001);
     }
 }
