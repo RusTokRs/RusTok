@@ -112,7 +112,7 @@ for (const marker of [
   "source_inbox::Entity::insert",
   "intake_receipt::Entity::insert",
   "persist_rejection",
-  "decoder.decode(&envelope)",
+  ".decode(&envelope)",
   "ensure_receipt_identity(&existing, outbox_event_id, &source_event)",
   "error.is_retryable()",
 ]) {
