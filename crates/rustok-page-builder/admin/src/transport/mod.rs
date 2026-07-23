@@ -1,3 +1,4 @@
+use crate::ConsumerPropertyEditorRuntime;
 use rustok_page_builder::dto::{PageBuilderCapabilityRequest, PageBuilderCapabilityResponse};
 use std::future::Future;
 use std::pin::Pin;
@@ -23,11 +24,19 @@ pub type PageBuilderAdminFacadeFuture = Pin<
 /// FFA boundary owned by the Page Builder admin package.
 ///
 /// Implementations may use a native Leptos server function or GraphQL, but the editor and its
-/// controller only see the canonical capability envelope and never branch on transport. The facade
-/// itself is `Send + Sync` so it can live in Leptos owner context. Native SSR futures are `Send` for
-/// Axum handlers; wasm-client futures remain local for `spawn_local`.
+/// controller only see canonical capability and consumer-property envelopes and never branch on
+/// transport. The facade itself is `Send + Sync` so it can live in Leptos owner context. Native SSR
+/// futures are `Send` for Axum handlers; wasm-client futures remain local for `spawn_local`.
 pub trait PageBuilderAdminFacade: Send + Sync {
     fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture;
+
+    /// Optional consumer-owned property surface for the selected document.
+    ///
+    /// Page Builder renders the registered schema and invokes the supplied port. The consumer keeps
+    /// ownership of persistence, optimistic revision policy and transport selection.
+    fn consumer_properties(&self) -> Option<Arc<ConsumerPropertyEditorRuntime>> {
+        None
+    }
 }
 
 impl<T> PageBuilderAdminFacade for Arc<T>
@@ -36,6 +45,10 @@ where
 {
     fn execute(&self, request: PageBuilderCapabilityRequest) -> PageBuilderAdminFacadeFuture {
         self.as_ref().execute(request)
+    }
+
+    fn consumer_properties(&self) -> Option<Arc<ConsumerPropertyEditorRuntime>> {
+        self.as_ref().consumer_properties()
     }
 }
 
