@@ -2,326 +2,173 @@
 
 ## Purpose
 
-`rustok-groups` provides the social-container boundary for communities inside a
-RusToK tenant. It combines phpFox-style modular groups with RusToK owner-module,
-FFA, FBA, multilingual storage, tenant isolation, and headless transport rules.
+`rustok-groups` is the owner boundary for social groups inside a RusToK tenant. It combines
+localized group identity, privacy, group memberships, local roles, invitations, membership
+applications, feature bindings, governance, receipts, audit, and group-local enforcement.
 
-A group membership is social participation in one group. It is not a paid
-subscription, commercial membership plan, billing agreement, or entitlement.
+A group membership is social participation in one group. It is not a paid subscription, billing
+agreement, entitlement, organization seat, event attendance record, or chat membership.
 
 ## Responsibility zone
 
-Groups owns group identity, localized presentation, visibility, join policy,
-group memberships, local roles, invitations, membership applications, ordered
-questions and rules, policy locale management, policy revision history,
-application lifecycle, feature bindings, group-local enforcement state, command
-receipts, audit, and Groups semantic source events.
+Groups owns:
 
-Groups does not own auth users/sessions, profile presentation, media binaries,
-Forum, Blog, Pages, Marketplace, comments, notification inbox/delivery, search
-projections, feed entries, checkout, payment, orders, fulfillment, subscriptions,
-billing plans, entitlements, moderation cases, or analytics.
+- group identity, lifecycle, visibility, join policy, and version;
+- exact-locale presentation;
+- group membership lifecycle, roles, revision, and local enforcement;
+- invitation creation, revocation, redemption, targeted events, and acceptance;
+- application policies, exact-locale copy, history, CAS, snapshots, lifecycle, review, and bulk
+  review;
+- feature bindings, group-local authorization, receipts, audit, and Groups semantic events.
 
-No Groups table has a foreign key to another optional domain module. Cross-domain
-references are logical typed identifiers resolved through public ports.
+Groups does not own provider content, profiles, media binaries, notification delivery, search/feed
+projections, moderation reports/cases/decisions, commercial subscriptions, billing, or entitlements.
 
-## Multilingual database and locale contract
+## Locale contract
 
-Language-neutral state belongs to base tables. Localized business copy belongs to
-parallel exact-locale rows:
+Language-neutral state belongs to base tables. Localized business copy belongs to exact-locale
+translation rows. `PortContext.locale` is host-owned. Groups never selects English, the first stored
+row, or another locale as a fallback.
 
-- `groups` stores language-neutral identity and policy state;
-- `group_translations` stores title, summary, and body;
-- `group_membership_policies` stores current language-neutral application-policy
-  revision/enabled state;
-- `group_membership_policy_translations` stores ordered questions and rules by
-  normalized `locale VARCHAR(32)`;
-- `group_membership_policy_revisions` stores append-only exact-locale snapshots of
-  successful policy writes;
-- `group_membership_applications` stores exact policy ID, revision, locale, and
-  immutable question/rule snapshot seen by the candidate.
+Application policy identity consists of policy ID, positive revision, and exact locale. Submitted
+applications preserve the exact immutable questions/rules snapshot seen by the candidate.
 
-Candidate presentation uses the host-resolved effective locale in `PortContext`.
-Groups normalizes it and selects only that row. It never injects an English
-fallback, arbitrary first row, or another stored locale.
+## Access and privacy
 
-Policy management is deliberately separate:
+- Public groups expose their public shell and configured public features.
+- Closed groups expose a discoverable summary; private body, membership, features, and provider
+  content require effective active membership or platform authority.
+- Secret groups return not-found to unauthorized users.
+- Active suspension removes group-membership authority without hiding otherwise public content.
+- Expired or revoked enforcement falls back immediately to stored lifecycle state.
+- Legacy `status=banned` remains fail-closed for re-entry.
 
-- `PortContext.locale` remains the host request/UI locale;
-- selected policy locale is a normalized field on a typed owner request;
-- locale catalog returns only existing translation locales in ascending order;
-- management read selects only the requested locale;
-- missing policy returns an empty view without policy ID/revision;
-- missing translation on an existing policy returns an empty view with current
-  policy ID/revision and `translation_exists=false`;
-- native and GraphQL adapters never substitute selected policy locale into request
-  locale context or locale headers;
-- missing copy is explicit empty/unavailable state, never fallback.
+`GroupAccessReadPort` and `GroupMembershipEnforcementReadPort` are canonical read boundaries.
+Consumers never interpret `group_memberships.status` directly for authorization.
 
-Application `policy_snapshot` and policy revision rows are immutable evidence, not
-shadow localization stores. Current canonical policy copy remains the exact-locale
-translation row.
+## Transaction-aware effective authorization
 
-## Effective membership and privacy
+Invitation and membership-application public write paths use one owner transaction for replay,
+locking, effective authorization, mutation, audit, and receipt.
 
-`group_memberships.status` is stored lifecycle compatibility state. Effective
-membership authority comes from the Groups-owned owner-clock resolver combining the
-membership row with `group_membership_enforcements`.
+The synchronization order is:
 
-- `public`: localized shell and public features remain readable;
-- `closed`: summary shell is discoverable, while body, members, features, and
-  provider content require effective active membership or platform authority;
-- `secret`: unauthorized users receive not-found semantics;
-- active suspension is not active membership for private content, post/comment,
-  invitation, application, management, ownership transfer, or provider ACLs;
-- legacy `status=banned` remains fail-closed for re-entry;
-- expired or revoked enforcement falls back to stored lifecycle immediately and
-  does not depend on a cleanup worker.
+```text
+Group -> GroupMembership -> GroupMembershipEnforcement
+```
 
-The crate-root `rustok_groups::GroupsService` is the only public core service. Its
-implementation and status-only delegate are crate-private. Module-owned GraphQL and
-native surfaces therefore cannot explicitly bypass effective core access.
+PostgreSQL/MySQL acquire row locks. SQLite acquires writer serialization with a no-op update of the
+resolved group before reading membership and enforcement state. This protects both existing and
+missing membership subjects: an enforcement writer following the same protocol cannot commit
+between authorization and mutation.
+
+Command-specific locks still precede the canonical group sequence where required:
+
+- invitation revoke/accept locks the invitation before the group;
+- application review/cancel/reopen locks the application before the group;
+- CAS resubmit locks an existing application before the group.
+
+These orders do not introduce a cycle because enforcement commands do not lock invitation or
+application rows.
+
+## Replay contract
+
+Writes require deadline and idempotency key. The owner transaction checks receipts before current
+effective authorization and CAS/lifecycle re-evaluation:
+
+- identical request hash returns the committed response;
+- changed request hash conflicts;
+- replay is not rejected because the actor or candidate became suspended after the original commit.
+
+Public write facades do not perform a separate receipt/effective precheck. Read-only facades still
+use the canonical read resolver.
 
 ## Invitation contract
 
-`GroupInvitationReadPort`, `GroupInvitationCommandPort`, and
-`GroupTargetedInvitationCommandPort` own manager listing, create/revoke/token
-acceptance, and authenticated targeted accept-by-ID.
+Public services are:
 
-Public compatibility paths remain:
+- `GroupInvitationService`;
+- `GroupTargetedInvitationService`.
 
-- `rustok_groups::invitations::*`;
-- `rustok_groups::targeted_invitations::*`;
-- crate-root `GroupInvitationService` and `GroupTargetedInvitationService`.
+Compatibility paths under `rustok_groups::invitations` and
+`rustok_groups::targeted_invitations` remain stable, while status-only delegates are crate-private.
 
-Those service names resolve only to effective facades. The original status-only
-services are crate-private delegates.
+Manager listing requires effective active owner/admin/moderator or platform manage. Create and
+revoke repeat that authorization inside the owner transaction. Token and targeted acceptance check
+the exact candidate effective state inside the owner transaction and deny active suspension,
+legacy banned state, and already-active membership.
 
-Effective facade rules:
-
-- list/create/revoke requires effective active owner/admin/moderator or platform
-  `groups:manage`;
-- a suspended local manager has no invitation-management authority;
-- token and targeted acceptance reject active suspension and legacy banned state;
-- already-active membership remains a conflict;
-- expired/revoked enforcement falls back to stored lifecycle;
-- an existing command receipt delegates before effective precheck so matching replay
-  or changed-request conflict remains owner-controlled.
-
-Targeted invitations are single-use. Shareable links permit at most 100 uses and
-expire within 300 seconds to 30 days. Plaintext is returned only by the first create
-response; persistence, audit, receipts, and semantic events contain no recoverable
-plaintext. Redemption, membership activation, member count, group version, audit,
-and receipt commit in one legacy owner transaction.
-
-Targeted insert appends `groups.invitation.targeted_created` to append-only
-`group_domain_events` through a database trigger. The event carries only typed
-invitation/group/recipient/actor identifiers. Notifications inbox, preferences,
-fan-out, email/push, retry, and cleanup remain Notifications-owner responsibilities.
-
-The effective invitation check currently occurs in the public facade before the
-legacy owner transaction. Same-transaction effective recheck and enforcement-change
-race evidence remain open.
+Plain invitation tokens are returned only once. Persistence, audit, receipts, and events contain
+only token digests and typed identifiers. Notifications remains an optional asynchronous consumer.
 
 ## Membership-application contract
 
-Public compatibility paths remain under `rustok_groups::applications::*`, but
-`GroupApplicationService` resolves only to the effective facade. The status-only
-application service is crate-private.
+Public `GroupApplicationService` implements focused read, management, CAS, lifecycle, review, and
+bounded bulk-review ports while preserving `rustok_groups::applications::*` compatibility paths.
 
-### Candidate policy and lifecycle reads
+Candidate rules:
 
-`GroupApplicationReadPort::read_group_application_policy` exposes current policy for
-the host-resolved exact locale. One current language-neutral policy exists per group,
-each locale contains at most 20 questions and 20 rules, and there is no module-local
-fallback.
+- secret groups return not-found before membership-specific denial;
+- active suspension and legacy banned state deny policy/current-state reads and write actions;
+- submit and CAS resubmit require an effective non-active candidate;
+- cancellation requires the exact candidate and pending membership/application state.
 
-`GroupApplicationLifecycleReadPort::read_my_group_membership_application` returns
-only the authenticated actor's current application. Effective suspension and legacy
-banned state deny candidate policy/current-state reads through the public facade.
+Manager rules:
 
-### Policy management and history
+- policy writes require effective active owner/admin or platform manage;
+- list/history/review/reopen require effective active owner/admin/moderator or platform manage;
+- review and reopen authorize before disclosing sensitive application status;
+- candidate effective state is checked in the same transaction before lifecycle mutation.
 
-`GroupApplicationPolicyManagementReadPort` exposes locale catalog and selected-locale
-management views. Both require effective active owner/admin or platform manage.
-Candidates cannot enumerate the catalog or views.
+CAS rules:
 
-Every successful application-policy translation INSERT/UPDATE is captured into
-`group_membership_policy_revisions` in the same database transaction. History rows
-are append-only. `GroupApplicationPolicyHistoryReadPort` inherits the effective
-application-list manager boundary and therefore requires effective active
-owner/admin/moderator or platform manage.
+- expected policy ID/revision/locale is compared under owner locks;
+- stale state returns `groups.application_policy_changed`;
+- no application, membership, group version, audit, or receipt mutation occurs on stale conflict;
+- exact error mapping remains identical through native and GraphQL owner ports.
 
-### Atomic policy preconditions
+Bulk review:
 
-Interactive policy save and candidate submit use `GroupApplicationCasCommandPort`:
+- requires confirmation;
+- accepts 1..50 unique application IDs;
+- preserves request order;
+- derives the existing SHA-256 child idempotency key;
+- runs each item through transactional focused review;
+- returns per-item success/error without rolling back successful siblings.
 
-- `upsert_group_application_policy_if_current`;
-- `submit_group_membership_application_if_current`.
+## FBA and transport contract
 
-Both requests carry `GroupApplicationPolicyPrecondition` with policy ID, positive
-revision, and exact locale. Existing owner behavior remains:
+All public ports use `PortContext`, `PortCallPolicy`, and `PortError`. Reads require deadline; writes
+require deadline plus idempotency key. Consumers never import Groups entities or query Groups tables.
 
-1. validate deadline, idempotency, tenant, actor, locale, and bounds;
-2. return an identical committed receipt before policy precondition re-evaluation;
-3. lock the declared application/group rows where supported;
-4. repeat stored-state authorization and group checks;
-5. compare current policy ID, revision, and locale;
-6. return `groups.application_policy_changed` before mutation on mismatch;
-7. commit policy/application state, group version, audit, and receipt atomically.
+Native and GraphQL adapters call the same public owner services. A selected transport never retries
+implicitly through another path. Owner denial, timeout, and invariant failure are preserved.
 
-The effective facade adds owner-clock manager/candidate prechecks while preserving
-receipt-first replay. Same-transaction effective authorization is still an open
-convergence gate.
+## Moderation compatibility
 
-The older unconditional save and submit methods on `GroupApplicationCommandPort`
-remain available for Rust compatibility. Final GraphQL and module-owned FFA do not
-expose them, and they now pass through the effective public facade.
+Moderation owns reports, cases, immutable decisions, retries, appeals, and application scheduling.
+Groups owns the resulting group/group-membership mutation. A future neutral adapter will call one
+shared Groups enforcement command; moderation must never update Groups tables directly.
 
-### Submission, cancellation, reopen, and review
-
-Only active non-secret `request` groups accept applications. Effective suspension,
-legacy banned state, and active membership reject new legacy or CAS submission.
-Pending or approved applications cannot be resubmitted; rejected/cancelled
-applications may receive a fresh current-policy snapshot.
-
-Candidate cancellation:
-
-- accepts only the exact candidate;
-- requires effective candidate state that is not suspended or legacy banned;
-- accepts only pending application/membership state;
-- moves membership to `left` and application to `cancelled`;
-- preserves submitted policy identity, locale, snapshot, answers, and acknowledgements;
-- retains receipt-first replay.
-
-Manager reopen:
-
-- requires effective active owner/admin/moderator or platform manage;
-- requires target candidate not suspended, legacy banned, or already active;
-- accepts rejected/cancelled application with `left` membership;
-- restores membership/application to `pending` while preserving the snapshot.
-
-Single review:
-
-- requires effective active owner/admin/moderator or platform manage;
-- requires target candidate not suspended, legacy banned, or already active;
-- accepts only pending applications;
-- approve activates membership and increments member count;
-- reject moves membership to `left`;
-- review note is optional and bounded to 2,000 characters.
-
-### Bounded bulk review
-
-`GroupApplicationBulkReviewCommandPort` retains:
-
-- explicit confirmation;
-- 1..50 unique application IDs;
-- global note validation before item work;
-- one child idempotency key derived from SHA-256 of base key plus application UUID;
-- request-order results;
-- one owner transaction/audit/receipt per item;
-- partial success/failure result.
-
-The effective facade implements the same loop through effective single review per
-item, so suspended managers or candidates produce item errors without collapsing the
-whole batch.
-
-## FBA contract
-
-Published ports include summary, membership, enforcement read, access, localization,
-invitation, targeted invitation, application read, policy history/management, CAS,
-lifecycle, focused/bulk review, group command, and governance boundaries. All use
-`PortContext`, `PortCallPolicy`, and `PortError`. Reads require deadline; writes require
-deadline plus idempotency key. Consumers never import Groups entities or query Groups
-tables directly.
-
-Final GraphQL composition retains core, localization, governance, invitation,
-targeted invitation, application, and history fields. GraphQL and module-owned native
-adapters construct crate-root service names, which now resolve to effective facades.
-There is no implicit transport fallback.
-
-## FFA contract
-
-Admin and storefront packages retain `core → transport → UI` separation. UI imports
-only transport facades, never raw adapters. Selected native or GraphQL transport never
-falls back implicitly.
-
-The admin policy editor keeps exact-locale CAS behavior. The application workspace
-filters pending/approved/rejected/cancelled rows, supports focused/bulk review and
-manager reopen, and receives effective manager denials through the selected transport.
-
-Storefront uses `apply=<group_uuid>` to read current candidate status and load
-host-resolved exact-locale policy. Effective suspension or legacy banned state disables
-candidate application reads/actions rather than falling back to stored `active` or
-`pending` status.
-
-## Degraded modes
-
-- Groups provider unavailable: deny private content.
-- Effective resolver unavailable or corrupt: deny sensitive invitation/application
-  operations; never fall back to status-only authority in the public facade.
-- Existing receipt: delegate before current effective precheck so owner replay/conflict
-  semantics remain authoritative.
-- Effective facade precheck passes but enforcement changes before legacy transaction:
-  behavior has no completed concurrency evidence; do not claim same-transaction auth.
-- Candidate exact-locale policy unavailable: disable form; never choose another locale.
-- Management locale catalog unavailable: disable locale selection/save.
-- Policy CAS conflict: write no owner state and require explicit selected-locale reload.
-- Lifecycle command transport failure: preserve selected-path error; never retry through
-  another transport.
-- Policy history unavailable: hide history rather than synthesizing revisions.
-- Profiles unavailable: display stable UUID/placeholder, never copy canonical profile
-  state.
-- Notifications unavailable: owner commands commit and remain authoritative.
-- Search/index unavailable: owner writes commit; projections may catch up later.
+Exact membership subject identity is `group_memberships.id` plus
+`group_memberships.revision`. `groups.version` and timestamps are not substitutes.
 
 ## Open gates
 
-The following remain source or evidence work:
+The following remain open:
 
-- same-transaction effective recheck in invitation/application owner writes;
-- enforcement-change concurrency/race evidence;
-- localization and governance effective authorization;
-- provider ACL and remote adapter integration;
-- leave/member-count suspension and restoration semantics;
-- direct suspend/revoke owner command and moderation adapter;
-- remove or version-deprecate legacy unconditional application methods;
-- ProfilesReader summaries and application semantic events;
-- locale translation deletion/lifecycle policy if required;
-- migration, native/GraphQL parity, replay, stale/locale/lifecycle races, lock ordering,
-  accessibility, security, retry, and recovery evidence.
+- localization management effective authorization;
+- governance role/ownership transactional effective authorization;
+- provider ACL integration and remote/degraded profiles;
+- leave and member-count suspension/restoration semantics;
+- direct suspend/revoke command and shared owner mutation path;
+- neutral moderation adapter and durable application evidence;
+- PostgreSQL/SQLite migration, lock, contention, replay, parity, security, accessibility, retry, and
+  recovery execution.
 
-## Verification
-
-Expected commands before readiness promotion:
-
-```bash
-cargo xtask module validate groups
-cargo check -p rustok-groups --features graphql
-cargo check -p rustok-groups-admin --features ssr
-cargo check -p rustok-groups-storefront --features ssr
-cargo test -p rustok-groups
-node scripts/verify/verify-groups-boundary.mjs
-node scripts/verify/verify-groups-localization-boundary.mjs
-node scripts/verify/verify-groups-invitations-boundary.mjs
-node scripts/verify/verify-groups-targeted-invitation-delivery.mjs
-node scripts/verify/verify-groups-membership-applications.mjs
-node scripts/verify/verify-groups-membership-policy-revisions.mjs
-node scripts/verify/verify-groups-application-policy-cas.mjs
-node scripts/verify/verify-groups-application-lifecycle.mjs
-node scripts/verify/verify-groups-application-policy-locales.mjs
-node scripts/verify/verify-groups-application-bulk-review.mjs
-node scripts/verify/verify-groups-membership-enforcement-read-path.mjs
-node scripts/verify/verify-groups-effective-membership-access.mjs
-node scripts/verify/verify-groups-effective-membership-invitations-applications.mjs
-node scripts/verify/verify-db-multilingual-contract.mjs
-npm run verify:i18n:ui
-npm run verify:frontend:host-ffa-contract
-```
-
-No build, test, migration, verifier, parity, replay, concurrency, accessibility,
-security, retry, or recovery command was executed for this source slice. FFA, FBA,
-GROUPS-06, GROUPS-07, and GROUPS-19 remain `in_progress`.
+No Cargo check, test, migration, Node verifier, browser, or CI command was executed for this source
+slice. Runtime evidence remains `null`; FFA, FBA, `GROUPS-06`, `GROUPS-07`, and `GROUPS-19` remain
+`in_progress`.
 
 ## Related documents
 
