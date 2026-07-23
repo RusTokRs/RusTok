@@ -18,11 +18,22 @@ cross-module roadmap remains `crates/rustok-forum/docs/implementation-plan.md`.
 - server-owned adapters into Notifications block/mute runtime contracts;
 - notification recipient relation-policy readiness is true with both concrete
   owner adapters;
-- candidate worker enablement remains a separate explicit false gate.
+- candidate worker enablement remains a separate explicit gate and is false by
+  default.
 
 Privacy reads remain authoritative when tenant-facing Social Graph surfaces are
 not enabled: disabling management UX must not silently bypass an already stored
 block or mute.
+
+## Promoted by `NOTIFY-03C`
+
+- the production candidate worker consumes Social Graph only through the existing
+  notification policy adapters;
+- worker runtime and graceful shutdown are delivered;
+- startup remains disabled by default and requires the explicit
+  `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` flag plus ready relation ports;
+- this promotion does not add notification-specific behavior to the Social Graph
+  owner or expose its private tables.
 
 ## Remaining Social Graph scope
 
@@ -38,7 +49,7 @@ block or mute.
 ## Remaining Notifications scope
 
 - production outbox relay consumption;
-- production candidate worker startup after runtime readiness;
+- default candidate-worker enablement after health and queue-lag metrics;
 - inbox-open and delayed-delivery privacy rechecks;
 - grouping, moderator expansion, channel delivery, and retention/reconciliation.
 
@@ -49,6 +60,7 @@ cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 node scripts/verify/verify-social-graph-notification-policy.mjs
+node scripts/verify/verify-notifications-candidate-worker.mjs
 ```
 
 These commands are maintainer-run and were not executed while publishing this
