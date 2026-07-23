@@ -50,8 +50,6 @@ CREATE TABLE IF NOT EXISTS notification_outbox_intake_rejections (
     schema_version SMALLINT NOT NULL,
     error_code VARCHAR(100) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_notification_outbox_intake_rejection_event FOREIGN KEY (outbox_event_id)
-        REFERENCES sys_events(id) ON DELETE CASCADE,
     CONSTRAINT ck_notification_outbox_intake_rejection_error CHECK (
         btrim(error_code) <> ''
     )
@@ -108,7 +106,6 @@ CREATE TABLE IF NOT EXISTS notification_outbox_intake_rejections (
     schema_version INTEGER NOT NULL,
     error_code TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (outbox_event_id) REFERENCES sys_events(id) ON DELETE CASCADE,
     CHECK (length(event_type) <= 128),
     CHECK (length(trim(error_code)) BETWEEN 1 AND 100)
 );
