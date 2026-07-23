@@ -3,7 +3,8 @@
 ## Status
 
 - Milestone: `M2 - PostgreSQL storage benchmark`
-- Harness: implemented in `ops/benches/src/index_storage`
+- Read harness: implemented in `ops/benches/src/index_storage`
+- Mutation/WAL harness: implemented with transaction rollback isolation
 - Production migrations: intentionally absent
 - Evidence runs: pending repository-owner execution
 - Storage decision ADR: pending evidence
@@ -13,7 +14,7 @@
 Select the physical PostgreSQL representation for the generic Index Engine from
 repeatable evidence rather than preference. The benchmark compares three models
 while keeping the generated source dataset, entity identity, links, filters,
-ordering, pagination, and PostgreSQL session constant.
+ordering, pagination, mutation batch, and PostgreSQL session constant.
 
 ## Candidates
 
@@ -56,9 +57,16 @@ The total entity-row count is larger because Variant and SalesChannel rows are
 also generated. Locale inputs are canonicalized through
 `rustok_index::LocaleKey` before SQL is created.
 
-## Workloads
+Before timings are accepted, the runner verifies:
 
-Every candidate executes the same semantic workloads:
+- exact source entity/link cardinality;
+- exact entity/link cardinality in every candidate;
+- identical result-row counts and deterministic result digests for every read
+  workload across all candidates.
+
+## Read workloads
+
+Every candidate executes the same semantic reads:
 
 1. tenant/locale/status equality filter;
 2. typed price range with deterministic ordering;
@@ -70,9 +78,24 @@ Every candidate executes the same semantic workloads:
 The runner records each SQL statement so evidence can be audited independently
 of the summarized metrics.
 
+## Mutation workloads
+
+A separate executable measures write amplification without contaminating the
+read report. Every candidate receives the same deterministic tenant/locale batch:
+
+1. update Product source version, price, and rating;
+2. delete Product rows and their outgoing Product -> Variant links.
+
+The validation execution checks affected entity and link counts. Every measured
+execution then runs under its own PostgreSQL transaction and is rolled back after
+`EXPLAIN ANALYZE`, so repetitions and later candidates start from the same state.
+The report stores full plans and maximum per-plan-node WAL records, full-page
+images, and WAL bytes. These maxima are deliberately named as node maxima; the
+full plan remains authoritative.
+
 ## Evidence captured
 
-For each candidate the report includes:
+For each read candidate the report includes:
 
 - source and prototype load duration;
 - total schema relation size through `pg_total_relation_size`;
@@ -81,15 +104,22 @@ For each candidate the report includes:
 - planning and execution time;
 - shared hit/read blocks;
 - temporary read/write blocks;
+- workload result rows and digests;
 - full JSON plan for later plan-shape analysis.
 
-Vacuum impact and mutation write amplification require additional update/delete
-workloads and remain open M2 tasks.
+The mutation report additionally includes affected entity/link counts and
+maximum observed node-level WAL records, FPI, and bytes.
+
+Persistent churn, dead tuple growth, relation bloat, and pre/post `VACUUM`
+measurements remain open M2 work. They cannot be inferred from rolled-back
+mutation evidence.
 
 ## Running
 
 A dedicated PostgreSQL database is required because the harness drops and
 recreates schemas prefixed with `idx_bench_`.
+
+Read/query evidence:
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_bench \
@@ -97,11 +127,21 @@ INDEX_BENCH_SCALE=smoke \
 cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 ```
 
+Mutation/WAL evidence:
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_bench \
+INDEX_BENCH_SCALE=smoke \
+cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
+```
+
 Evidence scales:
 
 ```bash
 INDEX_BENCH_SCALE=100k cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 INDEX_BENCH_SCALE=1m cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+INDEX_BENCH_SCALE=100k cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
+INDEX_BENCH_SCALE=1m cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
 ```
 
 Optional settings:
@@ -109,6 +149,7 @@ Optional settings:
 - `INDEX_BENCH_LOCALES=en-US,ru-RU`
 - `INDEX_BENCH_REPETITIONS=3`
 - `INDEX_BENCH_OUTPUT=target/index-storage-benchmark/report.json`
+- `INDEX_BENCH_MUTATION_OUTPUT=target/index-storage-benchmark/mutation-report.json`
 
 ## Decision rules
 
@@ -119,8 +160,8 @@ No candidate is selected from one latency number. The ADR must compare:
 - ingestion duration and relation size;
 - equality, range, multi-value, link, two-hop, sort, keyset, and count behavior;
 - planner stability at both 100k and 1m Product-locale rows;
-- write amplification under updates and deletes;
-- vacuum/bloat behavior;
+- update/delete latency, buffers, WAL records/FPI/bytes, and changed row count;
+- persistent churn, vacuum, dead tuples, and bloat;
 - operational complexity for schema evolution and dynamic fields;
 - compatibility with tenant, locale, source-version, and atomic link invariants.
 
