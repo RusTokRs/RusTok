@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rustok_notifications_api::NotificationSourceRegistry;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -17,6 +18,8 @@ use crate::model::FanoutItemStatus;
 pub const DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE: usize = 32;
 pub const MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE: usize = 64;
 const MAX_WORKER_ID_BYTES: usize = 191;
+const TENANT_DISABLED_RETRY_SECONDS: i64 = 300;
+const TENANT_POLICY_UNAVAILABLE_RETRY_SECONDS: i64 = 30;
 
 mod candidate_item {
     use sea_orm::entity::prelude::*;
@@ -48,6 +51,35 @@ mod candidate_item {
     pub enum Relation {}
 
     impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationCandidateWorkItem {
+    pub item_id: Uuid,
+    pub tenant_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationCandidatePolicyDeferral {
+    TenantDisabled,
+    PolicyUnavailable,
+}
+
+impl NotificationCandidatePolicyDeferral {
+    const fn retry_seconds(self) -> i64 {
+        match self {
+            Self::TenantDisabled => TENANT_DISABLED_RETRY_SECONDS,
+            Self::PolicyUnavailable => TENANT_POLICY_UNAVAILABLE_RETRY_SECONDS,
+        }
+    }
+
+    const fn error_code(self) -> &'static str {
+        match self {
+            Self::TenantDisabled => "NOTIFICATION_TENANT_CAPABILITY_DISABLED",
+            Self::PolicyUnavailable => "NOTIFICATION_TENANT_POLICY_UNAVAILABLE",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -111,13 +143,16 @@ impl NotificationCandidateWorker {
         &self.worker_id
     }
 
-    pub fn batch_size(&self) -> usize {
+    pub const fn batch_size(&self) -> usize {
         self.batch_size
     }
 
-    /// Selects at most one bounded page of currently claimable candidate IDs.
-    /// Selection itself never acquires a lease.
-    pub async fn claimable_candidate_ids(&self) -> NotificationResult<Vec<Uuid>> {
+    /// Selects at most one bounded page of currently claimable candidate work.
+    /// Selection itself never acquires a lease; tenant identity is exposed so the
+    /// executable host can enforce current capability before recipient/source calls.
+    pub async fn claimable_candidate_work(
+        &self,
+    ) -> NotificationResult<Vec<NotificationCandidateWorkItem>> {
         let timestamp = now();
         let rows = candidate_item::Entity::find()
             .filter(claimable_condition(timestamp))
@@ -126,7 +161,69 @@ impl NotificationCandidateWorker {
             .limit(self.batch_size as u64)
             .all(&self.db)
             .await?;
-        Ok(rows.into_iter().map(|row| row.id).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| NotificationCandidateWorkItem {
+                item_id: row.id,
+                tenant_id: row.tenant_id,
+            })
+            .collect())
+    }
+
+    /// Compatibility projection for trusted callers that already enforce tenant
+    /// capability. Executable hosts should use `claimable_candidate_work`.
+    pub async fn claimable_candidate_ids(&self) -> NotificationResult<Vec<Uuid>> {
+        Ok(self
+            .claimable_candidate_work()
+            .await?
+            .into_iter()
+            .map(|work| work.item_id)
+            .collect())
+    }
+
+    /// Defers claimable candidate work before canonical processing when current
+    /// tenant capability is disabled or temporarily unresolved. The update is a
+    /// compare-and-set against tenant, attempt count, and claimable state, so a
+    /// concurrent canonical claim remains authoritative.
+    pub async fn defer_candidate(
+        &self,
+        work: NotificationCandidateWorkItem,
+        reason: NotificationCandidatePolicyDeferral,
+    ) -> NotificationResult<()> {
+        let current = candidate_item::Entity::find_by_id(work.item_id)
+            .one(&self.db)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        if current.tenant_id != work.tenant_id {
+            return Err(NotificationError::SourceIdentityConflict);
+        }
+
+        let timestamp = now();
+        let result = candidate_item::Entity::update_many()
+            .set(candidate_item::ActiveModel {
+                status: Set(FanoutItemStatus::RetryableError),
+                notification_id: Set(None),
+                attempt_count: Set(current.attempt_count.saturating_add(1)),
+                next_attempt_at: Set(Some(
+                    timestamp.clone() + Duration::seconds(reason.retry_seconds()),
+                )),
+                lease_owner: Set(None),
+                lease_expires_at: Set(None),
+                last_error_code: Set(Some(reason.error_code().to_string())),
+                processed_at: Set(None),
+                updated_at: Set(timestamp.clone()),
+                ..Default::default()
+            })
+            .filter(candidate_item::Column::Id.eq(work.item_id))
+            .filter(candidate_item::Column::TenantId.eq(work.tenant_id))
+            .filter(candidate_item::Column::AttemptCount.eq(current.attempt_count))
+            .filter(claimable_condition(timestamp))
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected != 1 {
+            return Err(NotificationError::LeaseUnavailable);
+        }
+        Ok(())
     }
 
     /// Claims and processes one candidate through the canonical service lease CAS.
@@ -139,18 +236,19 @@ impl NotificationCandidateWorker {
             .await
     }
 
-    /// Convenience bounded batch path for non-lifecycle callers.
-    /// Deployment-owned loops should use `claimable_candidate_ids` and check their
-    /// stop signal between calls to `process_candidate`.
+    /// Convenience bounded batch path for trusted callers that have already
+    /// established tenant capability. Deployment-owned loops should use
+    /// `claimable_candidate_work`, check shutdown and tenant capability between
+    /// items, then call `process_candidate`.
     pub async fn process_next_batch(&self) -> NotificationResult<NotificationCandidateBatchResult> {
-        let item_ids = self.claimable_candidate_ids().await?;
+        let work_items = self.claimable_candidate_work().await?;
         let mut result = NotificationCandidateBatchResult {
-            selected: item_ids.len(),
+            selected: work_items.len(),
             ..NotificationCandidateBatchResult::default()
         };
 
-        for item_id in item_ids {
-            match self.process_candidate(item_id).await {
+        for work in work_items {
+            match self.process_candidate(work.item_id).await {
                 Ok(processed) => {
                     result.completed += 1;
                     if processed.replayed {
@@ -161,7 +259,7 @@ impl NotificationCandidateWorker {
                     result.lease_conflicts += 1;
                 }
                 Err(error) => result.failures.push(NotificationCandidateWorkerFailure {
-                    item_id,
+                    item_id: work.item_id,
                     error_code: error.stable_code().to_string(),
                     retryable: error.is_retryable(),
                 }),
