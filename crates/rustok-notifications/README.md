@@ -17,6 +17,8 @@ Channel delivery remains a later workflow.
   quarantine, and encrypted push-subscription state;
 - resolve audiences in bounded cursor pages under recoverable leases;
 - enforce effective tenant capability before source provider calls;
+- durably defer disabled or unresolved tenant work so bounded queues continue to
+  later tenants;
 - apply preferences, recipient privacy, and current target authorization before
   creating an inbox row;
 - own replay, reconciliation, retention, and delivery lifecycle.
@@ -34,6 +36,7 @@ Channel delivery remains a later workflow.
 - `NotificationsModule` / `NotificationsService`;
 - `NotificationOutboxEnvelopeDecoder` / `NotificationOutboxIntakeWorker`;
 - `NotificationFanoutService` / `NotificationFanoutWorker`;
+- `NotificationFanoutPolicyDeferral`;
 - `NotificationCandidateService` / `NotificationCandidateWorker`;
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
@@ -83,8 +86,12 @@ page persistence delegates to `NotificationFanoutService`.
 
 Before every source or job claim, the server calls
 `EffectiveModulePolicyService::is_enabled(..., "notifications")`. Disabled or
-unresolved tenant policy fails closed before any producer provider call. The host
-loop is default-off behind `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`.
+unresolved tenant policy fails closed before any producer provider call. Disabled
+work receives a 300-second durable retry backoff; temporary policy lookup failure
+receives 30 seconds. Both paths increment attempt count, clear lease fields,
+persist stable error metadata, and remove the row from the bounded queue head.
+The host loop is default-off behind
+`RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`.
 
 Fanout creates only idempotent pending candidates—never final notifications or
 delivery attempts.
@@ -118,7 +125,6 @@ continue to succeed when the module is absent or disabled.
 
 ## Remaining gates
 
-- durable backoff for work belonging to disabled tenants;
 - PostgreSQL contention/recovery evidence and worker health/lag metrics;
 - grouping and moderator-directory expansion;
 - inbox APIs and open-time privacy/source rechecks;
