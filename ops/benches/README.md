@@ -16,6 +16,8 @@ This is a standalone workspace crate named `rustok-benchmarks`.
 - `src/bin/index_storage_benchmark.rs` — read/query evidence runner.
 - `src/bin/index_storage_mutation_benchmark.rs` — transactional update/delete
   WAL evidence runner.
+- `src/bin/index_storage_maintenance_benchmark.rs` — committed churn and
+  pre/post-VACUUM evidence runner.
 
 ## Purpose
 
@@ -64,6 +66,21 @@ measured update/delete in an isolated transaction, records full JSON
 report exposes maximum per-plan-node WAL records, FPI, and bytes without
 claiming they are persistent bloat measurements.
 
+## Index maintenance benchmark
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_bench \
+INDEX_BENCH_SCALE=smoke \
+INDEX_BENCH_CHURN_CYCLES=5 \
+cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
+```
+
+The maintenance runner commits repeated update plus delete/reinsert cycles,
+checks exact entity/link cardinality, and records baseline, after-churn, and
+after-`VACUUM (ANALYZE)` schema sizes and `pg_stat_user_tables` counters. Ordinary
+VACUUM is used deliberately; the benchmark does not hide an unhealthy model
+behind `VACUUM FULL`.
+
 Scale values:
 
 - `smoke`
@@ -74,9 +91,10 @@ Optional environment variables:
 
 - `INDEX_BENCH_LOCALES=en-US,ru-RU`
 - `INDEX_BENCH_REPETITIONS=3`
+- `INDEX_BENCH_CHURN_CYCLES=5`
 - `INDEX_BENCH_OUTPUT=target/index-storage-benchmark/report.json`
 - `INDEX_BENCH_MUTATION_OUTPUT=target/index-storage-benchmark/mutation-report.json`
+- `INDEX_BENCH_MAINTENANCE_OUTPUT=target/index-storage-benchmark/maintenance-report.json`
 
-Persistent churn, dead tuples, bloat, and pre/post-VACUUM evidence remain a
-separate open M2 phase. Results are evidence only; the production model is
-chosen later in an ADR.
+All three reports are evidence only. The production model is selected after the
+smoke, 100k, and 1m runs are compared and recorded in an ADR.
