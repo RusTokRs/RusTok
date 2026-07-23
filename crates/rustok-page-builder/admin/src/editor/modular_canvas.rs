@@ -10,7 +10,9 @@ use crate::editor::{
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
-use crate::{AdminCanvasController, PageBuilderAdminFacade};
+use crate::{
+    AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
+};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
@@ -59,7 +61,8 @@ pub fn AdminCanvas(
         .map(|evaluation| evaluation.effective);
     let consumer_properties = facade
         .as_ref()
-        .and_then(|facade| facade.consumer_properties());
+        .and_then(|facade| facade.consumer_properties())
+        .or_else(|| use_context::<Arc<ConsumerPropertyEditorRuntime>>());
     let consumer_property_assembly = contribution_assembly.clone();
     let runtime = AdminEditorRuntime::new(
         controller,
