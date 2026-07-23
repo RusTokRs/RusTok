@@ -7,7 +7,7 @@ use rustok_social_graph::{
     SocialGraphPrivacyReadPort, SocialGraphService, SocialRelationKind,
 };
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::{MigrationTrait, SchemaManager};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 #[tokio::test]
