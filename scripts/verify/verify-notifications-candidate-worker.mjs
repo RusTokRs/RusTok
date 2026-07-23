@@ -73,8 +73,9 @@ if (contract.tenant_capability_gate?.authority !== "EffectiveModulePolicyService
   || contract.tenant_capability_gate?.checked_before_each_candidate_claim !== true
   || contract.tenant_capability_gate?.policy_error_fails_closed !== true
   || contract.tenant_capability_gate?.disabled_tenant_calls_recipient_policy !== false
-  || contract.tenant_capability_gate?.disabled_tenant_calls_source_provider !== false) {
-  failures.push("candidate worker must enforce effective tenant policy before recipient/source calls");
+  || contract.tenant_capability_gate?.disabled_tenant_calls_source_provider !== false
+  || contract.tenant_capability_gate?.atomic_with_concurrent_tenant_disable !== false) {
+  failures.push("candidate worker must enforce a bounded non-atomic tenant gate before recipient/source calls");
 }
 for (const field of [
   "candidate_transitions_to_retryable_error",
@@ -83,7 +84,7 @@ for (const field of [
   "stable_error_code_persisted",
   "cas_rejects_concurrent_claim",
   "prevents_disabled_tenant_head_of_line_starvation",
-  "prevents_disable_after_fanout_inbox_creation",
+  "prevents_post_fanout_processing_without_tenant_recheck",
 ]) {
   if (contract.tenant_policy_backoff?.[field] !== true) {
     failures.push(`candidate tenant backoff contract must set ${field}=true`);
