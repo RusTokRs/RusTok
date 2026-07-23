@@ -6,20 +6,30 @@
 memberships, local roles, invitations, membership applications, feature bindings,
 group-local enforcement state, and group access policy for RusToK.
 
+A **group membership** is social participation in one group with a group-local role and
+lifecycle. It is not a paid subscription, commercial membership plan, billing agreement, or
+entitlement. Paid plans and purchased access belong to separate subscription, entitlement, and
+billing owners rather than `rustok-groups`.
+
 Exact-locale translation management, bounded invitation tokens, targeted invitation source
 events, localized application policies, append-only policy history, policy CAS, candidate
 lifecycle, authorization-first review, bounded partial-result bulk review, role delegation,
 ownership transfer, command receipts, immutable audit, and native/GraphQL transports exist at
 source level.
 
-The current GROUPS-07 foundation additionally provides a monotonic membership revision,
-bounded current enforcement projection, owner-clock effective-state resolver, and
-`GroupMembershipEnforcementReadPort`. Direct suspend/revoke commands, full access-path
-integration, moderation adapter/application orchestration, and runtime evidence remain open.
+The current GROUPS-07 foundation provides a monotonic group-membership revision, bounded current
+enforcement projection, owner-clock effective-state resolver,
+`GroupMembershipEnforcementReadPort`, and a crate-root effective-membership `GroupsService`
+facade. Core access decisions, closed/secret read redaction, membership-list authorization,
+enabled-feature visibility, join/rejoin, and feature-settings authorization use effective state.
+Direct suspend/revoke commands, invitation/application/localization/governance conversion,
+provider ACL integration, member-count suspension semantics, the moderation adapter/application
+orchestration, and runtime evidence remain open.
 
 A group is a social container and policy owner. It is not the persistence owner for forum
 topics, blog posts, Pages documents, marketplace listings, products, media assets, comments,
-notification inbox/delivery, search documents, or moderation cases/decisions.
+notification inbox/delivery, search documents, moderation cases/decisions, subscriptions,
+billing plans, or entitlements.
 
 ## Responsibilities
 
@@ -35,15 +45,17 @@ notification inbox/delivery, search documents, or moderation cases/decisions.
 - Own namespaced feature bindings such as `forum.discussions`, `blog.posts`, `pages.wiki`,
   and `marketplace.store` without importing provider tables or UI business trees.
 
-### Memberships and governance
+### Group memberships and governance
 
-- Own memberships, local roles, lifecycle state, role delegation, and atomic ownership
+- Own group memberships, local roles, lifecycle state, role delegation, and atomic ownership
   transfer.
 - Keep owner/admin/moderator/member hierarchy in Groups rather than copying RBAC state into
   provider modules.
 - Preserve owner protection and tenant-scoped command/audit/receipt identity.
 - Keep legacy `status=banned` fail-closed for re-entry while migrating to expiring owner
   enforcement state.
+- Never reuse group-membership tables or ports for paid plans, recurring subscriptions, product
+  entitlements, organization seats, event attendance, or chat participation.
 
 ### Membership revision and enforcement read foundation
 
@@ -60,13 +72,29 @@ notification inbox/delivery, search documents, or moderation cases/decisions.
 - Publish `GroupMembershipEnforcementReadPort` and `GroupMembershipEnforcementService` for
   exact-user or authorized Groups access reads.
 - Evaluate current state using the Groups UTC clock. Future, expired, or revoked enforcement
-  falls back to stored membership lifecycle without requiring a cleanup worker.
+  falls back to stored group-membership lifecycle without requiring a cleanup worker.
 - Return effective states `missing`, `active`, `inactive`, `suspended`, or `legacy_banned`,
   plus membership revision, bounded provenance, and fail-closed access booleans.
-- Treat the new projection as read-only in this slice: no public enforcement command port and
-  no moderation adapter is published yet.
-- Keep status-only access-path conversion explicitly open for core access, invitations,
-  applications, governance, provider ACLs, and member-count transitions.
+- Keep the projection read-only in the current command surface: no public enforcement command
+  port and no moderation adapter is published yet.
+
+### Effective core access facade
+
+- Re-export `effective_service::GroupsService` as the crate-root `rustok_groups::GroupsService`.
+- Keep `service::GroupsService` only as a transitional implementation delegate; module-owned
+  GraphQL and native surfaces instantiate the crate-root facade.
+- Use the canonical owner-clock resolver for `GroupAccessReadPort` decisions.
+- Redact closed-group body/features and return not-found for secret-group summary when the viewer
+  is effectively suspended.
+- Gate membership listing and enabled feature visibility through the effective access decision.
+- Deny join/rejoin for active suspension and legacy banned state while allowing expired/revoked
+  enforcement to fall back to stored lifecycle.
+- Require effective active owner/admin authority for feature settings; a suspended local manager
+  has no settings, moderation, or ownership-transfer authority.
+- Preserve public read access during group-local suspension while denying post/comment and other
+  membership-authority actions.
+- Keep status-only access-path conversion explicitly open for invitation, application,
+  localization, governance, provider ACL, and member-count behavior.
 
 ### Invitations and membership applications
 
@@ -100,7 +128,8 @@ notification inbox/delivery, search documents, or moderation cases/decisions.
 Core owner/runtime:
 
 - `GroupsModule`
-- `GroupsService`
+- crate-root `GroupsService` effective-membership facade
+- `service::GroupsService` transitional legacy delegate
 - `GroupMembershipEnforcementService`
 - `GroupLocalizationService`
 - `GroupInvitationService`
@@ -132,11 +161,13 @@ Primary ports:
 - `GroupApplicationCommandPort` for legacy Rust compatibility only
 - `GroupGovernanceCommandPort`
 
-No `GroupMembershipEnforcementCommandPort` is published in the current read-only slice.
+No `GroupMembershipEnforcementCommandPort` is published in the current read-only command slice.
 
 ## Interactions
 
 - Auth/users remains authoritative for credentials, sessions, and user identity.
+- Subscription/billing/entitlement modules remain authoritative for paid plans and purchased
+  access; they do not use group-membership persistence.
 - `rustok-profiles` supplies member summaries; Groups never copies canonical profile display
   state.
 - `rustok-media` owns uploads and asset lifecycle; Groups stores typed media references only.
@@ -158,9 +189,10 @@ Source presence does not prove compilation, migrations, revision-trigger behavio
 owner-clock expiry handling, complete access integration, replay, concurrency, security,
 transport parity, accessibility, retry, or recovery.
 
-FFA, FBA, GROUPS-06, GROUPS-07, and GROUPS-19 remain `in_progress`. The current enforcement
-slice is a migration and read contract only; direct product suspension and moderation-driven
-application are not claimed as complete.
+FFA, FBA, GROUPS-06, GROUPS-07, and GROUPS-19 remain `in_progress`. Core public access is
+source-converted through the effective facade, but invitation, application, localization,
+governance, provider ACL, member-count, direct enforcement command, and moderation application
+runtime gates remain open.
 
 ## Documentation
 
@@ -168,6 +200,8 @@ application are not claimed as complete.
 - [Canonical implementation plan](docs/implementation-plan.md)
 - [Bulk review contract](docs/bulk-review-contract.md)
 - [FBA registry](contracts/groups-fba-registry.json)
+- [Effective membership access contract](contracts/groups-effective-membership-access.json)
 - [Application no-bypass guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
 - [Bulk review guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
 - [Membership enforcement read guard](../../scripts/verify/verify-groups-membership-enforcement-read-path.mjs)
+- [Effective membership access guard](../../scripts/verify/verify-groups-effective-membership-access.mjs)
