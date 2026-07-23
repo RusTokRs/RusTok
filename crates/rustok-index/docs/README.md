@@ -69,29 +69,22 @@ Benchmark code lives outside the production crate in
 `ops/benches/src/index_storage`. Candidate DDL is not a production migration or
 runtime storage contract.
 
-The read/query harness provides:
+The read/query harness provides deterministic scale datasets, three storage
+candidates, shared read workloads, cardinality checks, result-digest parity,
+load/size measurement, and full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence.
 
-- deterministic `smoke`, `100k`, and `1m` Product-locale datasets;
-- Product, Variant, SalesChannel, tag, price, timestamp, locale, and link data;
-- JSONB, normalized typed EAV, and specialized hot-projection candidates;
-- independent relational link storage for every candidate;
-- shared equality, range, multi-value, two-hop link, keyset, and count workloads;
-- exact source/candidate cardinality and workload-result digest parity checks;
-- load duration and schema-size measurement;
-- repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence.
+The transactional mutation harness provides identical update/delete workloads,
+affected entity/link parity, rollback isolation, and planning/execution,
+BUFFERS, full-plan, and node-level WAL evidence.
 
-The transactional mutation harness provides:
+The persistent maintenance harness provides committed update plus
+delete/reinsert cycles, exact cardinality guards, baseline/after-churn/after-
+VACUUM schema-size and `pg_stat_user_tables` snapshots, and ordinary
+`VACUUM (ANALYZE)` duration. It intentionally does not rely on `VACUUM FULL`.
 
-- identical deterministic Product batch update/delete workloads;
-- equal affected entity/link count validation across candidates;
-- one isolated transaction per measured repetition;
-- rollback after every measured mutation;
-- planning/execution, BUFFERS, full JSON plan, and maximum node-level WAL
-  records/FPI/bytes evidence.
-
-The harnesses do not select a model. Real smoke/100k/1m runs, persistent churn,
-dead-tuple/bloat and pre/post-VACUUM evidence, comparison, and the storage ADR
-remain open. No production migration may be added before the ADR is accepted.
+The harnesses do not select a model. Real smoke/100k/1m runs, comparison, and the
+storage ADR remain open. No production migration may be added before the ADR is
+accepted.
 
 ## Status
 
@@ -103,7 +96,7 @@ remain open. No production migration may be added before the ADR is accepted.
 - M1 generic core: `complete`
 - M2 read/query harness: `implemented`
 - M2 transactional mutation/WAL harness: `implemented`
-- M2 persistent churn/VACUUM harness: `pending`
+- M2 persistent churn/VACUUM harness: `implemented`
 - M2 evidence and ADR: `pending`
 - Production migrations: intentionally absent pending M2 benchmark evidence
 
@@ -120,6 +113,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `npm run verify:index:runtime-fallback-smoke`
 - `cargo run -p rustok-benchmarks --bin index-storage-benchmark --release`
 - `cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release`
+- `cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release`
 
 ## Related documents
 
