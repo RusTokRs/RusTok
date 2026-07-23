@@ -1,15 +1,22 @@
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Domain error exposed through Forum transports.
+///
+/// `Display` is intentionally safe for public boundaries because GraphQL and
+/// compatibility adapters may convert an error through `to_string()`. Use the
+/// `Debug` representation and the wrapped source error for server-side
+/// diagnostics; never add database, provider, or internal details to these
+/// public messages.
 #[derive(Debug, Error)]
 pub enum ForumError {
-    #[error("Database error: {0}")]
-    Database(sea_orm::DbErr),
+    #[error("Forum persistence operation failed")]
+    Database(#[source] sea_orm::DbErr),
 
-    #[error("Content error: {0}")]
+    #[error("Forum content operation failed")]
     Content(#[from] rustok_content::ContentError),
 
-    #[error("Internal error: {0}")]
+    #[error("Forum internal operation failed")]
     Internal(#[from] rustok_core::Error),
 
     #[error("Category not found: {0}")]
@@ -63,7 +70,7 @@ pub enum ForumError {
         code: &'static str,
     },
 
-    #[error("Capability `{capability}` failed with `{source_code}`")]
+    #[error("Forum capability operation failed")]
     CapabilityFailure {
         capability: &'static str,
         source_code: String,

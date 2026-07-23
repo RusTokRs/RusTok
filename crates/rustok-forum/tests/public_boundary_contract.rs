@@ -1,3 +1,5 @@
+use rustok_forum::ForumError;
+
 #[test]
 fn category_owner_does_not_expose_raw_persistence_service() {
     let source = include_str!("../src/services/category_owner.rs");
@@ -81,4 +83,54 @@ fn page_builder_is_an_optional_forum_capability() {
     assert!(!manifest.contains("[dependencies.page_builder]"));
     assert!(manifest.contains("[fba.builder_consumer]"));
     assert!(manifest.contains("builder_disabled"));
+}
+
+#[test]
+fn sensitive_forum_error_display_is_redacted() {
+    let secret_database_detail = "password=secret database host=private";
+    let database_error = ForumError::Database(sea_orm::DbErr::Custom(
+        secret_database_detail.to_string(),
+    ));
+    assert_eq!(
+        database_error.to_string(),
+        "Forum persistence operation failed"
+    );
+    assert!(!database_error.to_string().contains(secret_database_detail));
+    assert_eq!(database_error.stable_code(), "FORUM_INTERNAL_ERROR");
+    assert!(database_error.is_retryable());
+
+    let capability_error = ForumError::capability_failure(
+        "profiles",
+        "PRIVATE_PROVIDER_CODE",
+        "private upstream response",
+        true,
+    );
+    assert_eq!(
+        capability_error.to_string(),
+        "Forum capability operation failed"
+    );
+    assert!(!capability_error.to_string().contains("PRIVATE_PROVIDER_CODE"));
+    assert!(!capability_error.to_string().contains("private upstream response"));
+    assert_eq!(
+        capability_error.stable_code(),
+        "FORUM_CAPABILITY_FAILURE"
+    );
+    assert!(capability_error.is_retryable());
+}
+
+#[test]
+fn forum_error_annotations_do_not_reintroduce_sensitive_sources() {
+    let source = include_str!("../src/error.rs");
+
+    for unsafe_annotation in [
+        "Database error: {0}",
+        "Content error: {0}",
+        "Internal error: {0}",
+        "failed with `{source_code}`",
+    ] {
+        assert!(
+            !source.contains(unsafe_annotation),
+            "public ForumError display leaks a sensitive source: {unsafe_annotation}"
+        );
+    }
 }
