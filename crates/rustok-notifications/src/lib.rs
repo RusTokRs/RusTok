@@ -48,7 +48,8 @@ pub use rustok_notifications_api as api;
 pub use service::NotificationsService;
 pub use worker::{
     DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE,
-    NotificationCandidateBatchResult, NotificationCandidateWorker,
+    NotificationCandidateBatchResult, NotificationCandidatePolicyDeferral,
+    NotificationCandidateWorkItem, NotificationCandidateWorker,
     NotificationCandidateWorkerFailure,
 };
 
