@@ -3,7 +3,7 @@ use std::ops::Deref;
 use flex::delete_attached_localized_values;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, TransactionTrait,
+    PaginatorTrait, QueryFilter, TransactionTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -87,17 +87,14 @@ impl TopicService {
         claim_topic_delete_in_tx(&txn, tenant_id, topic_id).await?;
         let topic = topic::TopicService::find_topic_in_tx(&txn, tenant_id, topic_id).await?;
 
-        let replies = forum_reply::Entity::find()
+        let public_reply_count = forum_reply::Entity::find()
             .filter(forum_reply::Column::TenantId.eq(tenant_id))
             .filter(forum_reply::Column::TopicId.eq(topic_id))
-            .all(&txn)
+            .filter(forum_reply::Column::Status.eq(ReplyStatus::Approved))
+            .filter(forum_reply::Column::DeletedAt.is_null())
+            .count(&txn)
             .await?;
-        let public_reply_author_ids = replies
-            .iter()
-            .filter(|reply| reply.status == ReplyStatus::Approved)
-            .map(|reply| reply.author_id)
-            .collect::<Vec<_>>();
-        let public_reply_count = i32::try_from(public_reply_author_ids.len()).map_err(|_| {
+        let public_reply_count = i32::try_from(public_reply_count).map_err(|_| {
             ForumError::Validation("Forum reply count exceeds supported range".to_string())
         })?;
 
@@ -107,9 +104,11 @@ impl TopicService {
             .one(&txn)
             .await?
         {
-            replies
-                .iter()
-                .find(|reply| reply.id == solution.reply_id)
+            forum_reply::Entity::find_by_id(solution.reply_id)
+                .filter(forum_reply::Column::TenantId.eq(tenant_id))
+                .filter(forum_reply::Column::TopicId.eq(topic_id))
+                .one(&txn)
+                .await?
                 .and_then(|reply| reply.author_id)
         } else {
             None
@@ -124,6 +123,15 @@ impl TopicService {
             .filter(forum_solution::Column::TopicId.eq(topic_id))
             .exec(&txn)
             .await?;
+
+        UserStatsService::decrement_topic_thread_aggregated_in_tx(
+            &txn,
+            tenant_id,
+            topic_id,
+            topic.author_id,
+            solution_author_id,
+        )
+        .await?;
         mark_topic_thread_deleted_in_tx(&txn, tenant_id, topic_id).await?;
 
         CategoryService::adjust_counters_in_tx(
@@ -132,14 +140,6 @@ impl TopicService {
             topic.category_id,
             -1,
             -public_reply_count,
-        )
-        .await?;
-        UserStatsService::decrement_topic_thread_in_tx(
-            &txn,
-            tenant_id,
-            topic.author_id,
-            &public_reply_author_ids,
-            solution_author_id,
         )
         .await?;
 
