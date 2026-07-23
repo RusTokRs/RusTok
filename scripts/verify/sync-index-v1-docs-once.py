@@ -1,11 +1,26 @@
 from pathlib import Path
 
 
-def replace_once(text: str, old: str, new: str, label: str) -> str:
-    count = text.count(old)
-    if count != 1:
-        raise SystemExit(f"{label}: expected exactly one match, found {count}")
-    return text.replace(old, new, 1)
+def replace_line(text: str, prefix: str, replacement: str, label: str) -> str:
+    lines = text.splitlines(keepends=True)
+    matches = [index for index, line in enumerate(lines) if line.startswith(prefix)]
+    if len(matches) != 1:
+        raise SystemExit(f"{label}: expected exactly one line, found {len(matches)}")
+    index = matches[0]
+    newline = "\n" if lines[index].endswith("\n") else ""
+    lines[index] = replacement + newline
+    return "".join(lines)
+
+
+def replace_span(text: str, start_marker: str, end_marker: str, replacement: str, label: str) -> str:
+    start = text.find(start_marker)
+    if start < 0:
+        raise SystemExit(f"{label}: start marker not found")
+    end = text.find(end_marker, start)
+    if end < 0:
+        raise SystemExit(f"{label}: end marker not found")
+    end += len(end_marker)
+    return text[:start] + replacement + text[end:]
 
 
 def replace_paragraph(text: str, prefix: str, replacement: str, label: str) -> str:
@@ -20,21 +35,22 @@ def replace_paragraph(text: str, prefix: str, replacement: str, label: str) -> s
 
 registry_path = Path("docs/modules/registry.md")
 registry = registry_path.read_text()
-registry = replace_once(
+registry = replace_line(
     registry,
-    "| `index` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-index/docs/implementation-plan.md); `crates/rustok-index/contracts/index-fba-registry.json` and `crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json`. Index remains the canonical ingestion/read-model owner for the Search extraction pilot; ingestion split is deferred until replay/lag/recovery evidence exists. |",
+    "| `index` |",
     "| `index` | admin | `in_progress` | `in_progress` | `core_transport_ui` | [Live plan](../../crates/rustok-index/docs/implementation-plan.md); Index v1 ports, registry, runtime evidence, projections, and read-model contracts were removed completely. The replacement is the generic cross-module relational Index Engine; FBA remains `in_progress` until new query/rebuild contracts and provider-consumer evidence are published. |",
     "central Index readiness row",
 )
-registry = replace_once(
+registry = replace_span(
     registry,
-    "`rustok-index` transactionally updates tenant/locale-scoped category projections and normalized facet/search/sort rows, receives effective attribute ids through a product-owned read-only resolver, excludes detached values and unpacks multiselect into individual option rows without locale fallback.",
+    "`rustok-index` transactionally updates",
+    "without locale fallback.",
     "The former Product-to-Index projection path was removed with Index v1. Product and Search must not depend on an Index projection again until the generic Index Engine reaches its first vertical slice and publishes replacement owner contracts.",
     "historical Product-to-Index projection claim",
 )
 registry = replace_paragraph(
     registry,
-    "Foundation FBA runtime-smoke batch evidence: `channel`, `index`, `tenant` and `email`",
+    "Foundation FBA runtime-smoke batch evidence:",
     "Foundation FBA runtime-smoke batch evidence remains current for `channel`, `tenant`, and `email`. The former Index v1 registry, fallback evidence, and `npm run verify:index:fba` contribution were removed completely. Index is reset to `in_progress` until replacement query/rebuild contracts and new provider-consumer evidence exist.",
     "foundation FBA evidence paragraph",
 )
@@ -49,13 +65,20 @@ registry_path.write_text(registry)
 
 overview_path = Path("docs/research/fluid-backend-architecture-unified-plan.md")
 overview = overview_path.read_text()
-search_row = "| `search` | provider search query/suggestions boundary for storefront/admin consumers | `boundary_ready` | Executable no-compile runtime fallback/contract/invocation evidence already recorded; next step before `transport_verified` — live runtime contract execution with real provider invocation | `crates/rustok-search/src/ports.rs`, `crates/rustok-search/contracts/search-fba-registry.json`, `crates/rustok-search/docs/implementation-plan.md` |"
-index_row = "| `index` | generic cross-module relational index and query engine | `in_progress` | Complete M2 scale evidence and storage selection, then publish replacement query/rebuild contracts. All Index v1 ports, registry, evidence, projections, and runtime wiring are removed. | `crates/rustok-index/docs/implementation-plan.md`, `DECISIONS/2026-07-23-index-engine-rewrite.md` |"
-if index_row not in overview:
-    overview = replace_once(overview, search_row, search_row + "\n" + index_row, "Index track row")
-overview = replace_once(
+index_track = "| `index` | generic cross-module relational index and query engine | `in_progress` | Complete M2 scale evidence and storage selection, then publish replacement query/rebuild contracts. All Index v1 ports, registry, evidence, projections, and runtime wiring are removed. | `crates/rustok-index/docs/implementation-plan.md`, `DECISIONS/2026-07-23-index-engine-rewrite.md` |"
+if index_track not in overview:
+    lines = overview.splitlines(keepends=True)
+    matches = [index for index, line in enumerate(lines) if line.startswith("| `search` |")]
+    if len(matches) != 1:
+        raise SystemExit(f"Index track insertion: expected one Search row, found {len(matches)}")
+    index = matches[0]
+    newline = "\n" if lines[index].endswith("\n") else ""
+    lines.insert(index + 1, index_track + newline)
+    overview = "".join(lines)
+overview = replace_span(
     overview,
-    "`rustok-index` owns canonical\ndocument ingestion and read models. Its events feed the search service through\na replayable ingestion boundary; index deployment is not split in the first\nquery-service pilot.",
+    "`rustok-index` owns canonical",
+    "query-service pilot.",
     "The former Index v1 document-ingestion/read-model boundary was removed\ncompletely. The replacement `rustok-index` is a generic cross-module relational\nIndex Engine whose query/rebuild contracts remain `in_progress`; Search integration\nand any remote ingestion split are deferred until the replacement contracts have\ncompiled and live replay, lag, rebuild, and recovery evidence.",
     "Search/Index extraction description",
 )
@@ -68,15 +91,15 @@ overview_path.write_text(overview)
 
 plan_path = Path("crates/rustok-index/docs/implementation-plan.md")
 plan = plan_path.read_text()
-plan = replace_once(
+plan = replace_line(
     plan,
     "- [ ] Synchronize the central module registry and historical FBA overview.",
     "- [x] Synchronize the central module registry and historical FBA overview.",
     "M0 checkbox",
 )
-plan = replace_once(
+plan = replace_paragraph(
     plan,
-    "The code acceptance criterion is complete. The remaining unchecked item is\ncross-cutting documentation cleanup and does not preserve a runtime dependency.",
+    "The code acceptance criterion is complete.",
     "M0 is complete. The central module registry and historical FBA overview now\nrecord the full removal of Index v1 and keep replacement FBA readiness at\n`in_progress` until new contracts and runtime evidence exist.",
     "M0 completion paragraph",
 )
