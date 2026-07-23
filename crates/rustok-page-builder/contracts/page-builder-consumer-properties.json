@@ -12,6 +12,12 @@
     "save_receipt": "ConsumerPropertySaveReceipt",
     "port": "ConsumerPropertyEditorPort",
     "runtime": "ConsumerPropertyEditorRuntime",
+    "identity_binding": [
+      "contribution_id",
+      "property_editor_id",
+      "provider",
+      "component_type"
+    ],
     "schema_binding": "exact_registered_contribution_schema_equality",
     "field_set": "exact_registered_fields",
     "errors": [
@@ -32,6 +38,7 @@
     "composition_source": "crates/rustok-pages/admin/src/lib.rs",
     "contribution_id": "rustok.pages.metadata",
     "property_editor_id": "rustok.pages.metadata.editor",
+    "provider": "rustok.pages",
     "component_type": "rustok-pages-metadata",
     "fields": [
       "title",
