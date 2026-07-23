@@ -4,6 +4,7 @@ pub mod error;
 mod fanout;
 pub mod migrations;
 pub mod model;
+mod recipient_policy;
 mod service;
 
 use async_trait::async_trait;
@@ -19,6 +20,11 @@ pub use candidate::{
 pub use error::{NotificationError, NotificationResult};
 pub use fanout::{
     NotificationFanoutPageResult, NotificationFanoutService, NotificationSourceInboxReceipt,
+};
+pub use recipient_policy::{
+    NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
+    NotificationMuteReadRuntime, NotificationRecipientPolicyRuntime,
+    NotificationRelationPolicyRequest,
 };
 pub use rustok_notifications_api as api;
 pub use service::NotificationsService;
