@@ -36,30 +36,21 @@ without runtime fan-out.
 
 ## Rewrite policy
 
-Backward compatibility with the rejected source-specific implementation is not
-a goal. Conflicting code, migrations, ports, adapters, tests, evidence, and
-documentation are deleted rather than preserved through compatibility layers.
+Backward compatibility with the rejected implementation is not a goal.
+Conflicting code is deleted instead of preserved through compatibility layers.
 
-Deleted in M0 so far:
-
-- v1 read/rebuild ports, adapters, registry, and evidence;
-- `IndexDocument` / `DocumentType`;
-- Content/Product query placeholders;
-- Content/Product/Flex indexers and projection models;
-- all direct source-table SQL;
-- all legacy Index migrations, including the misplaced search table;
-- direct legacy table reads from Index admin;
-- source-domain Cargo dependencies.
-
-The only remaining compatibility tail is `traits.rs`, kept temporarily while
-server composition still creates `IndexerRuntimeConfig`.
+M0 removed the complete old implementation: v1 ports and evidence, catch-all
+documents, query placeholders, Content/Product/Flex indexers and models, direct
+source SQL, all legacy migrations, admin table reads, source-domain dependencies,
+old runtime configuration/scheduler/errors, and server dispatcher composition.
 
 ## Status
 
 - Rewrite: `in_progress`
-- Current milestone: `M0/M1 - runtime-tail removal and domain core`
+- Current milestone: `M1 - domain core and schema registry`
 - FFA: `in_progress`
 - FBA: `in_progress`
+- M0 code reset: `complete`
 - Active public core: `rustok_index::domain`
 
 ## Verification
