@@ -168,8 +168,8 @@ Source exists for:
   legacy banned, future, expired, and revoked enforcement without cleanup-worker dependence;
 - the core public access facade is source-complete: crate-root `GroupsService` resolves effective
   group membership for access decisions, closed/secret read redaction, membership-list access,
-  enabled-feature visibility, join/rejoin, and feature-settings authorization; the former
-  `service::GroupsService` remains only a transitional implementation delegate.
+  enabled-feature visibility, join/rejoin, and feature-settings authorization; both the
+  effective implementation and transitional status-only delegate are crate-private.
 
 Evidence still open and must not be inferred:
 
@@ -184,7 +184,6 @@ Evidence still open and must not be inferred:
   governance, provider-specific ACL, and member-count behavior;
 - direct suspend/revoke commands, shared owner mutation path, moderation adapter, and durable
   moderation application orchestration remain open;
-- explicit removal or versioned deprecation of the public legacy service delegate remains open;
 - fail-closed remote-provider and disabled-module runtime evidence.
 
 ## Program ledger
@@ -287,10 +286,10 @@ provenance, expiry, restoration state, and actor fields before returning a decis
 
 The core public access facade is source-complete:
 
-- crate-root `rustok_groups::GroupsService` is the effective-membership facade used by
+- `rustok_groups::GroupsService` is the only public core service type and is used by
   module-owned GraphQL and native consumers;
-- `rustok_groups::service::GroupsService` remains a transitional delegate and is not the
-  crate-root owner boundary;
+- the effective implementation module and transitional status-only delegate are crate-private,
+  preventing explicit external or module-owned transport bypass;
 - `GroupAccessReadPort` evaluates `GroupAction` through the canonical owner-clock resolver;
 - closed-group body/features are redacted and secret-group summary reads return not-found when
   the viewer is effectively suspended;
@@ -313,8 +312,7 @@ The status-only access-path conversion remains open for:
 - localization management authorization;
 - governance role-change and ownership-transfer authorization inside their owner transactions;
 - provider-specific ACL adapters and remote-provider profiles;
-- leave semantics and member-count suspend/restore transitions;
-- removal or versioned deprecation of direct access to the legacy service delegate.
+- leave semantics and member-count suspend/restore transitions.
 
 Until those conversions and a write boundary land, no product command writes enforcement rows
 and no suspension is claimed end-to-end. The current table, resolver, and core facade are
