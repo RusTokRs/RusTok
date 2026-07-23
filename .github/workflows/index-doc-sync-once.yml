@@ -1,0 +1,128 @@
+name: Index documentation sync (one time)
+
+on:
+  push:
+    paths:
+      - .github/workflows/index-doc-sync-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Synchronize Index status
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          registry_path = Path("docs/modules/registry.md")
+          registry = registry_path.read_text(encoding="utf-8")
+          registry, count = re.subn(
+              r"(?m)^\| `index` \| admin \|.*$",
+              "| `index` | admin | `in_progress` | `in_progress` | `core_transport_ui` | [Live plan](../../crates/rustok-index/docs/implementation-plan.md); M0/M1 are complete, M2 benchmarks JSONB, typed EAV, and hot-projection candidates outside production migrations. The deleted `index.read_model.v1` boundary has no compatibility status; new FBA contracts are published only after storage, query, ingestion, and rebuild milestones have compiled/live evidence. |",
+              registry,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one central Index readiness row, replaced {count}")
+
+          registry, count = re.subn(
+              r"`rustok-index` transactionally updates tenant/locale-scoped category projections.*?without importing product internals\.",
+              "`rustok-index` no longer owns source-specific Product category/facet/search projections. The rejected v1 projection implementation was deleted on 2026-07-23; Product and Search keep their owner boundaries until later Index milestones publish generic owner-provided schemas, mutations, links, and query contracts.",
+              registry,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one stale Product/Index projection paragraph, replaced {count}")
+
+          registry, count = re.subn(
+              r"Foundation FBA runtime-smoke batch evidence:.*?\n\n",
+              "Foundation FBA runtime-smoke evidence remains active for `channel`, `tenant`, and `email`. Index was removed from that historical v1 batch on 2026-07-23: its old ports, registry, fallback evidence, source indexers, and migrations were deleted, so its central FBA status is `in_progress` until the new generic engine boundary has compiled/live evidence.\n\n",
+              registry,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one Foundation FBA evidence paragraph, replaced {count}")
+
+          registry = registry.replace(
+              "| `index` | `rustok-index` | Indexed read-model substrate and cross-module filtering |",
+              "| `index` | `rustok-index` | Generic cross-module relational Index Engine; M2 storage benchmark active, production persistence intentionally absent |",
+          )
+          registry_path.write_text(registry, encoding="utf-8")
+
+          unified_path = Path("docs/research/fluid-backend-architecture-unified-plan.md")
+          unified = unified_path.read_text(encoding="utf-8")
+          title = "# Unified Fluid Backend Architecture (FBA) Implementation Plan for RusTok"
+          notice = (
+              "\n\n> **Index rewrite supersession (2026-07-23):** the former "
+              "`index.read_model.v1` provider track, its registry, fallback evidence, "
+              "source-specific projections, and migrations were deleted. The authoritative "
+              "Index status is the local `crates/rustok-index/docs/implementation-plan.md`: "
+              "M0/M1 complete, M2 PostgreSQL storage benchmark active, FBA `in_progress`. "
+              "Historical Index statements below do not define a live contract."
+          )
+          if notice.strip() not in unified:
+              unified = unified.replace(title, title + notice, 1)
+
+          unified = re.sub(
+              r"`rustok-index` owns canonical\s+document ingestion and read models\..*?query-service pilot\.",
+              "`rustok-index` is being rebuilt as a generic cross-module relational Index Engine. It does not currently publish an ingestion/read-model FBA boundary: production persistence and transport contracts remain intentionally absent until the storage benchmark and later query/ingestion/rebuild milestones complete.",
+              unified,
+              flags=re.DOTALL,
+          )
+          unified = "\n".join(
+              line
+              for line in unified.splitlines()
+              if "crates/rustok-index/contracts/index-fba-registry.json" not in line
+              and "crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json" not in line
+          ) + "\n"
+          unified = unified.replace(
+              "`index` added as a provider track",
+              "the former Index provider track superseded by the generic engine rewrite",
+          )
+          unified_path.write_text(unified, encoding="utf-8")
+
+          plan_path = Path("crates/rustok-index/docs/implementation-plan.md")
+          plan = plan_path.read_text(encoding="utf-8")
+          old = "- [ ] Synchronize the central module registry and historical FBA overview."
+          new = "- [x] Synchronize the central module registry and historical FBA overview."
+          if old not in plan:
+              raise SystemExit("open M0 central documentation task was not found")
+          plan = plan.replace(old, new, 1)
+          progress = (
+              "- 2026-07-23: synchronized the central readiness registry and historical FBA "
+              "overview with the destructive Index rewrite; M0 is fully complete.\n"
+          )
+          if progress not in plan:
+              plan = plan.rstrip() + "\n" + progress
+          plan_path.write_text(plan, encoding="utf-8")
+
+          old_markers = [
+              "crates/rustok-index/contracts/index-fba-registry.json",
+              "crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json",
+          ]
+          for path in (registry_path, unified_path):
+              text = path.read_text(encoding="utf-8")
+              for marker in old_markers:
+                  if marker in text:
+                      raise SystemExit(f"{path} still contains deleted marker {marker}")
+
+          Path(".github/workflows/index-doc-sync-once.yml").unlink()
+
+      - name: Commit synchronized documentation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/modules/registry.md \
+                  docs/research/fluid-backend-architecture-unified-plan.md \
+                  crates/rustok-index/docs/implementation-plan.md \
+                  .github/workflows/index-doc-sync-once.yml
+          git commit -m "docs(index): synchronize central FBA status"
+          git push
