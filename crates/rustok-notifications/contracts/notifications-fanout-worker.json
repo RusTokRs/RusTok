@@ -1,6 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slice": "NOTIFY-03E",
+  "promoted_by_slices": ["NOTIFY-03F"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "owner_worker": "crates/rustok-notifications/src/fanout_worker.rs",
@@ -57,15 +58,26 @@
     "disabled_tenant_calls_provider": false,
     "direct_module_table_read_forbidden": true
   },
+  "tenant_policy_backoff": {
+    "owner_contract": "NotificationFanoutPolicyDeferral",
+    "disabled_retry_seconds": 300,
+    "policy_unavailable_retry_seconds": 30,
+    "source_and_job_rows_transition_to_retryable_error": true,
+    "attempt_count_incremented": true,
+    "lease_fields_cleared": true,
+    "stable_error_code_persisted": true,
+    "cas_rejects_concurrent_claim": true,
+    "prevents_disabled_tenant_head_of_line_starvation": true
+  },
   "tests": [
-    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs"
+    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
+    "crates/rustok-notifications/tests/fanout_policy_deferral_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-fanout-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "durable backoff policy for disabled tenant work",
     "PostgreSQL lease contention and recovery evidence",
     "worker health, queue lag, and retry metrics",
     "default deployment enablement",
