@@ -70,7 +70,7 @@ if (failures.length === 0) {
 
   requireMarkers(files.enforcement, [
     "pub(crate) async fn resolve_group_membership_enforcement",
-    "effective_from <= evaluated_at",
+    "&effective_from <= evaluated_at",
     "GroupMembershipEffectiveStatus::Suspended",
     "GroupMembershipEffectiveStatus::LegacyBanned",
   ]);
@@ -104,7 +104,7 @@ if (failures.length === 0) {
   requireMarkers(files.readme, [
     "not a paid subscription",
     "effective-membership `GroupsService` facade",
-    "invitation, application, localization, governance",
+    "invitation/application/localization/governance",
   ]);
 }
 
