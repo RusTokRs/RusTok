@@ -22,11 +22,12 @@
     "expired_or_revoked": "fall_back_to_stored_group_membership_lifecycle"
   },
   "owner_lock_protocol": {
-    "order": [
+    "membership_order": [
       "group",
       "membership",
       "enforcement"
     ],
+    "command_identity_lock_may_precede_receipt": true,
     "postgresql_mysql": "row_lock_for_update",
     "sqlite": "group_noop_write_then_transaction_reads",
     "authorization_and_mutation_same_transaction": true,
@@ -35,9 +36,9 @@
   "invitation_paths": {
     "list_management": "effective_active_owner_admin_moderator_or_platform_manage",
     "create_management": "transactional_effective_manager_check",
-    "revoke_management": "transactional_effective_manager_check",
-    "token_acceptance": "transactional_effective_candidate_reentry_check",
-    "targeted_acceptance": "transactional_effective_candidate_reentry_check",
+    "revoke_management": "transactional_effective_manager_check_before_revoked_status",
+    "token_acceptance": "transactional_effective_candidate_check_before_invitation_status_and_redemption",
+    "targeted_acceptance": "transactional_effective_candidate_check_before_invitation_status_and_redemption",
     "active_member_acceptance": "conflict",
     "suspended_or_legacy_banned_acceptance": "forbidden"
   },
@@ -45,26 +46,35 @@
     "secret_candidate_surface": "not_found_before_membership_specific_denial",
     "candidate_policy_read": "effective_candidate_not_suspended_or_legacy_banned",
     "candidate_current_application_read": "effective_candidate_not_suspended_or_legacy_banned",
-    "legacy_submit": "transactional_effective_candidate_reentry_check",
-    "cas_submit": "transactional_effective_candidate_reentry_check",
-    "candidate_cancel": "transactional_effective_candidate_check",
+    "legacy_submit": "transactional_effective_candidate_check_before_policy_load_and_validation",
+    "cas_submit": "transactional_effective_candidate_check_before_policy_load_and_precondition",
+    "candidate_cancel": "transactional_effective_candidate_check_before_lifecycle_status",
     "manager_list": "effective_active_owner_admin_moderator_or_platform_manage",
     "policy_management_read": "effective_active_owner_admin_or_platform_manage",
     "legacy_policy_write": "transactional_effective_owner_admin_check",
     "cas_policy_write": "transactional_effective_owner_admin_check",
-    "single_review": "transactional_effective_manager_and_candidate_checks",
-    "reopen": "transactional_effective_manager_and_candidate_checks",
+    "single_review": "transactional_manager_then_candidate_checks_before_application_status",
+    "reopen": "transactional_manager_then_candidate_checks_before_application_status",
     "bulk_review": "bounded_partial_result_via_transactional_effective_single_review",
     "policy_history": "inherits_effective_manager_list_boundary"
   },
   "replay": {
     "receipt_replay_before_effective_authorization_in_owner_transaction": true,
+    "receipt_replay_before_cas_lifecycle_or_domain_mutation": true,
     "matching_replay_or_changed_request_conflict_owner": "same_owner_transaction",
     "facade_receipt_probe_for_writes": false,
     "bulk_child_key_algorithm_preserved": "sha256_base_key_plus_application_uuid"
   },
+  "stable_error_codes": [
+    "groups.membership_suspended",
+    "groups.membership_banned",
+    "groups.manager_required",
+    "groups.membership_already_active",
+    "groups.application_policy_changed"
+  ],
   "transaction_boundary": {
     "same_transaction_effective_authorization": "implemented_source",
+    "stateless_facade_validation": "deadline_tenant_actor_codes_preserved",
     "legacy_stored_status_guard": "retained_as_secondary_invariant_where_applicable",
     "concurrent_enforcement_change_race_evidence": null,
     "reason_not_done": "runtime concurrency evidence and shared direct enforcement mutation path remain open"
