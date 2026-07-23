@@ -138,9 +138,12 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Mount fulfillment ensure/read through the root typed lifecycle factory; pending,
   shipped, and delivered states are replay-safe while cancelled and unknown states
   require manual reconciliation.
-- [ ] Cut the remaining order recovery, cart completion/compensation, payment
-  recovery/provider adaptation, and other audited critical lifecycle paths over to
-  canonical typed owner statuses.
+- [x] Cut order checkout recovery and mounted order projection validation over to
+  `OrderStatusKind`; pending resumes through owner confirmation and unknown states fail
+  closed without raw string policy matching.
+- [ ] Cut the remaining cart completion/compensation, payment recovery/provider
+  adaptation, and other audited critical lifecycle paths over to canonical typed owner
+  statuses.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -249,6 +252,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Route mounted fulfillment ensure/read through
   `TypedCheckoutFulfillmentExecutionPort`; cancelled and unknown owner states require
   manual reconciliation before checkout can continue.
+- [x] Use `OrderStatusKind` in the owner recovery adapter and mounted order projection
+  policy; legacy pending resumes through the owner confirm command.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
@@ -511,8 +516,8 @@ Source inspection is not execution evidence.
   `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
   fulfillment, and pipeline source.
 - [x] Add static guards for fail-closed public `PortError` transport sanitization and
-  typed order/payment/fulfillment lifecycle use in checkout execution, settlement,
-  compensation, and mounted payment/fulfillment stages.
+  typed order/payment/fulfillment lifecycle use in checkout execution, recovery,
+  settlement, compensation, and mounted order/payment/fulfillment stages.
 - [ ] Execute the new public-error and typed-lifecycle static guards against a repository
   checkout and retain their output.
 
@@ -588,10 +593,10 @@ Source inspection is not execution evidence.
 10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
     central fail-closed construction/serde sanitization and source guards are complete.
 11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment execution,
-    order settlement, order/payment compensation, mounted payment-stage source, and
-    typed fulfillment ensure/read recovery are complete, while payment provider
-    adaptation, order recovery, cart lifecycle, and remaining critical string matching
-    stay open.
+    order recovery/settlement/compensation, payment compensation, mounted order/payment
+    stages, and typed fulfillment ensure/read recovery are complete, while payment
+    provider adaptation, cart lifecycle, and remaining critical string matching stay
+    open.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -634,6 +639,8 @@ Source inspection is not execution evidence.
   mounted payment execution admission/replay over to typed owner lifecycle status views.
 - [x] Mount fulfillment ensure/read recovery through the typed root factory and fail
   closed cancelled or unknown owner lifecycle states.
+- [x] Cut order checkout recovery and mounted order projection validation over to
+  `OrderStatusKind`.
 
 ## Change rules
 
