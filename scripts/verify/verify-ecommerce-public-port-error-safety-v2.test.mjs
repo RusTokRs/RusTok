@@ -60,6 +60,30 @@ PortError::validation("payment.validation", "payment request is invalid");
 `;
 }
 
+function canonicalFulfillment() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation = owner_operation,
+  code = "fulfillment.database_unavailable",
+);
+tracing::warn!(code = "fulfillment.context_invalid");
+tracing::warn!(code = "fulfillment.validation");
+tracing::warn!(code = "fulfillment.shipping_option_not_found");
+tracing::warn!(code = "fulfillment.fulfillment_not_found");
+tracing::warn!(code = "fulfillment.invalid_transition");
+PortError::validation("fulfillment.context_invalid", "fulfillment request context is invalid");
+PortError::validation("fulfillment.validation", "fulfillment request is invalid");
+PortError::new(NotFound, "fulfillment.shipping_option_not_found", "shipping option was not found", false);
+PortError::new(NotFound, "fulfillment.fulfillment_not_found", "fulfillment was not found", false);
+PortError::conflict("fulfillment.invalid_transition", "fulfillment lifecycle transition conflicts with the current state");
+PortError::unavailable("fulfillment.database_unavailable", "fulfillment storage is temporarily unavailable");
+parse_port_tenant_id(&context, "list_seller_shipping_options");
+parse_port_tenant_id(&context, "select_shipping_option");
+`;
+}
+
 function canonicalOrderCompensation() {
   return `
 tracing::error!(
@@ -138,6 +162,15 @@ function fixture(options = {}) {
     payment = payment.replace('operation = owner_operation', 'operation = omitted');
   }
   put(root, 'crates/rustok-payment/src/ports.rs', payment);
+
+  let fulfillment = `${canonicalFulfillment()}${options.fulfillmentAppend ?? ''}`;
+  if (options.removeFulfillmentCorrelation) {
+    fulfillment = fulfillment.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
+  }
+  put(root, 'crates/rustok-fulfillment/src/ports.rs', fulfillment);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
   if (options.removeOrderCompensationCorrelation) {
@@ -248,6 +281,26 @@ test('public port error verifier rejects raw pricing validation cause', () => {
   );
 });
 
+test('public port error verifier rejects raw fulfillment validation cause', () => {
+  expectFailure(
+    {
+      fulfillmentAppend:
+        'PortError::validation("fulfillment.validation", message);',
+    },
+    /fulfillment public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw fulfillment storage cause', () => {
+  expectFailure(
+    {
+      fulfillmentAppend:
+        'format!("fulfillment storage unavailable: {error}");',
+    },
+    /fulfillment public error mapping: forbidden/,
+  );
+});
+
 test('public port error verifier rejects legacy order reconciliation message passthrough', () => {
   expectFailure(
     {
@@ -289,6 +342,13 @@ test('public port error verifier requires payment owner operation logging', () =
   expectFailure(
     { removePaymentOperation: true },
     /payment owner operation logging: missing/,
+  );
+});
+
+test('public port error verifier requires fulfillment correlation logging', () => {
+  expectFailure(
+    { removeFulfillmentCorrelation: true },
+    /fulfillment correlation logging: missing/,
   );
 });
 
