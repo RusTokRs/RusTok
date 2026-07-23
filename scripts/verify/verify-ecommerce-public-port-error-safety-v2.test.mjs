@@ -60,6 +60,35 @@ PortError::validation("payment.validation", "payment request is invalid");
 `;
 }
 
+function canonicalOrderCompensation() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation,
+  code = "order.checkout_compensation_manual_reconciliation",
+);
+"checkout requires manual reconciliation";
+"order request context is invalid";
+.map_err(|error| order_error_to_port_error(&context, "read_checkout_order_for_compensation", error));
+`;
+}
+
+function canonicalOrderPaymentSettlement() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation,
+  code = "order.checkout_payment_validation",
+);
+tracing::warn!(code = "order.checkout_payment_state_conflict");
+"checkout requires manual reconciliation";
+"order request context is invalid";
+.map_err(|error| order_error_to_port_error(&context, "mark_checkout_order_paid", error));
+`;
+}
+
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'rustok-public-port-errors-'));
   put(
@@ -80,7 +109,10 @@ function fixture(options = {}) {
 
   let pricing = `${canonicalPricing()}${options.pricingAppend ?? ''}`;
   if (options.removePricingCorrelation) {
-    pricing = pricing.replace('correlation_id = %context.correlation_id', 'correlation_id = omitted');
+    pricing = pricing.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
   }
   put(root, 'crates/rustok-pricing/src/ports.rs', pricing);
 
@@ -89,6 +121,26 @@ function fixture(options = {}) {
     payment = payment.replace('operation = owner_operation', 'operation = omitted');
   }
   put(root, 'crates/rustok-payment/src/ports.rs', payment);
+
+  let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
+  if (options.removeOrderCompensationCorrelation) {
+    orderCompensation = orderCompensation.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
+  }
+  put(
+    root,
+    'crates/rustok-order/src/checkout_compensation.rs',
+    orderCompensation,
+  );
+
+  const orderPaymentSettlement = `${canonicalOrderPaymentSettlement()}${options.orderPaymentSettlementAppend ?? ''}`;
+  put(
+    root,
+    'crates/rustok-order/src/checkout_payment_settlement.rs',
+    orderPaymentSettlement,
+  );
   return root;
 }
 
@@ -170,6 +222,26 @@ test('public port error verifier rejects raw pricing validation cause', () => {
   );
 });
 
+test('public port error verifier rejects legacy order reconciliation message passthrough', () => {
+  expectFailure(
+    {
+      orderCompensationAppend:
+        'fn manual_reconciliation(message: impl Into<String>) {}',
+    },
+    /order checkout adapter public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw order validation cause', () => {
+  expectFailure(
+    {
+      orderPaymentSettlementAppend:
+        'PortError::validation("order.validation", message);',
+    },
+    /order checkout adapter public error mapping: forbidden/,
+  );
+});
+
 test('public port error verifier requires pricing correlation logging', () => {
   expectFailure(
     { removePricingCorrelation: true },
@@ -181,5 +253,12 @@ test('public port error verifier requires payment owner operation logging', () =
   expectFailure(
     { removePaymentOperation: true },
     /payment owner operation logging: missing/,
+  );
+});
+
+test('public port error verifier requires order compensation correlation logging', () => {
+  expectFailure(
+    { removeOrderCompensationCorrelation: true },
+    /order compensation correlation logging: missing/,
   );
 });
