@@ -59,7 +59,6 @@ CREATE TABLE IF NOT EXISTS notification_outbox_intake_receipts (
         source_revision > 0
         AND btrim(event_type) <> ''
         AND btrim(source_slug) <> ''
-        AND source_event_id = outbox_event_id
     )
 );
 
@@ -84,8 +83,7 @@ CREATE TABLE IF NOT EXISTS notification_outbox_intake_receipts (
     FOREIGN KEY (tenant_id, source_inbox_id)
         REFERENCES notification_source_inbox(tenant_id, id) ON DELETE CASCADE,
     CHECK (length(trim(event_type)) BETWEEN 1 AND 128),
-    CHECK (length(trim(source_slug)) BETWEEN 1 AND 64),
-    CHECK (source_event_id = outbox_event_id)
+    CHECK (length(trim(source_slug)) BETWEEN 1 AND 64)
 );
 
 CREATE INDEX IF NOT EXISTS idx_notification_outbox_intake_source
