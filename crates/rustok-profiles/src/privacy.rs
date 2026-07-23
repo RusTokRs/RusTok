@@ -2,13 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::dto::{ProfileStatus, ProfileVisibility};
-use crate::entities::profile;
-use crate::ProfileService;
+use crate::{ProfileError, ProfileService, ProfileStatus, ProfileVisibility};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProfilePrivacyReadRequest {
@@ -63,22 +60,35 @@ impl ProfilePrivacyReadPort for ProfileService {
             )
         })?;
 
-        let model = profile::Entity::find_by_id(request.recipient_id)
-            .filter(profile::Column::TenantId.eq(tenant_id))
-            .one(self.db())
+        let profile = match self
+            .get_profile(tenant_id, request.recipient_id, None, None)
             .await
-            .map_err(|_| {
-                PortError::unavailable(
+        {
+            Ok(profile) => profile,
+            Err(ProfileError::ProfileNotFound(_)) => {
+                return Ok(ProfilePrivacyDecision::RecipientUnavailable);
+            }
+            Err(ProfileError::LocalizedCopyNotFound(_)) => {
+                return Err(PortError::unavailable(
+                    "profiles.privacy_projection_incomplete",
+                    "profile privacy projection is temporarily incomplete",
+                ));
+            }
+            Err(ProfileError::Database(_)) => {
+                return Err(PortError::unavailable(
                     "profiles.privacy_read_unavailable",
                     "profile privacy state is temporarily unavailable",
-                )
-            })?;
-
-        let Some(model) = model else {
-            return Ok(ProfilePrivacyDecision::RecipientUnavailable);
+                ));
+            }
+            Err(_) => {
+                return Err(PortError::validation(
+                    "profiles.privacy_read_invalid",
+                    "profile privacy state could not be evaluated",
+                ));
+            }
         };
 
-        if model.status != ProfileStatus::Active {
+        if profile.status != ProfileStatus::Active {
             return Ok(ProfilePrivacyDecision::RecipientUnavailable);
         }
 
@@ -86,7 +96,7 @@ impl ProfilePrivacyReadPort for ProfileService {
             return Ok(ProfilePrivacyDecision::Allow);
         }
 
-        match model.visibility {
+        match profile.visibility {
             ProfileVisibility::Public | ProfileVisibility::Authenticated => {
                 Ok(ProfilePrivacyDecision::Allow)
             }
