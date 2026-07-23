@@ -181,5 +181,8 @@ async fn decide_case_in_transaction(
         }),
     )
     .await?;
-    map_decision(decision, Some(command.effect))
+    map_decision(
+        decision,
+        Some((command.decision_kind, command.effect)),
+    )
 }
