@@ -1,6 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slice": "SOCIAL-01A/NOTIFY-07C",
+  "promoted_by_slice": "NOTIFY-03C",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-social-graph/docs/implementation-plan.md",
   "owner": "rustok-social-graph",
@@ -29,8 +30,9 @@
     "profile_then_block_then_mute": true,
     "reads_private_social_graph_tables": false,
     "relation_ports_ready": true,
-    "candidate_worker_enabled": false,
-    "candidate_worker_ready": false
+    "candidate_worker_runtime_delivered": true,
+    "candidate_worker_default_enabled": false,
+    "candidate_worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json"
   },
   "distribution": {
     "registry": "crates/rustok-distribution/src/lib.rs",
@@ -44,10 +46,11 @@
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "candidate worker startup",
+    "default candidate worker enablement after health and lag metrics",
     "friend and follow lifecycle",
     "block and mute transports",
     "outbox relation events",
