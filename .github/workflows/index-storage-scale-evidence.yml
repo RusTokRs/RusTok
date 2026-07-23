@@ -2,6 +2,15 @@ name: Index Storage Scale Evidence
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+      - ".github/workflows/index-storage-scale-evidence.yml"
+      - ".github/workflows/index-storage-scale-run.yml"
   push:
     branches:
       - "agent/index-m2-scale-evidence"
