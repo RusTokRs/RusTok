@@ -2,6 +2,7 @@ mod candidate;
 pub mod entities;
 pub mod error;
 mod fanout;
+mod fanout_worker;
 pub mod migrations;
 pub mod model;
 mod outbox_intake;
@@ -22,6 +23,12 @@ pub use candidate::{
 pub use error::{NotificationError, NotificationResult};
 pub use fanout::{
     NotificationFanoutPageResult, NotificationFanoutService, NotificationSourceInboxReceipt,
+};
+pub use fanout_worker::{
+    DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE, DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE,
+    MAX_NOTIFICATION_FANOUT_BATCH_SIZE, MAX_NOTIFICATION_FANOUT_PAGE_SIZE,
+    NotificationFanoutWorker, NotificationFanoutWorkerBatchResult,
+    NotificationFanoutWorkerFailure, NotificationFanoutWorkerStage,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
