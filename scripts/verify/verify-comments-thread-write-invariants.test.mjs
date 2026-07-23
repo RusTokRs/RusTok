@@ -19,8 +19,10 @@ function write(root, relativePath, content) {
 
 function fixture({
   missingPositionTenantLock = false,
+  missingCounterActivationGuard = false,
   missingExactCount = false,
   nonUniqueIndex = false,
+  missingPostgresHarness = false,
 } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-comments-thread-invariants-"));
   const commentPath = "crates/rustok-comments/src/entities/comment.rs";
@@ -57,7 +59,11 @@ function fixture({
     `
       impl ActiveModelBehavior for ActiveModel {
         async fn before_save() {
-          if insert { return Ok(self); }
+          ${
+            missingCounterActivationGuard
+              ? "if insert { return Ok(self); }"
+              : "if insert || !matches!(&self.comment_count, ActiveValue::Set(_)) { return Ok(self); }"
+          }
           comment thread {thread_id} is missing while refreshing counters
           update_many();
           Column::Id.eq(thread_id);
@@ -106,12 +112,26 @@ function fixture({
     testPath,
     `
       active_model_hooks_override_stale_positions_and_counts
+      status_only_thread_update_preserves_comment_count
       unique_position_index_rejects_active_model_bypass
       stale_thread.comment_count = Set(999)
       assert_eq!(first.position, 1)
       assert_eq!(second.position, 2)
       assert_eq!(repaired.comment_count, 1)
       comment::Entity::insert
+      ${
+        missingPostgresHarness
+          ? ""
+          : `
+            postgres_concurrent_creates_and_delete_preserve_thread_invariants
+            RUSTOK_COMMENTS_TEST_DATABASE_URL
+            tokio::join!
+            max_connections(1)
+            SET search_path TO "{schema_name}", public
+            assert_eq!(positions, vec![1, 2, 3])
+            assert_eq!(thread.comment_count, active_count as i32)
+          `
+      }
     `,
   );
   write(
@@ -130,20 +150,23 @@ function fixture({
         repair_migration: migrationPath,
         migration_registry: migrationRegistryPath,
         executable_test: testPath,
+        postgres_environment: "RUSTOK_COMMENTS_TEST_DATABASE_URL",
       },
       cases: [
         { name: "serialized_position_allocation" },
         { name: "exact_active_comment_count" },
+        { name: "status_only_update_preserves_count" },
         { name: "historical_counter_repair" },
         { name: "historical_position_repair" },
         { name: "bulk_bypass_rejection" },
+        { name: "postgres_concurrent_create_delete" },
       ],
     }),
   );
   write(
     root,
     "crates/rustok-comments/docs/implementation-plan.md",
-    "comments-thread-write-invariants.json thread_write_invariants ActiveModelBehavior UNIQUE(thread_id, position)",
+    "comments-thread-write-invariants.json thread_write_invariants ActiveModelBehavior UNIQUE(thread_id, position) RUSTOK_COMMENTS_TEST_DATABASE_URL concurrent PostgreSQL",
   );
 
   return root;
@@ -179,6 +202,17 @@ test("thread write verifier rejects position allocation without tenant lock", ()
   }
 });
 
+test("thread write verifier rejects counter writes without activation guard", () => {
+  const root = fixture({ missingCounterActivationGuard: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing matches!\(&self\.comment_count/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("thread write verifier rejects a counter owner without exact active count", () => {
   const root = fixture({ missingExactCount: true });
   try {
@@ -196,6 +230,17 @@ test("thread write verifier rejects a non-unique position index", () => {
     const result = run(root);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing \.unique\(\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("thread write verifier rejects missing PostgreSQL concurrency harness", () => {
+  const root = fixture({ missingPostgresHarness: true });
+  try {
+    const result = run(root);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing postgres_concurrent_creates_and_delete/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
