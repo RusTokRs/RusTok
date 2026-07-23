@@ -10,6 +10,7 @@ const evidencePath = 'crates/rustok-comments/contracts/evidence/comments-contrac
 const registry = json(registryPath);
 const evidence = json(evidencePath);
 const runtimeSmoke = json(registry.evidence.runtime_order_smoke);
+const threadWriteEvidence = json(registry.evidence.thread_write_invariants);
 
 if (registry.schema_version !== 1) fail('registry schema_version drift');
 if (registry.module !== 'comments' || registry.role !== 'provider' || !['in_progress', 'boundary_ready'].includes(registry.status)) fail('registry identity/status drift');
@@ -76,11 +77,6 @@ const registryCases = registry.contract_tests.cases.map(c => c.operation).sort()
 const evidenceCases = evidence.cases.map(c => c.operation).sort().join('|');
 if (registryCases !== evidenceCases) fail('evidence case matrix drift');
 
-const plan = read('crates/rustok-comments/docs/implementation-plan.md');
-hasAll(plan, ['- FBA status: `boundary_ready`', 'comments-fba-registry.json', 'CommentsThreadPort', 'comments-contract-test-static-matrix.json', registry.evidence.runtime_order_smoke], 'local plan');
-const central = read('docs/modules/registry.md');
-hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
-
 if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== registry.evidence.runtime_order_smoke_runner || runtimeSmoke.status !== 'executable_no_compile' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime order smoke header drift');
 const fallbackProfiles = registry.contract_tests.fallback_smoke.profiles.slice().sort().join('|');
 const smokeProfiles = runtimeSmoke.fallback_profiles.slice().sort().join('|');
@@ -95,4 +91,40 @@ for (const c of runtimeSmoke.cases) {
   }
 }
 
-console.log('[verify-comments-fba] comments FBA provider metadata, port semantics and static evidence are consistent');
+if (registry.evidence.thread_write_invariants !== 'crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json') fail('thread write evidence path drift');
+if (registry.evidence.thread_write_invariants_runner !== 'scripts/verify/verify-comments-thread-write-invariants.mjs') fail('thread write verifier path drift');
+if (registry.evidence.thread_write_invariants_test !== 'crates/rustok-comments/tests/thread_write_invariants.rs') fail('thread write test path drift');
+if (threadWriteEvidence.module !== 'comments' || threadWriteEvidence.surface !== 'thread_write_invariants' || threadWriteEvidence.owner !== 'rustok-comments') fail('thread write evidence identity drift');
+if (threadWriteEvidence.status !== 'executable_no_run' || threadWriteEvidence.compile_policy !== 'not_run_by_request') fail('thread write evidence status drift');
+const threadWriteCases = threadWriteEvidence.cases.map(c => c.name).sort().join('|');
+if (threadWriteCases !== [
+  'bulk_bypass_rejection',
+  'exact_active_comment_count',
+  'historical_counter_repair',
+  'historical_position_repair',
+  'serialized_position_allocation',
+].sort().join('|')) fail('thread write evidence case matrix drift');
+const threadWriteVerifier = read(registry.evidence.thread_write_invariants_runner);
+hasAll(threadWriteVerifier, [
+  'impl ActiveModelBehavior for ActiveModel',
+  'self.position = Set(next_position)',
+  'self.comment_count = Set(count)',
+  'ROW_NUMBER() OVER',
+  'unique_position_index_rejects_active_model_bypass',
+], 'thread write invariant verifier');
+
+const plan = read('crates/rustok-comments/docs/implementation-plan.md');
+hasAll(plan, [
+  '- FBA status: `boundary_ready`',
+  'comments-fba-registry.json',
+  'CommentsThreadPort',
+  'comments-contract-test-static-matrix.json',
+  registry.evidence.runtime_order_smoke,
+  registry.evidence.thread_write_invariants,
+  'ActiveModelBehavior',
+  'UNIQUE(thread_id, position)',
+], 'local plan');
+const central = read('docs/modules/registry.md');
+hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
+
+console.log('[verify-comments-fba] comments FBA provider metadata, port semantics, runtime-order evidence, and thread write invariants are consistent');
