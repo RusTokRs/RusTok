@@ -44,6 +44,16 @@ const MODULE_SLUG: &str = "seo";
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
 const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;
 const SITEMAP_CHUNK_SIZE: usize = 500;
+const SEO_SETTINGS_KEYS: &[&str] = &[
+    "default_robots",
+    "sitemap_enabled",
+    "allowed_redirect_hosts",
+    "allowed_canonical_hosts",
+    "x_default_locale",
+    "template_defaults",
+    "template_overrides",
+    "sitemap_submission_endpoints",
+];
 
 static REDIRECT_CACHE: Lazy<Cache<Uuid, Arc<Vec<seo_redirect::Model>>>> = Lazy::new(|| {
     Cache::builder()
@@ -225,15 +235,99 @@ impl SeoService {
 }
 
 fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
-    if !value.is_object() {
-        return Err(SeoError::configuration(
-            "persisted SEO settings must be a JSON object",
-        ));
+    let object = value.as_object().ok_or_else(|| {
+        SeoError::configuration("persisted SEO settings must be a JSON object")
+    })?;
+    if let Some(unknown) = object
+        .keys()
+        .find(|key| !SEO_SETTINGS_KEYS.contains(&key.as_str()))
+    {
+        return Err(SeoError::configuration(format!(
+            "unknown persisted SEO setting `{unknown}`"
+        )));
     }
 
-    serde_json::from_value(value).map_err(|error| {
+    let settings: SeoModuleSettings = serde_json::from_value(value).map_err(|error| {
         SeoError::configuration(format!("invalid persisted SEO settings: {error}"))
-    })
+    })?;
+    validate_persisted_settings(&settings)?;
+    Ok(settings)
+}
+
+fn validate_persisted_settings(settings: &SeoModuleSettings) -> SeoResult<()> {
+    if let Some(locale) = settings.x_default_locale.as_deref() {
+        if normalize_locale_tag(locale).is_none() {
+            return Err(SeoError::configuration(format!(
+                "invalid persisted SEO x_default_locale `{locale}`"
+            )));
+        }
+    }
+
+    for (field, hosts) in [
+        ("allowed_redirect_hosts", settings.allowed_redirect_hosts.as_slice()),
+        ("allowed_canonical_hosts", settings.allowed_canonical_hosts.as_slice()),
+    ] {
+        for host in hosts {
+            validate_settings_host(host, field)?;
+        }
+    }
+
+    for slug in settings.template_overrides.keys() {
+        if slug.trim().is_empty() {
+            return Err(SeoError::configuration(
+                "persisted SEO template override slug must not be empty",
+            ));
+        }
+    }
+
+    for endpoint in &settings.sitemap_submission_endpoints {
+        validate_sitemap_submission_endpoint(endpoint)?;
+    }
+
+    Ok(())
+}
+
+fn validate_settings_host(value: &str, field: &str) -> SeoResult<()> {
+    let host = value.trim().trim_end_matches('.');
+    if host.is_empty()
+        || host.chars().any(char::is_whitespace)
+        || host.contains("://")
+        || ['/', '?', '#', '@']
+            .iter()
+            .any(|marker| host.contains(*marker))
+    {
+        return Err(SeoError::configuration(format!(
+            "invalid persisted SEO {field} entry `{value}`"
+        )));
+    }
+    let parsed = url::Url::parse(format!("https://{host}").as_str()).map_err(|_| {
+        SeoError::configuration(format!("invalid persisted SEO {field} entry `{value}`"))
+    })?;
+    if parsed.host_str().is_none() || parsed.path() != "/" {
+        return Err(SeoError::configuration(format!(
+            "invalid persisted SEO {field} entry `{value}`"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_sitemap_submission_endpoint(value: &str) -> SeoResult<()> {
+    let parsed = url::Url::parse(value.trim()).map_err(|_| {
+        SeoError::configuration(format!(
+            "invalid persisted SEO sitemap submission endpoint `{value}`"
+        ))
+    })?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.host_str().is_none()
+        || parsed.fragment().is_some()
+    {
+        return Err(SeoError::configuration(format!(
+            "invalid persisted SEO sitemap submission endpoint `{value}`"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -308,6 +402,29 @@ mod settings_tests {
 
         assert!(error.to_string().contains("invalid persisted SEO settings"));
         assert!(error.to_string().contains("sitemap_enabled"));
+    }
+
+    #[test]
+    fn persisted_settings_reject_unknown_fields() {
+        let error = parse_persisted_settings(json!({
+            "sitemap_enabeld": false
+        }))
+        .expect_err("typoed settings must not silently use defaults");
+
+        assert!(error.to_string().contains("unknown persisted SEO setting"));
+        assert!(error.to_string().contains("sitemap_enabeld"));
+    }
+
+    #[test]
+    fn persisted_settings_reject_invalid_semantic_values() {
+        for value in [
+            json!({"x_default_locale": "not a locale"}),
+            json!({"allowed_redirect_hosts": ["https://example.com/path"]}),
+            json!({"sitemap_submission_endpoints": ["file:///tmp/sitemap"]}),
+            json!({"template_overrides": {" ": {}}}),
+        ] {
+            assert!(parse_persisted_settings(value).is_err());
+        }
     }
 
     #[test]
