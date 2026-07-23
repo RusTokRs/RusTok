@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{
-    PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -97,7 +95,8 @@ impl SocialGraphPrivacyReadPort for SocialGraphService {
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        self.blocks_between(
+        SocialGraphService::blocks_between(
+            self,
             parse_tenant_id(&context)?,
             request.source_user_id,
             request.target_user_id,
@@ -112,7 +111,8 @@ impl SocialGraphPrivacyReadPort for SocialGraphService {
         request: SocialGraphPairRequest,
     ) -> Result<bool, PortError> {
         context.require_policy(PortCallPolicy::read())?;
-        self.source_mutes_target(
+        SocialGraphService::source_mutes_target(
+            self,
             parse_tenant_id(&context)?,
             request.source_user_id,
             request.target_user_id,
