@@ -17,12 +17,14 @@ const channel = read('crates/rustok-channel/src/ports.rs');
 const region = read('crates/rustok-region/src/ports.rs');
 const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
 const pricing = read('crates/rustok-pricing/src/ports.rs');
+const payment = read('crates/rustok-payment/src/ports.rs');
 
 for (const [source, label] of [
   [channel, 'channel port'],
   [region, 'region port'],
   [cart, 'cart checkout port'],
   [pricing, 'pricing port'],
+  [payment, 'payment collection port'],
 ]) {
   requireText(source, 'tracing::error!', label);
 }
@@ -55,17 +57,36 @@ for (const value of [
   forbidText(pricing, value, 'pricing public error mapping');
 }
 
-for (const [value, label] of [
-  ['correlation_id = %context.correlation_id', 'pricing correlation logging'],
-  ['tenant_id = %context.tenant_id', 'pricing tenant logging'],
-  ['code = "pricing.database_unavailable"', 'pricing database stable code'],
-  ['"pricing storage is temporarily unavailable"', 'pricing stable storage message'],
-  ['"pricing operation failed an internal invariant"', 'pricing stable invariant message'],
-  ['"pricing request is invalid"', 'pricing stable validation message'],
-  ['pricing_error_to_port_error(&context, "resolve_product_price"', 'pricing operation mapping'],
-  ['pricing_error_to_port_error(&context, "upsert_variant_price"', 'pricing write operation mapping'],
+for (const value of [
+  'PortError::validation("payment.validation", message)',
+  'format!("invalid payment transition from `{from}` to `{to}`")',
+  'format!("payment provider `{provider_id}` is unavailable for `{operation}")',
+  'format!("payment provider `{provider_id}` rejected `{operation}")',
+  'format!("payment provider `{provider_id}` outcome is unknown for `{operation}")',
+  '.map_err(payment_error_to_port_error)',
 ]) {
-  requireText(pricing, value, label);
+  forbidText(payment, value, 'payment collection public error mapping');
+}
+
+for (const [source, value, label] of [
+  [pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging'],
+  [pricing, 'tenant_id = %context.tenant_id', 'pricing tenant logging'],
+  [pricing, 'code = "pricing.database_unavailable"', 'pricing database stable code'],
+  [pricing, '"pricing storage is temporarily unavailable"', 'pricing stable storage message'],
+  [pricing, '"pricing operation failed an internal invariant"', 'pricing stable invariant message'],
+  [pricing, '"pricing request is invalid"', 'pricing stable validation message'],
+  [pricing, 'pricing_error_to_port_error(&context, "resolve_product_price"', 'pricing operation mapping'],
+  [pricing, 'pricing_error_to_port_error(&context, "upsert_variant_price"', 'pricing write operation mapping'],
+  [payment, 'correlation_id = %context.correlation_id', 'payment correlation logging'],
+  [payment, 'tenant_id = %context.tenant_id', 'payment tenant logging'],
+  [payment, 'operation = owner_operation', 'payment owner operation logging'],
+  [payment, 'code = "payment.database_unavailable"', 'payment database stable code'],
+  [payment, '"payment storage is temporarily unavailable"', 'payment stable storage message'],
+  [payment, '"payment provider outcome requires reconciliation"', 'payment stable reconciliation message'],
+  [payment, '"payment request is invalid"', 'payment stable validation message'],
+  [payment, 'payment_error_to_port_error(&context, "read_collection_status"', 'payment read operation mapping'],
+]) {
+  requireText(source, value, label);
 }
 
 requireText(
@@ -96,5 +117,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, and pricing ports keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, and payment collection ports keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );
