@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_graphql::{
-    ErrorExtensionValues, Response, ServerError,
+    ErrorExtensionValues, PathSegment, Response, ServerError,
     extensions::{Extension, ExtensionContext, ExtensionFactory, NextExecute},
 };
 
@@ -12,9 +12,9 @@ use crate::error::ForumError;
 /// `async-graphql` preserves errors converted through `?` in
 /// `ServerError::source`. This extension uses that source to recover the exact
 /// `ForumError::stable_code()` and retryability without requiring every
-/// resolver to repeat transport mapping logic. A message fallback covers older
-/// resolvers that manually constructed `async_graphql::Error` from the already
-/// redacted `ForumError::Display` text.
+/// resolver to repeat transport mapping logic. A path-scoped message fallback
+/// covers older Forum resolvers that manually constructed
+/// `async_graphql::Error` from the already redacted `ForumError::Display` text.
 #[derive(Default)]
 pub struct ForumGraphqlErrorExtension;
 
@@ -63,7 +63,11 @@ fn annotate_forum_error(error: &mut ServerError) {
             code: source.stable_code(),
             retryable: Some(source.is_retryable()),
         })
-        .or_else(|| contract_from_safe_message(&error.message));
+        .or_else(|| {
+            is_forum_graphql_path(error)
+                .then(|| contract_from_safe_message(&error.message))
+                .flatten()
+        });
 
     let Some(contract) = contract else {
         return;
@@ -76,6 +80,16 @@ fn annotate_forum_error(error: &mut ServerError) {
     if let Some(retryable) = contract.retryable {
         extensions.set("retryable", retryable);
     }
+}
+
+fn is_forum_graphql_path(error: &ServerError) -> bool {
+    error.path.iter().any(|segment| {
+        matches!(
+            segment,
+            PathSegment::Field(field)
+                if field.starts_with("forum") || field.contains("Forum")
+        )
+    })
 }
 
 fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
@@ -137,7 +151,7 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
 
 #[cfg(test)]
 mod tests {
-    use async_graphql::{Error, ErrorExtensionValues, Pos, ServerError, Value};
+    use async_graphql::{Error, ErrorExtensionValues, PathSegment, Pos, ServerError, Value};
 
     use super::annotate_forum_error;
     use crate::error::ForumError;
@@ -147,6 +161,10 @@ mod tests {
             .extensions
             .as_ref()
             .and_then(|extensions| extensions.get(name))
+    }
+
+    fn forum_path(error: ServerError) -> ServerError {
+        error.with_path(vec![PathSegment::Field("forumTopic".to_string())])
     }
 
     #[test]
@@ -172,7 +190,7 @@ mod tests {
 
     #[test]
     fn annotates_source_less_legacy_forum_messages() {
-        let mut server_error = ServerError::new("Topic is locked", None);
+        let mut server_error = forum_path(ServerError::new("Topic is locked", None));
 
         annotate_forum_error(&mut server_error);
 
@@ -188,7 +206,7 @@ mod tests {
 
     #[test]
     fn preserves_an_existing_graphql_error_code() {
-        let mut server_error = ServerError::new("Topic is locked", None);
+        let mut server_error = forum_path(ServerError::new("Topic is locked", None));
         let mut extensions = ErrorExtensionValues::default();
         extensions.set("code", "EXISTING_CONTRACT");
         server_error.extensions = Some(extensions);
@@ -203,8 +221,9 @@ mod tests {
     }
 
     #[test]
-    fn ignores_unrelated_graphql_errors() {
-        let mut server_error = ServerError::new("Unrelated module failure", None);
+    fn ignores_unrelated_graphql_errors_with_matching_text() {
+        let mut server_error = ServerError::new("Topic is locked", None)
+            .with_path(vec![PathSegment::Field("updatePage".to_string())]);
 
         annotate_forum_error(&mut server_error);
 
