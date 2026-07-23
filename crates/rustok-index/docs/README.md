@@ -65,23 +65,33 @@ M1 provides:
 
 ## M2 storage benchmark
 
-The benchmark harness is implemented outside the production crate in
-`ops/benches/src/index_storage`.
+Benchmark code lives outside the production crate in
+`ops/benches/src/index_storage`. Candidate DDL is not a production migration or
+runtime storage contract.
 
-It currently provides:
+The read/query harness provides:
 
 - deterministic `smoke`, `100k`, and `1m` Product-locale datasets;
 - Product, Variant, SalesChannel, tag, price, timestamp, locale, and link data;
 - JSONB, normalized typed EAV, and specialized hot-projection candidates;
 - independent relational link storage for every candidate;
 - shared equality, range, multi-value, two-hop link, keyset, and count workloads;
+- exact source/candidate cardinality and workload-result digest parity checks;
 - load duration and schema-size measurement;
-- repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence;
-- machine-readable reports under `target/index-storage-benchmark`.
+- repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence.
 
-The harness does not select a model. Real smoke/100k/1m runs, write-amplification
-and vacuum workloads, evidence comparison, and the storage ADR are still open.
-No production migration may be added before the ADR is accepted.
+The transactional mutation harness provides:
+
+- identical deterministic Product batch update/delete workloads;
+- equal affected entity/link count validation across candidates;
+- one isolated transaction per measured repetition;
+- rollback after every measured mutation;
+- planning/execution, BUFFERS, full JSON plan, and maximum node-level WAL
+  records/FPI/bytes evidence.
+
+The harnesses do not select a model. Real smoke/100k/1m runs, persistent churn,
+dead-tuple/bloat and pre/post-VACUUM evidence, comparison, and the storage ADR
+remain open. No production migration may be added before the ADR is accepted.
 
 ## Status
 
@@ -91,7 +101,9 @@ No production migration may be added before the ADR is accepted.
 - FBA: `in_progress`
 - M0 code reset: `complete`
 - M1 generic core: `complete`
-- M2 harness: `implemented`
+- M2 read/query harness: `implemented`
+- M2 transactional mutation/WAL harness: `implemented`
+- M2 persistent churn/VACUUM harness: `pending`
 - M2 evidence and ADR: `pending`
 - Production migrations: intentionally absent pending M2 benchmark evidence
 
@@ -107,6 +119,7 @@ The repository owner runs the checks and database evidence during this rewrite:
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
 - `cargo run -p rustok-benchmarks --bin index-storage-benchmark --release`
+- `cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release`
 
 ## Related documents
 
