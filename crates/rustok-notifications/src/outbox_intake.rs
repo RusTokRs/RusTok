@@ -8,7 +8,7 @@ use rustok_notifications_api::{
 use rustok_outbox::entity as outbox_event;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, TransactionTrait, sea_query::OnConflict,
+    QueryOrder, QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -219,7 +219,9 @@ impl NotificationOutboxIntakeWorker {
         Ok(intake_result(receipt, false))
     }
 
-    pub async fn process_next_batch(&self) -> NotificationResult<NotificationOutboxIntakeBatchResult> {
+    pub async fn process_next_batch(
+        &self,
+    ) -> NotificationResult<NotificationOutboxIntakeBatchResult> {
         let event_ids = self.pending_outbox_event_ids().await?;
         let mut result = NotificationOutboxIntakeBatchResult {
             selected: event_ids.len(),
