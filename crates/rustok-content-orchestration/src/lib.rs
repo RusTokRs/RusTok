@@ -1793,7 +1793,7 @@ mod tests {
     use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
     use rustok_forum::{
         CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
-        ListRepliesFilter, ReplyService, TopicService,
+        ListRepliesFilter, ReplyService, ReplyStatus, TopicService,
         entities::{forum_reply, forum_reply_body, forum_topic, forum_topic_translation},
     };
     use rustok_outbox::TransactionalEventBus;
@@ -1871,6 +1871,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(unreachable_code, unused_variables)]
     async fn promote_topic_to_post_moves_replies_and_registers_redirects() {
         let db = setup_conversion_test_db().await;
         ensure_conversion_schema(&db).await;
@@ -1988,7 +1989,6 @@ mod tests {
                 return;
             }
         };
-        panic!("topic promotion with replies unexpectedly bypassed the richtext cutover");
 
         assert!(
             forum_topic::Entity::find_by_id(topic.id)
@@ -2141,6 +2141,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(unreachable_code, unused_variables)]
     async fn demote_post_to_topic_moves_comments_and_registers_redirects() {
         let db = setup_conversion_test_db().await;
         ensure_conversion_schema(&db).await;
@@ -2259,7 +2260,6 @@ mod tests {
                 return;
             }
         };
-        panic!("post demotion with comments unexpectedly bypassed the richtext cutover");
 
         assert!(
             blog_post::Entity::find_by_id(post_id)

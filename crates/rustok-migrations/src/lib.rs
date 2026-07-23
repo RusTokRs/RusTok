@@ -315,7 +315,9 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_pages::migrations::migrations());
         all.extend(rustok_seo::migrations::migrations());
         all.extend(rustok_forum::migrations::migrations());
-        all.extend(rustok_index::migrations::migrations());
+        all.extend(rustok_core::MigrationSource::migrations(
+            &rustok_index::IndexModule,
+        ));
         all.extend(rustok_search::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());

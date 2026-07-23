@@ -4,7 +4,7 @@ use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
-    TransactionTrait, TryGetable,
+    TransactionTrait,
 };
 use serde::Serialize;
 use serde_json::Value;

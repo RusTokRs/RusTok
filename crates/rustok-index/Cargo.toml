@@ -27,5 +27,6 @@ uuid.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+rustok-events.workspace = true
 sea-orm.workspace = true
 tokio.workspace = true

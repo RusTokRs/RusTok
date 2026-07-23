@@ -127,13 +127,25 @@ async fn postgres_concurrent_first_comments_share_one_thread() -> TestResult<()>
     test_db.cleanup().await
 }
 
+use rustok_api::RichTextDocument;
+
+fn richtext(text: &str) -> RichTextDocument {
+    serde_json::from_value(serde_json::json!({
+        "type": "doc",
+        "content": [{
+            "type": "paragraph",
+            "content": [{"type": "text", "text": text}]
+        }]
+    }))
+    .expect("test richtext")
+}
+
 fn comment_input(target_id: Uuid, body: &str) -> CreateCommentInput {
     CreateCommentInput {
         target_type: "blog_post".to_string(),
         target_id,
         locale: "en".to_string(),
-        body: body.to_string(),
-        body_format: "markdown".to_string(),
+        body: richtext(body),
         parent_comment_id: None,
         status: CommentStatus::Pending,
     }

@@ -2,7 +2,7 @@ use std::{fs, path::Path, time::Instant};
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TryGetable};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::Serialize;
 use serde_json::Value;
 

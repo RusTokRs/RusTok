@@ -8,7 +8,6 @@ use crate::model::{IndexModuleSnapshot, IndexTenantSnapshot};
 pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use leptos::prelude::expect_context;
         use rustok_api::{
             AuthContext, Permission, TenantContext, has_effective_permission,
         };

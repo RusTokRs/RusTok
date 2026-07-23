@@ -3,7 +3,7 @@ use std::{fs, path::Path, time::Instant};
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, TryGetable,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait,
 };
 use serde::Serialize;
 

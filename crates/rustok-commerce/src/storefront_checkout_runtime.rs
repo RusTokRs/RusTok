@@ -309,6 +309,7 @@ pub async fn select_storefront_shipping_option(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn complete_storefront_checkout(
     runtime: &StorefrontCheckoutRuntime,
     tenant: &TenantContext,
