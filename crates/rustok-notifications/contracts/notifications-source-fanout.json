@@ -1,7 +1,7 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "slice": "NOTIFY-01B/03A",
-  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E"],
+  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03F"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
   "migration": "crates/rustok-notifications/src/migrations/m20260722_000011_create_notification_source_inbox.rs",
@@ -17,7 +17,8 @@
     "expired_lease_cannot_finish": true,
     "terminal_states": ["completed", "suppressed", "rejected"],
     "production_outbox_intake_delivered": true,
-    "production_materialization_worker_delivered": true
+    "production_materialization_worker_delivered": true,
+    "tenant_policy_backoff_delivered": true
   },
   "fanout_job": {
     "existing_table": "notification_fanout_jobs",
@@ -32,6 +33,7 @@
     "descriptor_replay_must_match": true,
     "production_page_worker_delivered": true,
     "tenant_effective_policy_checked_before_provider": true,
+    "tenant_policy_backoff_delivered": true,
     "worker_default_enabled": false
   },
   "candidate_items": {
@@ -60,6 +62,7 @@
     "crates/rustok-notifications/tests/fanout_sqlite.rs",
     "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
     "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
+    "crates/rustok-notifications/tests/fanout_policy_deferral_sqlite.rs",
     "crates/rustok-forum/tests/notification_source_sqlite.rs"
   ],
   "verification": {
@@ -69,7 +72,6 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "durable disabled-tenant backoff",
     "recipient-specific channel and group authorization",
     "delivery-attempt enqueue",
     "forum moderator audience expansion",
