@@ -7,18 +7,26 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const files = {
   guard: "crates/rustok-groups/src/effective_membership_guard.rs",
+  locking: "crates/rustok-groups/src/membership_enforcement_transaction.rs",
   invitations: "crates/rustok-groups/src/effective_invitations.rs",
+  invitationOwner: "crates/rustok-groups/src/invitations_transactional.rs",
+  targetedOwner: "crates/rustok-groups/src/targeted_invitations_transactional.rs",
   applications: "crates/rustok-groups/src/effective_applications.rs",
+  applicationOwner: "crates/rustok-groups/src/applications_transactional.rs",
+  applicationCasOwner: "crates/rustok-groups/src/applications_transactional_cas.rs",
+  applicationLifecycleOwner:
+    "crates/rustok-groups/src/applications_transactional_lifecycle.rs",
   module: "crates/rustok-groups/src/lib.rs",
   contract:
     "crates/rustok-groups/contracts/groups-effective-membership-invitations-applications.json",
   plan: "crates/rustok-groups/docs/implementation-plan.md",
+  runtime: "crates/rustok-groups/docs/README.md",
   readme: "crates/rustok-groups/README.md",
 };
 
 for (const relative of Object.values(files)) {
   if (!fs.existsSync(path.join(root, relative))) {
-    failures.push(`missing effective invitation/application artifact: ${relative}`);
+    failures.push(`missing transactional effective artifact: ${relative}`);
   }
 }
 
@@ -32,56 +40,105 @@ const requireMarkers = (relative, markers) => {
 };
 
 if (failures.length === 0) {
+  requireMarkers(files.locking, [
+    "resolve_group_membership_enforcement_for_update",
+    "Group -> GroupMembership -> GroupMembershipEnforcement",
+    "UPDATE groups SET version = version",
+    ".lock_exclusive()",
+    "membership_enforcement::Entity::find_by_id",
+  ]);
+
   requireMarkers(files.guard, [
-    "resolve_group_membership_enforcement",
-    "GroupManagerCapability",
-    "has_existing_receipt",
-    "groups.membership_suspended",
-    "groups.membership_banned",
+    "resolve_group_membership_enforcement_now_for_update",
+    "require_effective_manager_owned",
+    "require_user_not_denied_owned",
+    "DatabaseTransaction",
     "effective.active_member && role_allowed",
   ]);
 
-  requireMarkers(files.invitations, [
-    "pub struct GroupInvitationService",
-    "pub struct GroupTargetedInvitationService",
-    "require_effective_manager",
-    "require_candidate_not_denied",
-    "has_existing_receipt",
-    "GroupInvitationCommandPort::accept_group_invitation",
-    "GroupTargetedInvitationCommandPort::accept_targeted_group_invitation",
+  for (const relative of [files.invitationOwner, files.targetedOwner]) {
+    requireMarkers(relative, [
+      "replay_receipt",
+      "require_user_not_denied_owned",
+      "transaction.commit().await?",
+    ]);
+  }
+  requireMarkers(files.invitationOwner, [
+    "create_group_invitation_effective_owned",
+    "revoke_group_invitation_effective_owned",
+    "accept_group_invitation_effective_owned",
+    "require_effective_manager_owned",
+  ]);
+  requireMarkers(files.targetedOwner, [
+    "accept_targeted_group_invitation_effective_owned",
   ]);
 
-  requireMarkers(files.applications, [
-    "pub struct GroupApplicationService",
-    "require_candidate_surface_visible",
-    "GroupVisibility::Secret",
-    "PortError::not_found",
-    "require_effective_manager",
-    "require_candidate_not_denied",
-    "require_user_not_denied",
-    "has_existing_receipt",
-    "GroupApplicationCasCommandPort",
-    "GroupApplicationLifecycleCommandPort",
-    "GroupApplicationPolicyManagementReadPort",
-    "GroupApplicationBulkReviewCommandPort",
-    "self.review_effective(item_context, item_request)",
-    "groups-bulk-review:",
+  requireMarkers(files.applicationOwner, [
+    "upsert_policy_effective_owned",
+    "submit_application_effective_owned",
+    "review_application_effective_owned",
+    "require_effective_manager_owned",
+    "require_user_not_denied_owned",
+    "replay_receipt",
   ]);
+  requireMarkers(files.applicationCasOwner, [
+    "upsert_policy_if_current_effective_owned",
+    "submit_application_if_current_effective_owned",
+    "ensure_policy_update_precondition",
+    "ensure_loaded_policy_precondition",
+    "require_effective_manager_owned",
+    "require_user_not_denied_owned",
+  ]);
+  requireMarkers(files.applicationLifecycleOwner, [
+    "cancel_application_effective_owned",
+    "reopen_application_effective_owned",
+    "require_effective_manager_owned",
+    "require_user_not_denied_owned",
+  ]);
+
+  requireMarkers(files.invitations, [
+    "create_group_invitation_effective_owned",
+    "revoke_group_invitation_effective_owned",
+    "accept_group_invitation_effective_owned",
+    "accept_targeted_group_invitation_effective_owned",
+  ]);
+  requireMarkers(files.applications, [
+    "upsert_policy_effective_owned",
+    "submit_application_effective_owned",
+    "review_application_effective_owned",
+    "upsert_policy_if_current_effective_owned",
+    "submit_application_if_current_effective_owned",
+    "cancel_application_effective_owned",
+    "reopen_application_effective_owned",
+    "self.review_effective(item_context, item_request)",
+    "map_effective_application_cas_error",
+  ]);
+
+  for (const [relative, forbidden] of [
+    [files.invitations, "has_existing_receipt"],
+    [files.applications, "has_existing_receipt"],
+    [files.invitations, "GroupInvitationCommandPort::create_group_invitation(&self.legacy"],
+    [files.applications, "GroupApplicationCasCommandPort::upsert_group_application_policy_if_current"],
+  ]) {
+    if (read(relative).includes(forbidden)) {
+      failures.push(`${relative}: public write facade still uses pre-transaction path ${JSON.stringify(forbidden)}`);
+    }
+  }
 
   const module = read(files.module);
   requireMarkers(files.module, [
-    "#[path = \"applications.rs\"]",
-    "mod applications_legacy_module;",
-    "#[path = \"invitations.rs\"]",
-    "mod invitations_legacy;",
-    "#[path = \"targeted_invitations.rs\"]",
-    "mod targeted_invitations_legacy;",
+    "mod applications_legacy_module {",
+    "include!(\"applications_transactional.rs\")",
+    "include!(\"applications_transactional_cas.rs\")",
+    "include!(\"applications_transactional_lifecycle.rs\")",
+    "mod invitations_legacy {",
+    "include!(\"invitations_transactional.rs\")",
+    "mod targeted_invitations_legacy {",
+    "include!(\"targeted_invitations_transactional.rs\")",
+    "mod membership_enforcement_transaction;",
     "pub mod applications {",
     "pub mod invitations {",
     "pub mod targeted_invitations {",
-    "effective_applications::GroupApplicationService",
-    "effective_invitations::GroupInvitationService",
-    "effective_invitations::GroupTargetedInvitationService",
   ]);
   for (const forbidden of [
     "pub mod applications;",
@@ -95,30 +152,34 @@ if (failures.length === 0) {
 
   requireMarkers(files.contract, [
     '"commercial_membership_or_subscription": false',
-    '"compatibility_module_paths_preserved": true',
-    '"secret_candidate_surface": "not_found_before_membership_specific_denial"',
-    '"existing_receipt_checked_before_effective_precheck": true',
-    '"bulk_review": "bounded_partial_result_via_effective_single_review"',
-    '"same_transaction_effective_recheck": "open"',
+    '"authorization_and_mutation_same_transaction": true',
+    '"receipt_replay_before_effective_authorization_in_owner_transaction": true',
+    '"same_transaction_effective_authorization": "implemented_source"',
+    '"concurrent_enforcement_change_race_evidence": null',
   ]);
   requireMarkers(files.plan, [
-    "invitation and membership-application effective facades are source-complete",
-    "Same-transaction effective recheck remains open",
-    "verify-groups-effective-membership-invitations-applications.mjs",
+    "transaction-aware invitation/application writes",
+    "Group -> GroupMembership -> GroupMembershipEnforcement",
+    "Runtime proof remains open",
+  ]);
+  requireMarkers(files.runtime, [
+    "Transaction-aware effective authorization",
+    "SQLite acquires writer serialization",
+    "Public write facades do not perform a separate receipt/effective precheck",
   ]);
   requireMarkers(files.readme, [
-    "effective invitation and membership-application facades",
-    "receipt-first replay",
-    "same-transaction effective",
+    "transaction-aware invitation/application writes",
+    "authorization and mutation share one owner transaction",
+    "runtime evidence and the remaining owner paths are open",
   ]);
 }
 
 if (failures.length > 0) {
-  console.error("Groups effective invitation/application verification failed:");
+  console.error("Groups transactional effective invitation/application verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
 console.log(
-  "Groups effective invitation and membership-application facades, secret non-disclosure, sealed compatibility paths, receipt-first replay, bounded bulk review, and remaining transaction gate passed source verification.",
+  "Groups invitation/application writes use receipt-first transactional effective authorization with sealed public facades and open runtime evidence.",
 );
