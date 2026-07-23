@@ -67,7 +67,7 @@ for (const marker of [
 for (const marker of [
   "impl ActiveModelBehavior for ActiveModel",
   "async fn before_save",
-  "if insert",
+  "matches!(&self.comment_count, ActiveValue::Set(_))",
   "comment thread {thread_id} is missing while refreshing counters",
   "update_many()",
   "Column::TenantId.eq(tenant_id)",
@@ -82,7 +82,11 @@ const counterHelperStart = services.indexOf("async fn update_thread_counters_in_
 if (counterHelperStart === -1) {
   failures.push(`${servicesPath}: missing update_thread_counters_in_tx`);
 } else {
-  const counterHelper = services.slice(counterHelperStart, services.indexOf("\n    fn ", counterHelperStart));
+  const helperEnd = services.indexOf("\n    fn ", counterHelperStart);
+  const counterHelper = services.slice(
+    counterHelperStart,
+    helperEnd === -1 ? services.length : helperEnd,
+  );
   requireMarker(counterHelper, "active.update(txn).await?", `${servicesPath}: counter helper`);
 }
 
@@ -109,11 +113,19 @@ for (const marker of [
 
 for (const marker of [
   "active_model_hooks_override_stale_positions_and_counts",
+  "status_only_thread_update_preserves_comment_count",
   "unique_position_index_rejects_active_model_bypass",
+  "postgres_concurrent_creates_and_delete_preserve_thread_invariants",
+  "RUSTOK_COMMENTS_TEST_DATABASE_URL",
+  "tokio::join!",
+  "max_connections(1)",
+  'SET search_path TO "{schema_name}", public',
   "stale_thread.comment_count = Set(999)",
   "assert_eq!(first.position, 1)",
   "assert_eq!(second.position, 2)",
   "assert_eq!(repaired.comment_count, 1)",
+  "assert_eq!(positions, vec![1, 2, 3])",
+  "assert_eq!(thread.comment_count, active_count as i32)",
   "comment::Entity::insert",
 ]) {
   requireMarker(test, marker, testPath);
@@ -139,16 +151,19 @@ if (evidence) {
     repair_migration: migrationPath,
     migration_registry: migrationRegistryPath,
     executable_test: testPath,
+    postgres_environment: "RUSTOK_COMMENTS_TEST_DATABASE_URL",
   })) {
-    if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} path drift`);
+    if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} drift`);
   }
   const cases = new Set((evidence.cases ?? []).map((entry) => entry.name));
   for (const requiredCase of [
     "serialized_position_allocation",
     "exact_active_comment_count",
+    "status_only_update_preserves_count",
     "historical_counter_repair",
     "historical_position_repair",
     "bulk_bypass_rejection",
+    "postgres_concurrent_create_delete",
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
   }
@@ -159,6 +174,8 @@ for (const marker of [
   "thread_write_invariants",
   "ActiveModelBehavior",
   "UNIQUE(thread_id, position)",
+  "RUSTOK_COMMENTS_TEST_DATABASE_URL",
+  "concurrent PostgreSQL",
 ]) {
   requireMarker(plan, marker, planPath);
 }
