@@ -70,6 +70,26 @@ string_enum!(GroupMembershipStatus {
     Left => "left",
 });
 
+/// Groups-owned current enforcement state. The first supported state is suspension;
+/// additional states require an explicit contract/version update rather than free-form JSON.
+string_enum!(GroupMembershipEnforcementState {
+    Suspended => "suspended",
+});
+
+string_enum!(GroupMembershipEnforcementSourceKind {
+    DirectLocal => "direct_local",
+    ModerationDecision => "moderation_decision",
+});
+
+/// Owner-clock evaluation of a stored membership plus its current enforcement projection.
+string_enum!(GroupMembershipEffectiveStatus {
+    Missing => "missing",
+    Active => "active",
+    Inactive => "inactive",
+    Suspended => "suspended",
+    LegacyBanned => "legacy_banned",
+});
+
 string_enum!(GroupFeatureStatus {
     Enabled => "enabled",
     Disabled => "disabled",
@@ -98,6 +118,16 @@ impl GroupRole {
 
     pub const fn can_moderate(self) -> bool {
         matches!(self, Self::Owner | Self::Admin | Self::Moderator)
+    }
+}
+
+impl GroupMembershipEffectiveStatus {
+    pub const fn is_active_member(self) -> bool {
+        matches!(self, Self::Active)
+    }
+
+    pub const fn denies_reentry(self) -> bool {
+        matches!(self, Self::Suspended | Self::LegacyBanned)
     }
 }
 
@@ -179,6 +209,15 @@ mod tests {
             "forum.discussions"
         );
         assert!(normalize_feature_key("forum").is_err());
+    }
+
+    #[test]
+    fn effective_membership_states_are_fail_closed() {
+        assert!(GroupMembershipEffectiveStatus::Active.is_active_member());
+        assert!(!GroupMembershipEffectiveStatus::Suspended.is_active_member());
+        assert!(GroupMembershipEffectiveStatus::Suspended.denies_reentry());
+        assert!(GroupMembershipEffectiveStatus::LegacyBanned.denies_reentry());
+        assert!(!GroupMembershipEffectiveStatus::Inactive.denies_reentry());
     }
 
     #[test]
