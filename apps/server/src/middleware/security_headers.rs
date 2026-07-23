@@ -20,6 +20,7 @@ use super::csp_reports;
 /// Default CSP for API/server-only surfaces.
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 /// UI-compatible enforced CSP for embedded admin/storefront shells.
 ///
 /// Trusted inline scripts and style elements receive one per-response nonce. Inline event handlers,
@@ -40,7 +41,8 @@ const HSTS: &str = "max-age=31536000; includeSubDomains";
 
 pub async fn security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
-    let csp_nonce = (!is_api_surface(&path)).then(CspNonce::generate);
+    let csp_nonce =
+        (!is_api_surface(&path) && !is_richtext_frame_surface(&path)).then(CspNonce::generate);
     if let Some(nonce) = csp_nonce.as_ref() {
         request.extensions_mut().insert(nonce.clone());
     }
@@ -82,7 +84,14 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     );
 
     // X-Frame-Options
-    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert(
+        "x-frame-options",
+        HeaderValue::from_static(if is_richtext_frame_surface(&path) {
+            "SAMEORIGIN"
+        } else {
+            "DENY"
+        }),
+    );
 
     // X-XSS-Protection — disabled per OWASP recommendation (CSP is the modern replacement)
     headers.insert("x-xss-protection", HeaderValue::from_static("0"));
@@ -90,7 +99,11 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
     // Referrer-Policy
     headers.insert(
         "referrer-policy",
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
+        HeaderValue::from_static(if is_richtext_frame_surface(&path) {
+            "no-referrer"
+        } else {
+            "strict-origin-when-cross-origin"
+        }),
     );
 
     // Permissions-Policy — disable all unused browser features
@@ -101,6 +114,16 @@ pub async fn security_headers(mut request: Request, next: Next) -> Response {
              magnetometer=(), microphone=(), payment=(), usb=()",
         ),
     );
+    if is_richtext_frame_surface(&path) {
+        headers.insert(
+            "cache-control",
+            HeaderValue::from_static(if path == "/richtext/frame" {
+                "no-store"
+            } else {
+                "public, max-age=31536000, immutable"
+            }),
+        );
+    }
 
     // Strict-Transport-Security — only for an explicitly declared HTTPS deployment.
     if hsts_enabled() {
@@ -154,8 +177,14 @@ fn is_api_surface(path: &str) -> bool {
         || path.starts_with("/api/openapi")
 }
 
+fn is_richtext_frame_surface(path: &str) -> bool {
+    path == "/richtext/frame" || path.starts_with("/richtext/frame/")
+}
+
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
-    if is_api_surface(path) {
+    if is_richtext_frame_surface(path) {
+        RICHTEXT_FRAME_CSP.to_string()
+    } else if is_api_surface(path) {
         API_CSP.to_string()
     } else if let Some(csp_nonce) = csp_nonce {
         let connect_sources = if allow_plaintext_websocket {
@@ -172,7 +201,7 @@ fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocke
 }
 
 fn select_report_only_csp(path: &str, csp_nonce: Option<&CspNonce>) -> Option<String> {
-    if is_api_surface(path) {
+    if is_api_surface(path) || is_richtext_frame_surface(path) {
         None
     } else {
         csp_nonce.map(|nonce| {
@@ -212,6 +241,16 @@ mod tests {
         assert_eq!(select_csp("/health/ready", None, false), API_CSP);
         assert_eq!(select_csp("/swagger/index.html", None, false), API_CSP);
         assert_eq!(select_report_only_csp("/api/graphql", None), None);
+    }
+
+    #[test]
+    fn richtext_frame_uses_isolated_policy_without_report_only_nonce() {
+        let policy = select_csp("/richtext/frame", None, false);
+        assert!(policy.contains("script-src 'self'"));
+        assert!(policy.contains("style-src-attr 'unsafe-inline'"));
+        assert!(policy.contains("connect-src 'none'"));
+        assert!(policy.contains("frame-ancestors 'self'"));
+        assert_eq!(select_report_only_csp("/richtext/frame", None), None);
     }
 
     #[test]

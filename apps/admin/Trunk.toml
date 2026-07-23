@@ -14,6 +14,11 @@ stage = "post_build"
 command = "node"
 command_arguments = ["scripts/tailwind-build.mjs"]
 
+[[hooks]]
+stage = "post_build"
+command = "node"
+command_arguments = ["scripts/copy-richtext-assets.mjs"]
+
 [[proxy]]
 backend = "http://127.0.0.1:5150/api/"
 rewrite = "/api/"

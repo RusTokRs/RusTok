@@ -28,4 +28,18 @@ fn transport_exposes_only_persistent_consumer_group_delivery() {
             "legacy consumer API {removed_api} must not be reintroduced"
         );
     }
+
+    assert!(
+        !transport.contains("pub async fn replay"),
+        "a replay API must not report success until it executes a broker-backed replay"
+    );
+}
+
+#[test]
+fn dlq_exposes_only_payload_preserving_retry() {
+    let dlq = include_str!("dlq.rs");
+    assert!(
+        !dlq.contains("retry_from_dlq"),
+        "an ID-only DLQ retry cannot preserve the payload and must not report success"
+    );
 }

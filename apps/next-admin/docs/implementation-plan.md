@@ -31,9 +31,12 @@ entrypoints must not re-export `src/features/*` implementations.
   `workspaces/team`) returning `notFound()`.
 - Prepare the atomic
   [Richtext cutover](../../../docs/modules/rich-text-implementation-plan.md):
-  replace the Blog-local React prototype with the shared framed vanilla
-  Tiptap runtime, move Forum UI/API/navigation to its owner package, consume
-  host i18n/locale context, and never ship a second Markdown/raw-JSON mode.
+  the shared framed vanilla Tiptap runtime is now wired through
+  `@rustok/richtext`; `/richtext/frame` and its hashed assets are auth-exempt,
+  immutable capability routes, and the Blog/Forum editor adapters consume
+  host `next-intl` messages. Remaining work is the atomic owner transport/data
+  cutover, moving Forum UI/API/navigation to its owner package, and removing
+  the legacy migration fields without adding a second Markdown/raw-JSON mode.
 
 ## Open Improvement Areas
 
@@ -46,6 +49,11 @@ entrypoints must not re-export `src/features/*` implementations.
 - Strengthen route/action RBAC guard coverage.
 - Add Next/Leptos parity, CSP-frame, accessibility, lazy-bundle, and
   save/reload coverage for the shared richtext editor and server-rendered view.
+
+The Chromium frame spike currently covers opaque-origin isolation, private
+channel sequencing, CSP headers, and canonical document changes. The Leptos
+Trunk/SSR host now copies the same immutable assets; Firefox/WebKit coverage
+and the first owner Leptos form wiring are still open evidence items.
 
 ## Verification
 

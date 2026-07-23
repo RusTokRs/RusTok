@@ -20,3 +20,4 @@ export {
   createEnvelope,
   isEnvelope
 } from './protocol';
+export { mountLeptosRichTextFrame } from './leptos';

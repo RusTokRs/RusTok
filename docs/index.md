@@ -94,6 +94,7 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
 - [Richtext Track](./modules/rich-text-implementation-plan.md)
+- [Shared browser richtext runtime](../packages/richtext/README.md)
 - [Page Builder Track](./modules/page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)
 - **Module UI Package Guides** (read the relevant one when working on `crates/rustok-*/admin` or `crates/rustok-*/storefront`):

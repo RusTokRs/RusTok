@@ -256,6 +256,7 @@ base policy revision before the server accepts the final policy revision.
 `apps/server` is responsible for:
 
 - transport adapters, middleware, request/runtime context, and host wiring;
+
 - the overall GraphQL schema surface and Leptos server-function entrypoints;
 - composition of owner-owned AI GraphQL roots from `rustok-ai` and the narrow RBAC persistence adapter
   `AiGraphqlRoleSlugProvider`; AI resolver/DTO surface is not placed in `apps/server`;
@@ -291,6 +292,15 @@ base policy revision before the server accepts the final policy revision.
 - replace module interaction contracts with its own ad hoc conventions;
 - turn a cron, relay worker, or maintenance task into a pseudo-`event_listener` bypassing the module runtime contract;
 - break the dual-path contract between GraphQL and `#[server]` when adding a new internal path.
+
+## Shared richtext frame assets
+
+When the server hosts the Leptos admin static fallback, `/richtext/frame` and
+`/richtext/frame/<hashed-asset>` are immutable capability assets copied from
+`@rustok/richtext`. The security middleware recognizes this narrow path and
+uses the frame CSP, `X-Frame-Options: SAMEORIGIN`, `no-referrer`, and disabled
+browser capabilities. It does not create a second editor bundle or pass auth,
+tenant, locale, or document data to the frame URL.
 
 ## Health and runtime guardrails
 

@@ -47,6 +47,17 @@ atomically before the new policy becomes the only runtime write/read path.
 The old implementation is not a target compatibility contract and must not
 receive new call sites.
 
+The Phase 2 browser runtime slice is now implemented in `packages/richtext`:
+the package owns the explicit Tiptap extension registry, generated profile
+contracts, bounded private-channel controller, React adapter, Leptos lifecycle
+adapter, and hashed frame assets. The Blog editor now consumes that adapter and
+the Forum reply selects the `discussion` profile. A Chromium spike verified the
+sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
+`MessageChannel`, and canonical document updates. The Leptos Trunk/SSR static
+fallback now copies the same hashed assets and applies the dedicated frame
+headers; Firefox/WebKit evidence and wiring the first owner Leptos form remain
+required before Phase 2 is marked complete.
+
 ## Decisions fixed by this plan
 
 1. **One document, one editor.** A migrated field accepts and returns a typed
@@ -82,8 +93,9 @@ The following inventory was verified on 2026-07-22. Items explicitly marked
 resolved record completed slices; all others are implementation gaps, not
 target behavior:
 
-- the only working visual prototype is Tiptap 3.27.4 in
-  `apps/next-admin/packages/blog/src/components/rt-json-editor.tsx`;
+- the former Blog-local Tiptap prototype has been replaced by the shared
+  `packages/richtext` runtime; the Blog API/form still carries the owner-local
+  legacy migration fields until the atomic Blog cutover;
 - the Blog package also owns a Forum reply editor and Forum API helpers, which
   violates module UI ownership;
 - the prototype maintains a lossy manual mapping between snake-case RT nodes

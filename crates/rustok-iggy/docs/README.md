@@ -7,7 +7,7 @@ implements `EventTransport` and holds transport-level abstractions over
 ## Purpose
 
 - publish the canonical Iggy-based `EventTransport` surface for the platform;
-- hold serialization, topology, DLQ, replay and consumer-group abstractions inside the transport crate;
+- hold serialization, topology, DLQ and consumer-group abstractions inside the transport crate;
 - separate transport behavior from connector-level connection management.
 
 ## Responsibilities
@@ -15,7 +15,7 @@ implements `EventTransport` and holds transport-level abstractions over
 - `IggyTransport` and transport-facing configuration;
 - JSON/MessagePack serialization and deserialization for publish and read paths,
   including root-envelope revalidation after decode;
-- management of topology, persistent receive/ack cursors with connector metadata (`offset`/opaque `ack_token`), DLQ, replay and health abstractions;
+- management of topology, persistent receive/ack cursors with connector metadata (`offset`/opaque `ack_token`), DLQ and health abstractions;
 - observability hooks for the transport layer;
 - no ownership over bundled/external connection lifecycle.
 
@@ -36,7 +36,7 @@ implements `EventTransport` and holds transport-level abstractions over
 
 ## Verification
 
-- targeted compile/tests for transport configuration, serialization/deserialization, consumer consume path, topology and replay/DLQ abstractions;
+- targeted compile/tests for transport configuration, serialization/deserialization, consumer consume path, topology and DLQ abstractions;
 - integration tests are needed when changing the real Iggy SDK path;
 - structural verification for local docs and connector/transport boundary.
 

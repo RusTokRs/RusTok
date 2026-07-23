@@ -9,6 +9,7 @@ use rustok_web::CspNonce;
 
 const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 const SECURE_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
@@ -20,7 +21,8 @@ const HSTS: &str = "max-age=31536000; includeSubDomains";
 /// process cannot receive.
 pub async fn admin_security_headers(mut request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
-    let csp_nonce = (!is_api_surface(&path)).then(CspNonce::generate);
+    let csp_nonce =
+        (!is_api_surface(&path) && !is_richtext_frame_surface(&path)).then(CspNonce::generate);
     if let Some(nonce) = csp_nonce.as_ref() {
         request.extensions_mut().insert(nonce.clone());
     }
@@ -37,11 +39,22 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert(
+        "x-frame-options",
+        HeaderValue::from_static(if is_richtext_frame_surface(&path) {
+            "SAMEORIGIN"
+        } else {
+            "DENY"
+        }),
+    );
     headers.insert("x-xss-protection", HeaderValue::from_static("0"));
     headers.insert(
         "referrer-policy",
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
+        HeaderValue::from_static(if is_richtext_frame_surface(&path) {
+            "no-referrer"
+        } else {
+            "strict-origin-when-cross-origin"
+        }),
     );
     headers.insert(
         "permissions-policy",
@@ -50,6 +63,16 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
              magnetometer=(), microphone=(), payment=(), usb=()",
         ),
     );
+    if is_richtext_frame_surface(&path) {
+        headers.insert(
+            "cache-control",
+            HeaderValue::from_static(if path == "/richtext/frame" {
+                "no-store"
+            } else {
+                "public, max-age=31536000, immutable"
+            }),
+        );
+    }
     if hsts_enabled() {
         headers.insert("strict-transport-security", HeaderValue::from_static(HSTS));
     }
@@ -77,8 +100,14 @@ fn is_api_surface(path: &str) -> bool {
     path.starts_with("/api/")
 }
 
+fn is_richtext_frame_surface(path: &str) -> bool {
+    path == "/richtext/frame" || path.starts_with("/richtext/frame/")
+}
+
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
-    if is_api_surface(path) {
+    if is_richtext_frame_surface(path) {
+        RICHTEXT_FRAME_CSP.to_string()
+    } else if is_api_surface(path) {
         return API_CSP.to_string();
     }
     let Some(csp_nonce) = csp_nonce else {
@@ -187,6 +216,15 @@ mod tests {
     #[test]
     fn standalone_admin_api_policy_is_scriptless() {
         assert_eq!(select_csp("/api/admin/pages", None, false), API_CSP);
+    }
+
+    #[test]
+    fn richtext_frame_uses_isolated_policy() {
+        let policy = select_csp("/richtext/frame", None, false);
+        assert!(policy.contains("script-src 'self'"));
+        assert!(policy.contains("style-src-attr 'unsafe-inline'"));
+        assert!(policy.contains("connect-src 'none'"));
+        assert!(policy.contains("frame-ancestors 'self'"));
     }
 
     #[tokio::test]

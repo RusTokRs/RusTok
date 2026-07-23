@@ -92,9 +92,12 @@ producer.send(messages).await?;
 - `pub async fn shutdown(&self) -> Result<()>`
 - `pub async fn open_persistent_consumer_group(&self, group_name: &str, topic: &str) -> Result<PersistentConsumerGroup>`
 - `pub async fn open_persistent_contract_consumer_group(&self, group_name: &str, topic: &str) -> Result<PersistentContractConsumerGroup>`
-- `pub async fn replay(&self) -> Result<()>`
 - `pub fn config(&self) -> &IggyConfig`
 - `pub fn is_connected(&self) -> bool`
+
+There is intentionally no replay API yet. The previous API could report
+success without reading or republishing broker records; a replacement requires
+bounded broker reads, durable progress, idempotency, and real-broker evidence.
 
 `IggyConfig.serialization` accepts `json` (default) or `messagepack`.
 MessagePack is implemented with `rmp-serde`; `postcard` is not a supported

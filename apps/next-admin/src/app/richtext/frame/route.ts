@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 const SECURITY_HEADERS = {
   'cache-control': 'no-store',
-  'content-security-policy': "default-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'; form-action 'none'",
+  'content-security-policy': "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
   'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=()',
   'referrer-policy': 'no-referrer',
   'x-content-type-options': 'nosniff',

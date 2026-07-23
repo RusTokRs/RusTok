@@ -158,24 +158,6 @@ impl DlqManager {
             .await
             .map_err(|e| rustok_core::Error::External(e.to_string()))
     }
-
-    pub async fn retry_from_dlq(
-        &self,
-        _connector: &dyn IggyConnector,
-        event_id: Uuid,
-        target_topic: String,
-    ) -> Result<()> {
-        let max_retries = *self.max_retries.read().await;
-
-        info!(
-            event_id = %event_id,
-            target_topic = %target_topic,
-            max_retries = max_retries,
-            "DLQ retry requested without payload metadata; use retry_entry for metadata-preserving retry movement"
-        );
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]

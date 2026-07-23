@@ -16,6 +16,10 @@ low-level message I/O, without taking away transport-level semantics from `rusto
 - `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorAckToken`, `ConnectorError`;
 - `IggyConnectorControl`, its secret-safe settings DTOs, and readiness snapshot;
 - connection lifecycle, mode abstraction and low-level publish/subscribe contracts;
+- external startup tries each configured TCP address in order and fails only
+  after every candidate fails; it does not silently discard configured peers;
+- creates the configured stream/topics on the broker when transport topology
+  setup requests them, using the supplied partition and replication settings;
 - real external consumer-group cursors via the Iggy SDK; a cursor keeps receive
   and offset acknowledgement on the same backend consumer and permits only one
   outstanding delivery;

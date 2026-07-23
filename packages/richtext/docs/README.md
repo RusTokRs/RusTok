@@ -18,6 +18,13 @@ Host adapters must provide:
 - effective-locale messages already resolved by the host;
 - controlled update and error callbacks.
 
+The React adapter calls the controller directly. A Leptos module-owned UI
+package renders the iframe in its `ui/leptos.rs`, invokes
+`mountLeptosRichTextFrame` from its wasm `on_mount` binding, and calls the
+returned `dispose` function from `on_cleanup`. That Rust package remains a
+transport/UI binding; it does not copy the editor schema, toolbar, or frame
+protocol.
+
 The frame validates structure, profile membership, message size, session id,
 and monotonic sequence before applying input. This is a browser boundary and a
 UX guard only. Every write must still pass the canonical Rust validator.

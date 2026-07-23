@@ -98,6 +98,7 @@ impl TopologyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     #[tokio::test]
     async fn topology_manager_initializes_with_defaults() {
@@ -109,20 +110,60 @@ mod tests {
     async fn topology_manager_stores_config() {
         let manager = TopologyManager::new();
         let config = IggyConfig::default();
+        let connector = MockConnector::default();
 
-        manager
-            .ensure_topology(&config, &MockConnector)
-            .await
-            .unwrap();
+        manager.ensure_topology(&config, &connector).await.unwrap();
 
         assert!(manager.is_initialized().await);
         assert_eq!(manager.stream_name().await, "rustok");
         assert_eq!(manager.domain_topic().await, "domain");
         assert_eq!(manager.system_topic().await, "system");
         assert_eq!(manager.module_build_topic().await, MODULE_BUILD_TOPIC);
+        assert_eq!(
+            connector.topology.lock().unwrap().clone(),
+            Some((
+                "rustok".to_string(),
+                vec![
+                    "domain".to_string(),
+                    "system".to_string(),
+                    MODULE_BUILD_TOPIC.to_string(),
+                    "dlq".to_string(),
+                ],
+                8,
+                1,
+            ))
+        );
     }
 
-    struct MockConnector;
+    #[tokio::test]
+    async fn topology_manager_does_not_mark_itself_ready_when_broker_setup_fails() {
+        let manager = TopologyManager::new();
+        let connector = MockConnector::failing();
+
+        let error = manager
+            .ensure_topology(&IggyConfig::default(), &connector)
+            .await
+            .expect_err("broker topology failure must be returned");
+
+        assert!(error.to_string().contains("topology creation failed"));
+        assert!(!manager.is_initialized().await);
+        assert_eq!(manager.stream_name().await, "");
+    }
+
+    #[derive(Default)]
+    struct MockConnector {
+        topology: Mutex<Option<(String, Vec<String>, u32, u8)>>,
+        fail_topology: bool,
+    }
+
+    impl MockConnector {
+        fn failing() -> Self {
+            Self {
+                topology: Mutex::new(None),
+                fail_topology: true,
+            }
+        }
+    }
 
     #[async_trait::async_trait]
     impl rustok_iggy_connector::IggyConnector for MockConnector {
@@ -158,11 +199,23 @@ mod tests {
 
         async fn ensure_topology(
             &self,
-            _stream: &str,
-            _topics: &[&str],
-            _partitions: u32,
-            _replication_factor: u8,
+            stream: &str,
+            topics: &[&str],
+            partitions: u32,
+            replication_factor: u8,
         ) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+            if self.fail_topology {
+                return Err(rustok_iggy_connector::ConnectorError::Topology(
+                    "topology creation failed".to_string(),
+                ));
+            }
+
+            *self.topology.lock().unwrap() = Some((
+                stream.to_string(),
+                topics.iter().map(ToString::to_string).collect(),
+                partitions,
+                replication_factor,
+            ));
             Ok(())
         }
 

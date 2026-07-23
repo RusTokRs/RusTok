@@ -702,17 +702,17 @@ impl ExternalConnector {
     }
 
     #[cfg_attr(not(any(feature = "iggy", test)), allow(dead_code))]
-    fn connection_string(config: &ExternalConnectorConfig) -> Result<String, ConnectorError> {
+    fn connection_strings(config: &ExternalConnectorConfig) -> Result<Vec<String>, ConnectorError> {
         if config.protocol != "tcp" {
             return Err(ConnectorError::Config(
                 "persistent Iggy consumer groups require the tcp protocol".to_string(),
             ));
         }
-        let address = config
-            .addresses
-            .first()
-            .cloned()
-            .unwrap_or_else(|| "127.0.0.1:8090".to_string());
+        if config.addresses.is_empty() {
+            return Err(ConnectorError::Config(
+                "Iggy external configuration requires at least one address".to_string(),
+            ));
+        }
 
         if config.username.is_empty() != config.password.is_empty() {
             return Err(ConnectorError::Config(
@@ -727,14 +727,6 @@ impl ExternalConnector {
         if let Some(ca_file) = config.tls_ca_file.as_deref() {
             validate_connection_string_component(ca_file, "tls_ca_file", &['?', '&', '='])?;
         }
-
-        tracing::info!(address = %address, protocol = %config.protocol, "Connecting to Iggy server");
-
-        let mut connection_string = if !config.username.is_empty() {
-            format!("iggy://{}:{}@{}", config.username, config.password, address)
-        } else {
-            format!("iggy://{}", address)
-        };
         let mut options = Vec::new();
         if config.tls_enabled {
             options.push("tls=true".to_string());
@@ -753,28 +745,58 @@ impl ExternalConnector {
         {
             options.push(format!("tls_ca_file={ca_file}"));
         }
-        if !options.is_empty() {
-            connection_string.push('?');
-            connection_string.push_str(&options.join("&"));
-        }
+        config
+            .addresses
+            .iter()
+            .map(|address| {
+                if address.is_empty() {
+                    return Err(ConnectorError::Config(
+                        "Iggy external addresses must not contain an empty value".to_string(),
+                    ));
+                }
+                validate_connection_string_component(address, "address", &['@', '?', '#'])?;
 
-        Ok(connection_string)
+                let mut connection_string = if !config.username.is_empty() {
+                    format!("iggy://{}:{}@{}", config.username, config.password, address)
+                } else {
+                    format!("iggy://{}", address)
+                };
+                if !options.is_empty() {
+                    connection_string.push('?');
+                    connection_string.push_str(&options.join("&"));
+                }
+                Ok(connection_string)
+            })
+            .collect()
     }
 
     #[cfg(feature = "iggy")]
     async fn create_and_connect(
         config: &ExternalConnectorConfig,
     ) -> Result<IggyClient, ConnectorError> {
-        let connection_string = Self::connection_string(config)?;
-        let client = IggyClient::from_connection_string(&connection_string)
-            .map_err(|e: IggyError| ConnectorError::Connection(e.to_string()))?;
+        let connection_strings = Self::connection_strings(config)?;
+        let mut failures = Vec::new();
 
-        client
-            .connect()
-            .await
-            .map_err(|e: IggyError| ConnectorError::Connection(e.to_string()))?;
+        for (address, connection_string) in config.addresses.iter().zip(connection_strings) {
+            tracing::info!(address = %address, protocol = %config.protocol, "Connecting to Iggy server");
+            let client = match IggyClient::from_connection_string(&connection_string) {
+                Ok(client) => client,
+                Err(error) => {
+                    failures.push(format!("{address}: {error}"));
+                    continue;
+                }
+            };
 
-        Ok(client)
+            match client.connect().await {
+                Ok(()) => return Ok(client),
+                Err(error) => failures.push(format!("{address}: {error}")),
+            }
+        }
+
+        Err(ConnectorError::Connection(format!(
+            "failed to connect to every configured Iggy address: {}",
+            failures.join("; ")
+        )))
     }
 
     #[cfg(not(feature = "iggy"))]
@@ -839,6 +861,7 @@ impl IggyConnector for ExternalConnector {
         }
 
         let partitions = *self.partitions.read().await;
+        #[cfg(feature = "iggy")]
         let replication_factor = *self.replication_factor.read().await;
         let partition = calculate_partition(&request.partition_key, partitions);
 
@@ -1559,9 +1582,9 @@ mod tests {
         let key2 = "tenant-456";
         let key3 = "tenant-123";
 
-        let p1 = calculate_partition(key1);
-        let p2 = calculate_partition(key2);
-        let p3 = calculate_partition(key3);
+        let p1 = calculate_partition(key1, 8);
+        let p2 = calculate_partition(key2, 8);
+        let p3 = calculate_partition(key3, 8);
 
         assert_ne!(p1, p2);
         assert_eq!(p1, p3);
@@ -1571,7 +1594,7 @@ mod tests {
     fn test_partition_in_range() {
         for i in 0..1000 {
             let key = format!("tenant-{}", i);
-            let partition = calculate_partition(&key);
+            let partition = calculate_partition(&key, 8);
             assert!(
                 (1..=8).contains(&partition),
                 "Partition {} out of range",
@@ -1762,9 +1785,12 @@ mod tests {
     }
 
     #[test]
-    fn remote_connection_string_preserves_tls_configuration() {
-        let connection = ExternalConnector::connection_string(&ExternalConnectorConfig {
-            addresses: vec!["iggy.internal:8090".to_string()],
+    fn remote_connection_strings_preserve_tls_configuration_and_all_addresses() {
+        let connections = ExternalConnector::connection_strings(&ExternalConnectorConfig {
+            addresses: vec![
+                "iggy-a.internal:8090".to_string(),
+                "iggy-b.internal:8090".to_string(),
+            ],
             protocol: "tcp".to_string(),
             username: "service".to_string(),
             password: "secret".to_string(),
@@ -1775,14 +1801,17 @@ mod tests {
         .expect("valid TCP connection configuration");
 
         assert_eq!(
-            connection,
-            "iggy://service:secret@iggy.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=C:/certs/iggy-ca.pem"
+            connections,
+            vec![
+                "iggy://service:secret@iggy-a.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=C:/certs/iggy-ca.pem".to_string(),
+                "iggy://service:secret@iggy-b.internal:8090?tls=true&tls_domain=iggy.internal&tls_ca_file=C:/certs/iggy-ca.pem".to_string(),
+            ]
         );
     }
 
     #[test]
     fn remote_connection_rejects_a_non_tcp_protocol() {
-        let error = ExternalConnector::connection_string(&ExternalConnectorConfig {
+        let error = ExternalConnector::connection_strings(&ExternalConnectorConfig {
             protocol: "http".to_string(),
             ..ExternalConnectorConfig::default()
         })
@@ -1792,8 +1821,19 @@ mod tests {
     }
 
     #[test]
+    fn remote_connection_rejects_an_empty_address_list() {
+        let error = ExternalConnector::connection_strings(&ExternalConnectorConfig {
+            addresses: Vec::new(),
+            ..ExternalConnectorConfig::default()
+        })
+        .expect_err("an external connection needs at least one address");
+
+        assert!(matches!(error, ConnectorError::Config(_)));
+    }
+
+    #[test]
     fn remote_connection_rejects_sdk_connection_string_delimiters() {
-        let error = ExternalConnector::connection_string(&ExternalConnectorConfig {
+        let error = ExternalConnector::connection_strings(&ExternalConnectorConfig {
             password: "contains@delimiter".to_string(),
             ..ExternalConnectorConfig::default()
         })

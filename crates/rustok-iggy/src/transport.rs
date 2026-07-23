@@ -17,7 +17,6 @@ use rustok_iggy_connector::{BundledConnector, ConnectorConfig, ExternalConnector
 pub struct IggyTransport {
     config: IggyConfig,
     connector: Arc<dyn IggyConnector>,
-    topology: TopologyManager,
     serializer: Arc<dyn EventSerializer>,
 }
 
@@ -57,7 +56,6 @@ impl IggyTransport {
         Ok(Self {
             config,
             connector,
-            topology,
             serializer,
         })
     }
@@ -132,16 +130,6 @@ impl IggyTransport {
             .with_stream(self.config.topology.stream_name.clone())
             .retry_entry(&*self.connector, entry, target_topic)
             .await
-    }
-
-    pub async fn replay(&self) -> Result<()> {
-        if !self.topology.is_initialized().await {
-            return Err(rustok_core::Error::External(
-                "Topology not initialized".to_string(),
-            ));
-        }
-
-        Ok(())
     }
 
     pub fn config(&self) -> &IggyConfig {

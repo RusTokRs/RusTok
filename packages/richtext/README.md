@@ -23,6 +23,8 @@ the host. Server validation and rendering remain authoritative.
 - `@rustok/richtext` — documents, profiles, messages, validation, and commands.
 - `@rustok/richtext/frame` — framework-neutral frame controller.
 - `@rustok/richtext/react` — thin React frame component.
+- `@rustok/richtext` `mountLeptosRichTextFrame` — the Leptos wasm lifecycle
+  binding, called from `on_mount` and disposed from `on_cleanup`.
 - `dist/asset-manifest.json` — immutable frame artifact lookup.
 
 ## Interactions

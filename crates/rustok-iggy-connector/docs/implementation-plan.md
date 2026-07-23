@@ -9,6 +9,11 @@ consumer-group cursor that receives and commits the exact pending message
 offset. Bundled mode starts the module-packaged Iggy process and delegates all
 I/O to the same real SDK path as external mode; no in-memory broker is
 implemented. The public mode contract is now exactly `bundled | external`.
+External startup validates every configured address and tries them in order,
+which provides initial connection failover without treating one selected address
+as a high-availability guarantee. Broker topology setup creates the requested
+stream and topics through the same SDK connection before the transport marks
+itself initialized.
 
 ## FFA/FBA boundary
 
@@ -39,9 +44,11 @@ implemented. The public mode contract is now exactly `bundled | external`.
    cursor receives, acknowledges, reconnects, and preserves its committed
    offset in both bundled and external integration environments.
 2. **Harden lifecycle failure behavior.** Define and test reconnect/backoff,
-   authentication, TLS, topology, batching, and shutdown semantics for both
-   modes. Done when a connector failure has typed behavior and no implicit
-   fallback to a simulated connection.
+   authentication, TLS, existing-topology validation, batching, and shutdown
+   semantics for both modes. Initial startup failover and topology creation are
+   implemented; runtime reconnection and validation of pre-existing topics
+   still need real-broker evidence. Done when a connector failure has typed
+   behavior and no implicit fallback to a simulated connection.
 3. **Publish operational guarantees.** Add health/metrics signals and a
    lifecycle runbook covering mode selection, credentials, TLS, connection
    loss, and recovery. Done when operators can diagnose a disconnected or

@@ -10,7 +10,6 @@
 //! - Topology management (streams, topics)
 //! - Consumer group coordination
 //! - Dead letter queue handling
-//! - Event replay orchestration
 //!
 //! Connection management (bundled vs external mode) is delegated to `rustok-iggy-connector`.
 //!
@@ -20,7 +19,7 @@
 //! - **Multiple serialization formats**: JSON (default) and MessagePack
 //! - **Automatic topology management**: Streams and topics created automatically
 //! - **Tenant-based partitioning**: Events from the same tenant maintain order
-//! - **Consumer groups, DLQ, replay**: Higher-level streaming primitives
+//! - **Consumer groups and DLQ**: Higher-level streaming primitives
 //!
 //! # Quick Start
 //!
@@ -65,7 +64,6 @@ pub mod dlq;
 pub mod health;
 pub mod partitioning;
 pub mod producer;
-pub mod replay;
 pub mod serialization;
 pub mod topology;
 pub mod transport;
@@ -79,7 +77,6 @@ pub use contract_consumer::{ConsumedContractEvent, PersistentContractConsumerGro
 pub use dlq::{DlqEntry, DlqManager};
 pub use health::{HealthCheckResult, HealthStatus, health_check};
 pub use partitioning::{calculate_partition, partition_key};
-pub use replay::{ActiveReplay, ReplayConfig, ReplayManager, ReplayStatus};
 pub use serialization::{EventSerializer, JsonSerializer, MessagePackSerializer};
 pub use topology::TopologyManager;
 pub use transport::IggyTransport;

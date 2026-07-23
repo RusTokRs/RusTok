@@ -215,8 +215,148 @@ function measureMessage(value) {
     return Number.POSITIVE_INFINITY;
   }
 }
+function isHandshakeReady(value, nonce) {
+  return isRecord3(value) && value.protocol === RICH_TEXT_PROTOCOL && value.revision === RICH_TEXT_PROTOCOL_REVISION && value.type === "ready" && value.nonce === nonce;
+}
 function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// src/frame/controller.ts
+var RichTextFrameController = class {
+  constructor(options) {
+    this.options = options;
+    this.session = crypto.randomUUID();
+    this.maxMessageBytes = getRichTextProfile(options.profile).limits.max_json_bytes + MAX_PROTOCOL_OVERHEAD_BYTES;
+    this.ready = new Promise((resolve, reject) => {
+      this.resolveReady = resolve;
+      this.rejectReady = reject;
+    });
+    this.connect();
+  }
+  session;
+  ready;
+  port;
+  outboundSequence = 0;
+  inboundSequence = 0;
+  destroyed = false;
+  maxMessageBytes;
+  resolveReady;
+  rejectReady;
+  cleanupHandshake;
+  setDocument(document) {
+    this.send({ type: "set_document", payload: { document } });
+  }
+  setEditable(editable) {
+    this.send({ type: "set_editable", payload: { editable } });
+  }
+  focus() {
+    this.send({ type: "focus", payload: {} });
+  }
+  requestDocument() {
+    this.send({ type: "request_document", payload: {} });
+  }
+  destroy() {
+    if (this.destroyed) return;
+    if (this.port) this.send({ type: "destroy", payload: {} });
+    this.destroyed = true;
+    this.cleanupHandshake?.();
+    this.port?.close();
+    this.port = void 0;
+  }
+  connect() {
+    const nonce = crypto.randomUUID();
+    const url = new URL(this.options.frameUrl, window.location.href);
+    url.hash = new URLSearchParams({ nonce }).toString();
+    const timeout = window.setTimeout(() => {
+      this.cleanupHandshake?.();
+      this.rejectReady(new Error("Richtext frame handshake timed out"));
+    }, this.options.timeoutMs ?? 1e4);
+    const onMessage = (event) => {
+      if (event.source !== this.options.iframe.contentWindow || !isHandshakeReady(event.data, nonce)) {
+        return;
+      }
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+      const channel = new MessageChannel();
+      this.port = channel.port1;
+      this.port.onmessage = (portEvent) => this.receive(portEvent.data);
+      this.port.start();
+      this.options.iframe.contentWindow?.postMessage(
+        {
+          protocol: RICH_TEXT_PROTOCOL,
+          revision: RICH_TEXT_PROTOCOL_REVISION,
+          type: "connect",
+          nonce,
+          session: this.session
+        },
+        "*",
+        [channel.port2]
+      );
+      this.send({
+        type: "initialize",
+        payload: {
+          profile: this.options.profile,
+          document: this.options.document,
+          messages: this.options.messages,
+          editable: this.options.editable ?? true
+        }
+      });
+    };
+    this.cleanupHandshake = () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+    };
+    window.addEventListener("message", onMessage);
+    this.options.iframe.src = url.toString();
+  }
+  send(message) {
+    if (this.destroyed || !this.port) return;
+    this.outboundSequence += 1;
+    this.port.postMessage(
+      createEnvelope(this.session, this.outboundSequence, message)
+    );
+  }
+  receive(value) {
+    if (!isEnvelope(
+      value,
+      this.session,
+      this.inboundSequence,
+      this.maxMessageBytes
+    )) {
+      this.options.onError?.("invalid_message", "The editor frame returned an invalid message.");
+      return;
+    }
+    this.inboundSequence = value.sequence;
+    const message = value.message;
+    switch (message.type) {
+      case "initialized":
+        this.resolveReady();
+        break;
+      case "document_changed":
+      case "document":
+        this.options.onDocumentChange(message.payload.document);
+        break;
+      case "focus_changed":
+        this.options.onFocusChange?.(message.payload.focused);
+        break;
+      case "error":
+        this.options.onError?.(message.payload.code, message.payload.message);
+        break;
+    }
+  }
+};
+function connectRichTextFrame(options) {
+  return new RichTextFrameController(options);
+}
+
+// src/leptos.ts
+function mountLeptosRichTextFrame(iframe, options) {
+  const controller = connectRichTextFrame({ iframe, ...options });
+  return {
+    controller,
+    dispose: () => controller.destroy()
+  };
 }
 export {
   MAX_PROTOCOL_OVERHEAD_BYTES,
@@ -228,5 +368,6 @@ export {
   isEnvelope,
   isRichTextMessages,
   isRichTextProfileId,
+  mountLeptosRichTextFrame,
   validateRichTextDocument
 };

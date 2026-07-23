@@ -1,7 +1,7 @@
 # rustok-iggy / CRATE_API
 
 ## Public Modules
-`config`, `consumer`, `contract_consumer`, `dlq`, `health`, `partitioning`, `producer`, `replay`, `serialization`, `topology`, `transport`.
+`config`, `consumer`, `contract_consumer`, `dlq`, `health`, `partitioning`, `producer`, `serialization`, `topology`, `transport`.
 
 ## Primary Public Types and Signatures
 - `pub struct IggyTransport` (implements `EventTransport`)
@@ -21,7 +21,9 @@
   decoding to the same envelope field.
 - Root consumers use `PersistentConsumerGroup`.
 - Bounded-family consumers use the explicit `PersistentContractConsumerGroup`.
-- Supports replay/DLQ pipelines without silently interpreting family events as `DomainEvent`.
+- Supports DLQ movement and entry-based retry without silently interpreting
+  family events as `DomainEvent`. There is no replay API until it can execute
+  bounded broker reads and republishes with durable progress evidence.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-core`

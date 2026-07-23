@@ -54,6 +54,9 @@ for (const marker of [
   "ack token scope does not match external subscriber",
   "pub struct BundledConnector",
   "Bundled Iggy connector initialized",
+  "async fn ensure_topology",
+  "create_topic_if_not_exists",
+  "fn connection_strings",
   "test_connector_ack_token_roundtrip_and_scope",
   "test_subscriber_ack_rejects_wrong_scope",
 ]) {
