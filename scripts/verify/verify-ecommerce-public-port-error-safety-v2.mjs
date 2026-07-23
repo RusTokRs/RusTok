@@ -60,9 +60,9 @@ for (const value of [
 for (const value of [
   'PortError::validation("payment.validation", message)',
   'format!("invalid payment transition from `{from}` to `{to}`")',
-  'format!("payment provider `{provider_id}` is unavailable for `{operation}")',
-  'format!("payment provider `{provider_id}` rejected `{operation}")',
-  'format!("payment provider `{provider_id}` outcome is unknown for `{operation}")',
+  'format!("payment provider `{provider_id}` is unavailable for `{operation}`")',
+  'format!("payment provider `{provider_id}` rejected `{operation}`")',
+  'format!("payment provider `{provider_id}` outcome is unknown for `{operation}`")',
   '.map_err(payment_error_to_port_error)',
 ]) {
   forbidText(payment, value, 'payment collection public error mapping');
@@ -71,7 +71,11 @@ for (const value of [
 for (const [source, value, label] of [
   [pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging'],
   [pricing, 'tenant_id = %context.tenant_id', 'pricing tenant logging'],
+  [pricing, 'operation,', 'pricing owner operation logging'],
   [pricing, 'code = "pricing.database_unavailable"', 'pricing database stable code'],
+  [pricing, 'code = "pricing.validation"', 'pricing validation stable code'],
+  [pricing, 'code = "pricing.rich_error"', 'pricing rich stable code'],
+  [pricing, 'code = "pricing.core_error"', 'pricing core stable code'],
   [pricing, '"pricing storage is temporarily unavailable"', 'pricing stable storage message'],
   [pricing, '"pricing operation failed an internal invariant"', 'pricing stable invariant message'],
   [pricing, '"pricing request is invalid"', 'pricing stable validation message'],
@@ -80,9 +84,18 @@ for (const [source, value, label] of [
   [payment, 'correlation_id = %context.correlation_id', 'payment correlation logging'],
   [payment, 'tenant_id = %context.tenant_id', 'payment tenant logging'],
   [payment, 'operation = owner_operation', 'payment owner operation logging'],
+  [payment, 'code = "payment.validation"', 'payment validation stable code'],
+  [payment, 'code = "payment.invalid_transition"', 'payment transition stable code'],
+  [payment, 'code = "payment.provider_unavailable"', 'payment unavailable stable code'],
+  [payment, 'code = "payment.provider_rejected"', 'payment rejection stable code'],
+  [payment, 'code = "payment.provider_invalid_response"', 'payment invalid response stable code'],
+  [payment, 'code = "payment.provider_outcome_unknown"', 'payment outcome stable code'],
+  [payment, 'code = "payment.provider_not_configured"', 'payment configuration stable code'],
   [payment, 'code = "payment.database_unavailable"', 'payment database stable code'],
   [payment, '"payment storage is temporarily unavailable"', 'payment stable storage message'],
   [payment, '"payment provider outcome requires reconciliation"', 'payment stable reconciliation message'],
+  [payment, '"payment provider response could not be applied safely"', 'payment stable invalid response message'],
+  [payment, '"payment provider rejected the requested operation"', 'payment stable rejection message'],
   [payment, '"payment request is invalid"', 'payment stable validation message'],
   [payment, 'payment_error_to_port_error(&context, "read_collection_status"', 'payment read operation mapping'],
 ]) {
