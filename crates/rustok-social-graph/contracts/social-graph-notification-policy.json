@@ -33,10 +33,11 @@
     "candidate_worker_ready": false
   },
   "distribution": {
-    "registry": "crates/rustok-distribution/src/generated_promotions.rs",
+    "registry": "crates/rustok-distribution/src/lib.rs",
     "manifest": "modules.toml",
     "compiled_in_baseline": true,
-    "tenant_default_enabled": false
+    "tenant_default_enabled": false,
+    "generated_promotions_remain_replaceable": true
   },
   "tests": [
     "crates/rustok-social-graph/tests/privacy_sqlite.rs"
