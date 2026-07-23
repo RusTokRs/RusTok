@@ -11,7 +11,7 @@ use validator::Validate;
 
 use crate::dto::{
     AuthorizePaymentInput, CapturePaymentInput, CreatePaymentCollectionInput,
-    PaymentCollectionResponse,
+    PaymentCollectionResponse, PaymentCollectionStatusKind,
 };
 use crate::providers::{
     MANUAL_PAYMENT_PROVIDER_ID, PaymentProviderOperationRequest, PaymentProviderOperationResult,
@@ -183,8 +183,8 @@ impl InProcessCheckoutPaymentExecutionPort {
             .unwrap_or_else(|| MANUAL_PAYMENT_PROVIDER_ID.to_string());
         let idempotency_key = format!("payment_collection:{}:authorize", collection.id);
 
-        match collection.status.as_str() {
-            "authorized" | "captured" => {
+        match collection.status_kind() {
+            PaymentCollectionStatusKind::Authorized | PaymentCollectionStatusKind::Captured => {
                 self.commit_existing_provider_operation(
                     tenant_id,
                     provider_id.as_str(),
@@ -194,11 +194,16 @@ impl InProcessCheckoutPaymentExecutionPort {
                 .await?;
                 return Ok(collection);
             }
-            "pending" => {}
-            status => {
+            PaymentCollectionStatusKind::Pending => {}
+            PaymentCollectionStatusKind::Cancelled => {
                 return Err(PortError::conflict(
                     "payment.checkout_authorize_state_conflict",
-                    format!("payment collection cannot be authorized from `{status}`"),
+                    "cancelled payment collection cannot be authorized",
+                ));
+            }
+            PaymentCollectionStatusKind::Unknown => {
+                return Err(manual_reconciliation(
+                    "payment collection lifecycle is unknown before authorization",
                 ));
             }
         }
@@ -298,8 +303,8 @@ impl InProcessCheckoutPaymentExecutionPort {
         let provider_id = provider_id_for_collection(&collection);
         let idempotency_key = format!("payment_collection:{}:capture", collection.id);
 
-        match collection.status.as_str() {
-            "captured" => {
+        match collection.status_kind() {
+            PaymentCollectionStatusKind::Captured => {
                 self.commit_existing_provider_operation(
                     tenant_id,
                     provider_id.as_str(),
@@ -309,11 +314,16 @@ impl InProcessCheckoutPaymentExecutionPort {
                 .await?;
                 return Ok(collection);
             }
-            "authorized" => {}
-            status => {
+            PaymentCollectionStatusKind::Authorized => {}
+            PaymentCollectionStatusKind::Pending | PaymentCollectionStatusKind::Cancelled => {
                 return Err(PortError::conflict(
                     "payment.checkout_capture_state_conflict",
-                    format!("payment collection cannot be captured from `{status}`"),
+                    "payment collection lifecycle does not allow capture",
+                ));
+            }
+            PaymentCollectionStatusKind::Unknown => {
+                return Err(manual_reconciliation(
+                    "payment collection lifecycle is unknown before capture",
                 ));
             }
         }
