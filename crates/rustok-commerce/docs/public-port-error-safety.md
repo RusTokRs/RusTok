@@ -36,11 +36,16 @@ available only for actionable domain errors.
   operation name. Database, rich, and core causes are logged with `correlation_id`,
   tenant, operation, and stable code; public messages are stable. Pricing validation
   cause text stays internal and the public boundary returns `pricing request is invalid`.
+- `rustok-payment` collection port: create/reuse and status reads pass the request
+  context and owner operation into the mapper. Database, validation, transition, and
+  provider causes are logged with correlation identity; raw provider ids, lifecycle
+  strings, and storage causes do not appear in the public message.
 
 ## Still open
 
-- Audit order, payment, fulfillment, inventory, customer, tax, promotion, and remaining
-  ecommerce adapters for technical text mislabeled as validation/conflict errors.
+- Audit order, fulfillment, inventory, customer, tax, promotion, payment execution/
+  compensation, and remaining ecommerce adapters for technical text mislabeled as
+  validation/conflict errors.
 - Add structured owner-side logging with `correlation_id`, owner operation, stable error
   code, and the original cause before every remaining technical `PortError` mapping.
 - Remove raw technical text from non-`PortError` public REST, GraphQL, native, and
@@ -53,7 +58,8 @@ available only for actionable domain errors.
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `cargo test -p rustok-api ports::tests`
 - `cargo check -p rustok-pricing --all-features`
-- Targeted pricing database, validation, rich/core invariant, correlation, and transport
-  round-trip tests.
+- `cargo check -p rustok-payment --all-features`
+- Targeted pricing and payment collection database, validation, transition,
+  provider/invariant, correlation, and transport round-trip tests.
 
 No verification command above was executed as part of this source wave.
