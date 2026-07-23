@@ -150,3 +150,16 @@ fn public_topic_and_reply_reads_fail_closed_without_localized_content() {
     assert!(reply_facade.contains("require_localized_reply_response_page"));
     assert!(reply_facade.contains("has no localized body"));
 }
+
+#[test]
+fn topic_delete_does_not_materialize_every_reply() {
+    let topic_owner = include_str!("../src/services/topic_owner.rs");
+    let user_stats = include_str!("../src/services/user_stats.rs");
+
+    assert!(!topic_owner.contains("public_reply_author_ids"));
+    assert!(!topic_owner.contains(".all(&txn)"));
+    assert!(topic_owner.contains(".count(&txn)"));
+    assert!(topic_owner.contains("decrement_topic_thread_aggregated_in_tx"));
+    assert!(user_stats.contains("UPDATE forum_user_stats"));
+    assert!(user_stats.contains("SELECT COUNT(*) FROM forum_replies"));
+}
