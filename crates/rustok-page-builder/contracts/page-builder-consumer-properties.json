@@ -1,0 +1,61 @@
+{
+  "status": "source_connected_legacy_form_pending",
+  "format": "page_builder_consumer_properties_v1",
+  "provider": {
+    "contract_source": "crates/rustok-page-builder/admin/src/consumer_properties.rs",
+    "panel_source": "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    "facade_source": "crates/rustok-page-builder/admin/src/transport/mod.rs",
+    "composition_source": "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+    "schema": "ConsumerPropertyEditorSchema",
+    "snapshot": "ConsumerPropertyEditorSnapshot",
+    "save_input": "SaveConsumerPropertiesInput",
+    "save_receipt": "ConsumerPropertySaveReceipt",
+    "port": "ConsumerPropertyEditorPort",
+    "runtime": "ConsumerPropertyEditorRuntime",
+    "schema_binding": "exact_registered_contribution_schema_equality",
+    "field_set": "exact_registered_fields",
+    "errors": [
+      "PAGE_BUILDER_CONSUMER_PROPERTY_CONTRACT_INVALID",
+      "PAGE_BUILDER_CONSUMER_PROPERTY_EDITOR_UNAVAILABLE",
+      "PAGE_BUILDER_CONSUMER_PROPERTY_SAVE_FAILED"
+    ],
+    "framework": {
+      "contract": "framework_neutral",
+      "current_adapter": "leptos",
+      "future_adapter": "dioxus"
+    },
+    "persistence_owned": false
+  },
+  "pages_consumer": {
+    "contribution_source": "crates/rustok-pages/admin/src/contributions.rs",
+    "owner_port_source": "crates/rustok-pages/admin/src/metadata_properties.rs",
+    "composition_source": "crates/rustok-pages/admin/src/lib.rs",
+    "contribution_id": "rustok.pages.metadata",
+    "property_editor_id": "rustok.pages.metadata.editor",
+    "component_type": "rustok-pages-metadata",
+    "fields": [
+      "title",
+      "slug",
+      "meta_title",
+      "meta_description",
+      "template",
+      "channel_slugs"
+    ],
+    "load": "fetch_current_page",
+    "save": "patch_page_metadata",
+    "revision": "pages:{page_id}:metadata:v{version}",
+    "concurrency": "exact_page_metadata_version",
+    "document_revision_independent": true,
+    "fly_document_write": false,
+    "owner_persistence": "pages",
+    "workspace_refresh": "owner_callback_after_advancing_version",
+    "legacy_form": {
+      "source": "crates/rustok-pages/admin/src/composition.rs",
+      "component": "PageMetadataEditor",
+      "state": "pending_removal",
+      "required_cutover": "replace_bespoke_form_with_registered_consumer_property_surface_for_draft_and_published_metadata"
+    }
+  },
+  "source_guard": "crates/rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
+  "executed_evidence": "pending"
+}
