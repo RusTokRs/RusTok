@@ -34,7 +34,7 @@ def replace_paragraph(text: str, prefix: str, replacement: str, label: str) -> s
 
 
 registry_path = Path("docs/modules/registry.md")
-registry = registry_path.read_text()
+registry = registry_path.read_text(encoding="utf-8")
 registry = replace_matching_line(
     registry,
     lambda line: line.startswith("| `index` |") and "index-fba-registry.json" in line,
@@ -61,10 +61,10 @@ for forbidden in (
 ):
     if forbidden in registry:
         raise SystemExit(f"central registry still contains removed Index v1 reference: {forbidden}")
-registry_path.write_text(registry)
+registry_path.write_text(registry, encoding="utf-8")
 
 overview_path = Path("docs/research/fluid-backend-architecture-unified-plan.md")
-overview = overview_path.read_text()
+overview = overview_path.read_text(encoding="utf-8")
 index_track = "| `index` | generic cross-module relational index and query engine | `in_progress` | Complete M2 scale evidence and storage selection, then publish replacement query/rebuild contracts. All Index v1 ports, registry, evidence, projections, and runtime wiring are removed. | `crates/rustok-index/docs/implementation-plan.md`, `DECISIONS/2026-07-23-index-engine-rewrite.md` |"
 if index_track not in overview:
     lines = overview.splitlines(keepends=True)
@@ -99,10 +99,10 @@ for forbidden in (
 ):
     if forbidden in overview:
         raise SystemExit(f"FBA overview still contains removed Index v1 reference: {forbidden}")
-overview_path.write_text(overview)
+overview_path.write_text(overview, encoding="utf-8")
 
 plan_path = Path("crates/rustok-index/docs/implementation-plan.md")
-plan = plan_path.read_text()
+plan = plan_path.read_text(encoding="utf-8")
 plan = replace_matching_line(
     plan,
     lambda line: line.startswith("- [ ] Synchronize the central module registry and historical FBA overview."),
@@ -124,4 +124,4 @@ if progress not in plan:
     if not plan.endswith("\n"):
         plan += "\n"
     plan += progress
-plan_path.write_text(plan)
+plan_path.write_text(plan, encoding="utf-8")
