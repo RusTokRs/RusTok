@@ -23,6 +23,10 @@ const region = read('crates/rustok-region/src/ports.rs');
 const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
 const pricing = read('crates/rustok-pricing/src/ports.rs');
 const payment = read('crates/rustok-payment/src/ports.rs');
+const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
+const orderPaymentSettlement = read(
+  'crates/rustok-order/src/checkout_payment_settlement.rs',
+);
 
 for (const [source, label] of [
   [channel, 'channel port'],
@@ -30,6 +34,8 @@ for (const [source, label] of [
   [cart, 'cart checkout port'],
   [pricing, 'pricing port'],
   [payment, 'payment collection port'],
+  [orderCompensation, 'order checkout compensation port'],
+  [orderPaymentSettlement, 'order checkout payment settlement port'],
 ]) {
   requireText(source, 'tracing::error!', label);
 }
@@ -73,6 +79,20 @@ for (const value of [
   forbidText(payment, value, 'payment collection public error mapping');
 }
 
+for (const value of [
+  'fn manual_reconciliation(message: impl Into<String>)',
+  'PortError::validation("order.validation", message)',
+  '.map_err(order_error_to_port_error)',
+  '"PortContext.tenant_id must be a UUID for order ports"',
+  '"PortContext.actor.id must be a UUID for order write ports"',
+]) {
+  forbidText(
+    orderCompensation + orderPaymentSettlement,
+    value,
+    'order checkout adapter public error mapping',
+  );
+}
+
 for (const [source, value, label] of [
   [pricing, 'correlation_id = %context.correlation_id', 'pricing correlation logging'],
   [pricing, 'tenant_id = %context.tenant_id', 'pricing tenant logging'],
@@ -103,6 +123,21 @@ for (const [source, value, label] of [
   [payment, '"payment provider rejected the requested operation"', 'payment stable rejection message'],
   [payment, '"payment request is invalid"', 'payment stable validation message'],
   [payment, 'payment_error_to_port_error(&context, "read_collection_status"', 'payment read operation mapping'],
+  [orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging'],
+  [orderCompensation, 'tenant_id = %context.tenant_id', 'order compensation tenant logging'],
+  [orderCompensation, 'operation,', 'order compensation owner operation logging'],
+  [orderCompensation, 'code = "order.checkout_compensation_manual_reconciliation"', 'order compensation reconciliation stable code'],
+  [orderCompensation, '"checkout requires manual reconciliation"', 'order compensation stable reconciliation message'],
+  [orderCompensation, '"order request context is invalid"', 'order compensation stable context message'],
+  [orderCompensation, 'order_error_to_port_error(&context, "read_checkout_order_for_compensation"', 'order compensation operation mapping'],
+  [orderPaymentSettlement, 'correlation_id = %context.correlation_id', 'order payment correlation logging'],
+  [orderPaymentSettlement, 'tenant_id = %context.tenant_id', 'order payment tenant logging'],
+  [orderPaymentSettlement, 'operation,', 'order payment owner operation logging'],
+  [orderPaymentSettlement, 'code = "order.checkout_payment_validation"', 'order payment validation stable code'],
+  [orderPaymentSettlement, 'code = "order.checkout_payment_state_conflict"', 'order payment transition stable code'],
+  [orderPaymentSettlement, '"checkout requires manual reconciliation"', 'order payment stable reconciliation message'],
+  [orderPaymentSettlement, '"order request context is invalid"', 'order payment stable context message'],
+  [orderPaymentSettlement, 'order_error_to_port_error(&context, "mark_checkout_order_paid"', 'order payment operation mapping'],
 ]) {
   requireText(source, value, label);
 }
@@ -135,5 +170,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, and payment collection ports keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, payment, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );
