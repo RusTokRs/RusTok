@@ -17,17 +17,22 @@ use rustok_notifications::model::{FanoutItemStatus, NotificationJobStatus};
 use rustok_notifications::{
     MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE, NotificationCandidatePolicyDeferral,
     NotificationCandidateWorker, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
-    NotificationRecipientPolicyError, NotificationRecipientPolicyRequest, NotificationsModule,
+    NotificationRecipientPolicyError, NotificationRecipientPolicyRequest,
+    NotificationTenantCapabilityCommitDecision, NotificationTenantCapabilityCommitError,
+    NotificationTenantCapabilityCommitGuard, NotificationTenantCapabilityCommitRequest,
+    NotificationsModule,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, Statement,
+    DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait, PaginatorTrait, Statement,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 const SOURCE: &str = "worker-test-source";
 const NOTIFICATION_TYPE: &str = "worker.test.notification";
+const OBSERVED_POLICY_REVISION: &str =
+    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 #[derive(Clone)]
 struct AllowPolicy;
@@ -39,6 +44,23 @@ impl NotificationRecipientPolicy for AllowPolicy {
         _request: NotificationRecipientPolicyRequest,
     ) -> Result<NotificationRecipientPolicyDecision, NotificationRecipientPolicyError> {
         Ok(NotificationRecipientPolicyDecision::Allow)
+    }
+}
+
+#[derive(Clone)]
+struct RevisionChangedCommitGuard;
+
+#[async_trait]
+impl NotificationTenantCapabilityCommitGuard for RevisionChangedCommitGuard {
+    async fn evaluate(
+        &self,
+        _transaction: &DatabaseTransaction,
+        _request: NotificationTenantCapabilityCommitRequest,
+    ) -> Result<
+        NotificationTenantCapabilityCommitDecision,
+        NotificationTenantCapabilityCommitError,
+    > {
+        Ok(NotificationTenantCapabilityCommitDecision::RevisionChanged)
     }
 }
 
@@ -249,6 +271,84 @@ async fn tenant_policy_deferral_removes_candidate_from_bounded_head() {
             .count(&db)
             .await
             .expect("tenant deferral must not create notifications"),
+        0
+    );
+}
+
+#[tokio::test]
+async fn commit_policy_revision_change_rolls_back_notification_and_retries_candidate() {
+    let db = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let recipient_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+    insert_user(&db, tenant_id, recipient_id).await;
+    let item_id = seed_candidate(&db, tenant_id, recipient_id).await;
+
+    let mut registry = NotificationSourceRegistry::default();
+    registry
+        .register(WorkerSourceProvider)
+        .expect("worker source provider should register");
+    let worker = NotificationCandidateWorker::new_with_commit_guard(
+        db.clone(),
+        Arc::new(registry),
+        Arc::new(AllowPolicy),
+        Arc::new(RevisionChangedCommitGuard),
+        "candidate-commit-guard",
+        1,
+    )
+    .expect("guarded candidate worker should compose");
+
+    let error = worker
+        .process_candidate_with_policy_revision(item_id, OBSERVED_POLICY_REVISION)
+        .await
+        .expect_err("changed policy revision must reject final notification commit");
+    assert_eq!(
+        error.stable_code(),
+        "NOTIFICATION_TENANT_POLICY_REVISION_CHANGED"
+    );
+    assert!(error.is_retryable());
+
+    let row = db
+        .query_one(Statement::from_string(
+            DbBackend::Sqlite,
+            format!(
+                "SELECT status, attempt_count, notification_id, last_error_code, next_attempt_at FROM notification_fanout_items WHERE id = '{item_id}'"
+            ),
+        ))
+        .await
+        .expect("guarded candidate projection should load")
+        .expect("guarded candidate should exist");
+    assert_eq!(
+        row.try_get::<String>("", "status")
+            .expect("candidate status should decode"),
+        "retryable_error"
+    );
+    assert_eq!(
+        row.try_get::<i32>("", "attempt_count")
+            .expect("candidate attempt count should decode"),
+        1
+    );
+    assert!(
+        row.try_get::<Option<String>>("", "notification_id")
+            .expect("candidate notification id should decode")
+            .is_none()
+    );
+    assert_eq!(
+        row.try_get::<Option<String>>("", "last_error_code")
+            .expect("candidate error code should decode")
+            .as_deref(),
+        Some("NOTIFICATION_TENANT_POLICY_REVISION_CHANGED")
+    );
+    assert!(
+        row.try_get::<Option<String>>("", "next_attempt_at")
+            .expect("candidate retry time should decode")
+            .is_some()
+    );
+    assert_eq!(
+        notification::Entity::find()
+            .count(&db)
+            .await
+            .expect("revision rejection must not create notifications"),
         0
     );
 }
