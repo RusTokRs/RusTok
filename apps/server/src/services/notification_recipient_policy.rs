@@ -5,19 +5,76 @@ use async_trait::async_trait;
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_notifications::{
-    NotificationBlockReadRuntime, NotificationMuteReadRuntime, NotificationRecipientPolicy,
-    NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
-    NotificationRecipientPolicyRequest, NotificationRecipientPolicyRuntime,
-    NotificationRecipientSuppression, NotificationRelationPolicyRequest,
+    NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
+    NotificationMuteReadRuntime, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
+    NotificationRecipientPolicyError, NotificationRecipientPolicyRequest,
+    NotificationRecipientPolicyRuntime, NotificationRecipientSuppression,
+    NotificationRelationPolicyRequest,
 };
 use rustok_profiles::{
     ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest,
     ProfilePrivacyRuntime, ProfileService,
 };
+use rustok_social_graph::{
+    SocialGraphPairRequest, SocialGraphPrivacyReadPort, SocialGraphPrivacyRuntime,
+    SocialGraphService,
+};
 use sea_orm::DatabaseConnection;
 
 const RECIPIENT_POLICY_DEADLINE: Duration = Duration::from_secs(2);
 const RECIPIENT_POLICY_ACTOR: &str = "notifications-recipient-policy";
+
+#[derive(Clone)]
+struct SocialGraphNotificationBlockAdapter {
+    graph: SocialGraphPrivacyRuntime,
+}
+
+#[async_trait]
+impl NotificationBlockReadPort for SocialGraphNotificationBlockAdapter {
+    async fn blocks_notification(
+        &self,
+        context: PortContext,
+        request: NotificationRelationPolicyRequest,
+    ) -> Result<bool, PortError> {
+        require_matching_tenant(&context, request.tenant_id)?;
+        self.graph
+            .port()
+            .blocks_between(
+                context,
+                SocialGraphPairRequest {
+                    source_user_id: request.recipient_id,
+                    target_user_id: request.actor_id,
+                },
+            )
+            .await
+    }
+}
+
+#[derive(Clone)]
+struct SocialGraphNotificationMuteAdapter {
+    graph: SocialGraphPrivacyRuntime,
+}
+
+#[async_trait]
+impl NotificationMuteReadPort for SocialGraphNotificationMuteAdapter {
+    async fn mutes_notification(
+        &self,
+        context: PortContext,
+        request: NotificationRelationPolicyRequest,
+    ) -> Result<bool, PortError> {
+        require_matching_tenant(&context, request.tenant_id)?;
+        self.graph
+            .port()
+            .source_mutes_target(
+                context,
+                SocialGraphPairRequest {
+                    source_user_id: request.recipient_id,
+                    target_user_id: request.actor_id,
+                },
+            )
+            .await
+    }
+}
 
 #[derive(Clone)]
 pub struct ServerNotificationRecipientPolicy {
@@ -31,17 +88,36 @@ impl ServerNotificationRecipientPolicy {
         db: DatabaseConnection,
         extensions: &ModuleRuntimeExtensions,
     ) -> NotificationRecipientPolicyRuntime {
-        let profile_port: Arc<dyn ProfilePrivacyReadPort> = Arc::new(ProfileService::new(db));
-        let blocks = extensions.get::<NotificationBlockReadRuntime>().cloned();
-        let mutes = extensions.get::<NotificationMuteReadRuntime>().cloned();
-        let relation_ports_ready = blocks.is_some() && mutes.is_some();
+        let profile_port: Arc<dyn ProfilePrivacyReadPort> =
+            Arc::new(ProfileService::new(db.clone()));
+        let graph_port: Arc<dyn SocialGraphPrivacyReadPort> =
+            Arc::new(SocialGraphService::new(db));
+        let graph = SocialGraphPrivacyRuntime::new(graph_port);
+        let blocks = extensions
+            .get::<NotificationBlockReadRuntime>()
+            .cloned()
+            .unwrap_or_else(|| {
+                NotificationBlockReadRuntime::new(Arc::new(
+                    SocialGraphNotificationBlockAdapter {
+                        graph: graph.clone(),
+                    },
+                ))
+            });
+        let mutes = extensions
+            .get::<NotificationMuteReadRuntime>()
+            .cloned()
+            .unwrap_or_else(|| {
+                NotificationMuteReadRuntime::new(Arc::new(SocialGraphNotificationMuteAdapter {
+                    graph,
+                }))
+            });
         let policy = Self {
             profiles: ProfilePrivacyRuntime::new(profile_port),
-            blocks,
-            mutes,
+            blocks: Some(blocks),
+            mutes: Some(mutes),
         };
 
-        NotificationRecipientPolicyRuntime::new(Arc::new(policy), relation_ports_ready)
+        NotificationRecipientPolicyRuntime::new(Arc::new(policy), true)
     }
 
     fn port_context(request: &NotificationRecipientPolicyRequest) -> PortContext {
@@ -134,6 +210,16 @@ impl NotificationRecipientPolicy for ServerNotificationRecipientPolicy {
 
         Ok(NotificationRecipientPolicyDecision::Allow)
     }
+}
+
+fn require_matching_tenant(context: &PortContext, tenant_id: uuid::Uuid) -> Result<(), PortError> {
+    if context.tenant_id != tenant_id.to_string() {
+        return Err(PortError::validation(
+            "notifications.relation_tenant_mismatch",
+            "notification relation policy tenant does not match port context",
+        ));
+    }
+    Ok(())
 }
 
 fn map_port_error(error: PortError) -> NotificationRecipientPolicyError {
