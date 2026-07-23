@@ -49,6 +49,9 @@ const ports = read(contract.ports ?? "");
 const adapter = read(contract.server_composition?.adapter ?? "");
 const runtime = read("crates/rustok-notifications/src/recipient_policy.rs");
 const registry = read(contract.distribution?.registry ?? "");
+const generatedPromotions = read(
+  "crates/rustok-distribution/src/generated_promotions.rs",
+);
 const manifest = read(contract.distribution?.manifest ?? "");
 const test = read("crates/rustok-social-graph/tests/privacy_sqlite.rs");
 
@@ -102,10 +105,7 @@ for (const marker of [
 }
 requireOrder(
   service,
-  [
-    "RelationKind.eq(SocialRelationKind::Block)",
-    "Condition::any()",
-  ],
+  ["RelationKind.eq(SocialRelationKind::Block)", "Condition::any()"],
   "block lookup must evaluate both relation directions",
 );
 
@@ -162,8 +162,13 @@ for (const marker of [
 
 requireText(
   registry,
-  "registry.register(SocialGraphModule)",
-  "compiled distribution must register SocialGraphModule",
+  ".register(SocialGraphModule)",
+  "compiled distribution must register SocialGraphModule in its baseline registry",
+);
+reject(
+  generatedPromotions,
+  /SocialGraphModule|rustok_social_graph/,
+  "baseline Social Graph registration must not be stored in replaceable generated promotions",
 );
 requireText(
   manifest,
