@@ -373,15 +373,30 @@ pub(crate) fn map_case(model: moderation_case::Model) -> ModerationResult<Modera
 
 pub(crate) fn map_decision(
     model: moderation_decision::Model,
-    effect: Option<ModerationDecisionEffect>,
+    effect: Option<(ModerationDecisionKind, ModerationDecisionEffect)>,
 ) -> ModerationResult<ModerationDecisionRecord> {
+    let decision_kind = ModerationDecisionKind::parse(model.decision_kind.as_str()).ok_or_else(
+        || ModerationError::Invariant("unknown stored decision kind".to_string()),
+    )?;
+    let effect = effect
+        .map(|(effect_kind, effect)| {
+            if effect_kind != decision_kind {
+                return Err(ModerationError::Invariant(
+                    "stored moderation decision effect kind does not match decision kind"
+                        .to_string(),
+                ));
+            }
+            effect
+                .validate_for_decision_kind(decision_kind)
+                .map_err(|error| ModerationError::Invariant(error.to_string()))?;
+            Ok(effect)
+        })
+        .transpose()?;
     Ok(ModerationDecisionRecord {
         id: model.id,
         tenant_id: model.tenant_id,
         case_id: model.case_id,
-        decision_kind: ModerationDecisionKind::parse(model.decision_kind.as_str()).ok_or_else(
-            || ModerationError::Invariant("unknown stored decision kind".to_string()),
-        )?,
+        decision_kind,
         reason_code: ModerationReasonCode::parse(model.reason_code.as_str()).ok_or_else(|| {
             ModerationError::Invariant("unknown stored decision reason".to_string())
         })?,
@@ -396,7 +411,10 @@ pub(crate) fn map_decision(
 
 fn parse_stored_effect(
     model: moderation_decision_effect::Model,
-) -> ModerationResult<ModerationDecisionEffect> {
+) -> ModerationResult<(ModerationDecisionKind, ModerationDecisionEffect)> {
+    let effect_kind = ModerationDecisionKind::parse(model.effect_kind.as_str()).ok_or_else(|| {
+        ModerationError::Invariant("unknown stored moderation decision effect kind".to_string())
+    })?;
     let effect = serde_json::from_value::<ModerationDecisionEffect>(model.effect_payload).map_err(
         |_| ModerationError::Invariant("stored moderation decision effect is invalid".to_string()),
     )?;
@@ -406,9 +424,9 @@ fn parse_stored_effect(
         ));
     }
     effect
-        .validate()
+        .validate_for_decision_kind(effect_kind)
         .map_err(|error| ModerationError::Invariant(error.to_string()))?;
-    Ok(effect)
+    Ok((effect_kind, effect))
 }
 
 fn normalize_subject(mut subject: ModerationSubjectRef) -> ModerationResult<ModerationSubjectRef> {
