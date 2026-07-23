@@ -1,4 +1,4 @@
-use super::{Workload, WorkloadContext};
+use super::{MutationWorkload, Workload, WorkloadContext};
 
 pub fn prototype_sql() -> String {
     r#"
@@ -134,6 +134,30 @@ pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
             sql: format!(
                 "SELECT count(*)::bigint AS result_count FROM idx_bench_jsonb.entity WHERE tenant_id = {tenant} AND entity_name = 'product' AND locale = {locale} AND payload->>'status' = 'published'"
             ),
+        },
+    ]
+}
+
+pub fn mutation_workloads(context: &WorkloadContext) -> Vec<MutationWorkload> {
+    let tenant = context.tenant;
+    let locale = &context.locale;
+    let batch = context.mutation_batch;
+    let deleted_links = context.expected_deleted_links();
+
+    vec![
+        MutationWorkload {
+            name: "update_product_batch",
+            sql: format!(
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), updated AS (UPDATE idx_bench_jsonb.entity AS entity SET source_version = entity.source_version + 1, payload = jsonb_set(jsonb_set(entity.payload, '{{price_minor}}', to_jsonb((entity.payload->>'price_minor')::bigint + 17), false), '{{rating_milli}}', to_jsonb((entity.payload->>'rating_milli')::bigint + 1), false) FROM targets WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT count(*)::bigint AS affected_entities FROM updated"
+            ),
+            expected_affected_entities: i64::from(batch),
+        },
+        MutationWorkload {
+            name: "delete_product_batch",
+            sql: format!(
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), deleted_links AS (DELETE FROM idx_bench_jsonb.link AS link USING targets WHERE link.tenant_id = {tenant} AND link.source_entity = 'product' AND link.source_locale = {locale} AND link.source_entity_id = targets.product_id RETURNING 1), deleted_entities AS (DELETE FROM idx_bench_jsonb.entity AS entity USING targets WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT (SELECT count(*) FROM deleted_entities)::bigint AS affected_entities, (SELECT count(*) FROM deleted_links)::bigint AS affected_links, {deleted_links}::bigint AS expected_links"
+            ),
+            expected_affected_entities: i64::from(batch),
         },
     ]
 }
