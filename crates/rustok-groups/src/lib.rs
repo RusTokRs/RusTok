@@ -9,6 +9,7 @@ mod applications_legacy_module {
     include!("applications.rs");
     include!("applications_transactional.rs");
     include!("applications_transactional_cas.rs");
+    include!("applications_transactional_cas_bridge.rs");
     include!("applications_transactional_lifecycle.rs");
 }
 pub mod domain;
