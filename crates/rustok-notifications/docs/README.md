@@ -76,9 +76,25 @@ rows. Retryable owner/provider failures retain retry state. Semantic mismatch
 fails permanently. The workflow creates no channel delivery attempts and invokes
 no source or privacy provider inside the final notification transaction.
 
-The production profile/block policy adapter is still required before executable
-runtime composition can process real candidates. Privacy and source authorization
-must be checked again on inbox open and before delayed delivery.
+Profiles privacy and Social Graph block/mute providers are composed through
+owner ports. Privacy and source authorization must be checked again on inbox open
+and before delayed delivery.
+
+## Candidate worker
+
+`NotificationCandidateWorker` selects one stable, bounded page of claimable
+candidate IDs and delegates every item to `NotificationCandidateService`. The
+canonical batch is 32 and the hard maximum is 64. Selection is ordered by
+`created_at`, then `id`, and does not acquire a lease; the existing per-item claim
+CAS remains authoritative under worker contention.
+
+The executable server loop is fail-closed and disabled by default. It starts only
+on a background-worker host when
+`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` is explicitly enabled, the source
+registry has been materialized, and `candidate_worker_ready()` confirms both
+relation ports and enablement. Invalid or unreadable flag values remain disabled.
+The shared shutdown signal prevents later claims while allowing an already
+processing candidate to complete its canonical transaction.
 
 ## Forum sources
 
@@ -91,10 +107,10 @@ deferred until a bounded moderator-directory owner port exists.
 
 Producer transactions remain independent from notification availability.
 
-Pending capabilities include the production profile/block adapter, outbox
-consumer runner, channel delivery commands, moderator audience expansion,
-grouping, inbox APIs, PostgreSQL lease evidence, retention/reconciliation, and
-complete module-owned UI products.
+Pending capabilities include the production outbox consumer runner, channel
+delivery commands, moderator audience expansion, grouping, inbox APIs,
+PostgreSQL lease evidence, worker health/lag metrics, retention/reconciliation,
+and complete module-owned UI products.
 
 ## Verification
 
@@ -105,6 +121,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications --all-targets
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
+cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
@@ -116,15 +133,19 @@ node scripts/verify/verify-notifications-persistence.mjs
 node scripts/verify/verify-notifications-persistence.test.mjs
 node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
+node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
+node scripts/verify/verify-social-graph-notification-policy.mjs
+node scripts/verify/verify-notifications-candidate-worker.mjs
 cargo xtask module validate notifications
 ```
 
-The commands above were not run while publishing `NOTIFY-03B/07A`.
+The commands above were not run while publishing `NOTIFY-03C`.
 
 ## Related Documents
 
 - [Module README](../README.md)
 - [Module-local implementation gates](implementation-plan.md)
 - [NOTIFY-03B/07A implementation record](notify-03b-candidate-policy.md)
+- [Candidate worker machine contract](../contracts/notifications-candidate-worker.json)
 - Canonical cross-module status:
   `crates/rustok-forum/docs/implementation-plan.md`
