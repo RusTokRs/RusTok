@@ -1,251 +1,199 @@
 # `rustok-notifications` module-local implementation gates
 
-The canonical cross-module task order and status remain in
-`crates/rustok-forum/docs/implementation-plan.md`. This file does not duplicate
-that backlog; it records the owner-local gates that future notification slices
-must preserve. The notifications program remains `in_progress` until maintainer-run verification and canonical-plan promotion are recorded. `NOTIFY-00`,
-`NOTIFY-01`, `NOTIFY-03`, and `NOTIFY-07` are active partial tasks.
+The canonical cross-module roadmap remains
+`crates/rustok-forum/docs/implementation-plan.md`. This ledger records the
+owner-local boundaries that every Notifications slice must preserve. The program
+remains `in_progress` until maintainer-run verification and canonical promotion
+are recorded.
 
 ## Scope
 
 Preserve the neutral producer boundary, owner-only persistence, optional-module
-degraded behavior, mandatory recipient privacy policy, and module-owned UI
-packages while the notifications product is implemented incrementally.
+degraded behavior, mandatory recipient privacy, tenant capability enforcement,
+and module-owned UI packages while inbox and delivery products are implemented
+incrementally.
 
-## Current State
+## Current state
 
-The neutral API, bounded source/provider registries, deferred host factory
-materialization, optional owner composition, and explicit admin/storefront
-foundation states exist. Forum publishes live providers for
-`forum.topic.created` and `forum.mention.user_added`.
+Forum publishes live neutral providers for `forum.topic.created` and
+`forum.mention.user_added`. Notifications owns five ordered PostgreSQL/SQLite
+migrations covering persistence, durable source intake, candidate processing,
+outbox acceptance receipts, and permanent intake quarantine.
 
-The owner persistence migrations create notification, delivery-attempt, fan-out,
-preference, digest, encrypted push-subscription, durable source-inbox,
-candidate-processing, and outbox-intake receipt state for PostgreSQL and SQLite.
-Typed Rust/DB values, tenant-composite recipient integrity, bounded payloads,
-stable dedupe/idempotency, leases, retry timing, completion guards, and
-source-event conflicts are enforced.
+The runtime pipeline now has three independent, default-off stages:
 
-`NotificationFanoutService` durably accepts source events, materializes bounded
-provider descriptors, and writes cursor pages of idempotent pending candidates.
-`NotificationCandidateService` then requires preferences, an injected recipient
-privacy policy, and recipient-specific source authorization before one final
-in-app notification can be created. It creates no delivery attempt.
+1. outbox envelope intake into `notification_source_inbox`;
+2. source descriptor materialization and bounded audience fanout;
+3. recipient preference/privacy/source-policy candidate processing.
 
-The server composes tenant-scoped Profiles privacy with concrete Social Graph
-block/mute owner adapters inside `NotificationRecipientPolicyRuntime`. Relation
-ports are ready in the baseline distribution. Production outbox intake and
-candidate worker loops now exist, but both remain fail-closed and disabled by
-default behind separate environment flags. Source-inbox materialization/fan-out,
-grouping, channel delivery, retention/reconciliation, inbox APIs, tenant
-capability enforcement, and PostgreSQL runtime evidence remain open.
+The server starts these stages in intake → fanout → candidate order. Each stage
+uses the shared stop signal and its own explicit environment flag. Fanout checks
+the authoritative effective module policy for the exact tenant before every
+source or job claim. No fanout stage creates final notifications or delivery
+attempts; candidate finalization creates at most one in-app row and no channel
+work.
 
-## Milestones
-
-### Boundary gate
+## Invariants
 
 - producer modules depend only on `rustok-notifications-api`;
-- producer transactions never call the notifications owner synchronously;
-- semantic descriptors contain bounded template data and target identity, not
-  contact data or private source payloads;
-- audience resolution is cursor-based and capped;
-- candidate creation requires preference, recipient policy, and current source
+- producer transactions never call the Notifications owner synchronously;
+- Notifications never reads producer-private tables;
+- executable hosts decode platform envelopes and compose cross-owner policy;
+- audience resolution is cursor-based and capped at 256 recipients per page;
+- final notification creation requires preference, privacy, and current source
   authorization;
-- no allow-all recipient policy is supplied by the owner;
-- target opening and delayed delivery recheck authorization/privacy;
-- provider and module absence are explicit degraded states.
+- no allow-all recipient policy exists;
+- disabled or unresolved tenant capability fails closed before provider calls;
+- delivery work remains outside candidate finalization;
+- worker enablement is never inferred from provider readiness.
 
-### Delivered in `NOTIFY-00B`
+## Delivered milestones
 
-- optional owner/runtime/distribution composition exists but notifications remains
-  outside tenant defaults;
-- producer factories are materialized only after executable host services exist;
-- factory/provider identity and build failures fail startup explicitly;
-- Forum commands succeed without the notifications owner;
-- Forum provides bounded source contracts for topic creation and direct user
-  mentions;
-- module-owned admin/storefront packages expose only foundation/unavailable state.
+### `NOTIFY-00B`
 
-### Delivered in `NOTIFY-01A`
+- optional owner/runtime/distribution composition;
+- deferred provider factory materialization through `HostRuntimeContext`;
+- duplicate or mismatched provider identity fails startup;
+- Forum commands remain independent from Notifications availability;
+- admin/storefront packages expose explicit foundation/unavailable states.
 
-- module-owned PostgreSQL/SQLite migration
-  `m20260721_000010_create_notification_persistence`;
-- typed owner entities for notifications, delivery attempts, fan-out,
-  preferences, digests, and push subscriptions;
-- tenant-composite recipient/user integrity and actor/fan-out tenant guards;
-- notification and command idempotency/dedupe indexes;
-- bounded payload/cursor/error/secret fields and encrypted push material;
-- SQLite and opt-in PostgreSQL invariant profiles.
+### `NOTIFY-01A`
 
-### Delivered in `NOTIFY-01B/03A`
+- migration `m20260721_000010_create_notification_persistence`;
+- typed notification, delivery, fanout, preference, digest, and encrypted push
+  entities;
+- tenant-composite recipient integrity, dedupe, bounded payloads, leases, and
+  encrypted endpoint storage;
+- SQLite and opt-in PostgreSQL invariant evidence.
+
+### `NOTIFY-01B / NOTIFY-03A`
 
 - migration `m20260722_000011_create_notification_source_inbox`;
-- durable source event dedupe with changed identity conflict;
-- recoverable source/job leases, retry state, bounded cursor fan-out, and one
-  descriptor job per source event;
-- idempotent pending candidates capped at 256 recipients per provider page;
+- durable source identity and changed-replay conflict detection;
+- recoverable source/job leases and bounded cursor fanout;
+- one descriptor job per source event and idempotent pending candidates;
 - no final notification or delivery before policy;
-- Forum direct-user-mention provider bound to exact immutable relation identity
-  and current source visibility;
-- machine contract and verifier under
-  `contracts/notifications-source-fanout.json` and
+- contract `contracts/notifications-source-fanout.json` and verifier
   `scripts/verify/verify-notifications-source-fanout.mjs`.
 
-### Delivered in `NOTIFY-03B/07A`
+### `NOTIFY-03B / NOTIFY-07A`
 
-- migration `m20260722_000012_add_candidate_processing` adds candidate processing,
-  retryable, processed, skipped, and failed states plus recoverable leases and
-  retry timing for PostgreSQL and SQLite;
-- SQLite rebuild preserves candidate rows, indexes, and tenant-integrity triggers;
-- `NotificationCandidateService` claims one candidate and resolves preference
-  precedence as exact source/type, exact source/wildcard type, wildcard source/
-  exact type, then global wildcard;
-- no matching preference preserves the current in-app default, while delivery
-  mode `off` or disabled in-app delivery suppresses the candidate;
-- `NotificationRecipientPolicy` is mandatory and has typed allow/suppress/error
-  results for recipient, profile, block, mute, and tenant decisions;
-- the owner provides no permissive policy implementation and reads no Profiles-
-  owned private table;
-- the source provider reauthorizes the target for the exact recipient before
-  inbox creation;
-- preferences are re-read in the final transaction to close a concurrent disable
-  race;
-- notification insert/replay equality and candidate completion share one
-  transaction and an unexpired lease CAS;
-- final notification dedupe remains tenant/recipient/source/event/type;
-- no delivery attempt is created;
-- SQLite source scenarios cover allow, exact-preference suppression, block
-  suppression, unavailable target, retryable privacy failure, terminal replay,
-  one notification, and zero deliveries;
-- machine contract and verifier are
-  `contracts/notifications-candidate-policy.json` and
+- migration `m20260722_000012_add_candidate_processing`;
+- recoverable candidate leases, retry timing, and terminal states;
+- exact source/type preference precedence before wildcards;
+- mandatory injected recipient policy with typed suppression/error outcomes;
+- recipient-specific source authorization and final-transaction preference
+  recheck;
+- idempotent notification insert plus candidate completion in one lease-CAS
+  transaction;
+- zero delivery attempts;
+- contract `contracts/notifications-candidate-policy.json` and verifier
   `scripts/verify/verify-notifications-candidate-policy.mjs`.
 
-### Delivered in `NOTIFY-07B`
+### `NOTIFY-07B`
 
-- Profiles exposes `ProfilePrivacyReadPort` and `ProfilePrivacyRuntime` as an
-  owner-controlled tenant-scoped projection without exposing profile tables;
-- inactive/missing profiles are unavailable, private/followers-only profiles are
-  restricted for non-self actors, and owner read failures fail closed;
-- Notifications publishes mandatory block and mute read-port runtime contracts
-  without a permissive implementation;
-- `ServerNotificationRecipientPolicy` evaluates profile, block, then mute state
-  and maps owner decisions into typed candidate suppression;
-- actor-bearing candidates receive retryable policy errors when either concrete
-  relation provider is absent; missing providers never become implicit allow;
-- `NotificationRecipientPolicyRuntime` records whether both relation ports are
-  ready, and candidate-worker readiness remains false until they are;
-- server host composition registers the policy runtime before source-provider
-  materialization;
-- machine contract and verifier are
-  `contracts/notifications-recipient-policy-runtime.json` and
+- Profiles owner privacy read port and runtime;
+- mandatory Notifications block/mute runtime contracts;
+- server policy order profile → block → mute;
+- missing relation providers fail closed;
+- contract `contracts/notifications-recipient-policy-runtime.json` and verifier
   `scripts/verify/verify-notifications-recipient-policy-runtime.mjs`.
 
-### Delivered in `SOCIAL-01A / NOTIFY-07C`
+### `SOCIAL-01A / NOTIFY-07C`
 
-- `rustok-social-graph` owns PostgreSQL/SQLite block and mute persistence with
-  tenant-composite source/target user integrity;
-- one stable relation identity stores current active state and monotonic revision;
-- owner command ports require deadline, idempotency, source actor, and optional
-  expected revision semantics;
-- block privacy is strict when either direction is active, while mute remains
-  directional from recipient to actor;
-- server adapters implement Notifications block/mute ports through
-  `SocialGraphPrivacyReadPort` without reading owner tables;
-- the baseline distribution registers `SocialGraphModule` and relation policy
-  readiness is true;
-- candidate worker enablement remains explicitly false and is not inferred from
-  provider readiness;
-- machine contract and verifier are
-  `crates/rustok-social-graph/contracts/social-graph-notification-policy.json`
-  and `scripts/verify/verify-social-graph-notification-policy.mjs`.
+- Social Graph PostgreSQL/SQLite block and mute persistence;
+- tenant-composite relation integrity and monotonic revisions;
+- owner command/read ports;
+- server adapters into Notifications policy contracts;
+- relation-policy readiness true while candidate enablement remains separate;
+- contract `crates/rustok-social-graph/contracts/social-graph-notification-policy.json`.
 
-### Delivered in `NOTIFY-03C`
+### `NOTIFY-03C`
 
-- `NotificationCandidateWorker` owns bounded claimable selection and delegates
-  every item to the canonical `NotificationCandidateService` lease/CAS path;
-- one poll selects at most 32 candidates, with a hard constructor limit of 64;
-- ordering is stable by `created_at`, then candidate `id`;
-- pending, due retryable, and expired processing candidates are eligible;
-- selection does not acquire a lease, so concurrent workers contend only through
-  the existing per-item claim CAS;
-- the host worker is disabled by default and requires the explicit
-  `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` environment flag;
-- invalid or unreadable enable values fail closed;
-- startup additionally requires a background-worker host, materialized source
-  registry, ready block/mute ports, and `candidate_worker_ready()`;
-- the shared `StopHandle` is checked before selection and between candidates;
-  work already executing completes its canonical transaction, while no later
-  candidate is claimed after shutdown is observed;
-- SQLite evidence covers bounded selection, canonical candidate processing, one
-  final notification, and rejection above the hard batch limit;
-- machine contract and verifier are
-  `contracts/notifications-candidate-worker.json` and
+- bounded `NotificationCandidateWorker`, default batch 32 and hard maximum 64;
+- stable `created_at/id` selection of pending, due retryable, and expired
+  processing candidates;
+- canonical service owns every claim and completion CAS;
+- default-off host flag `RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`;
+- shared shutdown checks between candidates;
+- contract `contracts/notifications-candidate-worker.json` and verifier
   `scripts/verify/verify-notifications-candidate-worker.mjs`.
 
-### Delivered in `NOTIFY-03D`
+### `NOTIFY-03D`
 
-- migration `m20260723_000013_add_outbox_intake_receipts` adds a durable receipt
-  identity for each accepted outbox envelope and a tenant-composite source-inbox
-  reference;
-- `NotificationOutboxIntakeWorker` selects at most 32 committed supported
-  envelopes per poll, with a hard maximum of 64 and stable `created_at/id` order;
-- intake is independent from general relay delivery state and never mutates
-  `sys_events`; pending, dispatched, and failed relay rows remain visible until a
-  Notifications receipt exists;
-- root `forum.topic.created` maps to immutable source identity `topic_id/1`;
-- sealed `forum.mention.user_added` maps to envelope ID plus relation revision;
-- Forum provider accepts these semantic source revisions while preserving legacy
-  journal UUID/sequence replay;
-- Notifications reads only the public outbox envelope and no Forum-owned table or
-  producer service;
-- source-inbox insert/replay validation and receipt insert commit in one owner
-  transaction;
-- the host loop is disabled by default behind
-  `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`, fails closed for invalid values,
-  and checks the shared stop signal between envelopes;
-- SQLite evidence covers root and sealed contracts, bounded receipt anti-join,
-  distinct outbox/source identities, replay, and hard batch rejection;
-- machine contract and verifier are
-  `contracts/notifications-outbox-intake.json` and
+- migration `m20260723_000013_add_outbox_intake_receipts`;
+- migration `m20260723_000014_add_outbox_intake_rejections`;
+- owner intake selects committed supported `sys_events` envelopes without reading
+  or mutating relay status;
+- event decoding is injected by the executable host, so the owner has no direct
+  `rustok-events`, `rustok-outbox`, or producer dependency;
+- root topic identity is `topic_id/1`; sealed mention identity is envelope ID plus
+  relation revision;
+- source inbox and accepted receipt commit in one transaction;
+- permanent invalid envelopes enter durable owner-local quarantine, retryable
+  failures receive no terminal record, and both outcomes are anti-joined from
+  later selection;
+- accepted and rejected terminal outcomes are mutually exclusive; PostgreSQL uses
+  a per-event transaction advisory lock and both backends enforce cross-table
+  insert guards;
+- default-off host flag `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`;
+- contract `contracts/notifications-outbox-intake.json` and verifier
   `scripts/verify/verify-notifications-outbox-intake.mjs`.
 
-### Remaining `NOTIFY-01` scope
+### `NOTIFY-03E`
+
+- bounded `NotificationFanoutWorker`, default/hard batch 32/64 and audience page
+  256;
+- tenant-scoped source and job work projections preserve the owner boundary;
+- pending, due retryable, and expired leased records are selected in stable
+  `created_at/id` order without acquiring a lease;
+- every source and job delegates to `NotificationFanoutService`, which remains the
+  only claim/materialization/page-persistence authority;
+- default-off host flag `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`;
+- startup requires a background-worker host, materialized non-empty source
+  registry, and module registry;
+- `EffectiveModulePolicyService::is_enabled` is checked for `notifications` before
+  every provider materialization and audience resolution; disabled/error policy
+  fails closed;
+- shared shutdown is checked between source records and jobs;
+- SQLite evidence covers bounded multi-poll source/job processing, four pending
+  candidates, and zero notification/delivery rows;
+- contract `contracts/notifications-fanout-worker.json` and verifier
+  `scripts/verify/verify-notifications-fanout-worker.mjs`.
+
+## Remaining `NOTIFY-01`
 
 - promote module-local migrations into verified global server migration
   composition;
-- add retention, reconciliation, repair, and administrative command state;
+- retention, reconciliation, repair, quarantine replay/purge, and administrative
+  command state;
 - keep inbox, preference, digest, and delivery transports closed until matching
-  owner commands are implemented.
+  owner commands exist.
 
-### Remaining `NOTIFY-03` scope
+## Remaining `NOTIFY-03`
 
-- add a production source-inbox materialization and bounded fan-out page worker;
-- enforce tenant capability state before materialization and delivery;
-- add grouping policy and bounded moderator-audience expansion;
-- enqueue channel work only after policy acceptance and outside owner provider
-  calls;
-- add PostgreSQL lease/concurrency/retry evidence and permanent intake/fan-out
-  DLQ/replay controls;
-- add worker health, queue lag, and recovery metrics before enabling either flag
-  in a default deployment profile.
+- durable backoff or suppression policy for work belonging to disabled tenants;
+- grouping policy and bounded moderator-directory expansion;
+- channel work enqueue only after candidate policy acceptance;
+- PostgreSQL lease/contention/retry evidence for intake, fanout, and candidates;
+- worker health, queue lag, retry, and quarantine metrics before default
+  deployment enablement.
 
-### Remaining `NOTIFY-07` scope
+## Remaining `NOTIFY-07`
 
-- add tenant-specific notification restrictions beyond tenant identity guards;
-- add block/mute management transports and social relation change events;
-- recheck privacy and source authorization on inbox open and delayed delivery;
-- redact/archive notifications after source/profile state changes and reconcile
-  unread counts;
-- add executable blocked/private/deleted and cross-tenant evidence.
+- tenant restrictions beyond effective module capability;
+- block/mute management transports and relation change events;
+- privacy and source rechecks on inbox open and delayed delivery;
+- redaction/archive reconciliation after source/profile changes;
+- executable blocked/private/deleted and cross-tenant evidence.
 
-### UI gate
+## UI gate
 
-Admin and storefront packages remain module-owned. Until inbox APIs exist, they
-expose only bootstrap/unavailable states and must not invent unread counts or
-store shadow inbox state in the host.
+Admin and storefront remain module-owned. Until inbox APIs exist, they expose
+only foundation/unavailable states and must not invent unread counts or shadow
+inbox storage.
 
-## Verification
+## Maintainer verification set
 
 ```bash
 cargo fmt --all -- --check
@@ -257,36 +205,35 @@ cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
 node scripts/verify/verify-notifications-foundation.mjs
-node scripts/verify/verify-notifications-foundation.test.mjs
 node scripts/verify/verify-notifications-runtime.mjs
-node scripts/verify/verify-notifications-runtime.test.mjs
 node scripts/verify/verify-notifications-persistence.mjs
-node scripts/verify/verify-notifications-persistence.test.mjs
 node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
 node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
 node scripts/verify/verify-social-graph-notification-policy.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
 node scripts/verify/verify-notifications-outbox-intake.mjs
+node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-The commands above are the maintainer verification set. They were not executed
-while publishing the `NOTIFY-03D` source slice.
+These commands were not executed while publishing the `NOTIFY-03D/03E` source
+slices. `Cargo.lock` was not regenerated because the owner dependency set was
+restored to the already locked package graph.
 
-## Update Rules
+## Update rules
 
-- keep task status in the canonical forum/notifications program plan;
-- update this file only for owner-local gates or verified runtime shape;
+- keep canonical program status in the cross-module plan;
 - never move producer subscriptions, contact data, or channel SDKs into this
   owner;
 - never add synchronous notification calls to producer transactions;
 - never create final notification rows before preference/privacy/source policy;
 - never create channel delivery work in candidate finalization;
-- add persistence and UI behavior only with matching owner contracts, migrations,
+- add persistence or UI behavior only with matching contracts, migrations,
   degraded-mode notes, and verification commands.
