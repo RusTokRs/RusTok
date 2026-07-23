@@ -59,4 +59,19 @@ for (const check of checks) {
   }
 }
 
+if (moduleSlug === "pages") {
+  const pagesMetadataCheck = path.resolve(
+    __dirname,
+    "../../../rustok-pages/scripts/verify/verify-pages-metadata-properties.mjs",
+  );
+  console.log(
+    "[verify-page-builder-fba-baseline] running verify-pages-metadata-properties.mjs",
+  );
+  const run = spawnSync(process.execPath, [pagesMetadataCheck], { stdio: "inherit" });
+  if (run.status !== 0) {
+    console.error("[verify-page-builder-fba-baseline] FAIL");
+    process.exit(run.status ?? 1);
+  }
+}
+
 console.log("[verify-page-builder-fba-baseline] PASS");
