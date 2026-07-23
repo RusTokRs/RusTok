@@ -39,6 +39,8 @@ pub mod module_event_dispatcher;
 pub mod module_lifecycle;
 #[cfg(feature = "mod-notifications")]
 pub mod notification_candidate_worker;
+#[cfg(feature = "mod-notifications")]
+pub mod notification_outbox_intake_worker;
 #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
 pub mod notification_recipient_policy;
 pub mod oauth_admin_guard;
