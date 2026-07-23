@@ -28,10 +28,18 @@ impl GroupTargetedInvitationService {
 
         let invitation_model =
             find_invitation_for_update(&transaction, tenant_id, request.invitation_id).await?;
-        ensure_targeted_invitation_active(&invitation_model, actor_user_id)?;
         let group_model =
             find_group_for_update(&transaction, tenant_id, invitation_model.group_id).await?;
         require_active_group(&group_model)?;
+        crate::effective_membership_guard::require_user_not_denied_owned(
+            &transaction,
+            tenant_id,
+            invitation_model.group_id,
+            actor_user_id,
+            true,
+        )
+        .await?;
+        ensure_targeted_invitation_active(&invitation_model, actor_user_id)?;
 
         if redemption::Entity::find()
             .filter(redemption::Column::TenantId.eq(tenant_id))
@@ -44,14 +52,6 @@ impl GroupTargetedInvitationService {
             return Err(targeted_invitation_unavailable());
         }
 
-        crate::effective_membership_guard::require_user_not_denied_owned(
-            &transaction,
-            tenant_id,
-            invitation_model.group_id,
-            actor_user_id,
-            true,
-        )
-        .await?;
         let existing_membership = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(invitation_model.group_id))
