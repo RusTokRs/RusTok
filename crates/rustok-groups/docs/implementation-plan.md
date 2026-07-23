@@ -130,16 +130,22 @@ request and never mutates or substitutes the host locale.
 - provider unavailability fails closed for private content;
 - no transport fallback may bypass an owner denial or timeout.
 
-### Commands and concurrency
+### Commands, replay, and concurrency
 
-Writes require deadline plus idempotency key. Owner services repeat authorization and
-invariant checks inside the transaction. State, revision/version, receipt, audit, and
-semantic event commit together where declared.
+Writes require deadline plus idempotency key. Final owner services must repeat effective
+authorization and invariant checks inside the transaction. State, revision/version, receipt,
+audit, and semantic event commit together where declared.
 
 Application policy save and candidate submit use CAS. Candidate cancellation, reopen,
 single review, and bounded bulk review retain their declared replay, authorization, and
-lock-order contracts. Legacy unconditional Rust application methods remain compatibility-
-only and are not exposed by final GraphQL or module-owned FFA.
+lock-order contracts. Legacy unconditional Rust application methods remain compatibility-only
+and are not exposed by final GraphQL or module-owned FFA.
+
+Effective facades must preserve receipt-first behavior. When an idempotency key already has an
+owner receipt, the facade delegates before current effective-state evaluation so the owner
+transaction returns either the matching replay or changed-request conflict. New commands must
+move the effective check into the same transaction rather than treating a facade precheck as the
+final concurrency boundary.
 
 ## Current implementation state
 
@@ -169,7 +175,16 @@ Source exists for:
 - the core public access facade is source-complete: crate-root `GroupsService` resolves effective
   group membership for access decisions, closed/secret read redaction, membership-list access,
   enabled-feature visibility, join/rejoin, and feature-settings authorization; both the
-  effective implementation and transitional status-only delegate are crate-private.
+  effective implementation and transitional status-only delegate are crate-private;
+- invitation and membership-application effective facades are source-complete at the public
+  boundary: compatibility module paths remain stable while the status-only service delegates are
+  crate-private;
+- invitation list/create/revoke, token acceptance, and targeted acceptance perform effective
+  manager or candidate checks through the owner-clock resolver;
+- application candidate policy/current-state reads, legacy/CAS submit, cancellation, manager
+  list, policy management, single review, reopen, and bounded bulk review perform effective checks;
+- policy history inherits the effective manager list boundary;
+- receipt-first replay and order-independent bulk child idempotency remain preserved.
 
 Evidence still open and must not be inferred:
 
@@ -180,8 +195,12 @@ Evidence still open and must not be inferred:
 - policy history, CAS, lifecycle, bulk-review, replay, lock-order, contention, security,
   retry, recovery, and accessibility execution;
 - profile-backed candidate summaries and application lifecycle events/Notifications;
-- status-only access-path conversion remains open for invitation, application, localization,
-  governance, provider-specific ACL, and member-count behavior;
+- same-transaction effective recheck remains open in the transitional invitation/application
+  owner transactions; current facades precheck before delegating to stored-status transactions;
+- concurrent enforcement changes between facade precheck and owner mutation have no runtime
+  evidence and prevent promotion to `done`;
+- status-only conversion remains open for localization, governance, provider-specific ACL,
+  leave, and member-count behavior;
 - direct suspend/revoke commands, shared owner mutation path, moderation adapter, and durable
   moderation application orchestration remain open;
 - fail-closed remote-provider and disabled-module runtime evidence.
@@ -194,10 +213,10 @@ Evidence still open and must not be inferred:
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
 | GROUPS-02 | in_progress | identity, localization, visibility, join policy, features, receipts/audit/events | lifecycle/runtime/concurrency evidence |
 | GROUPS-03 | in_progress | group memberships, join/leave, local roles, ownership transfer | remaining enforcement integration and concurrency |
-| GROUPS-04 | in_progress | summary, membership, enforcement read, effective core access, localization, invitation, application, governance ports | provider/consumer/fallback runtime matrix |
+| GROUPS-04 | in_progress | summary, membership, enforcement read, effective core/invitation/application access, localization and governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, discovery, invitation acceptance/delivery | runtime parity and Notifications evidence |
-| GROUPS-06 | in_progress | localized application policy, CAS, lifecycle, focused/bulk review, admin/storefront UX | legacy API migration, profiles/events, parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | membership revision, read-only enforcement resolver, and core public access facade are source-complete; direct commands and adapter remain open | remaining owner-path integration, command/runtime/moderation application evidence |
+| GROUPS-06 | in_progress | localized application policy, CAS, lifecycle, effective focused/bulk review, admin/storefront UX | legacy API migration, transaction convergence, profiles/events, parity/concurrency/accessibility |
+| GROUPS-07 | in_progress | membership revision, enforcement resolver, core access, invitation and application effective facades are source-complete | same-transaction owner rechecks, remaining paths, command/runtime/moderation evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner integration/privacy evidence |
@@ -227,18 +246,25 @@ review. Core invariants remain:
 - snapshots preserve exact policy identity, questions/rules, answers, acknowledgements;
 - bulk review accepts 1..50 unique IDs, requires confirmation, uses one owner transaction,
   audit, and receipt per item, preserves request order, and returns partial results;
-- native and GraphQL bulk paths use the same deadline and no fallback.
+- native and GraphQL bulk paths use the same deadline and no fallback;
+- public application services are effective facades, not direct status-only delegates;
+- a suspended or legacy-banned candidate cannot read the candidate form/state, submit/resubmit,
+  cancel, be reopened, or be reviewed through the public facade;
+- a suspended local manager cannot list applications/history, manage policy, reopen, review, or
+  bulk review through the public facade;
+- identical receipts replay before current effective-state checks.
 
 Remaining GROUPS-06 work includes removal/versioned deprecation of legacy methods,
-Profiles-backed candidate summaries, lifecycle semantic events, richer management UX, and
-executed parity/replay/race/security/accessibility evidence.
+same-transaction effective authorization convergence, Profiles-backed candidate summaries,
+lifecycle semantic events, richer management UX, and executed parity/replay/race/security/
+accessibility evidence.
 
 ## GROUPS-07 group enforcement and moderation compatibility contract
 
 ### Source-complete foundation
 
-The neutral prerequisite, membership revision, and read-only enforcement
-projection/resolver are source-complete:
+The neutral prerequisite, membership revision, and read-only enforcement projection/resolver
+are source-complete:
 
 - `rustok-moderation-api` is persistence-neutral and owns typed effects/adapter contracts;
 - `group_memberships.revision` starts at one and is protected from regression;
@@ -288,8 +314,7 @@ The core public access facade is source-complete:
 
 - `rustok_groups::GroupsService` is the only public core service type and is used by
   module-owned GraphQL and native consumers;
-- the effective implementation module and transitional status-only delegate are crate-private,
-  preventing explicit external or module-owned transport bypass;
+- the effective implementation module and transitional status-only delegate are crate-private;
 - `GroupAccessReadPort` evaluates `GroupAction` through the canonical owner-clock resolver;
 - closed-group body/features are redacted and secret-group summary reads return not-found when
   the viewer is effectively suspended;
@@ -297,25 +322,46 @@ The core public access facade is source-complete:
 - join/rejoin denies active suspension and legacy banned state, while expired/revoked
   enforcement falls back to stored lifecycle;
 - feature settings require effective active owner/admin authority or platform manage;
-- public group reads remain public during local suspension, but post/comment/invite/moderate/
-  manage/transfer actions lose group-membership authority;
-- `GroupAccessDecision.membership_status` remains the stored lifecycle field for wire
-  compatibility; focused effective state and provenance remain owned by
-  `GroupMembershipEnforcementReadPort`.
+- public group reads remain public during local suspension, but membership-authority actions are
+  denied;
+- `GroupAccessDecision.membership_status` remains stored lifecycle for wire compatibility.
+
+### Invitation and application public-boundary cutover
+
+The invitation and membership-application effective facades are source-complete:
+
+- compatibility paths `rustok_groups::invitations`, `targeted_invitations`, and `applications`
+  remain available;
+- their public service names resolve only to effective facades;
+- underlying status-only service delegates are crate-private;
+- invitation management requires effective active owner/admin/moderator or platform manage;
+- token and targeted acceptance deny active suspension and legacy banned state;
+- candidate application reads/submits/cancellation deny active suspension and legacy banned state;
+- policy management requires effective active owner/admin or platform manage;
+- application listing/history/reopen/review requires effective active owner/admin/moderator or
+  platform manage;
+- review/reopen also recheck the candidate's effective state;
+- bounded bulk review preserves confirmation, uniqueness, 50-item limit, request order, partial
+  results, and order-independent child idempotency by calling effective single review per item;
+- receipt-first replay delegates before effective prechecks.
+
+This is not yet the final transaction boundary. The effective check occurs in the facade before
+the existing owner transaction, while the delegate still rechecks stored lifecycle state.
+Same-transaction effective recheck remains open and must be solved before concurrency or complete
+enforcement integration is claimed.
 
 ### Remaining access-path conversion
 
 The status-only access-path conversion remains open for:
 
-- invitation management, token acceptance, and targeted acceptance;
-- membership-application policy reads, submit/resubmit, reopen, review, and bulk review;
 - localization management authorization;
-- governance role-change and ownership-transfer authorization inside their owner transactions;
+- governance role-change and ownership-transfer authorization inside owner transactions;
 - provider-specific ACL adapters and remote-provider profiles;
-- leave semantics and member-count suspend/restore transitions.
+- leave semantics and member-count suspend/restore transitions;
+- same-transaction effective authorization in invitation/application owner writes.
 
 Until those conversions and a write boundary land, no product command writes enforcement rows
-and no suspension is claimed end-to-end. The current table, resolver, and core facade are
+and no suspension is claimed end-to-end. The current table, resolver, and effective facades are
 migration/read/access contracts, not a complete moderation workflow.
 
 ### Planned owner command boundary
@@ -331,7 +377,7 @@ The next command slice will add:
   atomicity;
 - explicit restoration semantics on revoke/expiry rather than unconditional activation.
 
-No bulk command is introduced before single-command runtime evidence.
+No bulk enforcement command is introduced before single-command runtime evidence.
 
 ### Planned moderation adapter
 
@@ -353,6 +399,7 @@ Initial mapping remains:
 - permanent/expiring/revoked enforcement across every owner access path;
 - hierarchy, owner protection, tenant isolation, replay, changed-hash, stale revision,
   expiry, revoke, member-count, and concurrency evidence;
+- same-transaction effective authorization on every write path;
 - missing/timeout/retry/lost-response adapter behavior;
 - moderation-disabled mode preserves existing Groups enforcement without inventing cases;
 - native/GraphQL parity for state/direct actions;
@@ -379,12 +426,16 @@ Groups never embeds another module's business UI directly.
 - Active suspension: remove local membership authority without hiding otherwise public group
   content.
 - Legacy banned membership: deny re-entry until explicitly migrated/reviewed.
+- Existing receipt: delegate before current effective precheck so replay/conflict semantics remain
+  owner-controlled.
+- Facade effective check passes but enforcement changes before legacy transaction: behavior has no
+  completed concurrency evidence; do not claim same-transaction authorization.
 - Candidate exact-locale policy unavailable: form unavailable; never choose another locale.
 - Policy CAS conflict: write no owner state and require explicit reload.
 - Profiles unavailable: show UUID/placeholder; never copy canonical profile fields.
 - Notifications unavailable: Groups command succeeds and owner state remains truth.
-- Moderation disabled: existing Groups enforcement remains active; moderation-driven
-  application is unavailable; configured direct Groups actions may remain available later.
+- Moderation disabled: existing Groups enforcement remains active; moderation-driven application
+  is unavailable; configured direct Groups actions may remain available later.
 - Moderation unavailable after a decision: no Groups mutation is inferred.
 - Groups adapter unavailable: moderation must not mark a decision applied.
 - Unknown effect, legacy `effect: None`, or stale revision: reject without Groups mutation.
@@ -415,12 +466,14 @@ node scripts/verify/verify-groups-application-policy-locales.mjs
 node scripts/verify/verify-groups-application-bulk-review.mjs
 node scripts/verify/verify-groups-membership-enforcement-read-path.mjs
 node scripts/verify/verify-groups-effective-membership-access.mjs
+node scripts/verify/verify-groups-effective-membership-invitations-applications.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
 
 Additional GROUPS-07 evidence remains open for clean/upgraded migration and rollback,
-revision trigger behavior, owner-clock expiry/revoke evaluation, core facade compile/runtime and
-native/GraphQL parity, remaining owner-path integration, direct/moderation replay and conflicts,
-concurrency, enabled/disabled runtime matrices, separate FFA ownership, and accessibility.
+revision trigger behavior, owner-clock expiry/revoke evaluation, effective facade compile/runtime
+and native/GraphQL parity, same-transaction authorization, remaining owner-path integration,
+direct/moderation replay and conflicts, concurrency, enabled/disabled runtime matrices, separate
+FFA ownership, and accessibility.
