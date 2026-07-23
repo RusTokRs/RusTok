@@ -82,7 +82,13 @@ impl PaymentCollectionPort for crate::PaymentService {
             if let Some(collection) = self
                 .find_reusable_collection_by_cart(tenant_id, cart_id)
                 .await
-                .map_err(payment_error_to_port_error)?
+                .map_err(|error| {
+                    payment_error_to_port_error(
+                        &context,
+                        "create_or_reuse_collection.read_existing",
+                        error,
+                    )
+                })?
             {
                 return Ok(collection);
             }
@@ -110,12 +116,22 @@ impl PaymentCollectionPort for crate::PaymentService {
                     if let Some(collection) = self
                         .find_reusable_collection_by_cart(tenant_id, cart_id)
                         .await
-                        .map_err(payment_error_to_port_error)?
+                        .map_err(|error| {
+                            payment_error_to_port_error(
+                                &context,
+                                "create_or_reuse_collection.adopt_race",
+                                error,
+                            )
+                        })?
                     {
                         return Ok(collection);
                     }
                 }
-                Err(payment_error_to_port_error(create_error))
+                Err(payment_error_to_port_error(
+                    &context,
+                    "create_or_reuse_collection.create",
+                    create_error,
+                ))
             }
         }
     }
@@ -130,7 +146,9 @@ impl PaymentCollectionPort for crate::PaymentService {
         let response = self
             .get_collection(tenant_id, request.collection_id)
             .await
-            .map_err(payment_error_to_port_error)?;
+            .map_err(|error| {
+                payment_error_to_port_error(&context, "read_collection_status", error)
+            })?;
         Ok(PaymentCollectionStatusSnapshot::from_response(&response))
     }
 }
@@ -144,10 +162,22 @@ fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     })
 }
 
-fn payment_error_to_port_error(error: crate::PaymentError) -> PortError {
+fn payment_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: crate::PaymentError,
+) -> PortError {
     match error {
         crate::PaymentError::Validation(message) => {
-            PortError::validation("payment.validation", message)
+            tracing::warn!(
+                cause = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.validation",
+                "payment owner rejected a collection request"
+            );
+            PortError::validation("payment.validation", "payment request is invalid")
         }
         crate::PaymentError::PaymentCollectionNotFound(id) => PortError::not_found(
             "payment.collection_not_found",
@@ -160,53 +190,126 @@ fn payment_error_to_port_error(error: crate::PaymentError) -> PortError {
         crate::PaymentError::RefundNotFound(id) => {
             PortError::not_found("payment.refund_not_found", format!("refund {id} not found"))
         }
-        crate::PaymentError::InvalidTransition { from, to } => PortError::conflict(
-            "payment.invalid_transition",
-            format!("invalid payment transition from `{from}` to `{to}`"),
-        ),
+        crate::PaymentError::InvalidTransition { from, to } => {
+            tracing::warn!(
+                from = %from,
+                to = %to,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.invalid_transition",
+                "payment owner rejected a lifecycle transition"
+            );
+            PortError::conflict(
+                "payment.invalid_transition",
+                "payment lifecycle conflicts with the requested operation",
+            )
+        }
         crate::PaymentError::ProviderUnavailable {
             provider_id,
             operation,
-        } => PortError::unavailable(
-            "payment.provider_unavailable",
-            format!("payment provider `{provider_id}` is unavailable for `{operation}`"),
-        ),
+        } => {
+            tracing::error!(
+                provider_id = %provider_id,
+                provider_operation = %operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.provider_unavailable",
+                "payment provider is unavailable"
+            );
+            PortError::unavailable(
+                "payment.provider_unavailable",
+                "payment provider is temporarily unavailable",
+            )
+        }
         crate::PaymentError::ProviderRejected {
             provider_id,
             operation,
-        } => PortError::conflict(
-            "payment.provider_rejected",
-            format!("payment provider `{provider_id}` rejected `{operation}`"),
-        ),
+        } => {
+            tracing::warn!(
+                provider_id = %provider_id,
+                provider_operation = %operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.provider_rejected",
+                "payment provider rejected an owner operation"
+            );
+            PortError::conflict(
+                "payment.provider_rejected",
+                "payment provider rejected the requested operation",
+            )
+        }
         crate::PaymentError::ProviderInvalidResponse {
             provider_id,
             operation,
-        } => PortError::new(
-            PortErrorKind::InvariantViolation,
-            "payment.provider_invalid_response",
-            format!(
-                "payment provider `{provider_id}` returned an invalid response for `{operation}`"
-            ),
-            false,
-        ),
+        } => {
+            tracing::error!(
+                provider_id = %provider_id,
+                provider_operation = %operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.provider_invalid_response",
+                "payment provider returned invalid normalized facts"
+            );
+            PortError::new(
+                PortErrorKind::InvariantViolation,
+                "payment.provider_invalid_response",
+                "payment provider response could not be applied safely",
+                false,
+            )
+        }
         crate::PaymentError::ProviderOutcomeUnknown {
             provider_id,
             operation,
-        } => PortError::new(
-            PortErrorKind::Conflict,
-            "payment.provider_outcome_unknown",
-            format!("payment provider `{provider_id}` outcome is unknown for `{operation}`"),
-            false,
-        ),
-        crate::PaymentError::ProviderConfiguration { provider_id } => PortError::new(
-            PortErrorKind::InvariantViolation,
-            "payment.provider_not_configured",
-            format!("payment provider `{provider_id}` is not configured"),
-            false,
-        ),
-        crate::PaymentError::Database(_) => PortError::unavailable(
-            "payment.database_unavailable",
-            "payment storage is unavailable",
-        ),
+        } => {
+            tracing::error!(
+                provider_id = %provider_id,
+                provider_operation = %operation,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.provider_outcome_unknown",
+                "payment provider outcome requires reconciliation"
+            );
+            PortError::new(
+                PortErrorKind::Conflict,
+                "payment.provider_outcome_unknown",
+                "payment provider outcome requires reconciliation",
+                false,
+            )
+        }
+        crate::PaymentError::ProviderConfiguration { provider_id } => {
+            tracing::error!(
+                provider_id = %provider_id,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.provider_not_configured",
+                "payment provider configuration is unavailable"
+            );
+            PortError::new(
+                PortErrorKind::InvariantViolation,
+                "payment.provider_not_configured",
+                "payment provider is not configured for the requested operation",
+                false,
+            )
+        }
+        crate::PaymentError::Database(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "payment.database_unavailable",
+                "payment owner storage operation failed"
+            );
+            PortError::unavailable(
+                "payment.database_unavailable",
+                "payment storage is temporarily unavailable",
+            )
+        }
     }
 }
