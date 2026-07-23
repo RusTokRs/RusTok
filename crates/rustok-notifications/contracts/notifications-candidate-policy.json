@@ -1,7 +1,7 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "slice": "NOTIFY-03B/07A",
-  "promoted_by_slice": "SOCIAL-01A/NOTIFY-07C",
+  "promoted_by_slices": ["SOCIAL-01A/NOTIFY-07C", "NOTIFY-03C"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
   "migration": "crates/rustok-notifications/src/migrations/m20260722_000012_add_candidate_processing.rs",
@@ -21,7 +21,8 @@
     "lease_seconds": 60,
     "expired_lease_cannot_finish": true,
     "attempt_count_persisted": true,
-    "retry_schedule_persisted": true
+    "retry_schedule_persisted": true,
+    "worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json"
   },
   "preference_policy": {
     "precedence": [
@@ -50,7 +51,8 @@
     "runtime_contract": "crates/rustok-notifications/contracts/notifications-recipient-policy-runtime.json",
     "concrete_owner_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
     "concrete_block_mute_providers_deferred": false,
-    "candidate_worker_enablement_deferred": true
+    "candidate_worker_runtime_delivered": true,
+    "candidate_worker_default_enabled": false
   },
   "source_authorization": {
     "authorize_target_open_before_creation": true,
@@ -76,16 +78,18 @@
   },
   "tests": [
     "crates/rustok-notifications/tests/candidate_sqlite.rs",
+    "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
     "crates/rustok-social-graph/tests/privacy_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-candidate-policy.mjs",
     "concrete_owner_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
     "production outbox consumer runner",
-    "candidate worker startup after policy readiness",
+    "default deployment enablement after worker health and lag metrics",
     "channel delivery enqueue",
     "grouping policy",
     "moderator audience expansion",
