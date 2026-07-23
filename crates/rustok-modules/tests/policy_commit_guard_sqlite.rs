@@ -2,7 +2,8 @@ use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleRegistry, RusToKModule};
 use rustok_modules::SeaOrmModulePolicyRevisionConsumer;
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait,
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
+    TransactionTrait,
 };
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
@@ -107,7 +108,16 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
 }
 
 async fn setup() -> DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
+    let url = format!(
+        "sqlite:file:module_policy_commit_guard_{}?mode=memory&cache=shared",
+        Uuid::new_v4()
+    );
+    let mut options = ConnectOptions::new(url);
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    let db = Database::connect(options)
         .await
         .expect("policy guard sqlite database");
     db.execute_unprepared(
