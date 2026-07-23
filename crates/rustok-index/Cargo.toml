@@ -2,7 +2,7 @@
 name = "rustok-index"
 version.workspace = true
 edition.workspace = true
-description = "CQRS Read Model - Denormalized indexes for RusToK"
+description = "Cross-module relational index and query engine for RusToK"
 license.workspace = true
 
 [dependencies]
