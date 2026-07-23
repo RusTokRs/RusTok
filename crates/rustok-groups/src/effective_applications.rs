@@ -26,7 +26,8 @@ use crate::applications_legacy_module::{
 };
 use crate::domain::GroupVisibility;
 use crate::effective_membership_guard::{
-    GroupManagerCapability, require_candidate_not_denied, require_effective_manager, tenant_id,
+    GroupManagerCapability, actor_user_id, require_candidate_not_denied,
+    require_effective_manager, tenant_id,
 };
 use crate::entities::group;
 
@@ -72,11 +73,19 @@ impl GroupApplicationService {
         }
     }
 
+    fn validate_write_context(context: &PortContext) -> Result<(), PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        tenant_id(context)?;
+        actor_user_id(context)?;
+        Ok(())
+    }
+
     async fn review_effective(
         &self,
         context: PortContext,
         request: ReviewGroupMembershipApplicationRequest,
     ) -> Result<ReviewGroupMembershipApplicationResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .review_application_effective_owned(&context, request)
             .await
@@ -127,6 +136,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: UpsertGroupApplicationPolicyRequest,
     ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .upsert_policy_effective_owned(&context, request)
             .await
@@ -138,6 +148,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: SubmitGroupMembershipApplicationRequest,
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .submit_application_effective_owned(&context, request)
             .await
@@ -171,6 +182,7 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
         context: PortContext,
         request: UpsertGroupApplicationPolicyIfCurrentRequest,
     ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .upsert_policy_if_current_effective_owned(&context, request)
             .await
@@ -182,6 +194,7 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
         context: PortContext,
         request: SubmitGroupMembershipApplicationIfCurrentRequest,
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .submit_application_if_current_effective_owned(&context, request)
             .await
@@ -216,6 +229,7 @@ impl GroupApplicationLifecycleCommandPort for GroupApplicationService {
         context: PortContext,
         request: CancelGroupMembershipApplicationRequest,
     ) -> Result<GroupApplicationLifecycleResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .cancel_application_effective_owned(&context, request)
             .await
@@ -227,6 +241,7 @@ impl GroupApplicationLifecycleCommandPort for GroupApplicationService {
         context: PortContext,
         request: ReopenGroupMembershipApplicationRequest,
     ) -> Result<GroupApplicationLifecycleResult, PortError> {
+        Self::validate_write_context(&context)?;
         self.legacy
             .reopen_application_effective_owned(&context, request)
             .await
@@ -286,7 +301,7 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
         context: PortContext,
         request: BulkReviewGroupMembershipApplicationsRequest,
     ) -> Result<BulkReviewGroupMembershipApplicationsResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
+        Self::validate_write_context(&context)?;
         if !request.confirmed {
             return Err(PortError::validation(
                 "groups.bulk_review_confirmation_required",
