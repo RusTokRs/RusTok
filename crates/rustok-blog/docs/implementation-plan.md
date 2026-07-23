@@ -47,9 +47,12 @@ infrastructure failures.
 Public comments use the Comments-owned approved-only projection. Pending, spam,
 trash, and deleted comments cannot cross the public boundary. Storefront native
 and GraphQL paths share pagination and payloads. Admin moderation is separately
-permission-gated and paginated. Comment counter projection uses a durable
-ledger, optimistic version locking, retryable missing-post behavior, and
-transactional outbox publication.
+permission-gated and paginated. The Comments owner now serializes per-thread
+position allocation, derives exact active comment counts under the same lock, and
+enforces unique `(thread_id, position)` storage after repairing historical rows.
+The separate Blog post reply-count projection continues to use a durable ledger,
+optimistic version locking, retryable missing-post behavior, and transactional
+outbox publication.
 
 ## FFA/FBA status
 
@@ -59,6 +62,8 @@ transactional outbox publication.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
   user-owned.
+- Comments thread write invariants: `executable_no_run`; owner hooks, repair
+  migration, unique index, test, evidence, and FBA guardrail are implemented.
 - Category search reindex: `source_verified_no_compile`.
 - Canonical Search URL: `source_verified_no_compile`; one owner policy and no
   transport fallback.
@@ -78,6 +83,7 @@ transactional outbox publication.
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`
 - `crates/rustok-blog/contracts/evidence/blog-comments-consumer-runtime-order-smoke.json`
+- `crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json`
 - `crates/rustok-blog/contracts/evidence/blog-graphql-rate-limit-runtime-harness.json`
 - `crates/rustok-blog/contracts/evidence/blog-category-search-reindex-contract.json`
 - `crates/rustok-search/contracts/evidence/search-blog-projection-postgres-harness.json`
@@ -87,6 +93,7 @@ transactional outbox publication.
 - `scripts/verify/verify-blog-fba.mjs`
 - `scripts/verify/verify-blog-admin-boundary.mjs`
 - `scripts/verify/verify-blog-storefront-boundary.mjs`
+- `scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `scripts/verify/verify-search-blog-projection.mjs`
 - `scripts/verify/verify-search-canonical-url-contract.mjs`
 
@@ -105,17 +112,19 @@ transactional outbox publication.
    locking, retryable ordering, and transactional outbox publication.
 6. Added Comments-owned approved public reads, fail-closed provider defaults,
    transport parity, moderation parity, and bounded storefront/admin pagination.
-7. Added Search-owned canonical result URL policy and migrated GraphQL,
+7. Added Comments-owned serialized position allocation, exact active-row thread
+   counts, historical repair, and a unique thread-position database invariant.
+8. Added Search-owned canonical result URL policy and migrated GraphQL,
    storefront native, Search admin, and admin global search to that policy.
-8. Removed storefront navigation post-processing and every transport-local Blog
+9. Removed storefront navigation post-processing and every transport-local Blog
    URL builder.
-9. Added Blog category HTTP CRUD, list DTOs, OpenAPI wiring, module routes,
-   transactional owner writes, Search reindex publication, tenant-scoped
-   translations, and machine-readable evidence.
-10. Added dedicated `blog_categories:*` authority across the platform permission
+10. Added Blog category HTTP CRUD, list DTOs, OpenAPI wiring, module routes,
+    transactional owner writes, Search reindex publication, tenant-scoped
+    translations, and machine-readable evidence.
+11. Added dedicated `blog_categories:*` authority across the platform permission
     parser, constants, OAuth groups, built-in roles, public authority, Blog owner,
     HTTP adapter, module registration, tests, evidence, and guardrails.
-11. Removed alternate category permission paths and made
+12. Removed alternate category permission paths and made
     `TransactionalEventBus` a required `CategoryService` constructor argument.
 
 ## Next results
@@ -133,9 +142,10 @@ transactional outbox publication.
 4. **Execute mounted rate-limit evidence.** Run policy, memory adapter,
    controller handoff, focused verifier, then Redis-backed host requests with a
    real HTTP `Retry-After` matching GraphQL `retryAfter`.
-5. **Close comments runtime evidence.** Cover approved-only reads, moderation,
-   pagination, independent create commands, duplicate delivery, concurrent
-   counters, missing-post retry, rollback, and outbox publication.
+5. **Close comments runtime evidence.** Run the Comments invariant test and real
+   concurrent PostgreSQL create/delete transactions, then cover approved-only
+   reads, moderation, pagination, independent create commands, duplicate event
+   delivery, missing-post retry, rollback, and outbox publication.
 6. **Join the atomic richtext cutover.** Replace the string body plus
    `content_json` transport with `RichTextDocument`, assign the `article`
    profile in the owner service, migrate `blog_post_translations` and relevant
@@ -161,6 +171,8 @@ transactional outbox publication.
 - `cargo test -p rustok-blog graphql::rate_limit`
 - `cargo test -p rustok-server graphql_http_response_preserves_extension_headers`
 - `node scripts/verify/verify-blog-graphql-rate-limit.mjs`
+- `cargo test -p rustok-comments --test thread_write_invariants`
+- `node scripts/verify/verify-comments-thread-write-invariants.mjs`
 - `cargo test -p rustok-search engine::tests::canonical_url`
 - `cargo test -p rustok-search --test blog_ingestion_contract_test`
 - `RUSTOK_SEARCH_TEST_DATABASE_URL=postgresql://... cargo test -p rustok-search --test blog_projection_postgres_test`
