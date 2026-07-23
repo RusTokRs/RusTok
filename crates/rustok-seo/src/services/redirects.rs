@@ -49,6 +49,7 @@ impl SeoService {
         )?;
         let status_code = normalize_redirect_status(input.status_code)?;
         let now = Utc::now().fixed_offset();
+        let transition_id = Uuid::new_v4();
         let txn = self.db.begin().await?;
 
         let model = if let Some(id) = input.id {
@@ -86,7 +87,7 @@ impl SeoService {
         };
 
         let record = map_redirect_record(model);
-        self.publish_redirect_transition_in_tx(&txn, tenant.id, &record)
+        self.publish_redirect_transition_in_tx(&txn, tenant.id, transition_id, &record)
             .await?;
         txn.commit().await?;
 
@@ -98,9 +99,11 @@ impl SeoService {
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
+        transition_id: Uuid,
         record: &SeoRedirectRecord,
     ) -> SeoResult<()> {
-        let (event_type, idempotency_key, event) = redirect_domain_event(tenant_id, record);
+        let (event_type, idempotency_key, event) =
+            redirect_domain_event(tenant_id, transition_id, record);
         let existing = seo_event_delivery::Entity::find()
             .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
             .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key.as_str()))
@@ -308,6 +311,7 @@ async fn upsert_index_cursor_in_tx(
 
 fn redirect_domain_event(
     tenant_id: Uuid,
+    transition_id: Uuid,
     record: &SeoRedirectRecord,
 ) -> (&'static str, String, DomainEvent) {
     if record.is_active {
@@ -316,6 +320,7 @@ fn redirect_domain_event(
             event_type,
             tenant_id,
             &[
+                transition_id.to_string(),
                 record.id.to_string(),
                 record.source_pattern.clone(),
                 record.target_url.clone(),
@@ -337,7 +342,11 @@ fn redirect_domain_event(
         let idempotency_key = build_seo_event_key(
             event_type,
             tenant_id,
-            &[record.id.to_string(), record.source_pattern.clone()],
+            &[
+                transition_id.to_string(),
+                record.id.to_string(),
+                record.source_pattern.clone(),
+            ],
         );
         let event = DomainEvent::SeoRedirectDisabled {
             redirect_id: record.id,
@@ -366,7 +375,10 @@ fn transactional_event_error(context: &str, error: rustok_core::Error) -> SeoErr
 pub(super) fn normalize_hosts(hosts: &[String]) -> Vec<String> {
     let mut normalized = Vec::new();
     for value in hosts {
-        let host = value.trim().to_ascii_lowercase();
+        let host = value
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
         if host.is_empty() || normalized.iter().any(|item| item == &host) {
             continue;
         }
@@ -390,9 +402,19 @@ pub(super) fn validate_target_url(
 
     let parsed = Url::parse(trimmed)
         .map_err(|_| SeoError::validation(format!("{field} must be a valid URL")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(SeoError::validation(format!(
+            "{field} scheme must be HTTP or HTTPS"
+        )));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(SeoError::validation(format!(
+            "{field} URL credentials are not allowed"
+        )));
+    }
     let host = parsed
         .host_str()
-        .map(|value| value.to_ascii_lowercase())
+        .map(|value| value.trim_end_matches('.').to_ascii_lowercase())
         .ok_or_else(|| SeoError::validation(format!("{field} must contain a host")))?;
     if allowed_hosts.iter().any(|item| item == &host) {
         Ok(())
@@ -455,17 +477,20 @@ pub(super) fn map_redirect_record(model: seo_redirect::Model) -> SeoRedirectReco
 
 #[cfg(test)]
 mod tests {
-    use super::build_seo_event_key;
+    use super::{build_seo_event_key, normalize_hosts, validate_target_url};
     use uuid::Uuid;
 
     #[test]
-    fn redirect_event_keys_are_deterministic_and_state_sensitive() {
+    fn redirect_event_keys_are_transition_sensitive() {
         let tenant_id = Uuid::new_v4();
         let redirect_id = Uuid::new_v4();
-        let active = build_seo_event_key(
+        let first_transition = Uuid::new_v4();
+        let second_transition = Uuid::new_v4();
+        let first = build_seo_event_key(
             "seo.redirect.upserted",
             tenant_id,
             &[
+                first_transition.to_string(),
                 redirect_id.to_string(),
                 "/old".to_string(),
                 "/new".to_string(),
@@ -473,26 +498,29 @@ mod tests {
                 "true".to_string(),
             ],
         );
-        let repeated = build_seo_event_key(
+        let repeated_state = build_seo_event_key(
             "seo.redirect.upserted",
             tenant_id,
             &[
+                second_transition.to_string(),
                 redirect_id.to_string(),
                 "/old".to_string(),
                 "/new".to_string(),
                 "301".to_string(),
                 "true".to_string(),
             ],
-        );
-        let disabled = build_seo_event_key(
-            "seo.redirect.disabled",
-            tenant_id,
-            &[redirect_id.to_string(), "/old".to_string()],
         );
 
-        assert_eq!(active, repeated);
-        assert_ne!(active, disabled);
-        assert!(active.starts_with("seo.redirect.upserted:"));
-        assert!(disabled.starts_with("seo.redirect.disabled:"));
+        assert_ne!(first, repeated_state);
+        assert!(first.starts_with("seo.redirect.upserted:"));
+    }
+
+    #[test]
+    fn redirect_target_urls_require_http_and_no_credentials() {
+        let allowed_hosts = normalize_hosts(&["Allowed.Example.".to_string()]);
+
+        assert!(validate_target_url("https://allowed.example/path", &allowed_hosts, "target_url").is_ok());
+        assert!(validate_target_url("javascript://allowed.example/path", &allowed_hosts, "target_url").is_err());
+        assert!(validate_target_url("https://user:secret@allowed.example/path", &allowed_hosts, "target_url").is_err());
     }
 }

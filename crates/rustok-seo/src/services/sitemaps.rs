@@ -437,7 +437,9 @@ impl SeoService {
             .await?;
         let jobs = jobs.into_iter().take(limit.max(1)).collect::<Vec<_>>();
         let job_ids = jobs.iter().map(|job| job.id).collect::<Vec<_>>();
-        let files_map = self.load_sitemap_files_for_jobs(&job_ids).await?;
+        let files_map = self
+            .load_sitemap_files_for_jobs(tenant_id, &job_ids)
+            .await?;
 
         Ok(jobs
             .into_iter()
@@ -458,7 +460,9 @@ impl SeoService {
         else {
             return Ok(None);
         };
-        let files_map = self.load_sitemap_files_for_jobs(&[job.id]).await?;
+        let files_map = self
+            .load_sitemap_files_for_jobs(tenant_id, &[job.id])
+            .await?;
 
         Ok(Some(map_sitemap_job_record(job, &files_map)))
     }
@@ -526,6 +530,7 @@ impl SeoService {
 
     async fn load_sitemap_files_for_jobs(
         &self,
+        tenant_id: Uuid,
         job_ids: &[Uuid],
     ) -> SeoResult<HashMap<Uuid, Vec<SeoSitemapFileRecord>>> {
         if job_ids.is_empty() {
@@ -533,6 +538,7 @@ impl SeoService {
         }
 
         let files = seo_sitemap_file::Entity::find()
+            .filter(seo_sitemap_file::Column::TenantId.eq(tenant_id))
             .filter(seo_sitemap_file::Column::JobId.is_in(job_ids.to_vec()))
             .order_by_asc(seo_sitemap_file::Column::Path)
             .all(&self.db)
