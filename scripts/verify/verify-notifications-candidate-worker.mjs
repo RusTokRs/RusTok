@@ -77,7 +77,7 @@ for (const marker of [
   "order_by_asc(candidate_item::Column::CreatedAt)",
   "order_by_asc(candidate_item::Column::Id)",
   ".limit(self.batch_size as u64)",
-  "self.service.process_candidate",
+  ".process_candidate(item_id, self.worker_id.as_str())",
 ]) {
   requireText(owner, marker, `notification candidate owner driver is missing ${marker}`);
 }
