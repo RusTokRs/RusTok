@@ -309,9 +309,19 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     );
     extensions.insert(McpManagementRuntime::new(mcp_management_provider));
 
+    #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+    {
+        let policy = crate::services::notification_recipient_policy::ServerNotificationRecipientPolicy::compose(
+            db.clone(),
+            &extensions,
+        );
+        extensions.insert(policy);
+    }
+
     #[cfg(feature = "mod-notifications")]
     {
-        let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
         rustok_notifications::api::materialize_notification_source_registry(&mut extensions, &host)
             .map_err(|error| {
                 Error::Message(format!(
@@ -412,6 +422,12 @@ mod tests {
                 extensions.as_ref()
             )
             .is_some()
+        );
+        #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+        assert!(
+            extensions
+                .get::<rustok_notifications::NotificationRecipientPolicyRuntime>()
+                .is_some_and(|runtime| !runtime.candidate_worker_ready())
         );
         #[cfg(feature = "mod-fulfillment")]
         {
