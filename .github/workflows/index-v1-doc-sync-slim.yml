@@ -1,0 +1,62 @@
+name: Index v1 documentation slim sync
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/index-v1-doc-sync-slim.yml"
+      - "scripts/verify/sync-index-v1-docs-once.py"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply guarded documentation patch
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/verify/sync-index-v1-docs-once.py 2>&1 | tee sync-diagnostic.txt
+      - name: Archive synchronization diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: index-v1-doc-sync-slim-diagnostic-${{ github.sha }}
+          path: sync-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 3
+      - name: Verify and commit clean documentation diff
+        shell: bash
+        run: |
+          ! grep -R "index\.read_model\.v1\|index\.rebuild\.v1\|IndexReadModelPort\|crates/rustok-index/contracts/index-fba-registry.json\|crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json" \
+            docs/modules/registry.md \
+            docs/research/fluid-backend-architecture-unified-plan.md \
+            crates/rustok-index/docs/implementation-plan.md
+          git diff --check
+          git rm \
+            .github/workflows/index-v1-doc-sync-branch.yml \
+            .github/workflows/index-v1-doc-sync-pr.yml \
+            .github/workflows/index-v1-doc-sync-macos.yml \
+            .github/workflows/index-v1-doc-sync-windows.yml \
+            .github/workflows/index-v1-doc-sync-slim.yml \
+            scripts/verify/sync-index-v1-docs-once.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/modules/registry.md \
+            docs/research/fluid-backend-architecture-unified-plan.md \
+            crates/rustok-index/docs/implementation-plan.md
+          git commit -m "docs(index): synchronize complete v1 removal"
+          git push origin HEAD:${{ github.head_ref }}
