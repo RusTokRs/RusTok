@@ -134,3 +134,19 @@ fn forum_error_annotations_do_not_reintroduce_sensitive_sources() {
         );
     }
 }
+
+#[test]
+fn public_topic_and_reply_reads_fail_closed_without_localized_content() {
+    let topic_facade = include_str!("../src/services/topic_facade.rs");
+    let reply_facade = include_str!("../src/services/reply_facade.rs");
+
+    assert!(topic_facade.contains("require_localized_topic_response"));
+    assert!(topic_facade.contains("require_localized_topic_page"));
+    assert!(topic_facade.contains("has no localized translation"));
+    assert!(topic_facade.contains("available_locales.is_empty()"));
+
+    assert!(reply_facade.contains("require_localized_reply_response"));
+    assert!(reply_facade.contains("require_localized_reply_list_page"));
+    assert!(reply_facade.contains("require_localized_reply_response_page"));
+    assert!(reply_facade.contains("has no localized body"));
+}
