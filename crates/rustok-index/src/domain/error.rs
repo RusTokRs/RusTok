@@ -18,6 +18,9 @@ pub enum DomainError {
     #[error("schema must define at least one field")]
     EmptySchema,
 
+    #[error("schema version must be greater than zero")]
+    ZeroSchemaVersion,
+
     #[error("schema contains duplicate field: {0}")]
     DuplicateField(String),
 
@@ -46,6 +49,12 @@ pub enum DomainError {
     #[error("page size must be greater than zero")]
     EmptyPage,
 
+    #[error("page size exceeds the supported maximum")]
+    PageTooLarge,
+
     #[error("offset pagination exceeds the bounded compatibility limit")]
     OffsetLimitExceeded,
+
+    #[error("offset pagination is too deep")]
+    OffsetTooDeep,
 }
