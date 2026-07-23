@@ -61,6 +61,7 @@ fn requested_collection_limit(limit: Option<i32>) -> Option<u64> {
     limit.map(|value| value.max(0) as u64)
 }
 
+#[allow(dead_code)]
 fn humanize_slug(slug: &str) -> String {
     slug.split('-')
         .map(|part| {
@@ -74,6 +75,7 @@ fn humanize_slug(slug: &str) -> String {
         .join(" ")
 }
 
+#[allow(dead_code)]
 fn fallback_module_category(slug: &str) -> &'static str {
     match slug {
         "content" | "blog" | "forum" | "pages" => "content",
@@ -83,6 +85,7 @@ fn fallback_module_category(slug: &str) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn normalize_version_req(raw: &str, is_max: bool) -> String {
     let trimmed = raw.trim();
     let wildcard = trimmed.replace(".x", ".*").replace(".X", ".*");
@@ -105,10 +108,12 @@ fn normalize_version_req(raw: &str, is_max: bool) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn current_platform_version() -> Option<Version> {
     Version::parse(env!("CARGO_PKG_VERSION")).ok()
 }
 
+#[allow(dead_code)]
 fn is_catalog_module_compatible(entry: &crate::modules::CatalogManifestModule) -> bool {
     let Some(platform_version) = current_platform_version() else {
         return true;
@@ -128,6 +133,7 @@ fn is_catalog_module_compatible(entry: &crate::modules::CatalogManifestModule) -
     min_ok && max_ok
 }
 
+#[allow(dead_code)]
 fn marketplace_module_from_catalog_entry(
     entry: crate::modules::CatalogManifestModule,
     registry: &ModuleRegistry,
@@ -539,6 +545,7 @@ fn settings_schema_fields(
         .collect()
 }
 
+#[allow(dead_code)]
 fn marketplace_modules_from_catalog(
     entries: Vec<crate::modules::CatalogManifestModule>,
     registry: &ModuleRegistry,
@@ -550,10 +557,12 @@ fn marketplace_modules_from_catalog(
         .collect()
 }
 
+#[allow(dead_code)]
 fn trust_level_matches(module: &MarketplaceModule, trust_level: Option<&str>) -> bool {
     trust_level.is_none_or(|trust_level| module.trust_level.eq_ignore_ascii_case(trust_level))
 }
 
+#[allow(dead_code)]
 fn source_matches(module: &MarketplaceModule, source: Option<&str>) -> bool {
     source.is_none_or(|source| module.source.eq_ignore_ascii_case(source))
 }
@@ -666,6 +675,7 @@ async fn load_marketplace_catalog(
         .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))
 }
 
+#[allow(dead_code)]
 async fn load_marketplace_module(
     db: &DatabaseConnection,
     runtime_ctx: &ServerRuntimeContext,

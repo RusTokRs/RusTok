@@ -361,6 +361,7 @@ fn persisted_revision(page: &PageDetail) -> Result<String, PageBuilderAdminFacad
     }
 }
 
+#[allow(dead_code)]
 fn facade_transport_error(error: transport::TransportError) -> PageBuilderAdminFacadeError {
     PageBuilderAdminFacadeError::new(error.to_string())
 }

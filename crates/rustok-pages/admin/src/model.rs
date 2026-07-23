@@ -177,6 +177,7 @@ pub struct PageBuilderScenarioReleaseStatus {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct CreatePageDraft {
     pub locale: String,
     pub title: String,

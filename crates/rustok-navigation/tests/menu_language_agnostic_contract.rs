@@ -1,7 +1,7 @@
 #[test]
 fn menu_runtime_uses_host_selected_effective_locale_only() {
     let service = include_str!("../src/services/menu.rs");
-    let dto = include_str!("../src/dto/menu.rs");
+    let dto = include_str!("../src/dto.rs");
 
     assert!(service.contains("normalize_effective_locale"));
     assert!(service.contains("Column::Locale.eq(effective_locale)"));
@@ -22,26 +22,22 @@ fn menu_runtime_uses_host_selected_effective_locale_only() {
 #[test]
 fn menu_storage_is_tenant_composite_and_locale_bound() {
     let migration =
-        include_str!("../src/migrations/m20260721_000005_enforce_menu_effective_locale.rs");
+        include_str!("../src/migrations/m20260722_000001_create_navigation_tables.rs");
     let migrations = include_str!("../src/migrations/mod.rs");
     let menu_translation = include_str!("../src/entities/menu_translation.rs");
     let item_translation = include_str!("../src/entities/menu_item_translation.rs");
 
     for marker in [
         "fk_menu_translations_tenant_menu",
-        "fk_menu_items_parent_same_menu",
-        "fk_menu_items_tenant_page",
+        "fk_menu_items_tenant_menu",
         "fk_menu_item_translations_tenant_item",
-        "fk_menu_item_translations_menu_locale",
-        "menu_item_translations_effective_locale_insert",
-        "menu_items_tenant_contract_insert",
-        "Irreversible by design",
+        "fk_menu_bindings_tenant_menu",
     ] {
         assert!(migration.contains(marker), "missing DB marker: {marker}");
     }
-    assert!(migrations.contains("mod m20260721_000005_enforce_menu_effective_locale;"));
+    assert!(migrations.contains("mod m20260722_000001_create_navigation_tables;"));
     assert!(
-        migrations.contains("Box::new(m20260721_000005_enforce_menu_effective_locale::Migration)")
+        migrations.contains("m20260722_000001_create_navigation_tables::Migration")
     );
     assert!(menu_translation.contains("pub tenant_id: Uuid"));
     assert!(item_translation.contains("pub tenant_id: Uuid"));

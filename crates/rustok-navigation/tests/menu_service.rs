@@ -1,10 +1,10 @@
-use rustok_core::{MigrationSource, error::RichError};
-use rustok_pages::PagesModule;
-use rustok_pages::dto::{
+use rustok_core::{MigrationSource, SecurityContext, error::RichError};
+use rustok_navigation::NavigationModule;
+use rustok_navigation::dto::{
     CreateMenuInput, MenuItemInput, MenuItemTranslationInput, MenuLocation, MenuTranslationInput,
 };
-use rustok_pages::services::{MENU_LOCALE_NOT_FOUND_ERROR_CODE, MenuService};
-use rustok_test_utils::{db::setup_test_db, helpers::admin_context, mock_transactional_event_bus};
+use rustok_navigation::services::{MENU_LOCALE_NOT_FOUND_ERROR_CODE, MenuService};
+use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -12,13 +12,13 @@ use uuid::Uuid;
 async fn setup() -> (DatabaseConnection, MenuService, Uuid) {
     let db = setup_test_db().await;
     let schema = SchemaManager::new(&db);
-    for migration in PagesModule.migrations() {
+    for migration in NavigationModule.migrations() {
         migration
             .up(&schema)
             .await
-            .expect("failed to apply pages migrations");
+            .expect("failed to apply navigation migrations");
     }
-    let service = MenuService::new(db.clone(), mock_transactional_event_bus());
+    let service = MenuService::new(db.clone());
     (db, service, Uuid::new_v4())
 }
 
@@ -40,7 +40,6 @@ fn localized_item(en: &str, ru: &str, url: &str, position: i32) -> MenuItemInput
     MenuItemInput {
         translations: vec![item_translation("en", en), item_translation("ru", ru)],
         url: Some(url.to_string()),
-        page_id: None,
         icon: None,
         position,
         children: None,
@@ -62,7 +61,6 @@ fn localized_menu() -> CreateMenuInput {
                     item_translation("ru", "Каталог"),
                 ],
                 url: Some("/catalog".to_string()),
-                page_id: None,
                 icon: Some("grid".to_string()),
                 position: 1,
                 children: Some(vec![localized_item(
@@ -80,7 +78,7 @@ fn localized_menu() -> CreateMenuInput {
 async fn menu_round_trip_uses_exact_host_selected_locale() {
     let (_db, service, tenant_id) = setup().await;
     let russian = service
-        .create(tenant_id, admin_context(), "ru", localized_menu())
+        .create(tenant_id, SecurityContext::system(), "ru", localized_menu())
         .await
         .expect("localized menu should be created");
 
@@ -92,7 +90,7 @@ async fn menu_round_trip_uses_exact_host_selected_locale() {
     assert_eq!(russian.items[1].children[0].title, "Распродажа");
 
     let english = service
-        .get(tenant_id, admin_context(), russian.id, "en")
+        .get(tenant_id, SecurityContext::system(), russian.id, "en")
         .await
         .expect("English locale should resolve exactly");
     assert_eq!(english.effective_locale, "en");
@@ -105,12 +103,12 @@ async fn menu_round_trip_uses_exact_host_selected_locale() {
 async fn missing_effective_locale_never_falls_back_to_english() {
     let (_db, service, tenant_id) = setup().await;
     let menu = service
-        .create(tenant_id, admin_context(), "ru", localized_menu())
+        .create(tenant_id, SecurityContext::system(), "ru", localized_menu())
         .await
         .expect("localized menu should be created");
 
     let error = service
-        .get(tenant_id, admin_context(), menu.id, "de")
+        .get(tenant_id, SecurityContext::system(), menu.id, "de")
         .await
         .expect_err("missing effective locale must fail closed");
     let rich: RichError = error.into();
@@ -126,7 +124,7 @@ async fn menu_item_locale_set_must_match_menu_locale_set() {
     let error = service
         .create(
             tenant_id,
-            admin_context(),
+            SecurityContext::system(),
             "en",
             CreateMenuInput {
                 translations: vec![
@@ -137,7 +135,6 @@ async fn menu_item_locale_set_must_match_menu_locale_set() {
                 items: vec![MenuItemInput {
                     translations: vec![item_translation("en", "Home")],
                     url: Some("/".to_string()),
-                    page_id: None,
                     icon: None,
                     position: 0,
                     children: None,
@@ -153,7 +150,7 @@ async fn menu_item_locale_set_must_match_menu_locale_set() {
 async fn sqlite_rejects_cross_tenant_menu_item_translation() {
     let (db, service, tenant_id) = setup().await;
     let menu = service
-        .create(tenant_id, admin_context(), "en", localized_menu())
+        .create(tenant_id, SecurityContext::system(), "en", localized_menu())
         .await
         .expect("localized menu should be created");
     let item_id = menu.items[0].id;

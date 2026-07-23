@@ -4,7 +4,7 @@ use chrono::Utc;
 use rust_decimal::Decimal;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind};
 use rustok_order::{
-    AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
+    AdoptLegacyCheckoutOrderIdentityRequest,
     ReadCheckoutOrderIdentityByOperationRequest,
     entities::{order, order_checkout_identity},
     in_process_checkout_order_identity_port,

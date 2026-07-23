@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use reqwest::Method;

@@ -1,13 +1,12 @@
 #![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
 
 use anyhow::{Context, anyhow};
-use object_store::{ObjectStoreExt, path::Path};
+use object_store::path::Path;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -299,12 +298,12 @@ pub use releases::release_status_label;
 pub use validation::validation_stage_status_label;
 
 pub(crate) use publishing::{
-    lifecycle_governance_actions, publish_request_governance_actions,
+    publish_request_governance_actions,
     publish_request_governance_actions_for_authority,
 };
 pub(crate) use validation::{
     compare_semver_desc, derive_follow_up_gate_snapshots, derive_validation_stage_snapshots,
-    deserialize_message_list, validation_stage_details_value,
+    validation_stage_details_value,
 };
 
 impl RegistryGovernanceService {

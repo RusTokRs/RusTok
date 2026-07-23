@@ -698,10 +698,18 @@ mod tests {
 
     fn test_runtime_extensions() -> Arc<ModuleRuntimeExtensions> {
         let mut extensions = ModuleRuntimeExtensions::default();
-        rustok_pages::PagesModule.register_runtime_extensions(&mut extensions);
-        rustok_product::ProductModule.register_runtime_extensions(&mut extensions);
-        rustok_blog::BlogModule.register_runtime_extensions(&mut extensions);
-        rustok_forum::ForumModule.register_runtime_extensions(&mut extensions);
+        rustok_pages::PagesModule
+            .register_runtime_extensions(&mut extensions)
+            .expect("register pages extensions");
+        rustok_product::ProductModule
+            .register_runtime_extensions(&mut extensions)
+            .expect("register product extensions");
+        rustok_blog::BlogModule
+            .register_runtime_extensions(&mut extensions)
+            .expect("register blog extensions");
+        rustok_forum::ForumModule
+            .register_runtime_extensions(&mut extensions)
+            .expect("register forum extensions");
         Arc::new(extensions)
     }
 

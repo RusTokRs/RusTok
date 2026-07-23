@@ -47,7 +47,7 @@ pub struct ActiveModel {
 }
 
 #[async_trait::async_trait]
-pub(crate) trait OAuthAppUpdateConnection: ConnectionTrait {
+pub trait OAuthAppUpdateConnection: ConnectionTrait {
     async fn update_oauth_app_model(&self, model: ActiveModel) -> Result<Model, DbErr>;
 }
 

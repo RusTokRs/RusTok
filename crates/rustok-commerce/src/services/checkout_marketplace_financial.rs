@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{sync::Arc, time::Duration as StdDuration};
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};

@@ -1327,10 +1327,6 @@ async fn pricing_admin_update_price_list_scope_native(
 mod tests {
     use super::*;
     use rustok_api::Permission;
-    use rustok_api::{AuthContext, HostRuntimeContext, TenantContext};
-    use rustok_commerce_foundation::dto::{
-        CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,
-    };
     use rustok_product::CatalogService;
     use rustok_test_utils::db::setup_test_db;
     use rustok_test_utils::mock_transactional_event_bus;

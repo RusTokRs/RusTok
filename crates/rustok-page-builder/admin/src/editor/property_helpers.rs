@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::editor::AdminEditorRuntime;
 use fly::{ComponentPatch, EditorCommand};
 use fly_ui::UiIntent;

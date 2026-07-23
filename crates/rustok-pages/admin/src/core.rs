@@ -92,6 +92,7 @@ pub fn status_badge_class(status: &str) -> &'static str {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct EditFormSeed {
     pub locale: String,
     pub title: String,

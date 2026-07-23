@@ -1,6 +1,6 @@
 use super::types::*;
 use crate::{
-    CreateMenuInput, MenuBindingService, MenuItemInput, MenuItemTranslationInput, MenuLocation,
+    CreateMenuInput, MenuBindingService, MenuItemInput, MenuItemTranslationInput,
     MenuService, MenuTranslationInput, NavigationError,
 };
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
@@ -10,7 +10,6 @@ use rustok_api::{
     has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
-use uuid::Uuid;
 
 const MODULE_SLUG: &str = "navigation";
 const CHANNEL_CONTEXT_REQUIRED: &str = "CHANNEL_CONTEXT_REQUIRED";

@@ -1,7 +1,7 @@
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{
     Action, AuthContext, Permission, Resource, TenantContext,
-    graphql::{GraphQLError, require_module_enabled, resolve_graphql_locale},
+    graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
 use rustok_outbox::TransactionalEventBus;

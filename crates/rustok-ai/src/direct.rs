@@ -1761,6 +1761,14 @@ mod tests {
             unreachable!("AI order enrichment performs only read_order_status")
         }
 
+        async fn read_checkout_result_by_operation(
+            &self,
+            _context: PortContext,
+            _request: rustok_order::CheckoutResultByOperationRequest,
+        ) -> Result<CheckoutCompletionSnapshot, PortError> {
+            unreachable!("AI order enrichment performs only read_order_status")
+        }
+
         async fn read_order_status(
             &self,
             context: PortContext,

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod category_tree_graphql_adapter;
 mod category_tree_rest_adapter;
 mod graphql_adapter;

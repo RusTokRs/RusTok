@@ -125,7 +125,7 @@ impl InProcessCheckoutPaymentCompensationPort {
     async fn execute_provider_cancel(
         &self,
         tenant_id: Uuid,
-        checkout_operation_id: Uuid,
+        _checkout_operation_id: Uuid,
         collection: &PaymentCollectionResponse,
         reason: Option<&str>,
         metadata: Value,

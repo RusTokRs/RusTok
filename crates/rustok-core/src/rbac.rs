@@ -72,6 +72,7 @@ static SUPER_ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumReplies,
         Resource::Workflows,
         Resource::WorkflowExecutions,
+        Resource::Navigation,
     ])
 });
 
@@ -102,6 +103,7 @@ static ADMIN_PERMISSIONS: Lazy<HashSet<Permission>> = Lazy::new(|| {
         Resource::ForumReplies,
         Resource::Workflows,
         Resource::WorkflowExecutions,
+        Resource::Navigation,
     ]);
 
     permissions.insert(Permission::MODULES_READ);

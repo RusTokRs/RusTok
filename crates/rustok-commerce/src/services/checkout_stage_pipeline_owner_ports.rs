@@ -19,7 +19,7 @@ use super::{
     CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutMarketplaceFinancialError,
     CheckoutMarketplaceFinancialStage, CheckoutOperationError, CheckoutOperationJournal,
     CheckoutOperationStage, CheckoutOperationStatus, CheckoutOrderPlanError,
-    CheckoutOrderPlanJournal, CheckoutOrderPlanPayload, CheckoutOrderStageError,
+    CheckoutOrderPlanPayload, CheckoutOrderStageError,
     CheckoutOrderStageExecutor, CheckoutPaymentCapturedState, CheckoutPaymentReadyState,
     CheckoutPaymentStageError, CheckoutPaymentStageExecutor,
     RecordCheckoutMarketplaceEconomicsCheckpoint, build_marketplace_economics_evidence,
