@@ -61,6 +61,10 @@ fn LoadedConsumerPropertiesPanel(
     snapshot: ConsumerPropertyEditorSnapshot,
 ) -> impl IntoView {
     let schema = runtime.schema.clone();
+    let panel_title = schema.title;
+    let panel_description = schema.description;
+    let fields = schema.fields;
+    let property_editor_id = runtime.property_editor_id.clone();
     let revision = RwSignal::new(snapshot.revision);
     let scope_label = snapshot.scope_label;
     let submit_scope_label = scope_label.clone();
@@ -111,22 +115,22 @@ fn LoadedConsumerPropertiesPanel(
         <section
             class="space-y-3 rounded-xl border border-border bg-card p-3"
             data-fly-consumer-properties="ready"
-            data-fly-consumer-property-editor=runtime.property_editor_id.clone()
+            data-fly-consumer-property-editor=property_editor_id
         >
             <div>
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                    <h2 class="font-semibold">{schema.title.clone()}</h2>
+                    <h2 class="font-semibold">{panel_title}</h2>
                     <span class="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
                         {scope_label}
                     </span>
                 </div>
-                {schema.description.clone().map(|description| view! {
+                {panel_description.map(|description| view! {
                     <p class="mt-1 text-xs text-muted-foreground">{description}</p>
                 })}
             </div>
 
             <form class="space-y-3" on:submit=submit>
-                {schema.fields.into_iter().map(|field| {
+                {fields.into_iter().map(|field| {
                     let value_id = field.id.clone();
                     let input_id = format!("fly-consumer-property-{}", field.id);
                     let update_id = field.id.clone();
