@@ -1,0 +1,73 @@
+name: Index Storage Scale Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+      - ".github/workflows/index-storage-scale-evidence.yml"
+      - ".github/workflows/index-storage-scale-run.yml"
+  push:
+    branches:
+      - "agent/index-m2-scale-evidence"
+    paths:
+      - "crates/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+      - ".github/workflows/index-storage-scale-evidence.yml"
+      - ".github/workflows/index-storage-scale-run.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Index scale evidence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify Index boundary and benchmark contract
+        run: node scripts/verify/verify-index-fba.mjs
+      - name: Verify scale evidence validator syntax
+        run: node --check scripts/verify/validate-index-storage-evidence.mjs
+
+  evidence-100k:
+    needs: contract
+    uses: ./.github/workflows/index-storage-scale-run.yml
+    with:
+      scale: 100k
+      timeout_minutes: 180
+      runner_label: ubuntu-latest
+      minimum_free_bytes: 6000000000
+
+  evidence-1m:
+    needs: evidence-100k
+    if: ${{ vars.INDEX_BENCH_LARGE_RUNNER != '' }}
+    uses: ./.github/workflows/index-storage-scale-run.yml
+    with:
+      scale: 1m
+      timeout_minutes: 300
+      runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER }}
+      minimum_free_bytes: 35000000000
+
+  evidence-1m-runner-required:
+    name: 1m larger runner requirement
+    needs: evidence-100k
+    if: ${{ vars.INDEX_BENCH_LARGE_RUNNER == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require configured larger runner
+        run: |
+          echo "::error::Set repository variable INDEX_BENCH_LARGE_RUNNER to a Linux larger-runner label with at least 35 GB free disk before running 1m evidence."
+          exit 1
