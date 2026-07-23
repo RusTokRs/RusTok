@@ -104,9 +104,57 @@ if (threadWriteCases !== [
   'historical_position_repair',
   'serialized_position_allocation',
 ].sort().join('|')) fail('thread write evidence case matrix drift');
+
+const threadContract = threadWriteEvidence.production_contract ?? {};
+for (const [key, expected] of Object.entries({
+  position_owner: 'crates/rustok-comments/src/entities/comment.rs',
+  counter_owner: 'crates/rustok-comments/src/entities/comment_thread.rs',
+  repair_migration: 'crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
+  migration_registry: 'crates/rustok-comments/src/migrations/mod.rs',
+  executable_test: registry.evidence.thread_write_invariants_test,
+})) {
+  if (threadContract[key] !== expected) fail(`thread write ${key} path drift`);
+}
+const positionOwner = read(threadContract.position_owner);
+hasAll(positionOwner, [
+  'impl ActiveModelBehavior for ActiveModel',
+  'update_many()',
+  'Column::TenantId.eq(tenant_id)',
+  'order_by_desc(Column::Position)',
+  'checked_add(1)',
+  'self.position = Set(next_position)',
+], 'comment position owner');
+const counterOwner = read(threadContract.counter_owner);
+hasAll(counterOwner, [
+  'impl ActiveModelBehavior for ActiveModel',
+  'update_many()',
+  'Column::TenantId.eq(tenant_id)',
+  'DeletedAt.is_null()',
+  '.count(db)',
+  'self.comment_count = Set(count)',
+], 'comment thread counter owner');
+const repairMigration = read(threadContract.repair_migration);
+hasAll(repairMigration, [
+  'DatabaseBackend::Postgres',
+  'DatabaseBackend::Sqlite',
+  'UPDATE comment_threads',
+  'ROW_NUMBER() OVER',
+  'PARTITION BY thread_id',
+  '.unique()',
+], 'comment thread repair migration');
+const migrationRegistry = read(threadContract.migration_registry);
+hasAll(migrationRegistry, [
+  'mod m20260723_000008_repair_comment_thread_counters;',
+  'Box::new(m20260723_000008_repair_comment_thread_counters::Migration)',
+], 'comments migration registry');
+const invariantTest = read(threadContract.executable_test);
+hasAll(invariantTest, [
+  'active_model_hooks_override_stale_positions_and_counts',
+  'unique_position_index_rejects_active_model_bypass',
+  'stale_thread.comment_count = Set(999)',
+], 'thread write invariant test');
 const threadWriteVerifier = read(registry.evidence.thread_write_invariants_runner);
 hasAll(threadWriteVerifier, [
-  'impl ActiveModelBehavior for ActiveModel',
   'self.position = Set(next_position)',
   'self.comment_count = Set(count)',
   'ROW_NUMBER() OVER',
