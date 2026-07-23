@@ -2,8 +2,6 @@ use leptos::html;
 use leptos::prelude::*;
 use rustok_api::RichTextDocument;
 
-use crate::i18n::t;
-
 #[component]
 pub fn BlogRichTextEditor(
     document: ReadSignal<RichTextDocument>,
@@ -16,6 +14,7 @@ pub fn BlogRichTextEditor(
 
     #[cfg(target_arch = "wasm32")]
     {
+        use crate::i18n::t;
         use wasm_bindgen::{JsValue, closure::Closure};
         use web_sys::HtmlIFrameElement;
 
