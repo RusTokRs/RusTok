@@ -8,11 +8,11 @@
     "paid_plan_subscription_entitlement_owner": "outside rustok-groups"
   },
   "public_service": {
-    "type": "rustok_groups::effective_service::GroupsService",
-    "crate_root_reexport": "rustok_groups::GroupsService",
-    "legacy_delegate": "rustok_groups::service::GroupsService",
+    "type": "rustok_groups::GroupsService",
+    "implementation_module_visibility": "crate_private",
+    "legacy_delegate_visibility": "crate_private",
     "module_owned_graphql_native_consumers_use_crate_root": true,
-    "legacy_delegate_is_not_the_final_public_owner_boundary": true
+    "external_legacy_delegate_bypass": "sealed"
   },
   "converted_source_paths": {
     "group_access_decision": "effective_membership_resolver",
