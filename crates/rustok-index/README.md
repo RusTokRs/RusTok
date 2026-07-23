@@ -31,6 +31,8 @@ a rewrite goal.
 - Index must not read source-module tables directly.
 - `rustok-search` owns ranking, typo tolerance, autocomplete, synonyms, search
   UX, and external search-engine connectors.
+- M2 candidate schemas and benchmark DDL live under `ops/benches`; they are not
+  production migrations or runtime storage contracts.
 
 ## Rewrite status
 
@@ -39,6 +41,8 @@ a rewrite goal.
 - FBA status: `in_progress`
 - M0 code reset: complete
 - M1 generic domain/application core: complete
+- M2 benchmark harness: implemented
+- M2 PostgreSQL evidence and storage ADR: pending
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
 configuration, scheduler, errors, and server composition have been deleted.
@@ -70,9 +74,22 @@ storage model from PostgreSQL benchmark evidence.
 - reference mutation/query engine and property-based invariants for future
   PostgreSQL equivalence tests.
 
+## M2 benchmark
+
+The operational harness in `ops/benches` generates deterministic Product,
+Variant, SalesChannel, locale, tag, price, timestamp, and link data. It compares
+JSONB, normalized typed EAV, and specialized hot-projection candidates using the
+same equality, range, multi-value, two-hop link, keyset, and exact-count
+workloads. Reports contain load time, schema size, PostgreSQL settings, executed
+SQL, and repeated full JSON `EXPLAIN ANALYZE` evidence.
+
+No candidate is selected until the 100k and 1m runs, update/delete amplification,
+vacuum behavior, comparison report, and storage ADR are complete.
+
 ## Docs
 
 - [Module documentation](./docs/README.md)
 - [Live implementation plan](./docs/implementation-plan.md)
+- [M2 storage benchmark contract](./docs/storage-benchmark.md)
 - [Index Engine rewrite ADR](../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Platform docs index](../../docs/index.md)
