@@ -96,6 +96,10 @@ impl NotificationRecipientPolicyRuntime {
         self.policy.as_ref()
     }
 
+    pub fn policy_arc(&self) -> Arc<dyn NotificationRecipientPolicy> {
+        self.policy.clone()
+    }
+
     pub const fn relation_ports_ready(&self) -> bool {
         self.relation_ports_ready
     }
