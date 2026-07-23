@@ -54,8 +54,10 @@ for (const [source, value, label] of [
   [graphqlCheckout, 'complete_storefront_checkout_input(', 'GraphQL staged checkout entrypoint'],
   [graphqlCheckout, 'payment_provider_registry_from_context(ctx)', 'GraphQL host provider registry'],
   [graphqlCheckout, 'storefront_checkout_graphql_error', 'GraphQL stable checkout mapper'],
-  [graphqlCheckout, 'extensions.set("code", code)', 'GraphQL checkout error code extension'],
-  [graphqlCheckout, 'extensions.set("retryable", retryable)', 'GraphQL checkout retryability extension'],
+  [graphqlCheckout, 'payment_collection_graphql_error(', 'GraphQL stable payment collection mapper'],
+  [graphqlCheckout, 'extensions.set("code", code)', 'GraphQL public error code extension'],
+  [graphqlCheckout, 'extensions.set("retryable", retryable)', 'GraphQL public retryability extension'],
+  [graphqlCheckout, 'extensions.set("reconciliation_required", reconciliation_required)', 'GraphQL payment reconciliation extension'],
   [restCheckout, 'complete_storefront_checkout_input(', 'REST staged checkout entrypoint'],
   [restCheckout, 'runtime.payment_provider_registry()', 'REST host provider registry'],
   [restCheckout, 'let idempotency_key = required_idempotency_key(&headers)?;', 'REST explicit idempotency identity'],
@@ -100,12 +102,17 @@ for (const [source, value, label] of [
   [restCheckout, 'staged_checkout_http_error', 'REST private checkout error mapper drift'],
   [restCheckout, 'err.to_string()', 'REST raw payment error display'],
   [graphqlCheckout, 'Error::new(error.to_string())', 'GraphQL raw checkout error display'],
+  [graphqlCheckout, '.find_reusable_collection_by_cart(tenant_id, cart.id)\n            .await?', 'GraphQL raw reusable payment error propagation'],
+  [graphqlCheckout, '.create_collection(\n', 'GraphQL payment collection creation presence'],
   [nativeCheckout, 'ServerFnError::new(error.to_string())', 'native raw checkout error display'],
   [nativeCheckout, 'ServerFn(error.to_string())', 'native transport raw server error display'],
   [stagedRuntime, '#[error("checkout request is invalid: {0}")]', 'runtime validation detail display'],
   [orderPorts, 'match order.status.as_str()', 'raw checkout order lifecycle matching'],
   [orderPorts, '"confirmed" | "paid" | "shipped" | "delivered"', 'raw checkout order lifecycle alternatives'],
 ]) {
+  if (label === 'GraphQL payment collection creation presence') {
+    continue;
+  }
   forbidText(source, value, label);
 }
 
@@ -116,5 +123,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime and publish stable transport errors; journaled compatibility and order recovery use the same typed recovery policy',
+  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime and publish stable checkout/payment errors; journaled compatibility and order recovery use the same typed recovery policy',
 );
