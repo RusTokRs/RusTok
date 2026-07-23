@@ -40,6 +40,23 @@ const requireMarkers = (relative, markers) => {
   }
 };
 
+const requireOrder = (relative, markers) => {
+  const source = read(relative);
+  let previous = -1;
+  for (const marker of markers) {
+    const current = source.indexOf(marker, previous + 1);
+    if (current < 0) {
+      failures.push(`${relative}: missing ordered marker ${JSON.stringify(marker)}`);
+      return;
+    }
+    if (current <= previous) {
+      failures.push(`${relative}: invalid marker order at ${JSON.stringify(marker)}`);
+      return;
+    }
+    previous = current;
+  }
+};
+
 if (failures.length === 0) {
   requireMarkers(files.error, [
     "MembershipSuspended",
@@ -92,6 +109,26 @@ if (failures.length === 0) {
   requireMarkers(files.targetedOwner, [
     "accept_targeted_group_invitation_effective_owned",
   ]);
+  requireOrder(files.invitationOwner, [
+    "REVOKE_INVITATION_COMMAND",
+    "require_effective_manager_owned",
+    "group invitation is already revoked",
+    "active.update(&transaction)",
+  ]);
+  requireOrder(files.invitationOwner, [
+    "ACCEPT_INVITATION_COMMAND",
+    "require_user_not_denied_owned",
+    "ensure_invitation_active",
+    "redemption::Entity::find()",
+    "redemption::ActiveModel",
+  ]);
+  requireOrder(files.targetedOwner, [
+    "ACCEPT_TARGETED_INVITATION_COMMAND",
+    "require_user_not_denied_owned",
+    "ensure_targeted_invitation_active",
+    "redemption::Entity::find()",
+    "redemption::ActiveModel",
+  ]);
 
   requireMarkers(files.applicationOwner, [
     "upsert_policy_effective_owned",
@@ -114,6 +151,40 @@ if (failures.length === 0) {
     "reopen_application_effective_owned",
     "require_effective_manager_owned",
     "require_user_not_denied_owned",
+  ]);
+  requireOrder(files.applicationOwner, [
+    "SUBMIT_APPLICATION_COMMAND",
+    "require_user_not_denied_owned",
+    "load_policy_for_locale",
+    "validate_submission",
+    "membership::ActiveModel",
+  ]);
+  requireOrder(files.applicationOwner, [
+    "REVIEW_APPLICATION_COMMAND",
+    "require_effective_manager_owned",
+    "require_user_not_denied_owned",
+    "membership application is no longer pending",
+    "membership_active.update(&transaction)",
+  ]);
+  requireOrder(files.applicationCasOwner, [
+    "SUBMIT_APPLICATION_IF_CURRENT_COMMAND",
+    "require_user_not_denied_owned",
+    "load_policy_for_locale",
+    "ensure_loaded_policy_precondition",
+    "membership::ActiveModel",
+  ]);
+  requireOrder(files.applicationLifecycleOwner, [
+    "CANCEL_APPLICATION_COMMAND",
+    "require_user_not_denied_owned",
+    "only a pending membership application can be cancelled",
+    "membership_active.update(&transaction)",
+  ]);
+  requireOrder(files.applicationLifecycleOwner, [
+    "REOPEN_APPLICATION_COMMAND",
+    "require_effective_manager_owned",
+    "require_user_not_denied_owned",
+    "let previous_status",
+    "membership_active.update(&transaction)",
   ]);
 
   requireMarkers(files.invitations, [
@@ -203,5 +274,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Groups invitation/application writes use receipt-first transactional effective authorization with stable error codes, sealed public facades, and open runtime evidence.",
+  "Groups invitation/application writes use receipt-first transactional effective authorization and authorization-first disclosure with stable error codes, sealed public facades, and open runtime evidence.",
 );
