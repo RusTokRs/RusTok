@@ -5,7 +5,6 @@ use fly_ui::ContributionAssemblyResult;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[component]
@@ -64,6 +63,7 @@ fn LoadedConsumerPropertiesPanel(
     let schema = runtime.schema.clone();
     let revision = RwSignal::new(snapshot.revision);
     let scope_label = snapshot.scope_label;
+    let submit_scope_label = scope_label.clone();
     let values = RwSignal::new(snapshot.values);
     let busy = RwSignal::new(false);
     let saved = RwSignal::new(false);
@@ -78,7 +78,7 @@ fn LoadedConsumerPropertiesPanel(
         let current_values = values.get_untracked();
         let current_snapshot = ConsumerPropertyEditorSnapshot {
             revision: revision.get_untracked(),
-            scope_label: scope_label.clone(),
+            scope_label: submit_scope_label.clone(),
             values: current_values.clone(),
         };
         let input = match submit_runtime.prepare_save_input(&current_snapshot, current_values) {
@@ -231,7 +231,7 @@ fn error_view(message: &str) -> AnyView {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn dynamic_values_remain_string_keyed() {
