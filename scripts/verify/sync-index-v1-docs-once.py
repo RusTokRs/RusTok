@@ -91,6 +91,7 @@ overview = replace_span(
 )
 overview = overview.replace("index.read_model.v1", "removed Index v1 read-model contract")
 overview = overview.replace("index.rebuild.v1", "removed Index v1 rebuild contract")
+overview = overview.replace("IndexReadModelPort", "removed Index v1 read-model port")
 for forbidden in (
     "index.read_model.v1",
     "index.rebuild.v1",
