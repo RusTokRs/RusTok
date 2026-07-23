@@ -31,12 +31,14 @@ candidate workers expose tenant-scoped work and recheck effective policy before
 foreign provider calls. Disabled work receives 300-second durable backoff;
 temporary policy lookup failure receives 30 seconds.
 
-Candidate pre-claim resolution forwards the deterministic effective-policy
-revision into canonical processing. The final notification transaction invokes an
-injected commit guard that locks the Modules-owned `module.lifecycle` cursor and
-resolves tenant overrides on the same transaction. PostgreSQL lifecycle tenant
-toggles advance that cursor inside their tenant-state transaction, serializing
-candidate commit and tenant enable/disable by commit order.
+Candidate pre-claim resolution captures one effective-policy snapshot containing
+the deterministic revision and manifest default-enabled module set. The final
+notification transaction invokes an injected commit guard that locks the
+Modules-owned `module.lifecycle` cursor and resolves tenant overrides with that
+observed manifest input on the same transaction. No manifest/pool read occurs
+while the final transaction is active. PostgreSQL lifecycle tenant toggles advance
+the cursor inside their tenant-state transaction, serializing candidate commit and
+tenant enable/disable by commit order.
 
 ## Invariants
 
@@ -51,6 +53,7 @@ candidate commit and tenant enable/disable by commit order.
 - disabled or unresolved tenant capability fails closed before provider calls;
 - tenant-policy deferral leaves later work reachable in bounded selection;
 - server workers never read Notifications private tables directly;
+- final candidate transactions do not open a second connection for manifest reads;
 - PostgreSQL lifecycle tenant toggle and final candidate commit share one cursor
   serialization point;
 - delivery work remains outside candidate finalization;
@@ -175,9 +178,12 @@ candidate commit and tenant enable/disable by commit order.
 - guarded `NotificationCandidateService` and `NotificationCandidateWorker`
   constructors preserve trusted compatibility paths while production uses guarded
   paths only;
-- pre-claim `EffectiveModulePolicyService::resolve` forwards exact policy revision;
+- pre-claim `EffectiveModulePolicyService::resolve_snapshot` forwards exact policy
+  revision and manifest default-enabled module set;
 - final transaction validates lease before commit guard and runs guard before
   preference recheck or notification insert;
+- the commit request validates and carries observed manifest defaults, so the final
+  transaction never opens a second pool connection to reload the manifest;
 - Modules owner exposes `lock_and_resolve_static_policy_in_transaction` and keeps
   all `tenant_modules` reads outside server/Notifications;
 - PostgreSQL guard locks `module.lifecycle` cursor with `FOR UPDATE`;
@@ -186,8 +192,8 @@ candidate commit and tenant enable/disable by commit order.
   enter durable candidate retry;
 - SQLite evidence covers transaction-bound policy resolution and revision rejection
   rollback; PostgreSQL contention evidence remains maintainer-owned;
-- candidate worker contract schema 5 and candidate policy contract schema 7 record
-  the narrow lifecycle serialization guarantee.
+- candidate worker contract schema 6 and candidate policy contract schema 8 record
+  the narrow lifecycle serialization and connection-safety guarantees.
 
 ## Remaining `NOTIFY-01`
 
