@@ -6,7 +6,10 @@ pub enum DomainError {
     #[error("{kind} identifier must not be empty")]
     EmptyIdentifier { kind: &'static str },
 
-    #[error("{kind} identifier contains an invalid character: {value}")]
+    #[error("{kind} identifier exceeds {max} bytes")]
+    IdentifierTooLong { kind: &'static str, max: usize },
+
+    #[error("{kind} identifier must match [a-z][a-z0-9_.-]*: {value}")]
     InvalidIdentifier {
         kind: &'static str,
         value: String,
