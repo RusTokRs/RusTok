@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
     CheckoutOrderIdentitySnapshot, InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse,
-    OrderService, ReadCheckoutOrderIdentityByOperationRequest,
+    OrderService, OrderStatusKind, ReadCheckoutOrderIdentityByOperationRequest,
 };
 
 #[async_trait]
@@ -97,8 +97,8 @@ impl InProcessCheckoutOrderCompensationPort {
         order: OrderResponse,
         reason: Option<String>,
     ) -> Result<OrderResponse, PortError> {
-        match order.status.as_str() {
-            "pending" | "confirmed" => match self
+        match order.status_kind() {
+            OrderStatusKind::Pending | OrderStatusKind::Confirmed => match self
                 .order_service
                 .cancel_order(tenant_id, actor_id, order.id, reason)
                 .await
@@ -110,7 +110,7 @@ impl InProcessCheckoutOrderCompensationPort {
                         .get_order(tenant_id, order.id)
                         .await
                         .map_err(order_error_to_port_error)?;
-                    if current.status == "cancelled" {
+                    if current.status_kind() == OrderStatusKind::Cancelled {
                         Ok(current)
                     } else {
                         Err(PortError::conflict(
@@ -121,13 +121,14 @@ impl InProcessCheckoutOrderCompensationPort {
                 }
                 Err(error) => Err(order_error_to_port_error(error)),
             },
-            "cancelled" => Ok(order),
-            "paid" | "shipped" | "delivered" => Err(manual_reconciliation(
-                "checkout order has financial or fulfillment effects and cannot be cancelled automatically",
-            )),
-            _ => Err(PortError::conflict(
-                "order.checkout_compensation_state_conflict",
-                "checkout order is in an unsupported compensation state",
+            OrderStatusKind::Cancelled => Ok(order),
+            OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => {
+                Err(manual_reconciliation(
+                    "checkout order has financial or fulfillment effects and cannot be cancelled automatically",
+                ))
+            }
+            OrderStatusKind::Unknown => Err(manual_reconciliation(
+                "checkout order lifecycle is unknown and requires manual reconciliation",
             )),
         }
     }
