@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,8 @@ use crate::{
     InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse, OrderService, OrderStatusKind,
     ReadCheckoutOrderIdentityByOperationRequest,
 };
+
+const SETTLE_PAYMENT_OPERATION: &str = "settle_checkout_payment";
 
 #[async_trait]
 pub trait CheckoutOrderPaymentSettlementPort: Send + Sync {
@@ -61,6 +63,7 @@ impl InProcessCheckoutOrderPaymentSettlementPort {
 
     async fn load_order(
         &self,
+        context: &PortContext,
         tenant_id: Uuid,
         request: &SettleCheckoutOrderPaymentRequest,
     ) -> Result<OrderResponse, PortError> {
@@ -77,7 +80,7 @@ impl InProcessCheckoutOrderPaymentSettlementPort {
             }
             None => self.service.get_order(tenant_id, request.order_id).await,
         }
-        .map_err(order_error_to_port_error)
+        .map_err(|error| order_error_to_port_error(context, "load_checkout_order", error))
     }
 }
 
@@ -99,10 +102,14 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
     ) -> Result<OrderResponse, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_tenant_id(&context)?;
-        let actor_id = parse_actor_id(&context)?;
-        require_operation_context(&context, request.checkout_operation_id)?;
-        validate_request(&request)?;
+        let tenant_id = parse_tenant_id(&context, SETTLE_PAYMENT_OPERATION)?;
+        let actor_id = parse_actor_id(&context, SETTLE_PAYMENT_OPERATION)?;
+        require_operation_context(
+            &context,
+            SETTLE_PAYMENT_OPERATION,
+            request.checkout_operation_id,
+        )?;
+        validate_request(&context, &request)?;
 
         let mut identity = self
             .identity_port
@@ -117,7 +124,7 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
             identity = self
                 .identity_port
                 .adopt_legacy(
-                    context,
+                    context.clone(),
                     AdoptLegacyCheckoutOrderIdentityRequest {
                         checkout_operation_id: request.checkout_operation_id,
                         cart_id: request.cart_id,
@@ -126,9 +133,17 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
                 .await?;
         }
         let identity = identity.ok_or_else(|| {
+            tracing::error!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = SETTLE_PAYMENT_OPERATION,
+                code = "order.checkout_payment_identity_missing",
+                checkout_operation_id = %request.checkout_operation_id,
+                "checkout payment settlement has no durable order identity"
+            );
             PortError::conflict(
                 "order.checkout_payment_identity_missing",
-                "checkout order has no durable owner identity",
+                "checkout requires manual reconciliation",
             )
         })?;
         if identity.tenant_id != tenant_id
@@ -147,7 +162,7 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
             ));
         }
 
-        let current = self.load_order(tenant_id, &request).await?;
+        let current = self.load_order(&context, tenant_id, &request).await?;
         let settled = match current.status_kind() {
             OrderStatusKind::Confirmed => self
                 .service
@@ -159,7 +174,9 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
                     request.payment_method.clone(),
                 )
                 .await
-                .map_err(order_error_to_port_error)?,
+                .map_err(|error| {
+                    order_error_to_port_error(&context, "mark_checkout_order_paid", error)
+                })?,
             OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => current,
             OrderStatusKind::Pending
             | OrderStatusKind::Cancelled
@@ -182,7 +199,10 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
     }
 }
 
-fn validate_request(request: &SettleCheckoutOrderPaymentRequest) -> Result<(), PortError> {
+fn validate_request(
+    context: &PortContext,
+    request: &SettleCheckoutOrderPaymentRequest,
+) -> Result<(), PortError> {
     if request.checkout_operation_id.is_nil()
         || request.cart_id.is_nil()
         || request.order_id.is_nil()
@@ -190,9 +210,16 @@ fn validate_request(request: &SettleCheckoutOrderPaymentRequest) -> Result<(), P
         || request.payment_reference.trim().is_empty()
         || request.payment_method.trim().is_empty()
     {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = SETTLE_PAYMENT_OPERATION,
+            code = "order.checkout_payment_request_invalid",
+            "checkout payment settlement rejected invalid owner identities"
+        );
         return Err(PortError::validation(
             "order.checkout_payment_request_invalid",
-            "checkout payment settlement requires non-empty owner identities",
+            "checkout payment settlement request is invalid",
         ));
     }
     Ok(())
@@ -200,6 +227,7 @@ fn validate_request(request: &SettleCheckoutOrderPaymentRequest) -> Result<(), P
 
 fn require_operation_context(
     context: &PortContext,
+    operation: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
     let context_operation = context
@@ -207,36 +235,72 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation,
+            code = "order.checkout_payment_causation_invalid",
+            expected_checkout_operation_id = %checkout_operation_id,
+            "checkout payment settlement received invalid causation identity"
+        );
         return Err(PortError::validation(
             "order.checkout_payment_causation_invalid",
-            "checkout payment causation_id must match the checkout operation",
+            "checkout operation context is invalid",
         ));
     }
     Ok(())
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            operation,
+            field = "tenant_id",
+            value_length = context.tenant_id.len(),
+            code = "order.tenant_id_invalid",
+            "order port received invalid request context"
+        );
         PortError::validation(
             "order.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for order ports",
+            "order request context is invalid",
         )
     })
 }
 
-fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
+fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.actor.id).map_err(|_| {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation,
+            field = "actor_id",
+            value_length = context.actor.id.len(),
+            code = "order.actor_id_invalid",
+            "order port received invalid request context"
+        );
         PortError::validation(
             "order.actor_id_invalid",
-            "PortContext.actor.id must be a UUID for order write ports",
+            "order request context is invalid",
         )
     })
 }
 
-fn order_error_to_port_error(error: OrderError) -> PortError {
+fn order_error_to_port_error(
+    context: &PortContext,
+    operation: &'static str,
+    error: OrderError,
+) -> PortError {
     match error {
         OrderError::Database(error) => {
-            tracing::error!(error = ?error, "checkout order payment settlement storage failed");
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.database_unavailable",
+                "checkout order payment settlement storage failed"
+            );
             PortError::unavailable(
                 "order.database_unavailable",
                 "order storage is temporarily unavailable",
@@ -245,27 +309,51 @@ fn order_error_to_port_error(error: OrderError) -> PortError {
         OrderError::OrderNotFound(_) => {
             PortError::not_found("order.order_not_found", "order was not found")
         }
-        OrderError::Validation(_) => PortError::validation(
-            "order.checkout_payment_validation",
-            "checkout order payment settlement request is invalid",
-        ),
-        OrderError::InvalidTransition { .. } => PortError::conflict(
-            "order.checkout_payment_state_conflict",
-            "order lifecycle conflicts with payment settlement",
-        ),
-        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => PortError::new(
-            PortErrorKind::NotFound,
-            "order.related_resource_not_found",
-            "related order resource was not found",
-            false,
-        ),
+        OrderError::Validation(cause) => {
+            tracing::warn!(
+                cause = %cause,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.checkout_payment_validation",
+                "order owner rejected checkout payment settlement"
+            );
+            PortError::validation(
+                "order.checkout_payment_validation",
+                "checkout order payment settlement request is invalid",
+            )
+        }
+        OrderError::InvalidTransition { .. } => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.checkout_payment_state_conflict",
+                "order lifecycle conflicts with checkout payment settlement"
+            );
+            PortError::conflict(
+                "order.checkout_payment_state_conflict",
+                "order lifecycle conflicts with payment settlement",
+            )
+        }
+        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => {
+            PortError::not_found(
+                "order.related_resource_not_found",
+                "related order resource was not found",
+            )
+        }
         OrderError::Core(error) => {
-            tracing::error!(error = ?error, "checkout order payment settlement invariant failed");
-            PortError::new(
-                PortErrorKind::InvariantViolation,
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.invariant_violation",
+                "checkout order payment settlement invariant failed"
+            );
+            PortError::invariant_violation(
                 "order.invariant_violation",
                 "order payment settlement failed an internal invariant",
-                false,
             )
         }
     }
