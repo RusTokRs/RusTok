@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    EntityTrait,
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -136,6 +137,49 @@ impl UserStatsService {
             }
         }
 
+        Ok(())
+    }
+
+    /// Decrement all user statistics contributed by a topic without loading its
+    /// replies into application memory. The correlated update applies one
+    /// bounded SQL statement regardless of thread size.
+    pub(crate) async fn decrement_topic_thread_aggregated_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        topic_author_id: Option<Uuid>,
+        solution_author_id: Option<Uuid>,
+    ) -> ForumResult<()> {
+        Self::adjust_topic_count_in_tx(txn, tenant_id, topic_author_id, -1).await?;
+
+        let approved_count = format!(
+            "SELECT COUNT(*) FROM forum_replies AS replies \
+             WHERE replies.tenant_id = '{tenant_id}' \
+               AND replies.topic_id = '{topic_id}' \
+               AND replies.author_id = forum_user_stats.user_id \
+               AND replies.status = 'approved' \
+               AND replies.deleted_at IS NULL"
+        );
+        txn.execute_unprepared(&format!(
+            "UPDATE forum_user_stats \
+             SET reply_count = CASE \
+                 WHEN reply_count > ({approved_count}) \
+                 THEN reply_count - ({approved_count}) \
+                 ELSE 0 \
+             END, updated_at = CURRENT_TIMESTAMP \
+             WHERE tenant_id = '{tenant_id}' \
+               AND EXISTS (\
+                   SELECT 1 FROM forum_replies AS replies \
+                   WHERE replies.tenant_id = '{tenant_id}' \
+                     AND replies.topic_id = '{topic_id}' \
+                     AND replies.author_id = forum_user_stats.user_id \
+                     AND replies.status = 'approved' \
+                     AND replies.deleted_at IS NULL\
+               )"
+        ))
+        .await?;
+
+        Self::adjust_solution_count_in_tx(txn, tenant_id, solution_author_id, -1).await?;
         Ok(())
     }
 
