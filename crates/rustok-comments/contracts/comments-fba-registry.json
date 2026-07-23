@@ -56,7 +56,8 @@
     "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
     "thread_write_invariants": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
     "thread_write_invariants_runner": "scripts/verify/verify-comments-thread-write-invariants.mjs",
-    "thread_write_invariants_test": "crates/rustok-comments/tests/thread_write_invariants.rs"
+    "thread_write_invariants_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
+    "thread_creation_concurrency_test": "crates/rustok-comments/tests/thread_creation_concurrency.rs"
   },
   "in_process_provider_impl": {
     "service": "InProcessCommentsThreadProvider",
