@@ -6,15 +6,30 @@ use uuid::Uuid;
 
 use super::DomainError;
 
+const MAX_IDENTIFIER_BYTES: usize = 128;
+
 fn validate_identifier(kind: &'static str, value: &str) -> Result<(), DomainError> {
-    if value.trim().is_empty() {
+    if value.is_empty() {
         return Err(DomainError::EmptyIdentifier { kind });
     }
+    if value.len() > MAX_IDENTIFIER_BYTES {
+        return Err(DomainError::IdentifierTooLong {
+            kind,
+            max: MAX_IDENTIFIER_BYTES,
+        });
+    }
 
-    if value
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.'))
-    {
+    let mut characters = value.chars();
+    let starts_correctly = characters
+        .next()
+        .is_some_and(|character| character.is_ascii_lowercase());
+    let remainder_is_valid = characters.all(|character| {
+        character.is_ascii_lowercase()
+            || character.is_ascii_digit()
+            || matches!(character, '_' | '-' | '.')
+    });
+
+    if starts_correctly && remainder_is_valid {
         Ok(())
     } else {
         Err(DomainError::InvalidIdentifier {
@@ -256,10 +271,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejects_blank_and_whitespace_identifiers() {
-        assert!(ModuleName::new("").is_err());
-        assert!(ModuleName::new("   ").is_err());
-        assert!(FieldName::new("display name").is_err());
+    fn rejects_noncanonical_identifiers() {
+        for value in ["", "Product", "3d_model", "display name", "-product"] {
+            assert!(ModuleName::new(value).is_err(), "{value} must be rejected");
+        }
+        assert!(ModuleName::new("x".repeat(MAX_IDENTIFIER_BYTES + 1)).is_err());
     }
 
     #[test]
