@@ -8,6 +8,7 @@ pub mod application_entities;
 pub mod applications;
 pub mod domain;
 pub mod dto;
+pub mod effective_service;
 pub mod entities;
 pub mod error;
 pub mod governance;
@@ -40,12 +41,15 @@ pub mod migrations;
 mod notification_source;
 pub mod policy_history;
 pub mod ports;
+/// Legacy implementation delegate. Module-owned public surfaces use
+/// [`effective_service::GroupsService`] through the crate-root re-export.
 pub mod service;
 pub mod targeted_invitations;
 
 pub use applications::*;
 pub use domain::*;
 pub use dto::*;
+pub use effective_service::GroupsService;
 pub use error::{GroupsError, GroupsResult};
 pub use governance::*;
 pub use invitations::*;
@@ -53,7 +57,6 @@ pub use localization::GroupLocalizationService;
 pub use membership_enforcement::GroupMembershipEnforcementService;
 pub use policy_history::*;
 pub use ports::*;
-pub use service::GroupsService;
 pub use targeted_invitations::*;
 
 /// Social group identity, membership, privacy, and modular feature owner.
