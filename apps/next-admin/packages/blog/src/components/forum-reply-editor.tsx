@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { createForumReply } from '../api/forum';
 import type { GqlOpts } from '../api/posts';
-import { RtJsonEditor } from './rt-json-editor';
+import { RichTextEditor } from './rich-text-editor';
 import {
   normalizeRtJsonPayload,
   stringifyRtDoc,
@@ -58,7 +58,12 @@ export function ForumReplyEditor({
       <Form form={form} onSubmit={form.handleSubmit(submit)}>
         <CardContent className='space-y-4'>
           <FormInput control={form.control} name='locale' label='Locale' />
-          <RtJsonEditor label='Reply content' value={doc} onChange={setDoc} />
+          <RichTextEditor
+            label='Reply content'
+            profile='discussion'
+            value={doc}
+            onChange={setDoc}
+          />
           <pre className='bg-muted max-h-44 overflow-auto rounded-md border p-3 text-xs'>
             {stringifyRtDoc(doc, form.watch('locale') || hostLocale)}
           </pre>

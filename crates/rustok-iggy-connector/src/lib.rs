@@ -199,6 +199,8 @@ pub struct ConnectorConfig {
     pub topic_name: String,
     /// Number of partitions
     pub partitions: u32,
+    /// Replication factor for newly created topics.
+    pub replication_factor: u8,
 }
 
 impl Default for ConnectorConfig {
@@ -210,6 +212,7 @@ impl Default for ConnectorConfig {
             stream_name: "rustok".to_string(),
             topic_name: "domain".to_string(),
             partitions: 8,
+            replication_factor: 1,
         }
     }
 }
@@ -293,6 +296,21 @@ pub trait IggyConnector: Send + Sync + 'static {
         Err(ConnectorError::Config(format!(
             "persistent consumer groups are not supported for {stream}/{topic} ({group_name})"
         )))
+    }
+
+    /// Ensures that the stream and all required topics exist before producers
+    /// or consumer groups are opened.
+    async fn ensure_topology(
+        &self,
+        stream: &str,
+        topics: &[&str],
+        partitions: u32,
+        replication_factor: u8,
+    ) -> Result<(), ConnectorError> {
+        let _ = (stream, topics, partitions, replication_factor);
+        Err(ConnectorError::Config(
+            "broker topology management is not supported by this connector".to_string(),
+        ))
     }
 
     /// Graceful shutdown
@@ -657,6 +675,8 @@ pub struct ExternalConnector {
     config: Arc<RwLock<Option<ExternalConnectorConfig>>>,
     stream_name: Arc<RwLock<String>>,
     topic_name: Arc<RwLock<String>>,
+    partitions: Arc<RwLock<u32>>,
+    replication_factor: Arc<RwLock<u8>>,
     connected: Arc<RwLock<bool>>,
 }
 
@@ -675,6 +695,8 @@ impl ExternalConnector {
             config: Arc::new(RwLock::new(None)),
             stream_name: Arc::new(RwLock::new("rustok".to_string())),
             topic_name: Arc::new(RwLock::new("domain".to_string())),
+            partitions: Arc::new(RwLock::new(8)),
+            replication_factor: Arc::new(RwLock::new(1)),
             connected: Arc::new(RwLock::new(false)),
         }
     }
@@ -767,11 +789,23 @@ impl ExternalConnector {
 #[async_trait]
 impl IggyConnector for ExternalConnector {
     async fn connect(&self, config: &ConnectorConfig) -> Result<(), ConnectorError> {
+        if config.partitions == 0 {
+            return Err(ConnectorError::Config(
+                "Iggy topic partitions must be greater than zero".to_string(),
+            ));
+        }
+        if config.replication_factor == 0 {
+            return Err(ConnectorError::Config(
+                "Iggy topic replication_factor must be greater than zero".to_string(),
+            ));
+        }
         let remote_config = config.external.clone();
 
         *self.config.write().await = Some(remote_config.clone());
         *self.stream_name.write().await = config.stream_name.clone();
         *self.topic_name.write().await = config.topic_name.clone();
+        *self.partitions.write().await = config.partitions;
+        *self.replication_factor.write().await = config.replication_factor;
 
         #[cfg(feature = "iggy")]
         {
@@ -804,7 +838,9 @@ impl IggyConnector for ExternalConnector {
             return Err(ConnectorError::NotConnected);
         }
 
-        let partition = calculate_partition(&request.partition_key);
+        let partitions = *self.partitions.read().await;
+        let replication_factor = *self.replication_factor.read().await;
+        let partition = calculate_partition(&request.partition_key, partitions);
 
         #[cfg(feature = "iggy")]
         {
@@ -817,6 +853,13 @@ impl IggyConnector for ExternalConnector {
                 .producer(&request.stream, &request.topic)
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?
                 .partitioning(Partitioning::partition_id(partition))
+                .create_stream_if_not_exists()
+                .create_topic_if_not_exists(
+                    partitions,
+                    Some(replication_factor),
+                    Default::default(),
+                    Default::default(),
+                )
                 .build();
 
             producer
@@ -928,6 +971,55 @@ impl IggyConnector for ExternalConnector {
             let _ = (stream, topic, group_name);
             Err(ConnectorError::Config(
                 "external Iggy consumer groups require the `iggy` feature".to_string(),
+            ))
+        }
+    }
+
+    async fn ensure_topology(
+        &self,
+        stream: &str,
+        topics: &[&str],
+        partitions: u32,
+        replication_factor: u8,
+    ) -> Result<(), ConnectorError> {
+        if !*self.connected.read().await {
+            return Err(ConnectorError::NotConnected);
+        }
+        if partitions == 0 || replication_factor == 0 {
+            return Err(ConnectorError::Config(
+                "Iggy topology requires non-zero partitions and replication_factor".to_string(),
+            ));
+        }
+
+        #[cfg(feature = "iggy")]
+        {
+            let client_guard = self.client.read().await;
+            let client: &IggyClient = client_guard.as_ref().ok_or(ConnectorError::NotConnected)?;
+            for topic in topics {
+                let producer = client
+                    .producer(stream, topic)
+                    .map_err(|error: IggyError| ConnectorError::Topology(error.to_string()))?
+                    .create_stream_if_not_exists()
+                    .create_topic_if_not_exists(
+                        partitions,
+                        Some(replication_factor),
+                        Default::default(),
+                        Default::default(),
+                    )
+                    .build();
+                producer
+                    .init()
+                    .await
+                    .map_err(|error: IggyError| ConnectorError::Topology(error.to_string()))?;
+            }
+            return Ok(());
+        }
+
+        #[cfg(not(feature = "iggy"))]
+        {
+            let _ = (stream, topics, partitions, replication_factor);
+            Err(ConnectorError::Config(
+                "broker topology management requires the `iggy` feature".to_string(),
             ))
         }
     }
@@ -1389,6 +1481,18 @@ impl IggyConnector for BundledConnector {
             .await
     }
 
+    async fn ensure_topology(
+        &self,
+        stream: &str,
+        topics: &[&str],
+        partitions: u32,
+        replication_factor: u8,
+    ) -> Result<(), ConnectorError> {
+        self.external
+            .ensure_topology(stream, topics, partitions, replication_factor)
+            .await
+    }
+
     async fn shutdown(&self) -> Result<(), ConnectorError> {
         let remote_result = self.external.shutdown().await;
         let shutdown_timeout_ms = self
@@ -1430,7 +1534,7 @@ fn validate_connection_string_component(
 }
 
 /// Calculate partition number based on key
-fn calculate_partition(key: &str) -> u32 {
+fn calculate_partition(key: &str, partitions: u32) -> u32 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -1438,7 +1542,7 @@ fn calculate_partition(key: &str) -> u32 {
     key.hash(&mut hasher);
     let hash = hasher.finish();
 
-    (hash % 8) as u32 + 1
+    (hash % u64::from(partitions)) as u32 + 1
 }
 
 // ============================================================================

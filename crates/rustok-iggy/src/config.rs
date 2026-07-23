@@ -212,6 +212,7 @@ impl From<&IggyConfig> for ConnectorConfig {
             stream_name: config.topology.stream_name.clone(),
             topic_name: "domain".to_string(),
             partitions: config.topology.domain_partitions,
+            replication_factor: config.topology.replication_factor,
         }
     }
 }

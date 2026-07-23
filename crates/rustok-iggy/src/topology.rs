@@ -38,7 +38,7 @@ impl TopologyManager {
     pub async fn ensure_topology(
         &self,
         config: &IggyConfig,
-        _connector: &dyn IggyConnector,
+        connector: &dyn IggyConnector,
     ) -> rustok_core::Result<()> {
         let stream_name = config.topology.stream_name.clone();
         let partitions = config.topology.domain_partitions;
@@ -52,6 +52,16 @@ impl TopologyManager {
             dlq_retention_days = config.retention.dlq_max_age_days,
             "Ensuring iggy topology"
         );
+
+        connector
+            .ensure_topology(
+                &stream_name,
+                &["domain", "system", MODULE_BUILD_TOPIC, "dlq"],
+                partitions,
+                config.topology.replication_factor,
+            )
+            .await
+            .map_err(|error| rustok_core::Error::External(error.to_string()))?;
 
         *self.stream_name.write().await = stream_name.clone();
         *self.domain_topic.write().await = "domain".to_string();
@@ -144,6 +154,16 @@ mod tests {
             rustok_iggy_connector::ConnectorError,
         > {
             Ok(Box::new(MockSubscriber))
+        }
+
+        async fn ensure_topology(
+            &self,
+            _stream: &str,
+            _topics: &[&str],
+            _partitions: u32,
+            _replication_factor: u8,
+        ) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {
+            Ok(())
         }
 
         async fn shutdown(&self) -> std::result::Result<(), rustok_iggy_connector::ConnectorError> {

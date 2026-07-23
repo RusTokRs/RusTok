@@ -34,7 +34,8 @@ const baseConfig: NextConfig = {
     'geist',
     '@rustok/blog-admin',
     '@rustok/ai-admin',
-    '@rustok/commerce-admin'
+    '@rustok/commerce-admin',
+    '@rustok/richtext'
   ],
   // Turbopack configuration: set workspace root so local crate packages
   // (e.g. @rustok/blog-admin at file:../../crates/...) can resolve node_modules

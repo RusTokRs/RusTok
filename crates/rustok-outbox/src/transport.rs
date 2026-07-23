@@ -168,13 +168,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_event_type_mismatch() {
+    fn rejects_an_unregistered_event_type() {
         let mut envelope = envelope();
         envelope.event_type = "wrong.event".to_string();
 
         let error = OutboxTransport::model_from_envelope(envelope)
-            .expect_err("event type mismatch must be rejected");
-        assert!(error.to_string().contains("event_type mismatch"));
+            .expect_err("unregistered event type must be rejected");
+        assert!(error.to_string().contains("is not registered"));
     }
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
 
         let error = OutboxTransport::model_from_envelope(envelope)
             .expect_err("schema version mismatch must be rejected");
-        assert!(error.to_string().contains("schema_version mismatch"));
+        assert!(error.to_string().contains("schema version mismatch"));
     }
 
     #[test]

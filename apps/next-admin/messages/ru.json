@@ -1,4 +1,24 @@
 {
+  "richText": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "strike": "Strike",
+    "code": "Code",
+    "heading": "Heading",
+    "bullet_list": "Bulleted list",
+    "ordered_list": "Numbered list",
+    "blockquote": "Quote",
+    "code_block": "Code block",
+    "horizontal_rule": "Horizontal rule",
+    "link": "Link",
+    "link_url": "Link URL",
+    "apply_link": "Apply",
+    "remove_link": "Remove",
+    "clear_formatting": "Clear formatting",
+    "undo": "Undo",
+    "redo": "Redo",
+    "editor": "Rich text editor"
+  },
   "app": {
     "dashboard": {
       "activity": {

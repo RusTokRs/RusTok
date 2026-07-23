@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
-import { RtJsonEditor } from './rt-json-editor';
+import { RichTextEditor } from './rich-text-editor';
 import {
   extractRtDoc,
   markdownToRtDoc,
@@ -315,7 +315,7 @@ export default function PostForm({
               </Button>
             </>
           ) : (
-            <RtJsonEditor
+            <RichTextEditor
               label='Body (rt_json_v1)'
               value={rtDoc}
               onChange={(doc) => {

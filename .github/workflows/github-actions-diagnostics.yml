@@ -1,0 +1,120 @@
+name: Failed workflow diagnostics
+
+on:
+  workflow_run:
+    workflows:
+      - API Compatibility
+      - Browser E2E
+      - CI
+      - Cache feature matrix
+      - Cache hardening
+      - Cache hardening focused formatter
+      - Cache Redis status
+      - Cache worker readiness
+      - Dependencies
+      - Dependency Advisory Reachability
+      - Event runtime hardening
+      - FORUM-11 Diagnostics
+      - Field definition cache hardening
+      - Fly Page Builder
+      - Hardening Gates
+      - Locale cache hardening
+      - Marketplace cache hardening
+      - Marketplace listing owner outbox
+      - Marketplace seller event storage
+      - Migration Compatibility
+      - Migration Infrastructure Approval
+      - One-off Alloy Repair Status
+      - One-off Inspect Latest Migration Pin
+      - One-off Migration Action Pin Status
+      - One-off Pin Migration Actions
+      - Release
+      - Release Infrastructure
+      - Repository Ruleset Contract
+      - Rust-hosted Browser Smoke
+      - Worker Runtime Infrastructure
+    types:
+      - completed
+
+permissions:
+  actions: write
+
+jobs:
+  collect:
+    name: Collect failed workflow logs
+    if: >-
+      ${{
+        contains(
+          fromJSON('["failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"]'),
+          github.event.workflow_run.conclusion
+        )
+      }}
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      SOURCE_WORKFLOW: ${{ github.event.workflow_run.name }}
+      SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      SOURCE_URL: ${{ github.event.workflow_run.html_url }}
+    steps:
+      - name: Remove diagnostics from an earlier attempt
+        uses: actions/github-script@v8
+        env:
+          ARTIFACT_NAME: ci-errors-${{ github.event.workflow_run.id }}
+        with:
+          script: |
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: process.env.ARTIFACT_NAME,
+                per_page: 100,
+              },
+            );
+
+            await Promise.all(
+              artifacts.map((artifact) =>
+                github.rest.actions.deleteArtifact({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  artifact_id: artifact.id,
+                }),
+              ),
+            );
+
+      - name: Download source workflow logs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ci-errors
+          gh api \
+            --hostname github.com \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/logs" \
+            > artifacts/ci-errors/source-workflow-logs.zip
+          unzip -q artifacts/ci-errors/source-workflow-logs.zip -d artifacts/ci-errors/logs
+          rm artifacts/ci-errors/source-workflow-logs.zip
+          jq -n \
+            --arg source_run_id "${SOURCE_RUN_ID}" \
+            --arg source_run_attempt "${SOURCE_RUN_ATTEMPT}" \
+            --arg source_workflow "${SOURCE_WORKFLOW}" \
+            --arg source_conclusion "${SOURCE_CONCLUSION}" \
+            --arg source_url "${SOURCE_URL}" \
+            '{
+              source_run_id: $source_run_id,
+              source_run_attempt: $source_run_attempt,
+              source_workflow: $source_workflow,
+              source_conclusion: $source_conclusion,
+              source_url: $source_url
+            }' > artifacts/ci-errors/metadata.json
+
+      - name: Upload failed workflow logs
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-errors-${{ github.event.workflow_run.id }}
+          path: artifacts/ci-errors
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14

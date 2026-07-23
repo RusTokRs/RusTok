@@ -565,7 +565,7 @@ mod tests {
     async fn invalid_payload_reaches_dlq_instead_of_remaining_claimed() {
         let db = database().await;
         let event_id = Uuid::new_v4();
-        entity::ActiveModel {
+        entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
             event_type: Set("invalid.event".to_string()),
             schema_version: Set(1),
@@ -578,8 +578,8 @@ mod tests {
             claimed_at: Set(None),
             created_at: Set(Utc::now()),
             dispatched_at: Set(None),
-        }
-        .insert(&db)
+        })
+        .exec_without_returning(&db)
         .await
         .expect("insert poison event");
 
@@ -628,7 +628,7 @@ mod tests {
         )
         .expect("valid contract envelope");
         let event_id = envelope.id();
-        entity::ActiveModel {
+        entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
             event_type: Set(envelope.event_type().to_string()),
             schema_version: Set(i16::try_from(envelope.schema_version()).unwrap()),
@@ -641,8 +641,8 @@ mod tests {
             claimed_at: Set(None),
             created_at: Set(Utc::now()),
             dispatched_at: Set(None),
-        }
-        .insert(&db)
+        })
+        .exec_without_returning(&db)
         .await
         .expect("insert contract event");
 
@@ -672,7 +672,7 @@ mod tests {
     async fn stale_worker_cannot_complete_a_reclaimed_event() {
         let db = database().await;
         let event_id = Uuid::new_v4();
-        entity::ActiveModel {
+        entity::Entity::insert(entity::ActiveModel {
             id: Set(event_id),
             event_type: Set("invalid.event".to_string()),
             schema_version: Set(1),
@@ -685,8 +685,8 @@ mod tests {
             claimed_at: Set(Some(Utc::now())),
             created_at: Set(Utc::now()),
             dispatched_at: Set(None),
-        }
-        .insert(&db)
+        })
+        .exec_without_returning(&db)
         .await
         .expect("insert claimed event");
 

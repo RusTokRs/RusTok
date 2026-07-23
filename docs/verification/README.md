@@ -158,6 +158,42 @@ Practical criteria for choosing an implementation:
    - one script only proxies another without added logic;
    - the command is already covered by `cargo xtask ...` and does not add a separate contract.
 
+## GitHub Actions Failure Diagnostics
+
+`Failed workflow diagnostics` is a repository-level workflow that runs after
+any configured workflow finishes with a failure, timeout, cancellation, stale,
+action-required, or startup-failure conclusion. It downloads the complete
+source workflow log and publishes it as
+`ci-errors-<source-run-id>`. The artifact contains the extracted logs under
+`artifacts/ci-errors/logs/` and `metadata.json` with the source run URL,
+attempt, workflow name, and conclusion.
+
+The artifact name is stable for a source workflow run. Before publishing a
+new diagnostic bundle, the workflow removes the prior bundle with that name,
+so rerunning a failed workflow replaces its diagnostic artifact instead of
+leaving stale logs for the same run. Logs are CI artifacts and are never
+committed to the repository. The diagnostic job does not check out or execute
+source-workflow code; it only downloads and archives GitHub-generated logs.
+
+Download the artifact from the `Failed workflow diagnostics` run in the
+Actions UI, or pull the newest retained bundle to the local workspace with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/ci/download-failed-logs.ps1
+```
+
+The command replaces `errors/` with the current artifact contents, so the
+extracted job logs and `metadata.json` are immediately available in one local
+directory. That directory is ignored by Git. The existing `nextest-logs`
+artifact remains available directly from the main CI workflow for the focused
+Rust test output.
+
+GitHub requires the source workflow names in the `workflow_run` trigger to be
+explicit. When a workflow is added or renamed, update the list in
+`.github/workflows/github-actions-diagnostics.yml` in the same change. The
+diagnostic workflow itself is intentionally excluded to prevent a recursive
+failure-diagnostics chain.
+
 ## Page Builder FBA Verification Baseline (Wave 0/Wave 1 Gate)
 
 For the `page_builder -> pages` track, the mandatory minimum gate before advancing between waves:

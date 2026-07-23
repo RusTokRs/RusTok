@@ -79,3 +79,4 @@ Rules mandatory for all automated agents operating in this repository:
     - Framework-agnostic contracts → `crates/rustok-api/`
     - Domain-specific cross-module UI → `crates/rustok-<capability>-<surface>-support/`
     - Before writing reusable code, check existing libraries in `crates/leptos-*` and `crates/rustok-*/`. See [Module UI Package Implementation Guide](docs/UI/module-package-implementation.md#when-to-extract-shared-libraries) for extraction decision matrix.
+18. When diagnosing a failed GitHub Actions run, first execute `powershell -ExecutionPolicy Bypass -File scripts/ci/download-failed-logs.ps1` and inspect the refreshed local `errors/` directory. Do not rely on stale logs from an earlier run.

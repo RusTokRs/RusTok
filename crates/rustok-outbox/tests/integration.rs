@@ -343,10 +343,10 @@ async fn setup_sqlite_db() -> TestResult<DatabaseConnection> {
 
 async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
     let envelope = EventEnvelope::new(
-        Uuid::nil(),
+        Uuid::new_v4(),
         None,
         DomainEvent::UserAccountRegistered {
-            user_id: Uuid::nil(),
+            user_id: Uuid::new_v4(),
         },
     );
 

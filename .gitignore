@@ -27,6 +27,7 @@ Thumbs.db
 *.log
 logs/
 **/logs/
+/errors/
 
 # Testing and coverage
 *.profraw
@@ -43,6 +44,8 @@ lcov.info
 # WASM build artifacts
 **/dist/
 **/build/
+!packages/richtext/dist/
+!packages/richtext/dist/**
 # Allow placeholder so cargo build -p rustok-server works without pre-building Leptos admin
 !apps/admin/dist/
 apps/admin/dist/*
@@ -65,6 +68,8 @@ yarn-error.log*
 
 # Generated files
 **/generated/
+!packages/richtext/src/generated/
+!packages/richtext/src/generated/**
 
 # Backup files
 *.bak
