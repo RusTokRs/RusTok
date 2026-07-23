@@ -6,6 +6,7 @@ const failures = [];
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const files = {
+  error: "crates/rustok-groups/src/error.rs",
   guard: "crates/rustok-groups/src/effective_membership_guard.rs",
   locking: "crates/rustok-groups/src/membership_enforcement_transaction.rs",
   invitations: "crates/rustok-groups/src/effective_invitations.rs",
@@ -40,6 +41,17 @@ const requireMarkers = (relative, markers) => {
 };
 
 if (failures.length === 0) {
+  requireMarkers(files.error, [
+    "MembershipSuspended",
+    "MembershipBanned",
+    "ManagerRequired",
+    "MembershipAlreadyActive",
+    '"groups.membership_suspended"',
+    '"groups.membership_banned"',
+    '"groups.manager_required"',
+    '"groups.membership_already_active"',
+  ]);
+
   requireMarkers(files.locking, [
     "resolve_group_membership_enforcement_for_update",
     "Group -> GroupMembership -> GroupMembershipEnforcement",
@@ -54,6 +66,10 @@ if (failures.length === 0) {
     "require_effective_manager_owned",
     "require_user_not_denied_owned",
     "DatabaseTransaction",
+    "GroupsError::MembershipSuspended",
+    "GroupsError::MembershipBanned",
+    "GroupsError::ManagerRequired",
+    "GroupsError::MembershipAlreadyActive",
     "effective.active_member && role_allowed",
   ]);
   if (read(files.guard).includes("has_existing_receipt")) {
@@ -101,12 +117,14 @@ if (failures.length === 0) {
   ]);
 
   requireMarkers(files.invitations, [
+    "PortCallPolicy::write()",
     "create_group_invitation_effective_owned",
     "revoke_group_invitation_effective_owned",
     "accept_group_invitation_effective_owned",
     "accept_targeted_group_invitation_effective_owned",
   ]);
   requireMarkers(files.applications, [
+    "validate_write_context",
     "upsert_policy_effective_owned",
     "submit_application_effective_owned",
     "review_application_effective_owned",
@@ -173,7 +191,7 @@ if (failures.length === 0) {
   ]);
   requireMarkers(files.readme, [
     "transaction-aware invitation/application writes",
-    "effective authorization and mutation",
+    "effective authorization, mutation",
     "runtime evidence and the remaining owner paths are open",
   ]);
 }
@@ -185,5 +203,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Groups invitation/application writes use receipt-first transactional effective authorization with sealed public facades and open runtime evidence.",
+  "Groups invitation/application writes use receipt-first transactional effective authorization with stable error codes, sealed public facades, and open runtime evidence.",
 );
