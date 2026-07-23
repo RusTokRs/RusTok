@@ -163,24 +163,5 @@ fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
 }
 
 fn command_error(error: crate::ForumError) -> HttpError {
-    match error {
-        crate::ForumError::Database(error) => HttpError::internal(error.to_string()),
-        crate::ForumError::Content(error) => HttpError::internal(error.to_string()),
-        crate::ForumError::Internal(error) => HttpError::internal(error.to_string()),
-        crate::ForumError::Forbidden(message) => {
-            HttpError::forbidden("forum_permission_denied", message)
-        }
-        crate::ForumError::TopicNotFound(id) => {
-            HttpError::not_found("forum_topic_not_found", format!("Topic not found: {id}"))
-        }
-        crate::ForumError::ReplyNotFound(id) => {
-            HttpError::not_found("forum_reply_not_found", format!("Reply not found: {id}"))
-        }
-        crate::ForumError::RelationRevisionConflict => HttpError::new(
-            StatusCode::CONFLICT,
-            "FORUM_RELATION_REVISION_CONFLICT",
-            "Forum relation revision changed concurrently",
-        ),
-        error => HttpError::bad_request(error.stable_code(), error.to_string()),
-    }
+    crate::controllers::map_forum_error(error)
 }
