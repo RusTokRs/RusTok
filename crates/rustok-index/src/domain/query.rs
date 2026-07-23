@@ -21,6 +21,28 @@ pub enum FilterExpr {
     IsNull(FieldPath, bool),
 }
 
+impl FilterExpr {
+    pub fn field_paths(&self, output: &mut Vec<&FieldPath>) {
+        match self {
+            Self::And(filters) | Self::Or(filters) => {
+                for filter in filters {
+                    filter.field_paths(output);
+                }
+            }
+            Self::Not(filter) => filter.field_paths(output),
+            Self::Eq(path, _)
+            | Self::Ne(path, _)
+            | Self::In(path, _)
+            | Self::Gt(path, _)
+            | Self::Gte(path, _)
+            | Self::Lt(path, _)
+            | Self::Lte(path, _)
+            | Self::Contains(path, _)
+            | Self::IsNull(path, _) => output.push(path),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderDirection {
@@ -88,12 +110,21 @@ impl IndexQuery {
 
         self.pagination.validate()
     }
+
+    pub fn referenced_paths(&self) -> Vec<&FieldPath> {
+        let mut paths = self.fields.iter().collect::<Vec<_>>();
+        if let Some(filter) = &self.filter {
+            filter.field_paths(&mut paths);
+        }
+        paths.extend(self.order_by.iter().map(|order| &order.field));
+        paths
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{EntityName, FieldName, ModuleName, SchemaVersion};
+    use crate::domain::{EntityName, FieldName, LinkName, ModuleName, SchemaVersion};
 
     fn schema() -> SchemaRef {
         SchemaRef {
@@ -124,13 +155,12 @@ mod tests {
     fn accepts_link_aware_filter_shape() {
         let query = IndexQuery {
             schema: schema(),
-            fields: vec![FieldPath::new([FieldName::new("id").unwrap()]).unwrap()],
+            fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
             filter: Some(FilterExpr::Eq(
-                FieldPath::new([
-                    FieldName::new("sales_channel").unwrap(),
+                FieldPath::linked(
+                    [LinkName::new("sales_channel").unwrap()],
                     FieldName::new("id").unwrap(),
-                ])
-                .unwrap(),
+                ),
                 IndexValue::String("channel-eu".to_owned()),
             )),
             order_by: Vec::new(),
@@ -142,5 +172,6 @@ mod tests {
         };
 
         assert!(query.validate_shape().is_ok());
+        assert_eq!(query.referenced_paths().len(), 2);
     }
 }
