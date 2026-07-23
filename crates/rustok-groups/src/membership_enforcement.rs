@@ -96,7 +96,7 @@ where
         .filter(membership_enforcement::Column::TenantId.eq(tenant_id))
         .one(connection)
         .await?
-        .map(|row| map_enforcement(row, &membership, evaluated_at))
+        .map(|row| map_enforcement(row, &membership, &evaluated_at))
         .transpose()?;
 
     let effective_status = resolve_effective_status(
@@ -123,7 +123,7 @@ where
 fn map_enforcement(
     row: membership_enforcement::Model,
     membership: &membership_state::Model,
-    evaluated_at: DateTime<Utc>,
+    evaluated_at: &DateTime<Utc>,
 ) -> GroupsResult<GroupMembershipEnforcementSummary> {
     if row.tenant_id != membership.tenant_id
         || row.membership_id != membership.id
@@ -192,15 +192,20 @@ fn map_enforcement(
     let effective_until = row
         .effective_until
         .map(|value| value.with_timezone(&Utc));
-    if effective_until.is_some_and(|until| until <= effective_from) {
+    if effective_until
+        .as_ref()
+        .is_some_and(|until| until <= &effective_from)
+    {
         return Err(GroupsError::Invariant(
             "membership enforcement expiry must follow its effective start".to_string(),
         ));
     }
     let revoked_at = row.revoked_at.map(|value| value.with_timezone(&Utc));
     let is_effective = revoked_at.is_none()
-        && effective_from <= evaluated_at
-        && effective_until.is_none_or(|until| evaluated_at < until);
+        && &effective_from <= evaluated_at
+        && effective_until
+            .as_ref()
+            .is_none_or(|until| evaluated_at < until);
 
     Ok(GroupMembershipEnforcementSummary {
         membership_id: row.membership_id,
@@ -269,7 +274,6 @@ fn can_read_effective_membership(context: &PortContext, target_user_id: Uuid) ->
                     | "groups:read"
                     | "groups:manage"
                     | "groups:*"
-                    | "*: *"
                     | "*:*"
             )
         })
