@@ -13,15 +13,17 @@ This is a standalone workspace crate named `rustok-benchmarks`.
   - `order_operations.rs`
 - `src/index_storage/` — the M2 PostgreSQL physical-storage comparison for
   `rustok-index`.
-- `src/bin/index_storage_benchmark.rs` — executable evidence runner.
+- `src/bin/index_storage_benchmark.rs` — read/query evidence runner.
+- `src/bin/index_storage_mutation_benchmark.rs` — transactional update/delete
+  WAL evidence runner.
 
 ## Purpose
 
 The Criterion suites detect performance regressions in established platform
-paths. The Index storage runner is different: it compares temporary PostgreSQL
-storage candidates before any production Index migration is selected.
+paths. The Index storage runners compare temporary PostgreSQL storage candidates
+before any production Index migration is selected.
 
-The Index runner creates only schemas prefixed with `idx_bench_`:
+The Index runners create only schemas prefixed with `idx_bench_`:
 
 - `idx_bench_source`
 - `idx_bench_jsonb`
@@ -37,13 +39,30 @@ every run.
 cargo bench -p rustok-benchmarks
 ```
 
-## Index storage benchmark
+## Index read/query benchmark
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_bench \
 INDEX_BENCH_SCALE=smoke \
 cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 ```
+
+Before timings are accepted, the runner verifies source/candidate entity/link
+cardinality and identical result digests for all shared workloads.
+
+## Index mutation/WAL benchmark
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_bench \
+INDEX_BENCH_SCALE=smoke \
+cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
+```
+
+The mutation runner validates equal affected entity/link counts, executes every
+measured update/delete in an isolated transaction, records full JSON
+`EXPLAIN (ANALYZE, BUFFERS, WAL)` output, and rolls the transaction back. The
+report exposes maximum per-plan-node WAL records, FPI, and bytes without
+claiming they are persistent bloat measurements.
 
 Scale values:
 
@@ -56,7 +75,8 @@ Optional environment variables:
 - `INDEX_BENCH_LOCALES=en-US,ru-RU`
 - `INDEX_BENCH_REPETITIONS=3`
 - `INDEX_BENCH_OUTPUT=target/index-storage-benchmark/report.json`
+- `INDEX_BENCH_MUTATION_OUTPUT=target/index-storage-benchmark/mutation-report.json`
 
-The generated report contains load times, schema sizes, PostgreSQL settings,
-executed SQL, and repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` plans.
-Results are evidence only; the production model is chosen later in an ADR.
+Persistent churn, dead tuples, bloat, and pre/post-VACUUM evidence remain a
+separate open M2 phase. Results are evidence only; the production model is
+chosen later in an ADR.
