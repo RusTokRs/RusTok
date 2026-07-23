@@ -1,4 +1,4 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, ErrorExtensions, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, graphql::require_module_enabled};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
@@ -154,7 +154,7 @@ impl CommerceCheckoutMutation {
             checkout_input,
         )
         .await
-        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+        .map_err(storefront_checkout_graphql_error)?;
 
         Ok(response.into())
     }
@@ -259,175 +259,16 @@ impl CommerceCheckoutMutation {
 
         Ok(option.into())
     }
+}
 
-    async fn create_shipping_profile(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        input: CreateShippingProfileInputObject,
-    ) -> Result<GqlShippingProfile> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_CREATE],
-            "Permission denied: fulfillments:create required",
-        )?;
-        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping profile creation")?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let profile = ShippingProfileService::new(db.clone())
-            .create_shipping_profile(
-                tenant_id,
-                crate::dto::CreateShippingProfileInput {
-                    slug: input.slug,
-                    translations: input
-                        .translations
-                        .into_iter()
-                        .map(|translation| crate::dto::ShippingProfileTranslationInput {
-                            locale: translation.locale,
-                            name: translation.name,
-                            description: translation.description,
-                        })
-                        .collect(),
-                    metadata: parse_optional_metadata(input.metadata.as_deref())?,
-                },
-            )
-            .await?;
-
-        Ok(profile.into())
-    }
-
-    async fn update_shipping_profile(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-        input: UpdateShippingProfileInputObject,
-    ) -> Result<GqlShippingProfile> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping profile update")?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let profile = ShippingProfileService::new(db.clone())
-            .update_shipping_profile(
-                tenant_id,
-                id,
-                crate::dto::UpdateShippingProfileInput {
-                    slug: input.slug,
-                    translations: input.translations.map(|translations| {
-                        translations
-                            .into_iter()
-                            .map(|translation| crate::dto::ShippingProfileTranslationInput {
-                                locale: translation.locale,
-                                name: translation.name,
-                                description: translation.description,
-                            })
-                            .collect()
-                    }),
-                    metadata: if input.metadata.is_some() {
-                        Some(parse_optional_metadata(input.metadata.as_deref())?)
-                    } else {
-                        None
-                    },
-                },
-            )
-            .await?;
-
-        Ok(profile.into())
-    }
-
-    async fn deactivate_shipping_profile(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<GqlShippingProfile> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-        let tenant_id =
-            current_tenant_scope(ctx, Some(tenant_id), "Shipping profile deactivation")?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let profile = ShippingProfileService::new(db.clone())
-            .deactivate_shipping_profile(tenant_id, id)
-            .await?;
-
-        Ok(profile.into())
-    }
-
-    async fn reactivate_shipping_profile(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<GqlShippingProfile> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-        let tenant_id =
-            current_tenant_scope(ctx, Some(tenant_id), "Shipping profile reactivation")?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let profile = ShippingProfileService::new(db.clone())
-            .reactivate_shipping_profile(tenant_id, id)
-            .await?;
-
-        Ok(profile.into())
-    }
-
-    async fn deactivate_shipping_option(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<GqlShippingOption> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping option deactivation")?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let option = FulfillmentService::new(db.clone())
-            .deactivate_shipping_option(tenant_id, id)
-            .await?;
-
-        Ok(option.into())
-    }
-
-    async fn reactivate_shipping_option(
-        &self,
-        ctx: &Context<'_>,
-        tenant_id: Uuid,
-        id: Uuid,
-    ) -> Result<GqlShippingOption> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        require_commerce_permission(
-            ctx,
-            &[Permission::FULFILLMENTS_UPDATE],
-            "Permission denied: fulfillments:update required",
-        )?;
-        let tenant_id = current_tenant_scope(ctx, Some(tenant_id), "Shipping option reactivation")?;
-
-        let db = ctx.data::<sea_orm::DatabaseConnection>()?;
-        let option = FulfillmentService::new(db.clone())
-            .reactivate_shipping_option(tenant_id, id)
-            .await?;
-
-        Ok(option.into())
-    }
+fn storefront_checkout_graphql_error(
+    error: crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError,
+) -> async_graphql::Error {
+    let code = error.public_code();
+    let message = error.public_message();
+    let retryable = error.retryable();
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", retryable);
+    })
 }
