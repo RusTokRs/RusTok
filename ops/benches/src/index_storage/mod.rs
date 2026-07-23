@@ -5,7 +5,8 @@ mod sql;
 pub use config::{BenchmarkConfig, DatasetConfig, DatasetScale};
 pub use runner::{BenchmarkReport, run, write_report};
 pub use sql::{
-    Prototype, Workload, full_prototype_sql, prototype_sql, source_dataset_sql, workloads,
+    MutationWorkload, Prototype, Workload, full_prototype_sql, mutation_workloads, prototype_sql,
+    source_dataset_sql, workloads,
 };
 
 pub async fn run_from_env() -> anyhow::Result<BenchmarkReport> {
