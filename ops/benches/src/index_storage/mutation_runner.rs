@@ -3,15 +3,15 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
+    ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, TryGetable,
 };
 use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    BenchmarkConfig, MutationWorkload, Prototype, full_prototype_sql, mutation_workloads,
-    source_dataset_sql,
+    BenchmarkConfig, MutationWorkload, Prototype, connect_benchmark_database,
+    full_prototype_sql, mutation_workloads, source_dataset_sql,
 };
 
 #[derive(Debug, Serialize)]
@@ -59,9 +59,7 @@ struct MutationValidation {
 }
 
 pub async fn run_mutations(config: &BenchmarkConfig) -> Result<MutationBenchmarkReport> {
-    let db = Database::connect(config.database_url.as_str())
-        .await
-        .context("failed to connect to PostgreSQL")?;
+    let db = connect_benchmark_database(&config.database_url).await?;
     db.execute_unprepared("SET jit = off; SET statement_timeout = '30min';")
         .await
         .context("failed to configure mutation benchmark session")?;
