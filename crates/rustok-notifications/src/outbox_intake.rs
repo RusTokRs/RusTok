@@ -5,7 +5,7 @@ use rustok_events::{
 use rustok_notifications_api::{
     NotificationSourceEventRef, NotificationSourceSlug, NotificationTypeKey,
 };
-use rustok_outbox::entity::{self as outbox_event, SysEventStatus};
+use rustok_outbox::entity as outbox_event;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, TransactionTrait, sea_query::OnConflict,
@@ -100,22 +100,23 @@ impl NotificationOutboxIntakeWorker {
         self.batch_size
     }
 
-    /// Selects one stable bounded page of dispatched, supported outbox envelopes
+    /// Selects one stable bounded page of committed, supported outbox envelopes
     /// that do not yet have a durable Notifications intake receipt.
+    ///
+    /// Relay status is intentionally not part of this query. Notifications intake
+    /// is an independent durable consumer and never mutates the general relay row.
     pub async fn pending_outbox_event_ids(&self) -> NotificationResult<Vec<Uuid>> {
         let receipts = intake_receipt::Entity::find()
             .select_only()
             .column(intake_receipt::Column::OutboxEventId)
             .into_query();
         let rows = outbox_event::Entity::find()
-            .filter(outbox_event::Column::Status.eq(SysEventStatus::Dispatched))
             .filter(
                 Condition::any()
                     .add(outbox_event::Column::EventType.eq(FORUM_TOPIC_CREATED))
                     .add(outbox_event::Column::EventType.eq(FORUM_USER_MENTION_ADDED)),
             )
             .filter(outbox_event::Column::Id.not_in_subquery(receipts))
-            .order_by_asc(outbox_event::Column::DispatchedAt)
             .order_by_asc(outbox_event::Column::CreatedAt)
             .order_by_asc(outbox_event::Column::Id)
             .limit(self.batch_size as u64)
@@ -124,7 +125,7 @@ impl NotificationOutboxIntakeWorker {
         Ok(rows.into_iter().map(|row| row.id).collect())
     }
 
-    /// Accepts one dispatched source envelope into the durable source inbox.
+    /// Accepts one committed source envelope into the durable source inbox.
     ///
     /// The producer payload is decoded from `sys_events`; no producer service or
     /// producer-owned table is called. Source inbox creation and the outbox intake
@@ -134,7 +135,6 @@ impl NotificationOutboxIntakeWorker {
         outbox_event_id: Uuid,
     ) -> NotificationResult<NotificationOutboxIntakeResult> {
         let row = outbox_event::Entity::find_by_id(outbox_event_id)
-            .filter(outbox_event::Column::Status.eq(SysEventStatus::Dispatched))
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
