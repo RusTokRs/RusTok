@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const root = new URL('../../', import.meta.url);
-const read = (path) => readFileSync(new URL(path, root), 'utf8');
+const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
+const root = configuredRoot
+  ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
+  : new URL('../../', import.meta.url);
+const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
 const requireText = (source, value, label) => {
