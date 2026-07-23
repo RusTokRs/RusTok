@@ -172,10 +172,11 @@ Forbidden in Index core:
 - [x] Delete the legacy runtime config, scheduler, and operational errors.
 - [x] Remove legacy server dispatcher config and metrics.
 - [x] Add repository guards preventing legacy/source-domain artifacts returning.
-- [ ] Synchronize the central module registry and historical FBA overview.
+- [x] Synchronize the central module registry and historical FBA overview.
 
-The code acceptance criterion is complete. The remaining unchecked item is
-cross-cutting documentation cleanup and does not preserve a runtime dependency.
+M0 is complete. The central module registry and historical FBA overview now
+record the full removal of Index v1 and keep replacement FBA readiness at
+`in_progress` until new contracts and runtime evidence exist.
 
 ### M1 - Domain core and schema registry
 
@@ -404,3 +405,6 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   read-workload digests, validated equal mutation effects, and preserved exact
   cardinality through five committed churn cycles and VACUUM. The 100k/1m runs,
   cross-scale comparison, storage ADR, and prototype cleanup remain open.
+- 2026-07-24: synchronized the central module registry and FBA overview with
+  complete Index v1 removal, removed references to deleted registry/evidence
+  and read-model contracts, and reset central FBA readiness to `in_progress`.

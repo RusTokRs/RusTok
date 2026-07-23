@@ -110,6 +110,7 @@ of `provider/consumer metadata + neutral ports + typed errors + locked contract-
 | `ai-media` | support consumer image asset descriptor boundary from `media` | `boundary_ready` | Next step: provider-side media runtime execution evidence; support-adapter fallback smoke already verified by `cargo test -p rustok-ai-media --lib` | `crates/rustok-ai-media/contracts/ai-media-fba-registry.json`, `crates/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json`, `crates/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`, `crates/rustok-ai-media/docs/implementation-plan.md` |
 | `ai-alloy` | support adapter script execution policy boundary for Alloy vertical | `in_progress` | Source-level policy registry captures `alloy_script_execution_policy`, `allowed_operations` and descriptor `runtime_operation`; next step — targeted Rust tests when compilations are allowed | `crates/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`, `crates/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`, `crates/rustok-ai-alloy/docs/implementation-plan.md` |
 | `search` | provider search query/suggestions boundary for storefront/admin consumers | `boundary_ready` | Executable no-compile runtime fallback/contract/invocation evidence already recorded; next step before `transport_verified` — live runtime contract execution with real provider invocation | `crates/rustok-search/src/ports.rs`, `crates/rustok-search/contracts/search-fba-registry.json`, `crates/rustok-search/docs/implementation-plan.md` |
+| `index` | generic cross-module relational index and query engine | `in_progress` | Complete M2 scale evidence and storage selection, then publish replacement query/rebuild contracts. All Index v1 ports, registry, evidence, projections, and runtime wiring are removed. | `crates/rustok-index/docs/implementation-plan.md`, `DECISIONS/2026-07-23-index-engine-rewrite.md` |
 | `fulfillment` | provider seller-aware shipping selection for commerce checkout | `boundary_ready` | Provider SPI live-adapter executed evidence already recorded (`fulfillment-provider-spi-live-adapter-evidence.json`) and gated by `npm run verify:ecommerce:fba`; base `ShippingSelectionPort` runtime fallback remains follow-up before `transport_verified` | `crates/rustok-fulfillment/src/ports.rs`, `crates/rustok-fulfillment/contracts/fulfillment-fba-registry.json`, `crates/rustok-fulfillment/docs/implementation-plan.md` |
 | `rbac` | provider permission-decision boundary for admin consumers | `in_progress` | Close runtime fallback smoke for `RbacPermissionDecisionPort`, confirm claims-scope/degraded action hiding semantics before status promotion | `crates/rustok-rbac/src/ports.rs`, `crates/rustok-rbac/contracts/rbac-fba-registry.json`, `crates/rustok-rbac/docs/implementation-plan.md` |
 | `tenant` | provider read-projection boundary for server-host tenant resolution consumers | `boundary_ready` | No-compile fallback smoke is locked by `npm run verify:foundation:fba-runtime-smoke`; compiled runtime contract/fallback smoke for `TenantReadPort` remains `cargo test -p rustok-tenant --lib --tests`; next step before `transport_verified` is host/runtime cache parity evidence beyond source-lock | `crates/rustok-tenant/src/ports.rs`, `crates/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json`, `crates/rustok-tenant/docs/implementation-plan.md` |
@@ -137,10 +138,11 @@ requires isolated-runtime evidence.
 `rustok-search` owns the `SearchEngine` connector abstraction. PostgreSQL,
 Meilisearch, Typesense, and Algolia connectors are internal adapters selected
 by the search service; storefront/admin consumers call only
-`SearchQueryPort` and `SearchSuggestionPort`. `rustok-index` owns canonical
-document ingestion and read models. Its events feed the search service through
-a replayable ingestion boundary; index deployment is not split in the first
-query-service pilot.
+`SearchQueryPort` and `SearchSuggestionPort`. The former Index v1 document-ingestion/read-model boundary was removed
+completely. The replacement `rustok-index` is a generic cross-module relational
+Index Engine whose query/rebuild contracts remain `in_progress`; Search integration
+and any remote ingestion split are deferred until the replacement contracts have
+compiled and live replay, lag, rebuild, and recovery evidence.
 
 The extraction order is:
 
@@ -179,10 +181,7 @@ When the freeze is lifted, implement and verify the following order:
 3. Implement the internal Search connector writer and owner ingestion/control
    contract for schema synchronization, document upsert/delete, rebuild, and
    health. Connectors remain private to `rustok-search`.
-4. Remove Search query-time SQL access to `index_product_categories` and
-   `index_product_attribute_values`. Populate the needed category and facet
-   fields in Search-owned projections during ingestion; use
-   `IndexReadModelPort` only for optional enrichment.
+4. Remove Search query-time SQL access to the removed Index v1 projection tables. Populate the needed category and facet fields in Search-owned projections during ingestion. Do not depend on removed Index v1 ports; reconnect only through replacement Index Engine contracts after the first vertical slice.
 5. Media loopback gRPC conformance is complete. Add isolated database/storage
    evidence for Media, then add the isolated Search query-service profile.
 6. Promote no readiness status without compiled and live evidence for tenant,
@@ -261,7 +260,7 @@ As of 2026-06-20 `region` added as a provider track for region/country read-proj
 
 As of 2026-06-20 `channel` added as a provider track for channel/default/host-target read-projection boundary: `ChannelReadPort`/`channel.read_projection.v1`, registry `crates/rustok-channel/contracts/channel-fba-registry.json` and static evidence `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:channel:fba`; as of 2026-06-29 no-compile executable fallback smoke promoted FBA status to `boundary_ready`, and full Rust runtime contract/fallback evidence remains a condition for `transport_verified`.
 
-As of 2026-06-20 `index` added as a provider track for indexed read-model/rebuild boundary: `IndexReadModelPort`/`index.read_model.v1` and `IndexRebuildPort`/`index.rebuild.v1`, registry `crates/rustok-index/contracts/index-fba-registry.json` and static evidence `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:index:fba`; as of 2026-06-29 no-compile source-locked runtime fallback smoke promoted FBA status to `boundary_ready`, and persistence-backed Rust runtime contract/fallback evidence remains a condition for `transport_verified`.
+As of 2026-06-20 `index` added as a provider track for indexed read-model/rebuild boundary: `removed Index v1 read-model port`/`removed Index v1 read-model contract` and `IndexRebuildPort`/`removed Index v1 rebuild contract`, registry `crates/rustok-index/contracts/index-fba-registry.json` and static evidence `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:index:fba`; as of 2026-06-29 no-compile source-locked runtime fallback smoke promoted FBA status to `boundary_ready`, and persistence-backed Rust runtime contract/fallback evidence remains a condition for `transport_verified`.
 
 As of 2026-06-20 `outbox` added as a provider track for relay worker control boundary: `OutboxRelayPort`/`outbox.relay_control.v1`, registry `crates/rustok-outbox/contracts/outbox-fba-registry.json` and static evidence `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:outbox:fba` without promotion to `boundary_ready` until runtime contract/fallback smoke.
 
