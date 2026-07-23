@@ -23,7 +23,7 @@ tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 rustok-content.workspace = true
-rustok-core.workspace = true
+rustok-core = { workspace = true, features = ["server"] }
 rustok-events.workspace = true
 rustok-notifications-api.workspace = true
 rustok-outbox.workspace = true

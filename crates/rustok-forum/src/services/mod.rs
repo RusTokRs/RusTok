@@ -46,6 +46,8 @@ pub mod widget_contract;
 
 pub use category_owner::CategoryService;
 pub use event::ForumEventService;
+#[allow(unused_imports)]
+pub(crate) use mention_relation::MentionRelationService;
 pub use moderation::ModerationService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;
