@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::commands::finish;
 use crate::domain::{DecideModerationCaseCommand, ModerationCaseStatus, ModerationDecisionRecord};
-use crate::entities::{moderation_case, moderation_decision};
+use crate::entities::{moderation_case, moderation_decision, moderation_decision_effect};
 use crate::error::{ModerationError, ModerationResult};
 use crate::receipts::{
     ModerationReceiptAdmission, NewModerationReceipt, admit, replay, replay_existing, request_hash,
@@ -37,6 +37,10 @@ impl ModerationService {
                 "expected_revision must be at least 1".to_string(),
             ));
         }
+        command
+            .effect
+            .validate_for_decision_kind(command.decision_kind)
+            .map_err(|error| ModerationError::Validation(error.to_string()))?;
         command.policy_snapshot = validate_policy_snapshot(command.policy_snapshot)?;
         let key = required_idempotency_key(&context)?;
         let hash = request_hash(OP_DECIDE_CASE, &context.actor, &command)?;
@@ -93,7 +97,7 @@ async fn decide_case_in_transaction(
         .checked_add(1)
         .ok_or(ModerationError::RevisionConflict)?;
     let decision_hash = immutable_decision_hash(&serde_json::json!({
-        "version": 1,
+        "version": 2,
         "case_id": current.id,
         "case_revision": command.expected_revision,
         "subject_module": current.subject_module.clone(),
@@ -102,9 +106,13 @@ async fn decide_case_in_transaction(
         "subject_revision": current.subject_revision,
         "decision_kind": command.decision_kind,
         "reason_code": command.reason_code,
+        "effect": &command.effect,
         "policy_snapshot": command.policy_snapshot.clone(),
         "decided_by": decided_by,
     }))?;
+    let effect_payload = serde_json::to_value(&command.effect).map_err(|_| {
+        ModerationError::Invariant("moderation decision effect could not be serialized".to_string())
+    })?;
     let now: DateTimeWithTimeZone = Utc::now().into();
     let updated = moderation_case::Entity::update_many()
         .col_expr(
@@ -117,11 +125,11 @@ async fn decide_case_in_transaction(
         )
         .col_expr(
             moderation_case::Column::DecidedAt,
-            sea_orm::sea_query::Expr::value(Some(now.clone())),
+            sea_orm::sea_query::Expr::value(Some(now)),
         )
         .col_expr(
             moderation_case::Column::UpdatedAt,
-            sea_orm::sea_query::Expr::value(now.clone()),
+            sea_orm::sea_query::Expr::value(now),
         )
         .filter(moderation_case::Column::TenantId.eq(tenant_id))
         .filter(moderation_case::Column::Id.eq(command.case_id))
@@ -142,7 +150,17 @@ async fn decide_case_in_transaction(
         subject_revision: Set(current.subject_revision),
         decision_hash: Set(decision_hash.clone()),
         decided_by: Set(decided_by),
-        decided_at: Set(now.clone()),
+        decided_at: Set(now),
+        created_at: Set(now),
+    }
+    .insert(&receipt.transaction)
+    .await?;
+    moderation_decision_effect::ActiveModel {
+        decision_id: Set(decision.id),
+        tenant_id: Set(tenant_id),
+        schema_version: Set(i32::from(command.effect.schema_version)),
+        effect_kind: Set(command.decision_kind.as_str().to_string()),
+        effect_payload: Set(effect_payload),
         created_at: Set(now),
     }
     .insert(&receipt.transaction)
@@ -157,10 +175,11 @@ async fn decide_case_in_transaction(
             "decision_id": decision.id,
             "decision_kind": decision.decision_kind,
             "reason_code": decision.reason_code,
+            "effect_schema_version": command.effect.schema_version,
             "decision_hash": decision_hash,
             "case_revision": next_revision,
         }),
     )
     .await?;
-    map_decision(decision)
+    map_decision(decision, Some(command.effect))
 }
