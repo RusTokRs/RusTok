@@ -3,102 +3,95 @@
 ## Mission
 
 `rustok-index` is the platform-owned cross-module relational index and query
-engine. Its functional target is the same problem class as the Medusa Index
-Module: source modules publish indexable schemas, records, and links; Index
-materializes them into an optimized relational store and executes filtering,
-projection, sorting, counting, and pagination without runtime fan-out to the
-source modules.
+engine. It solves the same problem class as the Medusa Index Module: source
+modules publish generic schemas, records, mutations, and links; Index
+materializes them into optimized relational storage and executes filtering,
+projection, sorting, counting, and pagination without runtime fan-out to source
+modules.
 
-`rustok-index` is not a search engine. Ranking, typo tolerance, relevance,
-autocomplete, synonyms, and external search-engine connectors remain owned by
-`rustok-search`.
+`rustok-index` is not a search engine. Ranking, relevance, typo tolerance,
+synonyms, autocomplete, search UX, and external search-engine connectors remain
+owned by `rustok-search`.
 
 ## Rewrite policy
 
-The module is in early development. Backward compatibility with the current
-internal implementation is not a goal during this rewrite.
-
-The implementation may remove or replace any existing code, migration, public
-Rust API, port, adapter, test, fixture, or documentation when it conflicts with
-the target architecture. Reuse is allowed only when the existing code fits the
-new contracts and remains simpler than a replacement.
+The project is in early development. **Backward compatibility with the rejected
+implementation is not a goal.** Existing code, migrations, public Rust APIs,
+ports, adapters, tests, fixtures, evidence, and documentation may be deleted or
+replaced whenever they conflict with the target architecture.
 
 Rules:
 
-1. Prefer a clean replacement over compatibility layers.
+1. Prefer a clean replacement over a compatibility layer.
 2. Do not preserve placeholder APIs or tests that encode rejected architecture.
-3. Do not let Index query source-module tables directly.
-4. Do not hard-code Product, Content, or Flex behavior in the engine core.
-5. Every completed task is checked off in this document in the same PR.
-6. Every public contract change updates local docs, `rustok-module.toml`, the
-   central module registry, contract evidence, and relevant architecture docs.
-7. A milestone is complete only when its acceptance criteria and required tests
-   pass.
+3. Index core must never query source-module tables directly.
+4. Product, Content, Flex, Pricing, Inventory, and other source semantics must
+   not be hard-coded in the generic engine.
+5. Every completed task is checked off here in the same change.
+6. Public boundary changes update local documentation, the module manifest, the
+   central registry, verification scripts, and architecture decisions.
+7. A milestone is complete only when its acceptance criteria are satisfied.
+
+The repository owner performs test execution during this rewrite. Commits must
+still document which checks were not run.
 
 ## Current status
 
 - Rewrite status: `in_progress`
-- Current milestone: `M0/M1 - architecture lock and domain core`
+- Current milestone: `M0/M1 - hard reset and domain core`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
-- Legacy FBA contracts: `index.read_model.v1` and `index.rebuild.v1`; retained
-  temporarily only until the new query/rebuild boundary is implemented.
+- Legacy `index.read_model.v1` and `index.rebuild.v1`: **deleted**
 
-The existing module is a source-specific CQRS/read-model implementation with
-hard-coded Content, Product, and Flex indexers, source-table SQL, duplicate
-in-memory adapters, incomplete query services, and rebuild orchestration that
-collects entity IDs before scheduling work. These parts are legacy and may be
-deleted rather than incrementally preserved.
+The generic domain core is present. Source-specific Content/Product/Flex
+indexers and their legacy migrations remain temporarily and are the next M0
+deletion target.
 
 ## Target ownership
 
 `rustok-index` owns:
 
-- index schema registry;
-- field and link metadata;
-- source registration contracts;
+- schema and link registry;
+- generic records, mutations, source contracts, and query contracts;
 - incremental ingestion and inbox deduplication;
 - relational index storage;
-- query validation, planning, and SQL compilation;
-- filtering, projection, sorting, count, and pagination;
-- rebuild, checkpointing, reconciliation, and drift detection;
+- validation, graph planning, SQL compilation, filtering, projection, sorting,
+  counting, and pagination;
+- rebuild, checkpointing, reconciliation, drift detection, and repair;
 - distributed coordination for schema changes and rebuild jobs;
-- index health, lag, progress, and operator diagnostics.
+- health, lag, progress, failures, and operator diagnostics.
 
 Source modules own:
 
-- their normalized domain data;
-- their index schema declarations;
-- conversion from domain data/events to index records and mutations;
-- scan/load adapters used by rebuild;
-- semantic version/order information for mutations.
+- normalized domain data;
+- index schema declarations;
+- conversion from domain state/events into generic records and mutations;
+- paginated scan/load adapters used by rebuild;
+- source ordering/version information.
 
 `rustok-search` owns:
 
 - text relevance and ranking;
-- typo tolerance and synonyms;
-- autocomplete and search UX;
+- typo tolerance, synonyms, and autocomplete;
+- search UX;
 - external search-engine adapters;
-- search-specific result enrichment through stable Index contracts.
+- search-specific enrichment through stable Index contracts.
 
 ## Target architecture
 
 ```text
 source modules
-    -> IndexSource / IndexMutation contracts
+    -> IndexSource / IndexMutation
     -> ingestion and rebuild engines
     -> PostgreSQL index storage
-    -> query validator and link-graph planner
+    -> schema/link registry and query planner
     -> SQL compiler
     -> IndexQueryPort
     -> server, storefront, admin, and rustok-search
 ```
 
-The engine core must not depend on Product, Content, Flex, Pricing, Inventory,
-or other source crates.
-
-Proposed crate layout:
+Target layout:
 
 ```text
 src/
@@ -127,43 +120,37 @@ src/
 
 ## Library decisions
 
-### Use existing workspace libraries
+### Existing workspace libraries
 
-- `sea-orm` and its re-exported SeaQuery: connection management,
-  transactions, migrations, statement execution, and dynamic SQL generation.
-- `tokio`: async runtime only; no custom executor.
-- `futures-util`: bounded async pipelines through `buffer_unordered` where
-  separate task ownership is unnecessary.
-- `serde` and `postcard`: stable internal DTO/cursor serialization.
+- `sea-orm` and its SeaQuery re-export: connections, transactions, migrations,
+  statement execution, and dynamic SQL generation.
+- `tokio`: async runtime; no custom executor.
+- `futures-util`: bounded pipelines through `buffer_unordered`.
+- `serde` and `postcard`: DTO and cursor serialization.
 - `thiserror`: typed domain/application/infrastructure errors.
 - `validator`: external DTO and configuration validation only.
-- `tracing`, `rustok-telemetry`, and `prometheus`: spans, metrics, and
-  operational evidence.
+- `tracing`, `rustok-telemetry`, and `prometheus`: observability.
 - `proptest`: invariants and reference-model tests.
 - `criterion`: planner/compiler/ingestion benchmarks.
 - `moka`: local immutable schema and compiled-plan cache only.
 
-### Add during implementation
+### Add when required
 
-- `petgraph`: schema/link graph validation and query-path planning.
-- `icu_locale_core`: canonical locale identifiers used in keys and queries.
-- `tokio-util`: `CancellationToken` and `TaskTracker` for rebuild lifecycle.
+- `petgraph`: schema/link graph validation and deterministic path planning.
+- `icu_locale_core`: canonical locale identifiers.
+- `tokio-util`: `CancellationToken` and `TaskTracker`.
 - `backon`: classified retry with exponential backoff.
-- `testcontainers-modules` with PostgreSQL support: real database integration
-  tests.
-- `insta`: snapshots for normalized query plans, generated SQL, and schema
-  manifests.
+- `testcontainers-modules` with PostgreSQL support: database integration tests.
+- `insta`: normalized plan, SQL, and schema snapshots.
 
-### Explicitly avoid in Index core
+### Explicitly forbidden in Index core
 
-- Elasticsearch, Meilisearch, Tantivy, or search ranking libraries;
-- a second ORM or direct database stack alongside SeaORM;
-- a custom graph implementation;
-- a custom locale parser;
-- a custom retry/backoff implementation;
+- Elasticsearch, Meilisearch, Tantivy, or ranking libraries;
+- a second ORM/database stack alongside SeaORM;
+- custom graph, locale, retry, or executor implementations;
 - loading all rebuild IDs into memory;
-- direct reads from source-module tables;
-- JSON-only unvalidated public query contracts.
+- source-module table reads;
+- unvalidated JSON-only public query contracts.
 
 ## Milestones
 
@@ -171,126 +158,116 @@ src/
 
 Goal: remove the rejected architecture and establish the new source of truth.
 
-- [x] Replace the live implementation plan with the Index Engine roadmap.
-- [x] Record the rewrite policy and target ownership in an ADR.
-- [x] Reset local FBA readiness from `boundary_ready` to `in_progress`.
-- [x] Update crate/module documentation to describe the Index Engine mission.
-- [ ] Synchronize the central module registry with the FBA readiness reset.
-- [ ] Inventory legacy files and classify each as delete, migrate, or reuse.
-- [ ] Remove incomplete source-specific query services.
-- [ ] Remove duplicate in-memory/in-process adapters.
-- [ ] Remove `DocumentType` and the canonical `IndexDocument` catch-all model.
+- [x] Replace the implementation plan with the Index Engine roadmap.
+- [x] Record rewrite policy and target ownership in an ADR.
+- [x] Reset local FBA readiness to `in_progress`.
+- [x] Update crate/module documentation for the Index Engine mission.
+- [x] Inventory the active legacy surface.
+- [x] Remove incomplete Content/Product query services.
+- [x] Remove duplicate in-memory/in-process read adapters.
+- [x] Remove `DocumentType` and the catch-all `IndexDocument`.
+- [x] Delete legacy v1 read/rebuild ports, registry, and evidence.
+- [x] Delete the search-specific FTS helper from Index.
+- [x] Remove direct legacy index/search table reads from Index admin.
+- [x] Add repository verification that prevents legacy v1 artifacts returning.
+- [ ] Synchronize the central module registry and historical FBA overview.
+- [ ] Delete Content/Product/Flex source-specific indexers.
+- [ ] Remove `Indexer`, `LocaleIndexer`, `IndexerRuntimeConfig`, and old rebuild
+      scheduling.
 - [ ] Remove direct source-table SQL from engine-owned code.
-- [ ] Remove or replace legacy index migrations.
-- [ ] Add repository checks forbidding new source-module dependencies in the
-  engine core.
+- [ ] Remove or replace all legacy Index migrations.
+- [ ] Remove source-domain dependencies from `rustok-index/Cargo.toml`.
+- [ ] Add a repository boundary check forbidding future source-domain imports in
+      engine core.
 
-Done when the crate contains only an intentional compatibility shell plus the
-new engine skeleton, and all deleted APIs have corresponding documentation and
-registry updates.
+Done when the crate contains only the generic engine skeleton, intentional
+module metadata, and no source-specific persistence/runtime implementation.
 
 ### M1 - Domain core and schema registry
 
 Goal: implement a database-independent, strongly typed engine core.
 
-- [x] Add strong identifiers for modules, schemas, entities, fields, links,
-  locales, and schema versions.
+- [x] Add strong module/schema/entity/field/link/locale/version identifiers.
 - [x] Add `IndexValue`, `IndexRecord`, and `IndexMutation`.
-- [x] Add `IndexSchema`, field metadata, link metadata, and schema validation.
-- [x] Add `IndexQuery`, selected field paths, filter AST, ordering, and cursor
-  pagination models.
+- [x] Add `IndexSchema`, field metadata, link metadata, and base validation.
+- [x] Add `IndexQuery`, field paths, filter AST, ordering, and pagination models.
 - [ ] Add locale canonicalization.
-- [ ] Add schema hashing/versioning.
+- [ ] Add stable schema hashing/versioning.
+- [ ] Add schema registry conflict/version rules.
 - [ ] Add link graph validation and deterministic path resolution.
 - [ ] Add an in-memory reference evaluator used only by tests.
 - [ ] Add property tests for tenant isolation, locale normalization, mutation
-  idempotency, cursor round-trip, and deterministic planning.
+      idempotency, cursor round-trip, and deterministic planning.
 
 Done when Product and SalesChannel can be represented entirely through generic
-schemas and records without Product-specific code in the engine.
+schemas and records with no Product-specific engine code.
 
 ### M2 - PostgreSQL storage benchmark
-
-Goal: choose the physical storage model using measured evidence.
 
 - [ ] Prototype JSONB plus typed expression indexes.
 - [ ] Prototype typed field-value storage.
 - [ ] Prototype a specialized hot-entity projection.
 - [ ] Benchmark 100k and 1m entities with multi-tenant/multi-locale data.
-- [ ] Benchmark equality/range/multi-value/link filters, sorting, keyset
-  pagination, ingestion throughput, index size, and write amplification.
+- [ ] Measure equality/range/multi-value/link filters, sorting, keyset pagination,
+      ingestion throughput, index size, and write amplification.
 - [ ] Record the selected model and rejected alternatives in an ADR.
 
-Done when storage is selected from benchmark evidence rather than preference.
+Done when storage is selected from measured evidence.
 
 ### M3 - PostgreSQL storage engine
 
 - [ ] Add canonical migrations for schemas, entities, links, inbox, jobs,
-  checkpoints, and consistency state.
+      checkpoints, and consistency state.
 - [ ] Add tenant/schema/entity/locale keys and source-version guards.
 - [ ] Add atomic entity/link upsert and delete transactions.
-- [ ] Add schema apply coordination through PostgreSQL locking/leases.
+- [ ] Add PostgreSQL locking/leases for schema application.
 - [ ] Add partition and secondary-index management.
-- [ ] Add Testcontainers PostgreSQL fixtures.
-- [ ] Test migration-from-zero, stale mutations, redelivery, rollback,
-  concurrency, and tenant/locale isolation.
-
-Done when all persistence semantics pass against real PostgreSQL.
+- [ ] Add PostgreSQL Testcontainers fixtures.
+- [ ] Cover migration-from-zero, stale mutations, redelivery, rollback,
+      concurrency, and tenant/locale isolation.
 
 ### M4 - Query engine v1
 
 - [ ] Validate schemas, fields, links, filters, ordering, and complexity limits.
 - [ ] Resolve link paths through the registry graph.
 - [ ] Produce deterministic query plans.
-- [ ] Compile plans with SeaQuery/controlled SQL.
-- [ ] Support projection, nested linked fields, filters, sorting, exact count,
-  and keyset pagination.
+- [ ] Compile plans with SeaQuery or controlled SQL.
+- [ ] Support projections, nested linked fields, filters, sorting, exact count,
+      and keyset pagination.
 - [ ] Keep offset pagination as bounded compatibility mode only.
-- [ ] Add SQL and plan snapshots.
-- [ ] Add a reference-evaluator equivalence test suite.
+- [ ] Add plan/SQL snapshots and reference-evaluator equivalence tests.
 
-Done when a Product filtered by SalesChannel executes as one Index storage
-query without source-module fan-out.
+Done when Product filtered by SalesChannel executes as one Index query.
 
 ### M5 - Incremental ingestion
 
 - [ ] Add source and mutation registries.
 - [ ] Add inbox deduplication and monotonic source-version handling.
 - [ ] Add batch application and transaction boundaries.
-- [ ] Add retry classification, backoff, dead-letter state, and lag metrics.
+- [ ] Add classified retry, backoff, dead-letter state, and lag metrics.
 - [ ] Protect against out-of-order update/delete delivery.
-- [ ] Test crash between commit and acknowledgement.
+- [ ] Cover crash between commit and acknowledgement.
 
-Done when repeated and out-of-order event delivery produces a correct final
-index state.
+### M6 - Rebuild and reconciliation
 
-### M6 - Rebuild and reconciliation engine
-
-- [ ] Add cursor-based `IndexSource::scan` and targeted `load` contracts.
+- [ ] Add cursor-based `IndexSource::scan` and targeted `load`.
 - [ ] Add durable jobs, checkpoints, leases, heartbeat, and worker ownership.
-- [ ] Add bounded streaming pipelines; never collect all IDs first.
-- [ ] Add cancellation, resume, dry-run, targeted rebuild, full rebuild, and
-  shadow rebuild.
+- [ ] Add bounded streaming; never collect all IDs first.
+- [ ] Add cancellation, resume, dry-run, targeted/full/shadow rebuild.
 - [ ] Add reconciliation and drift repair.
-- [ ] Test worker crashes, lease expiry, restart, cancellation, and equivalent
-  incremental/full rebuild results.
-
-Done when rebuild resumes after process failure and multiple workers cannot
-process the same batch concurrently.
+- [ ] Cover worker crash, lease expiry, restart, cancellation, and incremental vs
+      full rebuild equivalence.
 
 ### M7 - First vertical slice
 
 Entities: Product, ProductVariant, SalesChannel.
 
-- [ ] Register schemas and links from their owner modules.
-- [ ] Implement incremental mutations and rebuild sources.
-- [ ] Support tenant, locale, status, fields, link filters, sorting, and cursor
-  pagination.
-- [ ] Move one Storefront query to the Index query contract.
-- [ ] Prove no source-module filtering fan-out occurs.
-
-Done when published products for a tenant and sales channel are returned from
-one Index query.
+- [ ] Register owner-published schemas and links.
+- [ ] Implement mutations and rebuild sources.
+- [ ] Support tenant, locale, status, projection, link filters, sorting, and
+      cursor pagination.
+- [ ] Move one Storefront query to Index.
+- [ ] Prove there is no source-module filtering fan-out.
 
 ### M8 - Commerce scale slice
 
@@ -298,36 +275,34 @@ Order: Pricing, Inventory, Category, Collection, Tags, Region/Currency,
 Marketplace Seller.
 
 - [ ] Register schemas, records, mutations, and rebuild sources.
-- [ ] Support price, stock, category, channel, and seller filtering in one
-  query.
-- [ ] Add load and cardinality benchmarks for commerce links.
+- [ ] Filter by price, stock, category, channel, and seller in one query.
+- [ ] Add cardinality and load benchmarks.
 
 ### M9 - Content, Flex, and extension schemas
 
-- [ ] Add Content, Pages, Blog, Forum, Taxonomy, SEO projections, and Flex.
+- [ ] Add Content, Pages, Blog, Forum, Taxonomy, SEO, and Flex schemas.
 - [ ] Make Flex use ordinary dynamic schema/source registration.
-- [ ] Ensure adding a new module requires no Index-core code changes.
+- [ ] Prove a new module requires no Index-core code changes.
 
-### M10 - Horizontal scaling and extraction proof
+### M10 - Horizontal scaling
 
-- [ ] Test multiple index workers and server instances.
-- [ ] Test concurrent schema apply, rebuild, event redelivery, slow sources,
-  connection loss, tenant hotspots, and backpressure.
-- [ ] Add graceful shutdown and task ownership evidence.
-- [ ] Split `rustok-index-core`, `rustok-index-postgres`, or worker crates only
-  when measured boundaries justify the split.
+- [ ] Test multiple workers and server instances.
+- [ ] Test concurrent schema application/rebuild, redelivery, slow sources,
+      connection loss, tenant hotspots, and backpressure.
+- [ ] Add graceful shutdown and task-ownership evidence.
+- [ ] Split core/postgres/worker crates only when measurements justify it.
 
-### M11 - Admin, cutover, and legacy removal
+### M11 - Admin and cutover
 
-- [ ] Expose schema, partition, lag, inbox, failed mutation, rebuild, drift, and
-  query diagnostics.
+- [ ] Expose schema, partition, lag, inbox, failure, rebuild, drift, and query
+      diagnostics.
 - [ ] Add rebuild/cancel/retry operator commands.
-- [ ] Publish the new FBA contracts and runtime evidence.
+- [ ] Publish new FBA contracts and runtime evidence.
 - [ ] Migrate consumers.
-- [ ] Delete all legacy ports, adapters, migrations, and compatibility code.
+- [ ] Delete any final compatibility code.
 - [ ] Promote FBA status only after compiled/live evidence passes.
 
-## Required quality gates
+## Quality gates
 
 ```bash
 cargo fmt --all -- --check
@@ -338,27 +313,21 @@ cargo test --workspace --doc --all-features
 cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
-npm run verify:foundation:fba-runtime-smoke
+npm run verify:index:runtime-fallback-smoke
 ```
 
-Additional gates:
-
-- PostgreSQL integration suite;
-- migration-from-zero;
-- property tests;
-- planner/compiler snapshots;
-- rebuild equivalence tests;
-- concurrency and crash-recovery tests;
-- benchmark evidence for storage and hot query paths;
-- no unjustified `todo!`, `unimplemented!`, `#[ignore]`, `unwrap`, or `expect`
-  in runtime paths.
+Additional gates include PostgreSQL integration, migration-from-zero, property
+tests, planner/compiler snapshots, rebuild equivalence, crash recovery,
+concurrency, and benchmark evidence.
 
 ## Progress log
 
-- 2026-07-23: rewrite approved; module target redefined as a generic
-  cross-module relational Index Engine; destructive replacement explicitly
-  allowed; M0 started; documentation/ADR/status reset initiated.
-- 2026-07-23: initial M1 domain core added with strong identifiers, typed
-  values, generic schemas and links, records, mutations, query AST, shape
-  validation, and unit tests. Legacy runtime remains connected until the hard
-  reset inventory and deletion pass.
+- 2026-07-23: accepted the destructive Index Engine rewrite and added the first
+  database-independent domain types.
+- 2026-07-23: deleted empty Content/Product query services, catch-all
+  `IndexDocument`, duplicate read adapters, legacy v1 ports/FBA evidence, and the
+  search-specific FTS helper.
+- 2026-07-23: detached Index admin from `index_content`, `index_products`, and
+  `search_index`; admin now reports the real rewrite state.
+- 2026-07-23: converted Index verification scripts into guards preventing legacy
+  v1 artifacts and direct legacy table reads from returning.
