@@ -170,7 +170,7 @@ for (const marker of [
   "NotificationCandidateService",
   "NotificationRecipientPolicy",
   "NotificationCandidateProcessResult",
-  "module.migrations().len(), 3",
+  "module.migrations().len(), 4",
 ]) {
   requireText(library, marker, `notifications facade is missing ${marker}`);
 }
