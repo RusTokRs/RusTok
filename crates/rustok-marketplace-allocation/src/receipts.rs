@@ -16,6 +16,7 @@ const MAX_IDEMPOTENCY_KEY_LENGTH: usize = 191;
 const STATUS_PENDING: &str = "pending";
 const STATUS_COMPLETED: &str = "completed";
 
+#[allow(dead_code)]
 pub(crate) struct NewAllocationReceipt {
     pub transaction: DatabaseTransaction,
     pub receipt_id: Uuid,

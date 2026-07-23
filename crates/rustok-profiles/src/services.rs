@@ -565,6 +565,7 @@ impl ProfileService {
         )))
     }
 
+    #[allow(dead_code)]
     async fn upsert_translation(
         &self,
         user_id: Uuid,

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::ops::Deref;
 
 use flex::delete_attached_localized_values;
