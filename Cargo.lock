@@ -9563,6 +9563,7 @@ dependencies = [
  "fixedbitset 0.5.7",
  "hashbrown 0.15.5",
  "indexmap 2.14.0",
+ "serde",
 ]
 
 [[package]]
@@ -12303,6 +12304,7 @@ dependencies = [
 name = "rustok-benchmarks"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "criterion",
  "futures",
@@ -12310,6 +12312,8 @@ dependencies = [
  "rustok-commerce",
  "rustok-content",
  "rustok-core",
+ "rustok-index",
+ "sea-orm",
  "serde",
  "serde_json",
  "tokio",
@@ -12958,6 +12962,7 @@ dependencies = [
  "rustok-region",
  "rustok-search",
  "rustok-seo",
+ "rustok-social-graph",
  "rustok-taxonomy",
  "rustok-tenant",
  "rustok-workflow",
@@ -13301,20 +13306,21 @@ name = "rustok-index"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
+ "hex",
+ "icu_locale",
+ "petgraph 0.8.3",
+ "postcard",
+ "proptest",
  "rust_decimal",
- "rustok-api",
  "rustok-core",
- "rustok-events",
- "rustok-product",
- "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
- "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -13823,6 +13829,7 @@ dependencies = [
  "hex",
  "rustok-api",
  "rustok-core",
+ "rustok-moderation-api",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -13830,6 +13837,19 @@ dependencies = [
  "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-moderation-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "serde",
+ "thiserror 2.0.18",
  "uuid",
 ]
 
@@ -14917,6 +14937,7 @@ dependencies = [
  "rustok-search",
  "rustok-secrets",
  "rustok-seo",
+ "rustok-social-graph",
  "rustok-storage",
  "rustok-storefront",
  "rustok-taxonomy",
@@ -14945,6 +14966,22 @@ dependencies = [
  "tracing",
  "url",
  "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-social-graph"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rustok-api",
+ "rustok-core",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
  "uuid",
 ]
 
