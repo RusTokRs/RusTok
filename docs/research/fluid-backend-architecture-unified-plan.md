@@ -138,7 +138,9 @@ requires isolated-runtime evidence.
 `rustok-search` owns the `SearchEngine` connector abstraction. PostgreSQL,
 Meilisearch, Typesense, and Algolia connectors are internal adapters selected
 by the search service; storefront/admin consumers call only
-`SearchQueryPort` and `SearchSuggestionPort`. The former Index v1 document-ingestion/read-model boundary was removed
+`SearchQueryPort` and `SearchSuggestionPort`.
+
+The former Index v1 document-ingestion/read-model boundary was removed
 completely. The replacement `rustok-index` is a generic cross-module relational
 Index Engine whose query/rebuild contracts remain `in_progress`; Search integration
 and any remote ingestion split are deferred until the replacement contracts have
@@ -181,7 +183,11 @@ When the freeze is lifted, implement and verify the following order:
 3. Implement the internal Search connector writer and owner ingestion/control
    contract for schema synchronization, document upsert/delete, rebuild, and
    health. Connectors remain private to `rustok-search`.
-4. Remove Search query-time SQL access to the removed Index v1 projection tables. Populate the needed category and facet fields in Search-owned projections during ingestion. Do not depend on removed Index v1 ports; reconnect only through replacement Index Engine contracts after the first vertical slice.
+4. Remove Search query-time SQL access to the removed Index v1 projection
+   tables. Populate the needed category and facet fields in Search-owned
+   projections during ingestion. Do not depend on removed Index v1 ports;
+   reconnect only through replacement Index Engine contracts after the first
+   vertical slice.
 5. Media loopback gRPC conformance is complete. Add isolated database/storage
    evidence for Media, then add the isolated Search query-service profile.
 6. Promote no readiness status without compiled and live evidence for tenant,
@@ -260,7 +266,7 @@ As of 2026-06-20 `region` added as a provider track for region/country read-proj
 
 As of 2026-06-20 `channel` added as a provider track for channel/default/host-target read-projection boundary: `ChannelReadPort`/`channel.read_projection.v1`, registry `crates/rustok-channel/contracts/channel-fba-registry.json` and static evidence `crates/rustok-channel/contracts/evidence/channel-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:channel:fba`; as of 2026-06-29 no-compile executable fallback smoke promoted FBA status to `boundary_ready`, and full Rust runtime contract/fallback evidence remains a condition for `transport_verified`.
 
-As of 2026-06-20 `index` added as a provider track for indexed read-model/rebuild boundary: `removed Index v1 read-model port`/`removed Index v1 read-model contract` and `IndexRebuildPort`/`removed Index v1 rebuild contract`, registry `crates/rustok-index/contracts/index-fba-registry.json` and static evidence `crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:index:fba`; as of 2026-06-29 no-compile source-locked runtime fallback smoke promoted FBA status to `boundary_ready`, and persistence-backed Rust runtime contract/fallback evidence remains a condition for `transport_verified`.
+On 2026-06-20 Index v1 introduced a read-model/rebuild provider track. The destructive Index Engine rewrite removed that track completely: ports, contract identifiers, registry, evidence, verifier integration, projections, and runtime wiring no longer exist. Replacement Index FBA readiness is `in_progress` until new query/rebuild contracts and live provider-consumer evidence are published.
 
 As of 2026-06-20 `outbox` added as a provider track for relay worker control boundary: `OutboxRelayPort`/`outbox.relay_control.v1`, registry `crates/rustok-outbox/contracts/outbox-fba-registry.json` and static evidence `crates/rustok-outbox/contracts/evidence/outbox-contract-test-static-matrix.json` are checked by the fast gate `npm run verify:outbox:fba` without promotion to `boundary_ready` until runtime contract/fallback smoke.
 
