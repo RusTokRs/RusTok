@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "slice": "NOTIFY-03B/07A",
   "promoted_by_slices": [
     "SOCIAL-01A/NOTIFY-07C",
@@ -7,7 +7,8 @@
     "NOTIFY-03D",
     "NOTIFY-03E",
     "NOTIFY-03F",
-    "NOTIFY-03G"
+    "NOTIFY-03G",
+    "NOTIFY-03H"
   ],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
@@ -62,7 +63,9 @@
     "fanout_page_worker_delivered": true,
     "fanout_tenant_effective_policy_gate_delivered": true,
     "candidate_preclaim_tenant_effective_policy_gate_delivered": true,
-    "candidate_gate_atomic_with_concurrent_tenant_disable": false,
+    "candidate_commit_policy_revision_guard_delivered": true,
+    "candidate_guard_serializes_postgres_lifecycle_tenant_disable": true,
+    "candidate_guard_atomic_with_manifest_or_security_mutation": false,
     "default_enabled": false
   },
   "source_authorization": {
@@ -82,6 +85,7 @@
       "notification_type"
     ],
     "semantic_replay_equality_required": true,
+    "tenant_policy_guard_same_transaction": true,
     "candidate_completion_same_transaction": true,
     "creates_in_app_row": true,
     "creates_delivery_attempts": false,
@@ -92,6 +96,7 @@
     "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
     "crates/rustok-notifications/tests/candidate_sqlite.rs",
     "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
+    "crates/rustok-modules/tests/policy_commit_guard_sqlite.rs",
     "crates/rustok-social-graph/tests/privacy_sqlite.rs"
   ],
   "verification": {
@@ -103,12 +108,12 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "atomic control-plane revision guard for tenant disable concurrent with candidate claim",
+    "atomic serialization with active-manifest, artifact security, maintenance, and node-readiness mutations",
     "default deployment enablement after worker health and lag metrics",
     "channel delivery enqueue",
     "grouping policy",
     "moderator audience expansion",
-    "PostgreSQL lease concurrency evidence",
+    "PostgreSQL lease and cursor concurrency evidence",
     "retention and reconciliation commands",
     "recipient privacy recheck on inbox open and delayed delivery"
   ]
