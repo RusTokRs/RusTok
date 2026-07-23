@@ -85,11 +85,24 @@ jobs:
           shared-key: index-storage-smoke
 
       - name: Build smoke evidence executables
-        run: >-
-          cargo build -p rustok-benchmarks --release
-          --bin index-storage-benchmark
-          --bin index-storage-mutation-benchmark
-          --bin index-storage-maintenance-benchmark
+        shell: bash
+        run: |
+          mkdir -p evidence/index-storage/build
+          set -o pipefail
+          cargo build -p rustok-benchmarks --release \
+            --bin index-storage-benchmark \
+            --bin index-storage-mutation-benchmark \
+            --bin index-storage-maintenance-benchmark \
+            2>&1 | tee evidence/index-storage/build/release-build.log
+
+      - name: Archive release build diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-build-${{ github.sha }}
+          path: evidence/index-storage/build/release-build.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run read/query smoke evidence
         run: target/release/index-storage-benchmark
