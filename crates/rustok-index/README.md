@@ -26,22 +26,22 @@ a rewrite goal.
 
 - Index core must not depend on Product, Content, Flex, Pricing, Inventory, or
   other source-domain crates.
-- Source modules own conversion from domain state/events into generic Index
-  records and mutations.
+- Source modules own conversion from domain state/events into generic records and
+  mutations.
 - Index must not read source-module tables directly.
 - `rustok-search` owns ranking, typo tolerance, autocomplete, synonyms, search
   UX, and external search-engine connectors.
 
 ## Rewrite status
 
-- Current milestone: `M0/M1 - hard reset and domain core`
+- Current milestone: `M0/M1 - runtime-tail removal and domain core`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Legacy `index.read_model.v1` and `index.rebuild.v1`: deleted
+- Legacy v1 ports, source indexers, projection models, and migrations: deleted
 
-The current public engine surface is the database-independent
-`rustok_index::domain` API. Source-specific indexers and migrations remain only
-until the next M0 deletion pass.
+The active engine surface is the database-independent `rustok_index::domain`
+API. The only remaining compatibility code is the old runtime config/scheduler
+in `traits.rs`, retained temporarily until server composition is updated.
 
 ## Entry points
 
