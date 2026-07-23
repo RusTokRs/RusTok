@@ -1,0 +1,48 @@
+name: Index Storage Scale Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "agent/index-m2-scale-evidence"
+    paths:
+      - "crates/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/validate-index-storage-evidence.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+      - ".github/workflows/index-storage-scale-evidence.yml"
+      - ".github/workflows/index-storage-scale-run.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Index scale evidence contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify Index boundary and benchmark contract
+        run: node scripts/verify/verify-index-fba.mjs
+      - name: Verify scale evidence validator syntax
+        run: node --check scripts/verify/validate-index-storage-evidence.mjs
+
+  evidence-100k:
+    needs: contract
+    uses: ./.github/workflows/index-storage-scale-run.yml
+    with:
+      scale: 100k
+      timeout_minutes: 180
+
+  evidence-1m:
+    needs: evidence-100k
+    uses: ./.github/workflows/index-storage-scale-run.yml
+    with:
+      scale: 1m
+      timeout_minutes: 300

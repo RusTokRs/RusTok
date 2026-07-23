@@ -1,0 +1,117 @@
+name: Index Storage Scale Run
+
+on:
+  workflow_call:
+    inputs:
+      scale:
+        description: Deterministic Index benchmark scale
+        required: true
+        type: string
+      timeout_minutes:
+        description: Job timeout for the selected scale
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_bench
+  INDEX_BENCH_SCALE: ${{ inputs.scale }}
+  INDEX_BENCH_REPETITIONS: "3"
+  INDEX_BENCH_CHURN_CYCLES: "5"
+  INDEX_BENCH_OUTPUT: evidence/index-storage/${{ inputs.scale }}/read-report.json
+  INDEX_BENCH_MUTATION_OUTPUT: evidence/index-storage/${{ inputs.scale }}/mutation-report.json
+  INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/${{ inputs.scale }}/maintenance-report.json
+  INDEX_BENCH_EVIDENCE_ROOT: evidence/index-storage/${{ inputs.scale }}
+  INDEX_BENCH_REQUIRE_RUNNER_RESOURCES: "1"
+
+jobs:
+  evidence:
+    name: PostgreSQL ${{ inputs.scale }} evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_bench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-storage-scale
+
+      - name: Capture runner resources before evidence
+        shell: bash
+        run: |
+          mkdir -p "$INDEX_BENCH_EVIDENCE_ROOT"
+          {
+            echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "phase=before"
+            uname -a
+            echo "nproc=$(nproc)"
+            free -b
+            df -B1
+          } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-before.txt"
+
+      - name: Build scale evidence executables
+        run: >-
+          cargo build -p rustok-benchmarks --release
+          --bin index-storage-benchmark
+          --bin index-storage-mutation-benchmark
+          --bin index-storage-maintenance-benchmark
+
+      - name: Run ${{ inputs.scale }} read/query evidence
+        run: target/release/index-storage-benchmark
+
+      - name: Run ${{ inputs.scale }} mutation/WAL evidence
+        run: target/release/index-storage-mutation-benchmark
+
+      - name: Run ${{ inputs.scale }} persistent churn/VACUUM evidence
+        run: target/release/index-storage-maintenance-benchmark
+
+      - name: Capture runner resources after evidence
+        shell: bash
+        run: |
+          {
+            echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "phase=after"
+            uname -a
+            echo "nproc=$(nproc)"
+            free -b
+            df -B1
+          } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-after.txt"
+
+      - name: Validate ${{ inputs.scale }} evidence packet
+        run: node scripts/verify/validate-index-storage-evidence.mjs
+
+      - name: Archive validated ${{ inputs.scale }} evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-${{ inputs.scale }}-${{ github.sha }}
+          path: evidence/index-storage/${{ inputs.scale }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Archive ${{ inputs.scale }} failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-${{ inputs.scale }}-diagnostic-${{ github.sha }}
+          path: evidence/index-storage/${{ inputs.scale }}
+          if-no-files-found: warn
+          retention-days: 14
