@@ -12,14 +12,33 @@ pub enum DomainError {
         value: String,
     },
 
+    #[error("invalid locale identifier: {value}")]
+    InvalidLocale { value: String },
+
+    #[error("schema must define at least one field")]
+    EmptySchema,
+
     #[error("schema contains duplicate field: {0}")]
     DuplicateField(String),
 
     #[error("schema contains duplicate link: {0}")]
     DuplicateLink(String),
 
+    #[error("schema link {link} must define source and target fields")]
+    EmptyLinkFields { link: String },
+
+    #[error("schema link {link} has {source_count} source fields and {target_count} target fields")]
+    LinkFieldArityMismatch {
+        link: String,
+        source_count: usize,
+        target_count: usize,
+    },
+
     #[error("schema link references an unknown source field: {0}")]
     UnknownLinkSourceField(String),
+
+    #[error("multi-value field cannot be sortable: {0}")]
+    SortableManyField(String),
 
     #[error("query must select at least one field")]
     EmptySelection,
