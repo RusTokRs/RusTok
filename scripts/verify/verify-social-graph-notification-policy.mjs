@@ -67,8 +67,11 @@ if (contract.privacy_semantics?.mute_source_to_target_only !== true) {
 if (contract.server_composition?.relation_ports_ready !== true) {
   failures.push("concrete social graph adapters must make relation ports ready");
 }
-if (contract.server_composition?.candidate_worker_enabled !== false) {
-  failures.push("candidate worker must remain disabled in this slice");
+if (contract.server_composition?.candidate_worker_runtime_delivered !== true) {
+  failures.push("candidate worker runtime promotion must be recorded");
+}
+if (contract.server_composition?.candidate_worker_default_enabled !== false) {
+  failures.push("candidate worker must remain disabled by default");
 }
 
 for (const marker of [
@@ -127,6 +130,7 @@ for (const marker of [
   "NotificationBlockReadRuntime::new",
   "NotificationMuteReadRuntime::new",
   "NotificationRecipientPolicyRuntime::new(Arc::new(policy), true)",
+  "with_candidate_worker_enabled(candidate_worker_enabled_from_environment())",
 ]) {
   requireText(adapter, marker, `server social graph adapter is missing ${marker}`);
 }
