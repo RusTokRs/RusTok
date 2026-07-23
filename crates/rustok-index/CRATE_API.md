@@ -1,39 +1,81 @@
 # rustok-index / CRATE_API
 
 ## Public Modules
-`content`, `error`, `product`, `search`, `traits`.
 
-## Primary Public Types and Signatures
-- `pub struct IndexModule`
-- `pub trait Indexer`, `pub trait LocaleIndexer`
-- `pub struct IndexerContext`
-- `pub enum IndexError`, `pub type IndexResult<T>`
+- `domain`
 
-## Events
-- Publishes: usually not a source of business events.
-- Consumes: indexed content/commerce events through the application integration layer.
+The source-specific `content`, `product`, and `flex` implementation remains
+internal during M0 and is scheduled for deletion. It is not a supported public
+contract.
+
+## Primary Public Types
+
+- `IndexModule`
+- `ModuleName`, `SchemaRef`, `SchemaVersion`, `EntityName`, `EntityKey`
+- `FieldName`, `FieldPath`, `LinkName`, `LocaleKey`
+- `IndexValue`, `IndexValueType`
+- `IndexSchema`, `IndexField`, `IndexLink`
+- `IndexRecord`, `IndexLinkValue`, `LinkedEntityKey`
+- `IndexMutation`
+- `IndexQuery`, `FilterExpr`, `OrderExpr`, `OrderDirection`, `Pagination`
+- `DomainError`
+
+## Contract Status
+
+The database-independent domain types are the only intentional engine contract
+at this stage. Storage, source, ingestion, rebuild, query-port, and operator APIs
+will be published by their corresponding milestones.
+
+Legacy `IndexDocument`, `DocumentType`, `IndexReadModelPort`,
+`IndexRebuildPort`, in-memory fallback adapters, and source-specific query DTOs
+have been deleted and must not be restored.
 
 ## Dependencies on Other RusToK Crates
-- `rustok-core`
+
+The generic domain core must not depend on source-domain crates. `rustok-core`
+is allowed for module metadata and shared platform primitives. Source adapters
+belong to their owner modules or to explicit integration crates.
 
 ## Common AI Mistakes
-- Confuses domain-level indexer (`traits`) with specific search adapters.
-- Indexes without considering locale.
+
+- Adding Product, Content, Flex, Pricing, or Inventory fields to engine-core
+  enums or structs.
+- Reading source-module tables from Index.
+- Treating Index as a ranking or full-text search engine.
+- Reintroducing a catch-all JSON document as the public contract.
+- Implementing rebuild by collecting every source ID before processing.
+- Publishing unvalidated JSON filters instead of the typed query AST.
 
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- Input contract is defined by the public DTOs/commands from the crate (see sections with `Create*Input`/`Update*Input`/query/filter above and corresponding `pub` exports in `src/lib.rs`).
-- All changes to public DTO fields are considered breaking changes and require synchronized updates to transport adapters in `apps/server`.
+
+- `IndexSchema`, `IndexRecord`, `IndexMutation`, and `IndexQuery` are the current
+  input contracts.
+- Construction and validation must preserve tenant, schema, entity, locale, and
+  source-version identity.
+- Public field changes are breaking until explicit versioning rules are added.
 
 ### Domain Invariants
-- Module invariants are enforced in services/state machines and DTO validation; invalid transitions/parameters must result in a domain error.
-- Multi-tenant boundary invariants (tenant/resource isolation, auth context) are considered a mandatory part of the contract.
+
+- Every record and mutation is tenant scoped.
+- Every record belongs to a registered schema and entity identity.
+- Locale identity is explicit and will be canonicalized before persistence.
+- Field and link paths must be validated against the schema registry.
+- Source versions must prevent stale mutation overwrite.
+- Generic engine types must remain source-domain agnostic.
 
 ### Events / Outbox Side Effects
-- If the module publishes domain events, publication must go through the transactional outbox/transport contract without local workarounds.
-- Event payload and event-type format must remain backward-compatible for cross-module consumers.
+
+- Incremental source events will be converted to `IndexMutation` through
+  owner-published adapters.
+- Delivery must be replayable and idempotent.
+- Mutation application will use inbox deduplication and transactional storage.
 
 ### Errors / Failure Codes
-- Public `*Error`/`*Result` types of the module define the failure contract and must not lose semantics when mapped to HTTP/GraphQL/CLI.
-- For validation/auth/conflict/not-found scenarios, a stable error-class must be maintained, used by tests and adapters.
+
+- `DomainError` defines current domain-shape validation failures.
+- Application and infrastructure milestones will add typed schema, planning,
+  storage, source, retry, cancellation, and rebuild errors.
+- Transport adapters must preserve stable error classes without leaking internal
+  database details.
