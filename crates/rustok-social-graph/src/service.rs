@@ -1,4 +1,5 @@
 use chrono::Utc;
+use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
@@ -65,14 +66,15 @@ impl SocialGraphService {
                     return Ok(existing);
                 }
 
-                let now = Utc::now();
+                let next_revision = existing
+                    .revision
+                    .checked_add(1)
+                    .ok_or(SocialGraphError::RevisionConflict)?;
+                let now: DateTimeWithTimeZone = Utc::now().into();
                 let updated = relation::Entity::update_many()
                     .col_expr(relation::Column::Active, Expr::value(active))
-                    .col_expr(
-                        relation::Column::Revision,
-                        Expr::col(relation::Column::Revision).add(1),
-                    )
-                    .col_expr(relation::Column::UpdatedAt, Expr::value(now.into()))
+                    .col_expr(relation::Column::Revision, Expr::value(next_revision))
+                    .col_expr(relation::Column::UpdatedAt, Expr::value(now))
                     .filter(relation::Column::Id.eq(existing.id))
                     .filter(relation::Column::Revision.eq(existing.revision))
                     .exec(&txn)
@@ -90,7 +92,7 @@ impl SocialGraphService {
                 if expected_revision.is_some() {
                     return Err(SocialGraphError::RevisionConflict);
                 }
-                let now = Utc::now();
+                let now: DateTimeWithTimeZone = Utc::now().into();
                 relation::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     tenant_id: Set(tenant_id),
@@ -99,8 +101,8 @@ impl SocialGraphService {
                     relation_kind: Set(relation_kind),
                     active: Set(active),
                     revision: Set(1),
-                    created_at: Set(now.into()),
-                    updated_at: Set(now.into()),
+                    created_at: Set(now.clone()),
+                    updated_at: Set(now),
                 }
                 .insert(&txn)
                 .await?
