@@ -5,7 +5,7 @@ use axum::{
 };
 use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
-use rustok_payment::PaymentService;
+use rustok_payment::{PaymentError, PaymentService};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
@@ -77,7 +77,14 @@ pub async fn create_payment_collection(
     if let Some(existing) = service
         .find_reusable_collection_by_cart(tenant.id, cart.id)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?
+        .map_err(|error| {
+            payment_collection_http_error(
+                tenant.id,
+                cart.id,
+                "find_reusable_collection_by_cart",
+                error,
+            )
+        })?
     {
         return Ok((StatusCode::OK, Json(existing)));
     }
@@ -97,7 +104,9 @@ pub async fn create_payment_collection(
             },
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| {
+            payment_collection_http_error(tenant.id, cart.id, "create_collection", error)
+        })?;
 
     Ok((StatusCode::CREATED, Json(collection)))
 }
@@ -203,23 +212,72 @@ fn storefront_checkout_http_error(
 ) -> HttpError {
     use crate::services::storefront_staged_checkout_runtime::StorefrontStagedCheckoutRuntimeError;
 
-    match error {
-        StorefrontStagedCheckoutRuntimeError::Validation(message) => {
-            HttpError::bad_request("checkout_operation_invalid", message)
+    let status = match &error {
+        StorefrontStagedCheckoutRuntimeError::Validation(_) => StatusCode::BAD_REQUEST,
+        StorefrontStagedCheckoutRuntimeError::CartAccess => StatusCode::NOT_FOUND,
+        StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => {
+            StatusCode::SERVICE_UNAVAILABLE
         }
-        StorefrontStagedCheckoutRuntimeError::CartAccess => HttpError::not_found(
-            "checkout_cart_not_accessible",
-            "Checkout cart was not found or is not accessible",
+        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        StorefrontStagedCheckoutRuntimeError::CompensationPending
+        | StorefrontStagedCheckoutRuntimeError::ReconciliationRequired => StatusCode::CONFLICT,
+    };
+    HttpError::new(status, error.public_code(), error.public_message())
+}
+
+fn payment_collection_http_error(
+    tenant_id: Uuid,
+    cart_id: Uuid,
+    operation: &'static str,
+    error: PaymentError,
+) -> HttpError {
+    tracing::error!(
+        error = ?error,
+        tenant_id = %tenant_id,
+        cart_id = %cart_id,
+        operation,
+        "storefront payment collection operation failed"
+    );
+    match error {
+        PaymentError::Validation(_) => HttpError::bad_request(
+            "payment_request_invalid",
+            "Payment collection request is invalid",
         ),
-        StorefrontStagedCheckoutRuntimeError::CheckoutFailed => HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "checkout_failed",
-            "Checkout could not be completed",
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => HttpError::not_found(
+            "payment_resource_not_found",
+            "Payment resource was not found",
         ),
-        StorefrontStagedCheckoutRuntimeError::ReconciliationRequired => HttpError::new(
+        PaymentError::InvalidTransition { .. } => HttpError::new(
             StatusCode::CONFLICT,
-            "checkout_reconciliation_required",
-            "Checkout requires reconciliation before it can continue",
+            "payment_state_conflict",
+            "Payment lifecycle conflicts with the requested operation",
+        ),
+        PaymentError::ProviderUnavailable { .. } | PaymentError::ProviderConfiguration { .. } => {
+            HttpError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "payment_temporarily_unavailable",
+                "Payment service is temporarily unavailable",
+            )
+        }
+        PaymentError::ProviderRejected { .. } => HttpError::new(
+            StatusCode::CONFLICT,
+            "payment_provider_rejected",
+            "Payment provider rejected the requested operation",
+        ),
+        PaymentError::ProviderInvalidResponse { .. }
+        | PaymentError::ProviderOutcomeUnknown { .. } => HttpError::new(
+            StatusCode::CONFLICT,
+            "payment_reconciliation_required",
+            "Payment operation requires reconciliation",
+        ),
+        PaymentError::Database(_) => HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "payment_storage_unavailable",
+            "Payment service is temporarily unavailable",
         ),
     }
 }
