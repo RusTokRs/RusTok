@@ -15,13 +15,13 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::data::{
-    artifact_data_scope_for_execution, configure_tenant_scope, namespace_lock_clause,
-    optional_revision_value, placeholder, revision_value, uuid_from_row, uuid_value,
-    ArtifactDataScope,
+    ArtifactDataScope, artifact_data_scope_for_execution, configure_tenant_scope,
+    namespace_lock_clause, optional_revision_value, placeholder, revision_value, uuid_from_row,
+    uuid_value,
 };
 use crate::{
-    resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
-    ArtifactCapabilityExecution, ControlPlaneInfrastructure,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ControlPlaneInfrastructure,
+    resolve_granted_artifact_capability,
 };
 
 const MAX_REFERENCE_NAME_BYTES: usize = 96;
@@ -1005,8 +1005,8 @@ pub enum ArtifactSecretError {
 #[cfg(test)]
 mod tests {
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     };
 
     use async_trait::async_trait;
@@ -1024,11 +1024,11 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        capability_reference, validate_handle_request, validate_request, validate_use_request,
         ArtifactSecretAuthorizer, ArtifactSecretBindingRequest, ArtifactSecretError,
         ArtifactSecretHandleRequest, ArtifactSecretPolicy, ArtifactSecretUseContext,
         ArtifactSecretUseRequest, ArtifactSecretValueConsumer, RegistryArtifactSecretAuthorizer,
-        SeaOrmArtifactSecretUseService,
+        SeaOrmArtifactSecretUseService, capability_reference, validate_handle_request,
+        validate_request, validate_use_request,
     };
     use crate::{ArtifactDataScope, ArtifactSecretConsumerError, ModulesModule};
 
@@ -1291,8 +1291,10 @@ mod tests {
         assert_eq!(receipt.reference, binding.reference);
         assert_eq!(receipt.revision, 1);
         assert_eq!(receipt.purpose, "http.authorization");
-        assert!(!serde_json::to_string(&receipt)
-            .expect("receipt JSON")
-            .contains("top-secret-value"));
+        assert!(
+            !serde_json::to_string(&receipt)
+                .expect("receipt JSON")
+                .contains("top-secret-value")
+        );
     }
 }

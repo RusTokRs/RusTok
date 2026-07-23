@@ -2241,6 +2241,11 @@ multi-node reconciliation path consumed by those transports.
   mutation/parity coverage is tracked by the aggregate Phase 7 gate.
 - [ ] Reuse canonical DTOs through the approved framework-neutral contract
   layer; do not duplicate GraphQL types in the UI package.
+- [x] Reuse canonical framework-neutral build/release snapshots across
+  `SharedBuildControl`, GraphQL, and native admin. `rustok-api` owns the typed
+  status/stage/profile contract, `rustok-build` alone maps SeaORM persistence,
+  and the admin no longer defines or populates parallel build/release DTOs.
+  The aggregate item remains open for the other control-plane DTO families.
 - [ ] Preserve GraphQL as the public/headless surface.
 - [ ] Add GraphQL/native parity fixtures for success, validation, conflict,
   policy denial, recovery, and build failure.

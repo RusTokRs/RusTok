@@ -233,9 +233,7 @@ pub async fn load_group_admin_application_policy_locale_catalog(
         "groups.admin.applications.policy.locales",
         context.path(),
         move || {
-            native_policy_locale_adapter::load_group_application_policy_locale_catalog(
-                native_query,
-            )
+            native_policy_locale_adapter::load_group_application_policy_locale_catalog(native_query)
         },
         move || {
             graphql_policy_locale_adapter::load_group_application_policy_locale_catalog(
@@ -257,9 +255,7 @@ pub async fn load_group_admin_application_policy_for_management(
         "groups.admin.applications.policy.management_read",
         context.path(),
         move || {
-            native_policy_locale_adapter::load_group_application_policy_for_management(
-                native_query,
-            )
+            native_policy_locale_adapter::load_group_application_policy_for_management(native_query)
         },
         move || {
             graphql_policy_locale_adapter::load_group_application_policy_for_management(

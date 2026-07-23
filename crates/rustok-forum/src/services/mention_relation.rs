@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use chrono::Utc;
-use rustok_api::{normalize_locale_tag, Action, Resource};
+use rustok_api::{Action, Resource, normalize_locale_tag};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::ForumMentionEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -22,10 +22,10 @@ use crate::entities::{
 };
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
-    extract_forum_mention_candidates, resolve_forum_mentions, validate_forum_quote_references,
-    ForumContentTarget, ForumContentTargetKind, ForumMentionAudience, ForumMentionPolicy,
-    ForumQuoteReference, ForumResolvedMentions, ForumRevisionIdentity,
-    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION, ForumContentTarget, ForumContentTargetKind,
+    ForumMentionAudience, ForumMentionPolicy, ForumQuoteReference, ForumResolvedMentions,
+    ForumRevisionIdentity, extract_forum_mention_candidates, resolve_forum_mentions,
+    validate_forum_quote_references,
 };
 
 pub(crate) struct MentionRelationService {
@@ -488,9 +488,7 @@ async fn latest_revision_in_tx(
 ) -> ForumResult<Option<forum_relation_revision::Model>> {
     Ok(forum_relation_revision::Entity::find()
         .filter(forum_relation_revision::Column::TenantId.eq(tenant_id))
-        .filter(
-            forum_relation_revision::Column::TargetKind.eq(target_kind_value(target.kind())),
-        )
+        .filter(forum_relation_revision::Column::TargetKind.eq(target_kind_value(target.kind())))
         .filter(forum_relation_revision::Column::TargetId.eq(target.id()))
         .filter(forum_relation_revision::Column::Locale.eq(locale))
         .order_by_desc(forum_relation_revision::Column::RevisionId)

@@ -330,10 +330,8 @@ mod tests {
     fn compiler_rechecks_materialized_css_policy() {
         let compiler = StaticLandingCompiler::default();
         let mut document = compiler.prepare_document(&project()).expect("prepared");
-        document
-            .component_mut("heading")
-            .expect("heading")
-            .style = Some(json!({ "background-image": "url(https://evil.example/x.png)" }));
+        document.component_mut("heading").expect("heading").style =
+            Some(json!({ "background-image": "url(https://evil.example/x.png)" }));
 
         let error = compiler
             .compile_prepared_document(&document)

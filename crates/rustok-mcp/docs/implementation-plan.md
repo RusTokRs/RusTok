@@ -41,6 +41,7 @@ protocol surface is stdio only.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `npm run verify:mcp:admin-boundary`
 - `node scripts/verify/verify-api-surface-contract.mjs`
 - `node scripts/verify/verify-axum-runtime.mjs`

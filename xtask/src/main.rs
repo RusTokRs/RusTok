@@ -6,8 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 use std::thread;
 use std::time::Duration;
@@ -153,8 +153,12 @@ fn print_usage() {
     println!("  module test         Run or preview local module smoke checks");
     println!("  module stage-run    Execute a local follow-up validation stage and report it");
     println!("  module runner       Run a thin remote validation worker against runner/* API");
-    println!("  module publish      Create/preview a publish request and stop at review-ready unless --auto-approve is set");
-    println!("  module request-changes Request a fresh artifact revision for an approved publish request");
+    println!(
+        "  module publish      Create/preview a publish request and stop at review-ready unless --auto-approve is set"
+    );
+    println!(
+        "  module request-changes Request a fresh artifact revision for an approved publish request"
+    );
     println!("  module hold         Place a publish request on hold");
     println!("  module resume       Resume a held publish request");
     println!("  module stage        Record or requeue a follow-up validation stage");

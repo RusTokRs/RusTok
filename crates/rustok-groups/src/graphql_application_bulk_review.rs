@@ -68,13 +68,13 @@ impl From<crate::BulkReviewGroupMembershipApplicationsResult>
                 .map(|item| BulkReviewGroupMembershipApplicationItemResultGql {
                     application_id: item.application_id,
                     result: item.result.map(Into::into),
-                    error: item.error.map(|error| {
-                        BulkReviewGroupMembershipApplicationErrorGql {
+                    error: item
+                        .error
+                        .map(|error| BulkReviewGroupMembershipApplicationErrorGql {
                             code: error.code,
                             message: error.message,
                             retryable: error.retryable,
-                        }
-                    }),
+                        }),
                 })
                 .collect(),
             succeeded: value.succeeded,

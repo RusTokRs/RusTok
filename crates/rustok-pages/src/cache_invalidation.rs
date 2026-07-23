@@ -199,12 +199,18 @@ impl PageCacheInvalidationReceipt {
         }
     }
 
-    pub fn validate_for(&self, request: &PageCacheInvalidationRequest) -> Result<(), PageCacheError> {
+    pub fn validate_for(
+        &self,
+        request: &PageCacheInvalidationRequest,
+    ) -> Result<(), PageCacheError> {
         if self.event_id != request.event_id || self.correlation_id != request.correlation_id {
             return Err(PageCacheError::ReceiptIdentityMismatch);
         }
         for scope in request.scopes() {
-            if self.generation(*scope).is_none_or(|generation| generation == 0) {
+            if self
+                .generation(*scope)
+                .is_none_or(|generation| generation == 0)
+            {
                 return Err(PageCacheError::MissingGeneration(*scope));
             }
         }
@@ -249,12 +255,7 @@ pub trait PagesCacheReadPort: Send + Sync {
 
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>, PageCacheError>;
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError>;
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError>;
 }
 
 #[derive(Clone)]
@@ -574,9 +575,9 @@ mod tests {
     #[tokio::test]
     async fn handler_forwards_only_page_events_and_validates_the_receipt() {
         let port = Arc::new(FakeInvalidationPort::default());
-        let handler = PageCacheInvalidationEventHandler::new(
-            PagesCacheInvalidationRuntime::new(port.clone()),
-        );
+        let handler = PageCacheInvalidationEventHandler::new(PagesCacheInvalidationRuntime::new(
+            port.clone(),
+        ));
         let page_id = Uuid::from_u128(42);
         let page = envelope(DomainEvent::NodePublished {
             node_id: page_id,
@@ -608,8 +609,7 @@ mod tests {
     fn cache_keys_allow_initial_generation_and_hash_raw_variants() {
         let tenant = Uuid::from_u128(11);
         let page = Uuid::from_u128(22);
-        let key = page_cache_key(PageCacheScope::Route, tenant, page, 0, "en:/about")
-            .unwrap();
+        let key = page_cache_key(PageCacheScope::Route, tenant, page, 0, "en:/about").unwrap();
         assert!(key.contains(":g-0:page:"));
         assert!(key.contains(&page.to_string()));
         assert!(!key.contains("/about"));
@@ -619,18 +619,18 @@ mod tests {
     fn storefront_key_changes_when_any_dependency_generation_changes() {
         let tenant = Uuid::from_u128(11);
         let variant = "en|en|web|about";
-        let base = storefront_pages_cache_key(
-            tenant,
-            PageCacheGenerationSnapshot::new(1, 2, 3),
-            variant,
-        )
-        .unwrap();
+        let base =
+            storefront_pages_cache_key(tenant, PageCacheGenerationSnapshot::new(1, 2, 3), variant)
+                .unwrap();
         for changed in [
             PageCacheGenerationSnapshot::new(2, 2, 3),
             PageCacheGenerationSnapshot::new(1, 3, 3),
             PageCacheGenerationSnapshot::new(1, 2, 4),
         ] {
-            assert_ne!(base, storefront_pages_cache_key(tenant, changed, variant).unwrap());
+            assert_ne!(
+                base,
+                storefront_pages_cache_key(tenant, changed, variant).unwrap()
+            );
         }
         assert!(!base.contains("about"));
     }

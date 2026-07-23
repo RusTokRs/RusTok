@@ -1,3 +1,4 @@
+pub use rustok_api::{PlatformBuildSnapshot as BuildJob, PlatformReleaseSnapshot as ReleaseInfo};
 use serde::{Deserialize, Serialize};
 fn deserialize_registry_principal_label<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -521,70 +522,6 @@ pub struct MarketplaceModuleVersion {
     pub checksum_sha256: Option<String>,
     #[serde(rename = "signaturePresent")]
     pub signature_present: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct BuildJob {
-    pub id: String,
-    pub status: String,
-    pub stage: String,
-    pub progress: i32,
-    pub profile: String,
-    #[serde(rename = "manifestRef")]
-    pub manifest_ref: String,
-    #[serde(rename = "manifestHash")]
-    pub manifest_hash: String,
-    #[serde(rename = "manifestRevision", default)]
-    pub manifest_revision: i64,
-    #[serde(rename = "modulesDelta")]
-    pub modules_delta: String,
-    #[serde(rename = "requestedBy")]
-    pub requested_by: String,
-    pub reason: Option<String>,
-    #[serde(rename = "releaseId")]
-    pub release_id: Option<String>,
-    #[serde(rename = "logsUrl")]
-    pub logs_url: Option<String>,
-    #[serde(rename = "errorMessage")]
-    pub error_message: Option<String>,
-    #[serde(rename = "startedAt")]
-    pub started_at: Option<String>,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: String,
-    #[serde(rename = "finishedAt")]
-    pub finished_at: Option<String>,
-}
-
-impl BuildJob {
-    pub fn summary(&self) -> String {
-        format!("{} / {} / {}%", self.status, self.stage, self.progress)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct ReleaseInfo {
-    pub id: String,
-    #[serde(rename = "buildId")]
-    pub build_id: String,
-    pub status: String,
-    pub environment: String,
-    #[serde(rename = "manifestHash")]
-    pub manifest_hash: String,
-    #[serde(rename = "manifestRevision", default)]
-    pub manifest_revision: i64,
-    pub modules: Vec<String>,
-    #[serde(rename = "previousReleaseId")]
-    pub previous_release_id: Option<String>,
-    #[serde(rename = "deployedAt")]
-    pub deployed_at: Option<String>,
-    #[serde(rename = "rolledBackAt")]
-    pub rolled_back_at: Option<String>,
-    #[serde(rename = "createdAt")]
-    pub created_at: String,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

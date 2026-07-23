@@ -9,9 +9,9 @@ use rustok_core::{ModuleContext, ModuleRegistry};
 use rustok_sandbox::ExecutionPhase;
 
 use crate::{
-    artifact::{event_topic_matches, valid_event_topic},
     ArtifactReleaseRef, ModuleDefinitionCatalog, ModuleDefinitionSource, ModuleHttpMethod,
     ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    artifact::{event_topic_matches, valid_event_topic},
 };
 
 /// The v1 lifecycle binding set. Other binding classes are added to the same

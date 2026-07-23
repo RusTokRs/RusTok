@@ -1,11 +1,13 @@
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use ulid::Ulid;
 use uuid::Uuid;
 
 use super::validation::{EventValidationError, ValidateEvent, validators};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EventEnvelope {
     pub id: Uuid,
     /// Event type string for fast filtering and routing
@@ -41,6 +43,74 @@ impl EventEnvelope {
             retry_count: 0,
         }
     }
+
+    /// Validates envelope metadata, the typed payload, and its registered
+    /// schema. Every durable and remote ingress path must call this method
+    /// before accepting a root event.
+    pub fn validate_registered_schema(&self) -> Result<(), EventEnvelopeError> {
+        if self.id.is_nil() {
+            return Err(EventValidationError::NilUuid("id").into());
+        }
+        if self.correlation_id.is_nil() {
+            return Err(EventValidationError::NilUuid("correlation_id").into());
+        }
+        if self.tenant_id.is_nil() {
+            return Err(EventValidationError::NilUuid("tenant_id").into());
+        }
+        validators::validate_optional_uuid("causation_id", &self.causation_id)?;
+        validators::validate_optional_uuid("actor_id", &self.actor_id)?;
+        if let Some(trace_id) = &self.trace_id {
+            validators::validate_not_empty("trace_id", trace_id)?;
+            validators::validate_max_length("trace_id", trace_id, 512)?;
+        }
+        self.event.validate()?;
+
+        let schema = crate::event_schema(&self.event_type)
+            .ok_or_else(|| EventEnvelopeError::UnregisteredEventType(self.event_type.clone()))?;
+        if self.schema_version != schema.version {
+            return Err(EventEnvelopeError::SchemaVersionMismatch {
+                event_type: self.event_type.clone(),
+                envelope_version: self.schema_version,
+                registered_version: schema.version,
+            });
+        }
+        if self.event_type != self.event.event_type()
+            || self.schema_version != self.event.schema_version()
+        {
+            return Err(EventEnvelopeError::PayloadMetadataMismatch {
+                envelope_type: self.event_type.clone(),
+                envelope_version: self.schema_version,
+                payload_type: self.event.event_type().to_string(),
+                payload_version: self.event.schema_version(),
+            });
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum EventEnvelopeError {
+    #[error("event envelope validation failed: {0}")]
+    Validation(#[from] EventValidationError),
+    #[error("event type `{0}` is not registered")]
+    UnregisteredEventType(String),
+    #[error(
+        "event schema version mismatch for `{event_type}`: envelope={envelope_version}, registered={registered_version}"
+    )]
+    SchemaVersionMismatch {
+        event_type: String,
+        envelope_version: u16,
+        registered_version: u16,
+    },
+    #[error(
+        "event payload metadata mismatch: envelope=`{envelope_type}`/{envelope_version}, payload=`{payload_type}`/{payload_version}"
+    )]
+    PayloadMetadataMismatch {
+        envelope_type: String,
+        envelope_version: u16,
+        payload_type: String,
+        payload_version: u16,
+    },
 }
 
 impl std::fmt::Debug for EventEnvelope {
@@ -55,7 +125,7 @@ impl std::fmt::Debug for EventEnvelope {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(tag = "type", content = "data")]
 pub enum DomainEvent {
     // ════════════════════════════════════════════════════════════════

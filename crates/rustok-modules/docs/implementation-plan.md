@@ -1305,8 +1305,11 @@ Leptos, Axum, or Async-GraphQL packages. The repository guard additionally
 checks owner imports and concrete admin transport SQL/filesystem/hash/build
 planning bypasses. Direct admin build reads and rollback are now routed through
 the host-composed `rustok_build::SharedBuildControl`,
-with the server retaining event-aware rollback composition. Remaining Phase 7
-work covers canonical transport errors and the other resolver families.
+with the server retaining event-aware rollback composition. That port now
+returns typed framework-neutral build/release snapshots from `rustok-api`;
+`rustok-build` alone maps persistence models, while GraphQL and native admin
+consume the same facts. Remaining Phase 7 work covers canonical transport
+errors, parity fixtures, and the other resolver families.
 
 ### 2026-07-22 cross-boundary error audit
 

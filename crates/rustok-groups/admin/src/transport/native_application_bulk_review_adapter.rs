@@ -34,10 +34,7 @@ pub async fn bulk_review_group_membership_applications(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/applications/bulk-review"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/applications/bulk-review")]
 async fn groups_admin_bulk_review_membership_applications_native(
     command: BulkReviewGroupMembershipApplicationsCommand,
 ) -> Result<GroupsAdminBulkReviewApplicationsResult, ServerFnError> {
@@ -45,8 +42,8 @@ async fn groups_admin_bulk_review_membership_applications_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             BulkReviewGroupMembershipApplicationsRequest, GroupApplicationBulkReviewCommandPort,
@@ -89,7 +86,10 @@ async fn groups_admin_bulk_review_membership_applications_native(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             request.locale,
-            format!("groups-admin-applications-bulk-review-native-{}", Uuid::new_v4()),
+            format!(
+                "groups-admin-applications-bulk-review-native-{}",
+                Uuid::new_v4()
+            ),
         )
         .with_deadline(Duration::from_secs(30))
         .with_idempotency_key(command.idempotency_key);
@@ -97,18 +97,19 @@ async fn groups_admin_bulk_review_membership_applications_native(
             context = context.with_claim(permission.to_string());
         }
 
-        let result = GroupApplicationBulkReviewCommandPort::bulk_review_group_membership_applications(
-            &GroupApplicationService::new(runtime.db_clone()),
-            context,
-            BulkReviewGroupMembershipApplicationsRequest {
-                application_ids,
-                decision,
-                note: command.note,
-                confirmed: command.confirmed,
-            },
-        )
-        .await
-        .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
+        let result =
+            GroupApplicationBulkReviewCommandPort::bulk_review_group_membership_applications(
+                &GroupApplicationService::new(runtime.db_clone()),
+                context,
+                BulkReviewGroupMembershipApplicationsRequest {
+                    application_ids,
+                    decision,
+                    note: command.note,
+                    confirmed: command.confirmed,
+                },
+            )
+            .await
+            .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
 
         let succeeded = result.succeeded;
         let failed = result.failed;
@@ -119,11 +120,13 @@ async fn groups_admin_bulk_review_membership_applications_native(
                 .map(|item| GroupsAdminBulkReviewApplicationItemResult {
                     application_id: item.application_id.to_string(),
                     result: item.result.map(map_review_result),
-                    error: item.error.map(|error| GroupsAdminBulkReviewApplicationError {
-                        code: error.code,
-                        message: error.message,
-                        retryable: error.retryable,
-                    }),
+                    error: item
+                        .error
+                        .map(|error| GroupsAdminBulkReviewApplicationError {
+                            code: error.code,
+                            message: error.message,
+                            retryable: error.retryable,
+                        }),
                 })
                 .collect(),
             succeeded,

@@ -8,9 +8,8 @@ use uuid::Uuid;
 
 use crate::{
     AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
-    CheckoutOrderIdentitySnapshot, CompleteCheckoutPortRequest,
-    InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse, OrderService,
-    ReadCheckoutOrderIdentityByOperationRequest,
+    CheckoutOrderIdentitySnapshot, CompleteCheckoutPortRequest, InProcessCheckoutOrderIdentityPort,
+    OrderError, OrderResponse, OrderService, ReadCheckoutOrderIdentityByOperationRequest,
 };
 
 /// Order-owned in-process adapter used while staged commerce checkout migrates
@@ -192,10 +191,11 @@ impl CheckoutOrderRecoveryAdapter {
         fallback_locale: Option<&str>,
     ) -> Result<OrderResponse, PortError> {
         match locale {
-            Some(locale) => self
-                .order_service
-                .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
-                .await,
+            Some(locale) => {
+                self.order_service
+                    .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
+                    .await
+            }
             None => self.order_service.get_order(tenant_id, order_id).await,
         }
         .map_err(order_error_to_port_error)
@@ -356,7 +356,9 @@ fn normalize_hash(
     {
         return Err(PortError::validation(
             "order.checkout_hash_invalid",
-            format!("{field} must be a lowercase hexadecimal value with {min_len} to {max_len} bytes"),
+            format!(
+                "{field} must be a lowercase hexadecimal value with {min_len} to {max_len} bytes"
+            ),
         ));
     }
     Ok(value)
@@ -371,10 +373,9 @@ fn order_error_to_port_error(error: OrderError) -> PortError {
                 "order storage is temporarily unavailable",
             )
         }
-        OrderError::OrderNotFound(_) => PortError::not_found(
-            "order.order_not_found",
-            "order was not found",
-        ),
+        OrderError::OrderNotFound(_) => {
+            PortError::not_found("order.order_not_found", "order was not found")
+        }
         OrderError::Validation(message) => PortError::validation("order.validation", message),
         OrderError::InvalidTransition { .. } => PortError::conflict(
             "order.invalid_transition",

@@ -14,9 +14,7 @@ use sea_orm::{
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
-use crate::dto::{
-    ForumQuoteReferenceInput, ForumQuoteTargetKindInput, SetForumQuotesInput,
-};
+use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput, SetForumQuotesInput};
 use crate::entities::forum_relation_revision;
 use crate::mentions::{ForumContentTarget, ForumQuoteReference};
 
@@ -180,12 +178,7 @@ async fn apply_relation_migrations(db: &DatabaseConnection) {
     }
 }
 
-async fn insert_topic_source(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    body: &str,
-) {
+async fn insert_topic_source(db: &DatabaseConnection, tenant_id: Uuid, topic_id: Uuid, body: &str) {
     let category_id = Uuid::new_v4();
     db.execute_unprepared(&format!(
         "INSERT INTO forum_topics (
@@ -480,7 +473,9 @@ async fn quote_owner_replace_replay_clear_and_cross_tenant_rejection_are_atomic(
         .persist_in_tx(&txn, prepared)
         .await
         .expect("quoted source revision should persist");
-    txn.commit().await.expect("source transaction should commit");
+    txn.commit()
+        .await
+        .expect("source transaction should commit");
 
     let quote_input = ForumQuoteReferenceInput {
         target_kind: ForumQuoteTargetKindInput::Topic,

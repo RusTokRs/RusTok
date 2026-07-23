@@ -11,8 +11,6 @@ use crate::policy::{
     ModuleEffectivePolicyQuery, ModuleEffectivePolicyRuntimeInput,
 };
 use crate::{
-    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
-    execute_module_toggle, module_operation_recovery_plan, retry_failed_post_hook_operation,
     ArtifactInstallationResolver, ArtifactLifecycleExecutor, ArtifactSandboxPolicyResolver,
     ControlPlaneInfrastructure, ModuleDefinitionCatalog, ModuleDefinitionError,
     ModuleDefinitionKind, ModuleDefinitionSource, ModuleEffectivePolicy,
@@ -24,6 +22,8 @@ use crate::{
     SeaOrmArtifactSandboxPolicyResolver, SeaOrmModuleArtifactSecurityResolver,
     SeaOrmModulePolicyRevisionConsumer, TenantModuleOverride, TenantModuleSettingsRecord,
     TenantModuleSettingsRequest, TenantModuleStateStore,
+    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
+    execute_module_toggle, module_operation_recovery_plan, retry_failed_post_hook_operation,
 };
 
 /// Database-backed adapter for module lifecycle execution in a host composition.

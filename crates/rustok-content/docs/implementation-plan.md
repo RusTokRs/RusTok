@@ -57,6 +57,7 @@ procedure.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `npm run verify:content:orchestration` — fast guardrail for public
   orchestration contracts, route resolution, RBAC/idempotency/audit/outbox,
   canonical/alias collision rollback evidence, and documentation/registry sync.

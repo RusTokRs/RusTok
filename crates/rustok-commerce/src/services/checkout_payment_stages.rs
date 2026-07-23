@@ -144,10 +144,7 @@ impl CheckoutPaymentStageExecutor {
                                 plan.payload.context.locale.as_str(),
                                 self.port_deadline,
                                 "authorize",
-                                format!(
-                                    "payment_collection:{}:authorize",
-                                    collection.id
-                                ),
+                                format!("payment_collection:{}:authorize", collection.id),
                             ),
                             AuthorizeCheckoutPaymentCollectionRequest {
                                 identity,

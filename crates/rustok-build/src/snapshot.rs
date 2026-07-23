@@ -1,6 +1,9 @@
 //! Mapping from build-owner persistence models to neutral API snapshots.
 
-use rustok_api::{PlatformBuildSnapshot, PlatformReleaseSnapshot};
+use rustok_api::{
+    PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
+    PlatformReleaseSnapshot, PlatformReleaseStatus,
+};
 
 use crate::build::{BuildStage, BuildStatus, DeploymentProfile, Model as Build};
 use crate::plan::BuildExecutionPlan;
@@ -11,10 +14,10 @@ pub fn build_snapshot(model: &Build) -> PlatformBuildSnapshot {
 
     PlatformBuildSnapshot {
         id: model.id.to_string(),
-        status: build_status(model.status.clone()).to_string(),
-        stage: build_stage(model.stage.clone()).to_string(),
+        status: build_status(model.status.clone()),
+        stage: build_stage(model.stage.clone()),
         progress: model.progress,
-        profile: deployment_profile(model.profile.clone()).to_string(),
+        profile: deployment_profile(model.profile.clone()),
         manifest_ref: model.manifest_ref.clone(),
         manifest_hash: model.manifest_hash.clone(),
         manifest_revision: model.manifest_revision,
@@ -46,7 +49,7 @@ pub fn release_snapshot(model: &Release) -> PlatformReleaseSnapshot {
     PlatformReleaseSnapshot {
         id: model.id.clone(),
         build_id: model.build_id.to_string(),
-        status: release_status(model.status.clone()).to_string(),
+        status: release_status(model.status.clone()),
         environment: model.environment.clone(),
         container_image: model.container_image.clone(),
         server_artifact_url: model.server_artifact_url.clone(),
@@ -91,44 +94,44 @@ fn modules_delta_summary(value: Option<&serde_json::Value>) -> String {
     value.to_string()
 }
 
-fn build_status(status: BuildStatus) -> &'static str {
+fn build_status(status: BuildStatus) -> PlatformBuildStatus {
     match status {
-        BuildStatus::Queued => "QUEUED",
-        BuildStatus::Running => "RUNNING",
-        BuildStatus::Success => "SUCCESS",
-        BuildStatus::Failed => "FAILED",
-        BuildStatus::Cancelled => "CANCELLED",
+        BuildStatus::Queued => PlatformBuildStatus::Queued,
+        BuildStatus::Running => PlatformBuildStatus::Running,
+        BuildStatus::Success => PlatformBuildStatus::Success,
+        BuildStatus::Failed => PlatformBuildStatus::Failed,
+        BuildStatus::Cancelled => PlatformBuildStatus::Cancelled,
     }
 }
 
-fn build_stage(stage: BuildStage) -> &'static str {
+fn build_stage(stage: BuildStage) -> PlatformBuildStage {
     match stage {
-        BuildStage::Pending => "PENDING",
-        BuildStage::Checkout => "CHECKOUT",
-        BuildStage::Build => "BUILD",
-        BuildStage::Test => "TEST",
-        BuildStage::Deploy => "DEPLOY",
-        BuildStage::Complete => "COMPLETE",
+        BuildStage::Pending => PlatformBuildStage::Pending,
+        BuildStage::Checkout => PlatformBuildStage::Checkout,
+        BuildStage::Build => PlatformBuildStage::Build,
+        BuildStage::Test => PlatformBuildStage::Test,
+        BuildStage::Deploy => PlatformBuildStage::Deploy,
+        BuildStage::Complete => PlatformBuildStage::Complete,
     }
 }
 
-fn deployment_profile(profile: DeploymentProfile) -> &'static str {
+fn deployment_profile(profile: DeploymentProfile) -> PlatformDeploymentProfile {
     match profile {
-        DeploymentProfile::Monolith => "MONOLITH",
-        DeploymentProfile::ServerWithAdmin => "SERVER_WITH_ADMIN",
-        DeploymentProfile::ServerWithStorefront => "SERVER_WITH_STOREFRONT",
-        DeploymentProfile::HeadlessApi => "HEADLESS_API",
-        DeploymentProfile::Worker => "WORKER",
-        DeploymentProfile::Registry => "REGISTRY",
+        DeploymentProfile::Monolith => PlatformDeploymentProfile::Monolith,
+        DeploymentProfile::ServerWithAdmin => PlatformDeploymentProfile::ServerWithAdmin,
+        DeploymentProfile::ServerWithStorefront => PlatformDeploymentProfile::ServerWithStorefront,
+        DeploymentProfile::HeadlessApi => PlatformDeploymentProfile::HeadlessApi,
+        DeploymentProfile::Worker => PlatformDeploymentProfile::Worker,
+        DeploymentProfile::Registry => PlatformDeploymentProfile::Registry,
     }
 }
 
-fn release_status(status: ReleaseStatus) -> &'static str {
+fn release_status(status: ReleaseStatus) -> PlatformReleaseStatus {
     match status {
-        ReleaseStatus::Pending => "PENDING",
-        ReleaseStatus::Deploying => "DEPLOYING",
-        ReleaseStatus::Active => "ACTIVE",
-        ReleaseStatus::RolledBack => "ROLLED_BACK",
-        ReleaseStatus::Failed => "FAILED",
+        ReleaseStatus::Pending => PlatformReleaseStatus::Pending,
+        ReleaseStatus::Deploying => PlatformReleaseStatus::Deploying,
+        ReleaseStatus::Active => PlatformReleaseStatus::Active,
+        ReleaseStatus::RolledBack => PlatformReleaseStatus::RolledBack,
+        ReleaseStatus::Failed => PlatformReleaseStatus::Failed,
     }
 }

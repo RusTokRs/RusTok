@@ -9,7 +9,7 @@ use crate::dto::{ForumQuoteReferenceInput, ForumQuoteTargetKindInput};
 use crate::entities::{forum_quote, forum_relation_revision};
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
-    ForumContentTarget, ForumQuoteReference, FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION, ForumContentTarget, ForumQuoteReference,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,16 +157,12 @@ async fn lock_active_source_in_tx(
     source: ForumContentTarget,
 ) -> ForumResult<()> {
     let (table, id_column, deleted_error) = match source.kind() {
-        crate::mentions::ForumContentTargetKind::Topic => (
-            "forum_topics",
-            "id",
-            ForumError::TopicDeleted,
-        ),
-        crate::mentions::ForumContentTargetKind::Reply => (
-            "forum_replies",
-            "id",
-            ForumError::ReplyDeleted,
-        ),
+        crate::mentions::ForumContentTargetKind::Topic => {
+            ("forum_topics", "id", ForumError::TopicDeleted)
+        }
+        crate::mentions::ForumContentTargetKind::Reply => {
+            ("forum_replies", "id", ForumError::ReplyDeleted)
+        }
     };
     let found = match txn.get_database_backend() {
         DbBackend::Sqlite => {
@@ -238,6 +234,9 @@ mod tests {
 
     #[test]
     fn exact_expectation_distinguishes_empty_stream_from_any_revision() {
-        assert_ne!(InlineQuoteExpectation::Any, InlineQuoteExpectation::Exact(None));
+        assert_ne!(
+            InlineQuoteExpectation::Any,
+            InlineQuoteExpectation::Exact(None)
+        );
     }
 }

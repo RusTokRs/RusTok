@@ -118,7 +118,11 @@ impl MenuBindingService {
         Ok(Some(menu))
     }
 
-    async fn ensure_channel_scope(&self, tenant_id: Uuid, channel_id: Uuid) -> NavigationResult<()> {
+    async fn ensure_channel_scope(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> NavigationResult<()> {
         let channel = match ChannelService::new(self.db.clone())
             .get_channel(channel_id)
             .await

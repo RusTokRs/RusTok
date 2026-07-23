@@ -20,8 +20,10 @@ pub use marketplace_listing::{
 pub use marketplace_seller::{
     MARKETPLACE_SELLER_EVENT_SCHEMAS, MarketplaceSellerEvent, marketplace_seller_event_schema,
 };
-pub use schema::{EVENT_SCHEMAS, EventSchema, FieldSchema};
-pub use types::{DomainEvent, EventEnvelope};
+pub use schema::{
+    EVENT_SCHEMAS, EventSchema, FieldSchema, domain_event_json_schema, event_envelope_json_schema,
+};
+pub use types::{DomainEvent, EventEnvelope, EventEnvelopeError};
 pub use validation::{EventValidationError, ValidateEvent};
 
 pub use DomainEvent as RootDomainEvent;

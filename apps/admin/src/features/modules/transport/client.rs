@@ -3,16 +3,17 @@ use rustok_ui_transport::UiTransportPath;
 
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    registry_principal_label_from_value, RegistryFollowUpGateLifecycle,
-    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
-    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
+    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    registry_principal_label_from_value,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ModuleOperationRecoveryPlan,
     ReleaseInfo, TenantModule, ToggleModuleResult,
 };
-use crate::shared::api::{map_server_fn_error, request, ApiError};
+use crate::shared::api::{ApiError, map_server_fn_error, request};
 
 use super::native_server_adapter::*;
 use super::types::*;

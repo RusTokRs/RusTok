@@ -170,14 +170,12 @@ fn command_error(error: crate::ForumError) -> HttpError {
         crate::ForumError::Forbidden(message) => {
             HttpError::forbidden("forum_permission_denied", message)
         }
-        crate::ForumError::TopicNotFound(id) => HttpError::not_found(
-            "forum_topic_not_found",
-            format!("Topic not found: {id}"),
-        ),
-        crate::ForumError::ReplyNotFound(id) => HttpError::not_found(
-            "forum_reply_not_found",
-            format!("Reply not found: {id}"),
-        ),
+        crate::ForumError::TopicNotFound(id) => {
+            HttpError::not_found("forum_topic_not_found", format!("Topic not found: {id}"))
+        }
+        crate::ForumError::ReplyNotFound(id) => {
+            HttpError::not_found("forum_reply_not_found", format!("Reply not found: {id}"))
+        }
         crate::ForumError::RelationRevisionConflict => HttpError::new(
             StatusCode::CONFLICT,
             "FORUM_RELATION_REVISION_CONFLICT",

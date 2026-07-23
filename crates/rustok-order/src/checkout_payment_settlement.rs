@@ -65,15 +65,16 @@ impl InProcessCheckoutOrderPaymentSettlementPort {
         request: &SettleCheckoutOrderPaymentRequest,
     ) -> Result<OrderResponse, PortError> {
         match request.locale.as_deref() {
-            Some(locale) => self
-                .service
-                .get_order_with_locale_fallback(
-                    tenant_id,
-                    request.order_id,
-                    locale,
-                    request.fallback_locale.as_deref(),
-                )
-                .await,
+            Some(locale) => {
+                self.service
+                    .get_order_with_locale_fallback(
+                        tenant_id,
+                        request.order_id,
+                        locale,
+                        request.fallback_locale.as_deref(),
+                    )
+                    .await
+            }
             None => self.service.get_order(tenant_id, request.order_id).await,
         }
         .map_err(order_error_to_port_error)

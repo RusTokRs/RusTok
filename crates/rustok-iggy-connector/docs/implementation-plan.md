@@ -35,6 +35,7 @@ not evidence of a real offset commit.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `cargo test -p rustok-iggy-connector --lib`
 - Embedded and remote Iggy SDK integration tests for receive, scoped ack,

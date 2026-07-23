@@ -5,7 +5,7 @@ use std::collections::{BTreeSet, HashMap};
 use thiserror::Error;
 use url::Url;
 
-use crate::{validate_module_settings_schema, ModuleSettingSpec, ModuleSettingsValidationError};
+use crate::{ModuleSettingSpec, ModuleSettingsValidationError, validate_module_settings_schema};
 
 /// Host-parsed static package metadata supplied to the module control plane.
 #[derive(Debug, Clone, Default)]
@@ -863,15 +863,15 @@ fn validate_marketplace_asset_url(
 #[cfg(test)]
 mod tests {
     use super::{
+        StaticModuleEntrypointContract, StaticModuleEntrypointValidationError,
+        StaticModuleHttpProvidesContract, StaticModuleHttpProvidesValidationError,
+        StaticModulePlatformVersionError, StaticModuleTopologyContract, StaticModuleTopologyModule,
+        StaticModuleTopologyValidationError, StaticModuleUiClassificationError,
+        StaticModuleUiI18nContract, StaticModuleUiI18nValidationError,
         resolve_static_module_entrypoints, resolve_static_module_ui_classification,
         static_module_platform_version_is_compatible,
         validate_static_module_http_provides_contract, validate_static_module_topology_contract,
-        validate_static_module_ui_i18n_contract, StaticModuleEntrypointContract,
-        StaticModuleEntrypointValidationError, StaticModuleHttpProvidesContract,
-        StaticModuleHttpProvidesValidationError, StaticModulePlatformVersionError,
-        StaticModuleTopologyContract, StaticModuleTopologyModule,
-        StaticModuleTopologyValidationError, StaticModuleUiClassificationError,
-        StaticModuleUiI18nContract, StaticModuleUiI18nValidationError,
+        validate_static_module_ui_i18n_contract,
     };
     use semver::Version;
     use std::collections::HashMap;

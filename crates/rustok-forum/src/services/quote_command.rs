@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use rustok_api::{normalize_locale_tag, Action, Resource};
+use rustok_api::{Action, Resource, normalize_locale_tag};
 use rustok_core::SecurityContext;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
@@ -18,8 +18,8 @@ use crate::entities::{
 };
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::{
-    ForumContentTarget, ForumQuoteReference, FORUM_MAX_MENTION_TARGETS_PER_REVISION,
-    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    FORUM_MAX_MENTION_TARGETS_PER_REVISION, FORUM_MAX_QUOTE_REFERENCES_PER_REVISION,
+    ForumContentTarget, ForumQuoteReference,
 };
 
 use super::mention_relation::MentionRelationService;
@@ -64,8 +64,13 @@ impl ForumQuoteCommandService {
         security: SecurityContext,
         input: SetForumQuotesInput,
     ) -> ForumResult<ForumRelationSnapshotResponse> {
-        self.set_quotes(tenant_id, ForumQuoteSource::Topic(topic_id), security, input)
-            .await
+        self.set_quotes(
+            tenant_id,
+            ForumQuoteSource::Topic(topic_id),
+            security,
+            input,
+        )
+        .await
     }
 
     pub async fn set_reply_quotes(
@@ -75,8 +80,13 @@ impl ForumQuoteCommandService {
         security: SecurityContext,
         input: SetForumQuotesInput,
     ) -> ForumResult<ForumRelationSnapshotResponse> {
-        self.set_quotes(tenant_id, ForumQuoteSource::Reply(reply_id), security, input)
-            .await
+        self.set_quotes(
+            tenant_id,
+            ForumQuoteSource::Reply(reply_id),
+            security,
+            input,
+        )
+        .await
     }
 
     async fn set_quotes(
@@ -267,7 +277,10 @@ async fn load_snapshot_in_tx(
         target_kind: revision.target_kind,
         target_id: revision.target_id,
         locale: revision.locale,
-        user_ids: user_rows.into_iter().map(|row| row.mentioned_user_id).collect(),
+        user_ids: user_rows
+            .into_iter()
+            .map(|row| row.mentioned_user_id)
+            .collect(),
         audiences: audience_rows.into_iter().map(|row| row.audience).collect(),
         quotes: quote_rows
             .into_iter()

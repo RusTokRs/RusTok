@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use postgres::{Client, NoTls};
 use std::collections::BTreeMap;
 use std::fs;
@@ -595,9 +595,15 @@ fn print_install_dev_usage() {
     println!();
     println!("Options:");
     println!("  --create-db                 Create role/database using --pg-admin-url");
-    println!("  --pg-admin-url <url>        Admin PostgreSQL URL (default: postgres://postgres:postgres@localhost:5432/postgres)");
-    println!("  --database-url <url>        App database URL (default: postgres://rustok:rustok@localhost:5432/rustok_dev)");
-    println!("  --api-url <url>             Backend base URL for admin apps (default: http://localhost:5150)");
+    println!(
+        "  --pg-admin-url <url>        Admin PostgreSQL URL (default: postgres://postgres:postgres@localhost:5432/postgres)"
+    );
+    println!(
+        "  --database-url <url>        App database URL (default: postgres://rustok:rustok@localhost:5432/rustok_dev)"
+    );
+    println!(
+        "  --api-url <url>             Backend base URL for admin apps (default: http://localhost:5150)"
+    );
     println!("  --admin-email <email>       Dev SuperAdmin email (default: admin@local)");
     println!("  --admin-password <value>    Dev SuperAdmin password (default: admin12345)");
     println!("  --tenant-slug <slug>        Dev tenant slug (default: demo)");

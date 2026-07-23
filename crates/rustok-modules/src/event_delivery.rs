@@ -17,19 +17,19 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use rustok_api::{
-    manifest_hash::hash_manifest_snapshot, HostRuntimeContext, ModuleWorkError, ModuleWorkHandler,
-    ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
+    HostRuntimeContext, ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome,
+    ModuleWorkSource, manifest_hash::hash_manifest_snapshot,
 };
 use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_runtime::{ModuleWorkRegistration, ModuleWorkScheduler};
 use rustok_sandbox::ExecutionPhase;
 
 use crate::{
-    artifact::{event_topic_matches, valid_event_topic},
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
     ArtifactBindingDispatch, ArtifactInstallationTarget, ArtifactReleaseRef,
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    artifact::{event_topic_matches, valid_event_topic},
+    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
 };
 
 const MAX_EVENT_TYPE_BYTES: usize = 128;

@@ -75,7 +75,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(OrderLineItems::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(OrderLineItems::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(OrderLineItems::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(OrderLineItems::OrderId).uuid().not_null())
                     .col(ColumnDef::new(OrderLineItems::ProductId).uuid())
                     .col(ColumnDef::new(OrderLineItems::VariantId).uuid())
@@ -85,7 +90,11 @@ impl MigrationTrait for Migration {
                             .string_len(255)
                             .not_null(),
                     )
-                    .col(ColumnDef::new(OrderLineItems::Quantity).integer().not_null())
+                    .col(
+                        ColumnDef::new(OrderLineItems::Quantity)
+                            .integer()
+                            .not_null(),
+                    )
                     .col(
                         ColumnDef::new(OrderLineItems::UnitPrice)
                             .decimal_len(20, 6)

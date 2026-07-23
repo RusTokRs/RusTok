@@ -1,8 +1,8 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -14,10 +14,10 @@ use axum::{
     response::Response,
 };
 use moka::future::Cache;
-use rustok_api::request::{resolve_request_locale, ResolvedRequestLocale};
+use rustok_api::request::{ResolvedRequestLocale, resolve_request_locale};
 use rustok_core::i18n::Locale;
-use sea_orm::sea_query::{Alias, Expr, Order, Query};
 use sea_orm::ConnectionTrait;
+use sea_orm::sea_query::{Alias, Expr, Order, Query};
 use uuid::Uuid;
 
 use crate::context::TenantContextExt;
@@ -283,8 +283,8 @@ fn constrain_locale_to_tenant(
 #[cfg(test)]
 mod tests {
     use super::{
-        constrain_locale_to_tenant, tenant_locale_entry_weight, TenantLocaleCache,
-        TenantLocaleRecord,
+        TenantLocaleCache, TenantLocaleRecord, constrain_locale_to_tenant,
+        tenant_locale_entry_weight,
     };
     use rustok_api::request::ResolvedRequestLocale;
     use std::sync::Arc;

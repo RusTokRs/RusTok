@@ -8,7 +8,7 @@ use std::{collections::HashSet, str::FromStr};
 use thiserror::Error;
 
 use rustok_api::{
-    is_valid_locale_tag, manifest_hash::hash_manifest_snapshot, ArtifactPermissionLocalization,
+    ArtifactPermissionLocalization, is_valid_locale_tag, manifest_hash::hash_manifest_snapshot,
 };
 use rustok_sandbox::{CapabilityName, SandboxExecutorKind};
 
@@ -772,9 +772,7 @@ pub enum ModuleArtifactError {
     UndeclaredBindingCapability(String),
     #[error("artifact dependency `{0}` is invalid")]
     InvalidDependency(String),
-    #[error(
-        "artifact dependency `{slug}` has invalid semantic-version requirement `{requirement}"
-    )]
+    #[error("artifact dependency `{slug}` has invalid semantic-version requirement `{requirement}")]
     InvalidDependencyVersionRequirement { slug: String, requirement: String },
     #[error("artifact dependency `{0}` is declared more than once")]
     DuplicateDependency(String),

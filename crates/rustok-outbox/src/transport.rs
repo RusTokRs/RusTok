@@ -48,21 +48,9 @@ impl OutboxTransport {
     }
 
     fn model_from_envelope(envelope: EventEnvelope) -> Result<entity::ActiveModel> {
-        let expected_event_type = envelope.event.event_type();
-        if envelope.event_type != expected_event_type {
-            return Err(Error::Validation(format!(
-                "outbox envelope event_type mismatch: envelope=`{}`, event=`{expected_event_type}`",
-                envelope.event_type
-            )));
-        }
-
-        let expected_schema_version = envelope.event.schema_version();
-        if envelope.schema_version != expected_schema_version {
-            return Err(Error::Validation(format!(
-                "outbox envelope schema_version mismatch: envelope={}, event={expected_schema_version}",
-                envelope.schema_version
-            )));
-        }
+        envelope
+            .validate_registered_schema()
+            .map_err(|error| Error::Validation(error.to_string()))?;
 
         let payload = serde_json::to_value(&envelope)?;
         Self::model(

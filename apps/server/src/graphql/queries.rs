@@ -25,8 +25,8 @@ use crate::models::users;
 use crate::modules::ManifestManager;
 use crate::services::dashboard_user_activity;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::marketplace_catalog::MarketplaceCatalogQuery;
+use crate::services::marketplace_catalog::marketplace_catalog_from_context;
 use crate::services::module_lifecycle::{ModuleLifecycleService, ModuleOperationRecoveryError};
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::rbac_service::RbacService;
@@ -34,7 +34,7 @@ use crate::services::registry_governance::RegistryGovernanceService;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_api::graphql::GraphQLError;
-use rustok_api::graphql::{encode_cursor, PageInfo, PaginationInput};
+use rustok_api::graphql::{PageInfo, PaginationInput, encode_cursor};
 use rustok_build::SharedBuildControl;
 
 fn build_control_from_context(ctx: &Context<'_>) -> Result<SharedBuildControl> {
@@ -47,11 +47,7 @@ fn build_control_from_context(ctx: &Context<'_>) -> Result<SharedBuildControl> {
 
 fn calculate_percent_change(current: i64, previous: i64) -> f64 {
     if previous == 0 {
-        if current == 0 {
-            0.0
-        } else {
-            100.0
-        }
+        if current == 0 { 0.0 } else { 100.0 }
     } else {
         ((current - previous) as f64 / previous as f64) * 100.0
     }
@@ -1050,7 +1046,7 @@ impl RootQuery {
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
-        Ok(build.as_ref().map(BuildJob::from_model))
+        Ok(build.as_ref().map(BuildJob::from_snapshot))
     }
 
     async fn build_history(
@@ -1071,7 +1067,10 @@ impl RootQuery {
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
-        let builds = builds.iter().map(BuildJob::from_model).collect::<Vec<_>>();
+        let builds = builds
+            .iter()
+            .map(BuildJob::from_snapshot)
+            .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(
             "graphql",
@@ -1093,7 +1092,7 @@ impl RootQuery {
             .await
             .map_err(|err| <FieldError as GraphQLError>::internal_error(&err.to_string()))?;
 
-        Ok(release.as_ref().map(ReleaseInfo::from_model))
+        Ok(release.as_ref().map(ReleaseInfo::from_snapshot))
     }
 
     async fn release_history(
@@ -1116,7 +1115,7 @@ impl RootQuery {
 
         let releases = releases
             .iter()
-            .map(ReleaseInfo::from_model)
+            .map(ReleaseInfo::from_snapshot)
             .collect::<Vec<_>>();
 
         metrics::record_read_path_budget(

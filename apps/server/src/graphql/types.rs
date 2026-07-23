@@ -1,7 +1,10 @@
 use async_graphql::{
     ComplexObject, Context, Enum, InputObject, Result, SimpleObject, dataloader::DataLoader,
 };
-use rustok_api::Permission;
+use rustok_api::{
+    Permission, PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus,
+    PlatformDeploymentProfile, PlatformReleaseSnapshot, PlatformReleaseStatus,
+};
 use rustok_core::{UserRole, UserStatus};
 use sea_orm::DatabaseConnection;
 use std::str::FromStr;
@@ -16,9 +19,7 @@ use crate::services::rbac_service::RbacService;
 use crate::services::registry_principal::RegistryPrincipalRef;
 use rustok_api::graphql::PageInfo;
 use rustok_build::BuildEvent;
-use rustok_build::BuildExecutionPlan;
-use rustok_build::build::{BuildStage, BuildStatus, DeploymentProfile, Model as BuildModel};
-use rustok_build::release::{Model as ReleaseModel, ReleaseStatus};
+use rustok_build::build::{BuildStage, BuildStatus};
 use rustok_modules::ModuleOperationRecoveryPlan as ServiceModuleOperationRecoveryPlan;
 
 #[derive(SimpleObject, Clone)]
@@ -565,15 +566,15 @@ pub enum GqlDeploymentProfile {
     Registry,
 }
 
-impl From<DeploymentProfile> for GqlDeploymentProfile {
-    fn from(profile: DeploymentProfile) -> Self {
+impl From<PlatformDeploymentProfile> for GqlDeploymentProfile {
+    fn from(profile: PlatformDeploymentProfile) -> Self {
         match profile {
-            DeploymentProfile::Monolith => Self::Monolith,
-            DeploymentProfile::ServerWithAdmin => Self::ServerWithAdmin,
-            DeploymentProfile::ServerWithStorefront => Self::ServerWithStorefront,
-            DeploymentProfile::HeadlessApi => Self::HeadlessApi,
-            DeploymentProfile::Worker => Self::Worker,
-            DeploymentProfile::Registry => Self::Registry,
+            PlatformDeploymentProfile::Monolith => Self::Monolith,
+            PlatformDeploymentProfile::ServerWithAdmin => Self::ServerWithAdmin,
+            PlatformDeploymentProfile::ServerWithStorefront => Self::ServerWithStorefront,
+            PlatformDeploymentProfile::HeadlessApi => Self::HeadlessApi,
+            PlatformDeploymentProfile::Worker => Self::Worker,
+            PlatformDeploymentProfile::Registry => Self::Registry,
         }
     }
 }
@@ -588,14 +589,39 @@ pub enum GqlReleaseStatus {
     Failed,
 }
 
-impl From<ReleaseStatus> for GqlReleaseStatus {
-    fn from(status: ReleaseStatus) -> Self {
+impl From<PlatformReleaseStatus> for GqlReleaseStatus {
+    fn from(status: PlatformReleaseStatus) -> Self {
         match status {
-            ReleaseStatus::Pending => Self::Pending,
-            ReleaseStatus::Deploying => Self::Deploying,
-            ReleaseStatus::Active => Self::Active,
-            ReleaseStatus::RolledBack => Self::RolledBack,
-            ReleaseStatus::Failed => Self::Failed,
+            PlatformReleaseStatus::Pending => Self::Pending,
+            PlatformReleaseStatus::Deploying => Self::Deploying,
+            PlatformReleaseStatus::Active => Self::Active,
+            PlatformReleaseStatus::RolledBack => Self::RolledBack,
+            PlatformReleaseStatus::Failed => Self::Failed,
+        }
+    }
+}
+
+impl From<PlatformBuildStatus> for GqlBuildStatus {
+    fn from(status: PlatformBuildStatus) -> Self {
+        match status {
+            PlatformBuildStatus::Queued => Self::Queued,
+            PlatformBuildStatus::Running => Self::Running,
+            PlatformBuildStatus::Success => Self::Success,
+            PlatformBuildStatus::Failed => Self::Failed,
+            PlatformBuildStatus::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+impl From<PlatformBuildStage> for GqlBuildStage {
+    fn from(stage: PlatformBuildStage) -> Self {
+        match stage {
+            PlatformBuildStage::Pending => Self::Pending,
+            PlatformBuildStage::Checkout => Self::Checkout,
+            PlatformBuildStage::Build => Self::Build,
+            PlatformBuildStage::Test => Self::Test,
+            PlatformBuildStage::Deploy => Self::Deploy,
+            PlatformBuildStage::Complete => Self::Complete,
         }
     }
 }
@@ -626,70 +652,31 @@ pub struct BuildJob {
     pub updated_at: String,
 }
 
-fn build_execution_plan(value: Option<&serde_json::Value>) -> Option<BuildExecutionPlan> {
-    value
-        .and_then(|value| value.get("execution_plan"))
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
-}
-
-fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
-    let Some(value) = value else {
-        return String::new();
-    };
-
-    if let Some(summary) = value.as_str() {
-        return summary.to_string();
-    }
-
-    if let Some(summary) = value.get("summary").and_then(serde_json::Value::as_str) {
-        return summary.to_string();
-    }
-
-    if let Some(object) = value.as_object() {
-        let mut slugs = object.keys().cloned().collect::<Vec<_>>();
-        slugs.sort();
-        return slugs.join(",");
-    }
-
-    value.to_string()
-}
-
 impl BuildJob {
-    pub fn from_model(model: &BuildModel) -> Self {
-        let execution_plan = build_execution_plan(model.modules_delta.as_ref());
-
+    pub fn from_snapshot(snapshot: &PlatformBuildSnapshot) -> Self {
         Self {
-            id: model.id.to_string(),
-            status: model.status.clone().into(),
-            stage: model.stage.clone().into(),
-            progress: model.progress,
-            profile: model.profile.clone().into(),
-            manifest_ref: model.manifest_ref.clone(),
-            manifest_hash: model.manifest_hash.clone(),
-            manifest_revision: model.manifest_revision,
-            modules_delta: build_modules_delta_summary(model.modules_delta.as_ref()),
-            build_command: execution_plan
-                .as_ref()
-                .map(|plan| plan.cargo_command.clone()),
-            build_features: execution_plan
-                .as_ref()
-                .map(|plan| plan.cargo_features.clone())
-                .unwrap_or_default(),
-            build_target: execution_plan
-                .as_ref()
-                .and_then(|plan| plan.cargo_target.clone()),
-            build_profile: execution_plan
-                .as_ref()
-                .map(|plan| plan.cargo_profile.clone()),
-            requested_by: model.requested_by.clone(),
-            reason: model.reason.clone(),
-            release_id: model.release_id.clone(),
-            logs_url: model.logs_url.clone(),
-            error_message: model.error_message.clone(),
-            started_at: model.started_at.map(|value| value.to_rfc3339()),
-            finished_at: model.finished_at.map(|value| value.to_rfc3339()),
-            created_at: model.created_at.to_rfc3339(),
-            updated_at: model.updated_at.to_rfc3339(),
+            id: snapshot.id.clone(),
+            status: snapshot.status.into(),
+            stage: snapshot.stage.into(),
+            progress: snapshot.progress,
+            profile: snapshot.profile.into(),
+            manifest_ref: snapshot.manifest_ref.clone(),
+            manifest_hash: snapshot.manifest_hash.clone(),
+            manifest_revision: snapshot.manifest_revision,
+            modules_delta: snapshot.modules_delta.clone(),
+            build_command: snapshot.build_command.clone(),
+            build_features: snapshot.build_features.clone(),
+            build_target: snapshot.build_target.clone(),
+            build_profile: snapshot.build_profile.clone(),
+            requested_by: snapshot.requested_by.clone(),
+            reason: snapshot.reason.clone(),
+            release_id: snapshot.release_id.clone(),
+            logs_url: snapshot.logs_url.clone(),
+            error_message: snapshot.error_message.clone(),
+            started_at: snapshot.started_at.clone(),
+            finished_at: snapshot.finished_at.clone(),
+            created_at: snapshot.created_at.clone(),
+            updated_at: snapshot.updated_at.clone(),
         }
     }
 }
@@ -889,24 +876,24 @@ pub struct ReleaseInfo {
 }
 
 impl ReleaseInfo {
-    pub fn from_model(model: &ReleaseModel) -> Self {
+    pub fn from_snapshot(snapshot: &PlatformReleaseSnapshot) -> Self {
         Self {
-            id: model.id.clone(),
-            build_id: model.build_id.to_string(),
-            status: model.status.clone().into(),
-            environment: model.environment.clone(),
-            container_image: model.container_image.clone(),
-            server_artifact_url: model.server_artifact_url.clone(),
-            admin_artifact_url: model.admin_artifact_url.clone(),
-            storefront_artifact_url: model.storefront_artifact_url.clone(),
-            manifest_hash: model.manifest_hash.clone(),
-            manifest_revision: model.manifest_revision,
-            modules: serde_json::from_value(model.modules.clone()).unwrap_or_default(),
-            previous_release_id: model.previous_release_id.clone(),
-            deployed_at: model.deployed_at.map(|value| value.to_rfc3339()),
-            rolled_back_at: model.rolled_back_at.map(|value| value.to_rfc3339()),
-            created_at: model.created_at.to_rfc3339(),
-            updated_at: model.updated_at.to_rfc3339(),
+            id: snapshot.id.clone(),
+            build_id: snapshot.build_id.clone(),
+            status: snapshot.status.into(),
+            environment: snapshot.environment.clone(),
+            container_image: snapshot.container_image.clone(),
+            server_artifact_url: snapshot.server_artifact_url.clone(),
+            admin_artifact_url: snapshot.admin_artifact_url.clone(),
+            storefront_artifact_url: snapshot.storefront_artifact_url.clone(),
+            manifest_hash: snapshot.manifest_hash.clone(),
+            manifest_revision: snapshot.manifest_revision,
+            modules: snapshot.modules.clone(),
+            previous_release_id: snapshot.previous_release_id.clone(),
+            deployed_at: snapshot.deployed_at.clone(),
+            rolled_back_at: snapshot.rolled_back_at.clone(),
+            created_at: snapshot.created_at.clone(),
+            updated_at: snapshot.updated_at.clone(),
         }
     }
 }

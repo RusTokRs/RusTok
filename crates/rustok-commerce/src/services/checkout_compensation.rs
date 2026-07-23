@@ -233,13 +233,7 @@ impl CheckoutCompensationService {
         let mut identity = self
             .order_identity_port
             .read_by_operation(
-                order_identity_context(
-                    tenant_id,
-                    operation,
-                    self.port_deadline,
-                    "read",
-                    false,
-                ),
+                order_identity_context(tenant_id, operation, self.port_deadline, "read", false),
                 ReadCheckoutOrderIdentityByOperationRequest {
                     checkout_operation_id: operation.id,
                 },
@@ -250,13 +244,7 @@ impl CheckoutCompensationService {
             identity = self
                 .order_identity_port
                 .adopt_legacy(
-                    order_identity_context(
-                        tenant_id,
-                        operation,
-                        self.port_deadline,
-                        "adopt",
-                        true,
-                    ),
+                    order_identity_context(tenant_id, operation, self.port_deadline, "adopt", true),
                     AdoptLegacyCheckoutOrderIdentityRequest {
                         checkout_operation_id: operation.id,
                         cart_id: operation.cart_id,
@@ -508,8 +496,7 @@ fn validate_compensation_identity(
 ) -> CheckoutCompensationResult<()> {
     if identity.tenant_id != tenant_id
         || identity.checkout_operation_id != operation.id
-        || identity.source_cart_id.is_some()
-            && identity.source_cart_id != Some(operation.cart_id)
+        || identity.source_cart_id.is_some() && identity.source_cart_id != Some(operation.cart_id)
         || operation.order_id.is_some() && operation.order_id != Some(identity.order_id)
     {
         return Err(CheckoutCompensationError::Conflict(format!(
@@ -576,7 +563,10 @@ fn order_identity_context(
         tenant_id.to_string(),
         PortActor::service("rustok-commerce.checkout-compensation"),
         PLATFORM_FALLBACK_LOCALE,
-        format!("checkout:{}:compensation:order-identity:{action}", operation.id),
+        format!(
+            "checkout:{}:compensation:order-identity:{action}",
+            operation.id
+        ),
     )
     .with_causation_id(operation.id.to_string())
     .with_deadline(deadline);

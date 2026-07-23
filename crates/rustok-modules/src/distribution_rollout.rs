@@ -15,11 +15,11 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
+    ControlPlaneInfrastructure, ModuleStaticDistributionExecutorMode,
+    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     distribution_release::{load_release_record, load_release_state},
     promotion::{digest_json, valid_digest, valid_reference},
-    ControlPlaneInfrastructure, ModuleStaticDistributionExecutorMode,
-    ModuleStaticDistributionRelease, ModuleStaticDistributionReleaseStatus,
 };
 
 const ROLLOUT_STATE_ID: &str = "current";

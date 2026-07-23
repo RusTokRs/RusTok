@@ -3,11 +3,11 @@ use std::sync::Arc;
 use rustok_worker_transport::WorkerAdmission;
 use tonic::{Request, Response, Status};
 
+use crate::RunnerGrpcService;
 use crate::proto::runner_service_server::RunnerService;
 use crate::proto::{
     GetReadinessRequest, GetReadinessResponse, StartBuildRequest, StartBuildResponse,
 };
-use crate::RunnerGrpcService;
 
 #[derive(Clone)]
 pub struct AdmissionRunnerGrpcService {

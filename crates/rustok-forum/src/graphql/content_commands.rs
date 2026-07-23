@@ -1,6 +1,7 @@
 use async_graphql::{Context, FieldError, InputObject, Object, Result};
 use rustok_api::{
-    AuthContext, Permission, TenantContext, graphql::{GraphQLError, require_module_enabled},
+    AuthContext, Permission, TenantContext,
+    graphql::{GraphQLError, require_module_enabled},
     has_any_effective_permission,
 };
 use rustok_core::CONTENT_FORMAT_MARKDOWN;
@@ -111,7 +112,8 @@ impl ForumContentCommandMutation {
                 },
             )
             .await?;
-        let author_profile = load_author_profile(db, tenant_id, topic.author_id, &topic.effective_locale).await?;
+        let author_profile =
+            load_author_profile(db, tenant_id, topic.author_id, &topic.effective_locale).await?;
         Ok(map_topic(topic, author_profile))
     }
 
@@ -150,7 +152,8 @@ impl ForumContentCommandMutation {
                 },
             )
             .await?;
-        let author_profile = load_author_profile(db, tenant_id, topic.author_id, &topic.effective_locale).await?;
+        let author_profile =
+            load_author_profile(db, tenant_id, topic.author_id, &topic.effective_locale).await?;
         Ok(map_topic(topic, author_profile))
     }
 
@@ -188,7 +191,8 @@ impl ForumContentCommandMutation {
                 },
             )
             .await?;
-        let author_profile = load_author_profile(db, tenant_id, reply.author_id, &reply.effective_locale).await?;
+        let author_profile =
+            load_author_profile(db, tenant_id, reply.author_id, &reply.effective_locale).await?;
         Ok(map_reply(reply, author_profile))
     }
 
@@ -223,7 +227,8 @@ impl ForumContentCommandMutation {
                 },
             )
             .await?;
-        let author_profile = load_author_profile(db, tenant_id, reply.author_id, &reply.effective_locale).await?;
+        let author_profile =
+            load_author_profile(db, tenant_id, reply.author_id, &reply.effective_locale).await?;
         Ok(map_reply(reply, author_profile))
     }
 }
@@ -245,11 +250,11 @@ fn require_permission(
 
 fn resolve_tenant_scope(tenant: &TenantContext, requested: Option<Uuid>) -> Result<Uuid> {
     match requested {
-        Some(requested) if requested != tenant.id => Err(
-            <FieldError as GraphQLError>::permission_denied(
+        Some(requested) if requested != tenant.id => {
+            Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: tenant scope mismatch",
-            ),
-        ),
+            ))
+        }
         Some(requested) => Ok(requested),
         None => Ok(tenant.id),
     }

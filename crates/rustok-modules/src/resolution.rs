@@ -8,8 +8,8 @@ use std::{
 
 use async_trait::async_trait;
 use pubgrub::{
-    resolve, Dependencies, DependencyConstraints, DependencyProvider, PackageResolutionStatistics,
-    Ranges,
+    Dependencies, DependencyConstraints, DependencyProvider, PackageResolutionStatistics, Ranges,
+    resolve,
 };
 use semver::{Comparator, Op, Version, VersionReq};
 use serde::{Deserialize, Serialize};
@@ -613,11 +613,13 @@ mod tests {
         .await
         .expect("resolution succeeds");
         assert_eq!(result.lock_graph.nodes.len(), 2);
-        assert!(result
-            .lock_graph
-            .nodes
-            .iter()
-            .any(|node| node.version == "2.1.0"));
+        assert!(
+            result
+                .lock_graph
+                .nodes
+                .iter()
+                .any(|node| node.version == "2.1.0")
+        );
     }
 
     #[tokio::test]
@@ -719,17 +721,25 @@ mod tests {
 
     #[test]
     fn semver_ranges_cover_caret_tilde_and_partial_versions() {
-        assert!(version_requirement_range("^0.2.3")
-            .unwrap()
-            .contains(&Version::new(0, 2, 9)));
-        assert!(!version_requirement_range("^0.2.3")
-            .unwrap()
-            .contains(&Version::new(0, 3, 0)));
-        assert!(version_requirement_range("~1.2")
-            .unwrap()
-            .contains(&Version::new(1, 2, 99)));
-        assert!(!version_requirement_range("1")
-            .unwrap()
-            .contains(&Version::new(2, 0, 0)));
+        assert!(
+            version_requirement_range("^0.2.3")
+                .unwrap()
+                .contains(&Version::new(0, 2, 9))
+        );
+        assert!(
+            !version_requirement_range("^0.2.3")
+                .unwrap()
+                .contains(&Version::new(0, 3, 0))
+        );
+        assert!(
+            version_requirement_range("~1.2")
+                .unwrap()
+                .contains(&Version::new(1, 2, 99))
+        );
+        assert!(
+            !version_requirement_range("1")
+                .unwrap()
+                .contains(&Version::new(2, 0, 0))
+        );
     }
 }

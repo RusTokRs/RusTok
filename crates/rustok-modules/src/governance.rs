@@ -10,13 +10,13 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::ControlPlaneInfrastructure;
 use crate::build::{
     ModuleBuildOutcome, ModuleBuildPublicationReceipt, ModuleBuildSignatureAuthority,
     ModuleBuildValidationOutcome, ModuleBuildValidationProfile, SeaOrmModuleBuildService,
 };
 use crate::installation::{ArtifactVerificationEvidence, OciArtifactReference};
 use crate::marketplace_content::ModuleMarketplaceContentProjection;
-use crate::ControlPlaneInfrastructure;
 
 /// Stable reason-code vocabulary for a release yank.
 pub const REGISTRY_YANK_REASON_CODES: &[&str] = &[
@@ -7663,9 +7663,7 @@ pub enum ModuleGovernanceError {
     InvalidValidationJobEnqueueCommand,
     #[error("validation job claim requires a job ID and actor principal")]
     InvalidValidationJobClaimCommand,
-    #[error(
-        "validation job result requires a job ID, actor, coherent outcome, and check evidence"
-    )]
+    #[error("validation job result requires a job ID, actor, coherent outcome, and check evidence")]
     InvalidValidationJobResultCommand,
     #[error("validation job retry requires a job ID, actor, positive attempt, and error detail")]
     InvalidValidationJobRetryCommand,
@@ -7901,9 +7899,11 @@ mod tests {
             platform.iter().map(|stage| stage.key).collect::<Vec<_>>(),
             vec!["compile_smoke", "targeted_tests"]
         );
-        assert!(platform
-            .iter()
-            .all(|stage| stage.runner_kind == "owner_evidence"));
+        assert!(
+            platform
+                .iter()
+                .all(|stage| stage.runner_kind == "owner_evidence")
+        );
 
         let external =
             publication_follow_up_stages(ModulePublicationArtifactOrigin::ExternalPrebuilt);
@@ -9233,9 +9233,11 @@ mod tests {
                     .expect("event type")
             })
             .collect::<Vec<_>>();
-        assert!(event_types
-            .iter()
-            .any(|event_type| event_type == "owner_bound"));
+        assert!(
+            event_types
+                .iter()
+                .any(|event_type| event_type == "owner_bound")
+        );
         let publication = events
             .iter()
             .find(|event| {
@@ -9251,9 +9253,11 @@ mod tests {
                 .expect("publication release ID"),
             release_id
         );
-        assert!(event_types
-            .iter()
-            .any(|event_type| event_type == "marketplace_approval_recorded"));
+        assert!(
+            event_types
+                .iter()
+                .any(|event_type| event_type == "marketplace_approval_recorded")
+        );
         let evidence = database
             .query_one(Statement::from_string(
                 DbBackend::Sqlite,

@@ -168,12 +168,13 @@ impl CheckoutOrderStageExecutor {
                 stage if stage == CheckoutOperationStage::InventoryReserved.as_str() => {
                     let plan = self.plan_journal.get(tenant_id, operation_id).await?;
                     let request = completion_request(&operation, &plan)?;
-                    let legacy_snapshot_hash = operation.snapshot_hash.clone().ok_or_else(|| {
-                        CheckoutOrderStageError::Conflict(format!(
-                            "checkout operation {} has no immutable cart snapshot hash",
-                            operation.id
-                        ))
-                    })?;
+                    let legacy_snapshot_hash =
+                        operation.snapshot_hash.clone().ok_or_else(|| {
+                            CheckoutOrderStageError::Conflict(format!(
+                                "checkout operation {} has no immutable cart snapshot hash",
+                                operation.id
+                            ))
+                        })?;
                     let legacy_request_hash = legacy_order_request_hash(
                         &plan,
                         operation_id,
@@ -224,12 +225,7 @@ impl CheckoutOrderStageExecutor {
                     };
                     validate_order_projection(&operation, &order, &["confirmed"])?;
                     self.inventory_adoption
-                        .adopt_and_checkpoint(
-                            tenant_id,
-                            operation_id,
-                            lease_owner.clone(),
-                            &order,
-                        )
+                        .adopt_and_checkpoint(tenant_id, operation_id, lease_owner.clone(), &order)
                         .await?;
                 }
                 stage if stage == CheckoutOperationStage::OrderCreated.as_str() => {
@@ -253,9 +249,7 @@ impl CheckoutOrderStageExecutor {
                         .await?;
                 }
                 stage if stage == CheckoutOperationStage::PaymentReady.as_str() => {
-                    return self
-                        .load_payment_ready_state(tenant_id, operation_id)
-                        .await;
+                    return self.load_payment_ready_state(tenant_id, operation_id).await;
                 }
                 stage => {
                     return Err(CheckoutOrderStageError::Conflict(format!(

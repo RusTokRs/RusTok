@@ -15,6 +15,10 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
+    ControlPlaneInfrastructure, ModuleStaticDistributionBuild,
+    ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionBuildStatus,
+    ModuleStaticDistributionCompletionCommand, ModuleStaticDistributionCompletionOutcome,
+    ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     distribution::{
         advance_distribution_state, distribution_composition_digest, insert_build, load_build,
@@ -24,10 +28,6 @@ use crate::{
         digest_json, load_platform_build_evidence, load_promotion, valid_cas_source_reference,
         valid_digest, valid_reference, validate_promotion_review,
     },
-    ControlPlaneInfrastructure, ModuleStaticDistributionBuild,
-    ModuleStaticDistributionBuildEvidence, ModuleStaticDistributionBuildStatus,
-    ModuleStaticDistributionCompletionCommand, ModuleStaticDistributionCompletionOutcome,
-    ModuleStaticDistributionItem, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
 };
 
 const DISTRIBUTION_RELEASE_STATE_ID: &str = "current";

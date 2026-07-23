@@ -129,10 +129,7 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
     }
 }
 
-fn bulk_review_item_idempotency_key(
-    base_idempotency_key: &str,
-    application_id: Uuid,
-) -> String {
+fn bulk_review_item_idempotency_key(base_idempotency_key: &str, application_id: Uuid) -> String {
     let mut hasher = Sha256::new();
     hasher.update(base_idempotency_key.as_bytes());
     hasher.update(application_id.as_bytes());

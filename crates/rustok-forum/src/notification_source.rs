@@ -253,12 +253,8 @@ impl ForumNotificationSourceProvider {
             .filter(forum_user_mention::Column::SourceKind.eq(payload.source_kind.as_str()))
             .filter(forum_user_mention::Column::SourceId.eq(payload.source_id))
             .filter(forum_user_mention::Column::SourceLocale.eq(payload.source_locale.as_str()))
-            .filter(
-                forum_user_mention::Column::SourceRevisionId.eq(payload.source_revision_id),
-            )
-            .filter(
-                forum_user_mention::Column::MentionedUserId.eq(payload.mentioned_user_id),
-            )
+            .filter(forum_user_mention::Column::SourceRevisionId.eq(payload.source_revision_id))
+            .filter(forum_user_mention::Column::MentionedUserId.eq(payload.mentioned_user_id))
             .one(&self.db)
             .await
             .map(|row| row.is_some())
@@ -470,12 +466,10 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                     )
                     .order_by_asc(forum_category_subscription::Column::UserId);
                 if let Some(cursor) = cursor {
-                    query = query
-                        .filter(forum_category_subscription::Column::UserId.gt(cursor));
+                    query = query.filter(forum_category_subscription::Column::UserId.gt(cursor));
                 }
                 if let Some(actor_id) = event.actor_id.or(topic.author_id) {
-                    query = query
-                        .filter(forum_category_subscription::Column::UserId.ne(actor_id));
+                    query = query.filter(forum_category_subscription::Column::UserId.ne(actor_id));
                 }
                 let mut subscriptions = query
                     .limit((limit + 1) as u64)
@@ -544,7 +538,6 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             }
             _ => Err(NotificationProviderError::InvalidEvent),
         }
-
     }
 
     async fn authorize_target_open(
@@ -565,9 +558,11 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
             .load_public_target(request.tenant_id, source_kind, request.target.id)
             .await?
         {
-            ForumTargetAvailability::Visible(target) => Ok(NotificationOpenAuthorization::Allowed {
-                route: self.target_route(&target)?,
-            }),
+            ForumTargetAvailability::Visible(target) => {
+                Ok(NotificationOpenAuthorization::Allowed {
+                    route: self.target_route(&target)?,
+                })
+            }
             ForumTargetAvailability::Deferred | ForumTargetAvailability::Unavailable => {
                 Ok(NotificationOpenAuthorization::Unavailable)
             }
@@ -583,9 +578,7 @@ fn is_supported_event_type(event_type: &NotificationTypeKey) -> bool {
     event_type == &topic_created_type() || event_type == &user_mention_added_type()
 }
 
-fn target_kind_for_source(
-    source_kind: &str,
-) -> NotificationProviderResult<NotificationTargetKind> {
+fn target_kind_for_source(source_kind: &str) -> NotificationProviderResult<NotificationTargetKind> {
     match source_kind {
         "topic" => Ok(forum_topic_target_kind()),
         "reply" => Ok(forum_reply_target_kind()),

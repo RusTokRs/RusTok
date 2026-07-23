@@ -6,6 +6,9 @@
 ## Responsibilities
 - Provide reusable tenant and auth request context types.
 - Provide reusable channel request context types for channel-aware runtime resolution.
+- Provide framework-neutral platform build/release snapshots and typed status,
+  stage, and deployment-profile codes shared by owner ports, GraphQL adapters,
+  and browser-safe native UI transports.
 - Provide host/API request, tenant, auth, channel, locale, permission and port contracts.
 - Provide the framework-independent manifest-to-runtime registry comparison contract used by the server composition root.
 - Provide GraphQL helper types and error helpers shared across modules.
@@ -40,6 +43,7 @@
 - `src/module_registry_contract.rs`
 - `src/ports.rs`
 - `src/permissions.rs`
+- `src/platform_build.rs`
 - `src/locale.rs`
 - `src/graphql/`
 

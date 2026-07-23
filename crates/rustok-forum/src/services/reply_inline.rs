@@ -18,8 +18,9 @@ impl ReplyService {
             existing.author_id,
         )?;
 
-        let has_content_change =
-            input.content.is_some() || input.content_json.is_some() || input.content_format.is_some();
+        let has_content_change = input.content.is_some()
+            || input.content_json.is_some()
+            || input.content_format.is_some();
         if !has_content_change && quote_inputs.is_none() {
             return self.get(tenant_id, security, reply_id, &locale).await;
         }

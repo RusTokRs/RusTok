@@ -53,18 +53,14 @@ impl PageCacheInvalidationPort for ServerPagesCachePort {
         let mut receipt = PageCacheInvalidationReceipt::new(&request);
         for scope in request.scopes() {
             let namespace = request.namespace(*scope);
-            let generation = self
-                .generations
-                .bump(&namespace)
-                .await
-                .map_err(|error| {
-                    PageCacheError::Provider(format!(
-                        "unable to bump {} namespace `{namespace}` for tenant {} and page {}: {error}",
-                        scope.as_str(),
-                        request.tenant_id,
-                        request.page_id,
-                    ))
-                })?;
+            let generation = self.generations.bump(&namespace).await.map_err(|error| {
+                PageCacheError::Provider(format!(
+                    "unable to bump {} namespace `{namespace}` for tenant {} and page {}: {error}",
+                    scope.as_str(),
+                    request.tenant_id,
+                    request.page_id,
+                ))
+            })?;
             receipt.record(*scope, generation.value());
         }
         receipt.validate_for(&request)?;
@@ -100,12 +96,7 @@ impl PagesCacheReadPort for ServerPagesCachePort {
             .map_err(|error| PageCacheError::Provider(error.to_string()))
     }
 
-    async fn put(
-        &self,
-        key: String,
-        value: Vec<u8>,
-        ttl: Duration,
-    ) -> Result<(), PageCacheError> {
+    async fn put(&self, key: String, value: Vec<u8>, ttl: Duration) -> Result<(), PageCacheError> {
         self.backend()
             .await
             .set_with_ttl(key, value, ttl)
@@ -180,6 +171,9 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(port.get("pages:test").await.unwrap(), Some(b"value".to_vec()));
+        assert_eq!(
+            port.get("pages:test").await.unwrap(),
+            Some(b"value".to_vec())
+        );
     }
 }

@@ -98,12 +98,11 @@ impl OrderCheckoutIdentityJournal {
             return Err(OrderCheckoutIdentityError::OrderNotFound(input.order_id));
         }
 
-        if let Some(existing) = order_checkout_identity::Entity::find_by_id(
-            input.checkout_operation_id,
-        )
-        .filter(order_checkout_identity::Column::TenantId.eq(input.tenant_id))
-        .one(&transaction)
-        .await?
+        if let Some(existing) =
+            order_checkout_identity::Entity::find_by_id(input.checkout_operation_id)
+                .filter(order_checkout_identity::Column::TenantId.eq(input.tenant_id))
+                .one(&transaction)
+                .await?
         {
             return enrich_existing_identity(&self.db, transaction, existing, &input).await;
         }
@@ -129,11 +128,10 @@ impl OrderCheckoutIdentityJournal {
             }
             Err(insert_error) => {
                 transaction.rollback().await?;
-                let existing = order_checkout_identity::Entity::find_by_id(
-                    input.checkout_operation_id,
-                )
-                .one(&self.db)
-                .await?;
+                let existing =
+                    order_checkout_identity::Entity::find_by_id(input.checkout_operation_id)
+                        .one(&self.db)
+                        .await?;
                 if let Some(existing) = existing {
                     if existing.tenant_id != input.tenant_id {
                         return Err(OrderCheckoutIdentityError::Conflict(format!(
@@ -144,10 +142,7 @@ impl OrderCheckoutIdentityJournal {
                     let transaction = self.db.begin().await?;
                     return enrich_existing_identity(&self.db, transaction, existing, &input).await;
                 }
-                if let Some(existing) = self
-                    .get_by_order(input.tenant_id, input.order_id)
-                    .await?
-                {
+                if let Some(existing) = self.get_by_order(input.tenant_id, input.order_id).await? {
                     return Err(OrderCheckoutIdentityError::Conflict(format!(
                         "order {} is already bound to checkout operation {}",
                         input.order_id, existing.checkout_operation_id

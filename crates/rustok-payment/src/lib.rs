@@ -3,11 +3,11 @@ use rustok_api::Permission;
 use rustok_core::{MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
-#[cfg(feature = "server")]
-pub mod controllers;
 pub mod checkout_compensation;
 #[allow(dead_code)]
 pub mod checkout_execution;
+#[cfg(feature = "server")]
+pub mod controllers;
 pub mod dto;
 pub mod entities;
 pub mod error;

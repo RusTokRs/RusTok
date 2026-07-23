@@ -24,11 +24,11 @@ use crate::graphql_applications::{
 use crate::graphql_invitations::GroupsMutationRoot as GroupsPreApplicationMutationRoot;
 use crate::graphql_policy_history::GroupsQueryRoot as GroupsBaseQueryRoot;
 use crate::{
-    GroupApplicationCasCommandPort, GroupApplicationPolicyPrecondition,
-    GroupApplicationReviewCommandPort, GroupApplicationService,
+    GROUP_APPLICATION_POLICY_CHANGED_CODE, GroupApplicationCasCommandPort,
+    GroupApplicationPolicyPrecondition, GroupApplicationReviewCommandPort, GroupApplicationService,
     ReviewGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationIfCurrentRequest,
     SubmitGroupMembershipApplicationRequest, UpsertGroupApplicationPolicyIfCurrentRequest,
-    UpsertGroupApplicationPolicyRequest, GROUP_APPLICATION_POLICY_CHANGED_CODE,
+    UpsertGroupApplicationPolicyRequest,
 };
 
 include!("graphql_application_bulk_review.rs");
@@ -245,18 +245,14 @@ fn map_port_error(error: PortError) -> FieldError {
             <FieldError as GraphQLError>::bad_user_input(&error.message)
         }
         PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
-        PortErrorKind::Forbidden => {
-            <FieldError as GraphQLError>::permission_denied(&error.message)
-        }
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
         PortErrorKind::Unavailable | PortErrorKind::Timeout => {
             <FieldError as GraphQLError>::internal_error(
                 "Groups membership application service is temporarily unavailable",
             )
         }
-        PortErrorKind::InvariantViolation => {
-            <FieldError as GraphQLError>::internal_error(
-                "Groups membership application operation requires review",
-            )
-        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Groups membership application operation requires review",
+        ),
     }
 }

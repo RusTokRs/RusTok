@@ -501,16 +501,14 @@ fn persisted_cancel_result(
                     error = ?error,
                     "payment compensation provider checkpoint is malformed"
                 );
-                manual_reconciliation(
-                    "payment provider cancellation checkpoint is malformed",
-                )
+                manual_reconciliation("payment provider cancellation checkpoint is malformed")
             })
         }
-        PROVIDER_OPERATION_RECONCILIATION_REQUIRED | PROVIDER_OPERATION_EXECUTING => Err(
-            manual_reconciliation(
+        PROVIDER_OPERATION_RECONCILIATION_REQUIRED | PROVIDER_OPERATION_EXECUTING => {
+            Err(manual_reconciliation(
                 "payment provider cancellation has an unresolved external outcome",
-            ),
-        ),
+            ))
+        }
         PROVIDER_OPERATION_PENDING | PROVIDER_OPERATION_ERROR => Ok(None),
         _ => Err(PortError::conflict(
             "payment.checkout_compensation_provider_state_conflict",
@@ -547,11 +545,7 @@ fn merge_metadata(current: Value, patch: Value) -> Value {
     }
 }
 
-fn insert_metadata_string(
-    metadata: &mut Value,
-    key: &str,
-    value: String,
-) -> Result<(), PortError> {
+fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Result<(), PortError> {
     if metadata.is_null() {
         *metadata = serde_json::json!({});
     }
@@ -664,9 +658,9 @@ fn payment_error_to_port_error(error: PaymentError) -> PortError {
             "payment.provider_invalid_response",
             "payment provider returned an invalid cancellation response",
         ),
-        PaymentError::ProviderOutcomeUnknown { .. } => manual_reconciliation(
-            "payment provider cancellation outcome is unknown",
-        ),
+        PaymentError::ProviderOutcomeUnknown { .. } => {
+            manual_reconciliation("payment provider cancellation outcome is unknown")
+        }
         PaymentError::ProviderConfiguration { .. } => PortError::invariant_violation(
             "payment.provider_not_configured",
             "payment provider is not configured",

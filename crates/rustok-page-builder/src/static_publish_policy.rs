@@ -7,8 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
-pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str =
-    "page_builder_static_publish_policy_v1";
+pub const PAGE_BUILDER_STATIC_PUBLISH_POLICY_FORMAT: &str = "page_builder_static_publish_policy_v1";
 
 const ALLOWED_TAGS: &[&str] = &[
     "a",
@@ -154,10 +153,7 @@ impl PageBuilderStaticPublishPolicy {
             ));
         }
         require_normalized_unique(&self.allowed_tags, "allowed_tags")?;
-        require_normalized_unique(
-            &self.dangerous_component_types,
-            "dangerous_component_types",
-        )?;
+        require_normalized_unique(&self.dangerous_component_types, "dangerous_component_types")?;
         require_normalized_unique(&self.forbidden_attributes, "forbidden_attributes")?;
         require_normalized_unique(&self.url_attributes, "url_attributes")?;
         require_normalized_unique(
@@ -322,7 +318,11 @@ fn validate_component(
 ) {
     if let Some(tag) = component.tag_name.as_deref() {
         let normalized = tag.trim().to_ascii_lowercase();
-        if !policy.allowed_tags.iter().any(|allowed| allowed == &normalized) {
+        if !policy
+            .allowed_tags
+            .iter()
+            .any(|allowed| allowed == &normalized)
+        {
             reject(
                 diagnostics,
                 "landing_tag_not_allowed",
@@ -348,12 +348,9 @@ fn validate_component(
 
     if let Some(content) = component.extensions.get("content") {
         match content.as_str() {
-            Some(content) => validate_text_content(
-                content,
-                &format!("{path}.content"),
-                policy,
-                diagnostics,
-            ),
+            Some(content) => {
+                validate_text_content(content, &format!("{path}.content"), policy, diagnostics)
+            }
             None => reject(
                 diagnostics,
                 "landing_content_not_string",
@@ -377,12 +374,9 @@ fn validate_component(
 
     if let Some(style) = component.style.as_ref() {
         match style.as_object() {
-            Some(style) => validate_css_declarations(
-                style,
-                &format!("{path}.style"),
-                policy,
-                diagnostics,
-            ),
+            Some(style) => {
+                validate_css_declarations(style, &format!("{path}.style"), policy, diagnostics)
+            }
             None => reject(
                 diagnostics,
                 "landing_style_not_object",
@@ -404,7 +398,10 @@ fn validate_text_content(
             diagnostics,
             "landing_content_too_large",
             path,
-            format!("component content exceeds {} bytes", policy.max_content_bytes),
+            format!(
+                "component content exceeds {} bytes",
+                policy.max_content_bytes
+            ),
         );
     }
     if contains_disallowed_control(content) {
@@ -444,9 +441,9 @@ fn validate_attribute(
     let name = raw_name.to_ascii_lowercase();
     if name.is_empty()
         || name.len() > policy.max_attribute_name_bytes
-        || !name
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':'))
+        || !name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':')
+        })
     {
         reject(
             diagnostics,
@@ -668,7 +665,10 @@ fn validate_css_declarations(
                 diagnostics,
                 "landing_css_value_too_large",
                 declaration_path.clone(),
-                format!("CSS property `{name}` exceeds {} bytes", policy.max_css_value_bytes),
+                format!(
+                    "CSS property `{name}` exceeds {} bytes",
+                    policy.max_css_value_bytes
+                ),
             );
         }
         if !safe_css_value(&value, policy) {
@@ -749,8 +749,7 @@ fn validate_page_metadata(
                 continue;
             };
             for (suffix, candidate) in localized_string_values(value) {
-                let path =
-                    format!("pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}{suffix}");
+                let path = format!("pages[{page_index}].{FLY_PAGE_METADATA_FIELD}.{field}{suffix}");
                 match candidate {
                     Some(candidate) => {
                         if let Err(reason) = validate_url(candidate, kind, policy) {
@@ -986,9 +985,7 @@ fn require_normalized_unique(
     Ok(())
 }
 
-fn stable_hash(
-    value: &impl Serialize,
-) -> Result<String, PageBuilderStaticPublishPolicyError> {
+fn stable_hash(value: &impl Serialize) -> Result<String, PageBuilderStaticPublishPolicyError> {
     let bytes = serde_json::to_vec(value)
         .map_err(|error| PageBuilderStaticPublishPolicyError::Encode(error.to_string()))?;
     Ok(hex_sha256(&bytes))
@@ -1106,14 +1103,13 @@ mod tests {
             .get_mut(FLY_PAGE_METADATA_FIELD)
             .and_then(Value::as_object_mut)
             .expect("metadata")
-            .insert(
-                "canonical_url".to_string(),
-                json!({ "$localized": {} }),
-            );
+            .insert("canonical_url".to_string(), json!({ "$localized": {} }));
         let error = validate_static_publish_document(&document).expect_err("empty localized URL");
-        assert!(error
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| diagnostic.code == "landing_metadata_url_invalid"));
+        assert!(
+            error
+                .diagnostics()
+                .iter()
+                .any(|diagnostic| diagnostic.code == "landing_metadata_url_invalid")
+        );
     }
 }

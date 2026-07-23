@@ -41,10 +41,7 @@ pub async fn review_group_membership_application(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/applications/list"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/applications/list")]
 async fn groups_admin_membership_applications_native(
     query: GroupsAdminMembershipApplicationQuery,
 ) -> Result<GroupsAdminMembershipApplicationConnection, ServerFnError> {

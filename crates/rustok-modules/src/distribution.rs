@@ -20,13 +20,13 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
+    ControlPlaneInfrastructure, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
     data::{now_expression, placeholder, uuid_from_row, uuid_value},
     promotion::{
         digest_json, load_platform_build_evidence, load_promotion, normalize_native_entry_type,
         valid_cargo_package, valid_cas_source_reference, valid_digest, valid_reference,
         validate_promotion_review,
     },
-    ControlPlaneInfrastructure, ModuleStaticPromotionError, ModuleStaticPromotionStatus,
 };
 
 const DISTRIBUTION_STATE_ID: &str = "current";

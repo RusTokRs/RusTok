@@ -185,13 +185,7 @@ impl CheckoutOrderCreationExecutor {
             None => {
                 let create_result = self
                     .order_service
-                    .create_order_with_channel(
-                        tenant_id,
-                        actor_id,
-                        input,
-                        channel_id,
-                        channel_slug,
-                    )
+                    .create_order_with_channel(tenant_id, actor_id, input, channel_id, channel_slug)
                     .await;
                 match create_result {
                     Ok(order) => {
@@ -402,9 +396,7 @@ fn identity_context(
     .with_causation_id(operation_id.to_string())
     .with_deadline(deadline);
     if write {
-        context.with_idempotency_key(format!(
-            "checkout:{operation_id}:order-identity:{action}"
-        ))
+        context.with_idempotency_key(format!("checkout:{operation_id}:order-identity:{action}"))
     } else {
         context
     }

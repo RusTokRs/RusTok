@@ -15,6 +15,8 @@ infrastructure for the platform event runtime.
 - object-safe `TransactionalEventWriter` injection for owner services that
   already own a `DatabaseTransaction`;
 - persistence into `sys_events` through transactional transport;
+- rejection of root and typed-family envelopes whose metadata, registered schema,
+  or semantic payload is invalid before persistence and relay;
 - relay, retry and DLQ semantics for the event runtime;
 - module-owned Leptos admin package `rustok-outbox-admin` with FFA split `core/transport/ui` for read-only relay visibility.
 

@@ -3,19 +3,19 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use rustok_core::MigrationSource;
+use rustok_notifications::api::{
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudienceCandidate,
+    NotificationAudienceCursor, NotificationAudiencePage, NotificationOpenAuthorization,
+    NotificationPriority, NotificationProviderError, NotificationProviderResult,
+    NotificationSemanticDescriptor, NotificationSourceEventRef, NotificationSourceProvider,
+    NotificationSourceRegistry, NotificationSourceSlug, NotificationTargetKind,
+    NotificationTargetRef, NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
+    ResolveNotificationAudienceRequest,
+};
 use rustok_notifications::{
     NotificationFanoutService, NotificationsModule,
     entities::{fanout_item, notification, source_inbox},
     model::{FanoutItemStatus, NotificationSourceInboxStatus},
-};
-use rustok_notifications::api::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest,
-    NotificationAudienceCandidate, NotificationAudienceCursor, NotificationAudiencePage,
-    NotificationOpenAuthorization, NotificationPriority, NotificationProviderError,
-    NotificationProviderResult, NotificationSemanticDescriptor, NotificationSourceEventRef,
-    NotificationSourceProvider, NotificationSourceRegistry, NotificationSourceSlug,
-    NotificationTargetKind, NotificationTargetRef, NotificationTemplateData,
-    NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
@@ -54,9 +54,7 @@ impl NotificationSourceProvider for FakeSourceProvider {
         &self,
         request: DescribeNotificationRequest,
     ) -> NotificationProviderResult<Option<NotificationSemanticDescriptor>> {
-        if request.event.source() != &source_slug()
-            || request.event.event_type() != &event_type()
-        {
+        if request.event.source() != &source_slug() || request.event.event_type() != &event_type() {
             return Err(NotificationProviderError::InvalidEvent);
         }
         let template_data = NotificationTemplateData::try_new(BTreeMap::from([(
@@ -87,14 +85,17 @@ impl NotificationSourceProvider for FakeSourceProvider {
         if request.bounded_limit() == 0 {
             return Err(NotificationProviderError::Rejected);
         }
-        match request.cursor.as_ref().map(NotificationAudienceCursor::as_str) {
+        match request
+            .cursor
+            .as_ref()
+            .map(NotificationAudienceCursor::as_str)
+        {
             None => NotificationAudiencePage::try_new(
                 vec![NotificationAudienceCandidate {
                     recipient_id: self.first_recipient,
                 }],
                 Some(
-                    NotificationAudienceCursor::new(PAGE_TWO)
-                        .expect("test cursor must stay valid"),
+                    NotificationAudienceCursor::new(PAGE_TWO).expect("test cursor must stay valid"),
                 ),
             ),
             Some(PAGE_TWO) => NotificationAudiencePage::try_new(
@@ -165,7 +166,10 @@ async fn source_inbox_and_bounded_candidate_fanout_are_idempotent() {
         .materialize_source_event(accepted.inbox_id, "source-worker")
         .await
         .expect("source descriptor should materialize");
-    assert_eq!(materialized.status, NotificationSourceInboxStatus::Completed);
+    assert_eq!(
+        materialized.status,
+        NotificationSourceInboxStatus::Completed
+    );
     let job_id = materialized
         .fanout_job_id
         .expect("completed source event must link a fan-out job");
@@ -218,9 +222,11 @@ async fn source_inbox_and_bounded_candidate_fanout_are_idempotent() {
         .await
         .expect("fan-out item read should succeed");
     assert_eq!(items.len(), 2);
-    assert!(items
-        .iter()
-        .all(|item| item.status == FanoutItemStatus::Pending && item.notification_id.is_none()));
+    assert!(
+        items
+            .iter()
+            .all(|item| item.status == FanoutItemStatus::Pending && item.notification_id.is_none())
+    );
 
     let notification_count = notification::Entity::find()
         .filter(notification::Column::TenantId.eq(tenant_id))
@@ -234,14 +240,8 @@ async fn source_inbox_and_bounded_candidate_fanout_are_idempotent() {
 }
 
 fn source_event(tenant_id: Uuid, event_id: Uuid, revision: u64) -> NotificationSourceEventRef {
-    NotificationSourceEventRef::new(
-        tenant_id,
-        event_id,
-        source_slug(),
-        event_type(),
-        revision,
-    )
-    .expect("test source event must stay valid")
+    NotificationSourceEventRef::new(tenant_id, event_id, source_slug(), event_type(), revision)
+        .expect("test source event must stay valid")
 }
 
 fn source_slug() -> NotificationSourceSlug {
@@ -253,8 +253,7 @@ fn event_type() -> NotificationTypeKey {
 }
 
 fn notification_type() -> NotificationTypeKey {
-    NotificationTypeKey::new(NOTIFICATION_TYPE)
-        .expect("test notification type must stay valid")
+    NotificationTypeKey::new(NOTIFICATION_TYPE).expect("test notification type must stay valid")
 }
 
 async fn setup() -> DatabaseConnection {
@@ -298,11 +297,9 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!(
-        "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
-    ))
-    .await
-    .expect("tenant fixture should persist");
+    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+        .await
+        .expect("tenant fixture should persist");
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {

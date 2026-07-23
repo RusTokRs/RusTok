@@ -3,12 +3,8 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use rustok_api::HostRuntimeContext;
-use rustok_core::{
-    MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole,
-};
-use rustok_forum::entities::{
-    forum_domain_event, forum_relation_revision, forum_user_mention,
-};
+use rustok_core::{MemoryTransport, MigrationSource, ModuleRegistry, SecurityContext, UserRole};
+use rustok_forum::entities::{forum_domain_event, forum_relation_revision, forum_user_mention};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateTopicInput, ForumModule, ModerationService,
     SubscriptionService, TopicService,
@@ -208,14 +204,8 @@ async fn forum_topic_and_user_mention_sources_support_notifications_profiles() {
         NotificationOpenAuthorization::Unavailable => panic!("open topic should be available"),
     }
 
-    let mention_event = seed_user_mention_event(
-        &db,
-        tenant_id,
-        author_id,
-        topic.id,
-        first_recipient,
-    )
-    .await;
+    let mention_event =
+        seed_user_mention_event(&db, tenant_id, author_id, topic.id, first_recipient).await;
     let mention_source_event = source_event_ref(&mention_event);
     let mention_descriptor = provider
         .describe_event(DescribeNotificationRequest {

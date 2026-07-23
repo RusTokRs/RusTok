@@ -144,12 +144,11 @@ impl CheckoutMarketplaceEconomicsCheckpointJournal {
                 // is classified by `ensure_same_evidence` instead of leaking a backend
                 // unique-violation error.
                 transaction.rollback().await?;
-                let existing =
-                    checkout_marketplace_economics_checkpoint::Entity::find_by_id(
-                        checkout_operation_id,
-                    )
-                    .one(&self.db)
-                    .await?;
+                let existing = checkout_marketplace_economics_checkpoint::Entity::find_by_id(
+                    checkout_operation_id,
+                )
+                .one(&self.db)
+                .await?;
                 let Some(existing) = existing else {
                     return Err(CheckoutMarketplaceEconomicsCheckpointError::Database(
                         insert_error,

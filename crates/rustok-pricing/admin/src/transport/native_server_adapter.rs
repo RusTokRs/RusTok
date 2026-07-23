@@ -1377,8 +1377,8 @@ mod tests {
             .create_product(
                 tenant_id,
                 actor_id,
-                CreateProductInput {
-                    translations: vec![ProductTranslationInput {
+                rustok_product::dto::CreateProductInput {
+                    translations: vec![rustok_product::dto::ProductTranslationInput {
                         locale: "en".to_string(),
                         title: "Tiered Pricing Product".to_string(),
                         description: Some("Admin pricing transport test".to_string()),
@@ -1387,14 +1387,14 @@ mod tests {
                         meta_description: None,
                     }],
                     options: vec![],
-                    variants: vec![CreateVariantInput {
+                    variants: vec![rustok_product::dto::CreateVariantInput {
                         sku: Some("PRICE-TIER-1".to_string()),
                         barcode: None,
                         shipping_profile_slug: None,
                         option1: Some("Default".to_string()),
                         option2: None,
                         option3: None,
-                        prices: vec![PriceInput {
+                        prices: vec![rustok_product::dto::PriceInput {
                             currency_code: "USD".to_string(),
                             channel_id: None,
                             channel_slug: None,

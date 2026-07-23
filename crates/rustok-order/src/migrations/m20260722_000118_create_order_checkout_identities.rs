@@ -29,14 +29,8 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(OrderCheckoutIdentities::SourceCartId).uuid())
-                    .col(
-                        ColumnDef::new(OrderCheckoutIdentities::SnapshotHash)
-                            .string_len(128),
-                    )
-                    .col(
-                        ColumnDef::new(OrderCheckoutIdentities::RequestHash)
-                            .string_len(64),
-                    )
+                    .col(ColumnDef::new(OrderCheckoutIdentities::SnapshotHash).string_len(128))
+                    .col(ColumnDef::new(OrderCheckoutIdentities::RequestHash).string_len(64))
                     .col(
                         ColumnDef::new(OrderCheckoutIdentities::CreatedAt)
                             .timestamp_with_time_zone()

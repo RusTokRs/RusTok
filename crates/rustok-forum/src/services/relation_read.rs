@@ -1,8 +1,6 @@
-use rustok_api::{normalize_locale_tag, Action, Resource};
+use rustok_api::{Action, Resource, normalize_locale_tag};
 use rustok_core::SecurityContext;
-use sea_orm::{
-    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use crate::dto::{
@@ -34,13 +32,20 @@ impl ForumRelationReadService {
         query: ForumRelationSnapshotQuery,
     ) -> ForumResult<ForumRelationSnapshotResponse> {
         let target_kind = normalize_target_kind(&query.target_kind)?;
-        enforce_scope(&security, resource_for_target_kind(target_kind), Action::Read)?;
+        enforce_scope(
+            &security,
+            resource_for_target_kind(target_kind),
+            Action::Read,
+        )?;
         if tenant_id.is_nil() || query.target_id.is_nil() {
             return Err(ForumError::relation_revision_unavailable());
         }
         let locale = normalize_locale_tag(&query.locale)
             .ok_or_else(ForumError::relation_revision_unavailable)?;
-        if query.revision_id.is_some_and(|revision_id| revision_id <= 0) {
+        if query
+            .revision_id
+            .is_some_and(|revision_id| revision_id <= 0)
+        {
             return Err(ForumError::relation_revision_unavailable());
         }
 
@@ -63,9 +68,7 @@ impl ForumRelationReadService {
             .filter(forum_user_mention::Column::SourceKind.eq(target_kind))
             .filter(forum_user_mention::Column::SourceId.eq(query.target_id))
             .filter(forum_user_mention::Column::SourceLocale.eq(&locale))
-            .filter(
-                forum_user_mention::Column::SourceRevisionId.eq(revision.revision_id),
-            )
+            .filter(forum_user_mention::Column::SourceRevisionId.eq(revision.revision_id))
             .order_by_asc(forum_user_mention::Column::MentionedUserId)
             .limit((MAX_MENTIONS_PER_REVISION + 1) as u64)
             .all(&self.db)
@@ -75,9 +78,7 @@ impl ForumRelationReadService {
             .filter(forum_audience_mention::Column::SourceKind.eq(target_kind))
             .filter(forum_audience_mention::Column::SourceId.eq(query.target_id))
             .filter(forum_audience_mention::Column::SourceLocale.eq(&locale))
-            .filter(
-                forum_audience_mention::Column::SourceRevisionId.eq(revision.revision_id),
-            )
+            .filter(forum_audience_mention::Column::SourceRevisionId.eq(revision.revision_id))
             .order_by_asc(forum_audience_mention::Column::Audience)
             .limit((MAX_MENTIONS_PER_REVISION + 1) as u64)
             .all(&self.db)
@@ -112,10 +113,7 @@ impl ForumRelationReadService {
                 .into_iter()
                 .map(|row| row.mentioned_user_id)
                 .collect(),
-            audiences: audience_rows
-                .into_iter()
-                .map(|row| row.audience)
-                .collect(),
+            audiences: audience_rows.into_iter().map(|row| row.audience).collect(),
             quotes: quote_rows
                 .into_iter()
                 .map(|row| ForumRelationQuoteResponse {

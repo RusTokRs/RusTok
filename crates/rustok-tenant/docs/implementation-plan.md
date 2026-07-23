@@ -99,6 +99,7 @@ jobs.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `npm run verify:tenant:fba`
 - `npm run verify:tenant:admin-boundary`
 - `cargo xtask module validate tenant`

@@ -1,17 +1,17 @@
-use rustok_api::{normalize_locale_tag, PortActor, PortContext, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, normalize_locale_tag};
 use rustok_cart::{
-    in_process_marketplace_cart_snapshot_read_port, CartMarketplaceLineSnapshot, CartResponse,
-    ListMarketplaceCartLineSnapshotsRequest, MarketplaceCartSnapshotReadPort,
-    PreparedCartCheckoutSnapshot,
+    CartMarketplaceLineSnapshot, CartResponse, ListMarketplaceCartLineSnapshotsRequest,
+    MarketplaceCartSnapshotReadPort, PreparedCartCheckoutSnapshot,
+    in_process_marketplace_cart_snapshot_read_port,
 };
 use rustok_fulfillment::FulfillmentService;
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
 use rustok_product::{
-    entities::product::ProductStatus, ProductCatalogReadPort, ProductProjectionRequest,
-    VariantProductProjectionRequest,
+    ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
+    entities::product::ProductStatus,
 };
 use sea_orm::DatabaseConnection;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,

@@ -77,10 +77,7 @@ pub fn attach_commerce_provider_registries(
     #[cfg(all(feature = "mod-ai", feature = "mod-order"))]
     let host = if let Some(event_bus) = server.shared_get::<rustok_outbox::TransactionalEventBus>()
     {
-        let port = rustok_order::in_process_checkout_completion_port(
-            server.db_clone(),
-            event_bus,
-        );
+        let port = rustok_order::in_process_checkout_completion_port(server.db_clone(), event_bus);
         host.with_shared_value(rustok_ai::SharedAiOrderStatusPort(port))
     } else {
         host

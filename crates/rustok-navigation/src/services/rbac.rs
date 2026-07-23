@@ -1,6 +1,6 @@
+use crate::error::{NavigationError, NavigationResult};
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
-use crate::error::{NavigationError, NavigationResult};
 
 pub(crate) fn enforce_scope(
     security: &SecurityContext,

@@ -13,7 +13,7 @@ use crate::modules::{ManifestDiff, ManifestError, ManifestManager, ModulesManife
 #[cfg(test)]
 use crate::services::auth_lifecycle::AuthLifecycleError;
 use crate::services::build_event_hub::{
-    build_event_hub_from_context, BuildEventHubPublisher, CompositeBuildEventPublisher,
+    BuildEventHubPublisher, CompositeBuildEventPublisher, build_event_hub_from_context,
 };
 use crate::services::event_bus::event_bus_from_context;
 #[cfg(test)]
@@ -30,8 +30,8 @@ use crate::services::platform_composition::{
 };
 use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_api::graphql::GraphQLError;
 use rustok_api::Permission;
+use rustok_api::graphql::GraphQLError;
 use rustok_auth::{
     AuthAdminMutationContext, AuthAdminMutationError, CreateUserCommand, UpdateUserCommand,
     UserAdminMutationRuntime, UserMutationRecord,
@@ -327,7 +327,9 @@ async fn persist_manifest_and_request_build(
     .await
     .map_err(map_platform_composition_build_error)?;
 
-    Ok(BuildJob::from_model(&result.build))
+    Ok(BuildJob::from_snapshot(&rustok_build::build_snapshot(
+        &result.build,
+    )))
 }
 
 fn map_platform_composition_build_error(error: PlatformCompositionBuildError) -> FieldError {
@@ -658,9 +660,7 @@ impl RootMutation {
         let build_control = runtime_ctx
             .shared_get::<SharedBuildControl>()
             .ok_or_else(|| {
-                <FieldError as GraphQLError>::internal_error(
-                    "build control is not configured",
-                )
+                <FieldError as GraphQLError>::internal_error("build control is not configured")
             })?;
         let restored_build = build_control
             .0
@@ -672,7 +672,7 @@ impl RootMutation {
             .await
             .map_err(|err| FieldError::new(err.to_string()))?;
 
-        Ok(BuildJob::from_model(&restored_build))
+        Ok(BuildJob::from_snapshot(&restored_build))
     }
 
     async fn toggle_module(
@@ -843,19 +843,19 @@ impl RootMutation {
 #[cfg(test)]
 mod tests {
     use super::{
-        map_create_user_error, map_manifest_error, map_platform_composition_build_error,
-        map_platform_composition_error, map_toggle_module_error, prepare_user_custom_fields_write,
+        AuthLifecycleError, ManifestError, PlatformCompositionBuildError, PlatformCompositionError,
+        TOGGLE_ERR_UNKNOWN_MODULE, ToggleModuleError, map_create_user_error, map_manifest_error,
+        map_platform_composition_build_error, map_platform_composition_error,
+        map_toggle_module_error, prepare_user_custom_fields_write,
         toggle_err_core_module_cannot_be_disabled, toggle_err_has_dependents,
         toggle_err_hook_failed, toggle_err_missing_dependencies, validate_custom_fields,
-        AuthLifecycleError, ManifestError, PlatformCompositionBuildError, PlatformCompositionError,
-        ToggleModuleError, TOGGLE_ERR_UNKNOWN_MODULE,
     };
     use crate::models::user_field_definitions::ActiveModel as UserFieldDefinitionActiveModel;
     use async_graphql::ErrorExtensions;
     use rustok_migrations::Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
-        entity::prelude::DateTimeWithTimeZone, ActiveModelTrait, DatabaseConnection, Set,
+        ActiveModelTrait, DatabaseConnection, Set, entity::prelude::DateTimeWithTimeZone,
     };
     use uuid::Uuid;
 

@@ -32,10 +32,7 @@ pub async fn reopen_group_membership_application(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/admin/applications/reopen"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/admin/applications/reopen")]
 async fn groups_admin_reopen_membership_application_native(
     command: ReopenGroupMembershipApplicationCommand,
 ) -> Result<GroupsAdminReviewApplicationResult, ServerFnError> {
@@ -43,8 +40,8 @@ async fn groups_admin_reopen_membership_application_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationLifecycleCommandPort, GroupApplicationService,
@@ -72,7 +69,10 @@ async fn groups_admin_reopen_membership_application_native(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             request.locale,
-            format!("groups-admin-application-lifecycle-native-{}", Uuid::new_v4()),
+            format!(
+                "groups-admin-application-lifecycle-native-{}",
+                Uuid::new_v4()
+            ),
         )
         .with_deadline(Duration::from_secs(5))
         .with_idempotency_key(command.idempotency_key);
@@ -109,7 +109,9 @@ async fn groups_admin_reopen_membership_application_native(
 }
 
 #[cfg(feature = "ssr")]
-fn map_application(value: rustok_groups::GroupMembershipApplication) -> GroupsAdminMembershipApplication {
+fn map_application(
+    value: rustok_groups::GroupMembershipApplication,
+) -> GroupsAdminMembershipApplication {
     GroupsAdminMembershipApplication {
         id: value.id.to_string(),
         group_id: value.group_id.to_string(),

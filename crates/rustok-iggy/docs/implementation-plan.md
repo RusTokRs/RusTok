@@ -36,6 +36,7 @@ and offset-commit evidence is not yet complete.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo test -p rustok-iggy --lib`
 - `cargo test -p rustok-iggy --test integration`
 - `node scripts/verify/verify-iggy-connector-source.mjs`

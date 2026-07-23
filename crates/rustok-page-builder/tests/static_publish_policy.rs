@@ -1,7 +1,5 @@
 use fly::GrapesJsCodec;
-use rustok_page_builder::{
-    PageBuilderStaticPublishPolicyError, validate_static_publish_document,
-};
+use rustok_page_builder::{PageBuilderStaticPublishPolicyError, validate_static_publish_document};
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -100,5 +98,7 @@ fn component_bound_https_project_style_is_allowed() {
     .expect("project document");
 
     let evidence = validate_static_publish_document(&document).expect("safe policy evidence");
-    evidence.verify_integrity().expect("policy evidence integrity");
+    evidence
+        .verify_integrity()
+        .expect("policy evidence integrity");
 }

@@ -425,19 +425,16 @@ pub async fn publish_page(
     let page = fetch_page(token.clone(), tenant_slug.clone(), id.clone())
         .await?
         .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
-    let revisions =
-        fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
-    let baseline = fetch_page_builder_scenario_baseline(
-        token.clone(),
-        tenant_slug.clone(),
-        id.clone(),
-    )
-    .await?
-    .ok_or_else(|| {
-        GraphqlHttpError::Graphql(
-            "Publish requires a promoted Page Builder runtime scenario baseline".to_string(),
-        )
-    })?;
+    let revisions = fetch_page_body_revisions(token.clone(), tenant_slug.clone(), &page).await?;
+    let baseline =
+        fetch_page_builder_scenario_baseline(token.clone(), tenant_slug.clone(), id.clone())
+            .await?
+            .ok_or_else(|| {
+                GraphqlHttpError::Graphql(
+                    "Publish requires a promoted Page Builder runtime scenario baseline"
+                        .to_string(),
+                )
+            })?;
     let selected_scenario_id = load_publish_scenario_selection(&id, &baseline.baseline_hash)
         .map_err(|error| GraphqlHttpError::Graphql(error.to_string()))?;
     let scenario = resolve_publish_scenario(&baseline, selected_scenario_id.as_deref())
@@ -566,14 +563,10 @@ fn publish_idempotency_key(
 }
 
 fn rollback_idempotency_key(page: &PageDetail) -> Result<String, ApiError> {
-    let bytes = serde_json::to_vec(&(
-        ROLLBACK_IDEMPOTENCY_FORMAT,
-        page.id.as_str(),
-        page.version,
-    ))
-    .map_err(|error| {
-        GraphqlHttpError::Graphql(format!("Unable to encode page rollback identity: {error}"))
-    })?;
+    let bytes = serde_json::to_vec(&(ROLLBACK_IDEMPOTENCY_FORMAT, page.id.as_str(), page.version))
+        .map_err(|error| {
+            GraphqlHttpError::Graphql(format!("Unable to encode page rollback identity: {error}"))
+        })?;
     Ok(format!(
         "pages-rollback-v1:{}:{}:{}",
         page.id,

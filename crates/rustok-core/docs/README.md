@@ -15,6 +15,7 @@ the remaining RusToK modules rely on.
 - typed primitives and shared value objects (e.g., `UserRole`, `UserStatus` for RBAC);
 - basic error/validation helpers and security contracts;
 - foundation event contracts: canonical event re-exports, in-memory transport, bus stats, observability for backpressure, dispatcher retry semantics and dispatch delay hooks;
+- reject invalid root envelopes at the in-memory event-bus ingress through the canonical `rustok-events` validation contract;
 - content/rich-text helper contracts used by multiple modules (`rt_json`, `grapesjs`, `content_format`);
 - flex/custom-fields schema contracts (`field_schema`);
 - compatibility re-exports and shared API surface for the foundation layer;

@@ -2,9 +2,9 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_fulfillment::{
-    CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort,
-    CheckoutFulfillmentItemCommand, EnsureCheckoutFulfillmentsRequest, FulfillmentResponse,
-    ReadCheckoutFulfillmentsRequest, in_process_checkout_fulfillment_execution_port,
+    CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
+    EnsureCheckoutFulfillmentsRequest, FulfillmentResponse, ReadCheckoutFulfillmentsRequest,
+    in_process_checkout_fulfillment_execution_port,
 };
 use rustok_order::{
     CheckoutOrderPaymentSettlementPort, OrderLineItemResponse, OrderResponse,
@@ -118,9 +118,7 @@ impl CheckoutFulfillmentStageExecutor {
 
             match operation.stage.as_str() {
                 stage if stage == CheckoutOperationStage::PaymentCaptured.as_str() => {
-                    let fulfillments = self
-                        .ensure_fulfillments(tenant_id, &state)
-                        .await?;
+                    let fulfillments = self.ensure_fulfillments(tenant_id, &state).await?;
                     let paid_order = self.settle_paid_order(tenant_id, actor_id, &state).await?;
                     self.operation_journal
                         .checkpoint(CheckoutOperationCheckpoint {
@@ -269,15 +267,11 @@ impl CheckoutFulfillmentStageExecutor {
                 ),
                 SettleCheckoutOrderPaymentRequest {
                     checkout_operation_id: state.operation_id,
-                    cart_id: state
-                        .payment_collection
-                        .cart_id
-                        .ok_or_else(|| {
-                            CheckoutFulfillmentStageError::Conflict(
-                                "captured payment collection has no checkout cart identity"
-                                    .to_string(),
-                            )
-                        })?,
+                    cart_id: state.payment_collection.cart_id.ok_or_else(|| {
+                        CheckoutFulfillmentStageError::Conflict(
+                            "captured payment collection has no checkout cart identity".to_string(),
+                        )
+                    })?,
                     order_id: state.order.id,
                     payment_collection_id: state.payment_collection.id,
                     payment_reference,

@@ -4,11 +4,12 @@ use sea_orm::{DatabaseConnection, TransactionTrait};
 use thiserror::Error;
 
 use crate::{
-    validate_module_toggle, ControlPlaneInfrastructure, ModuleEffectivePolicyTransitionCoordinator,
+    ControlPlaneInfrastructure, ModuleEffectivePolicyTransitionCoordinator,
     ModuleExecutionDispatcher, ModuleLifecycleHookPhase, ModuleOperationJournal,
     ModuleOperationRecordOutcome, ModuleOperationRequest, ModuleOperationSnapshot,
     ModuleOperationStatus, ModulePolicyRevisionTransition, ModuleToggleValidationError,
     TenantModuleStateRecord, TenantModuleStateRequest, TenantModuleStateStore,
+    validate_module_toggle,
 };
 
 #[derive(Clone, Debug)]

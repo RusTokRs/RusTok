@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 use ulid::Ulid;
 use uuid::Uuid;
@@ -172,8 +172,22 @@ impl ContractEventEnvelope {
         if self.tenant_id.is_nil() {
             return Err(EventValidationError::NilUuid("tenant_id").into());
         }
+        if self
+            .causation_id
+            .is_some_and(|causation_id| causation_id.is_nil())
+        {
+            return Err(EventValidationError::NilUuid("causation_id").into());
+        }
         if self.actor_id.is_some_and(|actor_id| actor_id.is_nil()) {
             return Err(EventValidationError::NilUuid("actor_id").into());
+        }
+        if let Some(trace_id) = &self.trace_id {
+            if trace_id.trim().is_empty() {
+                return Err(EventValidationError::EmptyField("trace_id").into());
+            }
+            if trace_id.len() > 512 {
+                return Err(EventValidationError::FieldTooLong("trace_id", 512).into());
+            }
         }
         self.event.validate()?;
         let schema = crate::event_schema(&self.event_type).ok_or_else(|| {

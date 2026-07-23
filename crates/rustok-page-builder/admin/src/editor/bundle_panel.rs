@@ -1,9 +1,9 @@
 use crate::editor::AdminEditorRuntime;
 use crate::i18n::t;
 use fly::{
+    BundleDecodePolicy, BundleInspection, BundleMetadata, ValidationLimits,
     decode_project_bundle_value, encode_project_bundle, export_project_bundle,
-    inspect_project_bundle, BundleDecodePolicy, BundleInspection, BundleMetadata,
-    ValidationLimits,
+    inspect_project_bundle,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;

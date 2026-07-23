@@ -31,10 +31,7 @@ pub fn NavigationView() -> impl IntoView {
 }
 
 #[component]
-fn ActiveMenu(
-    location: StorefrontMenuLocation,
-    presentation: MenuPresentation,
-) -> impl IntoView {
+fn ActiveMenu(location: StorefrontMenuLocation, presentation: MenuPresentation) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let menu_resource = Resource::new_blocking(
         move || locale.clone(),

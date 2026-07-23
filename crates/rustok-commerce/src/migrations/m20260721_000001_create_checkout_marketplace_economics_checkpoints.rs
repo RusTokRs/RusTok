@@ -361,15 +361,11 @@ async fn install_mysql_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
 async fn uninstall_mysql_guards(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     manager
         .get_connection()
-        .execute_unprepared(
-            "DROP TRIGGER IF EXISTS checkout_marketplace_economics_guard_insert",
-        )
+        .execute_unprepared("DROP TRIGGER IF EXISTS checkout_marketplace_economics_guard_insert")
         .await?;
     manager
         .get_connection()
-        .execute_unprepared(
-            "DROP TRIGGER IF EXISTS checkout_marketplace_economics_guard_update",
-        )
+        .execute_unprepared("DROP TRIGGER IF EXISTS checkout_marketplace_economics_guard_update")
         .await?;
     Ok(())
 }

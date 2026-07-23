@@ -14,7 +14,10 @@ pub use dto::*;
 pub use entities::{Menu, MenuBinding, MenuItem};
 pub use error::{NavigationError, NavigationResult};
 pub use graphql::{NavigationMutation, NavigationQuery};
-pub use services::{MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE, MenuBindingService, MenuService};
+pub use services::{
+    MENU_LOCALE_NOT_FOUND_ERROR_CODE, MENU_TRANSLATION_INTEGRITY_ERROR_CODE, MenuBindingService,
+    MenuService,
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, Permission, Resource};
@@ -25,19 +28,34 @@ pub struct NavigationModule;
 
 #[async_trait]
 impl RusToKModule for NavigationModule {
-    fn slug(&self) -> &'static str { "navigation" }
-    fn name(&self) -> &'static str { "Navigation" }
-    fn description(&self) -> &'static str { "Localized navigation menus and current-channel slot bindings" }
-    fn version(&self) -> &'static str { env!("CARGO_PKG_VERSION") }
-    fn dependencies(&self) -> &[&'static str] { &["channel"] }
+    fn slug(&self) -> &'static str {
+        "navigation"
+    }
+    fn name(&self) -> &'static str {
+        "Navigation"
+    }
+    fn description(&self) -> &'static str {
+        "Localized navigation menus and current-channel slot bindings"
+    }
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+    fn dependencies(&self) -> &[&'static str] {
+        &["channel"]
+    }
     fn permissions(&self) -> Vec<Permission> {
         vec![
-            Permission::new(Resource::Navigation, Action::Create), Permission::new(Resource::Navigation, Action::Read),
-            Permission::new(Resource::Navigation, Action::Update), Permission::new(Resource::Navigation, Action::Delete),
-            Permission::new(Resource::Navigation, Action::List), Permission::new(Resource::Navigation, Action::Manage),
+            Permission::new(Resource::Navigation, Action::Create),
+            Permission::new(Resource::Navigation, Action::Read),
+            Permission::new(Resource::Navigation, Action::Update),
+            Permission::new(Resource::Navigation, Action::Delete),
+            Permission::new(Resource::Navigation, Action::List),
+            Permission::new(Resource::Navigation, Action::Manage),
         ]
     }
 }
 impl MigrationSource for NavigationModule {
-    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> { migrations::migrations() }
+    fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        migrations::migrations()
+    }
 }

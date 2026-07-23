@@ -12,6 +12,9 @@ pub fn build_publish_request(
     serializer: &dyn EventSerializer,
     envelope: EventEnvelope,
 ) -> Result<PublishRequest> {
+    envelope
+        .validate_registered_schema()
+        .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
     let topic = determine_topic(&envelope.event_type);
     let partition_key = partition_key(envelope.tenant_id);
     let payload = serializer.serialize(&envelope)?;

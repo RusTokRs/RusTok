@@ -12,8 +12,8 @@ use rustok_sandbox::{
 
 use crate::data::artifact_data_scope_for_execution;
 use crate::{
-    resolve_granted_artifact_capability, ArtifactCapabilityBrokerResolver,
-    ArtifactCapabilityExecution, ArtifactDataScope,
+    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactDataScope,
+    resolve_granted_artifact_capability,
 };
 
 const MAX_ARTIFACT_MCP_OUTPUT_BYTES: usize = 64 * 1024;
@@ -291,11 +291,13 @@ mod tests {
         assert_eq!(decoded.server, "rustok");
         assert_eq!(decoded.tool, "module_details");
 
-        assert!(decode_mcp_capability_call(&call(json!({
-            "server": "rustok",
-            "tool": "module_details",
-            "endpoint": "https://attacker.invalid"
-        })))
-        .is_err());
+        assert!(
+            decode_mcp_capability_call(&call(json!({
+                "server": "rustok",
+                "tool": "module_details",
+                "endpoint": "https://attacker.invalid"
+            })))
+            .is_err()
+        );
     }
 }

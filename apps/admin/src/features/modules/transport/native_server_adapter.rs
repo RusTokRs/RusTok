@@ -1,16 +1,17 @@
 use leptos::prelude::*;
 #[cfg(feature = "ssr")]
-use serde::de::DeserializeOwned;
-#[cfg(feature = "ssr")]
 use serde::Serialize;
+#[cfg(feature = "ssr")]
+use serde::de::DeserializeOwned;
 
 use super::types::*;
 #[allow(unused_imports)]
 use crate::entities::module::model::{
-    registry_principal_label_from_value, MarketplaceModuleVersion, RegistryFollowUpGateLifecycle,
-    RegistryGovernanceActionLifecycle, RegistryGovernanceEventLifecycle,
-    RegistryGovernanceEventPayloadLifecycle, RegistryModuleLifecycle, RegistryOwnerLifecycle,
-    RegistryPublishRequestLifecycle, RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    MarketplaceModuleVersion, RegistryFollowUpGateLifecycle, RegistryGovernanceActionLifecycle,
+    RegistryGovernanceEventLifecycle, RegistryGovernanceEventPayloadLifecycle,
+    RegistryModuleLifecycle, RegistryOwnerLifecycle, RegistryPublishRequestLifecycle,
+    RegistryReleaseLifecycle, RegistryValidationStageLifecycle,
+    registry_principal_label_from_value,
 };
 use crate::entities::module::{
     BuildJob, InstalledModule, MarketplaceModule, ModuleInfo, ReleaseInfo, TenantModule,
@@ -187,7 +188,7 @@ async fn modules_server_context() -> Result<
     use leptos_axum::extract;
     use rustok_api::Permission;
     use rustok_api::{
-        has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+        AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
     };
 
     let runtime_ctx = expect_context::<HostRuntimeContext>();
@@ -233,29 +234,6 @@ pub fn upper_snake(value: &str) -> String {
 }
 
 #[cfg(feature = "ssr")]
-pub fn build_modules_delta_summary(value: Option<&serde_json::Value>) -> String {
-    let Some(value) = value else {
-        return String::new();
-    };
-
-    if let Some(summary) = value.as_str() {
-        return summary.to_string();
-    }
-
-    if let Some(summary) = value.get("summary").and_then(serde_json::Value::as_str) {
-        return summary.to_string();
-    }
-
-    if let Some(object) = value.as_object() {
-        let mut slugs = object.keys().cloned().collect::<Vec<_>>();
-        slugs.sort();
-        return slugs.join(",");
-    }
-
-    value.to_string()
-}
-
-#[cfg(feature = "ssr")]
 pub async fn active_runtime_platform_snapshot(
     db: &sea_orm::DatabaseConnection,
 ) -> Result<RuntimePlatformSnapshot, ServerFnError> {
@@ -283,84 +261,6 @@ pub async fn effective_enabled_modules_native(
         .resolve_enabled(tenant_id)
         .await
         .map_err(|err| server_error(err.to_string()))
-}
-
-#[cfg(feature = "ssr")]
-fn map_build_job_model(model: rustok_build::build::Model) -> BuildJob {
-    use rustok_build::{BuildStage, BuildStatus, DeploymentProfile};
-
-    let status = match model.status {
-        BuildStatus::Queued => "QUEUED",
-        BuildStatus::Running => "RUNNING",
-        BuildStatus::Success => "SUCCESS",
-        BuildStatus::Failed => "FAILED",
-        BuildStatus::Cancelled => "CANCELLED",
-    };
-    let stage = match model.stage {
-        BuildStage::Pending => "PENDING",
-        BuildStage::Checkout => "CHECKOUT",
-        BuildStage::Build => "BUILD",
-        BuildStage::Test => "TEST",
-        BuildStage::Deploy => "DEPLOY",
-        BuildStage::Complete => "COMPLETE",
-    };
-    let profile = match model.profile {
-        DeploymentProfile::Monolith => "MONOLITH",
-        DeploymentProfile::ServerWithAdmin => "SERVER_WITH_ADMIN",
-        DeploymentProfile::ServerWithStorefront => "SERVER_WITH_STOREFRONT",
-        DeploymentProfile::HeadlessApi => "HEADLESS_API",
-        DeploymentProfile::Worker => "WORKER",
-        DeploymentProfile::Registry => "REGISTRY",
-    };
-
-    BuildJob {
-        id: model.id.to_string(),
-        status: status.to_string(),
-        stage: stage.to_string(),
-        progress: model.progress,
-        profile: profile.to_string(),
-        manifest_ref: model.manifest_ref,
-        manifest_hash: model.manifest_hash,
-        manifest_revision: model.manifest_revision,
-        modules_delta: build_modules_delta_summary(model.modules_delta.as_ref()),
-        requested_by: model.requested_by,
-        reason: model.reason,
-        release_id: model.release_id,
-        logs_url: model.logs_url,
-        error_message: model.error_message,
-        started_at: model.started_at.map(|value| value.to_rfc3339()),
-        created_at: model.created_at.to_rfc3339(),
-        updated_at: model.updated_at.to_rfc3339(),
-        finished_at: model.finished_at.map(|value| value.to_rfc3339()),
-    }
-}
-
-#[cfg(feature = "ssr")]
-fn map_release_info_model(model: rustok_build::release::Model) -> ReleaseInfo {
-    use rustok_build::ReleaseStatus;
-
-    let status = match model.status {
-        ReleaseStatus::Pending => "PENDING",
-        ReleaseStatus::Deploying => "DEPLOYING",
-        ReleaseStatus::Active => "ACTIVE",
-        ReleaseStatus::RolledBack => "ROLLED_BACK",
-        ReleaseStatus::Failed => "FAILED",
-    };
-
-    ReleaseInfo {
-        id: model.id,
-        build_id: model.build_id.to_string(),
-        status: status.to_string(),
-        environment: model.environment,
-        manifest_hash: model.manifest_hash,
-        manifest_revision: model.manifest_revision,
-        modules: serde_json::from_value(model.modules).unwrap_or_default(),
-        previous_release_id: model.previous_release_id,
-        deployed_at: model.deployed_at.map(|value| value.to_rfc3339()),
-        rolled_back_at: model.rolled_back_at.map(|value| value.to_rfc3339()),
-        created_at: model.created_at.to_rfc3339(),
-        updated_at: model.updated_at.to_rfc3339(),
-    }
 }
 
 #[cfg(feature = "ssr")]
@@ -406,51 +306,62 @@ fn map_governance_lifecycle_snapshot(
             .transpose()?,
         latest_request: snapshot
             .latest_request
-            .map(|request| -> Result<RegistryPublishRequestLifecycle, ServerFnError> {
-                Ok(RegistryPublishRequestLifecycle {
-                    id: request.id,
-                    status: request.status,
-                    requested_by: required_principal_label(
-                        &request.requested_by_principal,
-                        "requested_by",
-                    )?,
-                    publisher: optional_principal_label(request.publisher_principal.as_ref()),
-                    approved_by: optional_principal_label(request.approved_by_principal.as_ref()),
-                    rejected_by: optional_principal_label(request.rejected_by_principal.as_ref()),
-                    rejection_reason: request.rejection_reason,
-                    changes_requested_by: optional_principal_label(
-                        request.changes_requested_by_principal.as_ref(),
-                    ),
-                    changes_requested_reason: request.changes_requested_reason,
-                    changes_requested_reason_code: request.changes_requested_reason_code,
-                    changes_requested_at: request.changes_requested_at,
-                    held_by: optional_principal_label(request.held_by_principal.as_ref()),
-                    held_reason: request.held_reason,
-                    held_reason_code: request.held_reason_code,
-                    held_at: request.held_at,
-                    held_from_status: request.held_from_status,
-                    warnings: request.warnings,
-                    errors: request.errors,
-                    created_at: request.created_at,
-                    updated_at: request.updated_at,
-                    published_at: request.published_at,
-                })
-            })
+            .map(
+                |request| -> Result<RegistryPublishRequestLifecycle, ServerFnError> {
+                    Ok(RegistryPublishRequestLifecycle {
+                        id: request.id,
+                        status: request.status,
+                        requested_by: required_principal_label(
+                            &request.requested_by_principal,
+                            "requested_by",
+                        )?,
+                        publisher: optional_principal_label(request.publisher_principal.as_ref()),
+                        approved_by: optional_principal_label(
+                            request.approved_by_principal.as_ref(),
+                        ),
+                        rejected_by: optional_principal_label(
+                            request.rejected_by_principal.as_ref(),
+                        ),
+                        rejection_reason: request.rejection_reason,
+                        changes_requested_by: optional_principal_label(
+                            request.changes_requested_by_principal.as_ref(),
+                        ),
+                        changes_requested_reason: request.changes_requested_reason,
+                        changes_requested_reason_code: request.changes_requested_reason_code,
+                        changes_requested_at: request.changes_requested_at,
+                        held_by: optional_principal_label(request.held_by_principal.as_ref()),
+                        held_reason: request.held_reason,
+                        held_reason_code: request.held_reason_code,
+                        held_at: request.held_at,
+                        held_from_status: request.held_from_status,
+                        warnings: request.warnings,
+                        errors: request.errors,
+                        created_at: request.created_at,
+                        updated_at: request.updated_at,
+                        published_at: request.published_at,
+                    })
+                },
+            )
             .transpose()?,
         latest_release: snapshot
             .latest_release
-            .map(|release| -> Result<RegistryReleaseLifecycle, ServerFnError> {
-                Ok(RegistryReleaseLifecycle {
-                    version: release.version,
-                    status: release.status,
-                    publisher: required_principal_label(&release.publisher_principal, "publisher")?,
-                    checksum_sha256: release.checksum_sha256,
-                    published_at: release.published_at,
-                    yanked_reason: release.yanked_reason,
-                    yanked_by: optional_principal_label(release.yanked_by_principal.as_ref()),
-                    yanked_at: release.yanked_at,
-                })
-            })
+            .map(
+                |release| -> Result<RegistryReleaseLifecycle, ServerFnError> {
+                    Ok(RegistryReleaseLifecycle {
+                        version: release.version,
+                        status: release.status,
+                        publisher: required_principal_label(
+                            &release.publisher_principal,
+                            "publisher",
+                        )?,
+                        checksum_sha256: release.checksum_sha256,
+                        published_at: release.published_at,
+                        yanked_reason: release.yanked_reason,
+                        yanked_by: optional_principal_label(release.yanked_by_principal.as_ref()),
+                        yanked_at: release.yanked_at,
+                    })
+                },
+            )
             .transpose()?,
         recent_events: snapshot
             .recent_events
@@ -638,8 +549,8 @@ fn map_marketplace_entry(
 }
 
 #[cfg(feature = "ssr")]
-fn marketplace_catalog_handle(
-) -> Result<rustok_modules::SharedModuleMarketplaceCatalog, ServerFnError> {
+fn marketplace_catalog_handle()
+-> Result<rustok_modules::SharedModuleMarketplaceCatalog, ServerFnError> {
     use leptos::prelude::expect_context;
     use rustok_api::HostRuntimeContext;
 
@@ -656,7 +567,7 @@ pub async fn list_enabled_modules_native() -> Result<Vec<String>, ServerFnError>
         use leptos_axum::extract;
         use rustok_api::Permission;
         use rustok_api::{
-            has_any_effective_permission, AuthContext, HostRuntimeContext, TenantContext,
+            AuthContext, HostRuntimeContext, TenantContext, has_any_effective_permission,
         };
         use rustok_core::ModuleRegistry;
 
@@ -942,7 +853,7 @@ pub async fn active_build_native() -> Result<Option<BuildJob>, ServerFnError> {
             .active_build()
             .await
             .map_err(|err| server_error(err.to_string()))?;
-        Ok(build.map(map_build_job_model))
+        Ok(build)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -965,7 +876,7 @@ pub async fn active_release_native() -> Result<Option<ReleaseInfo>, ServerFnErro
             .active_release()
             .await
             .map_err(|err| server_error(err.to_string()))?;
-        Ok(release.map(map_release_info_model))
+        Ok(release)
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -992,7 +903,6 @@ pub async fn build_history_native(limit: i32, offset: i32) -> Result<Vec<BuildJo
             .list_builds_page(limit, offset)
             .await
             .map_err(|err| server_error(err.to_string()))
-            .map(|builds| builds.into_iter().map(map_build_job_model).collect())
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -1012,8 +922,8 @@ pub async fn update_module_settings_native(
     {
         use crate::app::modules::module_runtime_metadata;
         use leptos::prelude::expect_context;
-        use rustok_api::has_any_effective_permission;
         use rustok_api::Permission;
+        use rustok_api::has_any_effective_permission;
         use rustok_core::ModuleRegistry;
 
         let (app_ctx, auth, tenant) = modules_server_context().await?;
@@ -1067,8 +977,8 @@ pub async fn update_module_settings_native(
 pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::has_any_effective_permission;
         use rustok_api::Permission;
+        use rustok_api::has_any_effective_permission;
 
         let (app_ctx, auth, tenant) = modules_server_context().await?;
 
@@ -1091,7 +1001,7 @@ pub async fn rollback_build_native(build_id: String) -> Result<BuildJob, ServerF
             .await
             .map_err(|err| server_error(err.to_string()))?;
 
-        Ok(map_build_job_model(restored_build))
+        Ok(restored_build)
     }
     #[cfg(not(feature = "ssr"))]
     {

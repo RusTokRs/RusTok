@@ -5,11 +5,10 @@ use std::time::{Duration, Instant};
 
 use rustok_core::{SecurityContext, UserRole};
 use rustok_forum::{
-    CreateReplyCommandInput, CreateTopicInput, ForumQuoteCommandService,
-    ForumQuoteReferenceInput, ForumQuoteTargetKindInput, ReplyService, SetForumQuotesInput,
-    TopicService, UpdateReplyInput,
+    CreateReplyCommandInput, CreateTopicInput, ForumQuoteCommandService, ForumQuoteReferenceInput,
+    ForumQuoteTargetKindInput, ReplyService, SetForumQuotesInput, TopicService, UpdateReplyInput,
 };
-use rustok_outbox::{entity as outbox_entity, OutboxTransport, SysEvents, TransactionalEventBus};
+use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus, entity as outbox_entity};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
     Statement, TransactionTrait,
@@ -17,8 +16,8 @@ use sea_orm::{
 use tokio::time::sleep;
 use uuid::Uuid;
 
-use support::postgres::{execute, PostgresForumTestDb};
-use support::{test_error, TestResult};
+use support::postgres::{PostgresForumTestDb, execute};
+use support::{TestResult, test_error};
 
 const LOCALE: &str = "en";
 const ORIGINAL_REPLY_BODY: &str = "Original quoted reply";
@@ -175,7 +174,8 @@ async fn d1_replacement_wins_before_stale_d2_preserve_on_postgres() -> TestResul
 }
 
 #[tokio::test]
-async fn soft_deleted_reply_rejects_d1_and_d2_without_mutating_relation_history() -> TestResult<()> {
+async fn soft_deleted_reply_rejects_d1_and_d2_without_mutating_relation_history() -> TestResult<()>
+{
     let Some(context) = PostgresForumTestDb::setup("mention_quote_soft_delete").await? else {
         return Ok(());
     };
@@ -342,7 +342,9 @@ async fn mention_owner_event_commits_with_notifications_not_composed() -> TestRe
                 ),
             ))
             .await?
-            .ok_or_else(|| test_error("Forum mention event was not written to the owner journal"))?;
+            .ok_or_else(|| {
+                test_error("Forum mention event was not written to the owner journal")
+            })?;
         let event_id: Uuid = journal_row.try_get("", "event_id")?;
         let outbox_event = SysEvents::find_by_id(event_id)
             .filter(outbox_entity::Column::EventType.eq("forum.mention.audience_added"))
@@ -431,7 +433,9 @@ async fn create_quote_fixture(context: &PostgresForumTestDb) -> TestResult<Quote
         .await?;
 
     if latest_quote_count(&context.db, tenant_id, "reply", reply.id).await? != 1 {
-        return Err(test_error("fixture reply did not persist its initial quote"));
+        return Err(test_error(
+            "fixture reply did not persist its initial quote",
+        ));
     }
 
     Ok(QuoteFixture {

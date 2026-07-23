@@ -101,9 +101,11 @@ fn validate_module_ui_metadata_contract_rejects_missing_admin_metadata() {
 
     let error = validate_module_ui_metadata_contract("demo", &manifest)
         .expect_err("missing admin metadata must fail");
-    assert!(error
-        .to_string()
-        .contains("provides.admin_ui.route_segment"));
+    assert!(
+        error
+            .to_string()
+            .contains("provides.admin_ui.route_segment")
+    );
 }
 
 #[test]
@@ -166,9 +168,11 @@ fn validate_module_admin_surface_contract_rejects_surfaces_without_admin_ui() {
 
     let error = validate_module_admin_surface_contract("demo", &manifest)
         .expect_err("admin surfaces without provides.admin_ui must fail");
-    assert!(error
-        .to_string()
-        .contains("does not declare [provides.admin_ui]"));
+    assert!(
+        error
+            .to_string()
+            .contains("does not declare [provides.admin_ui]")
+    );
 }
 
 #[test]
@@ -192,9 +196,11 @@ fn validate_module_admin_surface_contract_rejects_missing_recommended_surface() 
 
     let error = validate_module_admin_surface_contract("demo", &manifest)
         .expect_err("admin ui without recommended surface must fail");
-    assert!(error
-        .to_string()
-        .contains("must declare at least one recommended_admin_surface"));
+    assert!(
+        error
+            .to_string()
+            .contains("must declare at least one recommended_admin_surface")
+    );
 }
 
 #[test]
@@ -268,9 +274,11 @@ fn validate_module_ui_classification_contract_rejects_surface_drift() {
 
     let error = validate_module_ui_classification_contract("cart", &manifest)
         .expect_err("ui classification drift must fail");
-    assert!(error
-        .to_string()
-        .contains("manifest UI surfaces resolve to 'storefront_only'"));
+    assert!(
+        error
+            .to_string()
+            .contains("manifest UI surfaces resolve to 'storefront_only'")
+    );
 }
 
 #[test]
@@ -329,9 +337,11 @@ fn validate_module_entry_type_contract_rejects_missing_entry_type_for_runtime_mo
 
     let error = validate_module_entry_type_contract("demo", &manifest, &base)
         .expect_err("missing entry_type must fail");
-    assert!(error
-        .to_string()
-        .contains("must declare [crate].entry_type"));
+    assert!(
+        error
+            .to_string()
+            .contains("must declare [crate].entry_type")
+    );
     let _ = std::fs::remove_file(&lib_path);
     let _ = std::fs::remove_dir(&src_dir);
     let _ = std::fs::remove_dir(&base);
@@ -442,9 +452,11 @@ fn validate_module_semantics_contract_rejects_path_module_with_non_first_party_o
 
     let error = validate_module_semantics_contract("demo", &spec, &metadata)
         .expect_err("path module with non-first-party ownership must fail");
-    assert!(error
-        .to_string()
-        .contains("must declare ownership='first_party'"));
+    assert!(
+        error
+            .to_string()
+            .contains("must declare ownership='first_party'")
+    );
 }
 
 #[test]
@@ -476,9 +488,11 @@ fn validate_module_semantics_contract_rejects_required_module_without_core_trust
 
     let error = validate_module_semantics_contract("demo", &spec, &metadata)
         .expect_err("required module without core trust level must fail");
-    assert!(error
-        .to_string()
-        .contains("must declare trust_level='core'"));
+    assert!(
+        error
+            .to_string()
+            .contains("must declare trust_level='core'")
+    );
 }
 
 #[test]
@@ -510,9 +524,11 @@ fn validate_module_semantics_contract_rejects_optional_module_with_core_trust_le
 
     let error = validate_module_semantics_contract("demo", &spec, &metadata)
         .expect_err("optional module with core trust level must fail");
-    assert!(error
-        .to_string()
-        .contains("must not declare trust_level='core'"));
+    assert!(
+        error
+            .to_string()
+            .contains("must not declare trust_level='core'")
+    );
 }
 
 #[test]
@@ -547,9 +563,11 @@ fn validate_module_kind_contract_rejects_required_module_without_core_kind() {
 
     let error = validate_module_kind_contract("demo", &spec, &base)
         .expect_err("required module without ModuleKind::Core must fail");
-    assert!(error
-        .to_string()
-        .contains("must declare fn kind(&self) -> ModuleKind { ModuleKind::Core }"));
+    assert!(
+        error
+            .to_string()
+            .contains("must declare fn kind(&self) -> ModuleKind { ModuleKind::Core }")
+    );
 
     let _ = std::fs::remove_file(&lib_path);
     let _ = std::fs::remove_dir(&src_dir);
@@ -588,9 +606,11 @@ fn validate_module_kind_contract_rejects_optional_module_declaring_core_kind() {
 
     let error = validate_module_kind_contract("demo", &spec, &base)
         .expect_err("optional module declaring ModuleKind::Core must fail");
-    assert!(error
-        .to_string()
-        .contains("must not declare ModuleKind::Core"));
+    assert!(
+        error
+            .to_string()
+            .contains("must not declare ModuleKind::Core")
+    );
 
     let _ = std::fs::remove_file(&lib_path);
     let _ = std::fs::remove_dir(&src_dir);
@@ -1131,9 +1151,11 @@ fn validate_module_server_registry_contract_rejects_required_module_missing_dire
         &module_root,
     )
     .expect_err("required module missing direct registration must fail");
-    assert!(error
-        .to_string()
-        .contains("must be registered directly in apps/server/src/modules/mod.rs"));
+    assert!(
+        error
+            .to_string()
+            .contains("must be registered directly in apps/server/src/modules/mod.rs")
+    );
 
     let _ = std::fs::remove_file(src_dir.join("lib.rs"));
     let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
@@ -1225,9 +1247,11 @@ fn validate_module_server_registry_contract_rejects_optional_module_direct_regis
         &module_root,
     )
     .expect_err("optional module direct registration must fail");
-    assert!(error
-        .to_string()
-        .contains("must not be registered directly"));
+    assert!(
+        error
+            .to_string()
+            .contains("must not be registered directly")
+    );
 
     let _ = std::fs::remove_file(src_dir.join("lib.rs"));
     let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
@@ -1404,9 +1428,11 @@ fn validate_default_enabled_server_contract_rejects_missing_server_default_featu
 
     let error = validate_default_enabled_server_contract(&manifest_path, &manifest)
         .expect_err("missing mod-pages in server defaults must fail");
-    assert!(error
-        .to_string()
-        .contains("default_enabled modules must be present"));
+    assert!(
+        error
+            .to_string()
+            .contains("default_enabled modules must be present")
+    );
 
     let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(&manifest_path);
@@ -1462,9 +1488,11 @@ fn validate_default_enabled_server_contract_rejects_required_module_in_default_e
 
     let error = validate_default_enabled_server_contract(&manifest_path, &manifest)
         .expect_err("required modules must not appear in default_enabled");
-    assert!(error
-        .to_string()
-        .contains("default_enabled must list only optional modules"));
+    assert!(
+        error
+            .to_string()
+            .contains("default_enabled must list only optional modules")
+    );
 
     let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(&manifest_path);
@@ -1608,9 +1636,11 @@ fn validate_default_enabled_server_contract_rejects_missing_optional_dependency_
 
     let error = validate_default_enabled_server_contract(&manifest_path, &manifest)
         .expect_err("missing optional dependency closure must fail");
-    assert!(error
-        .to_string()
-        .contains("default_enabled must include optional dependency closure"));
+    assert!(
+        error
+            .to_string()
+            .contains("default_enabled must include optional dependency closure")
+    );
 
     let _ = std::fs::remove_file(server_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(&manifest_path);
@@ -1678,9 +1708,11 @@ fn validate_host_ui_inventory_contract_rejects_orphan_module_ui_dependency() {
 
     let error = validate_host_ui_inventory_contract(&manifest_path, &manifest)
         .expect_err("orphan module ui dependency must fail");
-    assert!(error
-        .to_string()
-        .contains("but no module manifest declares it as admin UI"));
+    assert!(
+        error
+            .to_string()
+            .contains("but no module manifest declares it as admin UI")
+    );
 
     let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(storefront_dir.join("Cargo.toml"));
@@ -1811,9 +1843,11 @@ fn validate_host_ui_inventory_contract_rejects_orphan_feature_entry_for_declared
 
     let error = validate_host_ui_inventory_contract(&manifest_path, &manifest)
         .expect_err("orphan feature entry must fail");
-    assert!(error
-        .to_string()
-        .contains("feature 'ssr' references 'rustok-demo-admin/ssr'"));
+    assert!(
+        error
+            .to_string()
+            .contains("feature 'ssr' references 'rustok-demo-admin/ssr'")
+    );
 
     let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(storefront_dir.join("Cargo.toml"));
@@ -1860,9 +1894,11 @@ fn validate_server_event_runtime_contract_rejects_legacy_dispatcher_references()
 
     let error = validate_server_event_runtime_contract(&manifest_path)
         .expect_err("legacy dispatcher references must fail");
-    assert!(error
-        .to_string()
-        .contains("legacy index/search dispatchers"));
+    assert!(
+        error
+            .to_string()
+            .contains("legacy index/search dispatchers")
+    );
 
     let _ = std::fs::remove_file(services_dir.join("app_runtime.rs"));
     let _ = std::fs::remove_file(services_dir.join("mod.rs"));
@@ -1980,9 +2016,11 @@ fn validate_module_host_ui_contract_rejects_missing_admin_feature_wiring() {
         None,
     )
     .expect_err("missing host ui feature wiring must fail");
-    assert!(error
-        .to_string()
-        .contains("feature 'hydrate' is missing 'rustok-demo-admin/hydrate'"));
+    assert!(
+        error
+            .to_string()
+            .contains("feature 'hydrate' is missing 'rustok-demo-admin/hydrate'")
+    );
 
     let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(ui_crate_dir.join("Cargo.toml"));
@@ -2180,9 +2218,11 @@ fn validate_module_host_ui_contract_rejects_missing_dependency_admin_ui_wiring()
         None,
     )
     .expect_err("missing dependency admin UI wiring must fail");
-    assert!(error
-        .to_string()
-        .contains("missing UI dependency from module 'comments'"));
+    assert!(
+        error
+            .to_string()
+            .contains("missing UI dependency from module 'comments'")
+    );
 
     let _ = std::fs::remove_file(admin_dir.join("Cargo.toml"));
     let _ = std::fs::remove_file(demo_admin_dir.join("Cargo.toml"));
@@ -2312,9 +2352,11 @@ fn validate_module_permission_contract_rejects_unknown_permission_constant() {
 
     let error = validate_module_permission_contract("demo", &base)
         .expect_err("unknown permission constant must fail");
-    assert!(error
-        .to_string()
-        .contains("unknown Permission::DOES_NOT_EXIST"));
+    assert!(
+        error
+            .to_string()
+            .contains("unknown Permission::DOES_NOT_EXIST")
+    );
 
     let _ = std::fs::remove_file(src_dir.join("lib.rs"));
     let _ = std::fs::remove_dir(&src_dir);
@@ -2347,9 +2389,11 @@ fn validate_module_permission_contract_rejects_duplicate_permission_semantics() 
 
     let error = validate_module_permission_contract("demo", &base)
         .expect_err("duplicate permission semantics must fail");
-    assert!(error
-        .to_string()
-        .contains("duplicate permission 'users:read'"));
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate permission 'users:read'")
+    );
 
     let _ = std::fs::remove_file(src_dir.join("lib.rs"));
     let _ = std::fs::remove_dir(&src_dir);
@@ -2376,9 +2420,11 @@ fn validate_module_permission_contract_rejects_missing_minimum_runtime_permissio
 
     let error = validate_module_permission_contract("blog", &base)
         .expect_err("missing minimum runtime permission must fail");
-    assert!(error
-        .to_string()
-        .contains("must declare minimum runtime permission 'blog_posts:manage'"));
+    assert!(
+        error
+            .to_string()
+            .contains("must declare minimum runtime permission 'blog_posts:manage'")
+    );
 
     let _ = std::fs::remove_file(src_dir.join("lib.rs"));
     let _ = std::fs::remove_dir(&src_dir);
@@ -2823,9 +2869,11 @@ fn validate_module_docs_navigation_contract_rejects_missing_next_admin_showcase_
         &["next-admin".to_string()],
     )
     .expect_err("missing next-admin showcase entry must fail");
-    assert!(error
-        .to_string()
-        .contains("showcase_admin_surfaces=['next-admin']"));
+    assert!(
+        error
+            .to_string()
+            .contains("showcase_admin_surfaces=['next-admin']")
+    );
 
     let _ = std::fs::remove_file(docs_modules_dir.join("_index.md"));
     let _ = std::fs::remove_file(docs_modules_dir.join("UI_PACKAGES_INDEX.md"));
@@ -2959,9 +3007,11 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
 
     let error = validate_central_module_registry_inventory_contract(&manifest_path, &manifest)
         .expect_err("extra registry rows must fail");
-    assert!(error
-        .to_string()
-        .contains("contains module rows not present in modules.toml"));
+    assert!(
+        error
+            .to_string()
+            .contains("contains module rows not present in modules.toml")
+    );
 
     let _ = std::fs::remove_file(docs_modules_dir.join("registry.md"));
     let _ = std::fs::remove_file(&manifest_path);
@@ -2980,9 +3030,11 @@ fn validate_module_ui_surface_contract_rejects_declared_missing_subcrate() {
     )
     .expect_err("declared surface without subcrate must fail");
 
-    assert!(error
-        .to_string()
-        .contains("declares [provides.preview_ui].leptos_crate"));
+    assert!(
+        error
+            .to_string()
+            .contains("declares [provides.preview_ui].leptos_crate")
+    );
 }
 
 #[test]

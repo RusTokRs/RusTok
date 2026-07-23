@@ -97,12 +97,8 @@ impl GroupApplicationService {
             return Ok(replayed);
         }
 
-        let application_model = find_application_for_update(
-            &transaction,
-            tenant_id,
-            request.application_id,
-        )
-        .await?;
+        let application_model =
+            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
         if application_model.user_id != actor_user_id {
             return Err(GroupsError::NotFound);
         }
@@ -218,12 +214,8 @@ impl GroupApplicationService {
             return Ok(replayed);
         }
 
-        let application_model = find_application_for_update(
-            &transaction,
-            tenant_id,
-            request.application_id,
-        )
-        .await?;
+        let application_model =
+            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
         require_application_group(&group_model)?;
@@ -243,8 +235,7 @@ impl GroupApplicationService {
             GroupApplicationStatus::Rejected | GroupApplicationStatus::Cancelled
         ) {
             return Err(GroupsError::Conflict(
-                "only a rejected or cancelled membership application can be reopened"
-                    .to_string(),
+                "only a rejected or cancelled membership application can be reopened".to_string(),
             ));
         }
 

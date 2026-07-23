@@ -1,27 +1,27 @@
 //! Platform-owned HTTP transport for admitted artifact bindings.
 
 use axum::{
+    Json,
     extract::{Path, State},
-    http::{header::CONTENT_TYPE, HeaderMap, Method, StatusCode},
+    http::{HeaderMap, Method, StatusCode, header::CONTENT_TYPE},
     response::Response,
     routing::{any, post},
-    Json,
 };
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    artifact_binding_request_digest, dispatch_artifact_command_binding,
-    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
     ArtifactBindingExecutionContext, ArtifactBindingIdempotencyClaim,
     ArtifactBindingIdempotencyError, ArtifactBindingIdempotencyRequest, ArtifactInstallationTarget,
     InstalledModuleArtifact, ModuleBindingIdempotency, ModuleControlPlane, ModuleDispatchError,
     ModuleHttpMethod, ModuleRuntimeBinding, SharedArtifactBindingExecutor,
+    artifact_binding_request_digest, dispatch_artifact_command_binding,
+    dispatch_artifact_http_binding, find_artifact_command_binding, find_artifact_http_binding,
 };
 use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
 use rustok_web::json_response;
 use uuid::Uuid;
 
 use crate::{
-    error::{http_error, Error, Result},
+    error::{Error, Result, http_error},
     extractors::{auth::CurrentUser, tenant::CurrentTenant},
     services::server_runtime_context::ServerRuntimeContext,
 };

@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::contract::{sealed, ContractEventPayload, EventContract};
-use crate::validation::{validators, EventValidationError, ValidateEvent};
+use crate::contract::{ContractEventPayload, EventContract, sealed};
+use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -51,12 +51,7 @@ impl ForumMentionEvent {
                 source_revision_id,
                 source_locale,
                 ..
-            } => (
-                source_kind,
-                source_id,
-                *source_revision_id,
-                source_locale,
-            ),
+            } => (source_kind, source_id, *source_revision_id, source_locale),
         }
     }
 }

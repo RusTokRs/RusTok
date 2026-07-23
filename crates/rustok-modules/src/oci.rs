@@ -4,10 +4,10 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use http::HeaderValue;
 use oci_distribution::{
-    client::{ClientConfig, ClientProtocol, Config, ImageLayer},
-    manifest::{OciDescriptor, OciImageManifest, OCI_IMAGE_MEDIA_TYPE},
-    secrets::RegistryAuth,
     Client, Reference,
+    client::{ClientConfig, ClientProtocol, Config, ImageLayer},
+    manifest::{OCI_IMAGE_MEDIA_TYPE, OciDescriptor, OciImageManifest},
+    secrets::RegistryAuth,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -1091,15 +1091,14 @@ impl OciDistributionArtifactRegistry {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ArtifactPayloadKind, OciArtifactReference, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE,
+        ArtifactPayloadKind, MODULE_ARTIFACT_WASM_COMPONENT_MEDIA_TYPE, OciArtifactReference,
     };
 
     use uuid::Uuid;
 
     use super::{
-        cosign_signature_tag, ArtifactStagingFile, OciArtifactEvidenceKind,
-        OciDistributionArtifactRegistry, OciRegistryTransportPolicy,
-        MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE,
+        ArtifactStagingFile, MODULE_ARTIFACT_PROVENANCE_MEDIA_TYPE, OciArtifactEvidenceKind,
+        OciDistributionArtifactRegistry, OciRegistryTransportPolicy, cosign_signature_tag,
     };
 
     #[test]

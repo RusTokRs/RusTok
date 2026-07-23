@@ -12,7 +12,7 @@ may rely on and the remaining cross-replica delivery dependencies.
 - Transport-specific implementation remains with the platform runtime, Iggy,
   outbox, or the consuming owner module.
 
-Last reconciled with `main`: 2026-07-16.
+Last reconciled with `main`: 2026-07-23.
 
 ## Current state
 
@@ -21,8 +21,12 @@ schema metadata, validation, and event versioning policy. `rustok-core::events`
 is a compatibility re-export only; domain, outbox, runtime, and test crates
 should import event contracts from this module.
 
-Schema validation and JSON roundtrip coverage exist for the public event
-surface, including tenant lifecycle events. The server outbound event bus now
+The root schema registry covers every current root event type. Schemars now
+generates standards-compliant Draft 2020-12 JSON Schema for the root event and
+envelope wire representations, while `jsonschema` validates those artifacts in
+the contract test suite. Root envelopes validate their metadata, registered
+schema, and semantic payload at the event bus, outbox write, outbox relay, and
+JSON/Postcard decode boundaries. The server outbound event bus now
 has atomic context registration, abort-on-drop ownership, restart after panic or
 unexpected exit, and critical readiness escalation when the supervisor stops.
 The configured `EventRuntime` is published before module dispatcher startup.
@@ -51,7 +55,9 @@ generation rather than assuming remote event replay.
 ## Completed source results
 
 - [x] Keep one canonical event/envelope/schema definition in `rustok-events`.
-- [x] Validate public payloads and preserve JSON roundtrip coverage.
+- [x] Validate root and typed-family payloads at publication, durable relay, and streaming decode boundaries.
+- [x] Keep the root event registry synchronized with all current root event types.
+- [x] Generate and validate standards-compliant root event/envelope JSON Schema from Rust types.
 - [x] Own the server outbound forwarder through a context runtime handle.
 - [x] Restart the outbound forwarder after panic or unexpected exit.
 - [x] Surface a terminal forwarder as a critical runtime guardrail condition.
@@ -95,6 +101,8 @@ generation rather than assuming remote event replay.
    rely on transport-owned copies of event payloads.
 
 ## Verification
+
+Contract tests cover public event-contract use cases.
 
 - `cargo xtask module validate events`
 - `cargo xtask module test events`

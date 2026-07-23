@@ -40,10 +40,7 @@ pub async fn cancel_group_membership_application(
         .map_err(Into::into)
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/storefront/applications/my"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/storefront/applications/my")]
 async fn groups_storefront_my_application_native(
     query: GroupsStorefrontMyApplicationQuery,
 ) -> Result<Option<GroupsStorefrontMembershipApplication>, ServerFnError> {
@@ -51,8 +48,8 @@ async fn groups_storefront_my_application_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationLifecycleReadPort, GroupApplicationService,
@@ -80,7 +77,10 @@ async fn groups_storefront_my_application_native(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             request.locale,
-            format!("groups-storefront-application-lifecycle-native-{}", Uuid::new_v4()),
+            format!(
+                "groups-storefront-application-lifecycle-native-{}",
+                Uuid::new_v4()
+            ),
         )
         .with_deadline(Duration::from_secs(5));
         for permission in auth.permissions {
@@ -104,10 +104,7 @@ async fn groups_storefront_my_application_native(
     }
 }
 
-#[server(
-    prefix = "/api/fn",
-    endpoint = "groups/storefront/applications/cancel"
-)]
+#[server(prefix = "/api/fn", endpoint = "groups/storefront/applications/cancel")]
 async fn groups_storefront_cancel_application_native(
     command: CancelGroupMembershipApplicationCommand,
 ) -> Result<GroupsStorefrontApplicationLifecycleResult, ServerFnError> {
@@ -115,8 +112,8 @@ async fn groups_storefront_cancel_application_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             CancelGroupMembershipApplicationRequest, GroupApplicationLifecycleCommandPort,
@@ -144,7 +141,10 @@ async fn groups_storefront_cancel_application_native(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             request.locale,
-            format!("groups-storefront-application-lifecycle-native-{}", Uuid::new_v4()),
+            format!(
+                "groups-storefront-application-lifecycle-native-{}",
+                Uuid::new_v4()
+            ),
         )
         .with_deadline(Duration::from_secs(5))
         .with_idempotency_key(command.idempotency_key);

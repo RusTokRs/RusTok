@@ -1,15 +1,15 @@
 use async_trait::async_trait;
 use rustok_core::ModuleRegistry;
 use rustok_modules::{
-    normalize_module_marketplace_slug, ModuleMarketplaceCatalog, ModuleMarketplaceEntry,
+    MODULE_MARKETPLACE_MAX_LIMIT, ModuleMarketplaceCatalog, ModuleMarketplaceEntry,
     ModuleMarketplaceError, ModuleMarketplaceQuery, ModuleMarketplaceVersion,
-    MODULE_MARKETPLACE_MAX_LIMIT,
+    normalize_module_marketplace_slug,
 };
 use semver::{Version, VersionReq};
 
 use crate::modules::{CatalogManifestModule, ManifestManager};
 use crate::services::marketplace_catalog::{
-    marketplace_catalog_from_context, MarketplaceCatalogQuery,
+    MarketplaceCatalogQuery, marketplace_catalog_from_context,
 };
 use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::registry_governance::RegistryGovernanceService;

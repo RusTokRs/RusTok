@@ -1,7 +1,7 @@
-use axum::middleware as axum_middleware;
-use axum::routing::post;
 use axum::Extension;
 use axum::Router as AxumRouter;
+use axum::middleware as axum_middleware;
+use axum::routing::post;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, HostSettingsSnapshot};
@@ -245,8 +245,8 @@ pub fn compose_application_router(
         } else {
             runtime_ctx
         };
-        let runtime_ctx = if let Some(build_control) = middleware_runtime_ctx
-            .shared_get::<rustok_build::SharedBuildControl>()
+        let runtime_ctx = if let Some(build_control) =
+            middleware_runtime_ctx.shared_get::<rustok_build::SharedBuildControl>()
         {
             runtime_ctx.with_shared_value(build_control)
         } else {
@@ -358,10 +358,10 @@ pub fn compose_application_router(
 #[cfg(test)]
 mod tests {
     use super::mount_application_shell;
-    use axum::body::{to_bytes, Body};
+    use axum::Router as AxumRouter;
+    use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use axum::routing::get;
-    use axum::Router as AxumRouter;
     use tower::ServiceExt;
 
     #[cfg(not(feature = "embed-admin"))]

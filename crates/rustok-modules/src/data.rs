@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use bytes::Bytes;
-use object_store::{path::Path, ObjectStoreExt};
+use object_store::{ObjectStoreExt, path::Path};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -24,12 +24,13 @@ use rustok_sandbox::{
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
+    ArtifactBindingDispatch, ArtifactBindingExecutor, ArtifactCapabilityBrokerResolver,
+    ArtifactCapabilityExecution, ArtifactDataIndexField, ArtifactDataIndexValueType,
+    ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest, ArtifactReleaseRef,
+    ControlPlaneInfrastructure, InstalledModuleArtifact, ModuleInstallationScope,
+    ModuleRuntimeBinding, ModuleRuntimeBindingKind,
     artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
-    resolve_granted_artifact_capability, ArtifactBindingDispatch, ArtifactBindingExecutor,
-    ArtifactCapabilityBrokerResolver, ArtifactCapabilityExecution, ArtifactDataIndexField,
-    ArtifactDataIndexValueType, ArtifactInstallationTarget, ArtifactMigrationCheckpointRequest,
-    ArtifactReleaseRef, ControlPlaneInfrastructure, InstalledModuleArtifact,
-    ModuleInstallationScope, ModuleRuntimeBinding, ModuleRuntimeBindingKind,
+    resolve_granted_artifact_capability,
 };
 
 const MAX_ARTIFACT_DATA_KEY_BYTES: usize = 256;
@@ -4955,8 +4956,8 @@ mod tests {
     use std::{
         collections::HashMap,
         sync::{
-            atomic::{AtomicBool, Ordering},
             Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
         },
     };
 
@@ -5671,10 +5672,12 @@ mod tests {
         };
         let storage_key = "module-artifact-data/retained";
         let policy = SnapshotArtifactDataObjectRetentionPolicy::new(now, HashMap::new());
-        assert!(!policy
-            .may_delete(&scope, storage_key)
-            .await
-            .expect("missing rule fails closed"));
+        assert!(
+            !policy
+                .may_delete(&scope, storage_key)
+                .await
+                .expect("missing rule fails closed")
+        );
 
         let policy = SnapshotArtifactDataObjectRetentionPolicy::new(
             now,
@@ -5688,9 +5691,11 @@ mod tests {
                 },
             )]),
         );
-        assert!(policy
-            .may_delete(&scope, storage_key)
-            .await
-            .expect("eligible rule"));
+        assert!(
+            policy
+                .may_delete(&scope, storage_key)
+                .await
+                .expect("eligible rule")
+        );
     }
 }

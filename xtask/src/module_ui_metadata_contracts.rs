@@ -146,9 +146,7 @@ fn validate_storefront_slot(slug: &str, field_name: &str, value: &str) -> Result
         | "checkout_shipping_handoff"
         | "checkout_payment_handoff"
         | "checkout_result_handoff" => Ok(()),
-        other => anyhow::bail!(
-            "Module '{slug}' declares unsupported {field_name}='{other}'"
-        ),
+        other => anyhow::bail!("Module '{slug}' declares unsupported {field_name}='{other}'"),
     }
 }
 

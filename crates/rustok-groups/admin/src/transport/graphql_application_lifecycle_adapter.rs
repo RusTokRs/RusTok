@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
-use rustok_graphql::{execute as execute_graphql, GraphqlRequest};
+use rustok_graphql::{GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 
 use crate::application_model::{
@@ -14,7 +14,9 @@ pub type GraphqlGroupsApplicationLifecycleError = String;
 const APPLICATION_FIELDS: &str = "id group_id: groupId user_id: userId policy_id: policyId policy_revision: policyRevision policy_locale: policyLocale questions { key prompt help_text: helpText required max_answer_chars: maxAnswerChars } rules { key title body required } answers { key value } acknowledged_rule_keys: acknowledgedRuleKeys status submitted_at: submittedAt reviewed_at: reviewedAt reviewed_by_user_id: reviewedByUserId review_note: reviewNote";
 
 fn reopen_application_mutation() -> String {
-    format!("mutation GroupsAdminReopenMembershipApplication($idempotencyKey: String!, $applicationId: UUID!) {{ reopen_group_membership_application: reopenGroupMembershipApplication(idempotencyKey: $idempotencyKey, applicationId: $applicationId) {{ application {{ {APPLICATION_FIELDS} }} membership {{ id group_id: groupId user_id: userId role status }} group_version: groupVersion replayed }} }}")
+    format!(
+        "mutation GroupsAdminReopenMembershipApplication($idempotencyKey: String!, $applicationId: UUID!) {{ reopen_group_membership_application: reopenGroupMembershipApplication(idempotencyKey: $idempotencyKey, applicationId: $applicationId) {{ application {{ {APPLICATION_FIELDS} }} membership {{ id group_id: groupId user_id: userId role status }} group_version: groupVersion replayed }} }}"
+    )
 }
 
 #[derive(Debug, Serialize)]

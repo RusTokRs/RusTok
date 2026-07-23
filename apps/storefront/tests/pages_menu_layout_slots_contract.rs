@@ -24,7 +24,10 @@ fn storefront_host_places_generic_header_and_footer_contributions() {
         "header_navigation",
         "footer_navigation",
     ] {
-        assert!(BUILD.contains(marker), "storefront codegen must contain `{marker}`");
+        assert!(
+            BUILD.contains(marker),
+            "storefront codegen must contain `{marker}`"
+        );
     }
 
     assert!(HEADER.contains("navigation_views: Vec<AnyView>"));

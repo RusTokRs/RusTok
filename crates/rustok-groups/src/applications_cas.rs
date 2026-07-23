@@ -3,8 +3,7 @@ const UPSERT_POLICY_IF_CURRENT_COMMAND: &str =
 const SUBMIT_APPLICATION_IF_CURRENT_COMMAND: &str =
     "groups.submit_membership_application_if_current.v1";
 
-pub const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str =
-    "groups.application_policy_changed";
+pub const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str = "groups.application_policy_changed";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupApplicationPolicyPrecondition {
@@ -52,16 +51,12 @@ impl GroupApplicationService {
         request.policy.locale = normalize_locale_tag(&request.policy.locale).ok_or_else(|| {
             GroupsError::Validation("invalid application policy locale".to_string())
         })?;
-        normalize_policy(
-            &mut request.policy.questions,
-            &mut request.policy.rules,
-        )?;
+        normalize_policy(&mut request.policy.questions, &mut request.policy.rules)?;
         if let Some(expected) = request.expected_policy.as_mut() {
             normalize_policy_precondition(expected)?;
             if expected.locale != request.policy.locale {
                 return Err(GroupsError::Validation(
-                    "expected policy locale must match the policy locale being updated"
-                        .to_string(),
+                    "expected policy locale must match the policy locale being updated".to_string(),
                 ));
             }
         }
@@ -136,10 +131,7 @@ impl GroupApplicationService {
         let existing_translation = membership_policy_translation::Entity::find()
             .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
             .filter(membership_policy_translation::Column::PolicyId.eq(policy_model.id))
-            .filter(
-                membership_policy_translation::Column::Locale
-                    .eq(request.policy.locale.clone()),
-            )
+            .filter(membership_policy_translation::Column::Locale.eq(request.policy.locale.clone()))
             .one(&transaction)
             .await?;
         let questions_value = serde_json::to_value(&request.policy.questions).map_err(|error| {
@@ -148,9 +140,7 @@ impl GroupApplicationService {
             ))
         })?;
         let rules_value = serde_json::to_value(&request.policy.rules).map_err(|error| {
-            GroupsError::Invariant(format!(
-                "application rules are not serializable: {error}"
-            ))
+            GroupsError::Invariant(format!("application rules are not serializable: {error}"))
         })?;
         if let Some(existing) = existing_translation {
             let mut active: membership_policy_translation::ActiveModel = existing.into();
@@ -259,12 +249,8 @@ impl GroupApplicationService {
             actor_user_id,
         )
         .await?;
-        let group_model = find_group_for_update(
-            &transaction,
-            tenant_id,
-            request.submission.group_id,
-        )
-        .await?;
+        let group_model =
+            find_group_for_update(&transaction, tenant_id, request.submission.group_id).await?;
         require_application_group(&group_model)?;
         let policy = load_policy_for_locale(
             &transaction,
@@ -366,14 +352,10 @@ impl GroupApplicationService {
             "rules": policy.rules
         });
         let answers_value = serde_json::to_value(&request.submission.answers).map_err(|error| {
-            GroupsError::Invariant(format!(
-                "application answers are not serializable: {error}"
-            ))
+            GroupsError::Invariant(format!("application answers are not serializable: {error}"))
         })?;
-        let acknowledged_value = serde_json::to_value(
-            &request.submission.acknowledged_rule_keys,
-        )
-        .map_err(|error| {
+        let acknowledged_value = serde_json::to_value(&request.submission.acknowledged_rule_keys)
+            .map_err(|error| {
             GroupsError::Invariant(format!(
                 "application acknowledgements are not serializable: {error}"
             ))
@@ -560,17 +542,10 @@ fn policy_changed_error(
     current: Option<(Uuid, u64, &str)>,
 ) -> GroupsError {
     let expected_description = expected
-        .map(|value| {
-            format!(
-                "{}@{}:{}",
-                value.policy_id, value.revision, value.locale
-            )
-        })
+        .map(|value| format!("{}@{}:{}", value.policy_id, value.revision, value.locale))
         .unwrap_or_else(|| "none".to_string());
     let current_description = current
-        .map(|(policy_id, revision, locale)| {
-            format!("{policy_id}@{revision}:{locale}")
-        })
+        .map(|(policy_id, revision, locale)| format!("{policy_id}@{revision}:{locale}"))
         .unwrap_or_else(|| "none".to_string());
     GroupsError::Conflict(format!(
         "{GROUP_APPLICATION_POLICY_CHANGED_CODE}: expected={expected_description}; current={current_description}"

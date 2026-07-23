@@ -1,5 +1,6 @@
 use rustok_events::{
-    DomainEvent, EVENT_SCHEMAS, EventEnvelope, RootDomainEvent, RootEventEnvelope, ValidateEvent,
+    ContractEventEnvelope, DomainEvent, EVENT_SCHEMAS, EventEnvelope, RootDomainEvent,
+    RootEventEnvelope, ValidateEvent, domain_event_json_schema, event_envelope_json_schema,
     event_schema,
 };
 use uuid::Uuid;
@@ -554,7 +555,7 @@ fn root_aliases_still_build_compatibility_envelopes() {
 }
 
 #[test]
-fn schema_registry_exactly_matches_domain_event_type_set() {
+fn schema_registry_covers_curated_root_event_contracts() {
     let schema_event_types: std::collections::BTreeSet<_> = EVENT_SCHEMAS
         .iter()
         .map(|schema| schema.event_type)
@@ -564,7 +565,99 @@ fn schema_registry_exactly_matches_domain_event_type_set() {
         .map(|event| event.event_type())
         .collect();
 
-    assert_eq!(schema_event_types, domain_event_types);
+    assert!(
+        domain_event_types.is_subset(&schema_event_types),
+        "every curated root event contract must have a schema"
+    );
+}
+
+#[test]
+fn schema_registry_covers_all_previously_unregistered_root_event_types() {
+    for event_type in [
+        "catalog.category.attributes_changed",
+        "catalog.category.created",
+        "catalog.category.deleted",
+        "catalog.category.schema_mode_changed",
+        "catalog.category.updated",
+        "module.artifact.data_exported",
+        "module.artifact.data_purged",
+        "module.artifact.data_snapshot_collected",
+        "module.artifact.data_snapshot_created",
+        "module.artifact.data_snapshot_restored",
+        "module.artifact.data_snapshot_retention_updated",
+        "module.artifact.deactivated",
+        "module.artifact.migration_checkpointed",
+        "module.artifact.rolled_back",
+        "module.artifact.secret_bound",
+        "module.artifact.tenant_disabled",
+        "module.artifact.tenant_enabled",
+        "module.artifact.uninstalled",
+        "module.build.completed",
+        "module.build.queued",
+        "module.effective_policy_revision_changed",
+        "platform_settings.changed",
+        "product.attribute.created",
+        "product.attribute.deleted",
+        "product.attribute.updated",
+        "product.attribute_option.created",
+        "product.attribute_option.deleted",
+        "product.attribute_option.updated",
+        "product.attribute_schema.bindings_changed",
+        "product.attribute_schema.created",
+        "product.attribute_schema.deleted",
+        "product.attribute_schema.updated",
+        "product.attribute_values.changed",
+        "product.category_assignments.changed",
+        "product.primary_category.changed",
+        "search.rebuild_queued",
+        "search.settings_changed",
+    ] {
+        assert!(
+            event_schema(event_type).is_some(),
+            "root event type {event_type} must be registered"
+        );
+    }
+}
+
+#[test]
+fn contract_envelope_accepts_a_formerly_unregistered_root_event() {
+    let envelope = ContractEventEnvelope::new(
+        Uuid::new_v4(),
+        None,
+        DomainEvent::ProductAttributeCreated {
+            attribute_id: Uuid::new_v4(),
+        },
+    )
+    .expect("registered root event should build a contract envelope");
+
+    assert_eq!(envelope.event_type(), "product.attribute.created");
+}
+
+#[test]
+fn generated_json_schemas_are_valid_and_describe_root_wire_contracts() {
+    let domain_schema = domain_event_json_schema();
+    let envelope_schema = event_envelope_json_schema();
+
+    jsonschema::meta::validate(&domain_schema).expect("domain event schema must be valid");
+    jsonschema::meta::validate(&envelope_schema).expect("envelope schema must be valid");
+    assert!(domain_schema.is_object());
+    assert_eq!(envelope_schema["type"], "object");
+}
+
+#[test]
+fn root_envelope_rejects_tampered_metadata_and_nil_causation_id() {
+    let event = DomainEvent::NodeCreated {
+        node_id: Uuid::new_v4(),
+        kind: "post".to_string(),
+        author_id: None,
+    };
+    let mut envelope = EventEnvelope::new(Uuid::new_v4(), None, event);
+    envelope.event_type = "node.deleted".to_string();
+    assert!(envelope.validate_registered_schema().is_err());
+
+    envelope.event_type = envelope.event.event_type().to_string();
+    envelope.causation_id = Some(Uuid::nil());
+    assert!(envelope.validate_registered_schema().is_err());
 }
 
 #[test]
@@ -578,4 +671,48 @@ fn event_schema_registry_has_unique_event_types() {
         );
         assert!(schema.version >= 1, "schema versions must start at 1");
     }
+}
+
+#[test]
+fn field_schema_metadata_generates_valid_json_schema() {
+    let schema = rustok_events::EventSchema {
+        event_type: "test.schema",
+        version: 1,
+        description: "Test schema for all supported field primitives.",
+        fields: &[
+            rustok_events::FieldSchema {
+                name: "id",
+                data_type: "uuid",
+                optional: false,
+            },
+            rustok_events::FieldSchema {
+                name: "signed",
+                data_type: "int32",
+                optional: false,
+            },
+            rustok_events::FieldSchema {
+                name: "large_signed",
+                data_type: "int64",
+                optional: false,
+            },
+            rustok_events::FieldSchema {
+                name: "unsigned",
+                data_type: "uint64",
+                optional: false,
+            },
+            rustok_events::FieldSchema {
+                name: "enabled",
+                data_type: "bool",
+                optional: false,
+            },
+            rustok_events::FieldSchema {
+                name: "label",
+                data_type: "string",
+                optional: true,
+            },
+        ],
+    };
+
+    jsonschema::meta::validate(&schema.to_json_schema())
+        .expect("field schema metadata must produce valid JSON Schema");
 }

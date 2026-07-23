@@ -138,9 +138,7 @@ pub async fn load_groups_storefront_my_application(
         "groups.storefront.applications.my",
         context.path(),
         move || {
-            native_application_lifecycle_adapter::load_my_group_membership_application(
-                native_query,
-            )
+            native_application_lifecycle_adapter::load_my_group_membership_application(native_query)
         },
         move || {
             graphql_application_lifecycle_adapter::load_my_group_membership_application(

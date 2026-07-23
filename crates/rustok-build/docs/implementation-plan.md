@@ -2,7 +2,7 @@
 
 ## Current state
 
-The capability owns build/release persistence models, immutable execution-plan contracts, queued execution, command construction, manifest-snapshot materialization, and the process runner. The server retains only worker event and release-activation adapters; `rustok-cli core rebuild` invokes this capability directly. Host transports consume the `BuildControl` port through `SharedBuildControl`; the server implementation composes the event-aware rollback service so native and GraphQL paths share the same owner operation.
+The capability owns build/release persistence models, immutable execution-plan contracts, queued execution, command construction, manifest-snapshot materialization, and the process runner. The server retains only worker event and release-activation adapters; `rustok-cli core rebuild` invokes this capability directly. Host transports consume the `BuildControl` port through `SharedBuildControl`; the server implementation composes the event-aware rollback service so native and GraphQL paths share the same owner operation. The port returns the canonical framework-neutral build/release snapshots from `rustok-api`, and `rustok-build` is the only persistence-to-snapshot mapper.
 
 `ReleaseActivationHook` is the explicit seam for server-owned post-activation
 effects. It prevents OAuth synchronization and platform-state projection from

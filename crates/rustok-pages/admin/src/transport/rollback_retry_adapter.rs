@@ -45,13 +45,10 @@ pub(super) async fn rollback_page(
     let attempt = match load_pending_attempt(&page_id)? {
         Some(attempt) => attempt,
         None => {
-            let page = graphql_adapter::fetch_page(
-                token.clone(),
-                tenant_slug.clone(),
-                page_id.clone(),
-            )
-            .await?
-            .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
+            let page =
+                graphql_adapter::fetch_page(token.clone(), tenant_slug.clone(), page_id.clone())
+                    .await?
+                    .ok_or_else(|| GraphqlHttpError::Graphql("Page was not found".to_string()))?;
             if page.status != "published" {
                 return Err(GraphqlHttpError::Graphql(
                     "Only a currently published page can be rolled back".to_string(),
@@ -99,14 +96,10 @@ pub(super) async fn rollback_page(
 }
 
 fn rollback_idempotency_key(page: &PageDetail) -> Result<String, GraphqlHttpError> {
-    let bytes = serde_json::to_vec(&(
-        ROLLBACK_IDEMPOTENCY_FORMAT,
-        page.id.as_str(),
-        page.version,
-    ))
-    .map_err(|error| {
-        GraphqlHttpError::Graphql(format!("Unable to encode page rollback identity: {error}"))
-    })?;
+    let bytes = serde_json::to_vec(&(ROLLBACK_IDEMPOTENCY_FORMAT, page.id.as_str(), page.version))
+        .map_err(|error| {
+            GraphqlHttpError::Graphql(format!("Unable to encode page rollback identity: {error}"))
+        })?;
     Ok(format!(
         "pages-rollback-v1:{}:{}:{}",
         page.id,
@@ -173,9 +166,7 @@ fn retry_storage_key(page_id: &str) -> String {
     format!("{ROLLBACK_RETRY_STORAGE_PREFIX}:{page_id}")
 }
 
-fn load_pending_attempt(
-    page_id: &str,
-) -> Result<Option<PendingRollbackAttempt>, GraphqlHttpError> {
+fn load_pending_attempt(page_id: &str) -> Result<Option<PendingRollbackAttempt>, GraphqlHttpError> {
     let storage = retry_storage()?;
     let key = retry_storage_key(page_id);
     let Some(raw) = storage.get_item(&key).map_err(|_| {
@@ -209,9 +200,7 @@ fn store_pending_attempt(
     attempt: &PendingRollbackAttempt,
 ) -> Result<(), GraphqlHttpError> {
     let raw = serde_json::to_string(attempt).map_err(|error| {
-        GraphqlHttpError::Graphql(format!(
-            "Unable to encode rollback retry identity: {error}"
-        ))
+        GraphqlHttpError::Graphql(format!("Unable to encode rollback retry identity: {error}"))
     })?;
     retry_storage()?
         .set_item(&retry_storage_key(page_id), &raw)

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -15,9 +15,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion, ModulesManifest};
 use crate::services::marketplace_catalog::{
-    registry_catalog_module_path, registry_catalog_path, MarketplaceCatalogProvider,
-    MarketplaceCatalogQuery, RegistryCatalogModule, RegistryCatalogResponse,
-    RegistryCatalogVersion, REGISTRY_CATALOG_SCHEMA_VERSION,
+    MarketplaceCatalogProvider, MarketplaceCatalogQuery, REGISTRY_CATALOG_SCHEMA_VERSION,
+    RegistryCatalogModule, RegistryCatalogResponse, RegistryCatalogVersion,
+    registry_catalog_module_path, registry_catalog_path,
 };
 
 const DEFAULT_REGISTRY_TIMEOUT_MS: u64 = 3_000;
@@ -519,7 +519,7 @@ mod tests {
     use axum::{Json, Router};
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
     use tokio::net::TcpListener;
-    use tokio::sync::{oneshot, Notify};
+    use tokio::sync::{Notify, oneshot};
 
     fn query(search: &str, category: &str, tag: &str) -> MarketplaceCatalogQuery {
         MarketplaceCatalogQuery {

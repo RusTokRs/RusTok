@@ -103,11 +103,9 @@ pub fn sanitize_static_landing_project(
         format: policy_format,
         policy_hash,
     } = validate_static_publish_document(&document)?;
-    let sanitized_project = serde_json::to_value(document.project).map_err(|error| {
-        PageBuilderStaticLandingSanitizationError::Encode(error.to_string())
-    })?;
-    let sanitized_hash =
-        sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
+    let sanitized_project = serde_json::to_value(document.project)
+        .map_err(|error| PageBuilderStaticLandingSanitizationError::Encode(error.to_string()))?;
+    let sanitized_hash = sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?;
     let result = PageBuilderSanitizedStaticLandingProject {
         format: PAGE_BUILDER_STATIC_SANITIZATION_FORMAT.to_string(),
         policy_format,
@@ -252,9 +250,9 @@ mod tests {
         });
 
         let error = sanitize_static_landing_project(&project).expect_err("policy rejection");
-        let PageBuilderStaticLandingSanitizationError::Landing(
-            LandingProjectError::Validation { diagnostics },
-        ) = error
+        let PageBuilderStaticLandingSanitizationError::Landing(LandingProjectError::Validation {
+            diagnostics,
+        }) = error
         else {
             panic!("expected compiler policy validation error");
         };

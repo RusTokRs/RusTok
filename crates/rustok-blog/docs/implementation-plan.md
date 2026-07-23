@@ -151,6 +151,7 @@ transactional outbox publication.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `node scripts/verify/verify-blog-category-search-reindex.mjs`
 - `node scripts/verify/verify-blog-category-search-reindex.test.mjs`
 - Category HTTP CRUD, dedicated RBAC, required event bus, outbox rollback,

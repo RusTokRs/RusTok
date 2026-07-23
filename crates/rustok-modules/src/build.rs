@@ -17,8 +17,8 @@ use rustok_events::DomainEvent;
 use crate::OciArtifactReference;
 
 use crate::{
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
     ControlPlaneInfrastructure, ModuleCommandContext,
+    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
 };
 
 const MAX_BUILD_REFERENCE_BYTES: usize = 512;

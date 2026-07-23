@@ -20,10 +20,10 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput,
-    PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService,
-    PageCacheScope, PageResponse, PageService, PagesCacheReadRuntime, PagesError,
-    PatchPageMetadataInput, PublishedLandingArtifact, SavePageDocumentInput, page_cache_key,
+    CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput, PAGE_DOCUMENT_REVISION_CONFLICT,
+    PAGE_PUBLISHED_DOCUMENT_IMMUTABLE, PageBuilderArtifactService, PageCacheScope, PageResponse,
+    PageService, PagesCacheReadRuntime, PagesError, PatchPageMetadataInput,
+    PublishedLandingArtifact, SavePageDocumentInput, page_cache_key,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Channel-Slug, X-Channel-ID";
@@ -310,7 +310,11 @@ async fn load_cached_page_artifact(
     Ok(artifact)
 }
 
-fn artifact_cache_variant(locale: &str, fallback_locale: &str, channel_slug: Option<&str>) -> String {
+fn artifact_cache_variant(
+    locale: &str,
+    fallback_locale: &str,
+    channel_slug: Option<&str>,
+) -> String {
     serde_json::to_string(&(
         locale.trim(),
         fallback_locale.trim(),
@@ -451,9 +455,6 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         )
         .with_state(state))
 }
-
-
-
 
 async fn ensure_pages_module_enabled_for_channel(
     runtime: &PagesHttpRuntime,

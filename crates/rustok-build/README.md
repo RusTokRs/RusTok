@@ -17,7 +17,9 @@
 - Expose the host-composed `BuildControl`/`SharedBuildControl` port for
   active-build, release-history, and rollback operations. The server wires the
   event-aware rollback implementation; admin and GraphQL transports consume
-  this port without constructing `BuildService` themselves.
+  this port without constructing `BuildService` themselves. The port returns
+  framework-neutral `rustok-api` snapshots rather than exposing SeaORM models;
+  persistence-to-snapshot mapping remains owned by this crate.
 - Emit an explicit `BuildRolledBack` owner event with requested/restored build,
   release transition, and actor identity. Rollback is never represented as an
   ordinary build completion.

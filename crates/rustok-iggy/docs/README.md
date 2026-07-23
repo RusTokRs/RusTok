@@ -13,7 +13,8 @@ implements `EventTransport` and holds transport-level abstractions over
 ## Responsibilities
 
 - `IggyTransport` and transport-facing configuration;
-- JSON/Postcard serialization and deserialization for publish and read paths;
+- JSON/Postcard serialization and deserialization for publish and read paths,
+  including root-envelope revalidation after decode;
 - management of topology, consumer groups, persistent receive/ack cursors with connector metadata (`offset`/opaque `ack_token`), DLQ, replay and health abstractions;
 - observability hooks for the transport layer;
 - no ownership over embedded/remote connection lifecycle.

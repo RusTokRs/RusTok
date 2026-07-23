@@ -5,13 +5,12 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_core::MigrationSource;
 use rustok_notifications::api::{
-    AuthorizeNotificationTargetRequest, DescribeNotificationRequest,
-    NotificationAudiencePage, NotificationOpenAuthorization, NotificationPriority,
-    NotificationProviderError, NotificationProviderResult, NotificationSemanticDescriptor,
-    NotificationSourceProvider, NotificationSourceRegistry, NotificationSourceSlug,
-    NotificationTargetKind, NotificationTargetRef, NotificationTargetRoute,
-    NotificationTemplateData, NotificationTemplateKey, NotificationTypeKey,
-    ResolveNotificationAudienceRequest,
+    AuthorizeNotificationTargetRequest, DescribeNotificationRequest, NotificationAudiencePage,
+    NotificationOpenAuthorization, NotificationPriority, NotificationProviderError,
+    NotificationProviderResult, NotificationSemanticDescriptor, NotificationSourceProvider,
+    NotificationSourceRegistry, NotificationSourceSlug, NotificationTargetKind,
+    NotificationTargetRef, NotificationTargetRoute, NotificationTemplateData,
+    NotificationTemplateKey, NotificationTypeKey, ResolveNotificationAudienceRequest,
 };
 use rustok_notifications::entities::{
     delivery_attempt, fanout_item, fanout_job, notification, preference,
@@ -20,9 +19,9 @@ use rustok_notifications::model::{
     DigestMode, FanoutItemStatus, NotificationDeliveryMode, NotificationJobStatus,
 };
 use rustok_notifications::{
-    NotificationCandidateService, NotificationRecipientPolicy,
-    NotificationRecipientPolicyDecision, NotificationRecipientPolicyError,
-    NotificationRecipientPolicyRequest, NotificationRecipientSuppression, NotificationsModule,
+    NotificationCandidateService, NotificationRecipientPolicy, NotificationRecipientPolicyDecision,
+    NotificationRecipientPolicyError, NotificationRecipientPolicyRequest,
+    NotificationRecipientSuppression, NotificationsModule,
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
@@ -133,8 +132,7 @@ async fn candidates_require_preference_privacy_and_source_authorization() {
     let blocked_item = seed_candidate(&db, tenant_id, blocked_recipient, Uuid::new_v4()).await;
     let unavailable_item =
         seed_candidate(&db, tenant_id, unavailable_recipient, unavailable_target).await;
-    let retryable_item =
-        seed_candidate(&db, tenant_id, retryable_recipient, Uuid::new_v4()).await;
+    let retryable_item = seed_candidate(&db, tenant_id, retryable_recipient, Uuid::new_v4()).await;
 
     seed_preference(
         &db,
@@ -363,8 +361,7 @@ fn source_slug() -> NotificationSourceSlug {
 }
 
 fn notification_type() -> NotificationTypeKey {
-    NotificationTypeKey::new(NOTIFICATION_TYPE)
-        .expect("test notification type must stay valid")
+    NotificationTypeKey::new(NOTIFICATION_TYPE).expect("test notification type must stay valid")
 }
 
 async fn setup() -> DatabaseConnection {
@@ -408,11 +405,9 @@ async fn setup() -> DatabaseConnection {
 }
 
 async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
-    db.execute_unprepared(&format!(
-        "INSERT INTO tenants (id) VALUES ('{tenant_id}')"
-    ))
-    .await
-    .expect("tenant fixture should persist");
+    db.execute_unprepared(&format!("INSERT INTO tenants (id) VALUES ('{tenant_id}')"))
+        .await
+        .expect("tenant fixture should persist");
 }
 
 async fn insert_user(db: &DatabaseConnection, tenant_id: Uuid, user_id: Uuid) {

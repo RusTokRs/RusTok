@@ -72,6 +72,7 @@ must never be implemented in this module or exposed through its ports.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `npm run verify:index:fba`
 - `npm run verify:foundation:fba-runtime-smoke`
 - `cargo xtask module validate index`

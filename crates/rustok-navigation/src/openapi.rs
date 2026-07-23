@@ -8,4 +8,6 @@ use utoipa::OpenApi;
         crate::controllers::GetMenuParams, crate::controllers::CreateMenuParams)),
     tags((name = "navigation", description = "Localized navigation menu endpoints")))]
 pub struct NavigationApiDoc;
-pub fn openapi_document() -> utoipa::openapi::OpenApi { NavigationApiDoc::openapi() }
+pub fn openapi_document() -> utoipa::openapi::OpenApi {
+    NavigationApiDoc::openapi()
+}

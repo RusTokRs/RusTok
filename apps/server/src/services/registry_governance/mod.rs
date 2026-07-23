@@ -1,8 +1,8 @@
 #![allow(clippy::too_many_arguments, clippy::unnecessary_lazy_evaluations)]
 
-use anyhow::{anyhow, Context};
-use object_store::{path::Path, ObjectStoreExt};
-use rustok_api::{build_locale_candidates, locale_tags_match, PLATFORM_FALLBACK_LOCALE};
+use anyhow::{Context, anyhow};
+use object_store::{ObjectStoreExt, path::Path};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, build_locale_candidates, locale_tags_match};
 use rustok_modules::{ModuleControlPlane, SeaOrmModuleGovernanceService};
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 use sea_orm::{

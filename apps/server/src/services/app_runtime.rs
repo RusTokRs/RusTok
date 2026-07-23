@@ -8,8 +8,9 @@ use crate::common::settings::{RuntimeHostMode, RustokSettings, SharedRustokSetti
 use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
-    cleanup_task, PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
+    PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitConfig, RateLimiter,
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
+    cleanup_task,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -484,9 +485,11 @@ mod tests {
         };
 
         let error = validate_compiled_surface_contract(&contract, true, false).unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("without feature `embed-storefront`"));
+        assert!(
+            error
+                .to_string()
+                .contains("without feature `embed-storefront`")
+        );
     }
 
     #[test]

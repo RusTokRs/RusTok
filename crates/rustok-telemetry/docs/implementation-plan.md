@@ -35,6 +35,7 @@ must not absorb domain metric policy, runbooks, or transport behavior.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo test -p rustok-telemetry`
 - `scripts/verify/verify-architecture.sh` (single telemetry initialization)
 - Targeted `/metrics`, OTel configuration, bootstrap, and shutdown tests.

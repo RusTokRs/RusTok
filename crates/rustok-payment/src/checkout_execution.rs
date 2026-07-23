@@ -233,7 +233,11 @@ impl InProcessCheckoutPaymentExecutionPort {
             ),
         };
         let journaled = self
-            .execute_journaled_provider_operation("authorize", provider_id.as_str(), provider_request)
+            .execute_journaled_provider_operation(
+                "authorize",
+                provider_id.as_str(),
+                provider_request,
+            )
             .await?;
         let provider_result = journaled.result;
         match self
@@ -439,11 +443,16 @@ impl InProcessCheckoutPaymentExecutionPort {
         }
 
         let provider_result = match operation {
-            "authorize" => self
-                .provider_registry
-                .execute_authorize(provider_id, request)
-                .await,
-            "capture" => self.provider_registry.execute_capture(provider_id, request).await,
+            "authorize" => {
+                self.provider_registry
+                    .execute_authorize(provider_id, request)
+                    .await
+            }
+            "capture" => {
+                self.provider_registry
+                    .execute_capture(provider_id, request)
+                    .await
+            }
             _ => {
                 return Err(PortError::validation(
                     "payment.provider_operation_invalid",
@@ -529,9 +538,7 @@ impl InProcessCheckoutPaymentExecutionPort {
             .await
             .map_err(payment_error_to_port_error)?
             .ok_or_else(|| {
-                manual_reconciliation(
-                    "payment capture has no durable authorize provider identity",
-                )
+                manual_reconciliation("payment capture has no durable authorize provider identity")
             })?;
         if !matches!(
             authorize.status.as_str(),
@@ -711,7 +718,11 @@ fn validate_identity(identity: &CheckoutPaymentIdentity) -> Result<(), PortError
         ));
     }
     let currency = identity.currency_code.trim();
-    if currency.len() != 3 || !currency.chars().all(|character| character.is_ascii_alphabetic()) {
+    if currency.len() != 3
+        || !currency
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
         return Err(PortError::validation(
             "payment.checkout_currency_invalid",
             "checkout payment currency must be a three-letter alphabetic code",
@@ -800,11 +811,7 @@ fn validate_collection(
     Ok(())
 }
 
-fn checkout_stage_metadata(
-    base: Value,
-    identity: &CheckoutPaymentIdentity,
-    stage: &str,
-) -> Value {
+fn checkout_stage_metadata(base: Value, identity: &CheckoutPaymentIdentity, stage: &str) -> Value {
     let mut root = match base {
         Value::Object(root) => root,
         _ => Default::default(),
@@ -871,11 +878,7 @@ fn persisted_provider_result(
     })
 }
 
-fn insert_metadata_string(
-    metadata: &mut Value,
-    key: &str,
-    value: String,
-) -> Result<(), PortError> {
+fn insert_metadata_string(metadata: &mut Value, key: &str, value: String) -> Result<(), PortError> {
     if metadata.is_null() {
         *metadata = serde_json::json!({});
     }
@@ -1004,9 +1007,9 @@ fn payment_error_to_port_error(error: PaymentError) -> PortError {
             "payment.provider_rejected",
             "payment provider rejected the operation",
         ),
-        PaymentError::ProviderInvalidResponse { .. } => manual_reconciliation(
-            "payment provider returned an invalid successful response",
-        ),
+        PaymentError::ProviderInvalidResponse { .. } => {
+            manual_reconciliation("payment provider returned an invalid successful response")
+        }
         PaymentError::ProviderOutcomeUnknown { .. } => {
             manual_reconciliation("payment provider operation outcome is unknown")
         }

@@ -3,9 +3,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use rustok_api::{PlatformBuildSnapshot, PlatformReleaseSnapshot};
 use uuid::Uuid;
-
-use crate::{build::Model as Build, release::Model as Release};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildRollbackCommand {
@@ -25,15 +24,26 @@ impl BuildRollbackCommand {
 
 #[async_trait]
 pub trait BuildControl: Send + Sync {
-    async fn active_build(&self) -> anyhow::Result<Option<Build>>;
+    async fn active_build(&self) -> anyhow::Result<Option<PlatformBuildSnapshot>>;
 
-    async fn list_builds_page(&self, limit: u64, offset: u64) -> anyhow::Result<Vec<Build>>;
+    async fn list_builds_page(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> anyhow::Result<Vec<PlatformBuildSnapshot>>;
 
-    async fn active_release(&self) -> anyhow::Result<Option<Release>>;
+    async fn active_release(&self) -> anyhow::Result<Option<PlatformReleaseSnapshot>>;
 
-    async fn list_releases_page(&self, limit: u64, offset: u64) -> anyhow::Result<Vec<Release>>;
+    async fn list_releases_page(
+        &self,
+        limit: u64,
+        offset: u64,
+    ) -> anyhow::Result<Vec<PlatformReleaseSnapshot>>;
 
-    async fn rollback_build(&self, command: BuildRollbackCommand) -> anyhow::Result<Build>;
+    async fn rollback_build(
+        &self,
+        command: BuildRollbackCommand,
+    ) -> anyhow::Result<PlatformBuildSnapshot>;
 }
 
 #[derive(Clone)]

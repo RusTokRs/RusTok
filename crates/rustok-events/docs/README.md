@@ -17,9 +17,12 @@ shapes, schema metadata, and validation rules.
 - sealed `EventContract` implementations for module event families;
 - `ContractEventPayload` as the typed family wrapper used by durable and streaming transports;
 - `ContractEventEnvelope` with validation of payload, registered schema, and envelope metadata;
-- `EventSchema`, `FieldSchema`, schema lookup, and combined schema iteration;
+- `EventSchema`, `FieldSchema`, schema lookup, combined schema iteration, and
+  Schemars-generated Draft 2020-12 JSON Schema for root events and envelopes;
 - validation and versioning policy for every public event payload;
 - transport-independent contracts only; persistence and delivery remain owned by `rustok-outbox` and streaming adapters.
+- root envelopes validate registered schema metadata and semantic payload rules at
+  every durable or remote ingress boundary;
 - root static-distribution events expose immutable queue identity, lease-claim
   audit, terminal result digest, and verified release-head activation identity
   plus rebuild-only rollback and release revocation identity without carrying
@@ -55,6 +58,8 @@ timeline and are not part of the external contract.
 - domain modules, outbox/runtime crates, and tests import canonical contracts from `rustok-events`;
 - `rustok-outbox::TransactionalEventBus::publish_contract_in_tx` accepts only sealed typed contracts;
 - the outbox relay supports both root and typed-family envelopes and validates row/envelope metadata;
+- JSON and Postcard root-envelope decoders reject malformed metadata, unregistered
+  event types, and semantically invalid payloads before consumers receive them;
 - streaming adapters preserve the configured JSON or Postcard profile;
 - bounded-family consumers use an explicit typed contract consumer cursor rather than a root-event fallback;
 - breaking payload changes require a version bump and an explicit consumer migration plan.

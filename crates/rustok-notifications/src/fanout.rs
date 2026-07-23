@@ -10,8 +10,7 @@ use rustok_notifications_api::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait,
-    sea_query::OnConflict,
+    QueryFilter, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -193,7 +192,11 @@ impl NotificationFanoutService {
         }
 
         let job = match self
-            .find_or_create_job(&event, descriptor.notification_type.as_str(), descriptor_json)
+            .find_or_create_job(
+                &event,
+                descriptor.notification_type.as_str(),
+                descriptor_json,
+            )
             .await
         {
             Ok(job) => job,
@@ -291,8 +294,7 @@ impl NotificationFanoutService {
         };
         let (recipients, next_cursor) = page.into_parts();
         let next_cursor = next_cursor.map(|cursor| cursor.as_str().to_string());
-        if recipients.len() > usize::from(limit)
-            || (recipients.is_empty() && next_cursor.is_some())
+        if recipients.len() > usize::from(limit) || (recipients.is_empty() && next_cursor.is_some())
         {
             return self
                 .fail_job(&claimed, worker_id, NotificationError::ProviderRejected)
@@ -368,9 +370,7 @@ impl NotificationFanoutService {
             .set(source_inbox::ActiveModel {
                 status: Set(NotificationSourceInboxStatus::Processing),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(
-                    timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS),
-                )),
+                lease_expires_at: Set(Some(timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS))),
                 next_attempt_at: Set(None),
                 completed_at: Set(None),
                 updated_at: Set(timestamp),
@@ -482,7 +482,7 @@ impl NotificationFanoutService {
                 }),
                 attempt_count: Set(inbox.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(
-                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS))
                 ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
@@ -514,12 +514,7 @@ impl NotificationFanoutService {
         descriptor_json: serde_json::Value,
     ) -> NotificationResult<fanout_job::Model> {
         if let Some(existing) = self.find_job(event).await? {
-            ensure_job_identity(
-                &existing,
-                event,
-                notification_type,
-                &descriptor_json,
-            )?;
+            ensure_job_identity(&existing, event, notification_type, &descriptor_json)?;
             return Ok(existing);
         }
         let timestamp = now();
@@ -547,12 +542,7 @@ impl NotificationFanoutService {
             Ok(inserted) => Ok(inserted),
             Err(insert_error) => {
                 if let Some(existing) = self.find_job(event).await? {
-                    ensure_job_identity(
-                        &existing,
-                        event,
-                        notification_type,
-                        &descriptor_json,
-                    )?;
+                    ensure_job_identity(&existing, event, notification_type, &descriptor_json)?;
                     Ok(existing)
                 } else {
                     Err(insert_error.into())
@@ -590,9 +580,7 @@ impl NotificationFanoutService {
             .set(fanout_job::ActiveModel {
                 status: Set(NotificationJobStatus::Leased),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(
-                    timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS),
-                )),
+                lease_expires_at: Set(Some(timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS))),
                 next_attempt_at: Set(None),
                 completed_at: Set(None),
                 updated_at: Set(timestamp),
@@ -675,10 +663,7 @@ impl NotificationFanoutService {
                 recipient_id: Set(candidate.recipient_id),
                 status: Set(FanoutItemStatus::Pending),
                 notification_id: Set(None),
-                idempotency_key: Set(format!(
-                    "fanout:{}:{}",
-                    current.id, candidate.recipient_id
-                )),
+                idempotency_key: Set(format!("fanout:{}:{}", current.id, candidate.recipient_id)),
                 last_error_code: Set(None),
                 created_at: Set(timestamp),
                 updated_at: Set(timestamp),
@@ -764,7 +749,7 @@ impl NotificationFanoutService {
                 }),
                 attempt_count: Set(job.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(
-                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS))
                 ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
@@ -811,8 +796,7 @@ fn validate_descriptor(
     event: &NotificationSourceEventRef,
     descriptor: &NotificationSemanticDescriptor,
 ) -> NotificationResult<()> {
-    if descriptor.target.id.is_nil()
-        || descriptor.target.owner.as_str() != event.source().as_str()
+    if descriptor.target.id.is_nil() || descriptor.target.owner.as_str() != event.source().as_str()
     {
         return Err(NotificationError::InvalidDescriptor);
     }

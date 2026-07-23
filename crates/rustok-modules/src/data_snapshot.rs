@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use object_store::{path::Path, ObjectStoreExt, PutMode};
+use object_store::{ObjectStoreExt, PutMode, path::Path};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, Statement,
     TransactionTrait, Value as SqlValue,
@@ -15,12 +15,12 @@ use rustok_events::DomainEvent;
 use rustok_storage::{ObjectKey, ObjectScope, ObjectZone, StorageRuntime};
 
 use crate::{
+    ArtifactDataError, ArtifactDataObject, ArtifactDataRecord, ArtifactDataScope,
+    ControlPlaneInfrastructure,
     data::{
         configure_tenant_scope, namespace_lock_clause, now_expression, placeholder, revision_value,
         uuid_from_row, uuid_value,
     },
-    ArtifactDataError, ArtifactDataObject, ArtifactDataRecord, ArtifactDataScope,
-    ControlPlaneInfrastructure,
 };
 
 const MAX_SNAPSHOT_RECORDS: usize = 1_000;

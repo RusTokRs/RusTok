@@ -24,11 +24,12 @@ use rustok_runtime::{ModuleWorkRegistration, ModuleWorkScheduler};
 use rustok_sandbox::ExecutionPhase;
 
 use crate::{
-    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
-    schedule_binding_digest, ArtifactBindingDispatch, ArtifactInstallationTarget,
-    ArtifactReleaseRef, ArtifactScheduleMaterializationConfig, ArtifactScheduleMaterializer,
+    ArtifactBindingDispatch, ArtifactInstallationTarget, ArtifactReleaseRef,
+    ArtifactScheduleMaterializationConfig, ArtifactScheduleMaterializer,
     ControlPlaneInfrastructure, ModuleArtifactDescriptor, ModuleRuntimeBinding,
     ModuleRuntimeBindingKind, SharedArtifactBindingExecutor, SharedArtifactDeliveryTenantSource,
+    data::{configure_tenant_scope, now_expression, placeholder, uuid_from_row, uuid_value},
+    schedule_binding_digest,
 };
 
 const MAX_BINDING_ID_BYTES: usize = 128;

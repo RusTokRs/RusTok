@@ -3,7 +3,7 @@ mod graphql_application_bulk_review_adapter;
 #[path = "transport/native_application_bulk_review_adapter.rs"]
 mod native_application_bulk_review_adapter;
 
-use rustok_ui_transport::{execute_selected_transport, UiTransportPath, UiTransportResult};
+use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 
 use crate::application_model::{
     BulkReviewGroupMembershipApplicationsCommand, GroupsAdminBulkReviewApplicationsResult,

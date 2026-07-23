@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::graphql::blog_rate_limit::blog_graphql_rate_limiter_from_context;
 use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
-use crate::graphql::{build_schema, AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema};
+use crate::graphql::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
 use crate::services::app_runtime::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;

@@ -1,11 +1,9 @@
 use rustok_ui_transport::{UiTransportError, UiTransportPath, UiTransportResult};
 
-use crate::application_model::{
-    GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery,
-};
+use crate::application_model::{GroupsAdminApplicationPolicy, GroupsAdminApplicationPolicyQuery};
 use crate::core::GroupsAdminTransportProfile;
 use crate::transport::{
-    load_group_admin_application_policy_for_management, GroupsAdminTransportContext,
+    GroupsAdminTransportContext, load_group_admin_application_policy_for_management,
 };
 
 pub async fn load_group_admin_application_policy(

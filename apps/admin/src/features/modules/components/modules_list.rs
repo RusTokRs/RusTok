@@ -257,7 +257,10 @@ fn catalog_entry_to_module_info(module: &MarketplaceModule) -> ModuleInfo {
 }
 
 fn is_build_active(build: &BuildJob) -> bool {
-    matches!(build.status.as_str(), "QUEUED" | "RUNNING")
+    matches!(
+        build.status,
+        rustok_api::PlatformBuildStatus::Queued | rustok_api::PlatformBuildStatus::Running
+    )
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -267,8 +270,11 @@ fn is_build_terminal_status(status: &str) -> bool {
 
 #[cfg(target_arch = "wasm32")]
 fn apply_build_progress_to_job(job: &mut BuildJob, event: &transport::BuildProgressEvent) {
-    job.status = event.status.clone();
-    job.stage = event.stage.clone();
+    let (Ok(status), Ok(stage)) = (event.status.parse(), event.stage.parse()) else {
+        return;
+    };
+    job.status = status;
+    job.stage = stage;
     job.progress = event.progress;
     job.release_id = event.release_id.clone();
     job.error_message = event.error_message.clone();
@@ -1495,8 +1501,8 @@ pub fn ModulesList(
                                         <div class="flex items-center justify-between gap-3">
                                             <div class="space-y-1">
                                                 <div class="flex items-center gap-2">
-                                                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{humanize_label(&build.status)}</span>
-                                                    <span class="text-xs text-muted-foreground">{humanize_label(&build.stage)}</span>
+                                                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{humanize_label(build.status.as_str())}</span>
+                                                    <span class="text-xs text-muted-foreground">{humanize_label(build.stage.as_str())}</span>
                                                 </div>
                                                 <p class="text-sm font-medium text-card-foreground">{if build.modules_delta.is_empty() { build.reason.clone().unwrap_or_else(|| "Platform module rebuild".to_string()) } else { build.modules_delta.clone() }}</p>
                                                 <p class="text-xs text-muted-foreground">{format!("Updated {}", build.updated_at)}</p>
@@ -1775,7 +1781,7 @@ pub fn ModulesList(
                                             <div class="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
                                                 <div class="space-y-1">
                                                     <p class="text-sm font-medium text-card-foreground">{primary}</p>
-                                                    <p class="text-xs text-muted-foreground">{format!("{} / {} / {}%", humanize_label(&build.status), humanize_label(&build.stage), build.progress)}</p>
+                                                    <p class="text-xs text-muted-foreground">{format!("{} / {} / {}%", humanize_label(build.status.as_str()), humanize_label(build.stage.as_str()), build.progress)}</p>
                                                     <Show when=move || error_message_for_when.is_some()>
                                                         <p class="text-xs text-destructive">{error_message.clone().unwrap_or_default()}</p>
                                                     </Show>
@@ -1798,7 +1804,7 @@ pub fn ModulesList(
                                                     </div>
                                                 </div>
                                                 <div class="space-y-2 text-right">
-                                                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{humanize_label(&build.status)}</span>
+                                                    <span class="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{humanize_label(build.status.as_str())}</span>
                                                     <p class="text-xs text-muted-foreground">{build.created_at.clone()}</p>
                                                     <Show when=move || active_release_state.get().as_ref().is_some_and(|release| release.previous_release_id.is_some() && release_id_for_rollback.as_ref().is_some_and(|id| release.id == *id))>
                                                         <button

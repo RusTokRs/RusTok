@@ -11,9 +11,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(OrderCheckoutIdentities::Table)
-                    .add_column(
-                        ColumnDef::new(OrderCheckoutIdentities::PaymentCollectionId).uuid(),
-                    )
+                    .add_column(ColumnDef::new(OrderCheckoutIdentities::PaymentCollectionId).uuid())
                     .add_column(ColumnDef::new(OrderCheckoutIdentities::ShippingOptionId).uuid())
                     .to_owned(),
             )

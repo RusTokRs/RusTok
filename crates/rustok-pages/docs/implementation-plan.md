@@ -419,6 +419,7 @@ Invariants:
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo test -p rustok-pages --lib`
 - `cargo clippy -p rustok-pages --lib -- -D warnings`
 - `cargo test -p rustok-pages-admin --lib`

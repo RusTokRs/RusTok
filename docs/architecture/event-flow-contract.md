@@ -49,6 +49,8 @@ Publisher must not treat the event bus as its read-model API.
 - retry/backoff
 - delivery bookkeeping
 - predictable runtime contract for consumers
+- rejecting root and typed-family envelopes whose metadata, registered schema,
+  or semantic payload validation fails before persistence or relay
 
 `rustok-outbox` remains a `Core` module, not a support utility.
 
@@ -60,6 +62,8 @@ Consumer:
 - must recompute its state from the source of truth, not from local
   assumptions
 - must not break the publisher's write-side contract
+- must accept only envelopes that have been revalidated after decoding; JSON and
+  Postcard decoders are part of this trust boundary
 
 ## Module Event Listeners
 

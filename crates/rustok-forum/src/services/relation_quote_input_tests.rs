@@ -29,7 +29,9 @@ async fn inline_quote_preserve_detects_concurrent_relation_replacement() {
         .persist_in_tx(&txn, prepared)
         .await
         .expect("quoted source should persist");
-    txn.commit().await.expect("source transaction should commit");
+    txn.commit()
+        .await
+        .expect("source transaction should commit");
 
     let quote = ForumQuoteReferenceInput {
         target_kind: ForumQuoteTargetKindInput::Topic,
@@ -85,7 +87,9 @@ async fn inline_quote_preserve_detects_concurrent_relation_replacement() {
     )
     .await
     .expect_err("stale omitted snapshot must conflict instead of restoring old quotes");
-    txn.rollback().await.expect("conflicting transaction should roll back");
+    txn.rollback()
+        .await
+        .expect("conflicting transaction should roll back");
     assert_eq!(error.stable_code(), "FORUM_RELATION_REVISION_CONFLICT");
     assert!(error.is_retryable());
 

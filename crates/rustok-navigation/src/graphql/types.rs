@@ -2,7 +2,12 @@ use async_graphql::{Enum, InputObject, SimpleObject};
 use uuid::Uuid;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Enum)]
-pub enum GqlMenuLocation { Header, Footer, Sidebar, Mobile }
+pub enum GqlMenuLocation {
+    Header,
+    Footer,
+    Sidebar,
+    Mobile,
+}
 
 #[derive(Clone, Debug, SimpleObject)]
 pub struct GqlMenu {
@@ -40,11 +45,20 @@ pub struct CreateGqlMenuInput {
 }
 
 #[derive(InputObject)]
-pub struct BindGqlActiveMenuInput { pub location: GqlMenuLocation, pub menu_id: Uuid }
+pub struct BindGqlActiveMenuInput {
+    pub location: GqlMenuLocation,
+    pub menu_id: Uuid,
+}
 #[derive(InputObject)]
-pub struct GqlMenuTranslationInput { pub locale: String, pub name: String }
+pub struct GqlMenuTranslationInput {
+    pub locale: String,
+    pub name: String,
+}
 #[derive(InputObject)]
-pub struct GqlMenuItemTranslationInput { pub locale: String, pub title: String }
+pub struct GqlMenuItemTranslationInput {
+    pub locale: String,
+    pub title: String,
+}
 #[derive(InputObject)]
 pub struct GqlMenuItemInput {
     pub translations: Vec<GqlMenuItemTranslationInput>,
@@ -56,29 +70,55 @@ pub struct GqlMenuItemInput {
 
 impl From<crate::MenuResponse> for GqlMenu {
     fn from(menu: crate::MenuResponse) -> Self {
-        Self { id: menu.id, effective_locale: menu.effective_locale, available_locales: menu.available_locales,
-            name: menu.name, location: menu.location.into(), items: menu.items.into_iter().map(Into::into).collect() }
+        Self {
+            id: menu.id,
+            effective_locale: menu.effective_locale,
+            available_locales: menu.available_locales,
+            name: menu.name,
+            location: menu.location.into(),
+            items: menu.items.into_iter().map(Into::into).collect(),
+        }
     }
 }
 impl From<crate::ActiveMenuBindingResponse> for GqlActiveMenuBinding {
     fn from(binding: crate::ActiveMenuBindingResponse) -> Self {
-        Self { id: binding.id, tenant_id: binding.tenant_id, channel_id: binding.channel_id,
-            location: binding.location.into(), menu_id: binding.menu_id }
+        Self {
+            id: binding.id,
+            tenant_id: binding.tenant_id,
+            channel_id: binding.channel_id,
+            location: binding.location.into(),
+            menu_id: binding.menu_id,
+        }
     }
 }
 impl From<crate::MenuItemResponse> for GqlMenuItem {
     fn from(item: crate::MenuItemResponse) -> Self {
-        Self { id: item.id, title: item.title, url: item.url, icon: item.icon,
-            children: item.children.into_iter().map(Into::into).collect() }
+        Self {
+            id: item.id,
+            title: item.title,
+            url: item.url,
+            icon: item.icon,
+            children: item.children.into_iter().map(Into::into).collect(),
+        }
     }
 }
 impl From<GqlMenuLocation> for crate::MenuLocation {
-    fn from(location: GqlMenuLocation) -> Self { match location {
-        GqlMenuLocation::Header => Self::Header, GqlMenuLocation::Footer => Self::Footer,
-        GqlMenuLocation::Sidebar => Self::Sidebar, GqlMenuLocation::Mobile => Self::Mobile } }
+    fn from(location: GqlMenuLocation) -> Self {
+        match location {
+            GqlMenuLocation::Header => Self::Header,
+            GqlMenuLocation::Footer => Self::Footer,
+            GqlMenuLocation::Sidebar => Self::Sidebar,
+            GqlMenuLocation::Mobile => Self::Mobile,
+        }
+    }
 }
 impl From<crate::MenuLocation> for GqlMenuLocation {
-    fn from(location: crate::MenuLocation) -> Self { match location {
-        crate::MenuLocation::Header => Self::Header, crate::MenuLocation::Footer => Self::Footer,
-        crate::MenuLocation::Sidebar => Self::Sidebar, crate::MenuLocation::Mobile => Self::Mobile } }
+    fn from(location: crate::MenuLocation) -> Self {
+        match location {
+            crate::MenuLocation::Header => Self::Header,
+            crate::MenuLocation::Footer => Self::Footer,
+            crate::MenuLocation::Sidebar => Self::Sidebar,
+            crate::MenuLocation::Mobile => Self::Mobile,
+        }
+    }
 }

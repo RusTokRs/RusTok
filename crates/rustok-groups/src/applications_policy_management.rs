@@ -142,9 +142,7 @@ impl GroupApplicationService {
         let translation = membership_policy_translation::Entity::find()
             .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
             .filter(membership_policy_translation::Column::PolicyId.eq(policy.id))
-            .filter(
-                membership_policy_translation::Column::Locale.eq(request.locale.clone()),
-            )
+            .filter(membership_policy_translation::Column::Locale.eq(request.locale.clone()))
             .one(&self.db)
             .await?;
 

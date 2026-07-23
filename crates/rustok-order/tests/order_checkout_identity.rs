@@ -39,20 +39,24 @@ impl TestDatabase {
 
         let backend = DbBackend::Sqlite;
         let schema = Schema::new(backend);
-        db.execute(backend.build(
-            &schema
-                .create_table_from_entity(order::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ))
+        db.execute(
+            backend.build(
+                &schema
+                    .create_table_from_entity(order::Entity)
+                    .if_not_exists()
+                    .to_owned(),
+            ),
+        )
         .await
         .unwrap();
-        db.execute(backend.build(
-            &schema
-                .create_table_from_entity(order_checkout_identity::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ))
+        db.execute(
+            backend.build(
+                &schema
+                    .create_table_from_entity(order_checkout_identity::Entity)
+                    .if_not_exists()
+                    .to_owned(),
+            ),
+        )
         .await
         .unwrap();
         db.execute_unprepared(
@@ -197,21 +201,11 @@ async fn conflicting_identity_is_typed_conflict() {
     let journal = OrderCheckoutIdentityJournal::new(database.db.clone());
 
     journal
-        .record(input(
-            tenant_id,
-            operation_id,
-            first_order_id,
-            cart_id,
-        ))
+        .record(input(tenant_id, operation_id, first_order_id, cart_id))
         .await
         .unwrap();
     let error = journal
-        .record(input(
-            tenant_id,
-            operation_id,
-            second_order_id,
-            cart_id,
-        ))
+        .record(input(tenant_id, operation_id, second_order_id, cart_id))
         .await
         .unwrap_err();
 

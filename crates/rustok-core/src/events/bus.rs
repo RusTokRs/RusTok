@@ -122,6 +122,10 @@ impl EventBus {
         )
     )]
     pub fn publish_envelope(&self, envelope: EventEnvelope) -> crate::Result<()> {
+        envelope
+            .validate_registered_schema()
+            .map_err(|error| crate::Error::Validation(error.to_string()))?;
+
         // Check backpressure if enabled
         if let Some(backpressure) = &self.backpressure {
             if let Err(e) = backpressure.try_acquire() {

@@ -41,6 +41,7 @@ needed and keeps no compatibility exports for their former locations.
 
 ## Verification
 
+- Contract tests cover every public use case.
 - `cargo xtask module validate core`
 - `cargo xtask module test core`
 - Targeted primitives, validation, security, RT JSON sanitization, cache/

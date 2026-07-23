@@ -18,9 +18,9 @@ pub(crate) fn module_yank_command(args: &[String]) -> Result<()> {
     let live_registry_url = if dry_run {
         None
     } else {
-        Some(registry_url.clone().with_context(|| {
-            "Live module yank requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-        })?)
+        Some(registry_url.clone().with_context(
+            || "Live module yank requires --registry-url or RUSTOK_MODULE_REGISTRY_URL",
+        )?)
     };
     let live_auth_token = if dry_run {
         None
@@ -107,9 +107,9 @@ pub(crate) fn module_owner_transfer_command(args: &[String]) -> Result<()> {
     let live_registry_url = if dry_run {
         None
     } else {
-        Some(registry_url.clone().with_context(|| {
-            "Live module owner-transfer requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
-        })?)
+        Some(registry_url.clone().with_context(
+            || "Live module owner-transfer requires --registry-url or RUSTOK_MODULE_REGISTRY_URL",
+        )?)
     };
     let live_auth_token = if dry_run {
         None

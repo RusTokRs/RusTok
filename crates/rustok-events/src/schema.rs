@@ -1,3 +1,4 @@
+use schemars::schema_for;
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -21,9 +22,11 @@ impl EventSchema {
             .fields
             .iter()
             .map(|field| {
-                let mut schema = serde_json::json!({ "type": field.data_type });
+                let mut schema = field_json_schema(field.data_type);
                 if field.optional {
-                    schema["nullable"] = serde_json::Value::Bool(true);
+                    schema = serde_json::json!({
+                        "anyOf": [schema, { "type": "null" }],
+                    });
                 }
                 (field.name.to_string(), schema)
             })
@@ -37,6 +40,7 @@ impl EventSchema {
             .collect();
 
         serde_json::json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": self.event_type,
             "type": "object",
             "description": self.description,
@@ -45,6 +49,41 @@ impl EventSchema {
             "version": self.version,
         })
     }
+}
+
+fn field_json_schema(data_type: &str) -> serde_json::Value {
+    match data_type {
+        "uuid" => serde_json::json!({ "type": "string", "format": "uuid" }),
+        "int32" => serde_json::json!({
+            "type": "integer",
+            "minimum": i32::MIN,
+            "maximum": i32::MAX,
+        }),
+        "int64" => serde_json::json!({
+            "type": "integer",
+            "minimum": i64::MIN,
+            "maximum": i64::MAX,
+        }),
+        "uint64" => serde_json::json!({ "type": "integer", "minimum": 0 }),
+        "bool" => serde_json::json!({ "type": "boolean" }),
+        "string" => serde_json::json!({ "type": "string" }),
+        unsupported => serde_json::json!({
+            "description": format!("Unsupported RusToK field type: {unsupported}"),
+        }),
+    }
+}
+
+/// Generates the canonical JSON Schema for the serde representation of every
+/// established root event variant.
+pub fn domain_event_json_schema() -> serde_json::Value {
+    serde_json::to_value(schema_for!(crate::DomainEvent))
+        .expect("schemars output must always serialize to JSON")
+}
+
+/// Generates the canonical JSON Schema for the established root envelope.
+pub fn event_envelope_json_schema() -> serde_json::Value {
+    serde_json::to_value(schema_for!(crate::EventEnvelope))
+        .expect("schemars output must always serialize to JSON")
 }
 
 macro_rules! field {
@@ -318,6 +357,118 @@ const MODULE_ARTIFACT_REVERIFIED_FIELDS: &[FieldSchema] = &[
     field!("installation_id", "uuid"),
     field!("status", "string"),
     field!("revision", "uint64"),
+];
+const ATTRIBUTE_ID_FIELDS: &[FieldSchema] = &[field!("attribute_id", "uuid")];
+const ATTRIBUTE_OPTION_FIELDS: &[FieldSchema] =
+    &[field!("option_id", "uuid"), field!("attribute_id", "uuid")];
+const ATTRIBUTE_SCHEMA_FIELDS: &[FieldSchema] = &[field!("schema_id", "uuid")];
+const PRODUCT_PRIMARY_CATEGORY_FIELDS: &[FieldSchema] = &[
+    field!("product_id", "uuid"),
+    field!("old_category_id", "uuid", optional),
+    field!("new_category_id", "uuid", optional),
+];
+const MODULE_ARTIFACT_ROLLED_BACK_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("target_installation_id", "uuid"),
+];
+const MODULE_ARTIFACT_REVISION_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("revision", "uint64"),
+];
+const MODULE_ARTIFACT_MIGRATION_CHECKPOINTED_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("revision", "uint64"),
+    field!("has_irreversible_migration", "bool"),
+];
+const MODULE_ARTIFACT_TENANT_REVISION_FIELDS: &[FieldSchema] = &[
+    field!("installation_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("revision", "uint64"),
+];
+const MODULE_ARTIFACT_DATA_PURGED_FIELDS: &[FieldSchema] = &[
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("data_contract_revision", "uint64"),
+    field!("namespace_revision", "uint64"),
+    field!("purged_records", "uint64"),
+];
+const MODULE_ARTIFACT_DATA_EXPORTED_FIELDS: &[FieldSchema] = &[
+    field!("export_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("data_contract_revision", "uint64"),
+    field!("namespace_revision", "uint64"),
+    field!("exported_records", "uint64"),
+];
+const MODULE_ARTIFACT_DATA_SNAPSHOT_CREATED_FIELDS: &[FieldSchema] = &[
+    field!("snapshot_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("data_contract_revision", "uint64"),
+    field!("namespace_revision", "uint64"),
+    field!("manifest_digest", "string"),
+    field!("structured_records", "uint64"),
+    field!("objects", "uint64"),
+];
+const MODULE_ARTIFACT_DATA_SNAPSHOT_RESTORED_FIELDS: &[FieldSchema] = &[
+    field!("snapshot_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("data_contract_revision", "uint64"),
+    field!("namespace_revision", "uint64"),
+    field!("restored_records", "uint64"),
+    field!("restored_objects", "uint64"),
+];
+const MODULE_ARTIFACT_DATA_SNAPSHOT_RETENTION_FIELDS: &[FieldSchema] = &[
+    field!("snapshot_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("retention_revision", "uint64"),
+    field!("retain_until", "string"),
+    field!("legal_hold", "bool"),
+];
+const MODULE_ARTIFACT_DATA_SNAPSHOT_COLLECTED_FIELDS: &[FieldSchema] = &[
+    field!("collection_id", "uuid"),
+    field!("snapshot_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("data_contract_revision", "uint64"),
+    field!("policy_snapshot_id", "string"),
+    field!("deleted_objects", "uint64"),
+];
+const MODULE_ARTIFACT_SECRET_BOUND_FIELDS: &[FieldSchema] = &[
+    field!("tenant_id", "uuid"),
+    field!("module_slug", "string"),
+    field!("data_contract_revision", "uint64"),
+    field!("revision", "uint64"),
+];
+const MODULE_BUILD_QUEUED_FIELDS: &[FieldSchema] = &[
+    field!("request_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("project_id", "string"),
+    field!("attempt", "uint64"),
+];
+const MODULE_BUILD_COMPLETED_FIELDS: &[FieldSchema] = &[
+    field!("request_id", "uuid"),
+    field!("tenant_id", "uuid"),
+    field!("outcome", "string"),
+    field!("retryable", "bool"),
+];
+const MODULE_EFFECTIVE_POLICY_REVISION_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("consumer_key", "string"),
+    field!("previous_revision", "string", optional),
+    field!("next_revision", "string"),
+];
+const PLATFORM_SETTINGS_CHANGED_FIELDS: &[FieldSchema] =
+    &[field!("category", "string"), field!("changed_by", "uuid")];
+const SEARCH_SETTINGS_CHANGED_FIELDS: &[FieldSchema] = &[
+    field!("active_engine", "string"),
+    field!("fallback_engine", "string"),
+    field!("changed_by", "uuid"),
+];
+const SEARCH_REBUILD_QUEUED_FIELDS: &[FieldSchema] = &[
+    field!("target_type", "string"),
+    field!("target_id", "uuid", optional),
+    field!("queued_by", "uuid"),
 ];
 const MODULE_STATIC_PROMOTION_REQUESTED_FIELDS: &[FieldSchema] = &[
     field!("promotion_id", "uuid"),
@@ -1150,6 +1301,228 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
                 optional: false,
             },
         ],
+    },
+    EventSchema {
+        event_type: "product.attribute.created",
+        version: 1,
+        description: "A product attribute was created.",
+        fields: ATTRIBUTE_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute.updated",
+        version: 1,
+        description: "A product attribute was updated.",
+        fields: ATTRIBUTE_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute.deleted",
+        version: 1,
+        description: "A product attribute was deleted.",
+        fields: ATTRIBUTE_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_option.created",
+        version: 1,
+        description: "A product attribute option was created.",
+        fields: ATTRIBUTE_OPTION_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_option.updated",
+        version: 1,
+        description: "A product attribute option was updated.",
+        fields: ATTRIBUTE_OPTION_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_option.deleted",
+        version: 1,
+        description: "A product attribute option was deleted.",
+        fields: ATTRIBUTE_OPTION_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_schema.created",
+        version: 1,
+        description: "A product attribute schema was created.",
+        fields: ATTRIBUTE_SCHEMA_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_schema.updated",
+        version: 1,
+        description: "A product attribute schema was updated.",
+        fields: ATTRIBUTE_SCHEMA_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_schema.deleted",
+        version: 1,
+        description: "A product attribute schema was deleted.",
+        fields: ATTRIBUTE_SCHEMA_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_schema.bindings_changed",
+        version: 1,
+        description: "Product attribute schema bindings changed.",
+        fields: ATTRIBUTE_SCHEMA_FIELDS,
+    },
+    EventSchema {
+        event_type: "catalog.category.created",
+        version: 1,
+        description: "A catalog category was created.",
+        fields: CATEGORY_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "catalog.category.updated",
+        version: 1,
+        description: "A catalog category was updated.",
+        fields: CATEGORY_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "catalog.category.deleted",
+        version: 1,
+        description: "A catalog category was deleted.",
+        fields: CATEGORY_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "catalog.category.schema_mode_changed",
+        version: 1,
+        description: "A catalog category schema mode changed.",
+        fields: CATEGORY_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "catalog.category.attributes_changed",
+        version: 1,
+        description: "Catalog category attribute bindings changed.",
+        fields: CATEGORY_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.primary_category.changed",
+        version: 1,
+        description: "A product primary category changed.",
+        fields: PRODUCT_PRIMARY_CATEGORY_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.category_assignments.changed",
+        version: 1,
+        description: "Product category assignments changed.",
+        fields: PRODUCT_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "product.attribute_values.changed",
+        version: 1,
+        description: "Product attribute values changed.",
+        fields: PRODUCT_ID_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.rolled_back",
+        version: 1,
+        description: "A module artifact installation was rolled back.",
+        fields: MODULE_ARTIFACT_ROLLED_BACK_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.uninstalled",
+        version: 1,
+        description: "A module artifact installation was uninstalled.",
+        fields: MODULE_ARTIFACT_REVISION_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.migration_checkpointed",
+        version: 1,
+        description: "A module artifact migration checkpoint was recorded.",
+        fields: MODULE_ARTIFACT_MIGRATION_CHECKPOINTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.deactivated",
+        version: 1,
+        description: "A module artifact installation was deactivated.",
+        fields: MODULE_ARTIFACT_REVISION_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.tenant_disabled",
+        version: 1,
+        description: "A module artifact was disabled for a tenant.",
+        fields: MODULE_ARTIFACT_TENANT_REVISION_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.tenant_enabled",
+        version: 1,
+        description: "A module artifact was enabled for a tenant.",
+        fields: MODULE_ARTIFACT_TENANT_REVISION_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.data_purged",
+        version: 1,
+        description: "Module artifact tenant data was purged.",
+        fields: MODULE_ARTIFACT_DATA_PURGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.data_exported",
+        version: 1,
+        description: "Module artifact tenant data was exported.",
+        fields: MODULE_ARTIFACT_DATA_EXPORTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.data_snapshot_created",
+        version: 1,
+        description: "A module artifact data snapshot was created.",
+        fields: MODULE_ARTIFACT_DATA_SNAPSHOT_CREATED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.data_snapshot_restored",
+        version: 1,
+        description: "A module artifact data snapshot was restored.",
+        fields: MODULE_ARTIFACT_DATA_SNAPSHOT_RESTORED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.data_snapshot_retention_updated",
+        version: 1,
+        description: "A module artifact data snapshot retention policy changed.",
+        fields: MODULE_ARTIFACT_DATA_SNAPSHOT_RETENTION_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.data_snapshot_collected",
+        version: 1,
+        description: "A module artifact data snapshot was collected.",
+        fields: MODULE_ARTIFACT_DATA_SNAPSHOT_COLLECTED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.artifact.secret_bound",
+        version: 1,
+        description: "A module artifact secret binding changed.",
+        fields: MODULE_ARTIFACT_SECRET_BOUND_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.build.queued",
+        version: 1,
+        description: "A module build was queued.",
+        fields: MODULE_BUILD_QUEUED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.build.completed",
+        version: 1,
+        description: "A module build completed.",
+        fields: MODULE_BUILD_COMPLETED_FIELDS,
+    },
+    EventSchema {
+        event_type: "module.effective_policy_revision_changed",
+        version: 1,
+        description: "An effective module policy revision changed.",
+        fields: MODULE_EFFECTIVE_POLICY_REVISION_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "platform_settings.changed",
+        version: 1,
+        description: "Platform settings changed.",
+        fields: PLATFORM_SETTINGS_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "search.settings_changed",
+        version: 1,
+        description: "Search settings changed.",
+        fields: SEARCH_SETTINGS_CHANGED_FIELDS,
+    },
+    EventSchema {
+        event_type: "search.rebuild_queued",
+        version: 1,
+        description: "A search rebuild was queued.",
+        fields: SEARCH_REBUILD_QUEUED_FIELDS,
     },
 ];
 

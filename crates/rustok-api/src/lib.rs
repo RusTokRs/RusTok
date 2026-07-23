@@ -17,6 +17,7 @@ pub mod manifest_hash;
 pub mod module_registry_contract;
 pub mod module_work;
 pub mod permissions;
+pub mod platform_build;
 pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
@@ -50,6 +51,10 @@ pub use module_work::{
     ModuleWorkError, ModuleWorkHandler, ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource,
 };
 pub use permissions::{Action, Permission, Resource};
+pub use platform_build::{
+    PlatformBuildSnapshot, PlatformBuildStage, PlatformBuildStatus, PlatformDeploymentProfile,
+    PlatformReleaseSnapshot, PlatformReleaseStatus,
+};
 pub use ports::{
     PortActor, PortActorKind, PortCallPolicy, PortContext, PortError, PortErrorKind,
     PortOperationKind,

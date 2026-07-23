@@ -1,8 +1,6 @@
 use async_graphql::{Context, Enum, FieldError, InputObject, Object, Result, SimpleObject};
 use rustok_api::graphql::{GraphQLError, require_module_enabled};
-use rustok_api::{
-    AuthContext, Permission, TenantContext, has_any_effective_permission,
-};
+use rustok_api::{AuthContext, Permission, TenantContext, has_any_effective_permission};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -134,11 +132,11 @@ fn require_permission(
 
 fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
     match requested_tenant_id {
-        Some(requested) if requested != tenant.id => Err(
-            <FieldError as GraphQLError>::permission_denied(
+        Some(requested) if requested != tenant.id => {
+            Err(<FieldError as GraphQLError>::permission_denied(
                 "Permission denied: tenant scope mismatch",
-            ),
-        ),
+            ))
+        }
         Some(requested) => Ok(requested),
         None => Ok(tenant.id),
     }

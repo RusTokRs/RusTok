@@ -399,7 +399,7 @@ pub trait ArtifactRegistry: Send + Sync {
 #[async_trait]
 pub trait ArtifactBlobStore: Send + Sync {
     async fn put_verified(&self, digest: &str, bytes: &[u8])
-        -> Result<(), ModuleInstallationError>;
+    -> Result<(), ModuleInstallationError>;
     async fn get_verified(&self, digest: &str) -> Result<Vec<u8>, ModuleInstallationError>;
 }
 
@@ -3708,44 +3708,52 @@ mod tests {
             )
         };
         assert!(valid().is_ok());
-        assert!(validate_lifecycle_command(
-            Uuid::nil(),
-            &ModuleInstallationScope::Platform,
-            1,
-            actor_id,
-            "operator request",
-            idempotency_key,
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Tenant {
-                tenant_id: Uuid::nil(),
-            },
-            1,
-            actor_id,
-            "operator request",
-            idempotency_key,
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Platform,
-            1,
-            Uuid::nil(),
-            "operator request",
-            idempotency_key,
-        )
-        .is_err());
-        assert!(validate_lifecycle_command(
-            installation_id,
-            &ModuleInstallationScope::Platform,
-            1,
-            actor_id,
-            "operator request",
-            Uuid::nil(),
-        )
-        .is_err());
+        assert!(
+            validate_lifecycle_command(
+                Uuid::nil(),
+                &ModuleInstallationScope::Platform,
+                1,
+                actor_id,
+                "operator request",
+                idempotency_key,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Tenant {
+                    tenant_id: Uuid::nil(),
+                },
+                1,
+                actor_id,
+                "operator request",
+                idempotency_key,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Platform,
+                1,
+                Uuid::nil(),
+                "operator request",
+                idempotency_key,
+            )
+            .is_err()
+        );
+        assert!(
+            validate_lifecycle_command(
+                installation_id,
+                &ModuleInstallationScope::Platform,
+                1,
+                actor_id,
+                "operator request",
+                Uuid::nil(),
+            )
+            .is_err()
+        );
     }
 
     struct FixtureRegistry(ModuleArtifactPackage);
@@ -4048,10 +4056,12 @@ mod tests {
         let digest = sha256_digest(b"retained artifact payload");
         let policy = SnapshotArtifactBlobRetentionPolicy::new(now, HashMap::new());
 
-        assert!(!policy
-            .may_delete(&digest)
-            .await
-            .expect("missing retention rule fails closed"));
+        assert!(
+            !policy
+                .may_delete(&digest)
+                .await
+                .expect("missing retention rule fails closed")
+        );
 
         let policy = SnapshotArtifactBlobRetentionPolicy::new(
             now,
@@ -4066,10 +4076,12 @@ mod tests {
             )]),
         );
 
-        assert!(policy
-            .may_delete(&digest)
-            .await
-            .expect("expired unprotected rule allows deletion"));
+        assert!(
+            policy
+                .may_delete(&digest)
+                .await
+                .expect("expired unprotected rule allows deletion")
+        );
     }
 
     #[tokio::test]

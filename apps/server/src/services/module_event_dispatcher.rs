@@ -62,9 +62,8 @@ fn enrich_runtime_extensions_after_event_start(
     #[cfg(feature = "mod-pages")]
     {
         let cache = crate::services::cache_runtime::ensure_cache_service(ctx);
-        let provider = Arc::new(
-            crate::services::pages_cache_invalidation::ServerPagesCachePort::new(&cache),
-        );
+        let provider =
+            Arc::new(crate::services::pages_cache_invalidation::ServerPagesCachePort::new(&cache));
         enriched.insert(rustok_pages::PagesCacheInvalidationRuntime::new(
             provider.clone(),
         ));

@@ -31,8 +31,7 @@ use super::{
 };
 
 const COMPENSATION_PORT_DEADLINE_SECONDS: u64 = 3;
-const ORDER_MANUAL_RECONCILIATION_CODE: &str =
-    "order.checkout_compensation_manual_reconciliation";
+const ORDER_MANUAL_RECONCILIATION_CODE: &str = "order.checkout_compensation_manual_reconciliation";
 const PAYMENT_MANUAL_RECONCILIATION_CODE: &str =
     "payment.checkout_compensation_manual_reconciliation";
 
@@ -118,13 +117,12 @@ impl CheckoutCompensationService {
         mut self,
         order_identity_port: Arc<dyn CheckoutOrderIdentityPort>,
     ) -> Self {
-        self.order_compensation_port = Arc::new(
-            InProcessCheckoutOrderCompensationPort::with_identity_port(
+        self.order_compensation_port =
+            Arc::new(InProcessCheckoutOrderCompensationPort::with_identity_port(
                 self.owner_db.clone(),
                 self.event_bus.clone(),
                 order_identity_port,
-            ),
-        );
+            ));
         self
     }
 
@@ -250,12 +248,7 @@ impl CheckoutCompensationService {
         let snapshot = self
             .payment_compensation_port
             .compensate_checkout_payment(
-                payment_context(
-                    tenant_id,
-                    actor_id,
-                    operation,
-                    self.port_deadline,
-                ),
+                payment_context(tenant_id, actor_id, operation, self.port_deadline),
                 CheckoutPaymentCompensationRequest {
                     checkout_operation_id: operation.id,
                     collection_id: operation.payment_collection_id,
@@ -297,12 +290,7 @@ impl CheckoutCompensationService {
         let snapshot = self
             .order_compensation_port
             .compensate_checkout_order(
-                order_context(
-                    tenant_id,
-                    actor_id,
-                    operation,
-                    self.port_deadline,
-                ),
+                order_context(tenant_id, actor_id, operation, self.port_deadline),
                 CheckoutOrderCompensationRequest {
                     checkout_operation_id: operation.id,
                     cart_id: operation.cart_id,
@@ -505,10 +493,7 @@ fn order_context(
         format!("checkout:{}:compensation:order", operation.id),
     )
     .with_causation_id(operation.id.to_string())
-    .with_idempotency_key(format!(
-        "checkout:{}:compensation:order",
-        operation.id
-    ))
+    .with_idempotency_key(format!("checkout:{}:compensation:order", operation.id))
     .with_deadline(deadline)
 }
 
@@ -525,10 +510,7 @@ fn payment_context(
         format!("checkout:{}:compensation:payment", operation.id),
     )
     .with_causation_id(operation.id.to_string())
-    .with_idempotency_key(format!(
-        "checkout:{}:compensation:payment",
-        operation.id
-    ))
+    .with_idempotency_key(format!("checkout:{}:compensation:payment", operation.id))
     .with_deadline(deadline)
 }
 

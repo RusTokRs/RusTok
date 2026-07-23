@@ -259,9 +259,7 @@ fn map_toggle_execution_error(error: ModuleLifecycleExecutionError) -> ToggleMod
         ModuleLifecycleExecutionError::IdempotencyConflict => ToggleModuleError::Policy(
             "module lifecycle idempotency key was reused for a different command".to_string(),
         ),
-        ModuleLifecycleExecutionError::PolicyTransition(error) => {
-            ToggleModuleError::Policy(error)
-        }
+        ModuleLifecycleExecutionError::PolicyTransition(error) => ToggleModuleError::Policy(error),
     }
 }
 
@@ -287,9 +285,7 @@ fn map_lifecycle_writer_error(error: ModuleLifecycleDbWriterError) -> ToggleModu
         ModuleLifecycleDbWriterError::Settings(error) => {
             ToggleModuleError::Policy(error.to_string())
         }
-        ModuleLifecycleDbWriterError::PolicyTransition(error) => {
-            ToggleModuleError::Policy(error)
-        }
+        ModuleLifecycleDbWriterError::PolicyTransition(error) => ToggleModuleError::Policy(error),
         error @ ModuleLifecycleDbWriterError::InvalidTenantOverrideQuery => {
             ToggleModuleError::Policy(error.to_string())
         }

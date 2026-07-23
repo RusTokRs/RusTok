@@ -9,8 +9,7 @@ use rustok_notifications_api::{
 };
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, TransactionTrait,
-    sea_query::OnConflict,
+    QueryFilter, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -190,10 +189,7 @@ impl NotificationCandidateService {
             Err(error) => return self.fail_candidate(&item, worker_id, error).await,
         };
 
-        let preference_allows = match self
-            .preference_allows_in_app(&self.db, &item, &job)
-            .await
-        {
+        let preference_allows = match self.preference_allows_in_app(&self.db, &item, &job).await {
             Ok(allows) => allows,
             Err(error) => return self.fail_candidate(&item, worker_id, error).await,
         };
@@ -347,9 +343,7 @@ impl NotificationCandidateService {
             .set(candidate_item::ActiveModel {
                 status: Set(FanoutItemStatus::Processing),
                 lease_owner: Set(Some(worker_id.to_string())),
-                lease_expires_at: Set(Some(
-                    timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS),
-                )),
+                lease_expires_at: Set(Some(timestamp + Duration::seconds(DEFAULT_LEASE_SECONDS))),
                 next_attempt_at: Set(None),
                 processed_at: Set(None),
                 notification_id: Set(None),
@@ -363,8 +357,7 @@ impl NotificationCandidateService {
                     .add(
                         Condition::all()
                             .add(
-                                candidate_item::Column::Status
-                                    .eq(FanoutItemStatus::RetryableError),
+                                candidate_item::Column::Status.eq(FanoutItemStatus::RetryableError),
                             )
                             .add(
                                 Condition::any()
@@ -374,9 +367,7 @@ impl NotificationCandidateService {
                     )
                     .add(
                         Condition::all()
-                            .add(
-                                candidate_item::Column::Status.eq(FanoutItemStatus::Processing),
-                            )
+                            .add(candidate_item::Column::Status.eq(FanoutItemStatus::Processing))
                             .add(candidate_item::Column::LeaseExpiresAt.lt(timestamp)),
                     ),
             )
@@ -461,7 +452,7 @@ impl NotificationCandidateService {
                 notification_id: Set(None),
                 attempt_count: Set(item.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(
-                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS))
                 ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
@@ -496,10 +487,7 @@ impl NotificationCandidateService {
             .ok_or(NotificationError::InvalidEvent)?;
         ensure_candidate_lease(&current, worker_id)?;
 
-        if !self
-            .preference_allows_in_app(&txn, &current, job)
-            .await?
-        {
+        if !self.preference_allows_in_app(&txn, &current, job).await? {
             let completion_time = now();
             let result = candidate_item::Entity::update_many()
                 .set(candidate_item::ActiveModel {
@@ -627,10 +615,9 @@ impl NotificationCandidateService {
 fn deserialize_descriptor(
     job: &fanout_job::Model,
 ) -> NotificationResult<NotificationSemanticDescriptor> {
-    let descriptor = serde_json::from_value::<NotificationSemanticDescriptor>(
-        job.descriptor_json.clone(),
-    )
-    .map_err(|_| NotificationError::InvalidDescriptor)?;
+    let descriptor =
+        serde_json::from_value::<NotificationSemanticDescriptor>(job.descriptor_json.clone())
+            .map_err(|_| NotificationError::InvalidDescriptor)?;
     if descriptor.notification_type.as_str() != job.notification_type
         || descriptor.target.owner.as_str() != job.source_slug
         || descriptor.target.id.is_nil()
@@ -651,10 +638,7 @@ fn preference_specificity(
     source_score + type_score
 }
 
-fn ensure_candidate_lease(
-    item: &candidate_item::Model,
-    worker_id: &str,
-) -> NotificationResult<()> {
+fn ensure_candidate_lease(item: &candidate_item::Model, worker_id: &str) -> NotificationResult<()> {
     if item.status != FanoutItemStatus::Processing
         || item.lease_owner.as_deref() != Some(worker_id)
         || item

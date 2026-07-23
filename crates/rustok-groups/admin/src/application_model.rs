@@ -65,11 +65,13 @@ impl GroupsAdminApplicationPolicyManagementView {
         self.policy_id
             .as_ref()
             .zip(self.revision)
-            .map(|(policy_id, revision)| GroupsAdminApplicationPolicyPrecondition {
-                policy_id: policy_id.clone(),
-                revision,
-                locale: self.locale.clone(),
-            })
+            .map(
+                |(policy_id, revision)| GroupsAdminApplicationPolicyPrecondition {
+                    policy_id: policy_id.clone(),
+                    revision,
+                    locale: self.locale.clone(),
+                },
+            )
     }
 }
 

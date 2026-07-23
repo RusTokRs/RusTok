@@ -6,7 +6,8 @@ use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortErrorKind
 use rustok_order::{
     AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
     ReadCheckoutOrderIdentityByOperationRequest,
-    entities::{order, order_checkout_identity}, in_process_checkout_order_identity_port,
+    entities::{order, order_checkout_identity},
+    in_process_checkout_order_identity_port,
 };
 use sea_orm::{
     ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
@@ -38,20 +39,24 @@ impl TestDatabase {
 
         let backend = DbBackend::Sqlite;
         let schema = Schema::new(backend);
-        db.execute(backend.build(
-            &schema
-                .create_table_from_entity(order::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ))
+        db.execute(
+            backend.build(
+                &schema
+                    .create_table_from_entity(order::Entity)
+                    .if_not_exists()
+                    .to_owned(),
+            ),
+        )
         .await
         .unwrap();
-        db.execute(backend.build(
-            &schema
-                .create_table_from_entity(order_checkout_identity::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ))
+        db.execute(
+            backend.build(
+                &schema
+                    .create_table_from_entity(order_checkout_identity::Entity)
+                    .if_not_exists()
+                    .to_owned(),
+            ),
+        )
         .await
         .unwrap();
         db.execute_unprepared(
@@ -134,9 +139,7 @@ fn context(tenant_id: Uuid, operation_id: Uuid, action: &str, write: bool) -> Po
     )
     .with_deadline(Duration::from_secs(3));
     if write {
-        context.with_idempotency_key(format!(
-            "order-identity-port-test:{operation_id}:{action}"
-        ))
+        context.with_idempotency_key(format!("order-identity-port-test:{operation_id}:{action}"))
     } else {
         context
     }
@@ -174,7 +177,10 @@ async fn adopts_legacy_metadata_inside_order_owner_and_reads_typed_identity() {
 
     assert_eq!(adopted.order_id, order_id);
     assert_eq!(adopted.source_cart_id, Some(cart_id));
-    assert_eq!(adopted.snapshot_hash.as_deref(), Some(snapshot_hash.as_str()));
+    assert_eq!(
+        adopted.snapshot_hash.as_deref(),
+        Some(snapshot_hash.as_str())
+    );
     assert_eq!(adopted.request_hash.as_deref(), Some(request_hash.as_str()));
     assert_eq!(
         port.read_by_operation(

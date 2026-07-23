@@ -49,12 +49,8 @@ impl GroupApplicationService {
             return Ok(replayed);
         }
 
-        let application_model = find_application_for_update(
-            &transaction,
-            tenant_id,
-            request.application_id,
-        )
-        .await?;
+        let application_model =
+            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
         require_active_group(&group_model)?;

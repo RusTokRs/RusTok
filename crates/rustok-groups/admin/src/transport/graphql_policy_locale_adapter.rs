@@ -21,11 +21,15 @@ fn locale_catalog_query() -> String {
 }
 
 fn management_policy_query() -> String {
-    format!("query GroupsAdminApplicationPolicyForManagement($groupId: UUID!, $locale: String!) {{ group_application_policy_for_management: groupApplicationPolicyForManagement(groupId: $groupId, locale: $locale) {{ {MANAGEMENT_FIELDS} }} }}")
+    format!(
+        "query GroupsAdminApplicationPolicyForManagement($groupId: UUID!, $locale: String!) {{ group_application_policy_for_management: groupApplicationPolicyForManagement(groupId: $groupId, locale: $locale) {{ {MANAGEMENT_FIELDS} }} }}"
+    )
 }
 
 fn upsert_policy_mutation() -> String {
-    format!("mutation GroupsAdminUpsertApplicationPolicyIfCurrent($idempotencyKey: String!, $groupId: UUID!, $expectedPolicy: GroupApplicationPolicyPreconditionInputGql, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicyIfCurrent(idempotencyKey: $idempotencyKey, groupId: $groupId, expectedPolicy: $expectedPolicy, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}")
+    format!(
+        "mutation GroupsAdminUpsertApplicationPolicyIfCurrent($idempotencyKey: String!, $groupId: UUID!, $expectedPolicy: GroupApplicationPolicyPreconditionInputGql, $input: UpsertGroupApplicationPolicyInputGql!) {{ upsert_group_application_policy: upsertGroupApplicationPolicyIfCurrent(idempotencyKey: $idempotencyKey, groupId: $groupId, expectedPolicy: $expectedPolicy, input: $input) {{ policy {{ {POLICY_FIELDS} }} group_version: groupVersion created replayed }} }}"
+    )
 }
 
 #[derive(Debug, Serialize)]

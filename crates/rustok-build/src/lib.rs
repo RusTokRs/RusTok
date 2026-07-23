@@ -11,6 +11,7 @@ pub mod report;
 pub mod request;
 pub mod runtime;
 pub mod service;
+pub mod snapshot;
 
 pub use build::{BuildStage, BuildStatus, DeploymentProfile};
 pub use control::{BuildControl, BuildRollbackCommand, SharedBuildControl};
@@ -31,3 +32,4 @@ pub use runtime::{
     ReleaseActivationHook, ReleasePublishRequest, ReleasePublisherPort,
 };
 pub use service::BuildService;
+pub use snapshot::{build_snapshot, release_snapshot};

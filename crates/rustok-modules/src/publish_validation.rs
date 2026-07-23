@@ -783,17 +783,21 @@ mod tests {
         substituted_package_manifest["files"]["rustok-module.toml"] = serde_json::json!(
             "[module]\nslug = \"other-module\"\nname = \"Sample module\"\nversion = \"1.0.0\"\ndescription = \"Sample module description\"\nownership = \"first_party\"\ntrust_level = \"sandboxed\"\n\n[marketplace]\ntags = []\n"
         );
-        assert!(!validate_bundle(&substituted_package_manifest)
-            .errors
-            .is_empty());
+        assert!(
+            !validate_bundle(&substituted_package_manifest)
+                .errors
+                .is_empty()
+        );
 
         let mut substituted_cargo_manifest = bundle();
         substituted_cargo_manifest["files"]["Cargo.toml"] = serde_json::json!(
             "[package]\nname = \"other_module\"\nversion = \"1.0.0\"\nlicense = \"GPL-3.0\"\n"
         );
-        assert!(!validate_bundle(&substituted_cargo_manifest)
-            .errors
-            .is_empty());
+        assert!(
+            !validate_bundle(&substituted_cargo_manifest)
+                .errors
+                .is_empty()
+        );
     }
 
     #[test]
@@ -806,10 +810,12 @@ mod tests {
 
         let validation = validate_bundle(&unexpected_ui);
         assert!(!validation.errors.is_empty());
-        assert!(validation
-            .errors
-            .iter()
-            .all(|diagnostic| !diagnostic.contains(marker)));
+        assert!(
+            validation
+                .errors
+                .iter()
+                .all(|diagnostic| !diagnostic.contains(marker))
+        );
     }
 
     #[test]
@@ -849,9 +855,11 @@ mod tests {
         require_file("Cargo.toml", Some(&source), &mut validation);
 
         assert!(!validation.errors.is_empty());
-        assert!(validation
-            .errors
-            .iter()
-            .all(|diagnostic| !diagnostic.contains(marker)));
+        assert!(
+            validation
+                .errors
+                .iter()
+                .all(|diagnostic| !diagnostic.contains(marker))
+        );
     }
 }

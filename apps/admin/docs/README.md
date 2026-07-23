@@ -107,6 +107,9 @@ call a native adapter directly.
   variant updates via module-owned server-function transport.
 - `apps/admin` is not considered a CSR-first host. CSR remains a mandatory standalone debug profile, but the architectural target for Leptos admin is an SSR-first host with headless GraphQL/REST parity.
 - WebSocket transport `/api/graphql/ws` remains an active path for live update scenarios, including build/progress and subscription-based surfaces.
+- Build/release native and GraphQL reads deserialize the same browser-safe
+  `rustok-api` snapshots. The admin does not define a parallel build/release
+  DTO or map owner persistence models.
 - Host-owned `/install` is a Leptos wizard layer for the hybrid installer.
   It does not contain its own bootstrap logic: the screen collects an `InstallPlan`,
   calls `/api/install/preflight`, invokes `/api/install/apply`, polls

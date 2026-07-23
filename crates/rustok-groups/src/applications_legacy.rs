@@ -3,13 +3,13 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rustok_api::{normalize_locale_tag, PortActorKind, PortCallPolicy, PortContext, PortError};
+use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -255,8 +255,9 @@ impl GroupApplicationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
-        request.locale = normalize_locale_tag(&request.locale)
-            .ok_or_else(|| GroupsError::Validation("invalid application policy locale".to_string()))?;
+        request.locale = normalize_locale_tag(&request.locale).ok_or_else(|| {
+            GroupsError::Validation("invalid application policy locale".to_string())
+        })?;
         normalize_policy(&mut request.questions, &mut request.rules)?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
@@ -325,10 +326,14 @@ impl GroupApplicationService {
             .filter(membership_policy_translation::Column::Locale.eq(request.locale.clone()))
             .one(&transaction)
             .await?;
-        let questions_value = serde_json::to_value(&request.questions)
-            .map_err(|error| GroupsError::Invariant(format!("application questions are not serializable: {error}")))?;
-        let rules_value = serde_json::to_value(&request.rules)
-            .map_err(|error| GroupsError::Invariant(format!("application rules are not serializable: {error}")))?;
+        let questions_value = serde_json::to_value(&request.questions).map_err(|error| {
+            GroupsError::Invariant(format!(
+                "application questions are not serializable: {error}"
+            ))
+        })?;
+        let rules_value = serde_json::to_value(&request.rules).map_err(|error| {
+            GroupsError::Invariant(format!("application rules are not serializable: {error}"))
+        })?;
         if let Some(existing) = existing_translation {
             let mut active: membership_policy_translation::ActiveModel = existing.into();
             active.questions = Set(questions_value);
@@ -429,13 +434,9 @@ impl GroupApplicationService {
 
         let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
         require_application_group(&group_model)?;
-        let policy = load_policy_for_locale(
-            &transaction,
-            tenant_id,
-            request.group_id,
-            &context.locale,
-        )
-        .await?;
+        let policy =
+            load_policy_for_locale(&transaction, tenant_id, request.group_id, &context.locale)
+                .await?;
         if !policy.enabled {
             return Err(GroupsError::Conflict(
                 "group membership applications are disabled".to_string(),
@@ -521,10 +522,15 @@ impl GroupApplicationService {
             "questions": policy.questions,
             "rules": policy.rules
         });
-        let answers_value = serde_json::to_value(&request.answers)
-            .map_err(|error| GroupsError::Invariant(format!("application answers are not serializable: {error}")))?;
-        let acknowledged_value = serde_json::to_value(&request.acknowledged_rule_keys)
-            .map_err(|error| GroupsError::Invariant(format!("application acknowledgements are not serializable: {error}")))?;
+        let answers_value = serde_json::to_value(&request.answers).map_err(|error| {
+            GroupsError::Invariant(format!("application answers are not serializable: {error}"))
+        })?;
+        let acknowledged_value =
+            serde_json::to_value(&request.acknowledged_rule_keys).map_err(|error| {
+                GroupsError::Invariant(format!(
+                    "application acknowledgements are not serializable: {error}"
+                ))
+            })?;
         let application_model = if let Some(existing) = existing_application {
             let mut active: membership_application::ActiveModel = existing.into();
             active.policy_id = Set(policy.id);
@@ -673,12 +679,8 @@ impl GroupApplicationService {
             return Ok(replayed);
         }
 
-        let application_model = find_application_for_update(
-            &transaction,
-            tenant_id,
-            request.application_id,
-        )
-        .await?;
+        let application_model =
+            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
         if application_model.status != GroupApplicationStatus::Pending.as_str() {
             return Err(GroupsError::Conflict(
                 "membership application is no longer pending".to_string(),
@@ -701,7 +703,9 @@ impl GroupApplicationService {
             .filter(membership::Column::UserId.eq(application_model.user_id))
             .one(&transaction)
             .await?
-            .ok_or_else(|| GroupsError::Invariant("pending application membership is missing".to_string()))?;
+            .ok_or_else(|| {
+                GroupsError::Invariant("pending application membership is missing".to_string())
+            })?;
         if membership_model.status == GroupMembershipStatus::Banned.as_str() {
             return Err(GroupsError::Forbidden(
                 "group membership is banned".to_string(),
@@ -788,7 +792,9 @@ impl GroupApplicationReadPort for GroupApplicationService {
         context: PortContext,
         request: ReadGroupApplicationPolicyRequest,
     ) -> Result<GroupApplicationPolicy, PortError> {
-        self.read_policy_owned(&context, request).await.map_err(Into::into)
+        self.read_policy_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn list_group_membership_applications(
@@ -848,18 +854,30 @@ async fn load_policy_for_locale<C: sea_orm::ConnectionTrait>(
         .filter(membership_policy::Column::GroupId.eq(group_id))
         .one(connection)
         .await?
-        .ok_or_else(|| GroupsError::Conflict("group membership application policy is not configured".to_string()))?;
+        .ok_or_else(|| {
+            GroupsError::Conflict(
+                "group membership application policy is not configured".to_string(),
+            )
+        })?;
     let translation = membership_policy_translation::Entity::find()
         .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
         .filter(membership_policy_translation::Column::PolicyId.eq(policy.id))
         .filter(membership_policy_translation::Column::Locale.eq(locale.clone()))
         .one(connection)
         .await?
-        .ok_or_else(|| GroupsError::Conflict("group membership application policy is unavailable for the effective locale".to_string()))?;
+        .ok_or_else(|| {
+            GroupsError::Conflict(
+                "group membership application policy is unavailable for the effective locale"
+                    .to_string(),
+            )
+        })?;
     let questions = serde_json::from_value::<Vec<GroupApplicationQuestion>>(translation.questions)
-        .map_err(|error| GroupsError::Invariant(format!("invalid application question contract: {error}")))?;
-    let rules = serde_json::from_value::<Vec<GroupApplicationRule>>(translation.rules)
-        .map_err(|error| GroupsError::Invariant(format!("invalid application rule contract: {error}")))?;
+        .map_err(|error| {
+            GroupsError::Invariant(format!("invalid application question contract: {error}"))
+        })?;
+    let rules = serde_json::from_value::<Vec<GroupApplicationRule>>(translation.rules).map_err(
+        |error| GroupsError::Invariant(format!("invalid application rule contract: {error}")),
+    )?;
     Ok(GroupApplicationPolicy {
         id: policy.id,
         group_id,
@@ -894,7 +912,11 @@ fn normalize_policy(
             ));
         }
         question.prompt = normalize_required_text(&question.prompt, "question prompt", 500)?;
-        question.help_text = normalize_optional_bounded_text(question.help_text.take(), "question help text", 1_000)?;
+        question.help_text = normalize_optional_bounded_text(
+            question.help_text.take(),
+            "question help text",
+            1_000,
+        )?;
         if !(1..=4_000).contains(&question.max_answer_chars) {
             return Err(GroupsError::Validation(
                 "question max_answer_chars must be between 1 and 4000".to_string(),
@@ -953,7 +975,11 @@ fn validate_submission(
         }
     }
     for question in &policy.questions {
-        let answer = request.answers.get(&question.key).map(String::as_str).unwrap_or("");
+        let answer = request
+            .answers
+            .get(&question.key)
+            .map(String::as_str)
+            .unwrap_or("");
         if question.required && answer.trim().is_empty() {
             return Err(GroupsError::Validation(format!(
                 "an answer is required for question {}",
@@ -993,18 +1019,23 @@ fn validate_submission(
     Ok(())
 }
 
-fn map_application(model: membership_application::Model) -> GroupsResult<GroupMembershipApplication> {
+fn map_application(
+    model: membership_application::Model,
+) -> GroupsResult<GroupMembershipApplication> {
     #[derive(Deserialize)]
     struct Snapshot {
         questions: Vec<GroupApplicationQuestion>,
         rules: Vec<GroupApplicationRule>,
     }
-    let snapshot = serde_json::from_value::<Snapshot>(model.policy_snapshot)
-        .map_err(|error| GroupsError::Invariant(format!("invalid application policy snapshot: {error}")))?;
+    let snapshot = serde_json::from_value::<Snapshot>(model.policy_snapshot).map_err(|error| {
+        GroupsError::Invariant(format!("invalid application policy snapshot: {error}"))
+    })?;
     let answers = serde_json::from_value::<BTreeMap<String, String>>(model.answers)
         .map_err(|error| GroupsError::Invariant(format!("invalid application answers: {error}")))?;
-    let acknowledged_rule_keys = serde_json::from_value::<Vec<String>>(model.acknowledged_rule_keys)
-        .map_err(|error| GroupsError::Invariant(format!("invalid application acknowledgements: {error}")))?;
+    let acknowledged_rule_keys =
+        serde_json::from_value::<Vec<String>>(model.acknowledged_rule_keys).map_err(|error| {
+            GroupsError::Invariant(format!("invalid application acknowledgements: {error}"))
+        })?;
     Ok(GroupMembershipApplication {
         id: model.id,
         group_id: model.group_id,
@@ -1261,7 +1292,9 @@ async fn store_receipt<T: Serialize>(
         command_type: Set(command_type.to_string()),
         request_hash: Set(request_hash),
         response: Set(serde_json::to_value(response).map_err(|error| {
-            GroupsError::Invariant(format!("group command response is not serializable: {error}"))
+            GroupsError::Invariant(format!(
+                "group command response is not serializable: {error}"
+            ))
         })?),
         created_at: Set(Utc::now().fixed_offset()),
     }
@@ -1298,7 +1331,9 @@ async fn append_audit(
 
 fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
     let bytes = serde_json::to_vec(request).map_err(|error| {
-        GroupsError::Validation(format!("group command request is not serializable: {error}"))
+        GroupsError::Validation(format!(
+            "group command request is not serializable: {error}"
+        ))
     })?;
     Ok(Sha256::digest(bytes)
         .iter()

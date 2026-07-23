@@ -16,13 +16,15 @@ the same idempotency boundary as the manifest, profile, and runtime mode.
 
 `BuildService` is also the read owner for active build/release state and
 bounded build/release history pages. Host transports supply only a validated
-page request and map the returned owner models; they do not import the
-underlying SeaORM entities.
+page request. `rustok-build` maps persistence state to the framework-neutral
+`PlatformBuildSnapshot` and `PlatformReleaseSnapshot` contracts from
+`rustok-api`; transports do not import the underlying SeaORM entities or
+reconstruct status/profile codes.
 
 The transport boundary is `BuildControl` (shared as `SharedBuildControl`). The
 server host composes this port with the event publisher required by rollback,
 while GraphQL and native admin adapters use the shared handle for active state,
-history, and rollback commands.
+history, and rollback commands. Both adapters consume the same snapshots.
 
 Rollback publishes `BuildEvent::BuildRolledBack` after the predecessor release
 transition. The event preserves the requested and restored build IDs, source

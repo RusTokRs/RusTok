@@ -138,7 +138,10 @@ async fn groups_storefront_submit_application_native(
             tenant.id.to_string(),
             PortActor::user(auth.user_id.to_string()),
             command.expected_policy.locale.clone(),
-            format!("groups-storefront-application-cas-native-{}", Uuid::new_v4()),
+            format!(
+                "groups-storefront-application-cas-native-{}",
+                Uuid::new_v4()
+            ),
         )
         .with_deadline(Duration::from_secs(5))
         .with_idempotency_key(command.idempotency_key);

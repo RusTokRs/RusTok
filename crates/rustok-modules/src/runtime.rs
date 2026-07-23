@@ -14,10 +14,10 @@ use rustok_sandbox::{
 };
 
 use crate::{
-    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
     ArtifactBindingDispatch, ArtifactBindingDispatchEnvelope, ArtifactBindingDispatchEnvelopeError,
     ArtifactBindingExecutor, ArtifactBlobStore, ArtifactReleaseRef, InstalledModuleArtifact,
     ModuleArtifactError, ModuleEffectivePolicy, ModuleInstallationError, ModuleRuntimeBinding,
+    artifact_schema::{ArtifactSchemaValidationError, ArtifactSchemaValidatorCache},
 };
 
 /// Bounded node-local cache for already-admitted CAS blobs. It is not a source
@@ -442,11 +442,11 @@ mod tests {
 
     use super::*;
     use crate::{
-        canonical_schema_digest, ArtifactModuleKind, ArtifactPayloadKind,
-        ArtifactPermissionDescriptor, ArtifactReleaseRef, ArtifactSchemaDocument,
-        InMemoryArtifactBlobStore, ModuleArtifactDescriptor, ModuleArtifactPackage,
-        ModuleDependencyLockGraph, ModuleInstallationScope, ModuleRuntimeBinding,
-        ModuleRuntimeBindingKind, OciArtifactReference,
+        ArtifactModuleKind, ArtifactPayloadKind, ArtifactPermissionDescriptor, ArtifactReleaseRef,
+        ArtifactSchemaDocument, InMemoryArtifactBlobStore, ModuleArtifactDescriptor,
+        ModuleArtifactPackage, ModuleDependencyLockGraph, ModuleInstallationScope,
+        ModuleRuntimeBinding, ModuleRuntimeBindingKind, OciArtifactReference,
+        canonical_schema_digest,
     };
 
     struct DenyBroker;

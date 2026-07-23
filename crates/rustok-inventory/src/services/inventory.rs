@@ -849,11 +849,11 @@ struct InventoryState {
 #[cfg(test)]
 mod tests {
     use super::{
+        InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
+        InventoryReservationReleaseWriteResult, InventoryReservationWriteResult,
         insufficient_reservation_items_release_error, insufficient_reserved_release_error,
         stocked_quantity_for_available, validate_availability_request_quantity,
-        validate_release_quantity, validate_reservation_quantity, InventoryAvailabilityCheckResult,
-        InventoryQuantityWriteResult, InventoryReservationReleaseWriteResult,
-        InventoryReservationWriteResult,
+        validate_release_quantity, validate_reservation_quantity,
     };
 
     #[test]

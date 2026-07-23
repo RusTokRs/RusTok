@@ -17,9 +17,9 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::{
+    ArtifactReleaseRef, ControlPlaneInfrastructure,
     data::{now_expression, placeholder, uuid_value},
     promotion::{digest_json, valid_digest},
-    ArtifactReleaseRef, ControlPlaneInfrastructure,
 };
 
 const MAX_POLICY_REVISION_BYTES: usize = 128;
@@ -707,17 +707,19 @@ fn store_error(error: impl std::fmt::Display) -> ModuleArtifactSecurityError {
 #[cfg(test)]
 mod tests {
     use super::{
-        validate_transition, ModuleArtifactSecurityError, ModuleArtifactSecurityStatus,
-        SecurityAction,
+        ModuleArtifactSecurityError, ModuleArtifactSecurityStatus, SecurityAction,
+        validate_transition,
     };
 
     #[test]
     fn quarantine_and_revoke_transitions_are_distinct_and_revocation_is_terminal() {
-        assert!(validate_transition(
-            SecurityAction::Quarantine,
-            ModuleArtifactSecurityStatus::Clear
-        )
-        .is_ok());
+        assert!(
+            validate_transition(
+                SecurityAction::Quarantine,
+                ModuleArtifactSecurityStatus::Clear
+            )
+            .is_ok()
+        );
         assert!(matches!(
             validate_transition(
                 SecurityAction::ClearQuarantine,

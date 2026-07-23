@@ -112,7 +112,9 @@ base policy revision before the server accepts the final policy revision.
   schema-owned `DatabaseConnection`, and marketplace/cache paths use `ServerRuntimeContext`.
 - Build history, active build/release, and rollback GraphQL/native transports use the
   host-composed `rustok_build::SharedBuildControl`; the server owns event-aware rollback
-  composition and transports do not construct `BuildService` directly.
+  composition and transports do not construct `BuildService` directly. The
+  control returns typed framework-neutral `rustok-api` snapshots, so GraphQL
+  only wraps canonical facts and does not map SeaORM models.
 - Platform rollback streaming preserves the owner `BuildRolledBack` event as a
   distinct WebSocket/GraphQL event kind with requested/restored build, release
   predecessor transition, and actor facts. It is not mapped to a synthetic

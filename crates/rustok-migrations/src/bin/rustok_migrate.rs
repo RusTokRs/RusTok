@@ -77,7 +77,7 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_command, Command};
+    use super::{Command, parse_command};
 
     #[test]
     fn accepts_only_non_destructive_commands() {

@@ -12,12 +12,12 @@ mod mention_relation_tests {
     include!("mention_relation_tests.rs");
     include!("relation_quote_input_tests.rs");
 }
-mod quote_command;
-mod relation_quote_input;
-mod relation_read;
 pub mod moderation;
+mod quote_command;
 mod rbac;
 pub mod read_model;
+mod relation_quote_input;
+mod relation_read;
 mod reply {
     include!("reply.rs");
     include!("reply_inline.rs");

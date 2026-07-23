@@ -231,6 +231,8 @@ The ownership boundary is:
 
 ## Verification commands
 
+- Contract tests cover every public use case.
+
 ```bash
 cargo fmt --all -- --check
 cargo check -p rustok-rbac --all-features

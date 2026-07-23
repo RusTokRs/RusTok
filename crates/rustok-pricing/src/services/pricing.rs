@@ -1,5 +1,5 @@
-use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set, TransactionTrait,
@@ -15,8 +15,8 @@ use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 use rustok_product::{
-    dto::{ProductResponse, ProductTranslationResponse},
     CatalogService,
+    dto::{ProductResponse, ProductTranslationResponse},
 };
 
 use rustok_commerce_foundation::dto::PriceInput;

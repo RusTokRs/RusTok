@@ -4,9 +4,8 @@ use chrono::{Duration, Utc};
 use rustok_commerce::{
     entities::{checkout_marketplace_economics_checkpoint, checkout_operation},
     services::{
-        CheckoutMarketplaceEconomicsCheckpointError,
-        CheckoutMarketplaceEconomicsCheckpointJournal, CheckoutMarketplaceEconomicsEvidence,
-        CheckoutOperationStage, CheckoutOperationStatus,
+        CheckoutMarketplaceEconomicsCheckpointError, CheckoutMarketplaceEconomicsCheckpointJournal,
+        CheckoutMarketplaceEconomicsEvidence, CheckoutOperationStage, CheckoutOperationStatus,
         RecordCheckoutMarketplaceEconomicsCheckpoint,
     },
 };
@@ -42,20 +41,24 @@ impl TestDatabase {
 
         let backend = DbBackend::Sqlite;
         let schema = Schema::new(backend);
-        db.execute(backend.build(
-            &schema
-                .create_table_from_entity(checkout_operation::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ))
+        db.execute(
+            backend.build(
+                &schema
+                    .create_table_from_entity(checkout_operation::Entity)
+                    .if_not_exists()
+                    .to_owned(),
+            ),
+        )
         .await
         .unwrap();
-        db.execute(backend.build(
-            &schema
-                .create_table_from_entity(checkout_marketplace_economics_checkpoint::Entity)
-                .if_not_exists()
-                .to_owned(),
-        ))
+        db.execute(
+            backend.build(
+                &schema
+                    .create_table_from_entity(checkout_marketplace_economics_checkpoint::Entity)
+                    .if_not_exists()
+                    .to_owned(),
+            ),
+        )
         .await
         .unwrap();
 
@@ -81,9 +84,7 @@ impl TestDatabase {
             payment_collection_id: Set(None),
             attempt_count: Set(1),
             lease_owner: Set(Some(lease_owner.clone())),
-            lease_expires_at: Set(Some(
-                (Utc::now() + Duration::minutes(5)).fixed_offset(),
-            )),
+            lease_expires_at: Set(Some((Utc::now() + Duration::minutes(5)).fixed_offset())),
             last_error_code: Set(None),
             last_error_message: Set(None),
             created_at: Set(now),

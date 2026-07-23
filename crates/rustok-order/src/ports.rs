@@ -134,8 +134,7 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
             .await
             .map_err(order_checkout_identity_error_to_port_error)?
         {
-            if existing.source_cart_id.is_some()
-                && existing.source_cart_id != Some(request.cart_id)
+            if existing.source_cart_id.is_some() && existing.source_cart_id != Some(request.cart_id)
             {
                 return Err(PortError::conflict(
                     "order.checkout_identity_cart_conflict",
@@ -291,8 +290,7 @@ where
     rows.into_iter()
         .next()
         .map(|row| {
-            let payment_collection_id: Option<String> =
-                row.try_get("", "payment_collection_id")?;
+            let payment_collection_id: Option<String> = row.try_get("", "payment_collection_id")?;
             let shipping_option_id: Option<String> = row.try_get("", "shipping_option_id")?;
             Ok(LegacyCheckoutOrderCandidate {
                 order_id: row.try_get("", "id")?,
@@ -475,10 +473,11 @@ impl InProcessCheckoutCompletionPort {
         fallback_locale: Option<&str>,
     ) -> Result<OrderResponse, PortError> {
         match locale {
-            Some(locale) => self
-                .order_service
-                .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
-                .await,
+            Some(locale) => {
+                self.order_service
+                    .get_order_with_locale_fallback(tenant_id, order_id, locale, fallback_locale)
+                    .await
+            }
             None => self.order_service.get_order(tenant_id, order_id).await,
         }
         .map_err(order_error_to_port_error)
@@ -605,14 +604,13 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                         let Some(identity) = self
                             .read_identity_by_operation(&context, checkout_operation_id)
                             .await?
-                            .or(
-                                self.adopt_legacy_identity(
+                            .or(self
+                                .adopt_legacy_identity(
                                     &context,
                                     checkout_operation_id,
                                     request.cart_id,
                                 )
-                                .await?,
-                            )
+                                .await?)
                         else {
                             return Err(bind_error);
                         };
@@ -701,7 +699,9 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                     false,
                 )
             })?;
-        let order = self.load_order(tenant_id, identity.order_id, None, None).await?;
+        let order = self
+            .load_order(tenant_id, identity.order_id, None, None)
+            .await?;
         Ok(CheckoutCompletionSnapshot::from_response(
             &order,
             identity.payment_collection_id,
@@ -732,7 +732,9 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                     false,
                 )
             })?;
-        let order = self.load_order(tenant_id, identity.order_id, None, None).await?;
+        let order = self
+            .load_order(tenant_id, identity.order_id, None, None)
+            .await?;
         Ok(CheckoutCompletionSnapshot::from_response(
             &order,
             identity.payment_collection_id,
