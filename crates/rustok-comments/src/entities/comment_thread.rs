@@ -39,7 +39,10 @@ impl ActiveModelBehavior for ActiveModel {
     where
         C: ConnectionTrait,
     {
-        if insert {
+        // Status, timestamps, and other thread metadata updates must not start a
+        // counter write. The owner recomputation is activated only by the
+        // explicit counter refresh performed after a comment insert/delete.
+        if insert || !matches!(&self.comment_count, ActiveValue::Set(_)) {
             return Ok(self);
         }
 
@@ -50,9 +53,9 @@ impl ActiveModelBehavior for ActiveModel {
             DbErr::Custom("comment thread update requires tenant_id".to_string())
         })?;
 
-        // Serialize every thread mutation on the owner row before deriving the
-        // denormalized count. This replaces stale read-modify-write counters with
-        // an exact count taken inside the caller's transaction.
+        // Serialize explicit counter refreshes on the owner row before deriving
+        // the denormalized count. Service create/delete paths call this inside
+        // their surrounding database transaction.
         let lock = Entity::update_many()
             .col_expr(Column::UpdatedAt, Expr::col(Column::UpdatedAt).into())
             .filter(Column::Id.eq(thread_id))
