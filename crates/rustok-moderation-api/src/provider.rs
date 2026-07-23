@@ -42,6 +42,8 @@ impl ModerationSubjectAdapterKey {
 
 #[async_trait]
 pub trait ModerationSubjectCommandPort: Send + Sync {
+    fn key(&self) -> ModerationSubjectAdapterKey;
+
     async fn apply_moderation_decision(
         &self,
         context: PortContext,
@@ -85,8 +87,13 @@ pub enum ModerationSubjectAdapterRegistryError {
     DuplicateAdapter { module: String, kind: &'static str },
     #[error("moderation subject adapter factory `{module}/{kind}` is already registered")]
     DuplicateFactory { module: String, kind: &'static str },
-    #[error("moderation subject adapter factory key does not match the built adapter key")]
-    FactoryKeyMismatch,
+    #[error("moderation subject adapter factory declared `{declared_module}/{declared_kind}` but built `{built_module}/{built_kind}`")]
+    FactoryKeyMismatch {
+        declared_module: String,
+        declared_kind: &'static str,
+        built_module: String,
+        built_kind: &'static str,
+    },
     #[error("moderation subject adapter factory failed for `{module}/{kind}`: {error}")]
     FactoryBuild {
         module: String,
@@ -101,11 +108,18 @@ pub struct ModerationSubjectAdapterRegistry {
 }
 
 impl ModerationSubjectAdapterRegistry {
+    pub fn register<A>(&mut self, adapter: A) -> Result<(), ModerationSubjectAdapterRegistryError>
+    where
+        A: ModerationSubjectCommandPort + 'static,
+    {
+        self.register_arc(Arc::new(adapter))
+    }
+
     pub fn register_arc(
         &mut self,
-        key: ModerationSubjectAdapterKey,
         adapter: Arc<dyn ModerationSubjectCommandPort>,
     ) -> Result<(), ModerationSubjectAdapterRegistryError> {
+        let key = adapter.key();
         if self.adapters.contains_key(&key) {
             return Err(ModerationSubjectAdapterRegistryError::DuplicateAdapter {
                 module: key.module,
@@ -168,6 +182,20 @@ impl ModerationSubjectAdapterFactoryRegistry {
     }
 }
 
+pub fn register_moderation_subject_adapter<A>(
+    extensions: &mut ModuleRuntimeExtensions,
+    adapter: A,
+) -> Result<(), ModerationSubjectAdapterRegistryError>
+where
+    A: ModerationSubjectCommandPort + 'static,
+{
+    let registry = extensions
+        .get_or_insert_with::<Arc<ModerationSubjectAdapterRegistry>, _>(|| {
+            Arc::new(ModerationSubjectAdapterRegistry::default())
+        });
+    Arc::make_mut(registry).register(adapter)
+}
+
 pub fn register_moderation_subject_adapter_factory<F>(
     extensions: &mut ModuleRuntimeExtensions,
     factory: F,
@@ -190,7 +218,10 @@ pub fn materialize_moderation_subject_adapter_registry(
         .get::<Arc<ModerationSubjectAdapterFactoryRegistry>>()
         .cloned()
         .unwrap_or_else(|| Arc::new(ModerationSubjectAdapterFactoryRegistry::default()));
-    let mut adapters = ModerationSubjectAdapterRegistry::default();
+    let mut adapters = extensions
+        .get::<Arc<ModerationSubjectAdapterRegistry>>()
+        .map(|registry| registry.as_ref().clone())
+        .unwrap_or_default();
     for (declared, factory) in &factories.factories {
         let built = factory.build(host).map_err(|error| {
             ModerationSubjectAdapterRegistryError::FactoryBuild {
@@ -199,10 +230,16 @@ pub fn materialize_moderation_subject_adapter_registry(
                 error,
             }
         })?;
-        if factory.key() != *declared {
-            return Err(ModerationSubjectAdapterRegistryError::FactoryKeyMismatch);
+        let built_key = built.key();
+        if built_key != *declared {
+            return Err(ModerationSubjectAdapterRegistryError::FactoryKeyMismatch {
+                declared_module: declared.module.clone(),
+                declared_kind: declared.kind.as_str(),
+                built_module: built_key.module,
+                built_kind: built_key.kind.as_str(),
+            });
         }
-        adapters.register_arc(declared.clone(), built)?;
+        adapters.register_arc(built)?;
     }
     let adapters = Arc::new(adapters);
     extensions.insert(adapters.clone());
