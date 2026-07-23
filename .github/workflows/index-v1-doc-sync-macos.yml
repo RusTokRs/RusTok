@@ -26,7 +26,18 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Apply guarded documentation patch
-        run: python3 scripts/verify/sync-index-v1-docs-once.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/verify/sync-index-v1-docs-once.py 2>&1 | tee sync-diagnostic.txt
+      - name: Archive synchronization diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: index-v1-doc-sync-diagnostic-${{ github.sha }}
+          path: sync-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify and commit clean documentation diff
         shell: bash
         run: |
