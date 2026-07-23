@@ -16,6 +16,7 @@ const plan = read('crates/rustok-index/docs/implementation-plan.md');
 const benchmarkDoc = read('crates/rustok-index/docs/storage-benchmark.md');
 const benchmarkCargo = read('ops/benches/Cargo.toml');
 const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
+const benchmarkConnection = read('ops/benches/src/index_storage/connection.rs');
 const benchmarkSql = [
   'ops/benches/src/index_storage/sql/mod.rs',
   'ops/benches/src/index_storage/sql/source.rs',
@@ -102,6 +103,7 @@ for (const marker of [
   '- [x] Isolate every measured mutation in its own rolled-back transaction.',
   '- [x] Add committed update plus delete/reinsert churn cycles for every candidate.',
   '- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.',
+  '- [x] Pin every runner to one physical PostgreSQL connection',
   '- [ ] Run and archive 100k Product-locale row read, mutation, and maintenance',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
@@ -109,6 +111,14 @@ for (const marker of [
 }
 for (const marker of ['DatasetScale', 'Rows100k', 'Rows1m', 'LocaleKey::new', 'total_link_rows']) {
   if (!benchmarkConfig.includes(marker)) fail(`benchmark config missing ${marker}`);
+}
+for (const marker of ['min_connections(1)', 'max_connections(1)', 'sqlx_logging(false)']) {
+  if (!benchmarkConnection.includes(marker)) fail(`benchmark connection missing ${marker}`);
+}
+for (const runner of [benchmarkRunner, mutationRunner, maintenanceRunner]) {
+  if (!runner.includes('connect_benchmark_database')) {
+    fail('every benchmark runner must use the single-session connection helper');
+  }
 }
 for (const marker of [
   'Prototype::Jsonb',
@@ -122,6 +132,7 @@ for (const marker of [
   'update_product_batch',
   'delete_product_batch',
   'churn_cycle_sql',
+  'vacuum_statements',
   'VACUUM (ANALYZE)',
   'CREATE TABLE {schema}.link',
 ]) {
@@ -153,7 +164,8 @@ for (const marker of [
 for (const marker of [
   'churn_cycle_sql',
   'transaction.commit().await',
-  'VACUUM (ANALYZE)',
+  'for statement in vacuum_statements(prototype)',
+  'pg_stat_force_next_flush',
   'pg_stat_user_tables',
   'estimated_dead_tuples',
   'schema_bytes',
@@ -163,6 +175,9 @@ for (const marker of [
   if (!maintenanceRunner.includes(marker) && !benchmarkSql.includes(marker)) {
     fail(`maintenance benchmark missing ${marker}`);
   }
+}
+if (maintenanceRunner.includes('execute_unprepared(&vacuum_sql')) {
+  fail('VACUUM statements must not be combined into one implicit transaction');
 }
 for (const binary of [
   'index-storage-benchmark',
@@ -176,7 +191,7 @@ for (const binary of [
 if (!benchmarkDoc.includes('Production migrations: intentionally absent')) {
   fail('benchmark documentation must preserve the production-migration boundary');
 }
-if (!benchmarkDoc.includes('It deliberately does not use `VACUUM FULL`')) {
+if (!benchmarkDoc.includes('It does not run `VACUUM FULL`')) {
   fail('benchmark documentation must reject VACUUM FULL as a health assumption');
 }
 if (!benchmarkDoc.includes('Evidence runs: pending repository-owner execution')) {
