@@ -16,7 +16,14 @@ const plan = read('crates/rustok-index/docs/implementation-plan.md');
 const benchmarkDoc = read('crates/rustok-index/docs/storage-benchmark.md');
 const benchmarkCargo = read('ops/benches/Cargo.toml');
 const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
-const benchmarkSql = read('ops/benches/src/index_storage/sql.rs');
+const benchmarkSql = [
+  'ops/benches/src/index_storage/sql/mod.rs',
+  'ops/benches/src/index_storage/sql/source.rs',
+  'ops/benches/src/index_storage/sql/common.rs',
+  'ops/benches/src/index_storage/sql/jsonb.rs',
+  'ops/benches/src/index_storage/sql/eav.rs',
+  'ops/benches/src/index_storage/sql/hot.rs',
+].map(read).join('\n');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const serverDispatcher = read('apps/server/src/services/module_event_dispatcher.rs');
 
@@ -86,12 +93,14 @@ for (const marker of [
   '- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.',
   '- [x] Prototype normalized typed field-value rows.',
   '- [x] Prototype a specialized hot typed projection as the comparison baseline.',
+  '- [x] Verify source/candidate entity and link cardinality before timing.',
+  '- [x] Verify identical workload result digests across all candidates.',
   '- [ ] Run and archive 100k Product-locale row evidence.',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
   if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
 }
-for (const marker of ['DatasetScale', 'Rows100k', 'Rows1m', 'LocaleKey::new']) {
+for (const marker of ['DatasetScale', 'Rows100k', 'Rows1m', 'LocaleKey::new', 'total_link_rows']) {
   if (!benchmarkConfig.includes(marker)) fail(`benchmark config missing ${marker}`);
 }
 for (const marker of [
@@ -110,6 +119,9 @@ for (const marker of [
 for (const marker of [
   'EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)',
   'pg_total_relation_size',
+  'validate_cardinality',
+  'validate_semantic_parity',
+  'result_digest',
   'write_report',
 ]) {
   if (!benchmarkRunner.includes(marker)) fail(`benchmark runner missing ${marker}`);
