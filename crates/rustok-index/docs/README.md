@@ -9,7 +9,7 @@ without runtime fan-out.
 ## Purpose
 
 - publish canonical schema, mutation, query, source, and rebuild contracts;
-- keep ingestion, storage, query planning, rebuild, and consistency semantics in
+- keep ingestion, storage, planning, rebuild, and consistency semantics inside
   the module;
 - provide server, storefront, admin, and `rustok-search` with a stable substrate
   for cross-module filtering, projection, sorting, count, and pagination;
@@ -23,7 +23,7 @@ without runtime fan-out.
 - PostgreSQL storage and distributed coordination;
 - link-aware validation, planning, and SQL compilation;
 - cursor pagination, exact count, and bounded offset compatibility;
-- bootstrap, rebuild, checkpointing, reconciliation, and drift repair;
+- rebuild, checkpointing, reconciliation, and drift repair;
 - operator health, lag, failure, and rebuild controls.
 
 ## Excluded scope
@@ -32,7 +32,7 @@ without runtime fan-out.
 - typo tolerance, synonyms, autocomplete, and search UX;
 - external search-engine connectors;
 - source-module table reads from Index core;
-- source-specific Product, Content, or Flex logic in the generic engine.
+- source-specific Product, Content, or Flex logic in the engine.
 
 ## Rewrite policy
 
@@ -40,15 +40,24 @@ Backward compatibility with the rejected source-specific implementation is not
 a goal. Conflicting code, migrations, ports, adapters, tests, evidence, and
 documentation are deleted rather than preserved through compatibility layers.
 
-The old v1 read/rebuild ports, fallback adapters, FBA registry/evidence,
-catch-all document model, empty query services, and search-specific FTS helper
-have been removed. Source-specific indexers and migrations are the next M0
-deletion target.
+Deleted in M0 so far:
+
+- v1 read/rebuild ports, adapters, registry, and evidence;
+- `IndexDocument` / `DocumentType`;
+- Content/Product query placeholders;
+- Content/Product/Flex indexers and projection models;
+- all direct source-table SQL;
+- all legacy Index migrations, including the misplaced search table;
+- direct legacy table reads from Index admin;
+- source-domain Cargo dependencies.
+
+The only remaining compatibility tail is `traits.rs`, kept temporarily while
+server composition still creates `IndexerRuntimeConfig`.
 
 ## Status
 
 - Rewrite: `in_progress`
-- Current milestone: `M0/M1 - hard reset and domain core`
+- Current milestone: `M0/M1 - runtime-tail removal and domain core`
 - FFA: `in_progress`
 - FBA: `in_progress`
 - Active public core: `rustok_index::domain`
@@ -62,8 +71,6 @@ deletion target.
 - `cargo xtask module test index`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
-- PostgreSQL integration, property, planner snapshot, rebuild recovery, and
-  benchmark suites introduced by later milestones.
 
 ## Related documents
 
