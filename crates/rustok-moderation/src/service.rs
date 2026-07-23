@@ -11,13 +11,16 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::domain::{
-    ModerationCasePriority, ModerationCaseRecord, ModerationCaseStatus, ModerationDecisionKind,
-    ModerationDecisionRecord, ModerationQueueFilter, ModerationReasonCode, ModerationReportRecord,
-    ModerationReportStatus, ModerationReporterKind, ModerationScopeKind, ModerationScopeRef,
-    ModerationSubjectKind, ModerationSubjectRef, OpenModerationCaseCommand,
+    ModerationCasePriority, ModerationCaseRecord, ModerationCaseStatus, ModerationDecisionEffect,
+    ModerationDecisionKind, ModerationDecisionRecord, ModerationQueueFilter, ModerationReasonCode,
+    ModerationReportRecord, ModerationReportStatus, ModerationReporterKind, ModerationScopeKind,
+    ModerationScopeRef, ModerationSubjectKind, ModerationSubjectRef, OpenModerationCaseCommand,
     SubmitModerationReportCommand,
 };
-use crate::entities::{moderation_case, moderation_decision, moderation_event, moderation_report};
+use crate::entities::{
+    moderation_case, moderation_decision, moderation_decision_effect, moderation_event,
+    moderation_report,
+};
 use crate::error::{ModerationError, ModerationResult};
 
 const MAX_MODULE_BYTES: usize = 100;
@@ -72,12 +75,20 @@ impl ModerationService {
         tenant_id: Uuid,
         decision_id: Uuid,
     ) -> ModerationResult<Option<ModerationDecisionRecord>> {
-        moderation_decision::Entity::find_by_id(decision_id)
+        let Some(decision) = moderation_decision::Entity::find_by_id(decision_id)
             .filter(moderation_decision::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
-            .map(map_decision)
-            .transpose()
+        else {
+            return Ok(None);
+        };
+        let effect = moderation_decision_effect::Entity::find_by_id(decision_id)
+            .filter(moderation_decision_effect::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .map(parse_stored_effect)
+            .transpose()?;
+        map_decision(decision, effect).map(Some)
     }
 
     pub async fn list_queue_records(
@@ -362,6 +373,7 @@ pub(crate) fn map_case(model: moderation_case::Model) -> ModerationResult<Modera
 
 pub(crate) fn map_decision(
     model: moderation_decision::Model,
+    effect: Option<ModerationDecisionEffect>,
 ) -> ModerationResult<ModerationDecisionRecord> {
     Ok(ModerationDecisionRecord {
         id: model.id,
@@ -373,12 +385,30 @@ pub(crate) fn map_decision(
         reason_code: ModerationReasonCode::parse(model.reason_code.as_str()).ok_or_else(|| {
             ModerationError::Invariant("unknown stored decision reason".to_string())
         })?,
+        effect,
         policy_snapshot: model.policy_snapshot,
         subject_revision: model.subject_revision,
         decision_hash: model.decision_hash,
         decided_by: model.decided_by,
         decided_at: model.decided_at.with_timezone(&Utc),
     })
+}
+
+fn parse_stored_effect(
+    model: moderation_decision_effect::Model,
+) -> ModerationResult<ModerationDecisionEffect> {
+    let effect = serde_json::from_value::<ModerationDecisionEffect>(model.effect_payload).map_err(
+        |_| ModerationError::Invariant("stored moderation decision effect is invalid".to_string()),
+    )?;
+    if i32::from(effect.schema_version) != model.schema_version {
+        return Err(ModerationError::Invariant(
+            "stored moderation decision effect version does not match its envelope".to_string(),
+        ));
+    }
+    effect
+        .validate()
+        .map_err(|error| ModerationError::Invariant(error.to_string()))?;
+    Ok(effect)
 }
 
 fn normalize_subject(mut subject: ModerationSubjectRef) -> ModerationResult<ModerationSubjectRef> {
