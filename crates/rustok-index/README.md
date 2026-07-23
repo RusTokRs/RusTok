@@ -34,21 +34,41 @@ a rewrite goal.
 
 ## Rewrite status
 
-- Current milestone: `M1 - domain core and schema registry`
+- Current milestone: `M2 - PostgreSQL storage benchmark`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - M0 code reset: complete
+- M1 generic domain/application core: complete
 
-All legacy v1 ports, adapters, source indexers, projection models, migrations,
-runtime configuration, scheduler, errors, and server composition have been
-deleted. The active engine surface is the database-independent
-`rustok_index::domain` API.
+All legacy ports, adapters, source indexers, projections, migrations, runtime
+configuration, scheduler, errors, and server composition have been deleted.
+Production persistence is intentionally absent until M2 selects a physical
+storage model from PostgreSQL benchmark evidence.
 
-## Entry points
+## Current entry points
 
 - `IndexModule`
 - `rustok_index::domain::*`
-- `IndexSchema`, `IndexRecord`, `IndexMutation`, `IndexQuery`, and `FilterExpr`
+- `rustok_index::application::*`
+- `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
+- `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
+- `CursorCodec`, `IndexCursor`, and query-scope cursor validation
+
+## Implemented invariants
+
+- bounded lowercase identifiers;
+- ICU4X syntax and CLDR alias locale canonicalization;
+- stable order-independent schema fingerprints;
+- atomic versioned schema registration;
+- deterministic link-path resolution;
+- tenant/locale-scoped records and queries;
+- registry-backed type, cardinality, field, link, and operator validation;
+- bounded query complexity and pagination;
+- no ambiguous ordering through `many` links;
+- checksummed keyset cursors bound to tenant, schema, fingerprint, locale, and
+  order shape;
+- reference mutation/query engine and property-based invariants for future
+  PostgreSQL equivalence tests.
 
 ## Docs
 
