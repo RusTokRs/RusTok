@@ -1,0 +1,11 @@
+[module]
+slug = "social_graph"
+name = "Social Graph"
+version = "0.1.0"
+description = "Tenant-scoped social relation owner for blocks, mutes, follows, and friendship policy"
+ownership = "first_party"
+trust_level = "verified"
+ui_classification = "capability_only"
+
+[crate]
+entry_type = "SocialGraphModule"
