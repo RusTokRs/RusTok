@@ -7,9 +7,6 @@ license.workspace = true
 
 [dependencies]
 rustok-core.workspace = true
-rustok-api.workspace = true
-rustok-events.workspace = true
-rustok-product.workspace = true
 rustok-telemetry.workspace = true
 
 # Database
@@ -17,8 +14,8 @@ sea-orm.workspace = true
 sea-orm-migration.workspace = true
 
 # Async
-tokio.workspace = true
 async-trait.workspace = true
+tokio.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -26,8 +23,8 @@ serde_json.workspace = true
 rust_decimal.workspace = true
 
 # Types
-uuid.workspace = true
 chrono.workspace = true
+uuid.workspace = true
 
 # Logging
 tracing.workspace = true
