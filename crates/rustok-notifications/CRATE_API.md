@@ -29,6 +29,7 @@
 - `NotificationFanoutWorker`
 - `NotificationFanoutSourceWorkItem`
 - `NotificationFanoutJobWorkItem`
+- `NotificationFanoutPolicyDeferral`
 - `NotificationFanoutWorkerBatchResult`
 - `NotificationFanoutWorkerFailure`
 - `NotificationFanoutWorkerStage`
@@ -93,7 +94,9 @@ decoder validates envelope metadata/schema and maps supported envelopes into
 Accepted source inbox state and its receipt commit in one transaction. Permanent
 invalid envelopes enter `notification_outbox_intake_rejections`; retryable errors
 receive no terminal record. Receipts and rejections are both excluded from later
-selection and are database-enforced mutually exclusive outcomes.
+selection and are database-enforced mutually exclusive outcomes. Accepted replay
+re-decodes the current envelope and must match the persisted semantic source
+identity.
 
 ## Fanout contract
 
@@ -109,13 +112,27 @@ candidate persistence, and durable failure transitions.
 - selects pending, due retryable, or expired leased records in stable
   `created_at/id` order;
 - acquires no lease during selection;
-- delegates each selected record to the canonical service.
+- delegates enabled work to the canonical service.
 
-Executable hosts must establish tenant capability before invoking
+Executable hosts establish tenant capability before invoking
 `materialize_source_inbox` or `process_fanout_job`. The server uses
 `EffectiveModulePolicyService::is_enabled` for module slug `notifications` before
-every source and job call. Disabled or unresolved policy fails closed before
-producer provider execution.
+every source and job call.
+
+`NotificationFanoutPolicyDeferral` provides two owner-side CAS transitions before
+provider execution:
+
+- `TenantDisabled`: retry after 300 seconds with stable code
+  `NOTIFICATION_TENANT_CAPABILITY_DISABLED`;
+- `PolicyUnavailable`: retry after 30 seconds with stable code
+  `NOTIFICATION_TENANT_POLICY_UNAVAILABLE`.
+
+Both transitions set `retryable_error`, increment attempt count, clear lease
+fields, persist bounded error metadata, and set future `next_attempt_at`. The CAS
+requires the same tenant, record ID, prior attempt count, and current claimable
+state; a concurrent canonical claim is never overwritten. This removes disabled
+or unresolved tenant rows from the bounded queue head without calling a producer
+provider.
 
 Fanout creates pending candidates only. It creates neither final notification rows
 nor delivery attempts.
