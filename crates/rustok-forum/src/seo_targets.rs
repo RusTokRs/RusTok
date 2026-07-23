@@ -15,8 +15,8 @@ use uuid::Uuid;
 use crate::constants::topic_status;
 use crate::state_machine::TopicStatus;
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, ListTopicsFilter, TopicListItem,
-    TopicResponse, TopicService,
+    CategoryListItem, CategoryResponse, CategoryService, ForumError, ForumResult, ListTopicsFilter,
+    TopicListItem, TopicResponse, TopicService,
 };
 
 const BULK_FETCH_SIZE: u64 = 48;
@@ -52,16 +52,17 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = CategoryService::new(runtime.db.clone());
-        let category = service
-            .get_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-            )
-            .await
-            .ok();
+        let category = optional_category(
+            service
+                .get_with_locale_fallback(
+                    request.tenant_id,
+                    SecurityContext::system(),
+                    request.target_id,
+                    request.locale,
+                    Some(request.default_locale),
+                )
+                .await,
+        )?;
         Ok(category.map(map_category_response))
     }
 
@@ -214,16 +215,17 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
         request: SeoTargetLoadRequest<'_>,
     ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
         let service = TopicService::new(runtime.db.clone(), runtime.event_bus.clone());
-        let topic = service
-            .get_with_locale_fallback(
-                request.tenant_id,
-                SecurityContext::system(),
-                request.target_id,
-                request.locale,
-                Some(request.default_locale),
-            )
-            .await
-            .ok();
+        let topic = optional_topic(
+            service
+                .get_with_locale_fallback(
+                    request.tenant_id,
+                    SecurityContext::system(),
+                    request.target_id,
+                    request.locale,
+                    Some(request.default_locale),
+                )
+                .await,
+        )?;
         let Some(topic) = topic else {
             return Ok(None);
         };
@@ -371,6 +373,22 @@ impl SeoTargetProvider for ForumTopicSeoTargetProvider {
     }
 }
 
+fn optional_category(result: ForumResult<CategoryResponse>) -> AnyResult<Option<CategoryResponse>> {
+    match result {
+        Ok(category) => Ok(Some(category)),
+        Err(ForumError::CategoryNotFound(_)) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn optional_topic(result: ForumResult<TopicResponse>) -> AnyResult<Option<TopicResponse>> {
+    match result {
+        Ok(topic) => Ok(Some(topic)),
+        Err(ForumError::TopicNotFound(_)) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 async fn load_category_summary(
     service: &CategoryService,
     tenant_id: Uuid,
@@ -378,16 +396,17 @@ async fn load_category_summary(
     default_locale: &str,
     item: CategoryListItem,
 ) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let category = service
-        .get_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
+    let category = optional_category(
+        service
+            .get_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                item.id,
+                locale,
+                Some(default_locale),
+            )
+            .await,
+    )?;
     let Some(category) = category else {
         return Ok(None);
     };
@@ -407,16 +426,17 @@ async fn load_category_sitemap_candidate(
     default_locale: &str,
     item: CategoryListItem,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let category = service
-        .get_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            default_locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
+    let category = optional_category(
+        service
+            .get_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                item.id,
+                default_locale,
+                Some(default_locale),
+            )
+            .await,
+    )?;
     let Some(category) = category else {
         return Ok(None);
     };
@@ -436,16 +456,17 @@ async fn load_topic_summary(
     default_locale: &str,
     item: TopicListItem,
 ) -> AnyResult<Option<SeoBulkSummaryRecord>> {
-    let topic = service
-        .get_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
+    let topic = optional_topic(
+        service
+            .get_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                item.id,
+                locale,
+                Some(default_locale),
+            )
+            .await,
+    )?;
     let Some(topic) = topic else {
         return Ok(None);
     };
@@ -465,16 +486,17 @@ async fn load_topic_sitemap_candidate(
     default_locale: &str,
     item: TopicListItem,
 ) -> AnyResult<Option<SeoSitemapCandidateRecord>> {
-    let topic = service
-        .get_with_locale_fallback(
-            tenant_id,
-            SecurityContext::system(),
-            item.id,
-            default_locale,
-            Some(default_locale),
-        )
-        .await
-        .ok();
+    let topic = optional_topic(
+        service
+            .get_with_locale_fallback(
+                tenant_id,
+                SecurityContext::system(),
+                item.id,
+                default_locale,
+                Some(default_locale),
+            )
+            .await,
+    )?;
     let Some(topic) = topic else {
         return Ok(None);
     };
@@ -776,5 +798,51 @@ fn summarize_text(value: &str) -> Option<String> {
         None
     } else {
         Some(rustok_core::truncate(normalized.as_str(), 180))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::DbErr;
+
+    use super::*;
+
+    #[test]
+    fn forum_route_contract_remains_id_based() {
+        let topic_id = Uuid::new_v4();
+        let category_id = Uuid::new_v4();
+        assert!(parse_forum_route("/modules/forum?topic=welcome").unwrap().is_none());
+        assert!(parse_forum_route("/forum/welcome").unwrap().is_none());
+        assert!(matches!(
+            parse_forum_route(format!("/modules/forum?topic={topic_id}").as_str()).unwrap(),
+            Some(ForumRoute::Topic(id)) if id == topic_id
+        ));
+        assert!(matches!(
+            parse_forum_route(
+                format!("/en/modules/forum?category={category_id}").as_str()
+            )
+            .unwrap(),
+            Some(ForumRoute::Category(id)) if id == category_id
+        ));
+    }
+
+    #[test]
+    fn only_not_found_errors_become_empty_targets() {
+        assert!(
+            optional_topic(Err(ForumError::TopicNotFound(Uuid::new_v4())))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            optional_category(Err(ForumError::CategoryNotFound(Uuid::new_v4())))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            optional_topic(Err(ForumError::Database(DbErr::Custom(
+                "database unavailable".to_string()
+            ))))
+            .is_err()
+        );
     }
 }
