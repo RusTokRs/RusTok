@@ -50,8 +50,8 @@ const migrations = read("crates/rustok-notifications/src/migrations/mod.rs");
 const test = read("crates/rustok-notifications/tests/candidate_sqlite.rs");
 const workerTest = read("crates/rustok-notifications/tests/candidate_worker_sqlite.rs");
 
-if (contract.slice !== "NOTIFY-03B/07A" || contract.schema_version !== 7) {
-  failures.push("machine contract must identify NOTIFY-03B/07A schema 7");
+if (contract.slice !== "NOTIFY-03B/07A" || contract.schema_version !== 8) {
+  failures.push("machine contract must identify NOTIFY-03B/07A schema 8");
 }
 if (!contract.promoted_by_slices?.includes("NOTIFY-03H")) {
   failures.push("candidate policy contract must record NOTIFY-03H promotion");
@@ -71,10 +71,13 @@ if (contract.final_notification?.creates_delivery_attempts !== false
   || contract.final_notification?.tenant_policy_guard_same_transaction !== true) {
   failures.push("final notification transaction must include tenant guard and candidate completion without channel delivery");
 }
-if (contract.upstream_runtime?.candidate_commit_policy_revision_guard_delivered !== true
+if (contract.upstream_runtime?.candidate_observed_policy_revision_delivered !== true
+  || contract.upstream_runtime?.candidate_observed_manifest_defaults_delivered !== true
+  || contract.upstream_runtime?.candidate_commit_policy_revision_guard_delivered !== true
+  || contract.upstream_runtime?.candidate_guard_avoids_manifest_pool_read_inside_transaction !== true
   || contract.upstream_runtime?.candidate_guard_serializes_postgres_lifecycle_tenant_disable !== true
   || contract.upstream_runtime?.candidate_guard_atomic_with_manifest_or_security_mutation !== false) {
-  failures.push("candidate commit policy guard scope is invalid");
+  failures.push("candidate commit policy snapshot or guard scope is invalid");
 }
 
 for (const marker of [
@@ -114,6 +117,8 @@ for (const marker of [
   "pub trait NotificationRecipientPolicy",
   "pub trait NotificationTenantCapabilityCommitGuard",
   "pub struct NotificationCandidateService",
+  "observed_default_enabled_modules: Vec<String>",
+  "validate_default_enabled_modules",
   "new_with_commit_guard",
   "process_candidate_with_policy_revision",
   "NotificationTenantCapabilityCommitDecision::Disabled",
@@ -193,6 +198,7 @@ for (const marker of [
 }
 for (const marker of [
   "commit_policy_revision_change_rolls_back_notification_and_retries_candidate",
+  "observed_defaults",
   "NOTIFICATION_TENANT_POLICY_REVISION_CHANGED",
   "revision rejection must not create notifications",
 ]) {
