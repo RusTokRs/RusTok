@@ -42,6 +42,8 @@ use rustok_auth::graphql::{AuthMutation, AuthQuery, OAuthMutation, OAuthQuery};
 use rustok_blog::graphql::{BlogGraphqlRateLimitPolicy, BlogGraphqlRateLimiterHandle};
 #[cfg(feature = "mod-content")]
 use rustok_content::graphql::{NodeBodyLoader, NodeLoader, NodeTranslationLoader};
+#[cfg(feature = "mod-forum")]
+use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_mcp::graphql::{McpMutation, McpQuery};
 use rustok_rbac::graphql::{RbacGraphqlRoleWriterHandle, RbacMutation, RbacQuery};
 use rustok_search::graphql::{SearchGraphqlRateLimiterHandle, SearchMutationRoot, SearchQueryRoot};
@@ -185,6 +187,9 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         TenantNameLoader::new(db.clone()),
         tokio::spawn,
     ));
+
+    #[cfg(feature = "mod-forum")]
+    let builder = builder.extension(ForumGraphqlErrorExtension);
 
     #[cfg(feature = "mod-blog")]
     let builder = builder.extension(BlogGraphqlRateLimitPolicy::new(blog_rate_limiter));
