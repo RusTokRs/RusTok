@@ -5,13 +5,13 @@
 use rust_decimal::Decimal;
 use rustok_api::{PortActor, PortContext};
 use rustok_commerce::CommerceError;
+use rustok_commerce_foundation::dto::AdjustInventoryInput;
 use rustok_inventory::entities;
 use rustok_inventory::{
     InventoryAvailabilityRequest, InventoryIdentityReservationReleaseRequest,
     InventoryIdentityReservationRequest, InventoryReservationPort, InventoryService,
     in_process_inventory_reservation_identity_port,
 };
-use rustok_commerce_foundation::dto::AdjustInventoryInput;
 use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput,

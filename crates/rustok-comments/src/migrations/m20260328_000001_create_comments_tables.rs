@@ -157,11 +157,6 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(CommentBodies::Body).text().not_null())
                     .col(
-                        ColumnDef::new(CommentBodies::BodyFormat)
-                            .string_len(32)
-                            .not_null(),
-                    )
-                    .col(
                         ColumnDef::new(CommentBodies::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null()
@@ -250,7 +245,6 @@ enum CommentBodies {
     CommentId,
     Locale,
     Body,
-    BodyFormat,
     CreatedAt,
     UpdatedAt,
 }

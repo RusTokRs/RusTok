@@ -24,8 +24,7 @@ hasAll(manifest, ['[fba.provider]', 'registry = "contracts/comments-fba-registry
 
 const cargo = read('crates/rustok-comments/Cargo.toml');
 hasAll(cargo, [
-  '"dep:rustok-api"',
-  'rustok-api = { workspace = true, optional = true }',
+  'rustok-api.workspace = true',
   '"dep:rustok-events"',
   'rustok-events = { workspace = true, optional = true }',
   '"dep:rustok-outbox"',
@@ -34,6 +33,30 @@ hasAll(cargo, [
 
 const lib = read('crates/rustok-comments/src/lib.rs');
 hasAll(lib, ['pub mod ports;', 'pub use ports::*;', 'mod public_read;'], 'lib.rs');
+const dto = read('crates/rustok-comments/src/dto.rs');
+hasAll(dto, [
+  'use rustok_api::{RichTextDocument, RichTextView};',
+  'pub body: RichTextDocument',
+  'pub body: Option<RichTextDocument>',
+  'pub body: RichTextView',
+  'pub body_text: String',
+], 'comments richtext DTO');
+if (dto.includes('body_format') || dto.includes('content_json')) fail('comments DTO restored a removed richtext compatibility field');
+const bodyEntity = read('crates/rustok-comments/src/entities/comment_body.rs');
+if (bodyEntity.includes('body_format')) fail('comment body entity restored the removed format selector');
+const richtext = read('crates/rustok-comments/src/richtext.rs');
+hasAll(richtext, [
+  'RichTextProfile::Comment',
+  'serialize_comment_body',
+  'project_comment_body',
+], 'comments richtext owner adapter');
+const richtextContract = registry.richtext_contract;
+if (
+  richtextContract?.write !== 'rustok_api::RichTextDocument'
+  || richtextContract?.read !== 'rustok_api::RichTextView'
+  || richtextContract?.profile !== 'comment'
+  || richtextContract?.format_selector !== false
+) fail('comments richtext registry contract drift');
 
 const ports = read('crates/rustok-comments/src/ports.rs');
 const providerImpl = 'impl CommentsThreadPort for InProcessCommentsThreadProvider';

@@ -22,6 +22,7 @@ rustok-telemetry.workspace = true
 tracing.workspace = true
 utoipa = { workspace = true, features = ["uuid", "chrono"] }
 thiserror.workspace = true
+url.workspace = true
 uuid.workspace = true
 validator.workspace = true
 

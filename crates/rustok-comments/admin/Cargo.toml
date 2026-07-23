@@ -33,3 +33,6 @@ rustok-comments = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

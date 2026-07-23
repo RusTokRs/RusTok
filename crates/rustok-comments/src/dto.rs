@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use rustok_api::{RichTextDocument, RichTextView};
+
 #[cfg(feature = "server")]
 use sea_orm::entity::prelude::*;
 
@@ -41,8 +43,7 @@ pub struct CreateCommentInput {
     pub target_type: String,
     pub target_id: Uuid,
     pub locale: String,
-    pub body: String,
-    pub body_format: String,
+    pub body: RichTextDocument,
     pub parent_comment_id: Option<Uuid>,
     pub status: CommentStatus,
 }
@@ -50,8 +51,7 @@ pub struct CreateCommentInput {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateCommentInput {
     pub locale: String,
-    pub body: Option<String>,
-    pub body_format: Option<String>,
+    pub body: Option<RichTextDocument>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,8 +71,8 @@ pub struct CommentRecord {
     pub effective_locale: String,
     pub author_id: Uuid,
     pub parent_comment_id: Option<Uuid>,
-    pub body: String,
-    pub body_format: String,
+    pub body: RichTextView,
+    pub body_text: String,
     pub status: CommentStatus,
     pub position: i64,
     pub created_at: String,

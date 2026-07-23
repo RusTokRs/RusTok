@@ -76,7 +76,7 @@ impl CommentService {
 ```rust
 pub struct CreateCommentInput {
     pub locale: String,
-    pub content: String,
+    pub content: RichTextDocument,
     pub parent_comment_id: Option<Uuid>,
 }
 ```
@@ -85,7 +85,7 @@ pub struct CreateCommentInput {
 ```rust
 pub struct UpdateCommentInput {
     pub locale: String,
-    pub content: Option<String>,
+    pub content: Option<RichTextDocument>,
 }
 ```
 
@@ -107,11 +107,13 @@ pub struct ModerateCommentInput {
 ```rust
 pub struct CommentResponse {
     pub id: Uuid,
+    pub requested_locale: String,
     pub locale: String,
     pub effective_locale: String,
     pub post_id: Uuid,
     pub author_id: Option<Uuid>,
-    pub content: String,
+    pub content: RichTextView,
+    pub content_text: String,
     pub status: String,
     pub parent_comment_id: Option<Uuid>,
     pub created_at: String,

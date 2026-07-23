@@ -228,12 +228,14 @@ async fn groups_admin_upsert_application_policy_if_current_native(
         let expected_policy = command
             .expected_policy
             .map(|expected| {
-                Ok::<GroupApplicationPolicyPrecondition, ServerFnError>(GroupApplicationPolicyPrecondition {
-                    policy_id: Uuid::parse_str(&expected.policy_id)
-                        .map_err(|_| ServerFnError::new("policy_id must be a UUID"))?,
-                    revision: expected.revision,
-                    locale: expected.locale,
-                })
+                Ok::<GroupApplicationPolicyPrecondition, ServerFnError>(
+                    GroupApplicationPolicyPrecondition {
+                        policy_id: Uuid::parse_str(&expected.policy_id)
+                            .map_err(|_| ServerFnError::new("policy_id must be a UUID"))?,
+                        revision: expected.revision,
+                        locale: expected.locale,
+                    },
+                )
             })
             .transpose()?;
         let mut context = PortContext::new(

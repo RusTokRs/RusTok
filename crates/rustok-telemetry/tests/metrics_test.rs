@@ -230,7 +230,7 @@ fn test_multiple_services() {
 #[test]
 fn test_high_cardinality_labels() {
     // Test reasonable label cardinality (not too high)
-    let event_types = vec!["OrderCreated", "ProductCreated", "UserRegistered"];
+    let event_types = vec!["OrderCreated", "ProductCreated", "UserAccountRegistered"];
     let tenants = vec!["tenant-1", "tenant-2", "tenant-3"];
 
     for event_type in &event_types {

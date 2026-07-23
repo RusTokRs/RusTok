@@ -12017,10 +12017,12 @@ dependencies = [
  "rustok-commerce-admin",
  "rustok-core",
  "rustok-customer-admin",
+ "rustok-events-admin",
  "rustok-forum-admin",
  "rustok-fulfillment-admin",
  "rustok-graphql",
  "rustok-groups-admin",
+ "rustok-iggy-connector-admin",
  "rustok-index-admin",
  "rustok-installer",
  "rustok-inventory-admin",
@@ -12213,12 +12215,14 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "hex",
+ "schemars 1.2.1",
  "sea-orm",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
+ "utoipa",
  "uuid",
 ]
 
@@ -12641,6 +12645,7 @@ dependencies = [
  "rustok-ui-core",
  "rustok-ui-i18n-leptos",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -12800,6 +12805,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "url",
  "utoipa",
  "uuid",
  "validator",
@@ -12922,6 +12928,7 @@ dependencies = [
  "rustok-core",
  "rustok-customer",
  "rustok-email",
+ "rustok-events-module",
  "rustok-forum",
  "rustok-fulfillment",
  "rustok-groups",
@@ -12992,14 +12999,39 @@ name = "rustok-events"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "jsonschema 0.46.10",
  "rustok-telemetry",
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "ulid 2.0.1",
  "uuid",
+]
+
+[[package]]
+name = "rustok-events-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos-auth",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-graphql",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
+]
+
+[[package]]
+name = "rustok-events-module"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-core",
+ "sea-orm-migration",
 ]
 
 [[package]]
@@ -13220,7 +13252,7 @@ name = "rustok-iggy"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "postcard",
+ "rmp-serde",
  "rustok-core",
  "rustok-events",
  "rustok-iggy-connector",
@@ -13240,11 +13272,28 @@ dependencies = [
  "async-trait",
  "futures-util",
  "iggy",
+ "sea-orm-migration",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-iggy-connector-admin"
+version = "0.1.0"
+dependencies = [
+ "leptos 0.8.20",
+ "leptos-auth",
+ "leptos_axum",
+ "rustok-api",
+ "rustok-graphql",
+ "rustok-iggy-connector",
+ "rustok-ui-core",
+ "rustok-ui-transport",
+ "serde",
 ]
 
 [[package]]
@@ -13735,6 +13784,7 @@ dependencies = [
  "rustok-customer",
  "rustok-forum",
  "rustok-fulfillment",
+ "rustok-iggy-connector",
  "rustok-index",
  "rustok-inventory",
  "rustok-marketplace-allocation",
@@ -14833,6 +14883,7 @@ dependencies = [
  "rustok-fulfillment",
  "rustok-groups",
  "rustok-iggy",
+ "rustok-iggy-connector",
  "rustok-index",
  "rustok-installer",
  "rustok-installer-persistence",

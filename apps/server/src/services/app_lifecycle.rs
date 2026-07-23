@@ -450,6 +450,8 @@ mod tests {
             relay: OutboxRelay::new(db.clone(), Arc::new(MemoryTransport::new())),
         };
         let runtime = Arc::new(EventRuntime {
+            delivery_profile: crate::common::settings::EventDeliveryProfile::OutboxLocal,
+            iggy_mode: None,
             transport: Arc::new(OutboxTransport::new(db.clone())),
             listener_bus: EventBus::new(),
             relay_config: Some(relay_config),

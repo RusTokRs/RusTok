@@ -1,34 +1,37 @@
 # Documentation `rustok-iggy-connector`
 
 `rustok-iggy-connector` is the connection abstraction layer for the Iggy transport
-stack. It owns embedded/remote mode switching, connection lifecycle and
+stack. It owns bundled/external mode switching, connection lifecycle and
 low-level message I/O, without taking away transport-level semantics from `rustok-iggy`.
 
 ## Purpose
 
 - publish the canonical connector contract for the Iggy-based transport stack;
-- keep embedded/remote mode switching and lifecycle management in a separate crate;
+- keep bundled/external mode switching and lifecycle management in a separate crate;
 - provide `rustok-iggy` and other potential consumers with a unified low-level connector surface.
 
 ## Responsibilities
 
-- `IggyConnector`, `RemoteConnector`, `EmbeddedConnector`, `ConsumerCursor`;
+- `IggyConnector`, `ExternalConnector`, `BundledConnector`, `ConsumerCursor`;
 - `ConnectorConfig`, `PublishRequest`, `MessageSubscriber`, `SubscriberMessage`, `SubscriberMessageMetadata`, `ConnectorAckToken`, `ConnectorError`;
+- `IggyConnectorControl`, its secret-safe settings DTOs, and readiness snapshot;
 - connection lifecycle, mode abstraction and low-level publish/subscribe contracts;
-- real remote consumer-group cursors via the Iggy SDK; a cursor keeps receive
+- real external consumer-group cursors via the Iggy SDK; a cursor keeps receive
   and offset acknowledgement on the same backend consumer and permits only one
   outstanding delivery;
 - no ownership over transport-level serialization, DLQ, replay and topology policy;
 - connector metadata includes only low-level facts (`stream`, `topic`, `partition`, optional `offset`, `message_id`, `delivery_attempt`, opaque `ack_token`) and does not define retry/DLQ/replay rules;
-- `ConnectorAckToken` centralizes the simulated token and real Iggy SDK cursor token seam, and remote/embedded subscribers check scope token before ack without adding transport policy.
+- `ConnectorAckToken` centralizes the Iggy SDK cursor token seam, and subscribers check scope tokens before acknowledgement without adding transport policy.
 
 ## Integration
 
 - used by `rustok-iggy` as a low-level connection layer;
 - must remain a separate connector crate without transport/business semantics;
 - any changes to connector contracts must be synchronized with `rustok-iggy` docs and runtime expectations;
-- SDK-disabled simulation remains explicit and cannot supply a persistent
-  production consumer group.
+- disabled SDK support fails configuration explicitly and cannot supply a
+  persistent consumer group.
+- the module-owned migration persists only connection metadata and secret
+  references; the host adapter resolves values through `rustok-secrets`.
 
 ## Verification
 

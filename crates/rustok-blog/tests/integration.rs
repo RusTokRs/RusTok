@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::Permission;
+use rustok_api::{Permission, RichTextDocument};
 use rustok_blog::dto::CreateCommentInput;
 use rustok_blog::dto::{
     CreateCategoryInput, CreatePostInput, CreateTagInput, ListCategoriesFilter, ListCommentsFilter,
@@ -29,6 +29,17 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+fn richtext(text: &str) -> RichTextDocument {
+    serde_json::from_value(serde_json::json!({
+        "type": "doc",
+        "content": [{
+            "type": "paragraph",
+            "content": [{"type": "text", "text": text}]
+        }]
+    }))
+    .expect("test richtext")
+}
 
 #[tokio::test]
 async fn test_post_lifecycle() -> TestResult<()> {
@@ -743,9 +754,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
             post,
             CreateCommentInput {
                 locale: "en".to_string(),
-                content: "This comment should be persisted".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: richtext("This comment should be persisted"),
                 parent_comment_id: None,
             },
         )
@@ -754,7 +763,7 @@ async fn test_create_comment_succeeds_with_required_translation() -> TestResult<
     match result {
         Ok(comment) => {
             assert_eq!(comment.post_id, post);
-            assert_eq!(comment.content, "This comment should be persisted");
+            assert_eq!(comment.content_text, "This comment should be persisted");
             assert_eq!(comment.locale, "en");
         }
         Err(err) => {
@@ -821,9 +830,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             post_id,
             CreateCommentInput {
                 locale: "en".to_string(),
-                content: "Parent comment".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: richtext("Parent comment"),
                 parent_comment_id: None,
             },
         )
@@ -836,9 +843,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             post_id,
             CreateCommentInput {
                 locale: "fr".to_string(),
-                content: "Réponse imbriquée".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: richtext("Réponse imbriquée"),
                 parent_comment_id: Some(parent.id),
             },
         )
@@ -848,13 +853,13 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
     let fallback_en = comment_service
         .get_comment(tenant_id, child.id, "en")
         .await?;
-    assert_eq!(fallback_en.content, "Réponse imbriquée");
+    assert_eq!(fallback_en.content_text, "Réponse imbriquée");
     assert_eq!(fallback_en.effective_locale, "fr");
 
     let fallback_first = comment_service
         .get_comment(tenant_id, child.id, "de")
         .await?;
-    assert_eq!(fallback_first.content, "Réponse imbriquée");
+    assert_eq!(fallback_first.content_text, "Réponse imbriquée");
     assert_eq!(fallback_first.effective_locale, "fr");
 
     let updated = comment_service
@@ -864,13 +869,11 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             admin.clone(),
             UpdateCommentInput {
                 locale: "en".to_string(),
-                content: Some("Parent updated".to_string()),
-                content_format: None,
-                content_json: None,
+                content: Some(richtext("Parent updated")),
             },
         )
         .await?;
-    assert_eq!(updated.content, "Parent updated");
+    assert_eq!(updated.content_text, "Parent updated");
 
     let forbidden = comment_service
         .update_comment(
@@ -879,9 +882,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             outsider.clone(),
             UpdateCommentInput {
                 locale: "en".to_string(),
-                content: Some("Should fail".to_string()),
-                content_format: None,
-                content_json: None,
+                content: Some(richtext("Should fail")),
             },
         )
         .await
@@ -898,9 +899,7 @@ async fn test_comment_threaded_locale_fallback_update_delete_and_list() -> TestR
             admin.clone(),
             UpdateCommentInput {
                 locale: "en".to_string(),
-                content: Some("missing".to_string()),
-                content_format: None,
-                content_json: None,
+                content: Some(richtext("missing")),
             },
         )
         .await
@@ -1012,9 +1011,7 @@ async fn test_moderate_comment_with_blog_manage_permission() -> TestResult<()> {
             post_id,
             CreateCommentInput {
                 locale: "en".to_string(),
-                content: "Needs moderation".to_string(),
-                content_format: "markdown".to_string(),
-                content_json: None,
+                content: richtext("Needs moderation"),
                 parent_comment_id: None,
             },
         )

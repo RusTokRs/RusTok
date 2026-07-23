@@ -391,9 +391,11 @@
     "transport": {
       "label": "Queue implementation",
       "memory": "In-memory",
+      "outboxLocal": "Outbox (single-process delivery)",
+      "outboxIggy": "Outbox + Iggy",
+      "help": "This is one global server profile. The saved choice becomes active only after a controlled server restart.",
+      "iggyDeployment": "Iggy deployment mode: {mode}. Credentials and endpoints are managed in server deployment configuration, not in this screen.",
       "outbox": "Outbox (database)",
-      "iggyEmbedded": "Iggy — embedded",
-      "iggyExternal": "Iggy — external",
       "restartRequired": "Restart required to apply transport changes",
       "active": "Active transport",
       "moduleDisabledWarning": "The Iggy module is not enabled. Enable it on the Modules page before using this transport."
@@ -421,6 +423,8 @@
     },
     "status": {
       "title": "Runtime status",
+      "activeProfile": "Active profile",
+      "desiredProfile": "Profile after restart",
       "transport": "Active transport",
       "pendingEvents": "Pending events",
       "dlqEvents": "DLQ events",
@@ -430,7 +434,13 @@
     "saving": "Saving…",
     "saved": "Settings saved. Restart server to apply transport changes.",
     "error": "Failed to save settings",
-    "restart": "Restart server"
+    "restart": "Restart server",
+    "iggyConfiguration": {
+      "title": "Configure Iggy first",
+      "description": "outbox_iggy requires a ready bundled or external Iggy connection. Configure it in the Iggy Connector module, then return here and select this profile.",
+      "confirm": "Open Iggy Connector",
+      "cancel": "Cancel"
+    }
   },
   "modules": {
     "title": "Modules",

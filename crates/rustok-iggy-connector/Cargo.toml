@@ -11,15 +11,18 @@ tracing.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 futures-util.workspace = true
+uuid.workspace = true
 
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+sea-orm-migration = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enable Iggy SDK support (for full functionality)
 iggy = ["dep:iggy"]
+migrations = ["dep:sea-orm-migration"]
 
 [dependencies.iggy]
 version = "0.10.0"

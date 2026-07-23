@@ -165,9 +165,7 @@ pub(super) async fn replace_current_published_set_in_tx(
     };
     let bodies = match txn.get_database_backend() {
         DbBackend::Sqlite => body_query().all(txn).await?,
-        DbBackend::Postgres | DbBackend::MySql => {
-            body_query().lock_exclusive().all(txn).await?
-        }
+        DbBackend::Postgres | DbBackend::MySql => body_query().lock_exclusive().all(txn).await?,
     };
     for member in members {
         if !bodies

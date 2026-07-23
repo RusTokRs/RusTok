@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -17,7 +18,7 @@ type ListingContractFields<'a> = (
 
 macro_rules! marketplace_listing_event_contract {
     ($($variant:ident => $event_type:literal, $description:literal;)+) => {
-        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+        #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
         #[serde(tag = "type", content = "data")]
         pub enum MarketplaceListingEvent {
             $(

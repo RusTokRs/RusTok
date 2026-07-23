@@ -6,14 +6,15 @@ source_language: en
 entities:
   - config://apps/server/config/test.yaml#settings.rustok.events.relay_target
 last_verified_snapshot: snap_jsonl_00000021
-status: verified
+status: deprecated
 ---
 
-# Runtime Config Key `settings.rustok.events.relay_target`
+# Deprecated: `settings.rustok.events.relay_target`
 
 ## Purpose
 
-Document when this operational item is used, who owns it, and what successful execution or operation means.
+This key was removed. Use the single `settings.rustok.events.delivery_profile`
+selector.
 
 ## Contract
 

@@ -51,9 +51,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX registry_publish_build_staging_request_current_idx \
                  ON registry_publish_build_staging (request_id, component_digest, staged_at DESC)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "registry publish build staging does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "registry publish build staging does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

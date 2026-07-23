@@ -26,6 +26,27 @@ wire types belong to `rustok-api`; executable server policy belongs to
 `rustok-content`; each domain continues to own its rows, locale selection,
 permissions, revisions, events, and business rules.
 
+## Implementation status
+
+The boundary ADR is accepted. The first server foundation is implemented:
+
+- `rustok-api::richtext` owns the neutral ProseMirror/Tiptap document shape,
+  unversioned profile identifier, read-only view, Serde rejection of the
+  removed envelope/unknown structural fields, and the optional `RichText`
+  GraphQL scalar;
+- `rustok-content::richtext` owns the initial `article`, `discussion`, and
+  `comment` manifests, strict tree/attribute/link policy, deterministic
+  normalization, one safe HTML renderer, and one plain-text extractor;
+- shared fixtures live in
+  `crates/rustok-content/fixtures/richtext/`, with a committed profile
+  manifest and article HTML/plain-text projections.
+
+This is Phase 1 foundation evidence, not the owner cutover. Blog, Forum,
+Comments, orchestration, Search/Index, and both UI hosts still have to move
+atomically before the new policy becomes the only runtime write/read path.
+The old implementation is not a target compatibility contract and must not
+receive new call sites.
+
 ## Decisions fixed by this plan
 
 1. **One document, one editor.** A migrated field accepts and returns a typed
@@ -57,8 +78,9 @@ permissions, revisions, events, and business rules.
 
 ## Verified current state and inconsistencies
 
-The following facts were verified on 2026-07-22 and are implementation gaps,
-not target behavior:
+The following inventory was verified on 2026-07-22. Items explicitly marked
+resolved record completed slices; all others are implementation gaps, not
+target behavior:
 
 - the only working visual prototype is Tiptap 3.27.4 in
   `apps/next-admin/packages/blog/src/components/rt-json-editor.tsx`;
@@ -74,17 +96,19 @@ not target behavior:
 - the validator checks an allowlist but does not enforce the complete tree
   grammar, silently drops unknown content, preserves unrecognised fields, and
   does not use the platform locale contract;
-- direct `rustok-comments` writes validate only a format string and can bypass
-  document validation performed by the Blog adapter;
-- Blog, Forum, and Comments expose the same source twice as a string body and a
-  `content_json` value;
+- resolved 2026-07-23: direct `rustok-comments` writes accept only
+  `RichTextDocument` and always execute the owner-selected `comment` profile;
+- Blog posts and Forum still expose the same source twice as a string body and
+  a `content_json` value; Comments and the Blog comment consumer no longer do;
 - actual owner storage is `blog_post_translations`,
   `forum_topic_translations`, `forum_reply_bodies`, and `comment_bodies`; their
   rich JSON is serialized into `TEXT`, while locale is a separate column;
 - Forum deletion/revision/event logic still uses the literal `[deleted]` and
   `body_format = 'markdown'` as lifecycle signals;
-- content orchestration copies raw body/format pairs between Blog, Forum, and
-  Comments without validating the destination profile;
+- resolved for the Comments vertical 2026-07-23: content orchestration now
+  rejects conversions with comments/replies until Forum adopts canonical
+  richtext; raw Blog-post/Forum-topic conversion remains part of their pending
+  owner cutovers;
 - Blog and shared-content search projectors index the serialized JSON string;
 - the existing migration binary targets obsolete shared content rows, skips
   current owner tables and existing RT envelopes, mutates checkpoints during
@@ -255,6 +279,12 @@ profiles. Per-profile limits and exact heading levels are frozen in the shared
 machine-readable profile manifest before the cutover; Tiptap defaults do not
 implicitly expand the server schema.
 
+The initial manifest is now committed at
+`crates/rustok-content/fixtures/richtext/profiles.json`. Its limits are
+enforced by `rustok-content::richtext`; changing a node, mark, attribute, URL
+rule, or limit requires updating that fixture, the Rust policy tests, the
+browser extension manifest, and the owner migration evidence together.
+
 ## Browser editor and CSP design
 
 ### Shared runtime
@@ -269,6 +299,11 @@ and no bundled default silently expands the contract. The first runtime adds
 non-document helpers such as Placeholder and CharacterCount as needed, while
 Underline and other document-changing extensions remain disabled until their
 full server/render/plain-text contract is approved.
+
+The Link extension is configured to persist only the canonical `href`; its
+`target`, `rel`, and `class` defaults must be `null`. The server strips those
+null defaults and derives the profile-specific safe `rel` value during HTML
+projection, so a client cannot choose navigation or trust attributes.
 
 The package owns:
 
@@ -484,9 +519,13 @@ a named removal owner, and a calendar deadline. None is authorized by this plan.
 
 ### Phase 0 — freeze the boundary and prove the browser frame
 
+Status: boundary and ownership decision accepted; browser compatibility spike
+remains pending.
+
 Deliverables:
 
-- approve the richtext boundary ADR;
+- approve the richtext boundary ADR (complete; see
+  `DECISIONS/2026-07-22-richtext-capability-boundary.md`);
 - freeze `RichTextDocument`, `RichTextView`, the initial profile manifest, and
   accepted/rejected/render/plain-text fixtures;
 - create a complete legacy identifier/call-site/data inventory;
@@ -500,16 +539,28 @@ an atomic cutover task.
 
 ### Phase 1 — implement shared types, policy, and production projections
 
+Status: server contract and policy foundation implemented; the first owner
+vertical (Comments storage/service/read projections plus Blog consumer) is
+implemented, while Blog posts and Forum remain pending.
+
 Deliverables:
 
-- add neutral types/schema adapters to `rustok-api::richtext`;
+- add neutral types/schema adapters to `rustok-api::richtext` (complete for
+  Serde, structural schema, and the optional GraphQL scalar);
 - implement strict profiles, normalization, HTML rendering, and plain-text
-  extraction in `rustok-content::richtext`;
-- add property/fuzz/size-limit/security tests and cross-language fixtures;
+  extraction in `rustok-content::richtext` (complete for the initial manifest);
+- add property/fuzz/size-limit/security tests and cross-language fixtures
+  (size-limit, security, projection, and shared manifest fixtures are
+  complete; property/fuzz and browser conformance remain pending);
 - implement typed read-only HTML projection and shared display contract;
 - prepare owner adapters for validation, storage serialization, and search
   extraction;
 - make direct Comments writes impossible without the shared validator.
+- cut Comments over to canonical root JSON storage, remove its format selector,
+  and expose the shared HTML/plain-text projections (implemented);
+- keep Blog/Forum conversion boundaries fail-closed when the other owner still
+  stores legacy selectable formats (implemented for the current Comments
+  vertical; removed when Forum completes its cutover).
 
 Done when malicious/invalid documents fail closed, accepted fixtures produce
 one canonical serialization/HTML/plain-text result, and no frontend renderer is

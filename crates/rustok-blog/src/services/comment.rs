@@ -11,7 +11,7 @@ use rustok_comments::{
     SetCommentStatusRequest, UpdateCommentInput as DomainUpdateCommentInput,
     in_process_comments_thread_port,
 };
-use rustok_core::{SecurityActorKind, SecurityContext, prepare_content_payload};
+use rustok_core::{SecurityActorKind, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 use std::sync::Arc;
 
@@ -54,15 +54,6 @@ impl CommentService {
         }
 
         let locale = input.locale.clone();
-        let prepared = prepare_content_payload(
-            Some(&input.content_format),
-            Some(&input.content),
-            input.content_json.as_ref(),
-            &locale,
-            "Comment content",
-        )
-        .map_err(BlogError::validation)?;
-
         // A create call has no comment id yet. Use a per-command nonce so two
         // independent comments on the same post never share an idempotency key.
         let command_id = Uuid::new_v4();
@@ -81,8 +72,7 @@ impl CommentService {
                     target_type: TARGET_TYPE_BLOG_POST.to_string(),
                     target_id: post_id,
                     locale,
-                    body: prepared.body,
-                    body_format: prepared.format,
+                    body: input.content,
                     parent_comment_id: input.parent_comment_id,
                     status: DomainCommentStatus::Pending,
                 },
@@ -137,30 +127,9 @@ impl CommentService {
         input: UpdateCommentInput,
     ) -> BlogResult<CommentResponse> {
         let locale = input.locale.clone();
-        let domain_input = if input.content.is_some()
-            || input.content_json.is_some()
-            || input.content_format.is_some()
-        {
-            let prepared = prepare_content_payload(
-                input.content_format.as_deref(),
-                input.content.as_deref(),
-                input.content_json.as_ref(),
-                &locale,
-                "Comment content",
-            )
-            .map_err(BlogError::validation)?;
-
-            DomainUpdateCommentInput {
-                locale: locale.clone(),
-                body: Some(prepared.body),
-                body_format: Some(prepared.format),
-            }
-        } else {
-            DomainUpdateCommentInput {
-                locale: locale.clone(),
-                body: None,
-                body_format: None,
-            }
+        let domain_input = DomainUpdateCommentInput {
+            locale: locale.clone(),
+            body: input.content,
         };
 
         let record = self
@@ -368,14 +337,6 @@ impl CommentService {
         let post_id = Self::ensure_blog_target(&record)?;
         let requested_locale = record.requested_locale.clone();
         let effective_locale = record.effective_locale.clone();
-        let body = record.body;
-        let body_format = record.body_format;
-        let content_json = if body_format == "rt_json_v1" {
-            serde_json::from_str(&body).ok()
-        } else {
-            None
-        };
-
         Ok(CommentResponse {
             id: record.id,
             requested_locale: requested_locale.clone(),
@@ -383,9 +344,8 @@ impl CommentService {
             effective_locale,
             post_id,
             author_id: Some(record.author_id),
-            content: body,
-            content_format: body_format,
-            content_json,
+            content: record.body,
+            content_text: record.body_text,
             status: comment_status_label(record.status).to_string(),
             parent_comment_id: record.parent_comment_id,
             created_at: record.created_at,
@@ -519,11 +479,19 @@ fn comments_port_error_to_blog_error(error: PortError) -> BlogError {
 #[cfg(test)]
 mod rich_content_tests {
     use super::*;
+    use rustok_api::{RichTextDocument, RichTextView};
     use rustok_comments::CommentRecord;
 
     #[test]
-    fn map_comment_record_extracts_rt_json_content_json() {
-        let rich = serde_json::json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
+    fn map_comment_record_preserves_the_typed_projection() {
+        let document: RichTextDocument = serde_json::from_value(serde_json::json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Hello"}]
+            }]
+        }))
+        .expect("test richtext");
         let record = CommentRecord {
             id: Uuid::new_v4(),
             thread_id: Uuid::new_v4(),
@@ -533,8 +501,11 @@ mod rich_content_tests {
             effective_locale: "en".into(),
             author_id: Uuid::new_v4(),
             parent_comment_id: None,
-            body: rich.to_string(),
-            body_format: "rt_json_v1".into(),
+            body: RichTextView {
+                document: document.clone(),
+                html: "<p class=\"richtext-paragraph\">Hello</p>".into(),
+            },
+            body_text: "Hello".into(),
             status: DomainCommentStatus::Pending,
             position: 1,
             created_at: "2024-01-01T00:00:00Z".into(),
@@ -543,7 +514,7 @@ mod rich_content_tests {
 
         let response = CommentService::map_comment_record(record).expect("mapping should succeed");
 
-        assert_eq!(response.content_format, "rt_json_v1");
-        assert_eq!(response.content_json, Some(rich));
+        assert_eq!(response.content.document, document);
+        assert_eq!(response.content_text, "Hello");
     }
 }

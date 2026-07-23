@@ -35,6 +35,9 @@ members = [
     "crates/rustok-auth/cli",
     "crates/rustok-rbac/cli",
     "crates/rustok-outbox/admin",
+    "crates/rustok-events-module",
+    "crates/rustok-events-module/admin",
+    "crates/rustok-iggy-connector/admin",
     "crates/rustok-notifications/admin",
     "crates/rustok-notifications/storefront",
     "crates/rustok-forum/admin",
@@ -115,6 +118,7 @@ tera = "2.0"
 serde_yaml = "0.9"
 toml = "1.0.7"
 postcard = { version = "1", default-features = false, features = ["use-std"] }
+rmp-serde = "1.3"
 csv = "1.3"
 
 # Validation
@@ -219,6 +223,7 @@ rig-vertexai = "=0.40.0"
 rustok-core = { path = "crates/rustok-core" }
 rustok-modules = { path = "crates/rustok-modules" }
 rustok-events = { path = "crates/rustok-events" }
+rustok-events-module = { path = "crates/rustok-events-module" }
 rustok-commerce-foundation = { path = "crates/rustok-commerce-foundation" }
 rustok-commerce = { path = "crates/rustok-commerce" }
 rustok-marketplace = { path = "crates/rustok-marketplace" }

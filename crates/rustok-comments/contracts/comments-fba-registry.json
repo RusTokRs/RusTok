@@ -4,6 +4,14 @@
   "role": "provider",
   "status": "boundary_ready",
   "contract_version": "comments.thread.v1",
+  "richtext_contract": {
+    "write": "rustok_api::RichTextDocument",
+    "read": "rustok_api::RichTextView",
+    "plain_text_projection": "CommentRecord.body_text",
+    "profile": "comment",
+    "storage": "canonical_prosemirror_json",
+    "format_selector": false
+  },
   "ports": [
     {
       "name": "CommentsThreadPort",
@@ -89,12 +97,12 @@
       {
         "operation": "create_comment",
         "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]
       },
       {
         "operation": "get_comment",
         "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"]
       },
       {
         "operation": "list_comments_for_target",
@@ -109,7 +117,7 @@
       {
         "operation": "update_comment",
         "profiles": ["in_process", "remote_adapter_placeholder"],
-        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]
+        "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]
       },
       {
         "operation": "set_comment_status",

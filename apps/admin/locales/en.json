@@ -458,8 +458,6 @@
       "label": "Queue implementation",
       "memory": "In-memory",
       "outbox": "Outbox (database)",
-      "iggyEmbedded": "Iggy — embedded",
-      "iggyExternal": "Iggy — external",
       "restartRequired": "Restart required to apply transport changes",
       "active": "Active transport",
       "moduleDisabledWarning": "The Iggy module is not enabled. Enable it on the Modules page before using this transport."

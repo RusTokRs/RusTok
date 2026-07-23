@@ -26,10 +26,11 @@
       "function": "create_comment",
       "markers": [
         "ensure_post_exists",
-        "prepare_content_payload",
         "comments_thread_port",
         "create_comment",
         "comments_write_port_context",
+        "DomainCreateCommentInput",
+        "body: input.content",
         "map_comment_record"
       ]
     },
@@ -48,7 +49,8 @@
       "operation": "update_comment",
       "function": "update_comment",
       "markers": [
-        "prepare_content_payload",
+        "DomainUpdateCommentInput",
+        "body: input.content",
         "comments_thread_port",
         "update_comment",
         "comments_write_port_context",
@@ -91,6 +93,16 @@
         "const TARGET_TYPE_BLOG_POST",
         "Self::ensure_blog_target",
         "BlogError::comment_not_found"
+      ]
+    },
+    {
+      "name": "typed richtext comments consumer",
+      "path": "crates/rustok-blog/src/dto/comment.rs",
+      "markers": [
+        "pub content: RichTextDocument",
+        "pub content: Option<RichTextDocument>",
+        "pub content: RichTextView",
+        "pub content_text: String"
       ]
     },
     {

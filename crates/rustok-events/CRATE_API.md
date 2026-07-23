@@ -15,6 +15,9 @@
 - `pub fn event_schemas() -> impl Iterator<Item = &'static EventSchema>`
 - `pub fn domain_event_json_schema() -> serde_json::Value`
 - `pub fn event_envelope_json_schema() -> serde_json::Value`
+- `pub fn contract_event_payload_json_schema() -> serde_json::Value`
+- `pub fn contract_event_envelope_json_schema() -> serde_json::Value`
+- `pub fn event_contract_digests() -> EventContractDigests`
 
 ## Events
 - Publishes: N/A (event contracts only).
@@ -22,6 +25,9 @@
 - Established root events use `DomainEvent`/`EventEnvelope`.
 - Bounded event families use sealed `EventContract` implementations and `ContractEventEnvelope`.
 - `ForumMentionEvent` defines v1 `forum.mention.user_added` and `forum.mention.audience_added` with source revision and target identity only.
+- `DomainEvent::UserAccountRegistered` defines v1
+  `user.account_registered` with only `user_id`; contact data remains private
+  to the auth/user owner.
 
 ## Dependencies on Other RusToK Crates
 - `rustok-telemetry`
@@ -40,6 +46,8 @@
 ### Input DTOs/Commands
 - Event input is defined by the public event enums and envelope constructors.
 - All public payload field changes are breaking unless a new schema version and consumer migration plan are provided.
+- The committed `contracts/event-contract-digests.json` artifact must match the
+  registry and every root/typed transport wire schema.
 
 ### Domain Invariants
 - Every root and typed-family event validates before durable publication and again after
@@ -49,12 +57,16 @@
 - Root envelope trace identifiers must be non-empty and at most 512 bytes.
 - `payload` and `into_payload` fail closed when semantic or schema validation fails.
 - Forum mention events expose source revision and resolved user/audience identity only; contact and rendered content remain owner-private.
+- User-account registration events expose identity only; email addresses and
+  every other contact attribute must not enter the shared event stream.
 - Marketplace listing events expose only stable identity/scope/version fields; moderation prose and arbitrary metadata remain owner-private.
 
 ### Events / Outbox Side Effects
 - Owner modules publish sealed contracts through `TransactionalEventBus::publish_contract_in_tx` inside the owner transaction.
 - Root and bounded-family envelopes remain distinct typed transport profiles.
 - Event payload and event-type format must remain backward-compatible for cross-module consumers.
+- The current release train permits only schema version 1. A versioned migration
+  requires an accepted ADR and a durable remote-consumer delivery contract first.
 
 ### Errors / Failure Codes
 - `EventValidationError`, `EventEnvelopeError`, and `EventContractEnvelopeError` define stable validation classes.

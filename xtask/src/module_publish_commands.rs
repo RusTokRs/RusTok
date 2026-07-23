@@ -17,9 +17,9 @@ pub(crate) fn module_publish_command(args: &[String]) -> Result<()> {
     let live_registry_url = if dry_run {
         None
     } else {
-        Some(registry_url.clone().with_context(
-            || "Live module publish requires --registry-url or RUSTOK_MODULE_REGISTRY_URL",
-        )?)
+        Some(registry_url.clone().with_context(|| {
+            "Live module publish requires --registry-url or RUSTOK_MODULE_REGISTRY_URL"
+        })?)
     };
     let live_auth_token = if dry_run {
         None

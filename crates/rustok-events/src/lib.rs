@@ -21,7 +21,9 @@ pub use marketplace_seller::{
     MARKETPLACE_SELLER_EVENT_SCHEMAS, MarketplaceSellerEvent, marketplace_seller_event_schema,
 };
 pub use schema::{
-    EVENT_SCHEMAS, EventSchema, FieldSchema, domain_event_json_schema, event_envelope_json_schema,
+    EVENT_SCHEMAS, EventContractDigests, EventSchema, FieldSchema,
+    contract_event_envelope_json_schema, contract_event_payload_json_schema,
+    domain_event_json_schema, event_contract_digests, event_envelope_json_schema,
 };
 pub use types::{DomainEvent, EventEnvelope, EventEnvelopeError};
 pub use validation::{EventValidationError, ValidateEvent};

@@ -54,6 +54,20 @@ Publisher must not treat the event bus as its read-model API.
 
 `rustok-outbox` remains a `Core` module, not a support utility.
 
+### Global delivery profiles
+
+The server selects one process-wide delivery profile, never a tenant-specific
+broker setting. `memory` is local development/test delivery; `outbox_local` is
+the durable single-node production path; and `outbox_iggy` is the durable
+high-throughput/multi-process path. Both outbox profiles write business state
+and the outbox record atomically. Only `outbox_iggy` depends on Iggy.
+
+The desired profile is persisted separately from tenant `platform_settings`
+and becomes active after a controlled restart. The runtime does not fall back
+from `outbox_iggy` to memory when Iggy is unavailable; it fails explicitly so
+operators cannot mistake a degraded topology for a healthy one. Deployment
+secrets and Iggy endpoints stay outside the operator profile UI.
+
 ### Consumer
 
 Consumer:
@@ -63,7 +77,8 @@ Consumer:
   assumptions
 - must not break the publisher's write-side contract
 - must accept only envelopes that have been revalidated after decoding; JSON and
-  Postcard decoders are part of this trust boundary
+  MessagePack decoders are part of this trust boundary. JSON represents timestamps
+  as RFC 3339 strings; MessagePack represents them as UTC microseconds.
 
 ## Module Event Listeners
 
@@ -133,6 +148,42 @@ processing key and DB constraint are needed. For example, event-triggered workfl
 execution uses `(workflow_id, trigger_event_id)` and on redelivery
 returns the already existing execution without re-running steps.
 
+## Event Schema Releases
+
+`rustok-events` publishes the contract schema artifact that covers the complete
+event registry plus root and typed transport wire schemas. Its committed digest
+baseline is a mandatory contract test: a field, serde shape, event type, or
+schema metadata change fails until the artifact is deliberately reviewed and
+updated.
+
+The current release train accepts version-1 event schemas only. A breaking
+payload change must use a new event type unless a future accepted ADR first
+names the migration owner, supported reader versions, durable consumer offsets,
+replay behavior, and retirement condition for the previous reader. Updating a
+digest never substitutes for that migration contract.
+
+## Remote Consumer Delivery
+
+Remote consumers use one persistent broker cursor for both receive and
+acknowledgement. An owner validates a delivery, persists a terminal result (or
+recognizes its own durable idempotent result), and only then commits the exact
+cursor offset. A processing, validation, or acknowledgement failure leaves the
+offset uncommitted and terminates the owner process so its deployment supervisor
+can restart it for redelivery.
+
+`rustok-module-build-dispatcher` is the first owner-specific implementation of
+this contract. In-memory consumer registries and per-partition re-subscribe
+acknowledgement APIs are not valid remote-consumer paths because they cannot
+prove that receive and acknowledgement use the same cursor.
+
+## Event Data Classification
+
+Shared event payloads contain only facts required by downstream owners. Contact
+data, rendered bodies, credentials, and mutable profile snapshots remain with
+their owner and must not be placed in durable transport records. For example,
+`user.account_registered` contains only `user_id`; consumers that need private
+user data must use the owning service's authorized read contract.
+
 ## What Not To Do
 
 - do not publish cross-module events bypassing the outbox if transactional
@@ -149,6 +200,7 @@ This central contract needs to be updated if any of the following changes:
 - the canonical publisher path
 - a consumer class
 - retry/runtime semantics
+- event schema release discipline
 - the role of `rustok-events` or `rustok-outbox`
 
 When doing so, first update the local docs of the publisher and consumer, then the central

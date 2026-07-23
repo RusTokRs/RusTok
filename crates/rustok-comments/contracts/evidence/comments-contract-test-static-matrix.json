@@ -4,11 +4,11 @@
   "status": "planned_cases_locked",
   "generated_from": "crates/rustok-comments/contracts/comments-fba-registry.json",
   "cases": [
-    {"operation": "create_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
-    {"operation": "get_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
+    {"operation": "create_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]},
+    {"operation": "get_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "richtext_view_projection", "server_plain_text_projection"]},
     {"operation": "list_comments_for_target", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved"]},
     {"operation": "list_public_comments_for_target", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection"]},
-    {"operation": "update_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
+    {"operation": "update_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"]},
     {"operation": "set_comment_status", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]},
     {"operation": "delete_comment", "profiles": ["in_process", "remote_adapter_placeholder"], "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"]}
   ],

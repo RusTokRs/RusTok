@@ -200,9 +200,7 @@ async fn find_current_publish_cursor_in_tx(
         page_publish_operation::Entity::find()
             .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
             .filter(page_publish_operation::Column::PageId.eq(page_id))
-            .filter(
-                page_publish_operation::Column::ArtifactSetHash.eq(current_artifact_set_hash),
-            )
+            .filter(page_publish_operation::Column::ArtifactSetHash.eq(current_artifact_set_hash))
             .filter(page_publish_operation::Column::ResultVersion.lte(current_page_version))
             .order_by_desc(page_publish_operation::Column::ResultVersion)
     };

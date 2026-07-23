@@ -17,6 +17,14 @@ and consumes API contracts. `apps/server` is the composition root, not a second
 shared API framework. Module resolvers, controllers, and domain ports remain
 with their owners.
 
+The first neutral richtext contract is now implemented in `src/richtext.rs`.
+`RichTextDocument` is the canonical ProseMirror/Tiptap root JSON shape,
+`RichTextProfileId` is an unversioned owner-selected identifier, and
+`RichTextView` carries server-derived HTML for reads. Serde rejects the removed
+version/locale envelope and unknown structural fields. The optional `server`
+feature exposes the document as the semantic `RichText` GraphQL scalar. This
+crate intentionally does not validate profiles, render HTML, or select locale.
+
 ## FFA/FBA boundary
 
 - FFA status: `not_started`
@@ -47,7 +55,9 @@ with their owners.
    **Done when:** the documentation and `verify:api:surface-contract` describe
    the same dependency direction and owner responsibilities.
 
-4. **Add the neutral richtext wire contract during the atomic cutover.** Own
+4. **Complete neutral richtext transport adoption during the atomic cutover.**
+   The structural contract is implemented; the remaining work is to adopt it
+   atomically in every owner transport. Own
    `RichTextDocument`, neutral `RichTextProfileId`, the read-only
    `RichTextView`, generated schema, and optional transport adapters without
    importing Tiptap or executable content policy. Validation, rendering,
@@ -56,6 +66,10 @@ with their owners.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and synchronized Blog/Forum/Comments transports.
+   **Current evidence:** `cargo test -p rustok-api` and
+   `cargo test -p rustok-api --features server` cover the structural contract,
+   removed envelope, unknown-field rejection, generated schema shape, and
+   GraphQL feature compilation.
    **Done when:** repository-owned transports use one typed document instead of
    a body string plus `content_json`, and this crate remains dependency-neutral.
 

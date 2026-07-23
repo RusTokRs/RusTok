@@ -14,10 +14,16 @@ column identifies the current canonical decision.
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [2026-07-23](./2026-07-23-global-event-delivery-profiles.md) | Global event delivery profiles | Accepted |
+| [2026-07-23](./2026-07-23-iggy-bundled-single-node-deployment.md) | Iggy bundled single-node deployment | Accepted |
+| [2026-07-23](./2026-07-23-event-messagepack-wire-format.md) | Event MessagePack wire format | Accepted |
+| [2026-07-23](./2026-07-23-user-registration-event-pii.md) | User-registration event PII boundary | Accepted |
+| [2026-07-23](./2026-07-23-remote-event-consumer-delivery.md) | Remote event consumer delivery | Accepted |
+| [2026-07-23](./2026-07-23-event-schema-release-discipline.md) | Event schema release discipline | Accepted |
 | [2026-07-22](./2026-07-22-artifact-security-state-boundary.md) | Artifact security state boundary | Accepted |
 | [2026-07-22](./2026-07-22-channel-binding-policy-boundary.md) | Channel binding policy boundary | Accepted |
 | [2026-07-22](./2026-07-22-effective-module-policy-decision.md) | Effective module policy decision | Accepted |
-| [2026-07-22](./2026-07-22-richtext-capability-boundary.md) | Richtext capability boundary and single-document contract | Proposed |
+| [2026-07-22](./2026-07-22-richtext-capability-boundary.md) | Richtext capability boundary and single-document contract | Accepted |
 | [2026-07-22](./2026-07-22-static-promotion-review-boundary.md) | Static promotion review boundary | Accepted |
 | [2026-07-18](./2026-07-18-rag-postgres-capability-profiles.md) | Athanor-owned RAG data plane | Accepted |
 | [2026-07-18](./2026-07-18-repository-connector-module-github-first.md) | Repository connector module with GitHub as the first provider | Accepted |

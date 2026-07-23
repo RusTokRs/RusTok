@@ -21,7 +21,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 
-use crate::common::settings::{EmailProvider, EventTransportKind, RustokSettings};
+use crate::common::settings::{EmailProvider, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };
@@ -263,7 +263,7 @@ pub async fn ready(
             .await,
         );
         checks.push(check_runtime_guardrails(&ctx).await);
-        if settings.events.transport == EventTransportKind::Outbox {
+        if settings.events.delivery_profile.uses_outbox() {
             checks.push(check_outbox_pending_lag(&ctx, settings).await);
         }
         checks.push(check_search_index_lag(&ctx, settings).await);
@@ -452,7 +452,7 @@ async fn check_required_database_schema(
 fn required_database_schema_tables(settings: &RustokSettings) -> Vec<&'static str> {
     let mut required_tables = vec!["tenants", "users"];
 
-    if settings.events.transport == EventTransportKind::Outbox {
+    if settings.events.delivery_profile.uses_outbox() {
         required_tables.push("sys_events");
     }
 
@@ -645,7 +645,7 @@ fn check_runtime_workers(
     ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> Vec<ReadinessCheck> {
-    let relay_required = settings.events.transport == EventTransportKind::Outbox
+    let relay_required = settings.events.delivery_profile.uses_outbox()
         && ctx
             .shared_get::<std::sync::Arc<event_transport_factory::EventRuntime>>()
             .and_then(|runtime| runtime.relay_config.clone())
@@ -1132,7 +1132,8 @@ mod tests {
             vec!["tenants", "users"]
         );
 
-        settings.events.transport = EventTransportKind::Outbox;
+        settings.events.delivery_profile =
+            crate::common::settings::EventDeliveryProfile::OutboxLocal;
         assert_eq!(
             required_database_schema_tables(&settings),
             vec!["tenants", "users", "sys_events"]

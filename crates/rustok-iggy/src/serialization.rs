@@ -41,19 +41,20 @@ impl EventSerializer for JsonSerializer {
 }
 
 #[derive(Debug, Default)]
-pub struct PostcardSerializer;
+pub struct MessagePackSerializer;
 
-impl EventSerializer for PostcardSerializer {
+impl EventSerializer for MessagePackSerializer {
     fn format(&self) -> SerializationFormat {
-        SerializationFormat::Postcard
+        SerializationFormat::MessagePack
     }
 
     fn serialize(&self, envelope: &EventEnvelope) -> Result<Vec<u8>> {
-        postcard::to_stdvec(envelope).map_err(|err| rustok_core::Error::External(err.to_string()))
+        rmp_serde::to_vec_named(envelope)
+            .map_err(|err| rustok_core::Error::External(err.to_string()))
     }
 
     fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
-        let envelope: EventEnvelope = postcard::from_bytes(payload)
+        let envelope: EventEnvelope = rmp_serde::from_slice(payload)
             .map_err(|err| rustok_core::Error::External(err.to_string()))?;
         envelope
             .validate_registered_schema()
@@ -62,11 +63,12 @@ impl EventSerializer for PostcardSerializer {
     }
 
     fn serialize_contract(&self, envelope: &ContractEventEnvelope) -> Result<Vec<u8>> {
-        postcard::to_stdvec(envelope).map_err(|err| rustok_core::Error::External(err.to_string()))
+        rmp_serde::to_vec_named(envelope)
+            .map_err(|err| rustok_core::Error::External(err.to_string()))
     }
 
     fn deserialize_contract(&self, payload: &[u8]) -> Result<ContractEventEnvelope> {
-        postcard::from_bytes(payload).map_err(|err| rustok_core::Error::External(err.to_string()))
+        rmp_serde::from_slice(payload).map_err(|err| rustok_core::Error::External(err.to_string()))
     }
 }
 
@@ -113,9 +115,9 @@ mod tests {
     }
 
     #[test]
-    fn postcard_serializer_format() {
-        let serializer = PostcardSerializer;
-        assert_eq!(serializer.format(), SerializationFormat::Postcard);
+    fn message_pack_serializer_format() {
+        let serializer = MessagePackSerializer;
+        assert_eq!(serializer.format(), SerializationFormat::MessagePack);
     }
 
     #[test]
@@ -131,11 +133,13 @@ mod tests {
 
         let json_str = String::from_utf8(bytes).unwrap();
         assert!(json_str.contains("node.created"));
+        let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert!(json["timestamp"].is_string());
     }
 
     #[test]
-    fn postcard_serialize_event() {
-        let serializer = PostcardSerializer;
+    fn message_pack_serialize_event() {
+        let serializer = MessagePackSerializer;
         let envelope = create_test_envelope();
 
         let result = serializer.serialize(&envelope);
@@ -158,8 +162,8 @@ mod tests {
     }
 
     #[test]
-    fn postcard_roundtrip() {
-        let serializer = PostcardSerializer;
+    fn message_pack_roundtrip() {
+        let serializer = MessagePackSerializer;
         let envelope = create_test_envelope();
 
         let bytes = serializer.serialize(&envelope).unwrap();
@@ -178,10 +182,12 @@ mod tests {
         assert_eq!(json_roundtrip.id(), envelope.id());
         assert_eq!(json_roundtrip.event_type(), envelope.event_type());
 
-        let postcard = PostcardSerializer;
-        let postcard_bytes = postcard.serialize_contract(&envelope).unwrap();
-        let postcard_roundtrip = postcard.deserialize_contract(&postcard_bytes).unwrap();
-        assert_eq!(postcard_roundtrip.id(), envelope.id());
-        assert_eq!(postcard_roundtrip.event_type(), envelope.event_type());
+        let message_pack = MessagePackSerializer;
+        let message_pack_bytes = message_pack.serialize_contract(&envelope).unwrap();
+        let message_pack_roundtrip = message_pack
+            .deserialize_contract(&message_pack_bytes)
+            .unwrap();
+        assert_eq!(message_pack_roundtrip.id(), envelope.id());
+        assert_eq!(message_pack_roundtrip.event_type(), envelope.event_type());
     }
 }

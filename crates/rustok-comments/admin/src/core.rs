@@ -158,7 +158,7 @@ impl CommentRowViewModel {
             id: comment.id.to_string(),
             author_id: comment.author_id.to_string(),
             created_at: comment.created_at.clone(),
-            body: comment.body.clone(),
+            body: comment.body_text.clone(),
             requested_locale: comment.requested_locale.clone(),
             effective_locale: comment.effective_locale.clone(),
         }
@@ -392,6 +392,14 @@ mod tests {
     }
 
     fn comment_record() -> CommentRecord {
+        let document = serde_json::from_value(serde_json::json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Moderation body"}]
+            }]
+        }))
+        .expect("test richtext");
         CommentRecord {
             id: Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap(),
             thread_id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
@@ -401,8 +409,11 @@ mod tests {
             effective_locale: "ru".to_string(),
             author_id: Uuid::parse_str("44444444-4444-4444-4444-444444444444").unwrap(),
             parent_comment_id: None,
-            body: "Moderation body".to_string(),
-            body_format: "plain_text".to_string(),
+            body: rustok_api::RichTextView {
+                document,
+                html: "<p class=\"richtext-paragraph\">Moderation body</p>".to_string(),
+            },
+            body_text: "Moderation body".to_string(),
             status: CommentStatus::Pending,
             position: 1,
             created_at: "2026-06-07T00:00:00Z".to_string(),

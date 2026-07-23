@@ -1,7 +1,7 @@
 # Richtext capability boundary and single-document contract
 
 - Date: 2026-07-22
-- Status: Proposed
+- Status: Accepted
 
 ## Context
 

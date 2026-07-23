@@ -127,9 +127,11 @@ impl MigrationTrait for Migration {
                 "CREATE INDEX registry_publish_alloy_staging_request_current_idx \
                  ON registry_publish_alloy_staging (request_id, artifact_digest, alloy_tenant_id, alloy_script_id, staged_at DESC)",
             ],
-            backend => return Err(DbErr::Migration(format!(
-                "registry external artifact staging does not support database backend {backend:?}"
-            ))),
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "registry external artifact staging does not support database backend {backend:?}"
+                )));
+            }
         };
         for statement in statements {
             manager

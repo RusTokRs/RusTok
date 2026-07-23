@@ -64,8 +64,9 @@ async function mountAdapter(page: Page) {
         error: (event as CustomEvent).detail?.error
       });
     });
-    (globalThis as typeof globalThis & { __flyEvents?: unknown[] }).__flyEvents =
-      events;
+    (
+      globalThis as typeof globalThis & { __flyEvents?: unknown[] }
+    ).__flyEvents = events;
 
     const url = URL.createObjectURL(
       new Blob([source], { type: 'text/javascript' })
@@ -130,10 +131,7 @@ async function dispatchCanvasMessage(
   );
 }
 
-async function installMockFetch(
-  page: Page,
-  responses: MockBrowserResponse[]
-) {
+async function installMockFetch(page: Page, responses: MockBrowserResponse[]) {
   await page.evaluate((configuredResponses) => {
     const requests: unknown[] = [];
     let responseIndex = 0;
@@ -144,7 +142,9 @@ async function installMockFetch(
     ).__flyRequests = requests;
     globalThis.fetch = async (input, init = {}) => {
       const body =
-        typeof init.body === 'string' ? JSON.parse(init.body) : init.body ?? null;
+        typeof init.body === 'string'
+          ? JSON.parse(init.body)
+          : (init.body ?? null);
       requests.push({
         input: String(input),
         method: init.method ?? 'GET',
@@ -173,13 +173,12 @@ async function emitBrowserIntent(
   return page.evaluate(
     async ({ intent, payload }) => {
       const root = document.querySelector('#fly-root');
-      if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+      if (!(root instanceof HTMLElement))
+        throw new Error('Fly root unavailable');
       const flyBrowser = (
         globalThis as typeof globalThis & {
           FlyBrowser?: {
-            mount?: (
-              root: Element
-            ) => {
+            mount?: (root: Element) => {
               emitIntent: (
                 intent: string,
                 payload: Record<string, unknown>
@@ -196,18 +195,18 @@ async function emitBrowserIntent(
   );
 }
 
-test('mount handshake exposes one browser adapter instance', async ({ page }) => {
+test('mount handshake exposes one browser adapter instance', async ({
+  page
+}) => {
   await mountAdapter(page);
 
   const state = await page.evaluate(() => ({
-    events: (
-      globalThis as typeof globalThis & { __flyEvents?: unknown[] }
-    ).__flyEvents,
-    mounted: document.querySelector('#fly-root')?.getAttribute(
-      'data-fly-browser-mounted'
-    ),
-    overlayCount: document.querySelectorAll('[data-fly-browser-overlay]')
-      .length
+    events: (globalThis as typeof globalThis & { __flyEvents?: unknown[] })
+      .__flyEvents,
+    mounted: document
+      .querySelector('#fly-root')
+      ?.getAttribute('data-fly-browser-mounted'),
+    overlayCount: document.querySelectorAll('[data-fly-browser-overlay]').length
   }));
 
   expect(state.events).toEqual([
@@ -222,9 +221,17 @@ test('canvas messages require the expected source, origin and instance', async (
 }) => {
   await mountAdapter(page);
 
-  await dispatchCanvasMessage(page, { type: 'ready' }, { origin: 'https://evil.example' });
+  await dispatchCanvasMessage(
+    page,
+    { type: 'ready' },
+    { origin: 'https://evil.example' }
+  );
   await dispatchCanvasMessage(page, { type: 'ready' }, { source: 'foreign' });
-  await dispatchCanvasMessage(page, { type: 'ready' }, { instanceId: 'canvas-b' });
+  await dispatchCanvasMessage(
+    page,
+    { type: 'ready' },
+    { instanceId: 'canvas-b' }
+  );
 
   await expect(page.locator('#fly-root')).not.toHaveAttribute(
     'data-fly-canvas-connected',
@@ -236,8 +243,7 @@ test('canvas messages require the expected source, origin and instance', async (
         (
           globalThis as typeof globalThis & { __flyEvents?: unknown[] }
         ).__flyEvents?.filter(
-          (event) =>
-            (event as { type?: string }).type === 'fly:canvas-message'
+          (event) => (event as { type?: string }).type === 'fly:canvas-message'
         ) ?? []
     )
   ).toEqual([]);
@@ -249,7 +255,9 @@ test('canvas messages require the expected source, origin and instance', async (
   );
 });
 
-test('sequence ordering rejects replayed teardown messages', async ({ page }) => {
+test('sequence ordering rejects replayed teardown messages', async ({
+  page
+}) => {
   await mountAdapter(page);
 
   await dispatchCanvasMessage(page, { type: 'ready' }, { sequence: 5 });
@@ -306,7 +314,9 @@ test('geometry and viewport messages drive scaled selection overlays', async ({
   await expect(overlay).toHaveCSS('display', 'none');
 });
 
-test('unmount removes overlays, listeners and connected state', async ({ page }) => {
+test('unmount removes overlays, listeners and connected state', async ({
+  page
+}) => {
   await mountAdapter(page);
   await dispatchCanvasMessage(page, { type: 'ready' }, { sequence: 1 });
 
@@ -365,7 +375,9 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
     const root = document.querySelector('#fly-root');
     const adapter = (
       globalThis as typeof globalThis & {
-        FlyBrowser?: { mount?: (root: Element) => { draftSession?: unknown } | null };
+        FlyBrowser?: {
+          mount?: (root: Element) => { draftSession?: unknown } | null;
+        };
       }
     ).FlyBrowser?.mount?.(root as Element);
     return {
@@ -375,9 +387,8 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
       requests: (
         globalThis as typeof globalThis & { __flyRequests?: unknown[] }
       ).__flyRequests,
-      events: (
-        globalThis as typeof globalThis & { __flyEvents?: unknown[] }
-      ).__flyEvents
+      events: (globalThis as typeof globalThis & { __flyEvents?: unknown[] })
+        .__flyEvents
     };
   });
 
@@ -436,7 +447,9 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
         FlyBrowser?: {
           mount?: (
             root: Element
-          ) => { draftSession?: { token?: string; generation?: number } } | null;
+          ) => {
+            draftSession?: { token?: string; generation?: number };
+          } | null;
         };
       }
     ).FlyBrowser?.mount?.(root as Element);
@@ -446,7 +459,9 @@ test('stale save conflict preserves optimistic state and refreshed retry advance
       draftSession: adapter?.draftSession ?? null,
       requests: (
         globalThis as typeof globalThis & { __flyRequests?: unknown[] }
-      ).__flyRequests
+      ).__flyRequests,
+      events: (globalThis as typeof globalThis & { __flyEvents?: unknown[] })
+        .__flyEvents
     };
   });
 

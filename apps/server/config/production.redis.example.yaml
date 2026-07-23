@@ -80,9 +80,9 @@ settings:
       outbox_max_pending_lag_seconds: 300
       search_max_lag_seconds: 300
     events:
-      transport: outbox
-      relay_target: iggy
-      allow_relay_target_fallback: false
+      # Durable transactional persistence with single-process local delivery.
+      # Select `outbox_iggy` only after provisioning Iggy in this deployment.
+      delivery_profile: outbox_local
       relay_interval_ms: 1000
       channel_capacity: 512
       backpressure:

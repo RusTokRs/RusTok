@@ -1,0 +1,22 @@
+[module]
+slug = "events"
+name = "Events"
+version = "0.1.0"
+description = "Platform event contracts, delivery profile control, and transport orchestration."
+ownership = "first_party"
+trust_level = "core"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin", "next-admin"]
+
+[crate]
+entry_type = "EventsModule"
+
+[provides.admin_ui]
+leptos_crate = "rustok-events-admin"
+route_segment = "events"
+nav_label = "Events"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

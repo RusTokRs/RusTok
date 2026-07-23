@@ -2,12 +2,27 @@
 
 ## Current state
 
-`rustok-iggy-connector` owns low-level embedded/remote connection lifecycle,
+`rustok-iggy-connector` owns low-level bundled/external connection lifecycle,
 publish/subscribe I/O, and connector metadata. `ConnectorAckToken` provides
-scoped simulated and Iggy SDK token shapes. Current remote and embedded
-subscribers emit canonical `sim:*` tokens; the real Iggy SDK receive/commit
-path is not yet wired. Simulation remains an explicit supported connector mode,
-not evidence of a real offset commit.
+scoped simulated and Iggy SDK token shapes. The external connector opens one SDK
+consumer-group cursor that receives and commits the exact pending message
+offset. Bundled mode starts the module-packaged Iggy process and delegates all
+I/O to the same real SDK path as external mode; no in-memory broker is
+implemented. The public mode contract is now exactly `bundled | external`.
+
+## FFA/FBA boundary
+
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Structural shape: owner-owned Leptos admin package mounted through
+  `rustok-module.toml`, with a sibling module-owned Next admin package.
+- Leptos uses native `#[server]` functions as its primary path and keeps the
+  GraphQL contract in parallel. The Next surface consumes the same GraphQL
+  query and mutation.
+- The connector owns singleton persistence, bundled artifact availability,
+  readiness validation, and secret-safe external credential references.
+- Runtime mode changes remain restart-boundary operations; no hot swap or
+  implicit fallback is implemented.
 
 ## Boundary and dependencies
 
@@ -20,10 +35,9 @@ not evidence of a real offset commit.
 
 ## Next results
 
-1. **Wire real Iggy SDK receive and commit.** Build `ConnectorAckToken::iggy_sdk`
-   from the SDK subscriber cursor, validate its scope, and commit precisely that
-   cursor in the remote and embedded adapters. Done when SDK-backed tests prove
-   receive, ack, reconnect, and persisted offset behavior.
+1. **Verify real Iggy SDK receive and commit.** Prove that the external SDK
+   cursor receives, acknowledges, reconnects, and preserves its committed
+   offset in both bundled and external integration environments.
 2. **Harden lifecycle failure behavior.** Define and test reconnect/backoff,
    authentication, TLS, topology, batching, and shutdown semantics for both
    modes. Done when a connector failure has typed behavior and no implicit
@@ -32,13 +46,15 @@ not evidence of a real offset commit.
    lifecycle runbook covering mode selection, credentials, TLS, connection
    loss, and recovery. Done when operators can diagnose a disconnected or
    stalled subscriber without inspecting transport policy.
+4. **Complete packaging evidence.** Prove that bundled distributions install
+   the pinned `iggy-server` artifact and external-only distributions omit it.
 
 ## Verification
 
 - Contract tests cover every public use case.
 - `node scripts/verify/verify-iggy-connector-source.mjs`
 - `cargo test -p rustok-iggy-connector --lib`
-- Embedded and remote Iggy SDK integration tests for receive, scoped ack,
+- Bundled and external Iggy SDK integration tests for receive, scoped ack,
   reconnect, TLS/auth failure, and shutdown.
 
 ## References

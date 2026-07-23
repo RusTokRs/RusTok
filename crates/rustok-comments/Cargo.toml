@@ -14,7 +14,6 @@ server = [
   "dep:rustok-core",
   "dep:rustok-events",
   "dep:rustok-outbox",
-  "dep:rustok-api",
   "dep:rustok-telemetry",
   "dep:sea-orm",
   "dep:sea-orm-migration",
@@ -29,7 +28,7 @@ rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
 rustok-events = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
-rustok-api = { workspace = true, optional = true }
+rustok-api.workspace = true
 rustok-telemetry = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }

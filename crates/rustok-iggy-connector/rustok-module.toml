@@ -1,0 +1,21 @@
+[module]
+slug = "iggy_connector"
+name = "Iggy Connector"
+version = "0.1.0"
+description = "Selectable bundled or external Iggy connectivity for event delivery."
+ownership = "first_party"
+trust_level = "verified"
+runtime = "extension"
+ui_classification = "admin_only"
+recommended_admin_surfaces = ["leptos-admin", "next-admin"]
+showcase_admin_surfaces = ["next-admin"]
+
+[provides.admin_ui]
+leptos_crate = "rustok-iggy-connector-admin"
+route_segment = "iggy-connector"
+nav_label = "Iggy Connector"
+
+[provides.admin_ui.i18n]
+default_locale = "en"
+supported_locales = ["en", "ru"]
+leptos_locales_path = "admin/locales"

@@ -21,6 +21,7 @@ pub mod error;
 pub mod graphql;
 pub mod locale;
 pub mod migrations;
+pub mod richtext;
 pub mod services;
 pub mod state_machine;
 
@@ -36,6 +37,11 @@ pub use error::{ContentError, ContentResult};
 pub use locale::{
     ResolvedLocale, available_locales_from, normalize_locale_code, resolve_by_locale,
     resolve_by_locale_with_fallback,
+};
+pub use richtext::{
+    RichTextError, RichTextErrorCode, RichTextLimits, RichTextProfile, RichTextProfileManifest,
+    all_profile_manifests, canonical_json, parse_json, plain_text, profile_from_id, project,
+    render_html, validate, validate_and_normalize,
 };
 pub use services::{
     CanonicalUrlMutation, CanonicalUrlService, CategoryService, ContentOrchestrationBridge,

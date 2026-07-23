@@ -43,7 +43,8 @@ to pull ecommerce or content surfaces it doesn't need.
 
 - `database` — critical check for DB availability;
 - `database_schema` — critical check for mandatory runtime schema tables:
-  `tenants`, `users`, `sys_events` when `rustok.events.transport = "outbox"` and
+  `tenants`, `users`, `sys_events` when the active delivery profile is
+  `outbox_local` or `outbox_iggy`, and
   `search_documents` when `rustok.features.search_indexing = true`;
 - `cache_backend` — basic check of tenant cache path;
 - `tenant_cache_invalidation` — non-critical check of the durable tenant-cache generation listener for cross-instance invalidation;
@@ -52,7 +53,7 @@ to pull ecommerce or content surfaces it doesn't need.
 - `email_backend` — non-critical configuration check of email transport: `smtp` must be enabled;
   `none` is explicitly reflected as degraded.
 - `outbox_pending_lag` — non-critical check of the age of the oldest pending event, enabled for
-  `rustok.events.transport = "outbox"`;
+  the active delivery profile uses the transactional outbox;
 - `search_index_lag` — non-critical check of maximum lag between `search_documents.updated_at`
   and `search_documents.indexed_at`.
 
@@ -74,7 +75,8 @@ handles in `AppContext.shared_store`.
 
 Checks are published in `checks` with `kind = "worker"`:
 
-- `worker:outbox_relay` — critical worker if `rustok.events.transport = "outbox"` and runtime
+- `worker:outbox_relay` — critical worker if the active delivery profile uses
+  the transactional outbox and runtime
   built relay config;
 - `worker:remote_executor_reaper` — critical worker if `rustok.registry.remote_executor.enabled = true`;
 - `worker:seo_bulk` — critical worker if SEO bulk worker is enabled and build contains `mod-seo`.

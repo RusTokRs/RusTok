@@ -75,7 +75,10 @@ impl MigrationTrait for Migration {
                                 PagePublishOperationArtifacts::Table,
                                 PagePublishOperationArtifacts::ArtifactId,
                             )
-                            .to(PageStaticLandingArtifacts::Table, PageStaticLandingArtifacts::Id)
+                            .to(
+                                PageStaticLandingArtifacts::Table,
+                                PageStaticLandingArtifacts::Id,
+                            )
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -170,7 +173,10 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_page_rollback_operations_page")
-                            .from(PageRollbackOperations::Table, PageRollbackOperations::PageId)
+                            .from(
+                                PageRollbackOperations::Table,
+                                PageRollbackOperations::PageId,
+                            )
                             .to(Pages::Table, Pages::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),

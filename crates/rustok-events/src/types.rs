@@ -7,6 +7,40 @@ use uuid::Uuid;
 
 use super::validation::{EventValidationError, ValidateEvent, validators};
 
+/// Keeps the JSON event contract human-readable while encoding timestamps as
+/// UTC microseconds for non-human-readable formats such as MessagePack.
+pub(crate) mod timestamp_serde {
+    use chrono::{DateTime, Utc};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+
+    pub fn serialize<S>(timestamp: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            timestamp.to_rfc3339().serialize(serializer)
+        } else {
+            timestamp.timestamp_micros().serialize(serializer)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        if deserializer.is_human_readable() {
+            let value = String::deserialize(deserializer)?;
+            DateTime::parse_from_rfc3339(&value)
+                .map(|timestamp| timestamp.with_timezone(&Utc))
+                .map_err(D::Error::custom)
+        } else {
+            let micros = i64::deserialize(deserializer)?;
+            DateTime::from_timestamp_micros(micros)
+                .ok_or_else(|| D::Error::custom("timestamp microseconds are out of range"))
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, JsonSchema)]
 pub struct EventEnvelope {
     pub id: Uuid,
@@ -18,6 +52,8 @@ pub struct EventEnvelope {
     pub causation_id: Option<Uuid>,
     pub tenant_id: Uuid,
     pub trace_id: Option<String>,
+    #[serde(with = "timestamp_serde")]
+    #[schemars(with = "DateTime<Utc>")]
     pub timestamp: DateTime<Utc>,
     pub actor_id: Option<Uuid>,
     pub event: DomainEvent,
@@ -206,9 +242,8 @@ pub enum DomainEvent {
     // ════════════════════════════════════════════════════════════════
     // USER EVENTS
     // ════════════════════════════════════════════════════════════════
-    UserRegistered {
+    UserAccountRegistered {
         user_id: Uuid,
-        email: String,
     },
     UserLoggedIn {
         user_id: Uuid,
@@ -899,7 +934,7 @@ impl DomainEvent {
             Self::MediaUploaded { .. } => "media.uploaded",
             Self::MediaDeleted { .. } => "media.deleted",
 
-            Self::UserRegistered { .. } => "user.registered",
+            Self::UserAccountRegistered { .. } => "user.account_registered",
             Self::UserLoggedIn { .. } => "user.logged_in",
             Self::UserUpdated { .. } => "user.updated",
             Self::ProfileUpdated { .. } => "profile.updated",
@@ -1096,7 +1131,7 @@ impl DomainEvent {
             Self::MediaDeleted { .. } => 1,
 
             // User events (v1)
-            Self::UserRegistered { .. } => 1,
+            Self::UserAccountRegistered { .. } => 1,
             Self::UserLoggedIn { .. } => 1,
             Self::UserUpdated { .. } => 1,
             Self::ProfileUpdated { .. } => 1,
@@ -1405,17 +1440,8 @@ impl ValidateEvent for DomainEvent {
             // ════════════════════════════════════════════════════════════════
             // USER EVENTS
             // ════════════════════════════════════════════════════════════════
-            Self::UserRegistered { user_id, email } => {
+            Self::UserAccountRegistered { user_id } => {
                 validators::validate_not_nil_uuid("user_id", user_id)?;
-                validators::validate_not_empty("email", email)?;
-                validators::validate_max_length("email", email, 255)?;
-                // Basic email validation
-                if !email.contains('@') || !email.contains('.') {
-                    return Err(EventValidationError::InvalidValue(
-                        "email",
-                        "invalid email format".to_string(),
-                    ));
-                }
                 Ok(())
             }
             Self::UserLoggedIn { user_id }
@@ -3014,21 +3040,32 @@ mod tests {
     }
 
     #[test]
-    fn test_user_registered_valid() {
-        let event = DomainEvent::UserRegistered {
+    fn user_account_registered_requires_only_a_non_nil_identity() {
+        let event = DomainEvent::UserAccountRegistered {
             user_id: Uuid::new_v4(),
-            email: "user@example.com".to_string(),
         };
         assert!(event.validate().is_ok());
     }
 
     #[test]
-    fn test_user_registered_invalid_email() {
-        let event = DomainEvent::UserRegistered {
-            user_id: Uuid::new_v4(),
-            email: "invalid-email".to_string(),
+    fn user_account_registered_rejects_a_nil_identity() {
+        let event = DomainEvent::UserAccountRegistered {
+            user_id: Uuid::nil(),
         };
         assert!(event.validate().is_err());
+    }
+
+    #[test]
+    fn user_account_registered_serialization_contains_no_contact_data() {
+        let event = DomainEvent::UserAccountRegistered {
+            user_id: Uuid::from_u128(42),
+        };
+
+        let serialized = serde_json::to_string(&event).expect("serialize event");
+        assert_eq!(event.event_type(), "user.account_registered");
+        assert_eq!(event.schema_version(), 1);
+        assert!(!serialized.contains("email"));
+        assert!(!serialized.contains('@'));
     }
 
     #[test]

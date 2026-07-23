@@ -1,5 +1,6 @@
 use schemars::schema_for;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct FieldSchema {
@@ -67,9 +68,12 @@ fn field_json_schema(data_type: &str) -> serde_json::Value {
         "uint64" => serde_json::json!({ "type": "integer", "minimum": 0 }),
         "bool" => serde_json::json!({ "type": "boolean" }),
         "string" => serde_json::json!({ "type": "string" }),
-        unsupported => serde_json::json!({
-            "description": format!("Unsupported RusToK field type: {unsupported}"),
+        "array" => serde_json::json!({ "type": "array", "items": true }),
+        "array<uuid>" => serde_json::json!({
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" },
         }),
+        _ => serde_json::json!(false),
     }
 }
 
@@ -84,6 +88,59 @@ pub fn domain_event_json_schema() -> serde_json::Value {
 pub fn event_envelope_json_schema() -> serde_json::Value {
     serde_json::to_value(schema_for!(crate::EventEnvelope))
         .expect("schemars output must always serialize to JSON")
+}
+
+/// Generates the canonical JSON Schema for the typed contract-payload wire
+/// representation used by durable and streaming transports.
+pub fn contract_event_payload_json_schema() -> serde_json::Value {
+    serde_json::to_value(schema_for!(crate::ContractEventPayload))
+        .expect("schemars output must always serialize to JSON")
+}
+
+/// Generates the canonical JSON Schema for the typed contract-envelope wire
+/// representation used by durable and streaming transports.
+pub fn contract_event_envelope_json_schema() -> serde_json::Value {
+    serde_json::to_value(schema_for!(crate::ContractEventEnvelope))
+        .expect("schemars output must always serialize to JSON")
+}
+
+/// Stable digests for the published event registry and every transport wire
+/// schema. The committed digest artifact is a release gate: updating it
+/// requires an intentional event-contract review.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EventContractDigests {
+    pub registry: String,
+    pub root_event: String,
+    pub root_envelope: String,
+    pub contract_payload: String,
+    pub contract_envelope: String,
+}
+
+/// Returns deterministic SHA-256 digests for the published event contract.
+pub fn event_contract_digests() -> EventContractDigests {
+    EventContractDigests {
+        registry: json_digest(event_registry_artifact()),
+        root_event: json_digest(domain_event_json_schema()),
+        root_envelope: json_digest(event_envelope_json_schema()),
+        contract_payload: json_digest(contract_event_payload_json_schema()),
+        contract_envelope: json_digest(contract_event_envelope_json_schema()),
+    }
+}
+
+fn event_registry_artifact() -> serde_json::Value {
+    let mut schemas: Vec<&EventSchema> = crate::event_schemas().collect();
+    schemas.sort_unstable_by_key(|schema| schema.event_type);
+
+    serde_json::json!({
+        "format_version": 1,
+        "events": schemas,
+    })
+}
+
+fn json_digest(value: serde_json::Value) -> String {
+    let bytes = serde_json::to_vec(&value).expect("event contract JSON must serialize");
+    let digest = Sha256::digest(bytes);
+    format!("sha256:{}", hex::encode(digest))
 }
 
 macro_rules! field {
@@ -134,8 +191,7 @@ const MEDIA_UPLOADED_FIELDS: &[FieldSchema] = &[
 ];
 const MEDIA_DELETED_FIELDS: &[FieldSchema] = &[field!("media_id", "uuid")];
 
-const USER_REGISTERED_FIELDS: &[FieldSchema] =
-    &[field!("user_id", "uuid"), field!("email", "string")];
+const USER_ACCOUNT_REGISTERED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
 const USER_LOGGED_IN_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
 const USER_UPDATED_FIELDS: &[FieldSchema] = &[field!("user_id", "uuid")];
 const PROFILE_UPDATED_FIELDS: &[FieldSchema] = &[
@@ -668,10 +724,10 @@ pub const EVENT_SCHEMAS: &[EventSchema] = &[
         fields: MEDIA_DELETED_FIELDS,
     },
     EventSchema {
-        event_type: "user.registered",
+        event_type: "user.account_registered",
         version: 1,
-        description: "A user registered.",
-        fields: USER_REGISTERED_FIELDS,
+        description: "A user account was registered without contact data.",
+        fields: USER_ACCOUNT_REGISTERED_FIELDS,
     },
     EventSchema {
         event_type: "user.logged_in",

@@ -42,7 +42,7 @@ pub struct CacheHealthPayload {
 
 #[derive(SimpleObject, Clone, Debug)]
 pub struct EventsStatusPayload {
-    pub configured_transport: String,
+    pub configured_profile: String,
     pub iggy_mode: String,
     pub relay_interval_ms: u64,
     pub dlq_enabled: bool,
@@ -178,21 +178,21 @@ impl SystemQuery {
 
     /// Event transport topology and queue counts require operational log access.
     async fn events_status(&self, ctx: &Context<'_>) -> Result<EventsStatusPayload> {
-        use crate::common::settings::EventTransportKind;
-        use rustok_iggy::config::IggyMode;
-
         require_logs_read(ctx)?;
         let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
         let db = runtime_ctx.db();
         let ev = &runtime_ctx.settings().events;
 
-        let configured_transport = match ev.transport {
-            EventTransportKind::Memory => "memory".to_string(),
-            EventTransportKind::Outbox => "outbox".to_string(),
-            EventTransportKind::Iggy => match ev.iggy.mode {
-                IggyMode::Embedded => "iggy_embedded".to_string(),
-                IggyMode::Remote => "iggy_external".to_string(),
-            },
+        let configured_profile = match runtime_ctx
+            .shared_get::<std::sync::Arc<crate::services::event_transport_factory::EventRuntime>>()
+            .map(|runtime| runtime.delivery_profile)
+            .unwrap_or(ev.delivery_profile)
+        {
+            crate::common::settings::EventDeliveryProfile::Memory => "memory".to_string(),
+            crate::common::settings::EventDeliveryProfile::OutboxLocal => {
+                "outbox_local".to_string()
+            }
+            crate::common::settings::EventDeliveryProfile::OutboxIggy => "outbox_iggy".to_string(),
         };
         let iggy_mode = ev.iggy.mode.to_string();
 
@@ -208,7 +208,7 @@ impl SystemQuery {
             .unwrap_or(0) as i64;
 
         Ok(EventsStatusPayload {
-            configured_transport,
+            configured_profile,
             iggy_mode,
             relay_interval_ms: ev.relay_interval_ms,
             dlq_enabled: ev.dlq.enabled,
@@ -217,9 +217,8 @@ impl SystemQuery {
             dlq_events,
             available_transports: vec![
                 "memory".to_string(),
-                "outbox".to_string(),
-                "iggy_embedded".to_string(),
-                "iggy_external".to_string(),
+                "outbox_local".to_string(),
+                "outbox_iggy".to_string(),
             ],
         })
     }

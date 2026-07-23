@@ -4,29 +4,28 @@ use async_trait::async_trait;
 use tracing::{error, info};
 
 use crate::config::{IggyConfig, IggyMode};
-use crate::consumer::{ConsumerGroupManager, PersistentConsumerGroup};
+use crate::consumer::PersistentConsumerGroup;
 use crate::contract_consumer::PersistentContractConsumerGroup;
 use crate::producer;
-use crate::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
+use crate::serialization::{EventSerializer, JsonSerializer, MessagePackSerializer};
 use crate::topology::TopologyManager;
 use rustok_core::Result;
 use rustok_core::events::{EventTransport, ReliabilityLevel};
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
-use rustok_iggy_connector::{ConnectorConfig, EmbeddedConnector, IggyConnector, RemoteConnector};
+use rustok_iggy_connector::{BundledConnector, ConnectorConfig, ExternalConnector, IggyConnector};
 
 pub struct IggyTransport {
     config: IggyConfig,
     connector: Arc<dyn IggyConnector>,
     topology: TopologyManager,
-    consumers: ConsumerGroupManager,
     serializer: Arc<dyn EventSerializer>,
 }
 
 impl IggyTransport {
     pub async fn new(config: IggyConfig) -> Result<Self> {
         let connector: Arc<dyn IggyConnector> = match config.mode {
-            IggyMode::Remote => Arc::new(RemoteConnector::new()),
-            IggyMode::Embedded => Arc::new(EmbeddedConnector::new()),
+            IggyMode::External => Arc::new(ExternalConnector::new()),
+            IggyMode::Bundled => Arc::new(BundledConnector::new()),
         };
         let connector_config = ConnectorConfig::from(&config);
 
@@ -45,7 +44,7 @@ impl IggyTransport {
 
         let serializer: Arc<dyn EventSerializer> = match config.serialization {
             crate::config::SerializationFormat::Json => Arc::new(JsonSerializer),
-            crate::config::SerializationFormat::Postcard => Arc::new(PostcardSerializer),
+            crate::config::SerializationFormat::MessagePack => Arc::new(MessagePackSerializer),
         };
 
         info!(
@@ -59,7 +58,6 @@ impl IggyTransport {
             config,
             connector,
             topology,
-            consumers: ConsumerGroupManager::new(),
             serializer,
         })
     }
@@ -75,23 +73,10 @@ impl IggyTransport {
         Ok(())
     }
 
-    pub async fn subscribe_as_group(&self, group: &str) -> Result<()> {
-        use crate::consumer::ConsumerGroup;
-
-        let group = ConsumerGroup::new(
-            group.to_string(),
-            self.config.topology.stream_name.clone(),
-            "domain".to_string(),
-        );
-
-        self.consumers.ensure_group(group).await
-    }
-
     /// Opens one broker-backed consumer-group cursor for result-first work.
     ///
-    /// It is intentionally distinct from the legacy partition subscriber API:
-    /// both receive and acknowledgement operate on the same remote cursor.
-    /// The caller must retain the returned value for its complete lifetime.
+    /// Receive and acknowledgement operate on the same remote cursor. The
+    /// caller must retain the returned value for its complete lifetime.
     pub async fn open_persistent_consumer_group(
         &self,
         group_name: &str,
@@ -129,22 +114,6 @@ impl IggyTransport {
             Arc::clone(&self.serializer),
             cursor,
         ))
-    }
-
-    pub async fn consume_next_as_group(
-        &self,
-        group: &str,
-        partition: u32,
-    ) -> Result<Option<crate::consumer::ConsumedEvent>> {
-        self.consumers
-            .consume_next(&*self.connector, &*self.serializer, group, partition)
-            .await
-    }
-
-    pub async fn ack_consumed(&self, consumed: &crate::consumer::ConsumedEvent) -> Result<()> {
-        self.consumers
-            .ack_consumed(&*self.connector, consumed)
-            .await
     }
 
     pub async fn move_to_dlq(&self, entry: crate::dlq::DlqEntry) -> Result<()> {

@@ -302,9 +302,7 @@ fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {
             if let Some(group) = group.as_object_mut() {
                 group.remove("seller_scope");
                 group.remove("available_shipping_options");
-                if let Some(line_ids) = group
-                    .get_mut("line_item_ids")
-                    .and_then(Value::as_array_mut)
+                if let Some(line_ids) = group.get_mut("line_item_ids").and_then(Value::as_array_mut)
                 {
                     line_ids.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
                 }
@@ -383,9 +381,7 @@ fn cart_error_to_port_error(error: CartError) -> PortError {
                 "cart checkout request or projection is invalid",
             )
         }
-        CartError::CartNotFound(_) => {
-            PortError::not_found("cart.not_found", "cart was not found")
-        }
+        CartError::CartNotFound(_) => PortError::not_found("cart.not_found", "cart was not found"),
         CartError::CartLineItemNotFound(_) => {
             PortError::not_found("cart.line_item_not_found", "cart line item was not found")
         }

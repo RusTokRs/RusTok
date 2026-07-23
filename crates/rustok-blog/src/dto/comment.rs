@@ -1,26 +1,20 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use rustok_core::CONTENT_FORMAT_MARKDOWN;
+use rustok_api::{RichTextDocument, RichTextView};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateCommentInput {
     pub locale: String,
-    pub content: String,
-    #[serde(default = "default_content_format")]
-    pub content_format: String,
-    pub content_json: Option<Value>,
+    pub content: RichTextDocument,
     pub parent_comment_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 pub struct UpdateCommentInput {
     pub locale: String,
-    pub content: Option<String>,
-    pub content_format: Option<String>,
-    pub content_json: Option<Value>,
+    pub content: Option<RichTextDocument>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
@@ -64,10 +58,6 @@ fn default_per_page() -> u64 {
     20
 }
 
-fn default_content_format() -> String {
-    CONTENT_FORMAT_MARKDOWN.to_string()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CommentResponse {
     pub id: Uuid,
@@ -76,9 +66,8 @@ pub struct CommentResponse {
     pub effective_locale: String,
     pub post_id: Uuid,
     pub author_id: Option<Uuid>,
-    pub content: String,
-    pub content_format: String,
-    pub content_json: Option<Value>,
+    pub content: RichTextView,
+    pub content_text: String,
     pub status: String,
     pub parent_comment_id: Option<Uuid>,
     pub created_at: String,
@@ -101,14 +90,19 @@ pub struct CommentListItem {
 #[cfg(test)]
 mod tests {
     use super::{CommentResponse, ModerateCommentInput, ModerateCommentStatus};
+    use rustok_api::{RichTextDocument, RichTextView};
     use serde_json::json;
     use uuid::Uuid;
 
-    fn sample(
-        content: &str,
-        content_format: &str,
-        content_json: Option<serde_json::Value>,
-    ) -> CommentResponse {
+    fn sample() -> CommentResponse {
+        let document: RichTextDocument = serde_json::from_value(json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "plain"}]
+            }]
+        }))
+        .expect("test richtext");
         CommentResponse {
             id: Uuid::new_v4(),
             requested_locale: "en".into(),
@@ -116,9 +110,11 @@ mod tests {
             effective_locale: "en".into(),
             post_id: Uuid::new_v4(),
             author_id: None,
-            content: content.into(),
-            content_format: content_format.into(),
-            content_json,
+            content: RichTextView {
+                document,
+                html: "<p class=\"richtext-paragraph\">plain</p>".into(),
+            },
+            content_text: "plain".into(),
             status: "pending".into(),
             parent_comment_id: None,
             created_at: "2024-01-01T00:00:00Z".into(),
@@ -127,23 +123,16 @@ mod tests {
     }
 
     #[test]
-    fn comment_response_serde_markdown() {
-        let r = sample("plain", "markdown", None);
+    fn comment_response_serde_uses_one_richtext_contract() {
+        let r = sample();
         let v = serde_json::to_value(&r).expect("serialize");
-        assert_eq!(v["content_format"], "markdown");
-        assert_eq!(v["content_json"], serde_json::Value::Null);
+        assert_eq!(v["content"]["document"]["type"], "doc");
+        assert_eq!(v["content_text"], "plain");
+        assert!(v.get("content_format").is_none());
+        assert!(v.get("content_json").is_none());
         let d: CommentResponse = serde_json::from_value(v).expect("deserialize");
-        assert_eq!(d.content, "plain");
-        assert!(d.content_json.is_none());
-    }
-
-    #[test]
-    fn comment_response_serde_rt_json_v1() {
-        let rich = json!({"version":"rt_json_v1","locale":"en","doc":{"type":"doc","content":[]}});
-        let r = sample(&rich.to_string(), "rt_json_v1", Some(rich.clone()));
-        let v = serde_json::to_value(&r).expect("serialize");
-        assert_eq!(v["content_format"], "rt_json_v1");
-        assert_eq!(v["content_json"], rich);
+        assert_eq!(d.content.document.kind, "doc");
+        assert_eq!(d.content_text, "plain");
     }
 
     #[test]

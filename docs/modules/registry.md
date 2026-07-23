@@ -106,6 +106,8 @@ Product/search Next storefront metadata boundary update as of 2026-07-02: `apps/
 
 | Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |
 |---|---|---|---|---|---|
+| `events` | Leptos admin + Next admin | `in_progress` | `in_progress` | `core_transport_ui` | [Live plan](../../crates/rustok-events/docs/implementation-plan.md); `rustok-events-module` is the cycle-free runtime/manifest adapter and owns the UI packages. |
+| `iggy_connector` | Leptos admin + Next admin | `in_progress` | `in_progress` | `core_transport_ui` | [Live plan](../../crates/rustok-iggy-connector/docs/implementation-plan.md); owner persistence, native server functions, parallel GraphQL, secret references, and readiness validation are implemented. Packaging and live Iggy evidence remain open. |
 | `email` | none | `not_started` | `transport_verified` | `no_ui_boundary` | [Live plan](../../crates/rustok-email/docs/implementation-plan.md); `crates/rustok-email/contracts/email-fba-registry.json` and `crates/rustok-email/contracts/evidence/email-runtime-fallback-smoke.json`. |
 | `flex` | none | `not_started` | `boundary_ready` | `no_ui_boundary` | [Live plan](../../crates/flex/docs/implementation-plan.md); `node scripts/verify/verify-flex-multilingual-contract.mjs` locks the capability-only multilingual owner boundary. |
 | `rustok-mcp` | admin + Next admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-mcp/docs/implementation-plan.md) |
@@ -126,7 +128,7 @@ Product/search Next storefront metadata boundary update as of 2026-07-02: `apps/
 | `modules` | none | `not_started` | `boundary_ready` | `no_ui_boundary` | [Live plan](../../crates/rustok-modules/docs/implementation-plan.md); lifecycle/recovery and digest-pinned installation/runtime foundations are owner-owned. Native and GraphQL marketplace reads share a host-composed owner catalog, registry lifecycle derivation is owner-owned, and the admin host no longer contains direct registry SQL or workspace/Cargo catalog scanning and build planning. The artifact-aware definition catalog/dispatcher, CAS, composition/governance, and broader transport cutover remain in progress; the operator-only external-prebuilt staging endpoint preserves authenticated actor/quarantine authority rather than accepting caller-supplied principals. |
 | `web` | none | `not_started` | `not_started` | `no_ui_boundary` | [Live plan](../../crates/rustok-web/docs/implementation-plan.md) |
 | `alloy` | none | `not_started` | `boundary_ready` | `no_ui_boundary` | [Live plan](../../crates/alloy/docs/implementation-plan.md); `crates/alloy/contracts/alloy-runtime-contract.json`, `crates/alloy/contracts/evidence/alloy-runtime-static-matrix.json`, and `npm run verify:alloy:runtime-contract`. |
-| `comments` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-comments/docs/implementation-plan.md); `crates/rustok-comments/contracts/comments-fba-registry.json`, `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`, and `scripts/verify/verify-comments-admin-boundary.mjs`. Public-port create/delete atomically publish `comment.created`/`comment.deleted`; the Blog projection is implemented statically, while live delivery/retry/recovery evidence remains required for `transport_verified`. |
+| `comments` | admin | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-comments/docs/implementation-plan.md); Comments storage/service/port now use the canonical `RichTextDocument`/`RichTextView` contract with no body format selector, and Blog is a typed consumer. `crates/rustok-comments/contracts/comments-fba-registry.json`, `crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json`, and `scripts/verify/verify-comments-admin-boundary.mjs` remain the boundary evidence. Public-port create/delete atomically publish `comment.created`/`comment.deleted`; live delivery/retry/recovery evidence remains required for `transport_verified`. |
 | `forum` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-forum/docs/implementation-plan.md) |
 | `search` | admin + storefront | `phase_b_ready` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-search/docs/implementation-plan.md); whole-module remote extraction pilot with `SearchQueryPort`/`SearchSuggestionPort` at the service boundary; `SearchEngine` connectors remain internal to `rustok-search`. |
 | `cart` | storefront | `phase_b_ready` | `boundary_ready` | `core_transport_ui` | [Live plan](../../crates/rustok-cart/docs/implementation-plan.md); `CartCheckoutPort` owns checkout snapshot and lifecycle writes, `CartStorefrontPort` owns REST and GraphQL storefront cart reads/mutations/repricing, and `CartPromotionPort` owns admin promotion preview/application. Recovery, fallback, and transport proof remain open. |
@@ -369,7 +371,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 |---|---|
 | `rustok-core` | Shared foundation contracts, typed primitives, validation/security helpers |
 | `rustok-api` | Shared host/API layer for transport adapters |
-| `rustok-events` | Canonical import point for event contracts |
+| `rustok-events` | Canonical import point for event contracts; runtime registration and module-owned UI are composed by `rustok-events-module` to avoid a dependency cycle with `rustok-core` |
 | `rustok-storage` | Direct object-store runtime composition and canonical key policy |
 | `rustok-test-utils` | Shared testing helpers, mocks, fixtures |
 | `rustok-commerce-foundation` | Shared DTO/entities/errors/search helpers for split commerce family |
@@ -379,7 +381,7 @@ Synchronization with `modules.toml`: updated per manifest composition as of 2026
 | Crate | Role |
 |---|---|
 | `rustok-iggy` | Streaming transport runtime |
-| `rustok-iggy-connector` | Embedded/remote connector layer for Iggy |
+| `rustok-iggy-connector` | Bundled/external Iggy connector extension and owner of connector configuration UI |
 | `rustok-telemetry` | Observability bootstrap and shared telemetry helpers |
 | `rustok-mcp` | MCP adapter/server tool surface |
 | `rustok-ai` | Deployment-scoped, globally active AI host/orchestrator capability with a Rig 0.39 registry/engine, generic agent-principal and owner-workflow contracts, owner-owned provider profile migration and GraphQL roots/DTO, registry-driven Leptos and Next admin surfaces, external secret resolution through `rustok-secrets`, neutral runtime-extension and durable-work registration, domain direct handler registration adapters from `rustok-ai-product`/`rustok-ai-content`/`rustok-ai-order`/`rustok-ai-media`/`rustok-ai-alloy`, server module-surface guard, admin guardrail `scripts/verify/verify-ai-admin-boundary.mjs`, Rig-only cutover guardrail `scripts/verify/verify-ai-rig-cutover.mjs`, and domain vertical ownership guardrail `scripts/verify/verify-ai-domain-verticals.mjs` |

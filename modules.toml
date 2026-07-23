@@ -40,6 +40,7 @@ email = { crate = "rustok-email", source = "path", path = "crates/rustok-email",
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
 search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
 outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
+events = { crate = "rustok-events-module", source = "path", path = "crates/rustok-events-module", required = true, depends_on = ["outbox"] }
 tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
 rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
 
@@ -82,6 +83,7 @@ flex = { crate = "flex", source = "path", path = "crates/flex" }
 # globally active when compiled and never tenant-toggled; the generic
 # runtime-extension host seam composes their handles and workers.
 ai = { crate = "rustok-ai", source = "path", path = "crates/rustok-ai", runtime = "extension" }
+iggy_connector = { crate = "rustok-iggy-connector", source = "path", path = "crates/rustok-iggy-connector", runtime = "extension" }
 
 [settings]
 default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder"]

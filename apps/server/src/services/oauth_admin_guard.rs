@@ -10,8 +10,8 @@ use rustok_auth::{
     UpdateOAuthAppCommand, generate_refresh_token, hash_password,
 };
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
-    QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait, QueryFilter,
+    QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 

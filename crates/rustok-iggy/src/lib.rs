@@ -6,18 +6,18 @@
 //! # Architecture
 //!
 //! This crate implements `EventTransport` trait and handles:
-//! - Event serialization (JSON/Postcard)
+//! - Event serialization (JSON/MessagePack)
 //! - Topology management (streams, topics)
 //! - Consumer group coordination
 //! - Dead letter queue handling
 //! - Event replay orchestration
 //!
-//! Connection management (Embedded vs Remote mode) is delegated to `rustok-iggy-connector`.
+//! Connection management (bundled vs external mode) is delegated to `rustok-iggy-connector`.
 //!
 //! # Features
 //!
 //! - **EventTransport implementation**: Seamless integration with RusToK event system
-//! - **Multiple serialization formats**: JSON (default) and Postcard
+//! - **Multiple serialization formats**: JSON (default) and MessagePack
 //! - **Automatic topology management**: Streams and topics created automatically
 //! - **Tenant-based partitioning**: Events from the same tenant maintain order
 //! - **Consumer groups, DLQ, replay**: Higher-level streaming primitives
@@ -47,12 +47,13 @@
 //! events:
 //!   transport: iggy
 //!   iggy:
-//!     mode: embedded  # handled by rustok-iggy-connector
+//!     mode: bundled
 //!     serialization: json
 //!     topology:
 //!       stream_name: rustok
 //!       domain_partitions: 8
-//!     embedded:
+//!     bundled:
+//!       executable: iggy-server
 //!       data_dir: ./data/iggy
 //!       tcp_port: 8090
 //! ```
@@ -70,16 +71,16 @@ pub mod topology;
 pub mod transport;
 
 pub use config::{
-    EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig, SerializationFormat,
+    BundledConfig, ExternalConfig, IggyConfig, IggyMode, RetentionConfig, SerializationFormat,
     TopologyConfig,
 };
-pub use consumer::{ConsumedEvent, ConsumerGroup, ConsumerGroupManager, PersistentConsumerGroup};
+pub use consumer::{ConsumedEvent, PersistentConsumerGroup};
 pub use contract_consumer::{ConsumedContractEvent, PersistentContractConsumerGroup};
 pub use dlq::{DlqEntry, DlqManager};
 pub use health::{HealthCheckResult, HealthStatus, health_check};
 pub use partitioning::{calculate_partition, partition_key};
 pub use replay::{ActiveReplay, ReplayConfig, ReplayManager, ReplayStatus};
-pub use serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
+pub use serialization::{EventSerializer, JsonSerializer, MessagePackSerializer};
 pub use topology::TopologyManager;
 pub use transport::IggyTransport;
 

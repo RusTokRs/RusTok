@@ -50,10 +50,7 @@ fn test_all_events_have_schema_version() {
         // Tag events
         DomainEvent::TagCreated { tag_id: id },
         // User events
-        DomainEvent::UserRegistered {
-            user_id: id,
-            email: "test@example.com".to_string(),
-        },
+        DomainEvent::UserAccountRegistered { user_id: id },
         DomainEvent::UserLoggedIn { user_id: id },
         // Commerce events
         DomainEvent::ProductCreated { product_id: id },

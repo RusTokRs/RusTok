@@ -8,9 +8,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
-use rustok_content::{
-    dto::validation::validate_body_format, normalize_locale_code, resolve_by_locale_with_fallback,
-};
+use rustok_content::{normalize_locale_code, resolve_by_locale_with_fallback};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
@@ -22,6 +20,7 @@ use crate::dto::{
 };
 use crate::entities::{comment, comment_body, comment_thread};
 use crate::error::{CommentsError, CommentsResult};
+use crate::richtext::{project_comment_body, serialize_comment_body};
 
 pub struct CommentsService {
     db: DatabaseConnection,
@@ -30,6 +29,23 @@ pub struct CommentsService {
 
 const MODULE: &str = "comments";
 const LIBRARY_PATH: &str = "library";
+
+#[cfg(test)]
+fn test_document(text: &str) -> rustok_api::RichTextDocument {
+    serde_json::from_value(serde_json::json!({
+        "type": "doc",
+        "content": [{
+            "type": "paragraph",
+            "content": [{"type": "text", "text": text}]
+        }]
+    }))
+    .expect("test richtext document")
+}
+
+#[cfg(test)]
+fn test_body_json(text: &str) -> String {
+    serialize_comment_body(test_document(text)).expect("test richtext must serialize")
+}
 
 #[cfg(test)]
 mod locale_fallback_tests {
@@ -44,8 +60,7 @@ mod locale_fallback_tests {
                     id: Uuid::new_v4(),
                     comment_id: Uuid::new_v4(),
                     locale: "de".to_string(),
-                    body: "Hallo".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_body_json("Hallo"),
                     created_at: now,
                     updated_at: now,
                 },
@@ -53,8 +68,7 @@ mod locale_fallback_tests {
                     id: Uuid::new_v4(),
                     comment_id: Uuid::new_v4(),
                     locale: "en".to_string(),
-                    body: "Hello".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_body_json("Hello"),
                     created_at: now,
                     updated_at: now,
                 },
@@ -65,7 +79,7 @@ mod locale_fallback_tests {
         .expect("body should resolve");
 
         assert_eq!(resolved.effective_locale, "en");
-        assert_eq!(resolved.body, "Hello");
+        assert_eq!(resolved.body, test_body_json("Hello"));
     }
 
     #[test]
@@ -77,8 +91,7 @@ mod locale_fallback_tests {
                     id: Uuid::new_v4(),
                     comment_id: Uuid::new_v4(),
                     locale: "en-us".to_string(),
-                    body: "Hello".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_body_json("Hello"),
                     created_at: now,
                     updated_at: now,
                 },
@@ -86,8 +99,7 @@ mod locale_fallback_tests {
                     id: Uuid::new_v4(),
                     comment_id: Uuid::new_v4(),
                     locale: "de".to_string(),
-                    body: "Hallo".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_body_json("Hallo"),
                     created_at: now,
                     updated_at: now,
                 },
@@ -98,12 +110,9 @@ mod locale_fallback_tests {
         .expect("body should resolve");
 
         assert_eq!(resolved.effective_locale, "en-US");
-        assert_eq!(resolved.body, "Hello");
+        assert_eq!(resolved.body, test_body_json("Hello"));
     }
 }
-
-#[cfg(test)]
-use rustok_core::CONTENT_FORMAT_MARKDOWN;
 
 #[cfg(test)]
 use sea_orm::Database;
@@ -168,7 +177,7 @@ impl CommentsService {
         input: CreateCommentInput,
     ) -> CommentsResult<Uuid> {
         let author_id = self.enforce_create_scope(&security)?;
-        self.validate_body(&input.body, &input.body_format)?;
+        let body = serialize_comment_body(input.body)?;
 
         let thread = self
             .find_or_create_thread_in_tx(txn, tenant_id, &input.target_type, input.target_id)
@@ -211,8 +220,7 @@ impl CommentsService {
             id: Set(Uuid::new_v4()),
             comment_id: Set(comment_id),
             locale: Set(locale),
-            body: Set(input.body),
-            body_format: Set(input.body_format),
+            body: Set(body),
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         }
@@ -277,20 +285,15 @@ impl CommentsService {
             self.enforce_owned_scope(&security, Action::Update, existing.author_id)?;
 
             let locale = normalize_locale(&input.locale)?;
-            if input.body.is_none() && input.body_format.is_none() {
+            let Some(body) = input.body else {
                 return self
                     .get_comment(tenant_id, security, comment_id, &locale, None)
                     .await;
-            }
-
-            let body = input
-                .body
-                .ok_or_else(|| CommentsError::Validation("Comment body is required".to_string()))?;
-            let body_format = input.body_format.unwrap_or_else(|| "markdown".to_string());
-            self.validate_body(&body, &body_format)?;
+            };
+            let body = serialize_comment_body(body)?;
 
             let txn = self.db.begin().await?;
-            self.upsert_body_in_tx(&txn, comment_id, &locale, body, body_format)
+            self.upsert_body_in_tx(&txn, comment_id, &locale, body)
                 .await?;
 
             let mut active: comment::ActiveModel = existing.into();
@@ -531,7 +534,8 @@ impl CommentsService {
                         &locale,
                         fallback_locale.as_deref(),
                     )?;
-                    let preview: String = resolved.body.chars().take(200).collect();
+                    let projection = project_comment_body(&resolved.body)?;
+                    let preview: String = projection.plain_text.chars().take(200).collect();
 
                     Ok(CommentListItem {
                         id: item.id,
@@ -915,7 +919,6 @@ impl CommentsService {
         comment_id: Uuid,
         locale: &str,
         body: String,
-        body_format: String,
     ) -> CommentsResult<()> {
         let existing = comment_body::Entity::find()
             .filter(comment_body::Column::CommentId.eq(comment_id))
@@ -927,7 +930,6 @@ impl CommentsService {
             Some(existing) => {
                 let mut active: comment_body::ActiveModel = existing.into();
                 active.body = Set(body);
-                active.body_format = Set(body_format);
                 active.updated_at = Set(Utc::now().into());
                 active.update(txn).await?;
             }
@@ -937,7 +939,6 @@ impl CommentsService {
                     comment_id: Set(comment_id),
                     locale: Set(locale.to_string()),
                     body: Set(body),
-                    body_format: Set(body_format),
                     created_at: Set(Utc::now().into()),
                     updated_at: Set(Utc::now().into()),
                 }
@@ -975,6 +976,7 @@ impl CommentsService {
         fallback_locale: Option<&str>,
     ) -> CommentsResult<CommentRecord> {
         let resolved = resolve_body(bodies, locale, fallback_locale)?;
+        let projection = project_comment_body(&resolved.body)?;
         Ok(CommentRecord {
             id: comment.id,
             thread_id: comment.thread_id,
@@ -984,8 +986,8 @@ impl CommentsService {
             effective_locale: resolved.effective_locale,
             author_id: comment.author_id,
             parent_comment_id: comment.parent_comment_id,
-            body: resolved.body,
-            body_format: resolved.body_format,
+            body: projection.view,
+            body_text: projection.plain_text,
             status: comment.status,
             position: comment.position,
             created_at: comment.created_at.to_rfc3339(),
@@ -1048,25 +1050,6 @@ impl CommentsService {
         Err(CommentsError::Forbidden("Permission denied".to_string()))
     }
 
-    fn validate_body(&self, body: &str, body_format: &str) -> CommentsResult<()> {
-        if body_format.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "Comment body format is required".to_string(),
-            ));
-        }
-        if validate_body_format(body_format).is_err() {
-            return Err(CommentsError::Validation(format!(
-                "Unsupported comment body format: {body_format}"
-            )));
-        }
-        if body_format != "rt_json_v1" && body_format != "rt_json" && body.trim().is_empty() {
-            return Err(CommentsError::Validation(
-                "Comment body cannot be empty".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
     fn ensure_thread_is_open(&self, thread: &comment_thread::Model) -> CommentsResult<()> {
         if thread.status == crate::dto::CommentThreadStatus::Closed {
             return Err(CommentsError::CommentThreadClosed {
@@ -1111,55 +1094,39 @@ impl CommentsService {
 }
 
 #[cfg(test)]
-mod format_validation_tests {
+mod richtext_validation_tests {
     use super::*;
     use crate::migrations;
     use rustok_core::UserRole;
     use sea_orm_migration::SchemaManager;
 
-    #[tokio::test]
-    async fn rejects_unknown_comment_body_format() {
-        let db_url = format!(
-            "sqlite:file:comments_format_validation_{}?mode=memory&cache=shared",
-            Uuid::new_v4()
-        );
-        let db = Database::connect(db_url)
-            .await
-            .expect("sqlite connection should succeed");
-        let service = CommentsService::new(db);
-
-        let err = service
-            .validate_body("hello", "xml")
-            .expect_err("unsupported format should be rejected");
+    #[test]
+    fn rejects_nodes_outside_the_comment_profile() {
+        let document = serde_json::from_value(serde_json::json!({
+            "type": "doc",
+            "content": [{
+                "type": "heading",
+                "attrs": {"level": 2},
+                "content": [{"type": "text", "text": "Not allowed"}]
+            }]
+        }))
+        .expect("structural richtext should deserialize");
+        let err =
+            serialize_comment_body(document).expect_err("comment profile must reject headings");
 
         match err {
             CommentsError::Validation(message) => {
-                assert!(message.contains("Unsupported comment body format"))
+                assert!(message.contains("unsupported richtext node"))
             }
             other => panic!("unexpected error: {other:?}"),
         }
     }
 
-    #[tokio::test]
-    async fn allows_rt_json_alias_with_empty_body_payload() {
-        let db_url = format!(
-            "sqlite:file:comments_format_validation_{}?mode=memory&cache=shared",
-            Uuid::new_v4()
-        );
-        let db = Database::connect(db_url)
-            .await
-            .expect("sqlite connection should succeed");
-        let service = CommentsService::new(db);
-
-        service
-            .validate_body("", "rt_json")
-            .expect("rt_json alias should follow shared rich-text contract");
-        service
-            .validate_body("", "rt_json_v1")
-            .expect("rt_json_v1 should allow canonical rich-text payload");
-        service
-            .validate_body("hello", CONTENT_FORMAT_MARKDOWN)
-            .expect("markdown should remain valid");
+    #[test]
+    fn rejects_an_empty_richtext_document() {
+        let error = serialize_comment_body(rustok_api::RichTextDocument::empty())
+            .expect_err("empty comments must fail validation");
+        assert!(matches!(error, CommentsError::Validation(_)));
     }
 
     async fn setup_comments_service() -> CommentsService {
@@ -1196,8 +1163,7 @@ mod format_validation_tests {
                     target_type: "blog_post".to_string(),
                     target_id,
                     locale: "en".to_string(),
-                    body: "first".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_document("first"),
                     parent_comment_id: None,
                     status: crate::dto::CommentStatus::Pending,
                 },
@@ -1224,8 +1190,7 @@ mod format_validation_tests {
                     target_type: "blog_post".to_string(),
                     target_id,
                     locale: "en".to_string(),
-                    body: "second".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_document("second"),
                     parent_comment_id: None,
                     status: crate::dto::CommentStatus::Pending,
                 },
@@ -1256,8 +1221,7 @@ mod format_validation_tests {
                     target_type: "blog_post".to_string(),
                     target_id: Uuid::new_v4(),
                     locale: "en".to_string(),
-                    body: "spam".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_document("spam"),
                     parent_comment_id: None,
                     status: crate::dto::CommentStatus::Spam,
                 },
@@ -1289,7 +1253,6 @@ fn record_operation_result<T>(operation: &str, started: Instant, result: &Commen
 struct ResolvedBody {
     effective_locale: String,
     body: String,
-    body_format: String,
 }
 
 fn resolve_body(
@@ -1313,7 +1276,6 @@ fn resolve_body(
     Ok(ResolvedBody {
         effective_locale: resolved.effective_locale,
         body: chosen.body,
-        body_format: chosen.body_format,
     })
 }
 
@@ -1330,8 +1292,7 @@ mod tests {
                     id: Uuid::new_v4(),
                     comment_id: Uuid::new_v4(),
                     locale: "en".to_string(),
-                    body: "Hello".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_body_json("Hello"),
                     created_at: now,
                     updated_at: now,
                 },
@@ -1339,8 +1300,7 @@ mod tests {
                     id: Uuid::new_v4(),
                     comment_id: Uuid::new_v4(),
                     locale: "ru".to_string(),
-                    body: "Привет".to_string(),
-                    body_format: "markdown".to_string(),
+                    body: test_body_json("Привет"),
                     created_at: now,
                     updated_at: now,
                 },
@@ -1351,6 +1311,6 @@ mod tests {
         .expect("body should resolve");
 
         assert_eq!(resolved.effective_locale, "ru");
-        assert_eq!(resolved.body, "Привет");
+        assert_eq!(resolved.body, test_body_json("Привет"));
     }
 }

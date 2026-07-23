@@ -16,6 +16,16 @@ The native-only comments admin exception uses host-neutral native admin transpor
 and the shared `UiRouteQueryIntent` contract for prepared host route-query
 writes.
 
+The shared `rustok-api::richtext` document contract and
+`rustok-content::richtext` `comment` profile are implemented and Comments is
+the first owner cut over to them. `CreateCommentInput` and
+`UpdateCommentInput` accept only `RichTextDocument`; `CommentRecord` returns
+`RichTextView` plus the server-derived plain-text projection. Comment body rows
+persist canonical ProseMirror/Tiptap JSON without a format selector, and public
+previews use the plain-text projection. The cutover migration fails closed on
+pre-existing non-canonical rows so an offline conversion can be completed
+before the schema column is dropped.
+
 ## FFA/FBA boundary
 
 - FFA status: `in_progress`
@@ -64,13 +74,13 @@ writes.
    **Done when:** closed/spam/trash behavior and recovery are observable and
    documented for operators.
 
-5. **Close the direct-write richtext bypass and join the atomic cutover.** A
-   direct `CommentsThreadPort` or service write must accept the typed
-   `RichTextDocument`, select the `comment` profile server-side, and pass the
-   same strict validator as Blog-integrated writes. Migrate `comment_bodies`,
-   remove client-selectable formats and body/`content_json` duplication, and
-   use the canonical HTML/plain-text projections for moderation, storefront,
-   events, and Search/Index consumers.
+5. **Close the direct-write richtext bypass and join the atomic cutover.**
+   **Implemented for Comments.** A direct `CommentsThreadPort` or service
+   write accepts the typed `RichTextDocument`, selects the `comment` profile
+   server-side, and passes the strict validator. `comment_bodies` no longer
+   stores a format selector; reads use canonical HTML/plain-text projections.
+   The remaining verification is runtime evidence for every consumer and the
+   offline conversion procedure for existing Markdown rows.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and synchronized Blog consumer contract.
@@ -85,6 +95,8 @@ writes.
 - `cargo xtask module test comments`
 - Targeted moderation/status, blog integration, comment-port, and admin runtime
   tests.
+- `cargo check -p rustok-comments`
+- `cargo check -p rustok-blog`
 
 ## Change rules
 

@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -5,7 +6,7 @@ use crate::contract::{ContractEventPayload, EventContract, sealed};
 use crate::validation::{EventValidationError, ValidateEvent, validators};
 use crate::{EventSchema, FieldSchema};
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(tag = "type", content = "data")]
 pub enum MarketplaceSellerEvent {
     MarketplaceSellerCreated {

@@ -6,14 +6,15 @@ source_language: en
 entities:
   - config://apps/server/config/test.yaml#settings.rustok.events.allow_relay_target_fallback
 last_verified_snapshot: snap_jsonl_00000021
-status: verified
+status: deprecated
 ---
 
-# Runtime Config Key `settings.rustok.events.allow_relay_target_fallback`
+# Removed: `settings.rustok.events.allow_relay_target_fallback`
 
 ## Purpose
 
-Document when this operational item is used, who owns it, and what successful execution or operation means.
+This key was removed. `outbox_iggy` fails closed rather than switching to a
+different delivery target.
 
 ## Contract
 

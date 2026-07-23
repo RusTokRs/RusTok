@@ -163,11 +163,7 @@ impl Default for ReadinessSettings {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EventSettings {
     #[serde(default)]
-    pub transport: EventTransportKind,
-    #[serde(default)]
-    pub relay_target: RelayTargetKind,
-    #[serde(default)]
-    pub allow_relay_target_fallback: bool,
+    pub delivery_profile: EventDeliveryProfile,
     #[serde(default = "default_relay_interval_ms")]
     pub relay_interval_ms: u64,
     #[serde(default = "default_relay_batch_size")]
@@ -249,20 +245,39 @@ impl Default for DlqSettings {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum RelayTargetKind {
+#[serde(rename_all = "snake_case")]
+pub enum EventDeliveryProfile {
     #[default]
     Memory,
-    Iggy,
+    OutboxLocal,
+    OutboxIggy,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum EventTransportKind {
-    #[default]
-    Memory,
-    Outbox,
-    Iggy,
+impl EventDeliveryProfile {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Memory => "memory",
+            Self::OutboxLocal => "outbox_local",
+            Self::OutboxIggy => "outbox_iggy",
+        }
+    }
+
+    pub const fn uses_outbox(self) -> bool {
+        matches!(self, Self::OutboxLocal | Self::OutboxIggy)
+    }
+
+    pub const fn requires_iggy(self) -> bool {
+        matches!(self, Self::OutboxIggy)
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "memory" => Some(Self::Memory),
+            "outbox_local" => Some(Self::OutboxLocal),
+            "outbox_iggy" => Some(Self::OutboxIggy),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, Eq, PartialEq)]
@@ -642,9 +657,7 @@ impl Default for BuildRuntimeSettings {
 impl Default for EventSettings {
     fn default() -> Self {
         Self {
-            transport: EventTransportKind::default(),
-            relay_target: RelayTargetKind::default(),
-            allow_relay_target_fallback: false,
+            delivery_profile: EventDeliveryProfile::default(),
             relay_interval_ms: default_relay_interval_ms(),
             relay_batch_size: default_relay_batch_size(),
             relay_max_concurrency: default_relay_max_concurrency(),
@@ -745,8 +758,8 @@ impl RustokSettings {
             .unwrap_or_else(|| serde_json::json!({}));
         let mut parsed: Self = serde_json::from_value(rustok)?;
 
-        if let Ok(raw_transport) = std::env::var("RUSTOK_EVENT_TRANSPORT") {
-            parsed.events.transport = parse_event_transport(&raw_transport)?;
+        if let Ok(raw_profile) = std::env::var("RUSTOK_EVENT_DELIVERY_PROFILE") {
+            parsed.events.delivery_profile = parse_event_delivery_profile(&raw_profile)?;
         }
 
         if let Ok(raw_host_mode) = std::env::var("RUSTOK_RUNTIME_HOST_MODE") {
@@ -1115,18 +1128,15 @@ impl RuntimeSettings {
 #[derive(Clone)]
 pub struct SharedRustokSettings(pub std::sync::Arc<RustokSettings>);
 
-fn parse_event_transport(value: &str) -> Result<EventTransportKind, serde_json::Error> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "memory" => Ok(EventTransportKind::Memory),
-        "outbox" => Ok(EventTransportKind::Outbox),
-        "iggy" => Ok(EventTransportKind::Iggy),
-        _ => Err(serde_json::Error::io(std::io::Error::new(
+fn parse_event_delivery_profile(value: &str) -> Result<EventDeliveryProfile, serde_json::Error> {
+    EventDeliveryProfile::parse(value).ok_or_else(|| {
+        serde_json::Error::io(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!(
-                "Invalid RUSTOK_EVENT_TRANSPORT='{value}'. Expected one of: memory, outbox, iggy"
+                "Invalid RUSTOK_EVENT_DELIVERY_PROFILE='{value}'. Expected one of: memory, outbox_local, outbox_iggy"
             ),
-        ))),
-    }
+        ))
+    })
 }
 
 fn parse_runtime_host_mode(value: &str) -> Result<RuntimeHostMode, serde_json::Error> {
@@ -1376,13 +1386,14 @@ fn email_disabled_production_override_enabled() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BuildDeploymentBackendKind, EmailProvider, EventTransportKind, GuardrailRolloutMode,
-        RateLimitBackendKind, RelayTargetKind, RustokSettings, TenantFallbackMode,
-        TenantResolutionMode, TenantRuntimeProfile, TenantSettingsError,
+        BuildDeploymentBackendKind, EmailProvider, EventDeliveryProfile, GuardrailRolloutMode,
+        RateLimitBackendKind, RustokSettings, TenantFallbackMode, TenantResolutionMode,
+        TenantRuntimeProfile, TenantSettingsError,
     };
     use std::sync::{Mutex, OnceLock};
 
-    const EVENT_TRANSPORT_ENV: &str = "RUSTOK_EVENT_TRANSPORT";
+    const EVENT_DELIVERY_PROFILE_ENV: &str = "RUSTOK_EVENT_DELIVERY_PROFILE";
+    const EVENT_TRANSPORT_ENV: &str = EVENT_DELIVERY_PROFILE_ENV;
     const RUNTIME_HOST_MODE_ENV: &str = "RUSTOK_RUNTIME_HOST_MODE";
     const RUSTOK_REDIS_URL_ENV: &str = "RUSTOK_REDIS_URL";
     const REDIS_URL_ENV: &str = "REDIS_URL";
@@ -1430,59 +1441,62 @@ mod tests {
     }
 
     #[test]
-    fn reads_transport_from_config() {
+    fn reads_delivery_profile_from_config() {
         let _guard = env_lock().lock().expect("env lock poisoned");
-        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _env_guard = EnvVarGuard::clear(EVENT_DELIVERY_PROFILE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
 
         let raw = serde_json::json!({
             "rustok": {
                 "events": {
-                    "transport": "outbox"
+                    "delivery_profile": "outbox_local"
                 }
             }
         });
 
         let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
-        assert_eq!(settings.events.transport, EventTransportKind::Outbox);
+        assert_eq!(
+            settings.events.delivery_profile,
+            EventDeliveryProfile::OutboxLocal
+        );
     }
 
     #[test]
-    fn rejects_invalid_env_transport() {
+    fn rejects_invalid_env_delivery_profile() {
         let _guard = env_lock().lock().expect("env lock poisoned");
-        let _env_guard = EnvVarGuard::set(EVENT_TRANSPORT_ENV, "broken");
+        let _env_guard = EnvVarGuard::set(EVENT_DELIVERY_PROFILE_ENV, "broken");
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
 
         let err = RustokSettings::from_settings(&Some(serde_json::json!({ "rustok": {} })))
-            .expect_err("transport should fail");
+            .expect_err("delivery profile should fail");
         assert!(
             err.to_string()
-                .contains("Invalid RUSTOK_EVENT_TRANSPORT='broken'")
+                .contains("Invalid RUSTOK_EVENT_DELIVERY_PROFILE='broken'")
         );
     }
 
     #[test]
     fn reads_relay_defaults_from_config() {
         let _guard = env_lock().lock().expect("env lock poisoned");
-        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _env_guard = EnvVarGuard::clear(EVENT_DELIVERY_PROFILE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
 
         let raw = serde_json::json!({
             "rustok": {
                 "events": {
-                    "transport": "outbox",
-                    "relay_target": "iggy"
+                    "delivery_profile": "outbox_iggy"
                 }
             }
         });
 
         let settings = RustokSettings::from_settings(&Some(raw)).expect("settings parsed");
-        assert_eq!(settings.events.transport, EventTransportKind::Outbox);
-        assert_eq!(settings.events.relay_target, RelayTargetKind::Iggy);
-        assert!(!settings.events.allow_relay_target_fallback);
+        assert_eq!(
+            settings.events.delivery_profile,
+            EventDeliveryProfile::OutboxIggy
+        );
         assert_eq!(settings.events.channel_capacity, 128);
         assert_eq!(settings.events.relay_retry_policy.max_attempts, 5);
         assert_eq!(settings.events.relay_retry_policy.base_backoff_ms, 1_000);
@@ -1494,7 +1508,7 @@ mod tests {
     #[test]
     fn rejects_non_positive_retry_and_dlq_attempts() {
         let _guard = env_lock().lock().expect("env lock poisoned");
-        let _env_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _env_guard = EnvVarGuard::clear(EVENT_DELIVERY_PROFILE_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
 

@@ -45,6 +45,12 @@ module-owned UI packages. The verified capability baseline and the remaining
 product work are tracked in this plan's program ledger; every unfinished item
 remains explicitly marked with its current status and completion evidence.
 
+The neutral `rustok-api::richtext` contract and executable
+`rustok-content::richtext` profiles are now available. Forum topic/reply
+storage and transports remain on the legacy body/format path until the
+atomic cutover; do not add new `rt_json`/Markdown aliases,
+`content_json` fields, or a Forum-local renderer.
+
 ## Verification
 
 Run `cargo xtask module validate forum` for the module contract and use the

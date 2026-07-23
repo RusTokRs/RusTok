@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Fast no-compile guardrails for rustok-iggy-connector lifecycle hardening.
-// Checks that connector ack metadata has a canonical simulated + real SDK seam
-// and that subscriber ack paths validate token scope without transport policy.
+// Checks that connector ack metadata has a canonical simulated + real SDK seam,
+// that bundled mode manages a real native broker, and that subscriber ack paths
+// validate token scope without transport policy.
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -50,16 +51,20 @@ for (const marker of [
   "pub fn decode",
   "pub fn matches_scope",
   "ConnectorAckToken::simulated(mode, stream, topic, partition, offset).encode()",
-  "ack token scope does not match remote subscriber",
-  "ack token scope does not match embedded subscriber",
+  "ack token scope does not match external subscriber",
+  "pub struct BundledConnector",
+  "Bundled Iggy connector initialized",
   "test_connector_ack_token_roundtrip_and_scope",
   "test_subscriber_ack_rejects_wrong_scope",
 ]) {
   assertContains(lib, marker, `${libPath}: missing connector ack guardrail marker ${marker}`);
 }
 
-assertNotContains(lib, /Some\("remote:stream1:topic1:3:99"\)|assert_eq!\(token, "remote:stream1:topic1:3:99"\)/, `${libPath}: simulated token tests must use canonical sim: prefix`);
+assertNotContains(lib, /Some\("external:stream1:topic1:3:99"\)|assert_eq!\(token, "external:stream1:topic1:3:99"\)/, `${libPath}: simulated token tests must use canonical sim: prefix`);
 assertNotContains(lib, /Some\("embedded:stream1:topic1:3:99"\)|assert_eq!\(token, "embedded:stream1:topic1:3:99"\)/, `${libPath}: embedded token tests must use canonical sim: prefix`);
+assertNotContains(lib, "EmbeddedConnector", `${libPath}: legacy embedded connector must not remain`);
+assertNotContains(lib, "LocalConnector", `${libPath}: legacy local connector name must not remain`);
+assertNotContains(lib, "RemoteConnector", `${libPath}: legacy remote connector name must not remain`);
 
 for (const text of [plan, docs, readme, registry]) {
   assertContains(text, "ConnectorAckToken", "docs/registry must mention ConnectorAckToken lifecycle seam");

@@ -11,14 +11,11 @@ pub mod category {
     pub const EMAIL: &str = "email";
     pub const SEARCH: &str = "search";
     pub const RATE_LIMIT: &str = "rate_limit";
-    pub const EVENTS: &str = "events";
     pub const FEATURES: &str = "features";
     pub const I18N: &str = "i18n";
     pub const OAUTH: &str = "oauth";
 
-    pub const ALL: &[&str] = &[
-        GENERAL, EMAIL, SEARCH, RATE_LIMIT, EVENTS, FEATURES, I18N, OAUTH,
-    ];
+    pub const ALL: &[&str] = &[GENERAL, EMAIL, SEARCH, RATE_LIMIT, FEATURES, I18N, OAUTH];
 }
 
 #[derive(Debug)]
@@ -270,7 +267,6 @@ impl SettingsService {
             category::EMAIL => serde_json::to_value(&rs.email).unwrap_or(Value::Null),
             category::SEARCH => serde_json::to_value(&rs.search).unwrap_or(Value::Null),
             category::RATE_LIMIT => serde_json::to_value(&rs.rate_limit).unwrap_or(Value::Null),
-            category::EVENTS => serde_json::to_value(&rs.events).unwrap_or(Value::Null),
             category::FEATURES => serde_json::to_value(&rs.features).unwrap_or(Value::Null),
             _ => Value::Null,
         }

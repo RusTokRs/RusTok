@@ -7,7 +7,12 @@
 ## Responsibilities
 
 - Implement the `rustok_content::ContentOrchestrationBridge` contract for blog/forum conversion flows.
-- Keep cross-module data movement, comment/reply migration, taxonomy mapping, and canonical URL hand-off outside `apps/server`.
+- Keep cross-module data movement, taxonomy mapping, and canonical URL hand-off
+  outside `apps/server`.
+- Reject Blog-to-Forum or Forum-to-Blog conversion when comments/replies are
+  present until Forum adopts the same canonical richtext contract. The bridge
+  must not copy canonical Comments JSON into a legacy selectable-format field
+  or silently flatten Forum Markdown.
 - Provide host-neutral runtime construction helpers for the server host to register in its own runtime store.
 
 ## Entry points

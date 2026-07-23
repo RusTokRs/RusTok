@@ -14,3 +14,18 @@ fn crate_api_defines_minimal_contract_sections() {
         );
     }
 }
+
+#[test]
+fn transport_exposes_only_persistent_consumer_group_delivery() {
+    let transport = include_str!("transport.rs");
+    for removed_api in [
+        "subscribe_as_group",
+        "consume_next_as_group",
+        "ack_consumed",
+    ] {
+        assert!(
+            !transport.contains(removed_api),
+            "legacy consumer API {removed_api} must not be reintroduced"
+        );
+    }
+}

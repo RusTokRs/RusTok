@@ -3,9 +3,9 @@
 use rustok_api::Permission;
 use rustok_core::{MigrationSource, UserRole};
 use rustok_rbac::{
-    apply_system_role_repair_in_transaction, plan_system_role_repair,
-    read_permission_invalidation_generation, reserve_permission_invalidation_generation,
-    RbacRoleAssignmentDbWriter, RbacSystemRoleRepairError,
+    RbacRoleAssignmentDbWriter, RbacSystemRoleRepairError, apply_system_role_repair_in_transaction,
+    plan_system_role_repair, read_permission_invalidation_generation,
+    reserve_permission_invalidation_generation,
 };
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm_migration::sea_orm::{
@@ -166,10 +166,11 @@ async fn dry_run_is_read_only_and_apply_repairs_permission_drift() {
 
     assert!(!plan.applied);
     assert!(plan.role_permission_links_removed >= 1);
-    assert!(plan
-        .affected_users
-        .iter()
-        .any(|affected| affected.tenant_id == tenant_id && affected.user_id == user_id));
+    assert!(
+        plan.affected_users
+            .iter()
+            .any(|affected| affected.tenant_id == tenant_id && affected.user_id == user_id)
+    );
     assert!(role_permission_exists(&db, manager_role_id, stale_permission_id).await);
     assert_eq!(
         read_permission_invalidation_generation(&db).await.unwrap(),

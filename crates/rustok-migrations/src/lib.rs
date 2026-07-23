@@ -50,6 +50,7 @@ mod m20260717_000002_create_registry_publish_build_staging;
 mod m20260717_000003_add_registry_artifact_origin_and_external_staging;
 mod m20260718_000001_add_module_operation_idempotency_key;
 mod m20260718_000002_add_registry_publication_idempotency;
+mod m20260723_000001_create_event_delivery_settings;
 
 #[cfg(test)]
 mod rbac_system_role_repair_tests;
@@ -263,6 +264,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260717_000001_create_registry_publication_evidence::Migration),
             Box::new(m20260717_000002_create_registry_publish_build_staging::Migration),
             Box::new(m20260717_000003_add_registry_artifact_origin_and_external_staging::Migration),
+            Box::new(m20260723_000001_create_event_delivery_settings::Migration),
         ];
 
         // Pull module-owned migrations from the domain crates and merge them into
@@ -317,6 +319,7 @@ impl MigratorTrait for Migrator {
         all.extend(rustok_search::migrations::migrations());
         all.extend(rustok_taxonomy::migrations::migrations());
         all.extend(rustok_workflow::migrations::migrations());
+        all.extend(rustok_iggy_connector::migrations::migrations());
         all.push(Box::new(
             m20260501_000001_create_platform_composition_state::Migration,
         ));
@@ -447,7 +450,7 @@ fn sort_migrations_by_dependencies(
 
 #[cfg(test)]
 mod tests {
-    use super::{sort_migrations_by_dependencies, MigrationDescriptor, Migrator};
+    use super::{MigrationDescriptor, Migrator, sort_migrations_by_dependencies};
     use rustok_test_utils::setup_test_db;
     use sea_orm_migration::MigratorTrait;
 
@@ -760,6 +763,19 @@ mod tests {
         assert!(
             names.contains(&"m20260325_000006_add_search_typo_tolerance_indexes".to_string()),
             "server migrator must include search typo-tolerance indexes migration"
+        );
+    }
+
+    #[test]
+    fn migrator_includes_iggy_connector_settings() {
+        let names: Vec<String> = Migrator::migrations()
+            .into_iter()
+            .map(|migration| migration.name().to_string())
+            .collect();
+
+        assert!(
+            names.contains(&"m20260723_000002_create_iggy_connector_settings".to_string()),
+            "server migrator must include the module-owned Iggy connector settings migration"
         );
     }
 

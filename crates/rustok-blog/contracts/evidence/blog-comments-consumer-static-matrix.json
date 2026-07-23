@@ -9,31 +9,31 @@
     {
       "operation": "create_comment",
       "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "degraded_hide_comment_form_on_unavailable"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile", "degraded_hide_comment_form_on_unavailable"],
       "runtime_evidence": "pending"
     },
     {
       "operation": "list_comments_for_target",
       "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "degraded_cached_thread_snapshot_on_unavailable"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "server_plain_text_preview", "degraded_cached_thread_snapshot_on_unavailable"],
       "runtime_evidence": "pending"
     },
     {
       "operation": "list_public_comments_for_target",
       "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection", "degraded_cached_thread_snapshot_on_unavailable"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "approved_only_projection", "server_plain_text_preview", "degraded_cached_thread_snapshot_on_unavailable"],
       "runtime_evidence": "pending"
     },
     {
       "operation": "update_comment",
       "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "typed_richtext_input", "server_selected_comment_profile"],
       "runtime_evidence": "pending"
     },
     {
       "operation": "set_comment_status",
       "profiles": ["in_process", "remote_adapter_placeholder"],
-      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required"],
+      "assertions": ["typed_port_error_mapping", "context_deadline_preserved", "write_idempotency_required", "server_richtext_view_projection", "server_plain_text_projection"],
       "runtime_evidence": "pending"
     },
     {

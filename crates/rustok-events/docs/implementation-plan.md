@@ -21,12 +21,18 @@ schema metadata, validation, and event versioning policy. `rustok-core::events`
 is a compatibility re-export only; domain, outbox, runtime, and test crates
 should import event contracts from this module.
 
+The committed `contracts/event-contract-digests.json` release artifact covers
+the full schema registry and all root/typed transport wire schemas. Contract
+tests regenerate its values with Schemars and fail on drift. The current release
+train intentionally allows only version-1 event schemas: a versioned payload
+migration remains blocked until the remote-consumer delivery contract is owned.
+
 The root schema registry covers every current root event type. Schemars now
 generates standards-compliant Draft 2020-12 JSON Schema for the root event and
 envelope wire representations, while `jsonschema` validates those artifacts in
 the contract test suite. Root envelopes validate their metadata, registered
 schema, and semantic payload at the event bus, outbox write, outbox relay, and
-JSON/Postcard decode boundaries. The server outbound event bus now
+JSON/MessagePack decode boundaries. The server outbound event bus now
 has atomic context registration, abort-on-drop ownership, restart after panic or
 unexpected exit, and critical readiness escalation when the supervisor stops.
 The configured `EventRuntime` is published before module dispatcher startup.
@@ -39,18 +45,30 @@ requested/restored builds and source/target releases, while the envelope
 carries the actor. Schema-registry exact-set coverage now also includes the
 registered module security/distribution events and the previously missing
 comment schemas.
+The root user-registration fact is `user.account_registered` v1 and contains
+only `user_id`; the former email-carrying payload was atomically removed because
+the repository has no production publisher or reader for it.
 
-This does not create an inbound cross-replica consumer. Module listeners still
-receive the configured local listener bus; an owner that requires durable cache
-or projection recovery must use a persisted outbox/stream offset or monotonic
+The module-build dispatcher is the first owner-specific remote consumer: it
+retains one remote Iggy cursor, persists or recognizes an idempotent owner
+result, and only then commits the broker offset. Module listeners still receive
+the configured local listener bus; an owner that requires durable cache or
+projection recovery must use a persisted outbox/stream offset or monotonic
 generation rather than assuming remote event replay.
 
 ## FFA/FBA boundary
 
-- FFA status: `not_started`
-- FBA status: `not_started`
-- Structural shape: `no_ui_boundary`
-- This module publishes shared contracts, not a UI or FBA provider port.
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- Structural shape: `core -> transport -> ui/leptos`, with a sibling
+  module-owned Next package.
+- `rustok-events-module` is the cycle-free runtime/manifest adapter for this
+  contract crate. Its `admin/` package owns the delivery-profile UI and uses
+  native `#[server]` functions by default with a parallel GraphQL adapter.
+- The host owns only route composition and provides
+  `SharedEventDeliveryControl`; it does not own event-profile fields or UI.
+- Next ownership is under `crates/rustok-events-module/next-admin`; the host
+  consumes it as `@rustok/events-admin`.
 
 ## Completed source results
 
@@ -58,6 +76,9 @@ generation rather than assuming remote event replay.
 - [x] Validate root and typed-family payloads at publication, durable relay, and streaming decode boundaries.
 - [x] Keep the root event registry synchronized with all current root event types.
 - [x] Generate and validate standards-compliant root event/envelope JSON Schema from Rust types.
+- [x] Gate registry and root/typed transport schema drift with a committed release artifact.
+- [x] Block unplanned version-2 schemas until durable remote-consumer migration ownership exists.
+- [x] Keep contact data out of shared user-registration event payloads.
 - [x] Own the server outbound forwarder through a context runtime handle.
 - [x] Restart the outbound forwarder after panic or unexpected exit.
 - [x] Surface a terminal forwarder as a critical runtime guardrail condition.
@@ -85,16 +106,11 @@ generation rather than assuming remote event replay.
    group/offset contract.
    **Done when:** at least one multi-replica owner consumer can miss a fast-path
    event, restart, replay from persisted state, recover the affected projection
-   or cache, and acknowledge only after successful application.
+   or cache, and acknowledge only after successful application. The module-build
+   dispatcher supplies the result-first cursor shape; real-broker multi-replica
+   recovery evidence remains outstanding.
 
-3. **Make schema-change release discipline executable.** Document and enforce
-   version bump, compatibility, deprecation, and dual-read/migration decisions
-   for breaking payload changes; continue removing residual compatibility imports.
-   **Depends on:** the affected event consumer release plan.
-   **Done when:** a breaking change has an explicit migration owner, supported
-   reader versions, and a testable compatibility strategy.
-
-4. **Synchronize event contracts with recovery guidance.** Update outbox,
+3. **Synchronize event contracts with recovery guidance.** Update outbox,
    replay, reindex, and DLQ documentation with a schema or versioning change.
    **Depends on:** the relevant runtime/operational contract.
    **Done when:** recovery procedures name the correct event schema and do not

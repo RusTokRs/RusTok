@@ -6,7 +6,7 @@ use sea_orm_migration::prelude::*;
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-use rustok_api::{normalize_locale_tag, PLATFORM_FALLBACK_LOCALE};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

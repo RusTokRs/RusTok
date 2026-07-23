@@ -8,7 +8,7 @@ use std::{collections::HashMap, fmt, path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use async_trait::async_trait;
-pub use secrecy::SecretString;
+pub use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 

@@ -9,15 +9,20 @@ status: verified
 
 # Iggy Reference Package (RusToK)
 
-Last updated: **2026-02-26**.
+Last updated: **2026-07-23**.
 
 > This package captures the working Iggy integration layer in RusToK (`rustok-iggy`, `rustok-iggy-connector`, `rustok-outbox`) and protects against incorrect migrations from Kafka/NATS.
+
+Iggy is selected only by the global `outbox_iggy` event-delivery profile. The
+single-node `outbox_local` profile does not start, require, or fall back to
+Iggy. Operators select the profile in the global admin control plane; Iggy
+endpoints and credentials remain deployment configuration.
 
 ## Versions
 
 | Component | Version |
 |-----------|--------|
-| Rust SDK (`iggy` crate) | `0.9.0` |
+| Rust SDK (`iggy` crate) | `0.10.0` |
 | Iggy Server (Docker) | `apache/iggy:0.7.0` |
 
 ## 1) Minimal working example: bring up transport
@@ -51,9 +56,9 @@ txn.commit().await?;
 
 This is the canonical RusToK path for write-flow with events.
 
-## 3) Current high-level API (iggy SDK 0.9.0)
+## 3) Current high-level API (iggy SDK 0.10.0)
 
-SDK 0.9.0 uses the high-level Producer/Consumer API based on the builder pattern.
+SDK 0.10.0 uses the high-level Producer/Consumer API based on the builder pattern.
 Low-level methods (`send_messages`, `get_stream`, `create_topic`) are available, but for
 production code the high-level approach is preferred.
 
@@ -85,10 +90,17 @@ producer.send(messages).await?;
 ### `rustok-iggy`
 - `pub async fn new(config: IggyConfig) -> Result<Self>`
 - `pub async fn shutdown(&self) -> Result<()>`
-- `pub async fn subscribe_as_group(&self, group: &str) -> Result<()>`
+- `pub async fn open_persistent_consumer_group(&self, group_name: &str, topic: &str) -> Result<PersistentConsumerGroup>`
+- `pub async fn open_persistent_contract_consumer_group(&self, group_name: &str, topic: &str) -> Result<PersistentContractConsumerGroup>`
 - `pub async fn replay(&self) -> Result<()>`
 - `pub fn config(&self) -> &IggyConfig`
 - `pub fn is_connected(&self) -> bool`
+
+`IggyConfig.serialization` accepts `json` (default) or `messagepack`.
+MessagePack is implemented with `rmp-serde`; `postcard` is not a supported
+value because it cannot decode the internally tagged published event enums.
+JSON timestamps are RFC 3339 strings and MessagePack timestamps are UTC
+microseconds; both decode into the same validated envelope contract.
 
 ### `rustok-iggy-connector`
 - `pub async fn connect(&self, config: &ConnectorConfig) -> Result<(), ConnectorError>`
@@ -102,9 +114,9 @@ producer.send(messages).await?;
 
 ## 5) What not to do (typical incorrect patterns from Kafka/NATS)
 
-1. **Do not assume kafka-only semantics (acks/offset commit API) that do not exist in the current abstraction.**
-   - Anti-pattern: adding manual offset commits or direct SDK calls to Kafka in business code.
-   - Correct: use `EventTransport`/`TransactionalEventBus`.
+1. **Do not acknowledge a broker delivery through a different cursor or direct SDK call.**
+   - Anti-pattern: receiving through a partition subscriber and opening another subscriber to commit an offset.
+   - Correct: retain `PersistentConsumerGroup` for the complete receive/process/acknowledge cycle.
 
 2. **Do not use fire-and-forget publish for write-flow requiring consistency.**
    - Anti-pattern: `publish(...)` before/instead of the transactional path.
@@ -114,13 +126,52 @@ producer.send(messages).await?;
    - Anti-pattern: designing routing only by string `subject` without considering `stream/topic/partition_key`.
 
 4. **Do not invent configuration fields and connector modes.**
-   - In the current code, modes are only `Embedded | Remote`, and config goes through `IggyConfig -> ConnectorConfig`.
+   - In the current code, modes are only `Bundled | External`, and config goes through `IggyConfig -> ConnectorConfig`.
+   - `Bundled` starts the module-installed native `iggy-server` process,
+     keeps its TCP listener on loopback, and uses the normal Iggy SDK. It is a
+     durable single-node deployment option, not an in-memory test double.
+   - `External` connects to independently managed Iggy over TCP and supports SDK
+     TLS options. Persistent consumer groups do not support HTTP in RusToK.
 
 5. **Do not use low-level SDK methods where a high-level Producer API exists.**
    - Anti-pattern: calling `client.send_messages(...)` directly in business code.
    - Correct: use `client.producer(...).build()` → `producer.send(...)`.
 
-## 6) Docker Compose
+## 6) Bundled native deployment (without Docker)
+
+The connector does not download or compile Iggy at runtime. Provision a pinned
+`iggy-server` binary through the module installer or host image on a platform
+supported by upstream Iggy, then configure the deployment-owned bundled path:
+
+```yaml
+iggy:
+  mode: bundled
+  bundled:
+    executable: /opt/rustok/bin/iggy-server
+    data_dir: /var/lib/rustok/iggy
+    tcp_port: 8090
+    http_port: 0
+    startup_timeout_ms: 30000
+    shutdown_timeout_ms: 10000
+  external:
+    addresses: ["127.0.0.1:8090"]
+    protocol: tcp
+    username: ${IGGY_ROOT_USERNAME}
+    password: ${IGGY_ROOT_PASSWORD}
+```
+
+`Bundled` creates and retains the configured data directory. It only accepts one
+loopback TCP address matching `bundled.tcp_port`. Root credentials must be set
+before first initialization of that directory; rotate them through Iggy
+administration rather than changing the process environment afterwards. Use a
+supervisor and durable Iggy configuration appropriate for the deployment's
+crash-recovery requirements.
+
+Upstream `iggy-server` does not support Windows. On Windows, the connector
+rejects `bundled` mode before spawning a process; use `external` mode with Iggy on
+a supported Linux host instead.
+
+## 7) Docker Compose
 
 The Iggy server is added to `docker-compose.yml` as the `iggy` service:
 
@@ -136,7 +187,7 @@ iggy:
     - IGGY_TCP_ADDRESS=0.0.0.0:8090
 ```
 
-## 7) Synchronization with code (procedure)
+## 8) Synchronization with code (procedure)
 
 - When changes are made to `crates/rustok-iggy/**`, `crates/rustok-iggy-connector/**`, `crates/rustok-outbox/**`:
   1) update examples and signatures in this reference;

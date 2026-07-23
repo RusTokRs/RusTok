@@ -223,6 +223,16 @@ pub fn compose_application_router(
             .with_shared_value(transactional_event_bus_from_context(
                 &middleware_runtime_ctx,
             ))
+            .with_shared_value(rustok_api::SharedEventDeliveryControl(Arc::new(
+                crate::services::event_delivery_control_adapter::ServerEventDeliveryControl::new(
+                    middleware_runtime_ctx.clone(),
+                ),
+            )))
+            .with_shared_value(rustok_iggy_connector::SharedIggyConnectorControl(Arc::new(
+                crate::services::iggy_connector_control_adapter::ServerIggyConnectorControl::new(
+                    middleware_runtime_ctx.clone(),
+                ),
+            )))
             .with_shared_value(HostSettingsSnapshot::new(settings_snapshot));
         let runtime_ctx = if let Some(registry) =
             middleware_runtime_ctx.shared_get::<rustok_core::ModuleRegistry>()

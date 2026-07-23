@@ -1,9 +1,20 @@
 use rustok_events::{
     ContractEventEnvelope, DomainEvent, EVENT_SCHEMAS, EventEnvelope, RootDomainEvent,
-    RootEventEnvelope, ValidateEvent, domain_event_json_schema, event_envelope_json_schema,
-    event_schema,
+    RootEventEnvelope, ValidateEvent, contract_event_envelope_json_schema,
+    contract_event_payload_json_schema, domain_event_json_schema, event_contract_digests,
+    event_envelope_json_schema, event_schema, event_schemas,
 };
 use uuid::Uuid;
+
+#[derive(Debug, serde::Deserialize, PartialEq)]
+struct DigestArtifact {
+    format_version: u16,
+    registry: String,
+    root_event: String,
+    root_envelope: String,
+    contract_payload: String,
+    contract_envelope: String,
+}
 
 fn id(value: u128) -> Uuid {
     Uuid::from_u128(value)
@@ -68,10 +79,7 @@ fn sample_events() -> Vec<DomainEvent> {
             size: 4096,
         },
         DomainEvent::MediaDeleted { media_id: id(18) },
-        DomainEvent::UserRegistered {
-            user_id: id(19),
-            email: "user@example.com".to_string(),
-        },
+        DomainEvent::UserAccountRegistered { user_id: id(19) },
         DomainEvent::UserLoggedIn { user_id: id(20) },
         DomainEvent::UserUpdated { user_id: id(21) },
         DomainEvent::ProfileUpdated {
@@ -634,14 +642,22 @@ fn contract_envelope_accepts_a_formerly_unregistered_root_event() {
 }
 
 #[test]
-fn generated_json_schemas_are_valid_and_describe_root_wire_contracts() {
+fn generated_json_schemas_are_valid_and_describe_transport_wire_contracts() {
     let domain_schema = domain_event_json_schema();
     let envelope_schema = event_envelope_json_schema();
+    let contract_payload_schema = contract_event_payload_json_schema();
+    let contract_envelope_schema = contract_event_envelope_json_schema();
 
     jsonschema::meta::validate(&domain_schema).expect("domain event schema must be valid");
     jsonschema::meta::validate(&envelope_schema).expect("envelope schema must be valid");
+    jsonschema::meta::validate(&contract_payload_schema)
+        .expect("contract payload schema must be valid");
+    jsonschema::meta::validate(&contract_envelope_schema)
+        .expect("contract envelope schema must be valid");
     assert!(domain_schema.is_object());
     assert_eq!(envelope_schema["type"], "object");
+    assert!(contract_payload_schema.is_object());
+    assert_eq!(contract_envelope_schema["type"], "object");
 }
 
 #[test]
@@ -663,13 +679,46 @@ fn root_envelope_rejects_tampered_metadata_and_nil_causation_id() {
 #[test]
 fn event_schema_registry_has_unique_event_types() {
     let mut event_types = std::collections::BTreeSet::new();
-    for schema in EVENT_SCHEMAS {
+    for schema in event_schemas() {
         assert!(
             event_types.insert(schema.event_type),
             "duplicate schema entry for {}",
             schema.event_type
         );
         assert!(schema.version >= 1, "schema versions must start at 1");
+    }
+}
+
+#[test]
+fn published_event_contract_matches_committed_release_artifact() {
+    let expected: DigestArtifact =
+        serde_json::from_str(include_str!("../contracts/event-contract-digests.json"))
+            .expect("release artifact must be valid JSON");
+    assert_eq!(expected.format_version, 1, "unsupported artifact format");
+
+    let actual = event_contract_digests();
+    let actual = DigestArtifact {
+        format_version: 1,
+        registry: actual.registry,
+        root_event: actual.root_event,
+        root_envelope: actual.root_envelope,
+        contract_payload: actual.contract_payload,
+        contract_envelope: actual.contract_envelope,
+    };
+    assert_eq!(
+        expected, actual,
+        "event-contract artifact changed; review the release policy before updating it"
+    );
+}
+
+#[test]
+fn current_release_train_accepts_only_initial_event_schema_versions() {
+    for schema in event_schemas() {
+        assert_eq!(
+            schema.version, 1,
+            "{} uses v{} without an approved remote-consumer migration contract",
+            schema.event_type, schema.version
+        );
     }
 }
 
@@ -710,9 +759,64 @@ fn field_schema_metadata_generates_valid_json_schema() {
                 data_type: "string",
                 optional: true,
             },
+            rustok_events::FieldSchema {
+                name: "ids",
+                data_type: "array<uuid>",
+                optional: false,
+            },
+            rustok_events::FieldSchema {
+                name: "values",
+                data_type: "array",
+                optional: false,
+            },
         ],
     };
 
     jsonschema::meta::validate(&schema.to_json_schema())
         .expect("field schema metadata must produce valid JSON Schema");
+}
+
+#[test]
+fn every_registered_field_schema_uses_a_supported_primitive() {
+    for schema in event_schemas() {
+        let generated = schema.to_json_schema();
+        for (field_name, field_schema) in generated["properties"]
+            .as_object()
+            .expect("event schemas must define object properties")
+        {
+            assert_ne!(
+                field_schema,
+                &serde_json::Value::Bool(false),
+                "{} uses an unsupported field primitive for {field_name}",
+                schema.event_type
+            );
+        }
+    }
+}
+
+#[test]
+fn shared_event_schemas_reject_direct_contact_and_secret_field_names() {
+    const FORBIDDEN_FIELD_NAMES: &[&str] = &[
+        "address",
+        "body",
+        "content",
+        "credential",
+        "email",
+        "metadata",
+        "password",
+        "phone",
+        "secret",
+        "token",
+    ];
+
+    for schema in event_schemas() {
+        for field in schema.fields {
+            assert!(
+                !FORBIDDEN_FIELD_NAMES.contains(&field.name),
+                "{} must not expose {} in a shared event payload",
+                schema.event_type,
+                field.name
+            );
+        }
+    }
 }

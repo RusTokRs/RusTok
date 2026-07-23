@@ -6,20 +6,20 @@ source_language: en
 entities:
   - config://apps/server/config/development.yaml#settings.rustok.events.relay_target
 last_verified_snapshot: snap_jsonl_00000021
-status: verified
+status: deprecated
 ---
 
-# Runtime Config Key `settings.rustok.events.relay_target`
+# Deprecated: `settings.rustok.events.relay_target`
 
 ## Purpose
 
-Document when this operational item is used, who owns it, and what successful execution or operation means.
+This key was removed. Use the single `settings.rustok.events.delivery_profile`
+selector. It has no independently switchable relay target and no fallback.
 
 ## Contract
 
-- Canonical entity: `config://apps/server/config/development.yaml#settings.rustok.events.relay_target`
-- Entity kind: `feature`
-- Source: `apps/server/config/development.yaml`:62
+- Replacement: `settings.rustok.events.delivery_profile`
+- Canonical guide: `apps/server/docs/event-transport.md`
 
 ## Procedure
 

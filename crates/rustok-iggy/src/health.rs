@@ -66,7 +66,7 @@ pub async fn health_check(connector: &dyn IggyConnector) -> Result<HealthCheckRe
     Ok(
         HealthCheckResult::healthy("Iggy transport is healthy").with_details(serde_json::json!({
             "connected": true,
-            "mode": "embedded_or_remote"
+            "mode": "local_or_remote"
         })),
     )
 }

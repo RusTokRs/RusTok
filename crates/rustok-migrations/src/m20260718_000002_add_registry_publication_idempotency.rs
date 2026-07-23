@@ -10,7 +10,8 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let statement = match manager.get_database_backend() {
-            DbBackend::Postgres => "CREATE TABLE registry_publication_operations (\
+            DbBackend::Postgres => {
+                "CREATE TABLE registry_publication_operations (\
                 operation_id UUID PRIMARY KEY,\
                 request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
                 idempotency_key UUID NOT NULL,\
@@ -21,8 +22,10 @@ impl MigrationTrait for Migration {
                 release_id TEXT NOT NULL REFERENCES registry_module_releases(id),\
                 committed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                 UNIQUE (request_id, idempotency_key)\
-            )",
-            DbBackend::Sqlite => "CREATE TABLE registry_publication_operations (\
+            )"
+            }
+            DbBackend::Sqlite => {
+                "CREATE TABLE registry_publication_operations (\
                 operation_id TEXT PRIMARY KEY NOT NULL,\
                 request_id TEXT NOT NULL REFERENCES registry_publish_requests(id),\
                 idempotency_key TEXT NOT NULL,\
@@ -33,10 +36,13 @@ impl MigrationTrait for Migration {
                 release_id TEXT NOT NULL REFERENCES registry_module_releases(id),\
                 committed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,\
                 UNIQUE (request_id, idempotency_key)\
-            )",
-            backend => return Err(DbErr::Migration(format!(
-                "registry publication idempotency migration does not support database backend {backend:?}"
-            ))),
+            )"
+            }
+            backend => {
+                return Err(DbErr::Migration(format!(
+                    "registry publication idempotency migration does not support database backend {backend:?}"
+                )));
+            }
         };
         manager
             .get_connection()

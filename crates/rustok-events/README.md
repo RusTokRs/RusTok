@@ -8,6 +8,8 @@
 
 - Define `DomainEvent`, `EventEnvelope`, and the event schema registry.
 - Keep event validation and schema metadata independent from runtime infrastructure.
+- Keep a committed release artifact for the registry and all root/typed transport
+  wire schemas, so accidental contract drift fails tests.
 - Provide a stable compatibility path while `rustok-core` keeps transitional re-exports.
 - Serve as the single source of truth for event payload evolution policy.
 
@@ -17,6 +19,8 @@
 - `EventEnvelope`
 - `EventSchema`
 - `FieldSchema`
+- `EventContractDigests`
+- `event_contract_digests`
 - `event_schema`
 - `EVENT_SCHEMAS`
 - `ValidateEvent`
@@ -34,4 +38,5 @@
 ## Docs
 
 - [Module docs](./docs/README.md)
+- [Event schema release decision](../../DECISIONS/2026-07-23-event-schema-release-discipline.md)
 - [Platform docs index](../../docs/index.md)

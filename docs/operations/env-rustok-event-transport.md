@@ -6,23 +6,25 @@ source_language: en
 entities:
   - env://RUSTOK_EVENT_TRANSPORT
 last_verified_snapshot: snap_jsonl_00000021
-status: verified
+status: deprecated
 ---
 
-# Environment Variable `RUSTOK_EVENT_TRANSPORT`
+# Deprecated: `RUSTOK_EVENT_TRANSPORT`
 
 ## Purpose
 
-Document the runtime purpose, expected format, and default behavior for this environment variable.
+This variable was removed. Use `RUSTOK_EVENT_DELIVERY_PROFILE` with exactly
+`memory`, `outbox_local`, or `outbox_iggy`. The canonical contract is in
+[`apps/server` event delivery documentation](../../apps/server/docs/event-transport.md).
 
 ## Contract
 
-- Variable: `RUSTOK_EVENT_TRANSPORT`
-- Canonical entity: `env://RUSTOK_EVENT_TRANSPORT`
+- Removed variable: `RUSTOK_EVENT_TRANSPORT`
+- Replacement: `RUSTOK_EVENT_DELIVERY_PROFILE`
 
 ## Evidence
 
-- `apps/server/src/common/settings.rs:646`
+- `apps/server/src/common/settings.rs`
 
 ## Notes
 

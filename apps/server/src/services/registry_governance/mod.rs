@@ -298,8 +298,7 @@ pub use releases::release_status_label;
 pub use validation::validation_stage_status_label;
 
 pub(crate) use publishing::{
-    publish_request_governance_actions,
-    publish_request_governance_actions_for_authority,
+    publish_request_governance_actions, publish_request_governance_actions_for_authority,
 };
 pub(crate) use validation::{
     compare_semver_desc, derive_follow_up_gate_snapshots, derive_validation_stage_snapshots,

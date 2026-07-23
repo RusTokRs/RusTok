@@ -8,6 +8,14 @@ packages. It consumes `rustok-comments` through `CommentsThreadPort` and shared
 taxonomy through its public boundary. Native `#[server]` and GraphQL remain
 parallel transports over the same owner services.
 
+The neutral `rustok-api::richtext` contract and executable
+`rustok-content::richtext` profiles are now available. Blog comments are
+already a typed consumer of the Comments owner: comment writes use
+`RichTextDocument`, and moderation responses return `RichTextView` plus the
+server-derived plain text. Blog posts remain on their separate article
+cutover; do not add new `rt_json`/Markdown aliases, `content_json` fields, or
+local renderers while that migration is prepared.
+
 The host path limiter protects `/api/*`, including Blog REST and GraphQL. Blog
 adds field-aware GraphQL classification backed by the host
 `SharedApiRateLimiter`. Anonymous keys use only the host-resolved client IP.
@@ -53,8 +61,8 @@ transactional outbox publication.
 
 ## FFA/FBA status
 
-- FFA: `in_progress`.
-- FBA: `boundary_ready` (`core_transport_ui`).
+- FFA status: `in_progress`.
+- FBA status: `boundary_ready` (`core_transport_ui`).
 - Load protection: `implementation_ready`; mounted Redis evidence is pending.
 - Rate-limit harness: `executable_no_compile`; execution is user-owned.
 - Search Blog projection harness: `executable_no_run`; PostgreSQL execution is
@@ -136,12 +144,13 @@ transactional outbox publication.
 5. **Close comments runtime evidence.** Cover approved-only reads, moderation,
    pagination, independent create commands, duplicate delivery, concurrent
    counters, missing-post retry, rollback, and outbox publication.
-6. **Join the atomic richtext cutover.** Replace the string body plus
-   `content_json` transport with `RichTextDocument`, assign the `article`
-   profile in the owner service, migrate `blog_post_translations` and relevant
-   revision/audit data, and use the canonical server HTML/plain-text
-   projections for admin, both storefronts, Search, AI/SEO, and Comments
-   integration. The Blog package must not own Forum editor/API code.
+6. **Join the atomic richtext cutover for Blog posts.** **Comments consumer
+   slice implemented.** Replace the string body plus `content_json` transport
+   with `RichTextDocument`, assign the `article` profile in the owner service,
+   migrate `blog_post_translations` and relevant revision/audit data, and use
+   the canonical server HTML/plain-text projections for admin, both
+   storefronts, Search, AI/SEO, and the already-typed Comments integration.
+   The Blog package must not own Forum editor/API code.
    **Depends on:** the
    [central Richtext plan](../../../docs/modules/rich-text-implementation-plan.md)
    and target `rustok-api`/`rustok-content` contracts.

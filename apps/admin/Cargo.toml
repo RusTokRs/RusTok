@@ -52,6 +52,8 @@ hydrate = [
   "rustok-mcp-admin/hydrate",
   "rustok-notifications-admin/hydrate",
   "rustok-outbox-admin/hydrate",
+  "rustok-events-admin/hydrate",
+  "rustok-iggy-connector-admin/hydrate",
   "rustok-page-builder-admin/hydrate",
   "rustok-pages-admin/hydrate",
   "rustok-seo-admin/hydrate",
@@ -103,6 +105,8 @@ ssr = [
   "rustok-mcp-admin/ssr",
   "rustok-notifications-admin/ssr",
   "rustok-outbox-admin/ssr",
+  "rustok-events-admin/ssr",
+  "rustok-iggy-connector-admin/ssr",
   "rustok-page-builder-admin/ssr",
   "rustok-pages-admin/ssr",
   "rustok-seo-admin/ssr",
@@ -187,6 +191,8 @@ rustok-mcp-admin = { path = "../../crates/rustok-mcp/admin", default-features = 
 rustok-notifications-admin = { path = "../../crates/rustok-notifications/admin", default-features = false }
 rustok-order-admin = { path = "../../crates/rustok-order/admin", default-features = false }
 rustok-outbox-admin = { path = "../../crates/rustok-outbox/admin", default-features = false }
+rustok-events-admin = { path = "../../crates/rustok-events-module/admin", default-features = false }
+rustok-iggy-connector-admin = { path = "../../crates/rustok-iggy-connector/admin", default-features = false }
 rustok-page-builder-admin = { path = "../../crates/rustok-page-builder/admin", default-features = false }
 rustok-pages-admin = { path = "../../crates/rustok-pages/admin", default-features = false }
 rustok-pricing-admin = { path = "../../crates/rustok-pricing/admin", default-features = false }

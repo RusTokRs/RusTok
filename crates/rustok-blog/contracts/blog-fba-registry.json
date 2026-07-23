@@ -66,7 +66,9 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "server_richtext_view_projection",
+          "server_plain_text_projection"
         ]
       },
       {
@@ -76,6 +78,8 @@
           "typed_port_error_mapping",
           "context_deadline_preserved",
           "write_idempotency_required",
+          "typed_richtext_input",
+          "server_selected_comment_profile",
           "degraded_hide_comment_form_on_unavailable"
         ]
       },
@@ -85,6 +89,7 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
+          "server_plain_text_preview",
           "degraded_cached_thread_snapshot_on_unavailable"
         ]
       },
@@ -95,6 +100,7 @@
           "typed_port_error_mapping",
           "context_deadline_preserved",
           "approved_only_projection",
+          "server_plain_text_preview",
           "degraded_cached_thread_snapshot_on_unavailable"
         ]
       },
@@ -104,7 +110,9 @@
         "assertions": [
           "typed_port_error_mapping",
           "context_deadline_preserved",
-          "write_idempotency_required"
+          "write_idempotency_required",
+          "typed_richtext_input",
+          "server_selected_comment_profile"
         ]
       },
       {

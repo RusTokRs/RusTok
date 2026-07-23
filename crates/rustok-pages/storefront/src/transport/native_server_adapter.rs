@@ -4,9 +4,7 @@ use super::ApiError;
 use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
-use crate::model::{
-    PageBody, PageDetail, PageList, PageListItem, PageTranslation,
-};
+use crate::model::{PageBody, PageDetail, PageList, PageListItem, PageTranslation};
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
@@ -117,17 +115,16 @@ async fn storefront_pages_native(
         );
         let cache_key = if let Some(cache_runtime) = cache_runtime.as_ref() {
             match cache_runtime.generation_snapshot(tenant_id).await {
-                Ok(generations) => match storefront_pages_cache_key(
-                    tenant_id,
-                    generations,
-                    cache_variant.as_str(),
-                ) {
-                    Ok(key) => Some(key),
-                    Err(error) => {
-                        tracing::warn!(%error, %tenant_id, "Pages storefront cache key rejected");
-                        None
+                Ok(generations) => {
+                    match storefront_pages_cache_key(tenant_id, generations, cache_variant.as_str())
+                    {
+                        Ok(key) => Some(key),
+                        Err(error) => {
+                            tracing::warn!(%error, %tenant_id, "Pages storefront cache key rejected");
+                            None
+                        }
                     }
-                },
+                }
                 Err(error) => {
                     tracing::warn!(%error, %tenant_id, "Pages storefront generation read failed; bypassing cache");
                     None
@@ -136,8 +133,7 @@ async fn storefront_pages_native(
         } else {
             None
         };
-        if let (Some(cache_runtime), Some(cache_key)) =
-            (cache_runtime.as_ref(), cache_key.as_ref())
+        if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime.as_ref(), cache_key.as_ref())
         {
             match cache_runtime
                 .get_json::<StorefrontPagesData>(cache_key)
@@ -235,9 +231,7 @@ async fn storefront_pages_native(
                 total,
             },
         };
-        if let (Some(cache_runtime), Some(cache_key)) =
-            (cache_runtime.as_ref(), cache_key)
-        {
+        if let (Some(cache_runtime), Some(cache_key)) = (cache_runtime.as_ref(), cache_key) {
             if let Err(error) = cache_runtime.put_json(cache_key, &data).await {
                 tracing::warn!(%error, %tenant_id, "Pages storefront cache fill failed");
             }
@@ -270,9 +264,7 @@ fn storefront_cache_variant(
 }
 
 #[cfg(feature = "ssr")]
-
 #[cfg(feature = "ssr")]
-
 #[cfg(feature = "ssr")]
 fn published_artifact_page_body(
     page_id: impl std::fmt::Display,
@@ -373,10 +365,22 @@ mod tests {
     #[test]
     fn cache_variant_binds_route_locale_fallback_and_channel() {
         let base = storefront_cache_variant("about", "en", "en", Some("web"));
-        assert_ne!(base, storefront_cache_variant("home", "en", "en", Some("web")));
-        assert_ne!(base, storefront_cache_variant("about", "fr", "en", Some("web")));
-        assert_ne!(base, storefront_cache_variant("about", "en", "ru", Some("web")));
-        assert_ne!(base, storefront_cache_variant("about", "en", "en", Some("mobile")));
+        assert_ne!(
+            base,
+            storefront_cache_variant("home", "en", "en", Some("web"))
+        );
+        assert_ne!(
+            base,
+            storefront_cache_variant("about", "fr", "en", Some("web"))
+        );
+        assert_ne!(
+            base,
+            storefront_cache_variant("about", "en", "ru", Some("web"))
+        );
+        assert_ne!(
+            base,
+            storefront_cache_variant("about", "en", "en", Some("mobile"))
+        );
     }
 
     #[test]

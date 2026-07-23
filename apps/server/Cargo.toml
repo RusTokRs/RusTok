@@ -59,7 +59,7 @@ mod-pricing   = ["dep:rustok-pricing", "mod-product", "rustok-distribution/mod-p
 mod-inventory = ["dep:rustok-inventory", "mod-product", "rustok-distribution/mod-inventory"]
 mod-order     = ["dep:rustok-order", "rustok-distribution/mod-order"]
 mod-payment   = ["dep:rustok-payment", "rustok-payment/server", "rustok-distribution/mod-payment"]
-payment-stripe = ["mod-payment", "rustok-payment/stripe", "dep:rustok-secrets"]
+payment-stripe = ["mod-payment", "rustok-payment/stripe"]
 mod-fulfillment = ["dep:rustok-fulfillment", "rustok-distribution/mod-fulfillment"]
 mod-commerce  = ["dep:rustok-commerce", "mod-cart", "mod-customer", "mod-product", "mod-region", "mod-pricing", "mod-inventory", "mod-order", "mod-payment", "mod-fulfillment", "rustok-distribution/mod-commerce"]
 mod-marketplace_seller = ["dep:rustok-marketplace-seller", "rustok-marketplace-seller/graphql", "rustok-distribution/mod-marketplace_seller"]
@@ -112,7 +112,7 @@ rustok-pricing   = { workspace = true, optional = true }
 rustok-inventory = { workspace = true, optional = true }
 rustok-order     = { workspace = true, optional = true }
 rustok-payment   = { workspace = true, optional = true }
-rustok-secrets   = { workspace = true, optional = true }
+rustok-secrets.workspace = true
 rustok-fulfillment = { workspace = true, optional = true }
 rustok-commerce  = { workspace = true, optional = true }
 rustok-marketplace-seller = { workspace = true, optional = true }
@@ -146,6 +146,7 @@ rustok-ai = { workspace = true, features = ["graphql"] }
 rustok-runtime.workspace = true
 rustok-telemetry.workspace = true
 rustok-iggy.workspace = true
+rustok-iggy-connector.workspace = true
 rustok-outbox.workspace = true
 rustok-installer = { path = "../../crates/rustok-installer" }
 rustok-installer-persistence.workspace = true

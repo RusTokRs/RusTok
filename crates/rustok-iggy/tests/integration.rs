@@ -11,7 +11,7 @@ type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[ignore = "Integration test requires running iggy backend"]
 async fn test_iggy_transport_lifecycle() -> TestResult<()> {
     let config = IggyConfig {
-        mode: IggyMode::Embedded,
+        mode: IggyMode::Bundled,
         serialization: SerializationFormat::Json,
         ..IggyConfig::default()
     };
@@ -26,7 +26,7 @@ async fn test_iggy_transport_lifecycle() -> TestResult<()> {
 #[ignore = "Integration test requires running iggy backend"]
 async fn test_iggy_transport_remote_mode() -> TestResult<()> {
     let config = IggyConfig {
-        mode: IggyMode::Remote,
+        mode: IggyMode::External,
         serialization: SerializationFormat::Json,
         ..IggyConfig::default()
     };
@@ -40,10 +40,10 @@ async fn test_iggy_transport_remote_mode() -> TestResult<()> {
 
 #[tokio::test]
 #[ignore = "Integration test requires running iggy backend"]
-async fn test_iggy_transport_postcard() -> TestResult<()> {
+async fn test_iggy_transport_message_pack() -> TestResult<()> {
     let config = IggyConfig {
-        mode: IggyMode::Embedded,
-        serialization: SerializationFormat::Postcard,
+        mode: IggyMode::Bundled,
+        serialization: SerializationFormat::MessagePack,
         ..IggyConfig::default()
     };
 
@@ -55,27 +55,33 @@ async fn test_iggy_transport_postcard() -> TestResult<()> {
 
 mod config_tests {
     use rustok_iggy::config::{
-        EmbeddedConfig, IggyConfig, IggyMode, RemoteConfig, RetentionConfig, SerializationFormat,
+        BundledConfig, ExternalConfig, IggyConfig, IggyMode, RetentionConfig, SerializationFormat,
         TopologyConfig,
     };
 
     #[test]
     fn config_serialization_roundtrip() {
         let original = IggyConfig {
-            mode: IggyMode::Remote,
-            serialization: SerializationFormat::Postcard,
-            embedded: EmbeddedConfig {
+            mode: IggyMode::External,
+            serialization: SerializationFormat::MessagePack,
+            bundled: BundledConfig {
+                executable: "iggy-server".to_string(),
+                arguments: Vec::new(),
+                environment: Default::default(),
                 data_dir: "/custom/data".to_string(),
-                use_binary_fallback: false,
                 tcp_port: 9000,
                 http_port: 4000,
+                startup_timeout_ms: 1_000,
+                shutdown_timeout_ms: 1_000,
             },
-            remote: RemoteConfig {
+            external: ExternalConfig {
                 addresses: vec!["10.0.0.1:8090".to_string(), "10.0.0.2:8090".to_string()],
                 protocol: "http".to_string(),
                 username: "admin".to_string(),
                 password: "secret".to_string(),
                 tls_enabled: true,
+                tls_domain: Some("iggy.internal".to_string()),
+                tls_ca_file: Some("/etc/iggy/ca.pem".to_string()),
             },
             topology: TopologyConfig {
                 stream_name: "production".to_string(),
@@ -93,18 +99,23 @@ mod config_tests {
         let json = serde_json::to_string(&original).unwrap();
         let parsed: IggyConfig = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed.mode, IggyMode::Remote);
-        assert_eq!(parsed.serialization, SerializationFormat::Postcard);
+        assert_eq!(parsed.mode, IggyMode::External);
+        assert_eq!(parsed.serialization, SerializationFormat::MessagePack);
         assert_eq!(parsed.topology.stream_name, "production");
         assert_eq!(parsed.topology.domain_partitions, 32);
-        assert_eq!(parsed.remote.addresses.len(), 2);
-        assert!(parsed.remote.tls_enabled);
+        assert_eq!(parsed.external.addresses.len(), 2);
+        assert!(parsed.external.tls_enabled);
+        assert_eq!(parsed.external.tls_domain.as_deref(), Some("iggy.internal"));
+        assert_eq!(
+            parsed.external.tls_ca_file.as_deref(),
+            Some("/etc/iggy/ca.pem")
+        );
     }
 
     #[test]
     fn config_yaml_parsing() {
         let yaml = r#"
-mode: remote
+mode: external
 serialization: json
 topology:
   stream_name: test-stream
@@ -113,25 +124,25 @@ topology:
 
         let parsed: IggyConfig = serde_yaml::from_str(yaml).unwrap();
 
-        assert_eq!(parsed.mode, IggyMode::Remote);
+        assert_eq!(parsed.mode, IggyMode::External);
         assert_eq!(parsed.serialization, SerializationFormat::Json);
         assert_eq!(parsed.topology.stream_name, "test-stream");
         assert_eq!(parsed.topology.domain_partitions, 16);
     }
 
     #[test]
-    fn embedded_config_defaults() {
-        let config = EmbeddedConfig::default();
+    fn local_config_defaults() {
+        let config = BundledConfig::default();
 
+        assert_eq!(config.executable, "iggy-server");
         assert_eq!(config.data_dir, "./data/iggy");
-        assert!(config.use_binary_fallback);
         assert_eq!(config.tcp_port, 8090);
         assert_eq!(config.http_port, 3000);
     }
 
     #[test]
     fn remote_config_defaults() {
-        let config = RemoteConfig::default();
+        let config = ExternalConfig::default();
 
         assert_eq!(config.addresses, vec!["127.0.0.1:8090"]);
         assert_eq!(config.protocol, "tcp");
@@ -142,7 +153,7 @@ topology:
 mod serialization_tests {
     use rustok_core::events::{DomainEvent, EventEnvelope};
     use rustok_iggy::config::SerializationFormat;
-    use rustok_iggy::serialization::{EventSerializer, JsonSerializer, PostcardSerializer};
+    use rustok_iggy::serialization::{EventSerializer, JsonSerializer, MessagePackSerializer};
     use uuid::Uuid;
 
     fn create_test_envelope() -> EventEnvelope {
@@ -164,9 +175,9 @@ mod serialization_tests {
     }
 
     #[test]
-    fn postcard_serializer_format() {
-        let serializer = PostcardSerializer;
-        assert_eq!(serializer.format(), SerializationFormat::Postcard);
+    fn message_pack_serializer_format() {
+        let serializer = MessagePackSerializer;
+        assert_eq!(serializer.format(), SerializationFormat::MessagePack);
     }
 
     #[test]
@@ -182,8 +193,8 @@ mod serialization_tests {
     }
 
     #[test]
-    fn postcard_serialization_works() {
-        let serializer = PostcardSerializer;
+    fn message_pack_serialization_works() {
+        let serializer = MessagePackSerializer;
         let envelope = create_test_envelope();
 
         let result = serializer.serialize(&envelope);

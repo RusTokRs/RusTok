@@ -32,14 +32,13 @@ use rustok_blog::{blog_category, blog_post, blog_post_tag, blog_post_translation
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_comments::dto::{CommentStatus, CommentThreadStatus};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
     feature = "mod-forum",
     feature = "mod-comments"
 ))]
-use rustok_comments::{comment, comment_body, comment_thread};
+use rustok_comments::{comment, comment_thread};
 #[cfg(all(
     feature = "mod-content",
     feature = "mod-blog",
@@ -65,8 +64,7 @@ use rustok_content::{
     feature = "mod-comments"
 ))]
 use rustok_forum::{
-    ReplyStatus, TopicStatus, forum_category, forum_reply, forum_reply_body, forum_topic,
-    forum_topic_tag, forum_topic_translation,
+    TopicStatus, forum_category, forum_reply, forum_topic, forum_topic_tag, forum_topic_translation,
 };
 #[cfg(all(
     feature = "mod-content",
@@ -203,19 +201,6 @@ struct ServerContentOrchestrationBridge;
 #[derive(Clone)]
 struct ForumReplyRecord {
     reply: forum_reply::Model,
-    bodies: Vec<forum_reply_body::Model>,
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-#[derive(Clone)]
-struct CommentRecordBundle {
-    comment: comment::Model,
-    bodies: Vec<comment_body::Model>,
 }
 
 #[cfg(all(
@@ -369,44 +354,6 @@ fn locales_from_strs<'a>(locales: impl IntoIterator<Item = &'a str>) -> ContentR
         ));
     }
     Ok(normalized.into_iter().collect())
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-fn map_forum_reply_status_to_comment_status(
-    status: ReplyStatus,
-    updated_at: chrono::DateTime<chrono::FixedOffset>,
-) -> (CommentStatus, Option<chrono::DateTime<chrono::FixedOffset>>) {
-    match status {
-        ReplyStatus::Approved => (CommentStatus::Approved, None),
-        ReplyStatus::Pending => (CommentStatus::Pending, None),
-        ReplyStatus::Flagged => (CommentStatus::Spam, None),
-        ReplyStatus::Deleted => (CommentStatus::Trash, Some(updated_at)),
-        ReplyStatus::Rejected | ReplyStatus::Hidden => (CommentStatus::Trash, None),
-    }
-}
-
-#[cfg(all(
-    feature = "mod-content",
-    feature = "mod-blog",
-    feature = "mod-forum",
-    feature = "mod-comments"
-))]
-fn map_comment_status_to_forum_reply_status(
-    status: CommentStatus,
-    deleted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
-) -> ReplyStatus {
-    match status {
-        CommentStatus::Approved => ReplyStatus::Approved,
-        CommentStatus::Pending => ReplyStatus::Pending,
-        CommentStatus::Spam => ReplyStatus::Flagged,
-        CommentStatus::Trash if deleted_at.is_some() => ReplyStatus::Deleted,
-        CommentStatus::Trash => ReplyStatus::Hidden,
-    }
 }
 
 #[cfg(all(
@@ -1134,23 +1081,9 @@ async fn load_forum_reply_records_in_tx(
         return Ok(Vec::new());
     }
 
-    let reply_ids = replies.iter().map(|reply| reply.id).collect::<Vec<_>>();
-    let bodies = forum_reply_body::Entity::find()
-        .filter(forum_reply_body::Column::TenantId.eq(tenant_id))
-        .filter(forum_reply_body::Column::ReplyId.is_in(reply_ids))
-        .all(txn)
-        .await?;
-    let mut bodies_map: HashMap<Uuid, Vec<forum_reply_body::Model>> = HashMap::new();
-    for body in bodies {
-        bodies_map.entry(body.reply_id).or_default().push(body);
-    }
-
     Ok(replies
         .into_iter()
-        .map(|reply| ForumReplyRecord {
-            bodies: bodies_map.remove(&reply.id).unwrap_or_default(),
-            reply,
-        })
+        .map(|reply| ForumReplyRecord { reply })
         .collect())
 }
 
@@ -1161,74 +1094,19 @@ async fn load_forum_reply_records_in_tx(
     feature = "mod-comments"
 ))]
 async fn move_forum_replies_to_comments_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    post_id: Uuid,
-    actor_id: Option<Uuid>,
+    _txn: &DatabaseTransaction,
+    _tenant_id: Uuid,
+    _post_id: Uuid,
+    _actor_id: Option<Uuid>,
     reply_records: &[ForumReplyRecord],
 ) -> ContentResult<i32> {
     if reply_records.is_empty() {
         return Ok(0);
     }
 
-    let now = Utc::now();
-    let active_comments = reply_records
-        .iter()
-        .filter(|record| record.reply.status != ReplyStatus::Deleted)
-        .count() as i32;
-    let thread_id = Uuid::new_v4();
-    comment_thread::ActiveModel {
-        id: Set(thread_id),
-        tenant_id: Set(tenant_id),
-        target_type: Set("blog_post".to_string()),
-        target_id: Set(post_id),
-        status: Set(CommentThreadStatus::Open),
-        comment_count: Set(active_comments),
-        last_commented_at: Set(reply_records.last().map(|record| record.reply.created_at)),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-    }
-    .insert(txn)
-    .await?;
-
-    for record in reply_records {
-        let author_id =
-            record.reply.author_id.or(actor_id).ok_or_else(|| {
-                ContentError::validation("Reply author is required for conversion")
-            })?;
-        let (status, deleted_at) =
-            map_forum_reply_status_to_comment_status(record.reply.status, record.reply.updated_at);
-        comment::ActiveModel {
-            id: Set(record.reply.id),
-            tenant_id: Set(tenant_id),
-            thread_id: Set(thread_id),
-            author_id: Set(author_id),
-            parent_comment_id: Set(record.reply.parent_reply_id),
-            status: Set(status),
-            position: Set(record.reply.position),
-            created_at: Set(record.reply.created_at),
-            updated_at: Set(record.reply.updated_at),
-            deleted_at: Set(deleted_at),
-        }
-        .insert(txn)
-        .await?;
-
-        for body in &record.bodies {
-            comment_body::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                comment_id: Set(record.reply.id),
-                locale: Set(body.locale.clone()),
-                body: Set(body.body.clone()),
-                body_format: Set(body.body_format.clone()),
-                created_at: Set(body.created_at),
-                updated_at: Set(body.updated_at),
-            }
-            .insert(txn)
-            .await?;
-        }
-    }
-
-    Ok(active_comments)
+    Err(ContentError::validation(
+        "Forum topics with replies cannot be promoted until Forum uses the canonical richtext contract",
+    ))
 }
 
 #[cfg(all(
@@ -1404,7 +1282,7 @@ async fn load_comment_records_for_post_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
-) -> ContentResult<Vec<CommentRecordBundle>> {
+) -> ContentResult<Vec<comment::Model>> {
     let thread = comment_thread::Entity::find()
         .filter(comment_thread::Column::TenantId.eq(tenant_id))
         .filter(comment_thread::Column::TargetType.eq("blog_post"))
@@ -1425,23 +1303,7 @@ async fn load_comment_records_for_post_in_tx(
         return Ok(Vec::new());
     }
 
-    let comment_ids = comments.iter().map(|item| item.id).collect::<Vec<_>>();
-    let bodies = comment_body::Entity::find()
-        .filter(comment_body::Column::CommentId.is_in(comment_ids))
-        .all(txn)
-        .await?;
-    let mut bodies_map: HashMap<Uuid, Vec<comment_body::Model>> = HashMap::new();
-    for body in bodies {
-        bodies_map.entry(body.comment_id).or_default().push(body);
-    }
-
-    Ok(comments
-        .into_iter()
-        .map(|comment| CommentRecordBundle {
-            bodies: bodies_map.remove(&comment.id).unwrap_or_default(),
-            comment,
-        })
-        .collect())
+    Ok(comments.into_iter().collect())
 }
 
 #[cfg(all(
@@ -1451,45 +1313,18 @@ async fn load_comment_records_for_post_in_tx(
     feature = "mod-comments"
 ))]
 async fn move_comments_to_forum_replies_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    comment_records: &[CommentRecordBundle],
+    _txn: &DatabaseTransaction,
+    _tenant_id: Uuid,
+    _topic_id: Uuid,
+    comment_records: &[comment::Model],
 ) -> ContentResult<()> {
-    for record in comment_records {
-        forum_reply::ActiveModel {
-            id: Set(record.comment.id),
-            tenant_id: Set(tenant_id),
-            topic_id: Set(topic_id),
-            author_id: Set(Some(record.comment.author_id)),
-            parent_reply_id: Set(record.comment.parent_comment_id),
-            status: Set(map_comment_status_to_forum_reply_status(
-                record.comment.status,
-                record.comment.deleted_at,
-            )),
-            position: Set(record.comment.position),
-            created_at: Set(record.comment.created_at),
-            updated_at: Set(record.comment.updated_at),
-        }
-        .insert(txn)
-        .await?;
-
-        for body in &record.bodies {
-            forum_reply_body::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                reply_id: Set(record.comment.id),
-                tenant_id: Set(tenant_id),
-                locale: Set(body.locale.clone()),
-                body: Set(body.body.clone()),
-                body_format: Set(body.body_format.clone()),
-                created_at: Set(body.created_at),
-                updated_at: Set(body.updated_at),
-            }
-            .insert(txn)
-            .await?;
-        }
+    if comment_records.is_empty() {
+        return Ok(());
     }
-    Ok(())
+
+    Err(ContentError::validation(
+        "Blog posts with comments cannot be demoted until Forum uses the canonical richtext contract",
+    ))
 }
 
 #[cfg(all(
@@ -1942,6 +1777,7 @@ fn unique_source_ids(target_topic_id: Uuid, source_ids: &[Uuid]) -> ContentResul
 ))]
 mod tests {
     use super::*;
+    use rustok_api::RichTextDocument;
     use rustok_blog::{
         CommentService as BlogCommentService, CreateCommentInput as BlogCreateCommentInput,
         CreatePostInput, PostService,
@@ -1970,46 +1806,15 @@ mod tests {
     };
     use sea_orm_migration::SchemaManager;
 
-    #[test]
-    fn forum_reply_status_mapping_is_explicit() {
-        let now = Utc::now().fixed_offset();
-        assert_eq!(
-            map_forum_reply_status_to_comment_status(ReplyStatus::Approved, now).0,
-            CommentStatus::Approved
-        );
-        assert_eq!(
-            map_forum_reply_status_to_comment_status(ReplyStatus::Pending, now).0,
-            CommentStatus::Pending
-        );
-        assert_eq!(
-            map_forum_reply_status_to_comment_status(ReplyStatus::Flagged, now).0,
-            CommentStatus::Spam
-        );
-        assert_eq!(
-            map_forum_reply_status_to_comment_status(ReplyStatus::Deleted, now).0,
-            CommentStatus::Trash
-        );
-    }
-
-    #[test]
-    fn comment_status_mapping_distinguishes_hidden_and_deleted() {
-        let now = Utc::now().fixed_offset();
-        assert_eq!(
-            map_comment_status_to_forum_reply_status(CommentStatus::Approved, None),
-            ReplyStatus::Approved
-        );
-        assert_eq!(
-            map_comment_status_to_forum_reply_status(CommentStatus::Spam, None),
-            ReplyStatus::Flagged
-        );
-        assert_eq!(
-            map_comment_status_to_forum_reply_status(CommentStatus::Trash, None),
-            ReplyStatus::Hidden
-        );
-        assert_eq!(
-            map_comment_status_to_forum_reply_status(CommentStatus::Trash, Some(now)),
-            ReplyStatus::Deleted
-        );
+    fn richtext(text: &str) -> RichTextDocument {
+        serde_json::from_value(serde_json::json!({
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [{"type": "text", "text": text}]
+            }]
+        }))
+        .expect("test richtext")
     }
 
     async fn setup_conversion_test_db() -> DatabaseConnection {
@@ -2152,7 +1957,7 @@ mod tests {
             events.clone(),
             Arc::new(ServerContentOrchestrationBridge),
         );
-        let promoted = orchestration
+        let promoted = match orchestration
             .promote_topic_to_post(
                 tenant_id,
                 security.clone(),
@@ -2165,7 +1970,25 @@ mod tests {
                 },
             )
             .await
-            .expect("topic should be promoted to post");
+        {
+            Ok(output) => output,
+            Err(error) => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("until Forum uses the canonical richtext contract")
+                );
+                assert!(
+                    forum_topic::Entity::find_by_id(topic.id)
+                        .one(&db)
+                        .await
+                        .expect("forum topic lookup should succeed")
+                        .is_some()
+                );
+                return;
+            }
+        };
+        panic!("topic promotion with replies unexpectedly bypassed the richtext cutover");
 
         assert!(
             forum_topic::Entity::find_by_id(topic.id)
@@ -2380,9 +2203,7 @@ mod tests {
                 post_id,
                 BlogCreateCommentInput {
                     locale: "en".to_string(),
-                    content: "First blog comment".to_string(),
-                    content_format: "markdown".to_string(),
-                    content_json: None,
+                    content: richtext("First blog comment"),
                     parent_comment_id: None,
                 },
             )
@@ -2395,9 +2216,7 @@ mod tests {
                 post_id,
                 BlogCreateCommentInput {
                     locale: "en".to_string(),
-                    content: "Second blog comment".to_string(),
-                    content_format: "markdown".to_string(),
-                    content_json: None,
+                    content: richtext("Second blog comment"),
                     parent_comment_id: None,
                 },
             )
@@ -2409,7 +2228,7 @@ mod tests {
             events.clone(),
             Arc::new(ServerContentOrchestrationBridge),
         );
-        let demoted = orchestration
+        let demoted = match orchestration
             .demote_post_to_topic(
                 tenant_id,
                 security.clone(),
@@ -2422,7 +2241,25 @@ mod tests {
                 },
             )
             .await
-            .expect("post should be demoted to topic");
+        {
+            Ok(output) => output,
+            Err(error) => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("until Forum uses the canonical richtext contract")
+                );
+                assert!(
+                    blog_post::Entity::find_by_id(post_id)
+                        .one(&db)
+                        .await
+                        .expect("blog post lookup should succeed")
+                        .is_some()
+                );
+                return;
+            }
+        };
+        panic!("post demotion with comments unexpectedly bypassed the richtext cutover");
 
         assert!(
             blog_post::Entity::find_by_id(post_id)

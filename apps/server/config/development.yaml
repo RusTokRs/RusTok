@@ -59,9 +59,7 @@ settings:
       oauth_requests_per_minute: 30
       oauth_burst: 5
     events:
-      transport: memory
-      relay_target: memory
-      allow_relay_target_fallback: true
+      delivery_profile: memory
       relay_interval_ms: 1000
       channel_capacity: 256
     runtime:

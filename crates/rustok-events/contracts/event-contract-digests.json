@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "registry": "sha256:cb0d52fed1d8a8905ce32d9591ddbbeb243302306c840d881b67e7f8857b878e",
+  "root_event": "sha256:3f56d55fe202caae6c00d1585bb089439218b0603e6891fa0433491e70e9c0c7",
+  "root_envelope": "sha256:6fdf3debce51a08c60c880ea96a11a1eb8195af04477188f6bffda3cb401e9e5",
+  "contract_payload": "sha256:5b4dc544a9d4e5777e535d41cf08cea44de38621feb7291e3b9eed62d169433e",
+  "contract_envelope": "sha256:0c01f4503e6f6898133f876fedae4ab637187edca442cfd972dc868be72205e6"
+}

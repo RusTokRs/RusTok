@@ -1,6 +1,6 @@
 use std::{env, sync::Arc, time::Duration};
 
-use rustok_iggy::{IggyConfig, IggyMode, IggyTransport, RemoteConfig};
+use rustok_iggy::{ExternalConfig, IggyConfig, IggyMode, IggyTransport};
 use rustok_module_build_transport::GrpcModuleBuildWorker;
 use rustok_modules::ModuleControlPlane;
 use rustok_worker_transport::MutualTlsClientConfig;
@@ -67,8 +67,8 @@ impl ModuleBuildDispatcherConfig {
             database_url,
             worker_endpoint,
             iggy: IggyConfig {
-                mode: IggyMode::Remote,
-                remote: RemoteConfig {
+                mode: IggyMode::External,
+                external: ExternalConfig {
                     addresses,
                     protocol: optional_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PROTOCOL", "tcp"),
                     username: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_USERNAME")?,

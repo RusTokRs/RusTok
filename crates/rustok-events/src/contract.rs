@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 use ulid::Ulid;
@@ -30,7 +31,7 @@ pub trait EventContract:
 ///
 /// Adding a bounded family requires one platform variant, while lifecycle
 /// evolution remains inside the family's own enum.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 #[serde(tag = "family", content = "event")]
 pub enum ContractEventPayload {
     #[serde(rename = "root")]
@@ -91,7 +92,7 @@ impl EventContract for DomainEvent {
 }
 
 /// Transport-neutral envelope for any sealed typed platform event contract.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct ContractEventEnvelope {
     id: Uuid,
     event_type: String,
@@ -100,6 +101,8 @@ pub struct ContractEventEnvelope {
     causation_id: Option<Uuid>,
     tenant_id: Uuid,
     trace_id: Option<String>,
+    #[serde(with = "crate::types::timestamp_serde")]
+    #[schemars(with = "DateTime<Utc>")]
     timestamp: DateTime<Utc>,
     actor_id: Option<Uuid>,
     event: ContractEventPayload,

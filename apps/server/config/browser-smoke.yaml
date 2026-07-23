@@ -53,9 +53,7 @@ settings:
       backend: memory
       trusted_auth_dimensions: false
     events:
-      transport: memory
-      relay_target: memory
-      allow_relay_target_fallback: false
+      delivery_profile: memory
       channel_capacity: 128
       backpressure:
         enabled: true

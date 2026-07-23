@@ -6,7 +6,7 @@ use leptos_router::path;
 
 use crate::I18nContextProvider;
 use crate::pages::{
-    cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage, events::EventsPage,
+    cache::CachePage, dashboard::Dashboard, email_settings::EmailSettingsPage,
     installer::InstallerPage, module_admin::ModuleAdminPage, modules::Modules, not_found::NotFound,
     workflow_detail::WorkflowDetailPage,
 };
@@ -52,7 +52,7 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/workflows/:id") view=WorkflowDetailPage />
                                 <Route path=path!("/email") view=EmailSettingsPage />
                                 <Route path=path!("/cache") view=CachePage />
-                                <Route path=path!("/events") view=EventsPage />
+                                <Route path=path!("/events") view=|| view! { <Redirect path="/modules/events" /> } />
                                 <Route path=path!("") view=Dashboard />
                             </ParentRoute>
                         </ParentRoute>

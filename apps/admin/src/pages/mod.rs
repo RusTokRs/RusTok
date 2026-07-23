@@ -1,7 +1,6 @@
 pub mod cache;
 pub mod dashboard;
 pub mod email_settings;
-pub mod events;
 pub mod installer;
 pub mod module_admin;
 pub mod modules;

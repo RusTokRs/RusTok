@@ -12,6 +12,7 @@ use rustok_cache::CacheModule;
 use rustok_channel::ChannelModule;
 use rustok_core::ModuleRegistry;
 use rustok_email::EmailModule;
+use rustok_events_module::EventsModule;
 use rustok_index::IndexModule;
 use rustok_modules::ModulesModule;
 use rustok_outbox::OutboxModule;
@@ -66,6 +67,7 @@ pub fn build_registry() -> ModuleRegistry {
         .register(IndexModule)
         .register(SearchModule)
         .register(OutboxModule)
+        .register(EventsModule)
         .register(TenantModule)
         .register(RbacModule);
 

@@ -11,7 +11,9 @@
 - Keep `comments` separate from forum topics and forum replies.
 - Expose module metadata, permissions, and future migrations for the comments domain.
 - Publish the module-owned Leptos admin moderation UI crate `rustok-comments-admin`.
-- Align comment-body contracts with shared rich-text rules from `rustok-content`.
+- Accept only `rustok-api::RichTextDocument` for comment writes, enforce the
+  server-selected `rustok-content::richtext` `comment` profile, and return
+  `RichTextView` plus server-derived plain text.
 - Reuse shared locale fallback semantics from `rustok-content` so comment reads match other localized content modules.
 - Emit module-level entrypoint/error metrics and bounded read-path telemetry for the comments service surface.
 - Enforce thread and moderation status rules in the service layer instead of treating them as storage-only fields.
@@ -21,6 +23,8 @@
 
 - Depends on `rustok-core` for module contracts and permission vocabulary.
 - Depends on `rustok-content` for shared rich-text and locale-resolution helpers.
+- Stores canonical ProseMirror/Tiptap root JSON in owner-local localized body
+  rows; locale remains row context and there is no content-format selector.
 - Integrates with `rustok-blog` today.
 - May back future opt-in non-forum discussion surfaces, but `rustok-pages` is not a default integration target.
 - Must not become the storage backend for `rustok-forum`.

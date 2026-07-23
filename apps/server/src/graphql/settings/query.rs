@@ -5,13 +5,71 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::settings_service::SettingsService;
 use rustok_api::{Permission, graphql::GraphQLError, has_effective_permission};
 
-use super::types::PlatformSettingsPayload;
+use super::types::{
+    EventDeliveryConfigurationPayload, IggyConnectorConfigurationPayload, PlatformSettingsPayload,
+};
 
 #[derive(Default)]
 pub struct SettingsQuery;
 
 #[Object]
 impl SettingsQuery {
+    async fn iggy_connector_configuration(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<IggyConnectorConfigurationPayload> {
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "settings:read required",
+            ));
+        }
+        let snapshot = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::configuration(runtime_ctx)
+            .await
+            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+        Ok(snapshot.into())
+    }
+
+    /// Read the global event delivery profile. This setting applies to the whole
+    /// process after a controlled restart and is never tenant-scoped.
+    async fn event_delivery_configuration(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<EventDeliveryConfigurationPayload> {
+        let runtime_ctx = ctx.data::<ServerRuntimeContext>()?;
+        let auth = ctx
+            .data::<AuthContext>()
+            .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
+
+        if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
+            return Err(<FieldError as GraphQLError>::permission_denied(
+                "settings:read required",
+            ));
+        }
+
+        let configuration = crate::services::event_delivery_settings_service::EventDeliverySettingsService::configuration(runtime_ctx)
+            .await
+            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+        let active_profile = runtime_ctx
+            .shared_get::<std::sync::Arc<crate::services::event_transport_factory::EventRuntime>>()
+            .map(|runtime| runtime.delivery_profile)
+            .unwrap_or(configuration.active_profile);
+        let iggy = crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::configuration(runtime_ctx)
+            .await
+            .map_err(|error| <FieldError as GraphQLError>::internal_error(&error.to_string()))?;
+
+        Ok(EventDeliveryConfigurationPayload {
+            active_profile: active_profile.as_str().to_string(),
+            desired_profile: configuration.desired_profile.as_str().to_string(),
+            iggy_mode: iggy.desired_mode,
+            iggy_configured: configuration.iggy_configured,
+            restart_required: active_profile != configuration.desired_profile,
+        })
+    }
+
     /// Retrieve settings for a single category.
     /// Requires `settings:read` permission from the authenticated snapshot.
     async fn platform_settings(

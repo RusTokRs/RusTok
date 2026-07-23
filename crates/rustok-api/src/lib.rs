@@ -10,6 +10,7 @@
 
 pub mod artifact_permissions;
 pub mod context;
+pub mod event_delivery;
 #[cfg(feature = "server")]
 pub mod graphql;
 pub mod locale;
@@ -21,6 +22,7 @@ pub mod platform_build;
 pub mod ports;
 #[cfg(feature = "server")]
 pub mod request;
+pub mod richtext;
 #[cfg(feature = "runtime")]
 pub mod runtime;
 pub mod tenant_rbac;
@@ -37,6 +39,10 @@ pub use context::{
     OptionalAuthContext, OptionalChannel, OptionalTenant, TenantContext, TenantContextExt,
     TenantContextExtension, TenantError, has_any_effective_permission, has_effective_permission,
     scope_matches,
+};
+pub use event_delivery::{
+    EventDeliveryConfigurationSnapshot, EventDeliveryControl, EventDeliveryUpdateOutcome,
+    SharedEventDeliveryControl,
 };
 pub use context::{
     ChannelContext, ChannelResolutionOutcome, ChannelResolutionSource, ChannelResolutionStage,
@@ -61,6 +67,10 @@ pub use ports::{
 };
 #[cfg(feature = "server")]
 pub use request::RequestContext;
+pub use richtext::{
+    RichTextDocument, RichTextMark, RichTextNode, RichTextProfileId, RichTextProfileIdError,
+    RichTextView, document_json_schema,
+};
 #[cfg(feature = "runtime")]
 pub use runtime::{HostRuntimeContext, HostSettingsSnapshot};
 pub use tenant_rbac::{

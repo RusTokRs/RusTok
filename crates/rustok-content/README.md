@@ -16,6 +16,10 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
 - Own shared content entities, shared migrations, and orchestration state.
 - Provide shared locale and slug helpers and the target executable richtext
   policy used by domain modules.
+- Provide the first executable richtext policy: `article`, `discussion`, and
+  `comment` profiles; strict tree/attribute/link validation; deterministic
+  normalization; one escaped semantic HTML renderer; and one plain-text
+  projection.
 - Own orchestration state, idempotency, audit records, and canonical URL/alias mappings for cross-domain flows.
 - Own content dashboard post analytics snapshots (`ContentCountSnapshot` and
   `load_post_stats_snapshot`) so host GraphQL does not embed `nodes` SQL.
@@ -45,6 +49,11 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
   `content_canonical_urls` and `content_url_aliases` and publish
   `CanonicalUrlChanged` / `UrlAliasPurged` through the outbox contract.
 
+Richtext policy is currently a target foundation. Owner write/read paths still
+need the atomic Blog/Forum/Comments cutover before this policy becomes a
+production runtime gate; no legacy path is being treated as a supported target
+contract.
+
 ## Entry points
 
 - `ContentModule`
@@ -56,6 +65,7 @@ the [central implementation plan](../../docs/modules/rich-text-implementation-pl
 - `graphql::{NodeLoader, NodeTranslationLoader, NodeBodyLoader}` (feature `graphql`)
 - `CategoryService`
 - content DTO and entity re-exports
+- `richtext::{RichTextProfile, validate_and_normalize, render_html, plain_text}`
 
 `NodeService` remains available only under `rustok-content::services` as a
 shared-node helper surface. It is intentionally no longer part of the top-level

@@ -5,7 +5,7 @@ use axum::{
     routing::get,
 };
 
-use crate::common::settings::{EmailProvider, EventTransportKind};
+use crate::common::settings::EmailProvider;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
     OutboxRelayWorkerHandle, RemoteExecutorReaperHandle, RuntimeWorkerLifecycleState, StopHandle,
@@ -389,7 +389,7 @@ rustok_outbox_relay_latency_samples {processed_total}\n",
 
 fn render_runtime_worker_metrics(ctx: &ServerRuntimeContext) -> String {
     let settings = ctx.settings();
-    let relay_required = settings.events.transport == EventTransportKind::Outbox
+    let relay_required = settings.events.delivery_profile.uses_outbox()
         && ctx
             .shared_get::<Arc<EventRuntime>>()
             .and_then(|runtime| runtime.relay_config.clone())

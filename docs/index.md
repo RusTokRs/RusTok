@@ -112,6 +112,10 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [ADR: Athanor-owned RAG data plane](../DECISIONS/2026-07-18-rag-postgres-capability-profiles.md)
 - [ADR: Repository connector module with GitHub as the first provider](../DECISIONS/2026-07-18-repository-connector-module-github-first.md)
 - [ADR: Direct object-store runtime and owner-local lifecycle](../DECISIONS/2026-07-22-direct-object-store-runtime-owner-local-lifecycle.md)
+- [ADR: Event MessagePack wire format](../DECISIONS/2026-07-23-event-messagepack-wire-format.md)
+- [ADR: Iggy bundled single-node deployment](../DECISIONS/2026-07-23-iggy-bundled-single-node-deployment.md)
+- [ADR: Global event delivery profiles](../DECISIONS/2026-07-23-global-event-delivery-profiles.md)
+- [ADR: User-registration event PII boundary](../DECISIONS/2026-07-23-user-registration-event-pii.md)
 
 - [`rustok-installer` contract and implementation plan](../crates/rustok-installer/docs/README.md) — installer ownership, browser-safe contract surface, native seed-runtime boundary, monolith/distributed topology contract and CLI/HTTP adapter boundaries
 

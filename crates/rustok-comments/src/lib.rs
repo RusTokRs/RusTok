@@ -10,6 +10,8 @@ pub mod ports;
 #[cfg(feature = "server")]
 mod public_read;
 #[cfg(feature = "server")]
+mod richtext;
+#[cfg(feature = "server")]
 pub mod services;
 
 #[cfg(feature = "server")]

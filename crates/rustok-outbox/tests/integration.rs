@@ -345,9 +345,8 @@ async fn seed_event(db: &DatabaseConnection) -> TestResult<EventEnvelope> {
     let envelope = EventEnvelope::new(
         Uuid::nil(),
         None,
-        DomainEvent::UserRegistered {
+        DomainEvent::UserAccountRegistered {
             user_id: Uuid::nil(),
-            email: "test@example.com".to_string(),
         },
     );
 

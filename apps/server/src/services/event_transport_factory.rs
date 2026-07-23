@@ -10,7 +10,7 @@ use rustok_cache::CacheService;
 use rustok_core::events::{
     EventBus, EventEnvelope, EventTransport, MemoryTransport, ReliabilityLevel,
 };
-use rustok_iggy::{IggyConfig, IggyTransport};
+use rustok_iggy::IggyTransport;
 use rustok_modules::{
     ArtifactEventDeliveryConfig, ArtifactEventProjectionTransport, ModuleControlPlane,
 };
@@ -19,7 +19,8 @@ use rustok_outbox::{
 };
 use tokio::task::JoinHandle;
 
-use crate::common::settings::{EventTransportKind, RelayTargetKind, RustokSettings};
+use crate::common::settings::EventDeliveryProfile;
+use crate::services::event_delivery_settings_service::EventDeliverySettingsService;
 use crate::services::rbac_cache_invalidation::start_rbac_cache_invalidation_listener;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::tenant_cache_generation::{
@@ -32,6 +33,8 @@ static EVENT_LOCAL_DELIVERY_FAILURE_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct EventRuntime {
+    pub delivery_profile: EventDeliveryProfile,
+    pub iggy_mode: Option<rustok_iggy::config::IggyMode>,
     pub transport: Arc<dyn EventTransport>,
     /// Events accepted by the configured transport are delivered to module listeners on this bus.
     /// This is deliberately separate from the outbound publisher bus to avoid relay-to-outbox loops.
@@ -71,6 +74,9 @@ pub fn event_local_delivery_metrics_snapshot() -> EventLocalDeliveryMetricsSnaps
 
 pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRuntime> {
     let settings = ctx.settings();
+    let delivery_profile = EventDeliverySettingsService::desired_profile(ctx)
+        .await
+        .map_err(|error| Error::BadRequest(error.to_string()))?;
     let channel_capacity = settings.events.channel_capacity;
     let cache = ctx.shared_get::<CacheService>().ok_or_else(|| {
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
@@ -83,12 +89,14 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         .map_err(|error| Error::Cache(error.to_string()))?;
     start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
 
-    let runtime = match settings.events.transport {
-        EventTransportKind::Memory => {
+    let runtime = match delivery_profile {
+        EventDeliveryProfile::Memory => {
             let transport = MemoryTransport::with_capacity(channel_capacity);
             let listener_bus = transport.event_bus();
             let transport = tenant_generation_transport(ctx, &cache, Arc::new(transport));
             EventRuntime {
+                delivery_profile,
+                iggy_mode: None,
                 transport,
                 listener_bus,
                 relay_config: None,
@@ -96,12 +104,38 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 relay_fallback_active: false,
             }
         }
-        EventTransportKind::Outbox => {
+        EventDeliveryProfile::OutboxLocal | EventDeliveryProfile::OutboxIggy => {
             // Keep the application-facing transport concrete so TransactionalEventBus can
             // downcast to OutboxTransport and write into the caller's database transaction.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
-            let (relay_target, listener_bus, relay_fallback_active) =
-                resolve_relay_target(settings, channel_capacity).await?;
+            let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
+                EventDeliveryProfile::OutboxLocal => {
+                    let transport = MemoryTransport::with_capacity(channel_capacity);
+                    let listener_bus = transport.event_bus();
+                    (
+                        Arc::new(transport) as Arc<dyn EventTransport>,
+                        listener_bus,
+                        None,
+                    )
+                }
+                EventDeliveryProfile::OutboxIggy => {
+                    let iggy_config =
+                        crate::services::iggy_connector_settings_service::IggyConnectorSettingsService::resolved_config(ctx)
+                            .await
+                            .map_err(|error| Error::BadRequest(error.to_string()))?;
+                    let transport: Arc<dyn EventTransport> = Arc::new(
+                        IggyTransport::new(iggy_config.clone()).await.map_err(|error| {
+                            Error::BadRequest(format!(
+                                "outbox_iggy requires a configured and reachable Iggy deployment: {error}"
+                            ))
+                        })?,
+                    );
+                    let (transport, listener_bus) =
+                        transport_with_local_delivery(transport, channel_capacity);
+                    (transport, listener_bus, Some(iggy_config.mode))
+                }
+                EventDeliveryProfile::Memory => unreachable!("memory has no outbox relay"),
+            };
             let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
                 .artifact_event_projector(ArtifactEventDeliveryConfig::default())
                 .map_err(|error| {
@@ -136,28 +170,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             };
 
             EventRuntime {
+                delivery_profile,
+                iggy_mode,
                 transport: outbox_transport,
                 listener_bus,
                 relay_config: Some(relay_config),
-                channel_capacity,
-                relay_fallback_active,
-            }
-        }
-        EventTransportKind::Iggy => {
-            let primary: Arc<dyn EventTransport> = Arc::new(
-                IggyTransport::new(resolve_iggy_config(settings))
-                    .await
-                    .map_err(|error| {
-                        Error::BadRequest(format!("Failed to initialize iggy transport: {error}"))
-                    })?,
-            );
-            let primary = tenant_generation_transport(ctx, &cache, primary);
-            let (transport, listener_bus) =
-                transport_with_local_delivery(primary, channel_capacity);
-            EventRuntime {
-                transport,
-                listener_bus,
-                relay_config: None,
                 channel_capacity,
                 relay_fallback_active: false,
             }
@@ -267,45 +284,6 @@ fn outbox_relay_worker_context() -> PortContext {
     )
     .with_idempotency_key(format!("outbox-relay-tick:{}", uuid::Uuid::new_v4()))
     .with_deadline(Duration::from_secs(30))
-}
-
-fn resolve_iggy_config(settings: &RustokSettings) -> IggyConfig {
-    settings.events.iggy.clone()
-}
-
-async fn resolve_relay_target(
-    settings: &RustokSettings,
-    channel_capacity: usize,
-) -> Result<(Arc<dyn EventTransport>, EventBus, bool)> {
-    match settings.events.relay_target {
-        RelayTargetKind::Memory => {
-            let transport = MemoryTransport::with_capacity(channel_capacity);
-            let listener_bus = transport.event_bus();
-            Ok((Arc::new(transport), listener_bus, false))
-        }
-        RelayTargetKind::Iggy => match IggyTransport::new(resolve_iggy_config(settings)).await {
-            Ok(transport) => {
-                let (target, listener_bus) =
-                    transport_with_local_delivery(Arc::new(transport), channel_capacity);
-                Ok((target, listener_bus, false))
-            }
-            Err(error) => {
-                if settings.events.allow_relay_target_fallback {
-                    tracing::warn!(
-                        error = %error,
-                        "Failed to initialize relay_target=iggy, fallback to memory due to explicit opt-in"
-                    );
-                    let transport = MemoryTransport::with_capacity(channel_capacity);
-                    let listener_bus = transport.event_bus();
-                    Ok((Arc::new(transport), listener_bus, true))
-                } else {
-                    Err(Error::BadRequest(format!(
-                        "Failed to initialize relay_target=iggy and fallback is disabled: {error}"
-                    )))
-                }
-            }
-        },
-    }
 }
 
 fn transport_with_local_delivery(

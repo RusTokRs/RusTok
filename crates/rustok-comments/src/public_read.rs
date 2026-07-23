@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::dto::{CommentListItem, CommentStatus, ListCommentsFilter};
 use crate::entities::{comment, comment_body, comment_thread};
 use crate::error::{CommentsError, CommentsResult};
+use crate::richtext::project_comment_body;
 
 const MAX_PUBLIC_COMMENTS_PER_PAGE: u64 = 100;
 
@@ -73,7 +74,8 @@ pub(crate) async fn list_public_comments_for_target(
                 requested_locale.as_str(),
                 fallback_locale.as_deref(),
             )?;
-            let body_preview = resolved.body.chars().take(200).collect();
+            let projection = project_comment_body(&resolved.body)?;
+            let body_preview = projection.plain_text.chars().take(200).collect();
 
             Ok(CommentListItem {
                 id: item.id,

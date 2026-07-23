@@ -11,7 +11,7 @@ status: deprecated
 > contract only. New architecture and implementation work must follow the
 > [Richtext implementation plan](../modules/rich-text-implementation-plan.md)
 > and the
-> [proposed capability-boundary ADR](../../DECISIONS/2026-07-22-richtext-capability-boundary.md).
+> [accepted capability-boundary ADR](../../DECISIONS/2026-07-22-richtext-capability-boundary.md).
 
 `rt_json_v1` is not the target RusToK contract. It remains documented while the
 current code still reads/writes it so that the atomic cutover can inventory and

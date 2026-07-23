@@ -95,7 +95,7 @@ fn new_user_onboarding() -> WorkflowTemplate {
         name: "New User → Onboarding Sequence",
         description: "Sends a welcome email and queues a follow-up notification after user registration.",
         category: "auth",
-        trigger_config: json!({ "type": "event", "event_type": "auth.user.registered" }),
+        trigger_config: json!({ "type": "event", "event_type": "user.account_registered" }),
         steps: vec![
             TemplateStep {
                 step_type: StepType::Notify,

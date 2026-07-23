@@ -52,6 +52,7 @@ rustok-channel.workspace = true
 rustok-email.workspace = true
 rustok-index.workspace = true
 rustok-outbox.workspace = true
+rustok-events-module.workspace = true
 rustok-rbac.workspace = true
 rustok-search.workspace = true
 rustok-tenant.workspace = true
