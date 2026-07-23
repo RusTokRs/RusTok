@@ -150,24 +150,26 @@ nor delivery attempts.
 `created_at/id` order without acquiring a lease. The legacy
 `claimable_candidate_ids` remains a compatibility projection for trusted callers.
 
-Before claim, the server calls `EffectiveModulePolicyService::resolve`, requires
-the `notifications` capability, and forwards the deterministic
-`ModuleEffectivePolicy::policy_revision`. Disabled or unresolved work does not
-invoke recipient privacy policy or a source provider; it receives the existing
+Before claim, the server calls `EffectiveModulePolicyService::resolve_snapshot`,
+requires the `notifications` capability, and observes one coherent token containing
+`ModuleEffectivePolicy::policy_revision` plus the exact manifest default-enabled
+module set used for that computation. Disabled or unresolved work does not invoke
+recipient privacy policy or a source provider; it receives the existing
 300/30-second owner CAS backoff.
 
 Production hosts construct the worker with
 `NotificationCandidateWorker::new_with_commit_guard` and process enabled work with
-`process_candidate_with_policy_revision`. The legacy `new` and `process_candidate`
-methods remain trusted compatibility paths for callers that establish an
-equivalent transaction boundary themselves.
+`process_candidate_with_policy_revision(item_id, revision, observed_defaults)`.
+The legacy `new` and `process_candidate` methods remain trusted compatibility paths
+for callers that establish an equivalent transaction boundary themselves.
 
 `NotificationCandidateService` performs preference, recipient-policy, and source
 authorization checks before opening the final transaction. Inside that transaction
 it:
 
 1. validates the active candidate lease;
-2. invokes `NotificationTenantCapabilityCommitGuard` with the observed revision;
+2. invokes `NotificationTenantCapabilityCommitGuard` with the observed revision and
+   manifest defaults;
 3. requires an `Allow` decision;
 4. rechecks preferences;
 5. inserts or validates one idempotent notification;
@@ -180,7 +182,11 @@ schedules a retry. No notification or channel delivery attempt survives rejectio
 
 The server guard delegates tenant override reads to
 `SeaOrmModulePolicyRevisionConsumer::lock_and_resolve_static_policy_in_transaction`.
-On PostgreSQL that owner method locks the `module.lifecycle` cursor row with
+It supplies the observed manifest defaults rather than reloading the manifest after
+the final transaction has started. Therefore the guard uses no second pool
+connection while holding the candidate transaction.
+
+On PostgreSQL the Modules owner locks the `module.lifecycle` cursor row with
 `FOR UPDATE`, resolves `tenant_modules` on the same transaction, and compares the
 current policy revision. The lifecycle transition advances the same cursor in its
 tenant-state transaction. This serializes final candidate commits with production
