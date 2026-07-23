@@ -41,6 +41,23 @@ collection mutation, and reconciliation policy remain inside `rustok-payment`.
 The mounted commerce payment stage receives only normalized
 `PaymentCollectionResponse` projections.
 
+Payment DTOs now expose backward-compatible typed lifecycle views:
+
+- `PaymentCollectionStatusKind`
+- `PaymentStatusKind`
+- `RefundStatusKind`
+- `PaymentCollectionResponse::status_kind()`
+- `PaymentResponse::status_kind()`
+- `RefundResponse::status_kind()`
+
+The persisted and transport fields remain strings during migration. Known owner
+values map to typed variants; every unknown legacy/provider value maps to `Unknown`
+without guessing or rewriting the raw stored fact. Collection predicates publish
+`can_authorize`, `can_capture`, `is_authorized_or_captured`, `is_captured`, and
+`is_terminal` for consumer cutover. Critical commerce and payment execution paths
+still need to replace direct string matching before the ecommerce typed-lifecycle
+P0 can be marked complete.
+
 The execution owner preserves the pre-cutover provider identities and immutable
 request payload values:
 
@@ -65,6 +82,7 @@ Boundary guards:
 - `npm run verify:payment:storefront-boundary`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- `node scripts/verify/verify-payment-typed-lifecycle-statuses.mjs`
 
 Compile, provider replay, process-exit, restart, contention, mounted transport, and
 remote-profile evidence remain unexecuted. No FBA/FFA status promotion is claimed.
