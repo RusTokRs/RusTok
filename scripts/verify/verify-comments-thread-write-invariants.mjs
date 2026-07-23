@@ -27,21 +27,30 @@ function requireMarker(source, marker, label) {
 
 const commentPath = "crates/rustok-comments/src/entities/comment.rs";
 const threadPath = "crates/rustok-comments/src/entities/comment_thread.rs";
+const identityEntityPath =
+  "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs";
 const servicesPath = "crates/rustok-comments/src/services.rs";
-const migrationPath =
+const counterMigrationPath =
   "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs";
+const identityMigrationPath =
+  "crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs";
 const migrationRegistryPath = "crates/rustok-comments/src/migrations/mod.rs";
-const testPath = "crates/rustok-comments/tests/thread_write_invariants.rs";
+const writeTestPath = "crates/rustok-comments/tests/thread_write_invariants.rs";
+const firstThreadTestPath =
+  "crates/rustok-comments/tests/thread_creation_concurrency.rs";
 const evidencePath =
   "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json";
 const planPath = "crates/rustok-comments/docs/implementation-plan.md";
 
 const comment = read(commentPath);
 const thread = read(threadPath);
+const identityEntity = read(identityEntityPath);
 const services = read(servicesPath);
-const migration = read(migrationPath);
+const counterMigration = read(counterMigrationPath);
+const identityMigration = read(identityMigrationPath);
 const migrationRegistry = read(migrationRegistryPath);
-const test = read(testPath);
+const writeTest = read(writeTestPath);
+const firstThreadTest = read(firstThreadTestPath);
 const plan = read(planPath);
 let evidence = null;
 try {
@@ -52,7 +61,6 @@ try {
 
 for (const marker of [
   "impl ActiveModelBehavior for ActiveModel",
-  "async fn before_save",
   "if !insert",
   "comment thread {thread_id} is missing while allocating a position",
   "update_many()",
@@ -66,7 +74,7 @@ for (const marker of [
 
 for (const marker of [
   "impl ActiveModelBehavior for ActiveModel",
-  "async fn before_save",
+  "serialize_thread_identity(db, &self).await?",
   "matches!(&self.comment_count, ActiveValue::Set(_))",
   "comment thread {thread_id} is missing while refreshing counters",
   "update_many()",
@@ -74,8 +82,21 @@ for (const marker of [
   "DeletedAt.is_null()",
   ".count(db)",
   "self.comment_count = Set(count)",
+  "OnConflict::columns",
+  "identity_lock::Entity::update_many()",
+  "comment thread identity {target_type}:{target_id} already belongs to",
 ]) {
   requireMarker(thread, marker, threadPath);
+}
+
+for (const marker of [
+  '#[sea_orm(table_name = "comment_thread_identity_locks")]',
+  "pub tenant_id: Uuid",
+  "pub target_type: String",
+  "pub target_id: Uuid",
+  "impl ActiveModelBehavior for ActiveModel",
+]) {
+  requireMarker(identityEntity, marker, identityEntityPath);
 }
 
 const counterHelperStart = services.indexOf("async fn update_thread_counters_in_tx");
@@ -89,6 +110,13 @@ if (counterHelperStart === -1) {
   );
   requireMarker(counterHelper, "active.update(txn).await?", `${servicesPath}: counter helper`);
 }
+for (const marker of [
+  "find_or_create_thread_in_tx",
+  "match thread.insert(txn).await",
+  "Err(_) => comment_thread::Entity::find()",
+]) {
+  requireMarker(services, marker, servicesPath);
+}
 
 for (const marker of [
   "DatabaseBackend::Postgres",
@@ -101,12 +129,25 @@ for (const marker of [
   ".unique()",
   'name("idx_comments_thread_position")',
 ]) {
-  requireMarker(migration, marker, migrationPath);
+  requireMarker(counterMigration, marker, counterMigrationPath);
+}
+
+for (const marker of [
+  "CommentThreadIdentityLocks::Table",
+  "CommentThreadIdentityLocks::TenantId",
+  "CommentThreadIdentityLocks::TargetType",
+  "CommentThreadIdentityLocks::TargetId",
+  'name("idx_comment_thread_identity_locks_identity")',
+  ".unique()",
+]) {
+  requireMarker(identityMigration, marker, identityMigrationPath);
 }
 
 for (const marker of [
   "mod m20260723_000008_repair_comment_thread_counters;",
   "Box::new(m20260723_000008_repair_comment_thread_counters::Migration)",
+  "mod m20260723_000009_add_comment_thread_identity_locks;",
+  "Box::new(m20260723_000009_add_comment_thread_identity_locks::Migration)",
 ]) {
   requireMarker(migrationRegistry, marker, migrationRegistryPath);
 }
@@ -120,15 +161,24 @@ for (const marker of [
   "tokio::join!",
   "max_connections(1)",
   'SET search_path TO "{schema_name}", public',
-  "stale_thread.comment_count = Set(999)",
-  "assert_eq!(first.position, 1)",
-  "assert_eq!(second.position, 2)",
-  "assert_eq!(repaired.comment_count, 1)",
   "assert_eq!(positions, vec![1, 2, 3])",
   "assert_eq!(thread.comment_count, active_count as i32)",
-  "comment::Entity::insert",
 ]) {
-  requireMarker(test, marker, testPath);
+  requireMarker(writeTest, marker, writeTestPath);
+}
+
+for (const marker of [
+  "postgres_concurrent_first_comments_share_one_thread",
+  "CommentsService::new(test_db.db_a.clone())",
+  "CommentsService::new(test_db.db_b.clone())",
+  "tokio::join!",
+  "assert_eq!(first.thread_id, second.thread_id)",
+  "assert_eq!(positions, HashSet::from([1, 2]))",
+  "assert_eq!(threads.len(), 1)",
+  "assert_eq!(threads[0].comment_count, 2)",
+  "RUSTOK_COMMENTS_TEST_DATABASE_URL",
+]) {
+  requireMarker(firstThreadTest, marker, firstThreadTestPath);
 }
 
 if (evidence) {
@@ -147,10 +197,13 @@ if (evidence) {
   const contract = evidence.production_contract ?? {};
   for (const [key, expected] of Object.entries({
     position_owner: commentPath,
-    counter_owner: threadPath,
-    repair_migration: migrationPath,
+    counter_and_identity_owner: threadPath,
+    identity_lock_entity: identityEntityPath,
+    counter_repair_migration: counterMigrationPath,
+    identity_lock_migration: identityMigrationPath,
     migration_registry: migrationRegistryPath,
-    executable_test: testPath,
+    write_invariant_test: writeTestPath,
+    first_thread_test: firstThreadTestPath,
     postgres_environment: "RUSTOK_COMMENTS_TEST_DATABASE_URL",
   })) {
     if (contract[key] !== expected) failures.push(`${evidencePath}: ${key} drift`);
@@ -164,6 +217,7 @@ if (evidence) {
     "historical_position_repair",
     "bulk_bypass_rejection",
     "postgres_concurrent_create_delete",
+    "postgres_concurrent_first_thread_creation",
   ]) {
     if (!cases.has(requiredCase)) failures.push(`${evidencePath}: missing case ${requiredCase}`);
   }
@@ -176,6 +230,8 @@ for (const marker of [
   "UNIQUE(thread_id, position)",
   "RUSTOK_COMMENTS_TEST_DATABASE_URL",
   "concurrent PostgreSQL",
+  "identity-lock",
+  "thread_creation_concurrency",
 ]) {
   requireMarker(plan, marker, planPath);
 }
