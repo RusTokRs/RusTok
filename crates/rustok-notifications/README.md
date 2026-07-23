@@ -16,7 +16,7 @@ Channel delivery remains a later workflow.
 - own notification, delivery, fanout, preference, digest, source-inbox, receipt,
   quarantine, and encrypted push-subscription state;
 - resolve audiences in bounded cursor pages under recoverable leases;
-- enforce effective tenant capability before source provider calls;
+- enforce effective tenant capability before source and candidate provider calls;
 - durably defer disabled or unresolved tenant work so bounded queues continue to
   later tenants;
 - apply preferences, recipient privacy, and current target authorization before
@@ -38,6 +38,7 @@ Channel delivery remains a later workflow.
 - `NotificationFanoutService` / `NotificationFanoutWorker`;
 - `NotificationFanoutPolicyDeferral`;
 - `NotificationCandidateService` / `NotificationCandidateWorker`;
+- `NotificationCandidateWorkItem` / `NotificationCandidatePolicyDeferral`;
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
@@ -98,15 +99,28 @@ delivery attempts.
 
 ### 3. Candidate policy
 
-`NotificationCandidateService` claims a candidate, resolves exact preference
-scopes before wildcards, evaluates Profiles/Social Graph recipient policy,
-reauthorizes the source target, rechecks preferences inside the final transaction,
-and inserts or validates one in-app notification under the same lease CAS.
+`NotificationCandidateWorker` now selects tenant-scoped candidate work. Before
+calling the canonical candidate service, the server rechecks effective
+`notifications` capability for that exact tenant. Disabled candidates receive a
+300-second retry backoff; a temporary policy lookup failure receives 30 seconds.
+The owner CAS increments attempt count, clears lease state, records a stable error
+code, and prevents disabled tenants from blocking the bounded queue head. No
+recipient privacy policy or source provider is called for deferred work.
 
-`NotificationCandidateWorker` is default-off behind
-`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`. It requires a materialized source
-registry and ready recipient-policy ports. Candidate finalization creates no
-channel delivery attempt.
+When capability is enabled, `NotificationCandidateService` claims the candidate,
+resolves exact preference scopes before wildcards, evaluates Profiles/Social Graph
+recipient policy, reauthorizes the source target, rechecks preferences inside the
+final transaction, and inserts or validates one in-app notification under the same
+lease CAS.
+
+The candidate loop is default-off behind
+`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`. It also requires a materialized
+source registry, ready recipient-policy ports, and the shared `ModuleRegistry`.
+Candidate finalization creates no channel delivery attempt.
+
+The capability recheck is intentionally pre-claim and fail-closed. Atomic exclusion
+of a control-plane disable that commits concurrently with an already-approved
+candidate claim still requires a future revision-token or transactional guard.
 
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
@@ -125,6 +139,7 @@ continue to succeed when the module is absent or disabled.
 
 ## Remaining gates
 
+- atomic control-plane revision guard for disable concurrent with candidate claim;
 - PostgreSQL contention/recovery evidence and worker health/lag metrics;
 - grouping and moderator-directory expansion;
 - inbox APIs and open-time privacy/source rechecks;
