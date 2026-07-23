@@ -12,6 +12,9 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+const PUBLIC_UNAVAILABLE_MESSAGE: &str = "the requested capability is temporarily unavailable";
+const PUBLIC_INVARIANT_MESSAGE: &str = "the requested operation could not be completed safely";
+
 /// Transport-agnostic context that must cross module service ports.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortContext {
@@ -256,12 +259,26 @@ impl PortError {
         message: impl Into<String>,
         retryable: bool,
     ) -> Self {
+        let code = code.into();
+        let message = sanitize_public_message(&kind, message.into());
         Self {
             kind,
-            code: code.into(),
-            message: message.into(),
+            code,
+            message,
             retryable,
         }
+    }
+}
+
+fn sanitize_public_message(kind: &PortErrorKind, message: String) -> String {
+    match kind {
+        PortErrorKind::Unavailable => PUBLIC_UNAVAILABLE_MESSAGE.to_string(),
+        PortErrorKind::InvariantViolation => PUBLIC_INVARIANT_MESSAGE.to_string(),
+        PortErrorKind::Validation
+        | PortErrorKind::NotFound
+        | PortErrorKind::Conflict
+        | PortErrorKind::Forbidden
+        | PortErrorKind::Timeout => message,
     }
 }
 
@@ -378,5 +395,31 @@ mod tests {
         assert!(!invariant.retryable);
         assert_eq!(unavailable.kind, PortErrorKind::Unavailable);
         assert!(unavailable.retryable);
+    }
+
+    #[test]
+    fn technical_error_messages_are_sanitized() {
+        let unavailable = PortError::unavailable(
+            "pricing.database_unavailable",
+            "postgres://secret@host:5432 failed: relation pricing does not exist",
+        );
+        let invariant = PortError::invariant_violation(
+            "pricing.core_error",
+            "internal invariant payload with implementation details",
+        );
+
+        assert_eq!(unavailable.message, PUBLIC_UNAVAILABLE_MESSAGE);
+        assert_eq!(invariant.message, PUBLIC_INVARIANT_MESSAGE);
+        assert!(!unavailable.message.contains("postgres"));
+        assert!(!invariant.message.contains("implementation details"));
+    }
+
+    #[test]
+    fn domain_error_messages_remain_actionable() {
+        let validation = PortError::validation("pricing.currency_invalid", "currency is invalid");
+        let conflict = PortError::conflict("pricing.price_conflict", "price already exists");
+
+        assert_eq!(validation.message, "currency is invalid");
+        assert_eq!(conflict.message, "price already exists");
     }
 }
