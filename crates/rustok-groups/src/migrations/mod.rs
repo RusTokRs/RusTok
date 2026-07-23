@@ -5,6 +5,7 @@ mod m20260721_000004_create_group_invitations;
 mod m20260721_000005_create_group_domain_events;
 mod m20260722_000006_create_group_membership_applications;
 mod m20260722_000007_create_group_membership_policy_revisions;
+mod m20260723_000008_create_group_membership_enforcement_state;
 
 use sea_orm_migration::MigrationTrait;
 
@@ -17,5 +18,6 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20260721_000005_create_group_domain_events::Migration),
         Box::new(m20260722_000006_create_group_membership_applications::Migration),
         Box::new(m20260722_000007_create_group_membership_policy_revisions::Migration),
+        Box::new(m20260723_000008_create_group_membership_enforcement_state::Migration),
     ]
 }

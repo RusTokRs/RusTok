@@ -29,6 +29,21 @@
         "idempotency_key_required": false
       },
       {
+        "name": "GroupMembershipEnforcementReadPort",
+        "operations": [
+          "read_membership_enforcement"
+        ],
+        "policy": "read",
+        "deadline_required": true,
+        "idempotency_key_required": false,
+        "authorization": "exact_user_or_groups_access_read_claim",
+        "effective_clock": "groups_owner_utc_clock",
+        "stored_status": "compatibility_only",
+        "legacy_banned_behavior": "deny_reentry",
+        "expired_or_revoked_behavior": "fall_back_to_stored_membership_state",
+        "command_port": "not_published_in_this_slice"
+      },
+      {
         "name": "GroupAccessReadPort",
         "operations": [
           "decide_group_access",
@@ -317,6 +332,29 @@
       "view": "private_content"
     }
   },
+  "membership_enforcement": {
+    "membership_revision": "group_memberships.revision",
+    "revision_initial_value": 1,
+    "legacy_lifecycle_revision_bump": "database_guard_until_shared_owner_command_path",
+    "enforcement_revision_bump": "same_database_transaction_via_trigger",
+    "owner_table": "group_membership_enforcements",
+    "current_row_identity": "tenant_plus_membership",
+    "supported_states": [
+      "suspended"
+    ],
+    "source_kinds": [
+      "direct_local",
+      "moderation_decision"
+    ],
+    "moderation_payload_copy": "forbidden",
+    "effective_clock": "groups_owner_utc_clock",
+    "expiry_cleanup_dependency": false,
+    "legacy_banned_behavior": "deny_reentry",
+    "access_path_integration": "open",
+    "invitation_application_provider_acl_integration": "open",
+    "direct_command_port": "not_published_in_this_slice",
+    "moderation_adapter": "not_published_in_this_slice"
+  },
   "localization": {
     "effective_locale_owner": "host_runtime",
     "module_local_fallback": false,
@@ -468,6 +506,16 @@
       ]
     },
     {
+      "name": "embedded_membership_enforcement_read_native",
+      "provider": "GroupMembershipEnforcementService",
+      "status": "implemented_source",
+      "surfaces": [
+        "rust_read_port",
+        "owner_clock_resolver"
+      ],
+      "implicit_fallback": false
+    },
+    {
       "name": "embedded_localization_native",
       "provider": "GroupLocalizationService",
       "status": "implemented",
@@ -577,6 +625,7 @@
     "membership_application_policy_locale_management_static_boundary": "scripts/verify/verify-groups-application-policy-locales.mjs",
     "membership_application_native_no_bypass_static_boundary": "scripts/verify/verify-groups-application-native-no-bypass.mjs",
     "membership_application_bulk_review_static_boundary": "scripts/verify/verify-groups-application-bulk-review.mjs",
+    "membership_enforcement_read_static_boundary": "scripts/verify/verify-groups-membership-enforcement-read-path.mjs",
     "runtime_provider_consumer": null,
     "runtime_fallback": null,
     "runtime_retry_recovery": null,
@@ -593,6 +642,9 @@
     "membership_application_lifecycle": null,
     "membership_application_policy_locale_management": null,
     "membership_application_bulk_review": null,
+    "membership_enforcement_migration": null,
+    "membership_enforcement_revision_runtime": null,
+    "membership_enforcement_access_path_integration": null,
     "governance_transport_parity": null,
     "governance_concurrency": null
   }

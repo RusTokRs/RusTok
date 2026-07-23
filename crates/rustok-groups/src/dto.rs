@@ -1,10 +1,12 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::domain::{
-    GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipStatus, GroupRole,
-    GroupStatus, GroupVisibility,
+    GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipEffectiveStatus,
+    GroupMembershipEnforcementSourceKind, GroupMembershipEnforcementState,
+    GroupMembershipStatus, GroupRole, GroupStatus, GroupVisibility,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,6 +43,44 @@ pub struct GroupMembership {
     pub user_id: Uuid,
     pub role: GroupRole,
     pub status: GroupMembershipStatus,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupMembershipEnforcementSummary {
+    pub membership_id: Uuid,
+    pub state: GroupMembershipEnforcementState,
+    pub reason_code: String,
+    pub source_kind: GroupMembershipEnforcementSourceKind,
+    pub effective_from: DateTime<Utc>,
+    pub effective_until: Option<DateTime<Utc>>,
+    pub restore_status: GroupMembershipStatus,
+    pub moderation_decision_id: Option<Uuid>,
+    pub moderation_decision_hash: Option<String>,
+    pub actor_kind: String,
+    pub actor_id: String,
+    pub revision: i64,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub is_effective: bool,
+}
+
+/// Owner-clock evaluation of one membership and its Groups-owned current enforcement row.
+///
+/// `stored_status` remains visible for lifecycle compatibility, while callers must use
+/// `effective_status`, `active_member`, and `denied_reentry` for access decisions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupMembershipEffectiveState {
+    pub tenant_id: Uuid,
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+    pub membership_id: Option<Uuid>,
+    pub role: Option<GroupRole>,
+    pub stored_status: Option<GroupMembershipStatus>,
+    pub membership_revision: Option<i64>,
+    pub effective_status: GroupMembershipEffectiveStatus,
+    pub active_member: bool,
+    pub denied_reentry: bool,
+    pub enforcement: Option<GroupMembershipEnforcementSummary>,
+    pub evaluated_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -174,6 +214,12 @@ pub struct GroupAccessRequest {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReadGroupMembershipRequest {
+    pub group_id: Uuid,
+    pub user_id: Uuid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadGroupMembershipEnforcementRequest {
     pub group_id: Uuid,
     pub user_id: Uuid,
 }
