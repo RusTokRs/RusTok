@@ -43,6 +43,8 @@
 - `NotificationCandidateService`
 - `NotificationCandidateProcessResult`
 - `NotificationCandidateWorker`
+- `NotificationCandidateWorkItem`
+- `NotificationCandidatePolicyDeferral`
 - `NotificationCandidateBatchResult`
 - `NotificationCandidateWorkerFailure`
 - `DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE`
@@ -139,8 +141,31 @@ nor delivery attempts.
 
 ## Candidate contract
 
-`NotificationCandidateService::new(db, registry, policy)` requires an explicit
-recipient policy; no permissive default exists. `process_candidate`:
+`NotificationCandidateWorker::claimable_candidate_work` returns bounded
+`NotificationCandidateWorkItem { item_id, tenant_id }` values in stable
+`created_at/id` order without acquiring a lease. The legacy
+`claimable_candidate_ids` remains a compatibility projection for trusted callers
+that already enforce tenant capability.
+
+Before `process_candidate`, the executable server resolves current effective
+`notifications` capability through `EffectiveModulePolicyService::is_enabled`.
+Disabled or unresolved work does not invoke recipient privacy policy or the source
+provider. Instead `NotificationCandidatePolicyDeferral` performs an owner-side CAS:
+
+- `TenantDisabled`: retry after 300 seconds with
+  `NOTIFICATION_TENANT_CAPABILITY_DISABLED`;
+- `PolicyUnavailable`: retry after 30 seconds with
+  `NOTIFICATION_TENANT_POLICY_UNAVAILABLE`.
+
+The CAS sets `retryable_error`, increments attempt count, clears lease state,
+retains `notification_id = NULL`, and sets future `next_attempt_at`. It matches the
+same tenant, item ID, prior attempt count, and current claimable state, so a
+concurrent canonical claim remains authoritative and disabled tenants do not hold
+the bounded queue head.
+
+For enabled work, `NotificationCandidateService::new(db, registry, policy)`
+requires an explicit recipient policy; no permissive default exists.
+`process_candidate`:
 
 1. claims a pending, due retryable, or expired-processing candidate;
 2. resolves exact source/type preference scopes before wildcard scopes;
@@ -150,7 +175,10 @@ recipient policy; no permissive default exists. `process_candidate`:
 6. inserts or validates one idempotent in-app notification and completes the
    candidate under the same lease CAS.
 
-No channel delivery attempt is created by candidate finalization.
+No channel delivery attempt is created by candidate finalization. The tenant
+capability check is fail-closed and immediately precedes the canonical claim, but
+it is not atomic with a control-plane disable committed concurrently after that
+check. A revision-token or transactional control-plane guard remains deferred.
 
 ## Runtime flags
 
