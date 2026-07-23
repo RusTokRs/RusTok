@@ -11,12 +11,14 @@ pub mod migrations;
 pub mod ports;
 pub mod providers;
 pub mod services;
+pub mod status;
 
 pub use checkout_execution::*;
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
 pub use providers::*;
+pub use status::*;
 
 pub use error::{FulfillmentError, FulfillmentResult};
 pub use services::{
