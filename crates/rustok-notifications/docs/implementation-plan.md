@@ -32,9 +32,12 @@ provider descriptors, and writes cursor pages of idempotent pending candidates.
 privacy policy, and recipient-specific source authorization before one final
 in-app notification can be created. It creates no delivery attempt.
 
-The production profile/block adapter, production outbox runner, grouping,
-channel delivery, retention/reconciliation, inbox APIs, and PostgreSQL runtime
-evidence remain open.
+The server now composes a tenant-scoped Profiles privacy owner port and explicit
+block/mute relation port contracts into `NotificationRecipientPolicyRuntime`.
+Missing relation providers remain retryable and keep candidate-worker readiness
+false. Concrete social-graph block/mute providers, the production outbox runner,
+grouping, channel delivery, retention/reconciliation, inbox APIs, and PostgreSQL
+runtime evidence remain open.
 
 ## Milestones
 
@@ -117,6 +120,26 @@ evidence remain open.
   `contracts/notifications-candidate-policy.json` and
   `scripts/verify/verify-notifications-candidate-policy.mjs`.
 
+### Delivered in `NOTIFY-07B`
+
+- Profiles exposes `ProfilePrivacyReadPort` and `ProfilePrivacyRuntime` as an
+  owner-controlled tenant-scoped projection without exposing profile tables;
+- inactive/missing profiles are unavailable, private/followers-only profiles are
+  restricted for non-self actors, and owner read failures fail closed;
+- Notifications publishes mandatory block and mute read-port runtime contracts
+  without a permissive implementation;
+- `ServerNotificationRecipientPolicy` evaluates profile, block, then mute state
+  and maps owner decisions into typed candidate suppression;
+- actor-bearing candidates receive retryable policy errors when either concrete
+  relation provider is absent; missing providers never become implicit allow;
+- `NotificationRecipientPolicyRuntime` records whether both relation ports are
+  ready, and candidate-worker readiness remains false until they are;
+- server host composition registers the policy runtime before source-provider
+  materialization;
+- machine contract and verifier are
+  `contracts/notifications-recipient-policy-runtime.json` and
+  `scripts/verify/verify-notifications-recipient-policy-runtime.mjs`.
+
 ### Remaining `NOTIFY-01` scope
 
 - promote module-local migrations into verified global server migration
@@ -128,7 +151,8 @@ evidence remain open.
 ### Remaining `NOTIFY-03` scope
 
 - wire production outbox relay consumption into durable source enqueue;
-- compose a production candidate worker with the mandatory recipient policy;
+- register concrete social-graph block and mute providers, then compose and start
+  the production candidate worker only when policy readiness is true;
 - add grouping policy and bounded moderator-audience expansion;
 - enqueue channel work only after policy acceptance and outside owner provider
   calls;
@@ -136,8 +160,8 @@ evidence remain open.
 
 ### Remaining `NOTIFY-07` scope
 
-- implement the production profile/block/mute/tenant adapter behind
-  `NotificationRecipientPolicy` without exposing private owner tables;
+- implement and register concrete social-graph block/mute owner providers;
+- add tenant-specific notification restrictions beyond tenant identity guards;
 - recheck privacy and source authorization on inbox open and delayed delivery;
 - redact/archive notifications after source/profile state changes and reconcile
   unread counts;
@@ -169,11 +193,12 @@ node scripts/verify/verify-notifications-persistence.mjs
 node scripts/verify/verify-notifications-persistence.test.mjs
 node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
+node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
 cargo xtask module validate notifications
 ```
 
 The commands above are the maintainer verification set. They were not executed
-while publishing the `NOTIFY-03B/07A` source slice.
+while publishing the `NOTIFY-07B` source slice.
 
 ## Update Rules
 
