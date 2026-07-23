@@ -34,14 +34,15 @@ a rewrite goal.
 
 ## Rewrite status
 
-- Current milestone: `M0/M1 - runtime-tail removal and domain core`
+- Current milestone: `M1 - domain core and schema registry`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Legacy v1 ports, source indexers, projection models, and migrations: deleted
+- M0 code reset: complete
 
-The active engine surface is the database-independent `rustok_index::domain`
-API. The only remaining compatibility code is the old runtime config/scheduler
-in `traits.rs`, retained temporarily until server composition is updated.
+All legacy v1 ports, adapters, source indexers, projection models, migrations,
+runtime configuration, scheduler, errors, and server composition have been
+deleted. The active engine surface is the database-independent
+`rustok_index::domain` API.
 
 ## Entry points
 
