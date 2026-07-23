@@ -48,6 +48,7 @@ mod invitations_legacy {
 }
 pub mod localization;
 pub mod membership_enforcement;
+mod membership_enforcement_transaction;
 pub mod membership_enforcement_entities;
 pub mod migrations;
 mod notification_source;
