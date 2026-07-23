@@ -11,14 +11,52 @@ This is a standalone workspace crate named `rustok-benchmarks`.
   - `event_bus.rs`
   - `content_operations.rs`
   - `order_operations.rs`
+- `src/index_storage/` — the M2 PostgreSQL physical-storage comparison for
+  `rustok-index`.
+- `src/bin/index_storage_benchmark.rs` — executable evidence runner.
 
 ## Purpose
 
-These benchmarks detect performance regressions and provide repeatable latency/throughput baselines for critical platform paths.
+The Criterion suites detect performance regressions in established platform
+paths. The Index storage runner is different: it compares temporary PostgreSQL
+storage candidates before any production Index migration is selected.
 
-## Typical usage
+The Index runner creates only schemas prefixed with `idx_bench_`:
 
-- Run all benchmarks through workspace tooling.
-- Add a new benchmark under `benches/` and register it in `Cargo.toml`.
+- `idx_bench_source`
+- `idx_bench_jsonb`
+- `idx_bench_eav`
+- `idx_bench_hot`
 
-This folder is operationally important; it is not a scaffold or placeholder.
+Use a dedicated database because those schemas are dropped and recreated on
+every run.
+
+## Typical Criterion usage
+
+```bash
+cargo bench -p rustok-benchmarks
+```
+
+## Index storage benchmark
+
+```bash
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/rustok_index_bench \
+INDEX_BENCH_SCALE=smoke \
+cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+```
+
+Scale values:
+
+- `smoke`
+- `100k`
+- `1m`
+
+Optional environment variables:
+
+- `INDEX_BENCH_LOCALES=en-US,ru-RU`
+- `INDEX_BENCH_REPETITIONS=3`
+- `INDEX_BENCH_OUTPUT=target/index-storage-benchmark/report.json`
+
+The generated report contains load times, schema sizes, PostgreSQL settings,
+executed SQL, and repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` plans.
+Results are evidence only; the production model is chosen later in an ADR.
