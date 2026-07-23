@@ -25,10 +25,12 @@ use crate::applications_legacy_module::{
     SubmitGroupMembershipApplicationResult, UpsertGroupApplicationPolicyIfCurrentRequest,
     UpsertGroupApplicationPolicyRequest, UpsertGroupApplicationPolicyResult,
 };
+use crate::domain::GroupVisibility;
 use crate::effective_membership_guard::{
     GroupManagerCapability, actor_user_id, has_existing_receipt, require_candidate_not_denied,
     require_effective_manager, require_user_not_denied, tenant_id,
 };
+use crate::entities::group;
 
 const MAX_BULK_REVIEW_ITEMS: usize = 50;
 const MAX_REVIEW_NOTE_CHARS: usize = 2_000;
@@ -62,6 +64,31 @@ impl GroupApplicationService {
             .map_err(|error| {
                 PortError::unavailable("groups.application_lookup_unavailable", error.to_string())
             })
+    }
+
+    /// Preserve application-surface non-disclosure before returning a membership-specific denial.
+    /// Secret groups never accept applications, so candidate policy/current-state/submit paths
+    /// return not-found even when a historical membership enforcement row exists.
+    async fn require_candidate_surface_visible(
+        &self,
+        context: &PortContext,
+        group_id: Uuid,
+    ) -> Result<(), PortError> {
+        let tenant_id = tenant_id(context)?;
+        let model = group::Entity::find()
+            .filter(group::Column::TenantId.eq(tenant_id))
+            .filter(group::Column::Id.eq(group_id))
+            .one(&self.db)
+            .await
+            .map_err(|error| {
+                PortError::unavailable("groups.group_lookup_unavailable", error.to_string())
+            })?;
+        match model {
+            Some(model) if model.visibility == GroupVisibility::Secret.as_str() => Err(
+                PortError::not_found("groups.not_found", "group was not found"),
+            ),
+            _ => Ok(()),
+        }
     }
 
     async fn precheck_review(
@@ -118,6 +145,8 @@ impl GroupApplicationReadPort for GroupApplicationService {
         request: ReadGroupApplicationPolicyRequest,
     ) -> Result<crate::applications_legacy_module::GroupApplicationPolicy, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        self.require_candidate_surface_visible(&context, request.group_id)
+            .await?;
         require_candidate_not_denied(&self.db, &context, request.group_id, false).await?;
         GroupApplicationReadPort::read_group_application_policy(&self.legacy, context, request).await
     }
@@ -176,6 +205,8 @@ impl GroupApplicationCommandPort for GroupApplicationService {
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         if !has_existing_receipt(&self.db, &context).await? {
+            self.require_candidate_surface_visible(&context, request.group_id)
+                .await?;
             require_candidate_not_denied(&self.db, &context, request.group_id, true).await?;
         }
         GroupApplicationCommandPort::submit_group_membership_application(
@@ -238,6 +269,8 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         if !has_existing_receipt(&self.db, &context).await? {
+            self.require_candidate_surface_visible(&context, request.submission.group_id)
+                .await?;
             require_candidate_not_denied(
                 &self.db,
                 &context,
@@ -263,6 +296,8 @@ impl GroupApplicationLifecycleReadPort for GroupApplicationService {
         request: ReadMyGroupMembershipApplicationRequest,
     ) -> Result<Option<GroupMembershipApplication>, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        self.require_candidate_surface_visible(&context, request.group_id)
+            .await?;
         require_candidate_not_denied(&self.db, &context, request.group_id, false).await?;
         GroupApplicationLifecycleReadPort::read_my_group_membership_application(
             &self.legacy,
