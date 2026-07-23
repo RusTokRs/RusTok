@@ -1,5 +1,6 @@
 use rustok_api::{
-    AuthContext, OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext,
+    AuthContext, OptionalAuthContext, PortActor, PortContext, PortError, PortErrorKind,
+    RequestContext, TenantContext,
 };
 use rustok_cart::{
     CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
@@ -18,14 +19,50 @@ use crate::storefront_checkout_runtime::{
 
 #[derive(Debug, Error)]
 pub enum StorefrontStagedCheckoutRuntimeError {
-    #[error("checkout request is invalid: {0}")]
+    #[error("checkout request is invalid")]
     Validation(String),
     #[error("checkout cart is not accessible")]
     CartAccess,
+    #[error("checkout dependency is temporarily unavailable")]
+    TemporarilyUnavailable,
     #[error("checkout could not be completed")]
     CheckoutFailed,
+    #[error("checkout compensation is pending")]
+    CompensationPending,
     #[error("checkout requires reconciliation")]
     ReconciliationRequired,
+}
+
+impl StorefrontStagedCheckoutRuntimeError {
+    pub const fn public_code(&self) -> &'static str {
+        match self {
+            Self::Validation(_) => "checkout_operation_invalid",
+            Self::CartAccess => "checkout_cart_not_accessible",
+            Self::TemporarilyUnavailable => "checkout_temporarily_unavailable",
+            Self::CheckoutFailed => "checkout_failed",
+            Self::CompensationPending => "checkout_compensation_pending",
+            Self::ReconciliationRequired => "checkout_reconciliation_required",
+        }
+    }
+
+    pub const fn public_message(&self) -> &'static str {
+        match self {
+            Self::Validation(_) => "Checkout request is invalid",
+            Self::CartAccess => "Checkout cart was not found or is not accessible",
+            Self::TemporarilyUnavailable => "Checkout is temporarily unavailable",
+            Self::CheckoutFailed => "Checkout could not be completed",
+            Self::CompensationPending => {
+                "Checkout failed and compensation will be retried"
+            }
+            Self::ReconciliationRequired => {
+                "Checkout requires reconciliation before it can continue"
+            }
+        }
+    }
+
+    pub const fn retryable(&self) -> bool {
+        matches!(self, Self::TemporarilyUnavailable | Self::CompensationPending)
+    }
 }
 
 /// Backward-compatible native storefront command wrapper.
@@ -94,21 +131,23 @@ pub async fn complete_storefront_checkout_input(
         checkout_input.locale = Some(request_context.locale.clone());
     }
 
+    let cart_id = checkout_input.cart_id;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
+    let cart_port_context = cart_context(tenant_id, cart_id, request_context, auth.as_ref());
     let cart = cart_storefront_port
         .read_storefront_cart(
-            cart_context(
-                tenant_id,
-                checkout_input.cart_id,
-                request_context,
-                auth.as_ref(),
-            ),
-            CartStorefrontReadRequest {
-                cart_id: checkout_input.cart_id,
-            },
+            cart_port_context.clone(),
+            CartStorefrontReadRequest { cart_id },
         )
         .await
-        .map_err(|_| StorefrontStagedCheckoutRuntimeError::CartAccess)?;
+        .map_err(|error| {
+            map_owner_port_error(
+                &cart_port_context,
+                "read_storefront_cart",
+                error,
+                StorefrontStagedCheckoutRuntimeError::CartAccess,
+            )
+        })?;
     let customer_id = resolve_customer_id(runtime, tenant_id, auth.as_ref()).await?;
     if cart.customer_id.is_some() && cart.customer_id != customer_id {
         return Err(StorefrontStagedCheckoutRuntimeError::CartAccess);
@@ -128,7 +167,7 @@ pub async fn complete_storefront_checkout_input(
     let atomic_cart = bind_in_process_atomic_cart_checkout_with_pricing(
         runtime.db_clone(),
         PrepareCartCheckoutSnapshotRequest {
-            cart_id: checkout_input.cart_id,
+            cart_id,
             input: rustok_cart::UpdateCartContextInput {
                 email: None,
                 region_id: checkout_input.region_id,
@@ -196,7 +235,7 @@ pub async fn complete_storefront_checkout_input(
     crate::RecoveringStagedCheckoutService::new(staged, compensation)
         .complete_checkout(tenant_id, actor_id, idempotency_key, checkout_input)
         .await
-        .map_err(map_checkout_error)
+        .map_err(|error| map_checkout_error(tenant_id, cart_id, error))
 }
 
 async fn resolve_customer_id(
@@ -207,15 +246,16 @@ async fn resolve_customer_id(
     let Some(auth) = auth else {
         return Ok(None);
     };
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(auth.user_id.to_string()),
+        rustok_api::PLATFORM_FALLBACK_LOCALE,
+        format!("storefront-checkout:customer:{}", auth.user_id),
+    )
+    .with_deadline(Duration::from_secs(2));
     match in_process_customer_read_port(runtime.db_clone())
         .read_customer_projection_by_user(
-            PortContext::new(
-                tenant_id.to_string(),
-                PortActor::user(auth.user_id.to_string()),
-                rustok_api::PLATFORM_FALLBACK_LOCALE,
-                format!("storefront-checkout:customer:{}", auth.user_id),
-            )
-            .with_deadline(Duration::from_secs(2)),
+            context.clone(),
             CustomerUserProjectionRequest {
                 user_id: auth.user_id,
             },
@@ -224,7 +264,12 @@ async fn resolve_customer_id(
     {
         Ok(customer) => Ok(Some(customer.id)),
         Err(error) if error.code == "customer.customer_by_user_not_found" => Ok(None),
-        Err(_) => Err(StorefrontStagedCheckoutRuntimeError::CartAccess),
+        Err(error) => Err(map_owner_port_error(
+            &context,
+            "read_customer_projection_by_user",
+            error,
+            StorefrontStagedCheckoutRuntimeError::CartAccess,
+        )),
     }
 }
 
@@ -250,18 +295,54 @@ fn cart_context(
     context
 }
 
+fn map_owner_port_error(
+    context: &PortContext,
+    operation: &'static str,
+    error: PortError,
+    fallback: StorefrontStagedCheckoutRuntimeError,
+) -> StorefrontStagedCheckoutRuntimeError {
+    tracing::error!(
+        error = ?error,
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        operation,
+        owner_code = %error.code,
+        owner_kind = ?error.kind,
+        "storefront checkout owner port failed"
+    );
+    match error.kind {
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable
+        }
+        _ => fallback,
+    }
+}
+
 fn map_checkout_error(
+    tenant_id: Uuid,
+    cart_id: Uuid,
     error: crate::RecoveringStagedCheckoutError,
 ) -> StorefrontStagedCheckoutRuntimeError {
+    tracing::error!(
+        error = ?error,
+        tenant_id = %tenant_id,
+        cart_id = %cart_id,
+        operation = "complete_storefront_checkout",
+        "storefront staged checkout failed"
+    );
     match error {
         crate::RecoveringStagedCheckoutError::StagedAndCompensation {
             compensation: crate::CheckoutCompensationError::ManualReconciliation(_),
             ..
         } => StorefrontStagedCheckoutRuntimeError::ReconciliationRequired,
+        crate::RecoveringStagedCheckoutError::StagedAndCompensation { .. } => {
+            StorefrontStagedCheckoutRuntimeError::CompensationPending
+        }
         crate::RecoveringStagedCheckoutError::StagedAndJournal { .. }
-        | crate::RecoveringStagedCheckoutError::StagedAndCompensation { .. }
-        | crate::RecoveringStagedCheckoutError::Staged(_)
         | crate::RecoveringStagedCheckoutError::Journal(_) => {
+            StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable
+        }
+        crate::RecoveringStagedCheckoutError::Staged(_) => {
             StorefrontStagedCheckoutRuntimeError::CheckoutFailed
         }
     }
