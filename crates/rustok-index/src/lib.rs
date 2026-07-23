@@ -5,16 +5,12 @@
 //! introduced only through the milestones in the live implementation plan.
 
 use async_trait::async_trait;
-use rustok_core::{MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule};
+use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod domain;
-pub mod error;
-pub mod traits;
 
 pub use domain::*;
-pub use error::{IndexError, IndexResult};
-pub use traits::{Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer};
 
 pub struct IndexModule;
 
@@ -38,16 +34,6 @@ impl RusToKModule for IndexModule {
 
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        // Temporary host compatibility only. M0 removes this legacy runtime
-        // configuration after server composition stops inserting it.
-        extensions.get_or_insert_with(IndexerRuntimeConfig::load);
-        Ok(())
     }
 }
 
