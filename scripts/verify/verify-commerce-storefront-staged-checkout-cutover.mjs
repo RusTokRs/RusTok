@@ -46,13 +46,25 @@ for (const [source, value, label] of [
   [stagedRuntime, 'RecoveringStagedCheckoutService::new(staged, compensation)', 'staged recovery composition'],
   [stagedRuntime, 'checkout_input.shipping_selections.clone()', 'full shipping selection preservation'],
   [stagedRuntime, 'with_payment_provider_registry(payment_provider_registry.clone())', 'staged provider registry composition'],
+  [stagedRuntime, 'pub const fn public_code(&self)', 'stable checkout public code contract'],
+  [stagedRuntime, 'pub const fn public_message(&self)', 'stable checkout public message contract'],
+  [stagedRuntime, 'pub const fn retryable(&self)', 'stable checkout retryability contract'],
+  [stagedRuntime, 'StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable', 'temporary dependency failure classification'],
+  [stagedRuntime, 'map_owner_port_error(', 'owner port failure classification'],
   [graphqlCheckout, 'complete_storefront_checkout_input(', 'GraphQL staged checkout entrypoint'],
   [graphqlCheckout, 'payment_provider_registry_from_context(ctx)', 'GraphQL host provider registry'],
+  [graphqlCheckout, 'storefront_checkout_graphql_error', 'GraphQL stable checkout mapper'],
+  [graphqlCheckout, 'extensions.set("code", code)', 'GraphQL checkout error code extension'],
+  [graphqlCheckout, 'extensions.set("retryable", retryable)', 'GraphQL checkout retryability extension'],
   [restCheckout, 'complete_storefront_checkout_input(', 'REST staged checkout entrypoint'],
   [restCheckout, 'runtime.payment_provider_registry()', 'REST host provider registry'],
   [restCheckout, 'let idempotency_key = required_idempotency_key(&headers)?;', 'REST explicit idempotency identity'],
+  [restCheckout, 'payment_collection_http_error(', 'REST stable payment collection mapper'],
   [nativeCheckout, 'services::storefront_staged_checkout_runtime', 'native staged runtime import'],
   [nativeCheckout, 'payment_provider_registry', 'native host provider registry'],
+  [nativeCheckout, 'native_checkout_runtime_error', 'native stable checkout mapper'],
+  [nativeCheckout, 'error.public_code()', 'native stable checkout code'],
+  [nativeCheckout, 'error.public_message()', 'native stable checkout message'],
   [journaledCheckout, 'Execution is fully delegated to', 'journaled compatibility-only contract'],
   [journaledCheckout, 'RecoveringStagedCheckoutService::new(staged, compensation)', 'journaled staged delegation'],
   [legacyRuntime, 'pub async fn complete_storefront_checkout(', 'retained private legacy completion source'],
@@ -81,16 +93,21 @@ for (const [source, label] of [
   }
 }
 
-forbidText(mountedRuntime, 'pub use legacy::*;', 'mounted wildcard legacy export');
-forbidText(mountedRuntime, 'legacy::complete_storefront_checkout', 'mounted legacy completion export');
-forbidText(restCheckout, 'recovering_checkout_http_error', 'REST private staged error mapper drift');
-forbidText(restCheckout, 'staged_checkout_http_error', 'REST private checkout error mapper drift');
-forbidText(orderPorts, 'match order.status.as_str()', 'raw checkout order lifecycle matching');
-forbidText(
-  orderPorts,
-  '"confirmed" | "paid" | "shipped" | "delivered"',
-  'raw checkout order lifecycle alternatives',
-);
+for (const [source, value, label] of [
+  [mountedRuntime, 'pub use legacy::*;', 'mounted wildcard legacy export'],
+  [mountedRuntime, 'legacy::complete_storefront_checkout', 'mounted legacy completion export'],
+  [restCheckout, 'recovering_checkout_http_error', 'REST private staged error mapper drift'],
+  [restCheckout, 'staged_checkout_http_error', 'REST private checkout error mapper drift'],
+  [restCheckout, 'err.to_string()', 'REST raw payment error display'],
+  [graphqlCheckout, 'Error::new(error.to_string())', 'GraphQL raw checkout error display'],
+  [nativeCheckout, 'ServerFnError::new(error.to_string())', 'native raw checkout error display'],
+  [nativeCheckout, 'ServerFn(error.to_string())', 'native transport raw server error display'],
+  [stagedRuntime, '#[error("checkout request is invalid: {0}")]', 'runtime validation detail display'],
+  [orderPorts, 'match order.status.as_str()', 'raw checkout order lifecycle matching'],
+  [orderPorts, '"confirmed" | "paid" | "shipped" | "delivered"', 'raw checkout order lifecycle alternatives'],
+]) {
+  forbidText(source, value, label);
+}
 
 if (failures.length > 0) {
   console.error('Commerce storefront staged checkout cutover verification failed:');
@@ -99,5 +116,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime; journaled compatibility and order recovery use the same typed recovery policy',
+  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime and publish stable transport errors; journaled compatibility and order recovery use the same typed recovery policy',
 );
