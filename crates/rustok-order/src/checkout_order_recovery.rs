@@ -9,7 +9,8 @@ use uuid::Uuid;
 use crate::{
     AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
     CheckoutOrderIdentitySnapshot, CompleteCheckoutPortRequest, InProcessCheckoutOrderIdentityPort,
-    OrderError, OrderResponse, OrderService, ReadCheckoutOrderIdentityByOperationRequest,
+    OrderError, OrderResponse, OrderService, OrderStatusKind,
+    ReadCheckoutOrderIdentityByOperationRequest,
 };
 
 /// Order-owned in-process adapter used while staged commerce checkout migrates
@@ -150,8 +151,8 @@ impl CheckoutOrderRecoveryAdapter {
         let order = self
             .load_order(tenant_id, order_id, locale, fallback_locale)
             .await?;
-        match order.status.as_str() {
-            "pending" => {
+        match order.status_kind() {
+            OrderStatusKind::Pending => {
                 let order = self
                     .order_service
                     .confirm_order(tenant_id, actor_id, order.id)
@@ -171,12 +172,15 @@ impl CheckoutOrderRecoveryAdapter {
                     Ok(order)
                 }
             }
-            "confirmed" | "paid" | "shipped" | "delivered" => Ok(order),
-            "cancelled" => Err(PortError::conflict(
+            OrderStatusKind::Confirmed
+            | OrderStatusKind::Paid
+            | OrderStatusKind::Shipped
+            | OrderStatusKind::Delivered => Ok(order),
+            OrderStatusKind::Cancelled => Err(PortError::conflict(
                 "order.checkout_order_cancelled",
                 "checkout order is already cancelled",
             )),
-            _ => Err(PortError::invariant_violation(
+            OrderStatusKind::Unknown => Err(PortError::invariant_violation(
                 "order.checkout_order_status_invalid",
                 "checkout order has an unsupported lifecycle state",
             )),
