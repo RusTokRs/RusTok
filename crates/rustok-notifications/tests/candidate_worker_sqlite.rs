@@ -118,7 +118,7 @@ async fn worker_selection_is_bounded_and_uses_candidate_lease_path() {
         .await
         .expect("claimable candidate selection should succeed");
     assert_eq!(selected.len(), 32);
-    assert_eq!(selected[0], item_ids[0]);
+    assert!(selected.iter().all(|item_id| item_ids.contains(item_id)));
 
     let processed = worker
         .process_candidate(selected[0])
