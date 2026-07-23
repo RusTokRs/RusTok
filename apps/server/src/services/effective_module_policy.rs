@@ -7,20 +7,41 @@ use rustok_modules::{
 };
 use sea_orm::{DatabaseConnection, DbErr};
 
+#[derive(Clone, Debug)]
+pub struct EffectiveModulePolicySnapshot {
+    pub policy: ModuleEffectivePolicy,
+    pub default_enabled_modules: Vec<String>,
+}
+
 pub struct EffectiveModulePolicyService;
 
 impl EffectiveModulePolicyService {
+    pub async fn resolve_snapshot(
+        db: &DatabaseConnection,
+        registry: &ModuleRegistry,
+        tenant_id: uuid::Uuid,
+    ) -> Result<EffectiveModulePolicySnapshot, PlatformCompositionError> {
+        let manifest = PlatformCompositionService::active_manifest(db).await?;
+        let default_enabled_modules = manifest.settings.default_enabled;
+        let policy = ModuleControlPlane::new(db.clone())
+            .effective_policy(registry, default_enabled_modules.clone())
+            .resolve(tenant_id)
+            .await
+            .map_err(map_effective_policy_error)?;
+        Ok(EffectiveModulePolicySnapshot {
+            policy,
+            default_enabled_modules,
+        })
+    }
+
     pub async fn resolve(
         db: &DatabaseConnection,
         registry: &ModuleRegistry,
         tenant_id: uuid::Uuid,
     ) -> Result<ModuleEffectivePolicy, PlatformCompositionError> {
-        let manifest = PlatformCompositionService::active_manifest(db).await?;
-        ModuleControlPlane::new(db.clone())
-            .effective_policy(registry, manifest.settings.default_enabled)
-            .resolve(tenant_id)
+        Self::resolve_snapshot(db, registry, tenant_id)
             .await
-            .map_err(map_effective_policy_error)
+            .map(|snapshot| snapshot.policy)
     }
 
     pub async fn resolve_enabled(
