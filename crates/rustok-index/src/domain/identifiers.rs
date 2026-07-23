@@ -86,9 +86,6 @@ string_identifier!(FieldName, "field");
 string_identifier!(LinkName, "link");
 
 /// Canonical language identifier used in entity keys and query scope.
-///
-/// Parsing and serialization normalize casing and separator rules, so values
-/// such as `EN-us` and `en-US` produce the same key.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct LocaleKey(String);
@@ -167,10 +164,43 @@ impl SchemaVersion {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SchemaIdentity {
+    pub module: ModuleName,
+    pub entity: EntityName,
+}
+
+impl fmt::Display for SchemaIdentity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}::{}", self.module, self.entity)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SchemaRef {
     pub module: ModuleName,
     pub entity: EntityName,
     pub version: SchemaVersion,
+}
+
+impl SchemaRef {
+    pub fn identity(&self) -> SchemaIdentity {
+        SchemaIdentity {
+            module: self.module.clone(),
+            entity: self.entity.clone(),
+        }
+    }
+}
+
+impl fmt::Display for SchemaRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}::{}@{}",
+            self.module,
+            self.entity,
+            self.version.get()
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -234,5 +264,17 @@ mod tests {
     fn rejects_invalid_locale_keys() {
         assert!(LocaleKey::new("en_US").is_err());
         assert!(LocaleKey::new("not a locale").is_err());
+    }
+
+    #[test]
+    fn schema_identity_ignores_version() {
+        let reference = SchemaRef {
+            module: ModuleName::new("rustok-product").unwrap(),
+            entity: EntityName::new("product").unwrap(),
+            version: SchemaVersion::new(7),
+        };
+
+        assert_eq!(reference.identity().to_string(), "rustok-product::product");
+        assert_eq!(reference.to_string(), "rustok-product::product@7");
     }
 }
