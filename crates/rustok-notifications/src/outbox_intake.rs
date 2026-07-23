@@ -220,12 +220,17 @@ impl NotificationOutboxIntakeWorker {
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
+        let envelope = envelope_record(&row);
 
         if let Some(existing) = intake_receipt::Entity::find_by_id(outbox_event_id)
             .one(&self.db)
             .await?
         {
-            ensure_receipt_matches_outbox(&existing, &row)?;
+            let source_event = self
+                .decoder
+                .decode(&envelope)
+                .map_err(|_| NotificationError::SourceIdentityConflict)?;
+            ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
             return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
                 existing, true,
             )));
@@ -240,7 +245,6 @@ impl NotificationOutboxIntakeWorker {
             )));
         }
 
-        let envelope = envelope_record(&row);
         let source_event = match self.decoder.decode(&envelope) {
             Ok(source_event) => source_event,
             Err(error) if error.is_retryable() => return Err(error),
@@ -385,7 +389,11 @@ impl NotificationOutboxIntakeWorker {
         debug_assert!(!error.is_retryable());
         let txn = self.db.begin().await?;
         if let Some(existing) = intake_receipt::Entity::find_by_id(row.id).one(&txn).await? {
-            ensure_receipt_matches_outbox(&existing, row)?;
+            let source_event = self
+                .decoder
+                .decode(&envelope_record(row))
+                .map_err(|_| NotificationError::SourceIdentityConflict)?;
+            ensure_receipt_identity(&existing, row.id, &source_event)?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
                 existing, true,
@@ -466,16 +474,6 @@ fn ensure_receipt_identity(
         || receipt.source_event_id != event.event_id()
         || receipt.source_revision != source_revision_i64(event)?
     {
-        return Err(NotificationError::SourceIdentityConflict);
-    }
-    Ok(())
-}
-
-fn ensure_receipt_matches_outbox(
-    receipt: &intake_receipt::Model,
-    row: &outbox_event::Model,
-) -> NotificationResult<()> {
-    if receipt.outbox_event_id != row.id || receipt.event_type != row.event_type {
         return Err(NotificationError::SourceIdentityConflict);
     }
     Ok(())
