@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
@@ -7,8 +5,8 @@ use rustok_core::SecurityContext;
 
 use crate::dto::{
     CategoryListItem, CategoryResponse, CategorySubtreeLifecycleResponse,
-    CategoryTopicPolicyResponse, CategoryTreeQuery, CategoryTreeResponse, MAX_FORUM_READ_LIMIT,
-    MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
+    CategoryTopicPolicyResponse, CategoryTreeQuery, CategoryTreeResponse, CreateCategoryInput,
+    MAX_FORUM_READ_LIMIT, MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
     ReorderCategorySiblingsResponse, UpdateCategoryInput, UpdateCategoryTopicPolicyInput,
     bounded_forum_read_limit,
 };
@@ -16,6 +14,11 @@ use crate::error::{ForumError, ForumResult};
 
 use super::{category, category_command, category_lifecycle, category_policy, category_tree};
 
+/// Public owner facade for forum categories.
+///
+/// Only explicit domain operations are exposed. The raw persistence service is
+/// kept crate-private so callers cannot bypass placement, lifecycle or policy
+/// commands through `Deref`.
 pub struct CategoryService {
     inner: category::CategoryService,
     commands: category_command::CategoryCommandService,
@@ -33,6 +36,55 @@ impl CategoryService {
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
             tree: category_tree::CategoryTreeService::new(db),
         }
+    }
+
+    pub async fn create(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreateCategoryInput,
+    ) -> ForumResult<CategoryResponse> {
+        self.inner.create(tenant_id, security, input).await
+    }
+
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        category_id: Uuid,
+        locale: &str,
+    ) -> ForumResult<CategoryResponse> {
+        self.inner
+            .get(tenant_id, security, category_id, locale)
+            .await
+    }
+
+    pub async fn get_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        category_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<CategoryResponse> {
+        self.inner
+            .get_with_locale_fallback(
+                tenant_id,
+                security,
+                category_id,
+                locale,
+                fallback_locale,
+            )
+            .await
+    }
+
+    pub async fn delete(
+        &self,
+        tenant_id: Uuid,
+        category_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<()> {
+        self.inner.delete(tenant_id, category_id, security).await
     }
 
     pub async fn tree(
@@ -213,13 +265,5 @@ impl CategoryService {
             reply_delta,
         )
         .await
-    }
-}
-
-impl Deref for CategoryService {
-    type Target = category::CategoryService;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
     }
 }
