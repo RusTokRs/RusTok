@@ -18,7 +18,6 @@ use tokio::task::JoinHandle;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
 use crate::services::effective_module_policy::EffectiveModulePolicyService;
-use crate::services::platform_composition::PlatformCompositionService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const CANDIDATE_POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -27,8 +26,14 @@ const MODULE_LIFECYCLE_POLICY_CONSUMER: &str = "module.lifecycle";
 static NOTIFICATION_CANDIDATE_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct TenantPolicyObservation {
+    policy_revision: String,
+    default_enabled_modules: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum TenantNotificationPolicy {
-    Enabled { policy_revision: String },
+    Enabled(TenantPolicyObservation),
     Disabled,
     Unavailable,
 }
@@ -53,19 +58,17 @@ impl NotificationTenantCapabilityCommitGuard for ServerNotificationTenantCapabil
             return Err(NotificationTenantCapabilityCommitError::permanent());
         }
 
-        // The active distribution manifest is host-owned and is resolved before
-        // taking the lifecycle cursor lock. The transaction-bound owner resolver
-        // then serializes tenant override state with module lifecycle commits.
-        let manifest = PlatformCompositionService::active_manifest(&self.db)
-            .await
-            .map_err(|_| NotificationTenantCapabilityCommitError::retryable())?;
+        // Manifest defaults were captured before candidate claim. Keeping them in
+        // the observation avoids opening another pool connection while the final
+        // transaction is active. Manifest mutation is intentionally outside the
+        // lifecycle cursor guarantee and remains a separate rollout gate.
         let policy = SeaOrmModulePolicyRevisionConsumer::new(self.db.clone())
             .lock_and_resolve_static_policy_in_transaction(
                 transaction,
                 request.tenant_id,
                 MODULE_LIFECYCLE_POLICY_CONSUMER,
                 &self.module_registry,
-                manifest.settings.default_enabled,
+                request.observed_default_enabled_modules,
             )
             .await
             .map_err(|_| NotificationTenantCapabilityCommitError::retryable())?;
@@ -206,21 +209,23 @@ async fn notification_candidate_worker_loop(
         };
 
         for work in work_items {
-            // A shutdown signal prevents future claims. A candidate already being
-            // processed is allowed to finish its lease/CAS completion path.
             if *stop_rx.borrow() {
                 tracing::info!(worker_id = worker.worker_id(), "Notification candidate worker stopped before next claim");
                 return;
             }
 
-            let Some(policy_revision) =
-                candidate_work_policy_revision(&worker, &db, &module_registry, work).await
+            let Some(observation) =
+                candidate_work_policy_observation(&worker, &db, &module_registry, work).await
             else {
                 continue;
             };
 
             match worker
-                .process_candidate_with_policy_revision(work.item_id, policy_revision.as_str())
+                .process_candidate_with_policy_revision(
+                    work.item_id,
+                    observation.policy_revision.as_str(),
+                    observation.default_enabled_modules.as_slice(),
+                )
                 .await
             {
                 Ok(result) => tracing::debug!(
@@ -229,7 +234,7 @@ async fn notification_candidate_worker_loop(
                     item_id = %result.item_id,
                     status = ?result.status,
                     replayed = result.replayed,
-                    policy_revision,
+                    policy_revision = observation.policy_revision,
                     "Notification candidate processed under commit-time tenant policy guard"
                 ),
                 Err(NotificationError::LeaseUnavailable) => tracing::debug!(
@@ -262,14 +267,14 @@ async fn notification_candidate_worker_loop(
     }
 }
 
-async fn candidate_work_policy_revision(
+async fn candidate_work_policy_observation(
     worker: &NotificationCandidateWorker,
     db: &DatabaseConnection,
     module_registry: &ModuleRegistry,
     work: NotificationCandidateWorkItem,
-) -> Option<String> {
+) -> Option<TenantPolicyObservation> {
     let reason = match tenant_notification_policy(db, module_registry, work.tenant_id).await {
-        TenantNotificationPolicy::Enabled { policy_revision } => return Some(policy_revision),
+        TenantNotificationPolicy::Enabled(observation) => return Some(observation),
         TenantNotificationPolicy::Disabled => NotificationCandidatePolicyDeferral::TenantDisabled,
         TenantNotificationPolicy::Unavailable => {
             NotificationCandidatePolicyDeferral::PolicyUnavailable
@@ -314,11 +319,12 @@ async fn tenant_notification_policy(
     module_registry: &ModuleRegistry,
     tenant_id: uuid::Uuid,
 ) -> TenantNotificationPolicy {
-    match EffectiveModulePolicyService::resolve(db, module_registry, tenant_id).await {
-        Ok(policy) if policy.contains(NOTIFICATIONS_MODULE_SLUG) => {
-            TenantNotificationPolicy::Enabled {
-                policy_revision: policy.policy_revision().to_string(),
-            }
+    match EffectiveModulePolicyService::resolve_snapshot(db, module_registry, tenant_id).await {
+        Ok(snapshot) if snapshot.policy.contains(NOTIFICATIONS_MODULE_SLUG) => {
+            TenantNotificationPolicy::Enabled(TenantPolicyObservation {
+                policy_revision: snapshot.policy.policy_revision().to_string(),
+                default_enabled_modules: snapshot.default_enabled_modules,
+            })
         }
         Ok(_) => {
             tracing::debug!(
