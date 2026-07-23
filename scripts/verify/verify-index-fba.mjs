@@ -11,12 +11,22 @@ const fail = (message) => {
 const lib = read('crates/rustok-index/src/lib.rs');
 const domain = read('crates/rustok-index/src/domain/mod.rs');
 const cargo = read('crates/rustok-index/Cargo.toml');
+const productionDependencySections = cargo
+  .split(/\n(?=\[)/u)
+  .filter((section) => {
+    const header = section.split('\n', 1)[0].trim();
+    return header === '[dependencies]' || /^\[target\..+\.dependencies\]$/u.test(header);
+  })
+  .join('\n');
 const manifest = read('crates/rustok-index/rustok-module.toml');
 const plan = read('crates/rustok-index/docs/implementation-plan.md');
+const normalizedPlan = plan.replace(/\s+/gu, ' ');
 const benchmarkDoc = read('crates/rustok-index/docs/storage-benchmark.md');
+const normalizedBenchmarkDoc = benchmarkDoc.replace(/\s+/gu, ' ');
 const benchmarkCargo = read('ops/benches/Cargo.toml');
 const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
 const benchmarkConnection = read('ops/benches/src/index_storage/connection.rs');
+const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const benchmarkSql = [
   'ops/benches/src/index_storage/sql/mod.rs',
   'ops/benches/src/index_storage/sql/source.rs',
@@ -61,7 +71,9 @@ for (const dependency of [
   'rustok-content',
   'rustok-telemetry',
 ]) {
-  if (cargo.includes(dependency)) fail(`Index core must not depend on ${dependency}`);
+  if (productionDependencySections.includes(dependency)) {
+    fail(`Index core production dependencies must not include ${dependency}`);
+  }
 }
 for (const sourceModule of [
   'pub mod content;',
@@ -88,7 +100,7 @@ for (const runtimeMarker of [
 
 if (manifest.includes('[fba.provider]')) fail('legacy FBA provider metadata must not return');
 if (!plan.includes('- FBA status: `in_progress`')) fail('plan must keep FBA status in_progress during rewrite');
-if (!plan.includes('Backward compatibility with the rejected implementation is not a goal')) {
+if (!normalizedPlan.includes('Backward compatibility with the rejected implementation is not a goal')) {
   fail('plan must preserve destructive rewrite policy');
 }
 
@@ -103,8 +115,9 @@ for (const marker of [
   '- [x] Isolate every measured mutation in its own rolled-back transaction.',
   '- [x] Add committed update plus delete/reinsert churn cycles for every candidate.',
   '- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.',
-  '- [x] Pin every runner to one physical PostgreSQL connection',
+  '- [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a',
   '- [ ] Run and archive 100k Product-locale row read, mutation, and maintenance',
+  '- [ ] Run and archive 1m Product-locale row read, mutation, and maintenance',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
   if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
@@ -119,6 +132,17 @@ for (const runner of [benchmarkRunner, mutationRunner, maintenanceRunner]) {
   if (!runner.includes('connect_benchmark_database')) {
     fail('every benchmark runner must use the single-session connection helper');
   }
+}
+for (const marker of [
+  'postgres:16',
+  'INDEX_BENCH_SCALE: smoke',
+  'index-storage-benchmark',
+  'index-storage-mutation-benchmark',
+  'index-storage-maintenance-benchmark',
+  'actions/upload-artifact@v7',
+  'retention-days: 90',
+]) {
+  if (!smokeWorkflow.includes(marker)) fail(`smoke evidence workflow missing ${marker}`);
 }
 for (const marker of [
   'Prototype::Jsonb',
@@ -188,14 +212,17 @@ for (const binary of [
     fail(`benchmark executable is not registered: ${binary}`);
   }
 }
-if (!benchmarkDoc.includes('Production migrations: intentionally absent')) {
+if (!normalizedBenchmarkDoc.includes('Production migrations: intentionally absent')) {
   fail('benchmark documentation must preserve the production-migration boundary');
 }
-if (!benchmarkDoc.includes('It does not run `VACUUM FULL`')) {
+if (!normalizedBenchmarkDoc.includes('It does not run `VACUUM FULL`')) {
   fail('benchmark documentation must reject VACUUM FULL as a health assumption');
 }
-if (!benchmarkDoc.includes('Evidence runs: pending repository-owner execution')) {
-  fail('benchmark documentation must keep real evidence runs pending');
+if (!normalizedBenchmarkDoc.includes('Smoke evidence: archived from Actions run `30041091121`')) {
+  fail('benchmark documentation must record the inspected smoke evidence run');
+}
+if (!normalizedBenchmarkDoc.includes('100k/1m evidence: pending repository-owner execution')) {
+  fail('benchmark documentation must keep scale evidence pending');
 }
 
 console.log('[verify-index-fba] Index core boundary and M2 read/mutation/maintenance benchmark separation are consistent');
