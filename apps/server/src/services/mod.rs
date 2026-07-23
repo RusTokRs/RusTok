@@ -37,7 +37,7 @@ pub mod mcp_runtime;
 pub mod mcp_scaffold_workspace;
 pub mod module_event_dispatcher;
 pub mod module_lifecycle;
-#[cfg(feature = "mod-notifications")]
+#[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
 pub mod notification_recipient_policy;
 pub mod oauth_admin_guard;
 pub mod oauth_app;
