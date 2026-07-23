@@ -90,7 +90,7 @@ async fn notification_outbox_intake_loop(
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
                     error = %error,
-                    "Notification outbox intake failed to select dispatched envelopes"
+                    "Notification outbox intake failed to select committed envelopes"
                 );
                 Vec::new()
             }
