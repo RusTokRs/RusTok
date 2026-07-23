@@ -131,11 +131,6 @@ impl GroupInvitationService {
             transaction.commit().await?;
             return Ok(replayed);
         }
-        if invitation_model.revoked_at.is_some() {
-            return Err(GroupsError::Conflict(
-                "group invitation is already revoked".to_string(),
-            ));
-        }
 
         let group_model =
             find_group_for_update(&transaction, tenant_id, invitation_model.group_id).await?;
@@ -148,6 +143,12 @@ impl GroupInvitationService {
             crate::effective_membership_guard::GroupManagerCapability::Moderate,
         )
         .await?;
+        if invitation_model.revoked_at.is_some() {
+            return Err(GroupsError::Conflict(
+                "group invitation is already revoked".to_string(),
+            ));
+        }
+
         let now = Utc::now();
         let mut active: invitation::ActiveModel = invitation_model.into();
         active.revoked_at = Set(Some(now.fixed_offset()));
@@ -223,10 +224,18 @@ impl GroupInvitationService {
         let token_hash = invitation_token_hash(token);
         let invitation_model =
             find_invitation_by_token_for_update(&transaction, tenant_id, &token_hash).await?;
-        ensure_invitation_active(&invitation_model, actor_user_id)?;
         let group_model =
             find_group_for_update(&transaction, tenant_id, invitation_model.group_id).await?;
         require_active_group(&group_model)?;
+        crate::effective_membership_guard::require_user_not_denied_owned(
+            &transaction,
+            tenant_id,
+            invitation_model.group_id,
+            actor_user_id,
+            true,
+        )
+        .await?;
+        ensure_invitation_active(&invitation_model, actor_user_id)?;
 
         if redemption::Entity::find()
             .filter(redemption::Column::TenantId.eq(tenant_id))
@@ -241,14 +250,6 @@ impl GroupInvitationService {
             ));
         }
 
-        crate::effective_membership_guard::require_user_not_denied_owned(
-            &transaction,
-            tenant_id,
-            invitation_model.group_id,
-            actor_user_id,
-            true,
-        )
-        .await?;
         let existing_membership = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(invitation_model.group_id))
