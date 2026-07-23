@@ -43,7 +43,7 @@ a rewrite goal.
 - M1 generic domain/application core: complete
 - M2 read/query benchmark harness: implemented
 - M2 transactional mutation/WAL harness: implemented
-- M2 persistent churn/VACUUM harness: pending
+- M2 persistent churn/VACUUM harness: implemented
 - M2 PostgreSQL evidence and storage ADR: pending
 
 All legacy ports, adapters, source indexers, projections, migrations, runtime
@@ -90,8 +90,13 @@ batch update/delete workload to every candidate, validates equal affected entity
 and link counts, records BUFFERS/WAL plans, and rolls each measured transaction
 back. It measures write-path amplification without corrupting later repetitions.
 
-No candidate is selected until smoke/100k/1m read and mutation runs, persistent
-churn/dead-tuple/VACUUM evidence, comparison, and the storage ADR are complete.
+A maintenance runner commits repeated update plus delete/reinsert cycles, checks
+that logical cardinality is preserved, captures baseline/after-churn table stats
+and schema size, executes ordinary `VACUUM (ANALYZE)`, and captures the same data
+again with VACUUM duration. It deliberately does not use `VACUUM FULL`.
+
+No candidate is selected until smoke/100k/1m read, mutation, and maintenance
+reports are archived, compared, and recorded in the storage ADR.
 
 ## Docs
 
