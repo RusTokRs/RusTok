@@ -1,11 +1,7 @@
+use std::sync::Arc;
+
 use chrono::{DateTime, FixedOffset, Utc};
-use rustok_events::{
-    ContractEventEnvelope, ContractEventPayload, DomainEvent, EventEnvelope, ForumMentionEvent,
-};
-use rustok_notifications_api::{
-    NotificationSourceEventRef, NotificationSourceSlug, NotificationTypeKey,
-};
-use rustok_outbox::entity as outbox_event;
+use rustok_notifications_api::NotificationSourceEventRef;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
@@ -19,9 +15,29 @@ use crate::model::NotificationSourceInboxStatus;
 
 pub const DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 32;
 pub const MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 64;
-const FORUM_SOURCE: &str = "forum";
 const FORUM_TOPIC_CREATED: &str = "forum.topic.created";
 const FORUM_USER_MENTION_ADDED: &str = "forum.mention.user_added";
+
+mod outbox_event {
+    use chrono::{DateTime, Utc};
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "sys_events")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub event_type: String,
+        pub schema_version: i16,
+        pub payload: Json,
+        pub created_at: DateTime<Utc>,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
 
 mod intake_receipt {
     use sea_orm::entity::prelude::*;
@@ -46,6 +62,41 @@ mod intake_receipt {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
+mod intake_rejection {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "notification_outbox_intake_rejections")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub outbox_event_id: Uuid,
+        pub event_type: String,
+        pub schema_version: i16,
+        pub error_code: String,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NotificationOutboxEnvelopeRecord {
+    pub outbox_event_id: Uuid,
+    pub event_type: String,
+    pub schema_version: i16,
+    pub payload: serde_json::Value,
+}
+
+pub trait NotificationOutboxEnvelopeDecoder: Send + Sync {
+    fn decode(
+        &self,
+        envelope: &NotificationOutboxEnvelopeRecord,
+    ) -> NotificationResult<NotificationSourceEventRef>;
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationOutboxIntakeResult {
     pub outbox_event_id: Uuid,
@@ -54,6 +105,30 @@ pub struct NotificationOutboxIntakeResult {
     pub event_type: String,
     pub source_revision: i64,
     pub replayed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationOutboxIntakeRejection {
+    pub outbox_event_id: Uuid,
+    pub event_type: String,
+    pub schema_version: i16,
+    pub error_code: String,
+    pub replayed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum NotificationOutboxIntakeOutcome {
+    Accepted(NotificationOutboxIntakeResult),
+    Rejected(NotificationOutboxIntakeRejection),
+}
+
+impl NotificationOutboxIntakeOutcome {
+    pub const fn replayed(&self) -> bool {
+        match self {
+            Self::Accepted(result) => result.replayed,
+            Self::Rejected(result) => result.replayed,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -67,6 +142,7 @@ pub struct NotificationOutboxIntakeFailure {
 pub struct NotificationOutboxIntakeBatchResult {
     pub selected: usize,
     pub accepted: usize,
+    pub rejected: usize,
     pub replayed: usize,
     pub failures: Vec<NotificationOutboxIntakeFailure>,
 }
@@ -74,6 +150,7 @@ pub struct NotificationOutboxIntakeBatchResult {
 #[derive(Clone)]
 pub struct NotificationOutboxIntakeWorker {
     db: DatabaseConnection,
+    decoder: Arc<dyn NotificationOutboxEnvelopeDecoder>,
     batch_size: usize,
 }
 
@@ -87,28 +164,37 @@ impl std::fmt::Debug for NotificationOutboxIntakeWorker {
 }
 
 impl NotificationOutboxIntakeWorker {
-    pub fn new(db: DatabaseConnection, batch_size: usize) -> NotificationResult<Self> {
+    pub fn new(
+        db: DatabaseConnection,
+        decoder: Arc<dyn NotificationOutboxEnvelopeDecoder>,
+        batch_size: usize,
+    ) -> NotificationResult<Self> {
         if !(1..=MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE).contains(&batch_size) {
             return Err(NotificationError::Validation(format!(
                 "outbox intake batch size must contain between 1 and {MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE} items"
             )));
         }
-        Ok(Self { db, batch_size })
+        Ok(Self {
+            db,
+            decoder,
+            batch_size,
+        })
     }
 
     pub fn batch_size(&self) -> usize {
         self.batch_size
     }
 
-    /// Selects one stable bounded page of committed, supported outbox envelopes
-    /// that do not yet have a durable Notifications intake receipt.
-    ///
-    /// Relay status is intentionally not part of this query. Notifications intake
-    /// is an independent durable consumer and never mutates the general relay row.
+    /// Selects one stable bounded page of committed supported outbox envelopes
+    /// that have neither an accepted receipt nor a permanent rejection record.
     pub async fn pending_outbox_event_ids(&self) -> NotificationResult<Vec<Uuid>> {
         let receipts = intake_receipt::Entity::find()
             .select_only()
             .column(intake_receipt::Column::OutboxEventId)
+            .into_query();
+        let rejections = intake_rejection::Entity::find()
+            .select_only()
+            .column(intake_rejection::Column::OutboxEventId)
             .into_query();
         let rows = outbox_event::Entity::find()
             .filter(
@@ -117,6 +203,7 @@ impl NotificationOutboxIntakeWorker {
                     .add(outbox_event::Column::EventType.eq(FORUM_USER_MENTION_ADDED)),
             )
             .filter(outbox_event::Column::Id.not_in_subquery(receipts))
+            .filter(outbox_event::Column::Id.not_in_subquery(rejections))
             .order_by_asc(outbox_event::Column::CreatedAt)
             .order_by_asc(outbox_event::Column::Id)
             .limit(self.batch_size as u64)
@@ -125,22 +212,86 @@ impl NotificationOutboxIntakeWorker {
         Ok(rows.into_iter().map(|row| row.id).collect())
     }
 
-    /// Accepts one committed source envelope into the durable source inbox.
-    ///
-    /// The producer payload is decoded from `sys_events`; no producer service or
-    /// producer-owned table is called. Source inbox creation and the outbox intake
-    /// receipt commit in one transaction.
     pub async fn process_outbox_event(
         &self,
         outbox_event_id: Uuid,
-    ) -> NotificationResult<NotificationOutboxIntakeResult> {
+    ) -> NotificationResult<NotificationOutboxIntakeOutcome> {
         let row = outbox_event::Entity::find_by_id(outbox_event_id)
             .one(&self.db)
             .await?
             .ok_or(NotificationError::InvalidEvent)?;
-        let source_event = decode_source_event(&row)?;
-        let source_revision = source_revision_i64(&source_event)?;
 
+        if let Some(existing) = intake_receipt::Entity::find_by_id(outbox_event_id)
+            .one(&self.db)
+            .await?
+        {
+            ensure_receipt_matches_outbox(&existing, &row)?;
+            return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
+                existing, true,
+            )));
+        }
+        if let Some(existing) = intake_rejection::Entity::find_by_id(outbox_event_id)
+            .one(&self.db)
+            .await?
+        {
+            ensure_rejection_matches_outbox(&existing, &row)?;
+            return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
+                existing, true,
+            )));
+        }
+
+        let envelope = envelope_record(&row);
+        let source_event = match self.decoder.decode(&envelope) {
+            Ok(source_event) => source_event,
+            Err(error) if error.is_retryable() => return Err(error),
+            Err(error) => return self.persist_rejection(&row, &error).await,
+        };
+
+        match self.accept_decoded(outbox_event_id, source_event).await {
+            Ok(result) => Ok(NotificationOutboxIntakeOutcome::Accepted(result)),
+            Err(error) if error.is_retryable() => Err(error),
+            Err(error) => self.persist_rejection(&row, &error).await,
+        }
+    }
+
+    pub async fn process_next_batch(
+        &self,
+    ) -> NotificationResult<NotificationOutboxIntakeBatchResult> {
+        let event_ids = self.pending_outbox_event_ids().await?;
+        let mut result = NotificationOutboxIntakeBatchResult {
+            selected: event_ids.len(),
+            ..NotificationOutboxIntakeBatchResult::default()
+        };
+        for outbox_event_id in event_ids {
+            match self.process_outbox_event(outbox_event_id).await {
+                Ok(NotificationOutboxIntakeOutcome::Accepted(outcome)) => {
+                    result.accepted += 1;
+                    if outcome.replayed {
+                        result.replayed += 1;
+                    }
+                }
+                Ok(NotificationOutboxIntakeOutcome::Rejected(outcome)) => {
+                    result.rejected += 1;
+                    if outcome.replayed {
+                        result.replayed += 1;
+                    }
+                }
+                Err(error) => result.failures.push(NotificationOutboxIntakeFailure {
+                    outbox_event_id,
+                    error_code: error.stable_code().to_string(),
+                    retryable: error.is_retryable(),
+                }),
+            }
+        }
+        Ok(result)
+    }
+
+    async fn accept_decoded(
+        &self,
+        outbox_event_id: Uuid,
+        source_event: NotificationSourceEventRef,
+    ) -> NotificationResult<NotificationOutboxIntakeResult> {
+        let source_revision = source_revision_i64(&source_event)?;
         let txn = self.db.begin().await?;
         if let Some(existing) = intake_receipt::Entity::find_by_id(outbox_event_id)
             .one(&txn)
@@ -149,6 +300,13 @@ impl NotificationOutboxIntakeWorker {
             ensure_receipt_identity(&existing, outbox_event_id, &source_event)?;
             txn.commit().await?;
             return Ok(intake_result(existing, true));
+        }
+        if intake_rejection::Entity::find_by_id(outbox_event_id)
+            .one(&txn)
+            .await?
+            .is_some()
+        {
+            return Err(NotificationError::SourceIdentityConflict);
         }
 
         let timestamp = now();
@@ -219,97 +377,62 @@ impl NotificationOutboxIntakeWorker {
         Ok(intake_result(receipt, false))
     }
 
-    pub async fn process_next_batch(
+    async fn persist_rejection(
         &self,
-    ) -> NotificationResult<NotificationOutboxIntakeBatchResult> {
-        let event_ids = self.pending_outbox_event_ids().await?;
-        let mut result = NotificationOutboxIntakeBatchResult {
-            selected: event_ids.len(),
-            ..NotificationOutboxIntakeBatchResult::default()
-        };
-        for outbox_event_id in event_ids {
-            match self.process_outbox_event(outbox_event_id).await {
-                Ok(receipt) => {
-                    result.accepted += 1;
-                    if receipt.replayed {
-                        result.replayed += 1;
-                    }
-                }
-                Err(error) => result.failures.push(NotificationOutboxIntakeFailure {
-                    outbox_event_id,
-                    error_code: error.stable_code().to_string(),
-                    retryable: error.is_retryable(),
-                }),
-            }
+        row: &outbox_event::Model,
+        error: &NotificationError,
+    ) -> NotificationResult<NotificationOutboxIntakeOutcome> {
+        debug_assert!(!error.is_retryable());
+        let txn = self.db.begin().await?;
+        if let Some(existing) = intake_receipt::Entity::find_by_id(row.id).one(&txn).await? {
+            ensure_receipt_matches_outbox(&existing, row)?;
+            txn.commit().await?;
+            return Ok(NotificationOutboxIntakeOutcome::Accepted(intake_result(
+                existing, true,
+            )));
         }
-        Ok(result)
+        if let Some(existing) = intake_rejection::Entity::find_by_id(row.id).one(&txn).await? {
+            ensure_rejection_matches_outbox(&existing, row)?;
+            txn.commit().await?;
+            return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
+                existing, true,
+            )));
+        }
+
+        intake_rejection::Entity::insert(intake_rejection::ActiveModel {
+            outbox_event_id: Set(row.id),
+            event_type: Set(row.event_type.clone()),
+            schema_version: Set(row.schema_version),
+            error_code: Set(error.stable_code().to_string()),
+            created_at: Set(now()),
+        })
+        .on_conflict(
+            OnConflict::column(intake_rejection::Column::OutboxEventId)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(&txn)
+        .await?;
+
+        let rejection = intake_rejection::Entity::find_by_id(row.id)
+            .one(&txn)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        ensure_rejection_matches_outbox(&rejection, row)?;
+        txn.commit().await?;
+        Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
+            rejection, false,
+        )))
     }
 }
 
-fn decode_source_event(row: &outbox_event::Model) -> NotificationResult<NotificationSourceEventRef> {
-    if let Ok(envelope) = serde_json::from_value::<ContractEventEnvelope>(row.payload.clone()) {
-        envelope
-            .validate_registered_schema()
-            .map_err(|_| NotificationError::InvalidEvent)?;
-        if envelope.id() != row.id
-            || envelope.event_type() != row.event_type
-            || i16::try_from(envelope.schema_version()).ok() != Some(row.schema_version)
-        {
-            return Err(NotificationError::InvalidEvent);
-        }
-        let tenant_id = envelope.tenant_id();
-        let event_id = envelope.id();
-        return match envelope
-            .into_payload()
-            .map_err(|_| NotificationError::InvalidEvent)?
-        {
-            ContractEventPayload::ForumMention(ForumMentionEvent::UserMentionAdded {
-                source_revision_id,
-                ..
-            }) if row.event_type == FORUM_USER_MENTION_ADDED => source_event_ref(
-                tenant_id,
-                event_id,
-                FORUM_USER_MENTION_ADDED,
-                u64::try_from(source_revision_id).map_err(|_| NotificationError::InvalidEvent)?,
-            ),
-            _ => Err(NotificationError::InvalidEvent),
-        };
+fn envelope_record(row: &outbox_event::Model) -> NotificationOutboxEnvelopeRecord {
+    NotificationOutboxEnvelopeRecord {
+        outbox_event_id: row.id,
+        event_type: row.event_type.clone(),
+        schema_version: row.schema_version,
+        payload: row.payload.clone(),
     }
-
-    let envelope = serde_json::from_value::<EventEnvelope>(row.payload.clone())?;
-    envelope
-        .validate_registered_schema()
-        .map_err(|_| NotificationError::InvalidEvent)?;
-    if envelope.id != row.id
-        || envelope.event_type != row.event_type
-        || i16::try_from(envelope.schema_version).ok() != Some(row.schema_version)
-    {
-        return Err(NotificationError::InvalidEvent);
-    }
-    match envelope.event {
-        DomainEvent::ForumTopicCreated { topic_id, .. }
-            if row.event_type == FORUM_TOPIC_CREATED =>
-        {
-            source_event_ref(envelope.tenant_id, topic_id, FORUM_TOPIC_CREATED, 1)
-        }
-        _ => Err(NotificationError::InvalidEvent),
-    }
-}
-
-fn source_event_ref(
-    tenant_id: Uuid,
-    event_id: Uuid,
-    event_type: &str,
-    source_revision: u64,
-) -> NotificationResult<NotificationSourceEventRef> {
-    NotificationSourceEventRef::new(
-        tenant_id,
-        event_id,
-        NotificationSourceSlug::new(FORUM_SOURCE).map_err(|_| NotificationError::InvalidEvent)?,
-        NotificationTypeKey::new(event_type).map_err(|_| NotificationError::InvalidEvent)?,
-        source_revision,
-    )
-    .map_err(|_| NotificationError::InvalidEvent)
 }
 
 fn source_revision_i64(event: &NotificationSourceEventRef) -> NotificationResult<i64> {
@@ -348,6 +471,29 @@ fn ensure_receipt_identity(
     Ok(())
 }
 
+fn ensure_receipt_matches_outbox(
+    receipt: &intake_receipt::Model,
+    row: &outbox_event::Model,
+) -> NotificationResult<()> {
+    if receipt.outbox_event_id != row.id || receipt.event_type != row.event_type {
+        return Err(NotificationError::SourceIdentityConflict);
+    }
+    Ok(())
+}
+
+fn ensure_rejection_matches_outbox(
+    rejection: &intake_rejection::Model,
+    row: &outbox_event::Model,
+) -> NotificationResult<()> {
+    if rejection.outbox_event_id != row.id
+        || rejection.event_type != row.event_type
+        || rejection.schema_version != row.schema_version
+    {
+        return Err(NotificationError::SourceIdentityConflict);
+    }
+    Ok(())
+}
+
 fn intake_result(
     receipt: intake_receipt::Model,
     replayed: bool,
@@ -358,6 +504,19 @@ fn intake_result(
         source_slug: receipt.source_slug,
         event_type: receipt.event_type,
         source_revision: receipt.source_revision,
+        replayed,
+    }
+}
+
+fn rejection_result(
+    rejection: intake_rejection::Model,
+    replayed: bool,
+) -> NotificationOutboxIntakeRejection {
+    NotificationOutboxIntakeRejection {
+        outbox_event_id: rejection.outbox_event_id,
+        event_type: rejection.event_type,
+        schema_version: rejection.schema_version,
+        error_code: rejection.error_code,
         replayed,
     }
 }
