@@ -13,40 +13,28 @@ use super::{SchemaRegistry, SchemaRegistryError};
 pub enum RecordValidationError {
     #[error("schema is not registered: {0}")]
     SchemaNotFound(SchemaRef),
-
     #[error("record tenant id must not be nil")]
     NilTenantId,
-
     #[error("record entity id must not be nil")]
     NilEntityId,
-
     #[error("schema {0} requires a locale")]
     LocaleRequired(SchemaRef),
-
     #[error("schema {0} does not permit a locale")]
     LocaleForbidden(SchemaRef),
-
     #[error("record source version must be greater than zero")]
     ZeroSourceVersion,
-
     #[error("record contains unknown field {field} for schema {schema}")]
     UnknownField { schema: SchemaRef, field: FieldName },
-
     #[error("record is missing required field {field} for schema {schema}")]
     MissingRequiredField { schema: SchemaRef, field: FieldName },
-
     #[error("field {field} for schema {schema} contains an invalid value shape or type")]
     InvalidFieldValue { schema: SchemaRef, field: FieldName },
-
     #[error("record contains duplicate link {link} for schema {schema}")]
     DuplicateLink { schema: SchemaRef, link: LinkName },
-
     #[error("record contains unknown link {link} for schema {schema}")]
     UnknownLink { schema: SchemaRef, link: LinkName },
-
     #[error("single-cardinality link {link} for schema {schema} has multiple targets")]
     LinkCardinalityExceeded { schema: SchemaRef, link: LinkName },
-
     #[error("link {link} for schema {schema} targets {actual} instead of {expected}")]
     LinkTargetSchemaMismatch {
         schema: SchemaRef,
@@ -54,14 +42,12 @@ pub enum RecordValidationError {
         expected: SchemaRef,
         actual: SchemaRef,
     },
-
     #[error("link {link} for schema {schema} contains duplicate target {target}")]
     DuplicateLinkTarget {
         schema: SchemaRef,
         link: LinkName,
         target: String,
     },
-
     #[error("link {link} target locale is invalid for schema {target_schema}")]
     InvalidLinkTargetLocale {
         link: LinkName,
@@ -73,49 +59,44 @@ pub enum RecordValidationError {
 pub enum QueryValidationError {
     #[error(transparent)]
     InvalidShape(#[from] DomainError),
-
     #[error(transparent)]
     Registry(#[from] SchemaRegistryError),
-
     #[error("query tenant id must not be nil")]
     NilTenantId,
-
     #[error("schema {0} requires a query locale")]
     LocaleRequired(SchemaRef),
-
     #[error("schema {0} does not permit a query locale")]
     LocaleForbidden(SchemaRef),
-
     #[error("schema {schema} has no link named {link}")]
     UnknownLink { schema: SchemaRef, link: LinkName },
-
     #[error("schema {schema} has no field named {field}")]
     UnknownField { schema: SchemaRef, field: FieldName },
-
     #[error("field {field} on schema {schema} is not selectable")]
     FieldNotSelectable { schema: SchemaRef, field: FieldName },
-
     #[error("field {field} on schema {schema} is not filterable")]
     FieldNotFilterable { schema: SchemaRef, field: FieldName },
-
     #[error("field {field} on schema {schema} is not sortable")]
     FieldNotSortable { schema: SchemaRef, field: FieldName },
-
+    #[error("sorting through a many-cardinality link is ambiguous: {0:?}")]
+    AmbiguousManyLinkSort(FieldPath),
     #[error("operator {operator} is not valid for field {field} on schema {schema}")]
     InvalidOperator {
         schema: SchemaRef,
         field: FieldName,
         operator: &'static str,
     },
-
     #[error("filter value does not match field {field} on schema {schema}")]
     InvalidFilterValue { schema: SchemaRef, field: FieldName },
-
     #[error("logical filter {operator} must contain at least one child")]
     EmptyLogicalFilter { operator: &'static str },
-
     #[error("IN filter must contain at least one value")]
     EmptyInFilter,
+}
+
+struct ResolvedField<'a> {
+    schema: &'a SchemaRef,
+    field: &'a IndexField,
+    traverses_many: bool,
 }
 
 impl SchemaRegistry {
@@ -246,11 +227,11 @@ impl SchemaRegistry {
         )?;
 
         for path in &query.fields {
-            let (schema, field) = self.resolve_field(&query.schema, path)?;
-            if !field.selectable {
+            let resolved = self.resolve_field(&query.schema, path)?;
+            if !resolved.field.selectable {
                 return Err(QueryValidationError::FieldNotSelectable {
-                    schema: schema.clone(),
-                    field: field.name.clone(),
+                    schema: resolved.schema.clone(),
+                    field: resolved.field.name.clone(),
                 });
             }
         }
@@ -260,11 +241,16 @@ impl SchemaRegistry {
         }
 
         for order in &query.order_by {
-            let (schema, field) = self.resolve_field(&query.schema, &order.field)?;
-            if !field.sortable {
+            let resolved = self.resolve_field(&query.schema, &order.field)?;
+            if resolved.traverses_many {
+                return Err(QueryValidationError::AmbiguousManyLinkSort(
+                    order.field.clone(),
+                ));
+            }
+            if !resolved.field.sortable {
                 return Err(QueryValidationError::FieldNotSortable {
-                    schema: schema.clone(),
-                    field: field.name.clone(),
+                    schema: resolved.schema.clone(),
+                    field: resolved.field.name.clone(),
                 });
             }
         }
@@ -313,27 +299,27 @@ impl SchemaRegistry {
                 self.validate_scalar_filter(root, path, value, "range", true)?;
             }
             FilterExpr::Contains(path, value) => {
-                let (schema, field) = self.resolve_filterable_field(root, path)?;
-                if field.cardinality != FieldCardinality::Many {
+                let resolved = self.resolve_filterable_field(root, path)?;
+                if resolved.field.cardinality != FieldCardinality::Many {
                     return Err(QueryValidationError::InvalidOperator {
-                        schema: schema.clone(),
-                        field: field.name.clone(),
+                        schema: resolved.schema.clone(),
+                        field: resolved.field.name.clone(),
                         operator: "contains",
                     });
                 }
-                if !scalar_matches_type(value, field.value_type) {
+                if !scalar_matches_type(value, resolved.field.value_type) {
                     return Err(QueryValidationError::InvalidFilterValue {
-                        schema: schema.clone(),
-                        field: field.name.clone(),
+                        schema: resolved.schema.clone(),
+                        field: resolved.field.name.clone(),
                     });
                 }
             }
             FilterExpr::IsNull(path, _) => {
-                let (schema, field) = self.resolve_filterable_field(root, path)?;
-                if !field.nullable {
+                let resolved = self.resolve_filterable_field(root, path)?;
+                if !resolved.field.nullable {
                     return Err(QueryValidationError::InvalidOperator {
-                        schema: schema.clone(),
-                        field: field.name.clone(),
+                        schema: resolved.schema.clone(),
+                        field: resolved.field.name.clone(),
                         operator: "is_null",
                     });
                 }
@@ -350,53 +336,56 @@ impl SchemaRegistry {
         operator: &'static str,
         require_ordered: bool,
     ) -> Result<(), QueryValidationError> {
-        let (schema, field) = self.resolve_filterable_field(root, path)?;
-        if field.cardinality != FieldCardinality::One {
+        let resolved = self.resolve_filterable_field(root, path)?;
+        if resolved.field.cardinality != FieldCardinality::One {
             return Err(QueryValidationError::InvalidOperator {
-                schema: schema.clone(),
-                field: field.name.clone(),
+                schema: resolved.schema.clone(),
+                field: resolved.field.name.clone(),
                 operator,
             });
         }
-        if require_ordered && !is_ordered_type(field.value_type) {
+        if require_ordered && !is_ordered_type(resolved.field.value_type) {
             return Err(QueryValidationError::InvalidOperator {
-                schema: schema.clone(),
-                field: field.name.clone(),
+                schema: resolved.schema.clone(),
+                field: resolved.field.name.clone(),
                 operator,
             });
         }
-        if matches!(value, IndexValue::Null) || !scalar_matches_type(value, field.value_type) {
+        if matches!(value, IndexValue::Null)
+            || !scalar_matches_type(value, resolved.field.value_type)
+        {
             return Err(QueryValidationError::InvalidFilterValue {
-                schema: schema.clone(),
-                field: field.name.clone(),
+                schema: resolved.schema.clone(),
+                field: resolved.field.name.clone(),
             });
         }
         Ok(())
     }
 
-    fn resolve_filterable_field(
-        &self,
+    fn resolve_filterable_field<'a>(
+        &'a self,
         root: &SchemaRef,
         path: &FieldPath,
-    ) -> Result<(&SchemaRef, &IndexField), QueryValidationError> {
-        let (schema, field) = self.resolve_field(root, path)?;
-        if !field.filterable {
+    ) -> Result<ResolvedField<'a>, QueryValidationError> {
+        let resolved = self.resolve_field(root, path)?;
+        if !resolved.field.filterable {
             return Err(QueryValidationError::FieldNotFilterable {
-                schema: schema.clone(),
-                field: field.name.clone(),
+                schema: resolved.schema.clone(),
+                field: resolved.field.name.clone(),
             });
         }
-        Ok((schema, field))
+        Ok(resolved)
     }
 
-    fn resolve_field(
-        &self,
+    fn resolve_field<'a>(
+        &'a self,
         root: &SchemaRef,
         path: &FieldPath,
-    ) -> Result<(&SchemaRef, &IndexField), QueryValidationError> {
+    ) -> Result<ResolvedField<'a>, QueryValidationError> {
         let mut registered = self
             .get(root)
             .ok_or_else(|| SchemaRegistryError::SchemaNotFound(root.clone()))?;
+        let mut traverses_many = false;
 
         for link_name in path.links() {
             let link = registered
@@ -408,6 +397,7 @@ impl SchemaRegistry {
                     schema: registered.schema.reference.clone(),
                     link: link_name.clone(),
                 })?;
+            traverses_many |= link.cardinality == LinkCardinality::Many;
             registered = self
                 .get(&link.target_schema)
                 .ok_or_else(|| SchemaRegistryError::SchemaNotFound(link.target_schema.clone()))?;
@@ -423,7 +413,11 @@ impl SchemaRegistry {
                 field: path.field().clone(),
             })?;
 
-        Ok((&registered.schema.reference, field))
+        Ok(ResolvedField {
+            schema: &registered.schema.reference,
+            field,
+            traverses_many,
+        })
     }
 }
 
@@ -509,8 +503,8 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        EntityKey, EntityName, IndexLink, IndexLinkValue, IndexQueryScope, LinkedEntityKey,
-        ModuleName, OrderDirection, OrderExpr, Pagination, SchemaVersion,
+        EntityKey, EntityName, IndexLink, IndexLinkValue, IndexQueryScope, IndexSchema,
+        LinkedEntityKey, ModuleName, OrderDirection, OrderExpr, Pagination, SchemaVersion,
     };
 
     fn reference(entity: &str) -> SchemaRef {
@@ -534,13 +528,13 @@ mod tests {
     }
 
     fn registry() -> SchemaRegistry {
-        let channel = crate::domain::IndexSchema {
+        let channel = IndexSchema {
             reference: reference("sales_channel"),
             locale_mode: LocaleMode::None,
             fields: vec![field("id", IndexValueType::Uuid)],
             links: Vec::new(),
         };
-        let product = crate::domain::IndexSchema {
+        let product = IndexSchema {
             reference: reference("product"),
             locale_mode: LocaleMode::Required,
             fields: vec![
@@ -561,16 +555,17 @@ mod tests {
         registry
     }
 
+    fn query_scope() -> IndexQueryScope {
+        IndexQueryScope {
+            tenant_id: Uuid::new_v4(),
+            locale: Some(crate::domain::LocaleKey::new("en-US").unwrap()),
+        }
+    }
+
     #[test]
     fn validates_tenant_scoped_localized_record() {
         let registry = registry();
         let channel_id = Uuid::new_v4();
-        let mut fields = BTreeMap::new();
-        fields.insert(FieldName::new("id").unwrap(), IndexValue::Uuid(Uuid::new_v4()));
-        fields.insert(
-            FieldName::new("sales_channel_id").unwrap(),
-            IndexValue::Uuid(channel_id),
-        );
         let record = IndexRecord {
             key: EntityKey {
                 tenant_id: Uuid::new_v4(),
@@ -579,7 +574,16 @@ mod tests {
                 locale: Some(crate::domain::LocaleKey::new("en-US").unwrap()),
             },
             source_version: 1,
-            fields,
+            fields: BTreeMap::from([
+                (
+                    FieldName::new("id").unwrap(),
+                    IndexValue::Uuid(Uuid::new_v4()),
+                ),
+                (
+                    FieldName::new("sales_channel_id").unwrap(),
+                    IndexValue::Uuid(channel_id),
+                ),
+            ]),
             links: vec![IndexLinkValue {
                 name: LinkName::new("sales_channel").unwrap(),
                 targets: vec![LinkedEntityKey {
@@ -615,13 +619,10 @@ mod tests {
     }
 
     #[test]
-    fn validates_linked_query_fields_filters_and_ordering() {
+    fn validates_linked_selection_and_root_ordering() {
         let registry = registry();
         let query = IndexQuery {
-            scope: IndexQueryScope {
-                tenant_id: Uuid::new_v4(),
-                locale: Some(crate::domain::LocaleKey::new("en-US").unwrap()),
-            },
+            scope: query_scope(),
             schema: reference("product"),
             fields: vec![FieldPath::linked(
                 [LinkName::new("sales_channel").unwrap()],
@@ -643,5 +644,34 @@ mod tests {
         };
 
         assert!(registry.validate_query(&query).is_ok());
+    }
+
+    #[test]
+    fn rejects_ordering_through_many_link() {
+        let registry = registry();
+        let linked_id = FieldPath::linked(
+            [LinkName::new("sales_channel").unwrap()],
+            FieldName::new("id").unwrap(),
+        );
+        let query = IndexQuery {
+            scope: query_scope(),
+            schema: reference("product"),
+            fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
+            filter: None,
+            order_by: vec![OrderExpr {
+                field: linked_id.clone(),
+                direction: OrderDirection::Asc,
+            }],
+            pagination: Pagination::Cursor {
+                first: 20,
+                after: None,
+            },
+            include_exact_count: false,
+        };
+
+        assert_eq!(
+            registry.validate_query(&query),
+            Err(QueryValidationError::AmbiguousManyLinkSort(linked_id))
+        );
     }
 }
