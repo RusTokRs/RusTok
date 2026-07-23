@@ -45,7 +45,9 @@ Commits record which checks and evidence runs were not executed.
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- M2 benchmark harness: `implemented; evidence runs pending`
+- M2 read/query harness: `implemented; evidence runs pending`
+- M2 transactional mutation/WAL harness: `implemented; evidence runs pending`
+- M2 persistent churn/vacuum harness: `not_started`
 - Production persistence: intentionally absent until the M2 ADR selects a model
 
 The active production crate contains only the generic domain/application core,
@@ -97,6 +99,7 @@ crates/rustok-index/src/
 ops/benches/src/index_storage/
   config.rs
   runner.rs
+  mutation_runner.rs
   sql/
     mod.rs
     source.rs
@@ -222,13 +225,20 @@ migrations.
 - [x] Capture prototype load time, schema bytes, PostgreSQL settings, full SQL,
       and repeated `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` output.
 - [x] Add a release-mode executable that writes machine-readable JSON evidence.
-- [ ] Run and archive the `smoke` evidence as a harness sanity check.
-- [ ] Run and archive 100k Product-locale row evidence.
-- [ ] Run and archive 1m Product-locale row evidence.
-- [ ] Add update/delete workloads for write amplification, WAL, bloat, and vacuum
-      impact.
+- [x] Add deterministic Product batch update and delete workloads for all models.
+- [x] Validate equal affected entity/link counts before mutation timing.
+- [x] Isolate every measured mutation in its own rolled-back transaction.
+- [x] Capture mutation planning/execution time, buffers, full JSON plan, and
+      maximum per-node WAL records, FPI, and bytes.
+- [x] Add a separate release-mode mutation evidence executable/report.
+- [ ] Run and archive the `smoke` read and mutation evidence as a harness sanity
+      check.
+- [ ] Run and archive 100k Product-locale row read and mutation evidence.
+- [ ] Run and archive 1m Product-locale row read and mutation evidence.
+- [ ] Add persistent update/delete churn for dead tuples, relation bloat, and
+      pre/post `VACUUM (ANALYZE)` impact.
 - [ ] Compare warm/cold buffers, planner stability, execution latency, ingestion
-      throughput, relation size, and operational complexity.
+      throughput, relation size, WAL, vacuum behavior, and operational complexity.
 - [ ] Record the selected model and rejected alternatives in an ADR.
 - [ ] Delete benchmark prototypes that are not selected.
 
@@ -335,10 +345,16 @@ M2 operational commands:
 ```bash
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
   cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
+  cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
   cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
+  cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
   cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
+  cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
 ```
 
 ## Progress log
@@ -356,5 +372,8 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
   independent link storage, shared workloads, PostgreSQL execution, and JSON
   EXPLAIN evidence output.
 - 2026-07-23: modularized candidate SQL and added fail-fast entity/link cardinality
-  plus semantic result-digest parity before any plan comparison. Real database
-  runs, mutation/vacuum evidence, and the storage ADR remain open.
+  plus semantic result-digest parity before any plan comparison.
+- 2026-07-23: added isolated update/delete write-amplification workloads with
+  affected-row/link validation, rollback isolation, WAL/BUFFERS evidence, and a
+  separate machine-readable mutation report. Real PostgreSQL runs, persistent
+  churn/vacuum evidence, and the storage ADR remain open.
