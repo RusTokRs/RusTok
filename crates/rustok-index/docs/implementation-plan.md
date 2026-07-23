@@ -96,8 +96,14 @@ crates/rustok-index/src/
 
 ops/benches/src/index_storage/
   config.rs
-  sql.rs
   runner.rs
+  sql/
+    mod.rs
+    source.rs
+    common.rs
+    jsonb.rs
+    eav.rs
+    hot.rs
 ```
 
 ## Library decisions
@@ -208,8 +214,11 @@ migrations.
 - [x] Prototype normalized typed field-value rows.
 - [x] Prototype a specialized hot typed projection as the comparison baseline.
 - [x] Represent links independently from entity payload storage in every model.
+- [x] Split source, common-link, JSONB, EAV, and hot SQL into independent modules.
 - [x] Run the same equality, range, multi-value, two-hop link, keyset, and count
       workload definitions against every model.
+- [x] Verify source/candidate entity and link cardinality before timing.
+- [x] Verify identical workload result digests across all candidates.
 - [x] Capture prototype load time, schema bytes, PostgreSQL settings, full SQL,
       and repeated `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` output.
 - [x] Add a release-mode executable that writes machine-readable JSON evidence.
@@ -343,6 +352,9 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
   bounded queries, keyset cursors, reference evaluator, and property invariants.
 - 2026-07-23: moved the active milestone to the PostgreSQL storage benchmark;
   no production persistence will be added before the benchmark ADR.
-- 2026-07-23: implemented the M2 deterministic dataset, JSONB/EAV/hot candidates,
-  independent link storage, shared workload suite, PostgreSQL runner, and JSON
-  EXPLAIN evidence format. Real database runs and the storage ADR remain open.
+- 2026-07-23: implemented deterministic M2 datasets, JSONB/EAV/hot candidates,
+  independent link storage, shared workloads, PostgreSQL execution, and JSON
+  EXPLAIN evidence output.
+- 2026-07-23: modularized candidate SQL and added fail-fast entity/link cardinality
+  plus semantic result-digest parity before any plan comparison. Real database
+  runs, mutation/vacuum evidence, and the storage ADR remain open.
