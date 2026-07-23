@@ -1,0 +1,146 @@
+use serde::{Deserialize, Serialize};
+
+use super::{DomainError, FieldPath, IndexValue, SchemaRef};
+
+const MAX_OFFSET_LIMIT: u32 = 100;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterExpr {
+    And(Vec<FilterExpr>),
+    Or(Vec<FilterExpr>),
+    Not(Box<FilterExpr>),
+    Eq(FieldPath, IndexValue),
+    Ne(FieldPath, IndexValue),
+    In(FieldPath, Vec<IndexValue>),
+    Gt(FieldPath, IndexValue),
+    Gte(FieldPath, IndexValue),
+    Lt(FieldPath, IndexValue),
+    Lte(FieldPath, IndexValue),
+    Contains(FieldPath, IndexValue),
+    IsNull(FieldPath, bool),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OrderDirection {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderExpr {
+    pub field: FieldPath,
+    pub direction: OrderDirection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Pagination {
+    Cursor {
+        first: u32,
+        after: Option<String>,
+    },
+    Offset {
+        limit: u32,
+        offset: u64,
+    },
+}
+
+impl Pagination {
+    pub fn validate(&self) -> Result<(), DomainError> {
+        match self {
+            Self::Cursor { first, .. } => {
+                if *first == 0 {
+                    Err(DomainError::EmptyPage)
+                } else {
+                    Ok(())
+                }
+            }
+            Self::Offset { limit, .. } => {
+                if *limit == 0 {
+                    Err(DomainError::EmptyPage)
+                } else if *limit > MAX_OFFSET_LIMIT {
+                    Err(DomainError::OffsetLimitExceeded)
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexQuery {
+    pub schema: SchemaRef,
+    pub fields: Vec<FieldPath>,
+    pub filter: Option<FilterExpr>,
+    pub order_by: Vec<OrderExpr>,
+    pub pagination: Pagination,
+    pub include_exact_count: bool,
+}
+
+impl IndexQuery {
+    pub fn validate_shape(&self) -> Result<(), DomainError> {
+        if self.fields.is_empty() {
+            return Err(DomainError::EmptySelection);
+        }
+
+        self.pagination.validate()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{EntityName, FieldName, ModuleName, SchemaVersion};
+
+    fn schema() -> SchemaRef {
+        SchemaRef {
+            module: ModuleName::new("rustok-product").unwrap(),
+            entity: EntityName::new("product").unwrap(),
+            version: SchemaVersion::INITIAL,
+        }
+    }
+
+    #[test]
+    fn rejects_empty_query_selection() {
+        let query = IndexQuery {
+            schema: schema(),
+            fields: Vec::new(),
+            filter: None,
+            order_by: Vec::new(),
+            pagination: Pagination::Cursor {
+                first: 20,
+                after: None,
+            },
+            include_exact_count: false,
+        };
+
+        assert_eq!(query.validate_shape(), Err(DomainError::EmptySelection));
+    }
+
+    #[test]
+    fn accepts_link_aware_filter_shape() {
+        let query = IndexQuery {
+            schema: schema(),
+            fields: vec![FieldPath::new([FieldName::new("id").unwrap()]).unwrap()],
+            filter: Some(FilterExpr::Eq(
+                FieldPath::new([
+                    FieldName::new("sales_channel").unwrap(),
+                    FieldName::new("id").unwrap(),
+                ])
+                .unwrap(),
+                IndexValue::String("channel-eu".to_owned()),
+            )),
+            order_by: Vec::new(),
+            pagination: Pagination::Cursor {
+                first: 50,
+                after: None,
+            },
+            include_exact_count: true,
+        };
+
+        assert!(query.validate_shape().is_ok());
+    }
+}
