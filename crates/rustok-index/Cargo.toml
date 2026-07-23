@@ -7,30 +7,18 @@ license.workspace = true
 
 [dependencies]
 rustok-core.workspace = true
-rustok-telemetry.workspace = true
 
-# Database
-sea-orm.workspace = true
+# Module metadata
+async-trait.workspace = true
 sea-orm-migration.workspace = true
 
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-rust_decimal.workspace = true
-
-# Types
+# Domain model
 chrono.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 uuid.workspace = true
 
-# Logging
-tracing.workspace = true
-
-# Error handling
-thiserror.workspace = true
-
 [dev-dependencies]
+sea-orm.workspace = true
 tokio.workspace = true
