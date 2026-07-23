@@ -3,7 +3,8 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 macro_rules! string_enum {
-    ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
+    ($(#[$meta:meta])* $name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
+        $(#[$meta])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
         #[serde(rename_all = "snake_case")]
         pub enum $name {

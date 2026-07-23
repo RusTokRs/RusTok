@@ -68,26 +68,26 @@ pub enum SchemaRegistryError {
         attempted: SchemaVersion,
     },
 
-    #[error("schema {source} link {link} targets unknown schema {target}")]
+    #[error("schema {source_schema} link {link} targets unknown schema {target}")]
     UnknownTargetSchema {
-        source: SchemaRef,
+        source_schema: SchemaRef,
         link: LinkName,
         target: SchemaRef,
     },
 
-    #[error("schema {source} link {link} targets unknown field {field} on {target}")]
+    #[error("schema {source_schema} link {link} targets unknown field {field} on {target}")]
     UnknownTargetField {
-        source: SchemaRef,
+        source_schema: SchemaRef,
         link: LinkName,
         target: SchemaRef,
         field: FieldName,
     },
 
     #[error(
-        "schema {source} link {link} joins incompatible fields {source_field} and {target_field}"
+        "schema {source_schema} link {link} joins incompatible fields {source_field} and {target_field}"
     )]
     LinkFieldTypeMismatch {
-        source: SchemaRef,
+        source_schema: SchemaRef,
         link: LinkName,
         source_field: FieldName,
         target_field: FieldName,
@@ -214,7 +214,7 @@ impl SchemaRegistry {
                     .map(|(schema, _)| schema)
                     .or_else(|| self.get(&link.target_schema).map(|entry| &entry.schema))
                     .ok_or_else(|| SchemaRegistryError::UnknownTargetSchema {
-                        source: source_reference.clone(),
+                        source_schema: source_reference.clone(),
                         link: link.name.clone(),
                         target: link.target_schema.clone(),
                     })?;
@@ -234,7 +234,7 @@ impl SchemaRegistry {
                         .iter()
                         .find(|field| field.name == *target_field_name)
                         .ok_or_else(|| SchemaRegistryError::UnknownTargetField {
-                            source: source_reference.clone(),
+                            source_schema: source_reference.clone(),
                             link: link.name.clone(),
                             target: link.target_schema.clone(),
                             field: target_field_name.clone(),
@@ -242,7 +242,7 @@ impl SchemaRegistry {
 
                     if source_field.value_type != target_field.value_type {
                         return Err(SchemaRegistryError::LinkFieldTypeMismatch {
-                            source: source_reference.clone(),
+                            source_schema: source_reference.clone(),
                             link: link.name.clone(),
                             source_field: source_field_name.clone(),
                             target_field: target_field_name.clone(),

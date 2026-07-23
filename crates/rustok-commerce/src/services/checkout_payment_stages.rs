@@ -5,7 +5,7 @@ use rustok_order::{OrderResponse, OrderStatusKind};
 use rustok_payment::{
     AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
     CheckoutPaymentExecutionPort, CheckoutPaymentIdentity, InProcessCheckoutPaymentExecutionPort,
-    PaymentCollectionResponse, PaymentCollectionStatusKind, PaymentProviderRegistry,
+    PaymentCollectionResponse, PaymentProviderRegistry,
     PrepareCheckoutPaymentCollectionRequest, ReadCheckoutPaymentCollectionRequest,
     in_process_checkout_payment_execution_port,
 };

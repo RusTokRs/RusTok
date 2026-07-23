@@ -13037,6 +13037,7 @@ dependencies = [
  "async-trait",
  "rustok-core",
  "sea-orm-migration",
+ "tokio",
 ]
 
 [[package]]

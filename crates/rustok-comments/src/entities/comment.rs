@@ -1,6 +1,6 @@
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
-use sea_orm::{QueryFilter, QueryOrder};
+use sea_orm::{QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

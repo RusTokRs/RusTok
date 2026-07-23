@@ -9,3 +9,7 @@ description = "Runtime module adapter for the RusToK events platform capability"
 async-trait.workspace = true
 rustok-core.workspace = true
 sea-orm-migration.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+

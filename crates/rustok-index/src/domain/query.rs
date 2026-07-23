@@ -29,7 +29,7 @@ pub enum FilterExpr {
 }
 
 impl FilterExpr {
-    pub fn field_paths(&self, output: &mut Vec<&FieldPath>) {
+    pub fn field_paths<'a>(&'a self, output: &mut Vec<&'a FieldPath>) {
         match self {
             Self::And(filters) | Self::Or(filters) => {
                 for filter in filters {

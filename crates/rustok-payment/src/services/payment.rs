@@ -23,7 +23,6 @@ const STATUS_PENDING: &str = "pending";
 const STATUS_AUTHORIZED: &str = "authorized";
 const STATUS_CAPTURED: &str = "captured";
 const STATUS_CANCELLED: &str = "cancelled";
-const STATUS_REFUND_PENDING: &str = "pending";
 const STATUS_REFUNDED: &str = "refunded";
 const STATUS_REFUND_CANCELLED: &str = "cancelled";
 const MANUAL_PROVIDER_ID: &str = "manual";

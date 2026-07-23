@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::{Expr, OnConflict};
-use sea_orm::{PaginatorTrait, QueryFilter};
+use sea_orm::{ActiveValue, PaginatorTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

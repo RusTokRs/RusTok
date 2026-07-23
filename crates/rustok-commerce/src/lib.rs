@@ -179,6 +179,23 @@ impl RusToKModule for CommerceModule {
             financial_runtime.ledger_port(),
         ));
     }
+
+    fn register_runtime_extensions(
+        &self,
+        extensions: &mut ModuleRuntimeExtensions,
+    ) -> rustok_core::Result<()> {
+        let marketplace_financial_runtime = extensions
+            .get::<MarketplaceFinancialRuntime>()
+            .cloned()
+            .ok_or_else(|| {
+                rustok_core::Error::Validation(
+                    "commerce module requires MarketplaceFinancialRuntime in runtime extensions"
+                        .to_string(),
+                )
+            })?;
+        extensions.insert(marketplace_financial_runtime);
+        Ok(())
+    }
 }
 
 impl MigrationSource for CommerceModule {

@@ -74,6 +74,8 @@ impl ModuleBuildDispatcherConfig {
                     username: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_USERNAME")?,
                     password: required_env("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_PASSWORD")?,
                     tls_enabled: required_true("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_ENABLED")?,
+                    tls_domain: env::var("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_DOMAIN").ok(),
+                    tls_ca_file: env::var("RUSTOK_MODULE_BUILD_DISPATCHER_IGGY_TLS_CA_FILE").ok(),
                 },
                 ..IggyConfig::default()
             },
