@@ -8,14 +8,14 @@ use sea_orm::{
 use serde::Serialize;
 
 use super::{
-    BenchmarkConfig, DatasetConfig, Prototype, analyze_sql, churn_cycle_sql,
-    connect_benchmark_database, full_prototype_sql, source_dataset_sql, vacuum_sql,
+    BenchmarkConfig, DatasetConfig, DatasetScale, Prototype, analyze_sql, churn_cycle_sql,
+    connect_benchmark_database, full_prototype_sql, source_dataset_sql, vacuum_statements,
 };
 
 #[derive(Debug, Serialize)]
 pub struct MaintenanceBenchmarkReport {
     pub generated_at: DateTime<Utc>,
-    pub dataset_scale: String,
+    pub dataset_scale: DatasetScale,
     pub cycles: u32,
     pub prototypes: Vec<PrototypeMaintenanceReport>,
 }
@@ -101,9 +101,11 @@ pub async fn run_maintenance(
         let after_churn = snapshot(&db, prototype, &config.dataset).await?;
 
         let vacuum_started = Instant::now();
-        db.execute_unprepared(&vacuum_sql(prototype))
-            .await
-            .with_context(|| format!("failed to vacuum {:?} prototype", prototype))?;
+        for statement in vacuum_statements(prototype) {
+            db.execute_unprepared(&statement).await.with_context(|| {
+                format!("failed to vacuum {:?} relation with {statement}", prototype)
+            })?;
+        }
         let vacuum_duration_ms = vacuum_started.elapsed().as_millis();
         let after_vacuum = snapshot(&db, prototype, &config.dataset).await?;
 
@@ -119,7 +121,7 @@ pub async fn run_maintenance(
 
     Ok(MaintenanceBenchmarkReport {
         generated_at: Utc::now(),
-        dataset_scale: format!("{:?}", config.dataset.scale),
+        dataset_scale: config.dataset.scale,
         cycles,
         prototypes,
     })
