@@ -194,6 +194,8 @@ pub trait ConsumerPropertyEditorPort: Send + Sync {
 pub struct ConsumerPropertyEditorRuntime {
     pub contribution_id: String,
     pub property_editor_id: String,
+    pub provider: String,
+    pub component_type: String,
     pub schema: ConsumerPropertyEditorSchema,
     port: Arc<dyn ConsumerPropertyEditorPort>,
 }
@@ -202,12 +204,16 @@ impl ConsumerPropertyEditorRuntime {
     pub fn new(
         contribution_id: impl Into<String>,
         property_editor_id: impl Into<String>,
+        provider: impl Into<String>,
+        component_type: impl Into<String>,
         schema: ConsumerPropertyEditorSchema,
         port: Arc<dyn ConsumerPropertyEditorPort>,
     ) -> Self {
         Self {
             contribution_id: contribution_id.into(),
             property_editor_id: property_editor_id.into(),
+            provider: provider.into(),
+            component_type: component_type.into(),
             schema,
             port,
         }
@@ -220,6 +226,8 @@ impl ConsumerPropertyEditorRuntime {
         self.schema.validate()?;
         require_identifier(&self.contribution_id, "consumer contribution id")?;
         require_identifier(&self.property_editor_id, "consumer property editor id")?;
+        require_identifier(&self.provider, "consumer property provider")?;
+        require_identifier(&self.component_type, "consumer property component type")?;
         if !assembly.is_valid() {
             return Err(ConsumerPropertyEditorError::unavailable(
                 "consumer contribution assembly contains errors",
@@ -234,6 +242,12 @@ impl ConsumerPropertyEditorRuntime {
                     self.contribution_id
                 ))
             })?;
+        if contribution.provider != self.provider {
+            return Err(ConsumerPropertyEditorError::contract(format!(
+                "consumer contribution `{}` belongs to provider `{}`, expected `{}`",
+                self.contribution_id, contribution.provider, self.provider
+            )));
+        }
         let property_editor = contribution
             .property_editors
             .iter()
@@ -244,6 +258,13 @@ impl ConsumerPropertyEditorRuntime {
                     self.property_editor_id
                 ))
             })?;
+        if property_editor.provider != self.provider
+            || property_editor.component_type != self.component_type
+        {
+            return Err(ConsumerPropertyEditorError::contract(
+                "consumer property runtime provider or component type does not match the registered editor",
+            ));
+        }
         let registered_schema = serde_json::from_value::<ConsumerPropertyEditorSchema>(
             property_editor.property_schema.clone(),
         )
@@ -393,9 +414,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn runtime_requires_exact_registered_schema_and_values() {
-        let schema = schema();
+    fn assembly(schema: &ConsumerPropertyEditorSchema) -> ContributionAssemblyResult {
         let contribution = ContributionDescriptor {
             id: "pages.metadata".to_string(),
             provider: "rustok.pages".to_string(),
@@ -406,7 +425,7 @@ mod tests {
                 id: "pages.metadata.editor".to_string(),
                 component_type: "rustok-pages-metadata".to_string(),
                 provider: "rustok.pages".to_string(),
-                property_schema: serde_json::to_value(&schema).expect("schema"),
+                property_schema: serde_json::to_value(schema).expect("schema"),
                 accessibility: AccessibilityMetadata {
                     label_message_id: "pages.metadata.label".to_string(),
                     description_message_id: None,
@@ -421,17 +440,29 @@ mod tests {
         };
         let mut registry = ContributionRegistry::default();
         registry.register(contribution).expect("contribution");
-        let assembly = ContributionAssemblyResult {
+        ContributionAssemblyResult {
             registry,
             registered_contributions: 1,
             ..ContributionAssemblyResult::default()
-        };
-        let runtime = ConsumerPropertyEditorRuntime::new(
+        }
+    }
+
+    fn runtime(schema: ConsumerPropertyEditorSchema) -> ConsumerPropertyEditorRuntime {
+        ConsumerPropertyEditorRuntime::new(
             "pages.metadata",
             "pages.metadata.editor",
+            "rustok.pages",
+            "rustok-pages-metadata",
             schema,
             Arc::new(NoopPort),
-        );
+        )
+    }
+
+    #[test]
+    fn runtime_requires_exact_registered_identity_schema_and_values() {
+        let schema = schema();
+        let assembly = assembly(&schema);
+        let runtime = runtime(schema);
         runtime
             .verify_contribution(&assembly)
             .expect("registered runtime");
@@ -444,6 +475,21 @@ mod tests {
             .prepare_save_input(&snapshot, snapshot.values.clone())
             .expect("input");
         assert_eq!(input.expected_revision, snapshot.revision);
+    }
+
+    #[test]
+    fn runtime_rejects_provider_or_component_type_mismatch() {
+        let schema = schema();
+        let assembly = assembly(&schema);
+        let runtime = ConsumerPropertyEditorRuntime::new(
+            "pages.metadata",
+            "pages.metadata.editor",
+            "other.provider",
+            "other-component",
+            schema,
+            Arc::new(NoopPort),
+        );
+        assert!(runtime.verify_contribution(&assembly).is_err());
     }
 
     #[test]
