@@ -7,10 +7,13 @@
   "owner": "rustok-comments",
   "production_contract": {
     "position_owner": "crates/rustok-comments/src/entities/comment.rs",
-    "counter_owner": "crates/rustok-comments/src/entities/comment_thread.rs",
-    "repair_migration": "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs",
+    "counter_and_identity_owner": "crates/rustok-comments/src/entities/comment_thread.rs",
+    "identity_lock_entity": "crates/rustok-comments/src/entities/comment_thread_identity_lock.rs",
+    "counter_repair_migration": "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs",
+    "identity_lock_migration": "crates/rustok-comments/src/migrations/m20260723_000009_add_comment_thread_identity_locks.rs",
     "migration_registry": "crates/rustok-comments/src/migrations/mod.rs",
-    "executable_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
+    "write_invariant_test": "crates/rustok-comments/tests/thread_write_invariants.rs",
+    "first_thread_test": "crates/rustok-comments/tests/thread_creation_concurrency.rs",
     "postgres_environment": "RUSTOK_COMMENTS_TEST_DATABASE_URL"
   },
   "cases": [
@@ -41,12 +44,18 @@
     {
       "name": "postgres_concurrent_create_delete",
       "expected": "two independent PostgreSQL connections preserve positions 1..3 and an exact active count across concurrent create/create and create/soft-delete phases"
+    },
+    {
+      "name": "postgres_concurrent_first_thread_creation",
+      "expected": "two independent CommentsService instances creating the first comments for one target serialize through the persistent identity row and return one canonical thread with positions 1 and 2"
     }
   ],
   "runtime_promotion_requirements": [
     "execute cargo test -p rustok-comments --test thread_write_invariants",
-    "execute the env-gated PostgreSQL case with RUSTOK_COMMENTS_TEST_DATABASE_URL",
+    "execute cargo test -p rustok-comments --test thread_creation_concurrency",
+    "execute both env-gated PostgreSQL targets with RUSTOK_COMMENTS_TEST_DATABASE_URL",
     "retain final active-row count and gap-free unique position evidence",
-    "retain migration output for a fixture containing stale counters and duplicate positions"
+    "retain one-thread evidence for concurrent first comments",
+    "retain migration output for stale counters, duplicate positions, and identity-lock storage"
   ]
 }
