@@ -46,6 +46,18 @@ pub enum DomainError {
     #[error("query must select at least one field")]
     EmptySelection,
 
+    #[error("query selects too many fields")]
+    TooManySelectedFields,
+
+    #[error("query defines too many ordering expressions")]
+    TooManyOrderExpressions,
+
+    #[error("query filter expression is too complex")]
+    FilterTooComplex,
+
+    #[error("query link path is too deep")]
+    LinkPathTooDeep,
+
     #[error("page size must be greater than zero")]
     EmptyPage,
 
