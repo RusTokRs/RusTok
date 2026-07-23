@@ -144,8 +144,11 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Cut atomic cart admission, mounted checkout finalization, and mounted compensation
   release/result validation over to canonical cart/order/payment lifecycle views;
   unknown cart states require manual reconciliation or fail closed.
-- [ ] Cut the remaining payment recovery/provider adaptation and other audited critical
-  lifecycle paths over to canonical typed owner statuses.
+- [x] Cut payment owner core transitions, refund creation, public provider
+  orchestration, normalized webhook application, and mounted fulfillment captured-state
+  recovery over to canonical typed lifecycle views.
+- [ ] Cut the production legacy `CheckoutService` and remaining unreviewed critical
+  lifecycle paths over to staged owner-port orchestration and canonical typed statuses.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -197,7 +200,8 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Route production checkout through staged recovery orchestration.
 - [ ] Resolve cart, product, pricing, inventory, order, payment, and fulfillment only
   through typed owner boundaries on every production path; the mounted staged checkout
-  path is cut over, while other ecommerce orchestration paths still require audit.
+  path is cut over, while the production legacy checkout facade and other ecommerce
+  orchestration paths still require cutover/audit.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
 - [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
@@ -259,6 +263,12 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Use canonical `CartStatus` in atomic checkout admission, mounted finalization, and
   mounted compensation release; compensation snapshots expose typed order/payment
   status views without changing wire fields.
+- [x] Use canonical payment collection/payment/refund statuses in owner core lifecycle,
+  refund admission/replay, public provider orchestration, webhook application, and
+  mounted fulfillment captured-state validation.
+- [ ] Replace the production legacy `CheckoutService` with the staged owner-port runtime;
+  it still constructs foreign services and contains raw cart/order/payment lifecycle
+  matching.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
@@ -473,8 +483,11 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Use `PaymentCollectionStatusKind` in checkout execution, checkout compensation,
   and the mounted payment stage; unknown collection states require manual reconciliation
   or fail closed.
-- [ ] Replace remaining raw payment lifecycle matching in recovery/provider adaptation
-  paths with canonical typed owner states.
+- [x] Use canonical payment/refund lifecycle policy in `PaymentService`, idempotent
+  refund creation, public provider orchestration, normalized webhook application, and
+  mounted fulfillment captured-state recovery.
+- [ ] Replace raw lifecycle matching and foreign service construction in production
+  legacy `CheckoutService`, then audit remaining payment admin/provider adapters.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
 - [ ] Execute checkout compensation and payment execution provider replay, crash,
@@ -522,7 +535,8 @@ Source inspection is not execution evidence.
   fulfillment, and pipeline source.
 - [x] Add static guards for fail-closed public `PortError` transport sanitization and
   typed order/payment/fulfillment/cart lifecycle use in checkout execution, recovery,
-  finalization, settlement, compensation, and mounted owner stages.
+  finalization, settlement, compensation, provider orchestration, webhook application,
+  and mounted owner stages.
 - [ ] Execute the new public-error and typed-lifecycle static guards against a repository
   checkout and retain their output.
 
@@ -537,7 +551,8 @@ Source inspection is not execution evidence.
 - [ ] Targeted staged checkout completion/adoption/replay, compensation, and order
   payment settlement tests.
 - [ ] `cargo check -p rustok-payment --all-features`
-- [ ] Targeted payment compensation and execution canonical-key/legacy-payload replay tests.
+- [ ] Targeted payment owner lifecycle, compensation/execution canonical-key,
+  legacy-payload replay, refund admission, and webhook adaptation tests.
 - [ ] `cargo check -p rustok-fulfillment --all-features`
 - [ ] Targeted fulfillment create/adopt/read, cancelled/unknown lifecycle, duplicate
   identity, partial set, and concurrent create tests.
@@ -602,11 +617,11 @@ Source inspection is not execution evidence.
    payment, fulfillment, and order owner ports.
 10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
     central fail-closed construction/serde sanitization and source guards are complete.
-11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment execution,
-    order recovery/settlement/compensation, payment compensation, mounted order/payment
-    stages, typed fulfillment ensure/read recovery, and cart atomic/finalization/
-    compensation paths are complete, while payment recovery/provider adaptation and
-    remaining unreviewed critical string matching stay open.
+11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment owner/provider/
+    webhook policy, order recovery/settlement/compensation, mounted order/payment stages,
+    typed fulfillment recovery, and cart atomic/finalization/compensation paths are
+    complete. Production legacy `CheckoutService` and remaining unreviewed adapters stay
+    open.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -653,6 +668,8 @@ Source inspection is not execution evidence.
   `OrderStatusKind`.
 - [x] Cut atomic cart admission, mounted finalization, and mounted compensation
   release/result validation over to canonical typed lifecycle views.
+- [x] Cut payment core/refund/provider/webhook and mounted captured-state recovery over
+  to canonical typed lifecycle views without changing persisted status strings.
 
 ## Change rules
 
