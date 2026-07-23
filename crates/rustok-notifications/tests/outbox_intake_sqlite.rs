@@ -153,6 +153,20 @@ async fn accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker(
     assert!(replay.replayed);
     assert_eq!(replay.source_inbox_id, accepted_row.id);
 
+    db.execute_unprepared(&format!(
+        "UPDATE sys_events SET payload = '{{\"permanent_invalid\":true}}' WHERE id = '{accepted_outbox_id}'"
+    ))
+    .await
+    .expect("accepted outbox payload should mutate for conflict evidence");
+    let changed_replay = worker
+        .process_outbox_event(accepted_outbox_id)
+        .await
+        .expect_err("changed accepted envelope must fail semantic replay");
+    assert_eq!(
+        changed_replay.stable_code(),
+        "NOTIFICATION_SOURCE_IDENTITY_CONFLICT"
+    );
+
     let rejection = worker
         .process_outbox_event(permanent_id)
         .await
