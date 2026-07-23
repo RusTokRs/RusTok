@@ -1,10 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slice": "NOTIFY-01B/03A",
+  "promoted_by_slice": "NOTIFY-03D",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
   "migration": "crates/rustok-notifications/src/migrations/m20260722_000011_create_notification_source_inbox.rs",
   "service": "crates/rustok-notifications/src/fanout.rs",
+  "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
   "source_inbox": {
     "table": "notification_source_inbox",
     "dedupe_identity": [
@@ -20,7 +22,9 @@
       "completed",
       "suppressed",
       "rejected"
-    ]
+    ],
+    "production_outbox_intake_delivered": true,
+    "production_materialization_worker_deferred": true
   },
   "fanout_job": {
     "existing_table": "notification_fanout_jobs",
@@ -51,6 +55,7 @@
     "event_type": "forum.mention.user_added",
     "relation_table": "forum_user_mentions",
     "exact_relation_identity_required": true,
+    "semantic_source_revision_supported": true,
     "source_visibility_rechecked_on_describe": true,
     "source_visibility_rechecked_on_audience": true,
     "pending_reply_is_retryable": true,
@@ -61,20 +66,21 @@
   },
   "tests": [
     "crates/rustok-notifications/tests/fanout_sqlite.rs",
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
     "crates/rustok-forum/tests/notification_source_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-source-fanout.mjs",
+    "outbox_intake_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "preference resolution",
-    "block and profile privacy rechecks",
+    "production source inbox materialization and fanout page worker",
+    "tenant capability enforcement before materialization and delivery",
     "recipient-specific channel and group authorization",
-    "final notification row creation",
     "delivery-attempt enqueue",
     "forum moderator audience expansion",
-    "retention and reconciliation commands",
-    "production outbox relay consumer wiring"
+    "PostgreSQL lease concurrency evidence",
+    "retention and reconciliation commands"
   ]
 }
