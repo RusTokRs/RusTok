@@ -19,12 +19,23 @@ source level.
 
 The current GROUPS-07 foundation provides a monotonic group-membership revision, bounded current
 enforcement projection, owner-clock effective-state resolver,
-`GroupMembershipEnforcementReadPort`, and a crate-root effective-membership `GroupsService`
-facade. Core access decisions, closed/secret read redaction, membership-list authorization,
-enabled-feature visibility, join/rejoin, and feature-settings authorization use effective state.
-Direct suspend/revoke commands, invitation/application/localization/governance conversion,
-provider ACL integration, member-count suspension semantics, the moderation adapter/application
-orchestration, and runtime evidence remain open.
+`GroupMembershipEnforcementReadPort`, a crate-root effective-membership `GroupsService` facade,
+and effective invitation and membership-application facades. Core access decisions,
+closed/secret read redaction, membership-list authorization, enabled-feature visibility,
+join/rejoin, feature settings, invitation management/acceptance, membership-application candidate
+and manager reads, policy writes, submit/reopen/review, and bounded bulk review now pass through an
+effective-state public boundary.
+
+The invitation/application facades preserve compatibility module paths and receipt-first replay:
+when an idempotency key already has a receipt, the legacy owner transaction remains responsible
+for returning the matching replay or changed-request conflict before current authorization is
+re-evaluated. The underlying status-only services are crate-private. A same-transaction effective
+recheck remains open because the transitional owner transactions still recheck stored lifecycle
+state internally; concurrent enforcement-change evidence is therefore not claimed yet.
+
+Direct suspend/revoke commands, localization/governance conversion, provider ACL integration,
+member-count suspension semantics, the moderation adapter/application orchestration, and runtime
+evidence remain open.
 
 A group is a social container and policy owner. It is not the persistence owner for forum
 topics, blog posts, Pages documents, marketplace listings, products, media assets, comments,
@@ -93,8 +104,26 @@ billing plans, or entitlements.
   has no settings, moderation, or ownership-transfer authority.
 - Preserve public read access during group-local suspension while denying post/comment and other
   membership-authority actions.
-- Keep status-only access-path conversion explicitly open for invitation, application,
-  localization, governance, provider ACL, and member-count behavior.
+
+### Effective invitation and membership-application facades
+
+- Preserve public compatibility paths under `rustok_groups::invitations`,
+  `rustok_groups::targeted_invitations`, and `rustok_groups::applications` while exporting only
+  effective service implementations.
+- Require effective active owner/admin/moderator authority, or platform manage, for invitation
+  listing, creation, and revocation.
+- Deny token and targeted acceptance for active suspension or legacy banned state and preserve
+  active-member conflict behavior.
+- Require effective candidate state for application policy/current-state reads, legacy and CAS
+  submission, cancellation, reopen, review, and approval/rejection paths.
+- Require effective active owner/admin authority for policy management and effective active
+  owner/admin/moderator authority for application list, history, single review, reopen, and bulk
+  review.
+- Preserve bounded partial-result bulk review by deriving the same order-independent child
+  idempotency key and routing each item through effective single review.
+- Preserve receipt-first replay before effective prechecks for write methods.
+- Keep same-transaction effective recheck, enforcement/write concurrency, and direct owner-command
+  convergence explicitly open.
 
 ### Invitations and membership applications
 
@@ -131,9 +160,9 @@ Core owner/runtime:
 - crate-root `rustok_groups::GroupsService` effective-membership facade
 - `GroupMembershipEnforcementService`
 - `GroupLocalizationService`
-- `GroupInvitationService`
-- `GroupTargetedInvitationService`
-- `GroupApplicationService`
+- crate-root `GroupInvitationService` effective facade
+- crate-root `GroupTargetedInvitationService` effective facade
+- crate-root `GroupApplicationService` effective facade
 - `GroupApplicationPolicyHistoryService`
 - `GroupGovernanceService`
 
@@ -185,13 +214,13 @@ No `GroupMembershipEnforcementCommandPort` is published in the current read-only
 ## Readiness
 
 Source presence does not prove compilation, migrations, revision-trigger behavior,
-owner-clock expiry handling, complete access integration, replay, concurrency, security,
-transport parity, accessibility, retry, or recovery.
+owner-clock expiry handling, same-transaction effective authorization, replay, concurrency,
+security, transport parity, accessibility, retry, or recovery.
 
-FFA, FBA, GROUPS-06, GROUPS-07, and GROUPS-19 remain `in_progress`. Core public access is
-source-converted through the effective facade, but invitation, application, localization,
-governance, provider ACL, member-count, direct enforcement command, and moderation application
-runtime gates remain open.
+FFA, FBA, GROUPS-06, GROUPS-07, and GROUPS-19 remain `in_progress`. Core public access and the
+public invitation/application boundaries are source-converted through effective facades, but
+same-transaction effective rechecks, localization, governance, provider ACL, member-count,
+direct enforcement command, moderation application, and runtime gates remain open.
 
 ## Documentation
 
@@ -200,7 +229,9 @@ runtime gates remain open.
 - [Bulk review contract](docs/bulk-review-contract.md)
 - [FBA registry](contracts/groups-fba-registry.json)
 - [Effective membership access contract](contracts/groups-effective-membership-access.json)
+- [Effective invitation/application contract](contracts/groups-effective-membership-invitations-applications.json)
 - [Application no-bypass guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
 - [Bulk review guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
 - [Membership enforcement read guard](../../scripts/verify/verify-groups-membership-enforcement-read-path.mjs)
 - [Effective membership access guard](../../scripts/verify/verify-groups-effective-membership-access.mjs)
+- [Effective invitation/application guard](../../scripts/verify/verify-groups-effective-membership-invitations-applications.mjs)
