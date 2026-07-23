@@ -1,11 +1,12 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "slice": "NOTIFY-03B/07A",
-  "promoted_by_slices": ["SOCIAL-01A/NOTIFY-07C", "NOTIFY-03C"],
+  "promoted_by_slices": ["SOCIAL-01A/NOTIFY-07C", "NOTIFY-03C", "NOTIFY-03D"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
   "migration": "crates/rustok-notifications/src/migrations/m20260722_000012_add_candidate_processing.rs",
   "service": "crates/rustok-notifications/src/candidate.rs",
+  "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
   "candidate_processing": {
     "table": "notification_fanout_items",
     "claimable_states": [
@@ -54,6 +55,11 @@
     "candidate_worker_runtime_delivered": true,
     "candidate_worker_default_enabled": false
   },
+  "upstream_intake": {
+    "production_outbox_intake_delivered": true,
+    "source_inbox_materialization_worker_deferred": true,
+    "default_enabled": false
+  },
   "source_authorization": {
     "authorize_target_open_before_creation": true,
     "recipient_id_required": true,
@@ -77,18 +83,21 @@
     "grouping_deferred": true
   },
   "tests": [
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
     "crates/rustok-notifications/tests/candidate_sqlite.rs",
     "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
     "crates/rustok-social-graph/tests/privacy_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-candidate-policy.mjs",
+    "outbox_intake_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
     "concrete_owner_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
     "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "production outbox consumer runner",
+    "production source inbox materialization and bounded fanout page worker",
+    "tenant capability enforcement before materialization and delivery",
     "default deployment enablement after worker health and lag metrics",
     "channel delivery enqueue",
     "grouping policy",
