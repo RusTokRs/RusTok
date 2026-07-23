@@ -47,7 +47,7 @@ Commits record which checks and evidence runs were not executed.
 - M1 domain/application core: `complete`
 - M2 read/query harness: `implemented; evidence runs pending`
 - M2 transactional mutation/WAL harness: `implemented; evidence runs pending`
-- M2 persistent churn/vacuum harness: `not_started`
+- M2 persistent churn/VACUUM harness: `implemented; evidence runs pending`
 - Production persistence: intentionally absent until the M2 ADR selects a model
 
 The active production crate contains only the generic domain/application core,
@@ -100,10 +100,12 @@ ops/benches/src/index_storage/
   config.rs
   runner.rs
   mutation_runner.rs
+  maintenance_runner.rs
   sql/
     mod.rs
     source.rs
     common.rs
+    maintenance.rs
     jsonb.rs
     eav.rs
     hot.rs
@@ -217,7 +219,8 @@ migrations.
 - [x] Prototype normalized typed field-value rows.
 - [x] Prototype a specialized hot typed projection as the comparison baseline.
 - [x] Represent links independently from entity payload storage in every model.
-- [x] Split source, common-link, JSONB, EAV, and hot SQL into independent modules.
+- [x] Split source, common-link, JSONB, EAV, hot, and maintenance SQL into
+      independent modules.
 - [x] Run the same equality, range, multi-value, two-hop link, keyset, and count
       workload definitions against every model.
 - [x] Verify source/candidate entity and link cardinality before timing.
@@ -231,14 +234,22 @@ migrations.
 - [x] Capture mutation planning/execution time, buffers, full JSON plan, and
       maximum per-node WAL records, FPI, and bytes.
 - [x] Add a separate release-mode mutation evidence executable/report.
-- [ ] Run and archive the `smoke` read and mutation evidence as a harness sanity
-      check.
-- [ ] Run and archive 100k Product-locale row read and mutation evidence.
-- [ ] Run and archive 1m Product-locale row read and mutation evidence.
-- [ ] Add persistent update/delete churn for dead tuples, relation bloat, and
-      pre/post `VACUUM (ANALYZE)` impact.
+- [x] Add committed update plus delete/reinsert churn cycles for every candidate.
+- [x] Preserve exact entity/link cardinality through every maintenance phase.
+- [x] Capture baseline, after-churn, and after-VACUUM schema sizes and
+      `pg_stat_user_tables` live/dead/insert/update/delete/HOT counters.
+- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.
+- [x] Add a separate release-mode maintenance evidence executable/report with
+      configurable churn-cycle count.
+- [ ] Run and archive the `smoke` read, mutation, and maintenance evidence as a
+      harness sanity check.
+- [ ] Run and archive 100k Product-locale row read, mutation, and maintenance
+      evidence.
+- [ ] Run and archive 1m Product-locale row read, mutation, and maintenance
+      evidence.
 - [ ] Compare warm/cold buffers, planner stability, execution latency, ingestion
-      throughput, relation size, WAL, vacuum behavior, and operational complexity.
+      throughput, relation size, WAL, dead tuples, vacuum behavior, and operational
+      complexity.
 - [ ] Record the selected model and rejected alternatives in an ADR.
 - [ ] Delete benchmark prototypes that are not selected.
 
@@ -347,14 +358,22 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
   cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
   cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke INDEX_BENCH_CHURN_CYCLES=5 \
+  cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
+
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
   cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
   cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k INDEX_BENCH_CHURN_CYCLES=5 \
+  cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
+
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
   cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
 DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
   cargo run -p rustok-benchmarks --bin index-storage-mutation-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
+  cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
 ```
 
 ## Progress log
@@ -375,5 +394,8 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
   plus semantic result-digest parity before any plan comparison.
 - 2026-07-23: added isolated update/delete write-amplification workloads with
   affected-row/link validation, rollback isolation, WAL/BUFFERS evidence, and a
-  separate machine-readable mutation report. Real PostgreSQL runs, persistent
-  churn/vacuum evidence, and the storage ADR remain open.
+  separate machine-readable mutation report.
+- 2026-07-23: added persistent committed churn with delete/reinsert restoration,
+  baseline/after-churn/after-VACUUM size and table-stat snapshots, cardinality
+  guards, and a dedicated maintenance report. Real PostgreSQL evidence,
+  comparison, and the storage ADR remain open.
