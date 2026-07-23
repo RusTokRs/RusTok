@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use super::{DomainError, FieldPath, IndexValue, SchemaRef};
+use super::{DomainError, FieldPath, IndexValue, LocaleKey, SchemaRef};
 
+const MAX_CURSOR_PAGE_SIZE: u32 = 500;
 const MAX_OFFSET_LIMIT: u32 = 100;
+const MAX_OFFSET_DEPTH: u64 = 10_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -57,6 +60,12 @@ pub struct OrderExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexQueryScope {
+    pub tenant_id: Uuid,
+    pub locale: Option<LocaleKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Pagination {
     Cursor {
@@ -75,15 +84,19 @@ impl Pagination {
             Self::Cursor { first, .. } => {
                 if *first == 0 {
                     Err(DomainError::EmptyPage)
+                } else if *first > MAX_CURSOR_PAGE_SIZE {
+                    Err(DomainError::PageTooLarge)
                 } else {
                     Ok(())
                 }
             }
-            Self::Offset { limit, .. } => {
+            Self::Offset { limit, offset } => {
                 if *limit == 0 {
                     Err(DomainError::EmptyPage)
                 } else if *limit > MAX_OFFSET_LIMIT {
                     Err(DomainError::OffsetLimitExceeded)
+                } else if *offset > MAX_OFFSET_DEPTH {
+                    Err(DomainError::OffsetTooDeep)
                 } else {
                     Ok(())
                 }
@@ -94,6 +107,7 @@ impl Pagination {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexQuery {
+    pub scope: IndexQueryScope,
     pub schema: SchemaRef,
     pub fields: Vec<FieldPath>,
     pub filter: Option<FilterExpr>,
@@ -134,9 +148,17 @@ mod tests {
         }
     }
 
+    fn scope() -> IndexQueryScope {
+        IndexQueryScope {
+            tenant_id: Uuid::new_v4(),
+            locale: Some(LocaleKey::new("en-US").unwrap()),
+        }
+    }
+
     #[test]
     fn rejects_empty_query_selection() {
         let query = IndexQuery {
+            scope: scope(),
             schema: schema(),
             fields: Vec::new(),
             filter: None,
@@ -152,8 +174,29 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unbounded_pages_and_deep_offsets() {
+        assert_eq!(
+            Pagination::Cursor {
+                first: 501,
+                after: None,
+            }
+            .validate(),
+            Err(DomainError::PageTooLarge)
+        );
+        assert_eq!(
+            Pagination::Offset {
+                limit: 20,
+                offset: 10_001,
+            }
+            .validate(),
+            Err(DomainError::OffsetTooDeep)
+        );
+    }
+
+    #[test]
     fn accepts_link_aware_filter_shape() {
         let query = IndexQuery {
+            scope: scope(),
             schema: schema(),
             fields: vec![FieldPath::new(FieldName::new("id").unwrap())],
             filter: Some(FilterExpr::Eq(
