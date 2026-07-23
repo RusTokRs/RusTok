@@ -26,6 +26,10 @@ futures = "0.3"
 name = "index-storage-benchmark"
 path = "src/bin/index_storage_benchmark.rs"
 
+[[bin]]
+name = "index-storage-mutation-benchmark"
+path = "src/bin/index_storage_mutation_benchmark.rs"
+
 [[bench]]
 name = "tenant_cache"
 harness = false
