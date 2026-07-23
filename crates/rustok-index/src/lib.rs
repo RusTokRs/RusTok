@@ -1,8 +1,8 @@
 //! RusToK Index - cross-module relational Index Engine.
 //!
-//! The new engine core is implemented under [`domain`]. Existing source-specific
-//! indexers and v1 ports are legacy compatibility code scheduled for removal by
-//! the live implementation plan.
+//! The database-independent engine core lives under [`domain`]. Source-specific
+//! indexers and migrations remain temporarily while M0 removes the legacy storage
+//! implementation in controlled steps.
 
 use async_trait::async_trait;
 use rustok_core::{
@@ -16,14 +16,11 @@ pub mod domain;
 pub mod error;
 pub mod flex;
 pub mod migrations;
-pub mod models;
-pub mod ports;
 pub mod product;
-pub mod search;
 pub mod traits;
 
+pub use domain::*;
 pub use error::{IndexError, IndexResult};
-pub use ports::*;
 pub use traits::{Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer};
 
 pub struct IndexModule;
