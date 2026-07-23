@@ -1,5 +1,5 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "slice": "NOTIFY-03B/07A",
   "promoted_by_slices": [
     "SOCIAL-01A/NOTIFY-07C",
@@ -63,7 +63,10 @@
     "fanout_page_worker_delivered": true,
     "fanout_tenant_effective_policy_gate_delivered": true,
     "candidate_preclaim_tenant_effective_policy_gate_delivered": true,
+    "candidate_observed_policy_revision_delivered": true,
+    "candidate_observed_manifest_defaults_delivered": true,
     "candidate_commit_policy_revision_guard_delivered": true,
+    "candidate_guard_avoids_manifest_pool_read_inside_transaction": true,
     "candidate_guard_serializes_postgres_lifecycle_tenant_disable": true,
     "candidate_guard_atomic_with_manifest_or_security_mutation": false,
     "default_enabled": false
