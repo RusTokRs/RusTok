@@ -35,6 +35,17 @@ block or mute.
 - this promotion does not add notification-specific behavior to the Social Graph
   owner or expose its private tables.
 
+## Promoted by `NOTIFY-03D`
+
+- Notifications now accepts supported committed outbox envelopes into its own
+  durable source inbox and intake-receipt state;
+- intake remains independent from Social Graph and does not evaluate recipient
+  privacy before fan-out candidates exist;
+- Social Graph is still consulted only by the candidate policy after source
+  materialization and audience expansion;
+- the intake runtime is separately default-off behind
+  `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`.
+
 ## Remaining Social Graph scope
 
 - durable command receipts that bind idempotency keys to command identity;
@@ -48,8 +59,9 @@ block or mute.
 
 ## Remaining Notifications scope
 
-- production outbox relay consumption;
-- default candidate-worker enablement after health and queue-lag metrics;
+- production source-inbox materialization and bounded fan-out page worker;
+- tenant capability enforcement before materialization and delivery;
+- default worker enablement after health and queue-lag metrics;
 - inbox-open and delayed-delivery privacy rechecks;
 - grouping, moderator expansion, channel delivery, and retention/reconciliation.
 
@@ -61,6 +73,7 @@ RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 node scripts/verify/verify-social-graph-notification-policy.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
+node scripts/verify/verify-notifications-outbox-intake.mjs
 ```
 
 These commands are maintainer-run and were not executed while publishing this
