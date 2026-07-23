@@ -47,19 +47,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Check checkout owner and transport crates
-        run: |
-          cargo check \
-            -p rustok-order \
-            -p rustok-commerce \
-            -p rustok-order-storefront \
-            --all-features > /tmp/ecommerce-cargo-check.log 2>&1
+        run: >-
+          cargo check
+          -p rustok-order
+          -p rustok-commerce
+          -p rustok-order-storefront
+          --all-features
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"
-      - name: Upload focused Rust check log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ecommerce-cargo-check-log
-          path: /tmp/ecommerce-cargo-check.log
-          if-no-files-found: error
-          retention-days: 1
