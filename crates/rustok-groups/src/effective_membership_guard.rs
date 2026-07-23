@@ -1,11 +1,10 @@
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError};
-use sea_orm::{ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter};
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
 use crate::domain::{GroupMembershipEffectiveStatus, GroupRole};
 use crate::error::{GroupsError, GroupsResult};
-use crate::governance_entities::command_receipt;
 use crate::membership_enforcement::resolve_group_membership_enforcement;
 use crate::membership_enforcement_transaction::resolve_group_membership_enforcement_now_for_update;
 
@@ -40,40 +39,11 @@ pub(crate) fn has_platform_manage(context: &PortContext) -> bool {
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
 }
 
-/// Receipt-first replay compatibility guard used by read-side facades that still need to detect
-/// an already committed write before performing an external precheck.
-pub(crate) async fn has_existing_receipt(
-    db: &DatabaseConnection,
-    context: &PortContext,
-) -> Result<bool, PortError> {
-    let tenant_id = tenant_id(context)?;
-    let idempotency_key = context
-        .idempotency_key
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            PortError::validation(
-                "port.idempotency_key_required",
-                "write port calls require a non-empty idempotency key",
-            )
-        })?;
-
-    command_receipt::Entity::find()
-        .filter(command_receipt::Column::TenantId.eq(tenant_id))
-        .filter(command_receipt::Column::IdempotencyKey.eq(idempotency_key))
-        .one(db)
-        .await
-        .map(|row| row.is_some())
-        .map_err(|error| {
-            PortError::unavailable("groups.receipt_lookup_unavailable", error.to_string())
-        })
-}
-
 /// Canonical transaction-aware manager authorization.
 ///
-/// The resolver acquires the Groups owner lock order `group -> membership -> enforcement` before
-/// evaluating authority, so a concurrent enforcement mutation cannot commit between this check
-/// and the command's first domain write.
+/// The resolver acquires the Groups owner lock order `Group -> GroupMembership ->
+/// GroupMembershipEnforcement` before evaluating authority, so a concurrent enforcement mutation
+/// cannot commit between this check and the command's first domain write.
 pub(crate) async fn require_effective_manager_owned(
     transaction: &DatabaseTransaction,
     context: &PortContext,
