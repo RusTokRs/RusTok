@@ -12,7 +12,9 @@ pub use identifiers::{
     SchemaIdentity, SchemaRef, SchemaVersion,
 };
 pub use mutation::IndexMutation;
-pub use query::{FilterExpr, IndexQuery, OrderDirection, OrderExpr, Pagination};
+pub use query::{
+    FilterExpr, IndexQuery, IndexQueryScope, OrderDirection, OrderExpr, Pagination,
+};
 pub use record::{IndexLinkValue, IndexRecord, LinkedEntityKey};
 pub use schema::{
     FieldCardinality, IndexField, IndexLink, IndexSchema, LinkCardinality, LocaleMode,
