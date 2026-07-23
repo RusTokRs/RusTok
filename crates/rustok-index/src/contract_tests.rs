@@ -20,14 +20,13 @@ async fn index_module_registers_no_legacy_event_listeners() {
     use rustok_core::{ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
     use sea_orm::Database;
 
-    use crate::{IndexModule, IndexerRuntimeConfig};
+    use crate::IndexModule;
 
     let registry = ModuleRegistry::new().register(IndexModule);
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("in-memory sqlite should connect");
-    let mut extensions = ModuleRuntimeExtensions::default();
-    extensions.insert(IndexerRuntimeConfig::new(2, 100, 10));
+    let extensions = ModuleRuntimeExtensions::default();
     let ctx = ModuleEventListenerContext {
         db,
         extensions: &extensions,
@@ -41,15 +40,10 @@ async fn index_module_registers_no_legacy_event_listeners() {
 }
 
 #[test]
-fn index_module_registers_temporary_runtime_config() {
-    use rustok_core::ModuleRegistry;
+fn index_module_has_no_legacy_migrations() {
+    use rustok_core::MigrationSource;
 
-    use crate::{IndexModule, IndexerRuntimeConfig};
+    use crate::IndexModule;
 
-    let extensions = ModuleRegistry::new()
-        .register(IndexModule)
-        .build_runtime_extensions()
-        .expect("index runtime extensions should initialize");
-
-    assert!(extensions.contains::<IndexerRuntimeConfig>());
+    assert!(IndexModule.migrations().is_empty());
 }
