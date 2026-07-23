@@ -20,11 +20,3 @@ nav_label = "Index"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
-
-# Legacy provider boundary retained only during the Index Engine rewrite.
-# Replacement query/rebuild contracts are tracked in docs/implementation-plan.md.
-[fba.provider]
-registry = "contracts/index-fba-registry.json"
-contract_version = "index.read_model.v1"
-ports = ["IndexReadModelPort", "IndexRebuildPort"]
-fallback_profiles = ["embedded_native", "admin_read_only", "rebuild_disabled"]
