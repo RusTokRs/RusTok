@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slice": "NOTIFY-07B",
-  "promoted_by_slice": "SOCIAL-01A/NOTIFY-07C",
+  "promoted_by_slices": ["SOCIAL-01A/NOTIFY-07C", "NOTIFY-03C"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "profile_owner_port": {
@@ -41,7 +41,10 @@
     "baseline_relation_ports_ready": true
   },
   "worker_gate": {
-    "candidate_worker_enabled": false,
+    "runtime_delivered": true,
+    "worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
+    "enable_environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
+    "candidate_worker_default_enabled": false,
     "requires_relation_ports_ready": true,
     "missing_ports_must_not_allow_delivery": true,
     "readiness_separate_from_enablement": true
@@ -49,10 +52,11 @@
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-recipient-policy-runtime.mjs",
     "concrete_owner_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "candidate worker startup",
+    "default deployment enablement after worker health and lag metrics",
     "privacy recheck on inbox open",
     "privacy recheck before delayed delivery",
     "PostgreSQL concurrency evidence"
