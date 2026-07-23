@@ -80,9 +80,9 @@ billing plans, or entitlements.
 
 ### Effective core access facade
 
-- Re-export `effective_service::GroupsService` as the crate-root `rustok_groups::GroupsService`.
-- Keep `service::GroupsService` only as a transitional implementation delegate; module-owned
-  GraphQL and native surfaces instantiate the crate-root facade.
+- Re-export a single public core type as `rustok_groups::GroupsService`.
+- Keep both the effective implementation module and the transitional status-only delegate
+  crate-private so external consumers and module-owned transports cannot bypass the facade.
 - Use the canonical owner-clock resolver for `GroupAccessReadPort` decisions.
 - Redact closed-group body/features and return not-found for secret-group summary when the viewer
   is effectively suspended.
@@ -128,8 +128,7 @@ billing plans, or entitlements.
 Core owner/runtime:
 
 - `GroupsModule`
-- crate-root `GroupsService` effective-membership facade
-- `service::GroupsService` transitional legacy delegate
+- crate-root `rustok_groups::GroupsService` effective-membership facade
 - `GroupMembershipEnforcementService`
 - `GroupLocalizationService`
 - `GroupInvitationService`
