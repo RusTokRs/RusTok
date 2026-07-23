@@ -44,7 +44,8 @@
     "policy_error_fails_closed": true,
     "disabled_tenant_calls_recipient_policy": false,
     "disabled_tenant_calls_source_provider": false,
-    "direct_module_table_read_forbidden": true
+    "direct_module_table_read_forbidden": true,
+    "atomic_with_concurrent_tenant_disable": false
   },
   "tenant_policy_backoff": {
     "disabled_retry_seconds": 300,
@@ -55,7 +56,7 @@
     "stable_error_code_persisted": true,
     "cas_rejects_concurrent_claim": true,
     "prevents_disabled_tenant_head_of_line_starvation": true,
-    "prevents_disable_after_fanout_inbox_creation": true
+    "prevents_post_fanout_processing_without_tenant_recheck": true
   },
   "shutdown": {
     "shared_stop_handle": true,
@@ -83,6 +84,7 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
+    "atomic control-plane revision guard for tenant disable concurrent with candidate claim",
     "parallel candidate worker concurrency evidence",
     "PostgreSQL lease and recovery evidence",
     "worker health and lag metrics",
