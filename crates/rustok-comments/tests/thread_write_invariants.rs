@@ -183,6 +183,40 @@ async fn active_model_hooks_override_stale_positions_and_counts() {
 }
 
 #[tokio::test]
+async fn status_only_thread_update_preserves_comment_count() {
+    let db = setup_sqlite_database().await;
+    let tenant_id = Uuid::new_v4();
+    let thread_id = Uuid::new_v4();
+
+    new_thread(tenant_id, thread_id, Uuid::new_v4())
+        .insert(&db)
+        .await
+        .expect("thread should insert");
+    insert_comment_and_refresh_count(&db, tenant_id, thread_id, 999)
+        .await
+        .expect("comment should insert and refresh count");
+
+    let thread = comment_thread::Entity::find_by_id(thread_id)
+        .filter(comment_thread::Column::TenantId.eq(tenant_id))
+        .one(&db)
+        .await
+        .expect("thread lookup should succeed")
+        .expect("thread should exist");
+    assert_eq!(thread.comment_count, 1);
+
+    let mut status_update: comment_thread::ActiveModel = thread.into();
+    status_update.status = Set(CommentThreadStatus::Closed);
+    status_update.updated_at = Set(Utc::now().into());
+    let updated = status_update
+        .update(&db)
+        .await
+        .expect("status-only update should succeed");
+
+    assert_eq!(updated.status, CommentThreadStatus::Closed);
+    assert_eq!(updated.comment_count, 1);
+}
+
+#[tokio::test]
 async fn unique_position_index_rejects_active_model_bypass() {
     let db = setup_sqlite_database().await;
     let tenant_id = Uuid::new_v4();
