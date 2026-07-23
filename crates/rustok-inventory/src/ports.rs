@@ -174,10 +174,6 @@ impl InventoryReservationPort for crate::InventoryService {
         request: InventoryAvailabilityRequest,
     ) -> Result<InventoryAvailabilitySnapshot, PortError> {
         let owner_operation = "check_availability";
-        let owner_operation = "reserve_inventory";
-        let owner_operation = "release_inventory_reservation";
-        let owner_operation = "reserve_inventory_by_identity";
-        let owner_operation = "release_inventory_by_identity";
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let result = self
@@ -203,6 +199,7 @@ impl InventoryReservationPort for crate::InventoryService {
         context: PortContext,
         request: InventoryReservationRequest,
     ) -> Result<InventoryReservationSnapshot, PortError> {
+        let owner_operation = "reserve_inventory";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
@@ -225,6 +222,7 @@ impl InventoryReservationPort for crate::InventoryService {
         context: PortContext,
         request: InventoryReservationReleaseRequest,
     ) -> Result<InventoryReservationReleaseSnapshot, PortError> {
+        let owner_operation = "release_inventory_reservation";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
@@ -249,6 +247,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         context: PortContext,
         mut request: InventoryIdentityReservationRequest,
     ) -> Result<InventoryIdentityReservationSnapshot, PortError> {
+        let owner_operation = "reserve_inventory_by_identity";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
@@ -435,6 +434,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         context: PortContext,
         mut request: InventoryIdentityReservationReleaseRequest,
     ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError> {
+        let owner_operation = "release_inventory_by_identity";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
