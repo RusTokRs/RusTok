@@ -1,0 +1,19 @@
+[package]
+name = "rustok-moderation-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Neutral moderation subject, decision-effect, and adapter contracts"
+
+[features]
+default = ["server"]
+server = ["dep:async-trait", "dep:rustok-api", "dep:rustok-core"]
+
+[dependencies]
+async-trait = { workspace = true, optional = true }
+chrono.workspace = true
+rustok-api = { workspace = true, optional = true }
+rustok-core = { workspace = true, optional = true }
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

@@ -3,7 +3,7 @@ id: doc://crates/rustok-moderation/docs/implementation-plan.md
 kind: module_plan
 language: en
 status: in_progress
-last_reviewed: 2026-07-22
+last_reviewed: 2026-07-23
 ---
 
 # Moderation implementation plan
@@ -11,109 +11,104 @@ last_reviewed: 2026-07-22
 ## Boundary
 
 `rustok-moderation` owns reports, cases, policies, immutable decisions, durable
-decision-application orchestration, appeals, moderation events, and cross-domain
-moderation audit history.
+decision-application orchestration, appeals, moderation events, and cross-domain moderation
+audit history.
 
-Domain modules remain authoritative for their own subjects and enforcement state. A
-domain owner validates and applies a moderation decision through a typed subject-owner
-port. The moderation owner never writes domain-owned tables and never treats a queued or
-decided case as proof that enforcement was applied.
+Domain modules remain authoritative for their own subjects and enforcement state. A domain
+owner validates and applies a moderation decision through a typed subject-owner port. The
+moderation owner never writes domain-owned tables and never treats a queued or decided case
+as proof that enforcement was applied.
 
-## Neutral API prerequisite
+## Neutral API
 
-Cross-domain contracts must not live only in the persistence owner crate. Introduce
-`rustok-moderation-api`, following the neutral-contract pattern used by
-`rustok-notifications-api`.
-
-The neutral crate owns and versions:
+`rustok-moderation-api` is the neutral dependency shared by moderation and domain owners. It
+contains no SeaORM entities, migrations, owner services, queues, or transports. It owns and
+versions:
 
 - `ModerationSubjectKind`, `ModerationScopeKind`, `ModerationScopeRef`, and
   `ModerationSubjectRef`;
-- `ModerationReasonCode`, `ModerationDecisionKind`, and a typed/versioned
+- `ModerationReasonCode`, `ModerationDecisionKind`, and typed/versioned
   `ModerationDecisionEffect`;
 - `ApplyModerationDecisionCommand` and `ModerationDecisionApplication`;
 - `ModerationSubjectCommandPort`;
-- a host-composed subject-adapter registry keyed by `(subject_module, subject_kind)`;
-- adapter/factory registration contracts that contain no SeaORM entities, migrations,
-  owner services, or transport implementations.
+- the host-composed subject-adapter/factory registry keyed by
+  `(subject_module, subject_kind)`.
 
-`rustok-moderation` depends on `rustok-moderation-api`. Domain modules depend only on the
-neutral API when they publish adapters. During migration, `rustok-moderation` may
-re-export the moved types and traits for Rust source compatibility, but new domain
-integrations must not depend on the moderation persistence owner.
+`rustok-moderation` depends on the neutral API and temporarily re-exports moved contracts.
+New domain adapters must depend only on `rustok-moderation-api`, never on moderation
+persistence or services.
 
 Registry rules:
 
+- keys are normalized through a sealed constructor;
 - registration is explicit and host-owned;
-- duplicate `(module, kind)` registrations fail startup;
-- a missing adapter leaves decision application pending/retryable and never implies
-  success;
-- adapter resolution occurs only after host runtime dependencies are available;
+- duplicate adapter or factory keys fail startup;
+- factories materialize only after `HostRuntimeContext` exists;
+- a factory whose built adapter reports another key fails startup;
+- a missing adapter leaves application pending/retryable and never implies success;
 - no fallback adapter may apply a decision to another subject kind.
 
 ## Decision-effect compatibility
 
-The current decision kind alone is insufficient for temporary or capability-scoped
-sanctions. `ApplyModerationDecisionCommand` must carry a bounded typed effect whose
-schema version is included in the decision hash.
+Decision kind alone is insufficient for temporary or capability-scoped sanctions. New
+moderation decisions require a bounded typed effect with explicit schema version.
 
-At minimum the effect model must distinguish:
+The v1 effect contract distinguishes:
 
 - no domain mutation;
-- visibility/publication changes;
-- locking or interaction restriction;
+- hidden, unpublished, or removed visibility state;
+- locking with optional expiry;
+- interaction restriction with a bounded canonical capability set and optional expiry;
+- edit requirement and publication rejection;
 - subject suspension with `effective_until: Option<DateTime<Utc>>`;
-- capability-scoped restrictions with a bounded canonical capability set;
-- escalation or account-sanction recommendation, which is not directly applied by an
-  unrelated domain owner.
+- escalation and account-sanction recommendation, which unrelated owners do not apply.
 
-Arbitrary owner payload JSON is not an enforcement contract. Domain-specific metadata
-may be referenced from immutable moderation evidence, but the adapter receives only the
-typed fields required to validate and apply the decision.
+The effect is validated against `ModerationDecisionKind`, included in command request
+identity and immutable decision hash, and persisted in `moderation_decision_effects` in the
+same owner transaction as the decision. Arbitrary owner payload JSON is not an enforcement
+contract.
+
+Historical decisions without an effect row remain readable as `effect: None`. They must not
+be dispatched to a domain adapter without explicit re-review or a truthful migration; no
+permanent sanction is inferred from an old decision kind.
 
 ## Subject identity and revisions
 
 Every decision references the exact subject revision that was reviewed. Domain adapters
-must expose a stable, monotonic revision for their subject; timestamps and unrelated
-aggregate versions are not substitutes.
+must expose a stable monotonic subject revision; timestamps and unrelated aggregate versions
+are not substitutes.
 
 For Groups compatibility:
 
-- group-level subject: `module="groups"`, kind `Group`, ID `groups.id`, revision
+- group subject: `module="groups"`, kind `Group`, ID `groups.id`, revision
   `groups.version`;
-- membership-level subject: `module="groups"`, kind `GroupMembership`, ID
+- membership subject: `module="groups"`, kind `GroupMembership`, ID
   `group_memberships.id`, revision a new monotonic `group_memberships.revision`;
 - local scope: `ModerationScopeKind::Group` with `scope.id = group_id`;
-- the Groups adapter verifies tenant, scope, subject ID, subject revision, decision hash,
-  effect compatibility, and local invariants inside the owner transaction.
+- the Groups adapter verifies tenant, scope, subject ID/revision, decision hash, effect
+  compatibility, and local invariants inside the owner transaction.
 
-A stale subject revision returns a stable conflict. Moderation retains the application
-operation and may require re-review; it must not silently retarget a decision to the
-latest revision.
+A stale revision returns a stable conflict. Moderation may require re-review; it never
+silently retargets a decision to the latest subject revision.
 
 ## Domain enforcement ownership
 
-A domain module may own current enforcement state because that state participates in its
-access and lifecycle invariants. It does not own the moderation case workflow.
+A domain may own current enforcement state because that state participates in access and
+lifecycle invariants. It does not own the moderation case workflow.
 
-For Groups, this means:
+For Groups:
 
-- Groups owns effective group-membership suspension/ban state, expiry evaluation,
-  membership revision, access denial, local command receipts, and domain audit;
+- Groups owns effective membership suspension/ban state, expiry evaluation, membership
+  revision, access denial, local receipts, domain audit, and semantic events;
 - Moderation owns reports, cases, policy snapshots, decisions, application attempts,
-  retries, appeals, and cross-domain moderation history;
-- Groups stores only bounded enforcement provenance needed for replay and audit, such as
-  `decision_id`, `decision_hash`, reason code, source kind, actor, effective interval,
-  and resulting membership revision;
-- Groups does not copy reports, case notes, policy snapshots, appeal state, or moderation
-  queue data;
-- the moderation admin queue and case UI belong to the moderation module; Groups UI may
-  expose current local enforcement state and authorized domain actions, but must not
-  implement a second case system.
+  retries, appeals, and cross-domain history;
+- Groups stores only bounded enforcement provenance required for replay and audit;
+- Groups never copies reports, case notes, policy snapshots, appeal state, or queue data;
+- moderation admin FFA owns queue/case/decision/application surfaces; Groups FFA owns current
+  local enforcement state and authorized direct domain actions.
 
-Direct domain actions and moderation-driven actions must converge on the same Groups
-owner command/invariant path. Whether a direct group-local action also creates a
-moderation case is host/product policy, not a second persistence implementation.
+Direct domain actions and moderation-driven actions converge on the same domain owner
+mutation path. Whether a direct action also opens a case is host/product policy.
 
 ## Application lifecycle
 
@@ -122,98 +117,86 @@ pending, applying, retryable, applied, rejected, and operator-review.
 
 Required semantics:
 
-- the moderation application identity is tenant + decision ID + decision hash + subject;
-- identical completed application replays the recorded result before subject reads;
+- identity is tenant + decision ID + decision hash + subject;
+- identical completed application replays before subject reads;
 - the same decision ID with another hash conflicts;
-- the domain mutation and domain receipt/audit commit atomically;
-- the moderation owner records applied evidence only after the adapter returns a valid
-  `ModerationDecisionApplication` matching decision and subject identity;
-- timeout or provider absence remains retryable;
-- validation/stale conflicts are not converted into success;
+- domain mutation and domain receipt/audit commit atomically;
+- moderation records applied evidence only after the adapter returns a matching
+  `ModerationDecisionApplication`;
+- timeout, missing provider, and owner outage remain retryable;
+- validation, unsupported effect, and stale revision never become success;
 - crash recovery cannot double-apply a decision.
 
-## Completed
+## Source completed
 
-- owner crate and module metadata;
-- typed subject and scope references;
-- owner-neutral command/read ports and the initial subject-owner decision application
-  port, currently located in the owner crate pending neutral API extraction;
-- module-owned schema for reports, cases, report links, immutable decisions, receipts,
-  and events;
-- workspace and composed migration registration with locked build and migration-plan
-  evidence;
-- repository-backed report, case, assignment, and decision services;
-- receipt-first replay and deterministic request hashes derived from `PortContext`;
-- active-case identity using `ON CONFLICT DO NOTHING` rather than recover-after-unique-
-  error transactions;
-- revision compare-and-set for mutable case transitions;
-- tenant-scoped read and queue projections;
-- SQLite contract coverage for replay, conflicts, deduplication, revisions, and isolation.
+- owner crate, module metadata, schema, migrations, report/case/decision services, receipts,
+  events, queue reads, revision CAS, and SQLite owner-contract coverage;
+- active-case identity using `ON CONFLICT DO NOTHING` rather than continuing a failed
+  PostgreSQL transaction;
+- `rustok-moderation-api` with neutral subject/scope/reason/decision contracts;
+- typed effect v1 with bounded canonical capability keys and kind/effect compatibility;
+- host adapter/factory registries with duplicate and factory-key mismatch errors;
+- temporary owner-crate re-exports for Rust source compatibility;
+- `moderation_decision_effects` tenant-scoped persistence and migration dependency;
+- new decision request/hash/event/record binding to the typed effect;
+- truthful legacy decision reads using `effect: None`;
+- source guard `scripts/verify/verify-moderation-api-boundary.mjs`.
 
 ## Next priorities
 
-1. Extract and version `rustok-moderation-api`, add the host subject-adapter registry,
-   and retain temporary re-exports from `rustok-moderation`.
-2. Extend decision application with typed/versioned effects, including expiry and bounded
-   capability restrictions.
-3. Add durable decision-application operations, receipt replay, crash/retry recovery, and
-   applied-evidence validation.
-4. Add PostgreSQL concurrent active-case and revision-CAS evidence.
-5. Add moderation-specific RBAC resources and tenant permission registration.
-6. Publish transactional outbox contracts for report, case, decision, application, and
+1. Add durable decision-application operations, receipt replay, leases, retry/backoff,
+   crash/lost-response recovery, and applied-evidence validation.
+2. Materialize the adapter registry in host runtime and expose bounded operator recovery.
+3. Add PostgreSQL concurrent active-case, decision-effect, and revision-CAS evidence.
+4. Add moderation-specific RBAC resources and tenant permission registration.
+5. Publish transactional outbox contracts for report, case, decision, application, and
    appeal lifecycle events.
-7. Integrate Groups first as the reference membership-scoped adapter, then forum, blog,
-   comments, pages, reviews, marketplace listings/sellers, media, messaging, and profiles
-   through owner adapters.
-8. Add versioned policies, premoderation, automated assessment providers, appeals, and
+6. Integrate Groups as the reference membership-scoped adapter, then Forum, Blog, Comments,
+   Pages, Reviews, Marketplace, Media, Messaging, and Profiles.
+7. Add versioned policies, premoderation, automated assessment providers, appeals, and
    capability-scoped account sanctions.
-9. Publish admin queue and case surfaces only after the owner runtime and adapter registry
-   are composed.
+8. Publish admin queue/case/application surfaces only after owner runtime composition.
 
 ## Invariants
 
 - no cross-domain foreign keys;
-- every decision references the exact subject revision that was reviewed;
-- the moderation owner never writes domain-owned tables;
+- every decision references the exact reviewed subject revision;
+- decision effect is immutable, typed, versioned, and part of decision hash identity;
+- moderation never writes domain-owned tables;
 - domain modules never import moderation entities or services;
 - receipts replay before provider or subject reads;
-- idempotency keys and actor identity are accepted only through `PortContext`;
-- active-case deduplication never relies on continuing a PostgreSQL transaction after a
-  unique violation;
+- idempotency keys and actor identity come only from `PortContext`;
 - immutable decisions are not rewritten after application;
-- domain owners validate whether a decision and typed effect are applicable to their
-  subject;
-- automated providers return assessments, never direct destructive actions;
-- application-provider absence or timeout never becomes an implicit allow or applied
-  result;
-- account-level sanctions are applied only by the account/capability owner, not by Groups
-  or another unrelated subject owner.
+- domain owners validate subject, scope, revision, hash, and effect applicability;
+- automated providers return assessments, never destructive actions;
+- provider absence or timeout never becomes allow/applied;
+- account sanctions are applied only by their capability owner.
 
 ## Degraded modes
 
-- moderation owner unavailable: existing domain enforcement remains authoritative;
-  report/case/decision workflows are unavailable, but domain reads do not infer new
-  sanctions;
-- subject adapter unavailable: decision application remains pending/retryable;
-- domain owner unavailable: moderation keeps durable intent and does not mark applied;
-- moderation module disabled: domain-local authorized enforcement may continue when the
-  domain product policy allows it, while reporting/case/appeal features are unavailable;
-- stale subject revision: fail with conflict and require re-review or an explicit new
-  decision;
-- unknown effect version or unsupported effect: reject without mutating the domain.
+- moderation unavailable: existing domain enforcement remains authoritative; no new
+  sanction is inferred;
+- adapter missing/unavailable: application remains pending/retryable;
+- domain owner unavailable: moderation retains durable intent and does not mark applied;
+- moderation disabled: authorized domain-local enforcement may continue when product policy
+  permits it, while report/case/appeal features are unavailable;
+- stale revision: conflict and explicit re-review/new decision;
+- unknown effect version, legacy `effect: None`, or unsupported effect: reject without
+  domain mutation.
 
 ## Verification required before promotion
 
-- neutral API dependency guard proving domain modules do not depend on the moderation
-  owner crate;
-- duplicate/missing subject-adapter registry behavior;
-- typed-effect serialization, bounds, version, and decision-hash evidence;
-- PostgreSQL duplicate-report and active-case contention tests;
-- concurrent case revision CAS tests;
-- decision application crash/retry and lost-response recovery;
+- `cargo check -p rustok-moderation-api` and `cargo check -p rustok-moderation`;
+- `cargo test -p rustok-moderation-api` and `cargo test -p rustok-moderation`;
+- `node scripts/verify/verify-moderation-api-boundary.mjs`;
+- clean/upgraded PostgreSQL and SQLite decision-effect migration evidence;
+- duplicate/missing/mismatched adapter registry behavior;
+- typed-effect serialization, bounds, version, compatibility, request-hash, and decision-hash
+  evidence;
+- historical decision `effect: None` read and non-dispatch evidence;
+- PostgreSQL duplicate-report, active-case, and case-revision contention tests;
+- decision application crash/retry/lost-response recovery;
 - replay and changed-hash conflict across moderation and domain receipts;
-- stale subject revision and unsupported-effect behavior;
-- cross-tenant and local-scope authorization evidence;
-- Groups group/membership subject identity and exact-revision adapter tests;
-- owner adapter contract tests for each integrated module;
-- composed runtime, RBAC, outbox, transport, disabled-module, and no-fallback evidence.
+- stale revision, unsupported effect, tenant/scope isolation, and owner adapter tests;
+- composed runtime, RBAC, outbox, transport, disabled-module, accessibility, and no-fallback
+  evidence.
