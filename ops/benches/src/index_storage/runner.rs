@@ -1,6 +1,6 @@
 use std::{fs, path::Path, time::Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TryGetable};
 use serde::Serialize;
@@ -17,6 +17,8 @@ pub struct BenchmarkReport {
     pub database: DatabaseMetadata,
     pub dataset: DatasetConfig,
     pub source_load_ms: u128,
+    pub source_entity_rows: i64,
+    pub source_link_rows: i64,
     pub prototypes: Vec<PrototypeReport>,
 }
 
@@ -37,6 +39,8 @@ pub struct PrototypeReport {
     pub schema: &'static str,
     pub load_ms: u128,
     pub schema_bytes: i64,
+    pub entity_rows: i64,
+    pub link_rows: i64,
     pub workloads: Vec<WorkloadReport>,
 }
 
@@ -58,8 +62,14 @@ pub struct ExplainEvidence {
     pub plan: Value,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Cardinality {
+    entity_rows: i64,
+    link_rows: i64,
+}
+
 pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
-    let db = Database::connect(&config.database_url)
+    let db = Database::connect(config.database_url.as_str())
         .await
         .context("failed to connect to PostgreSQL")?;
     configure_session(&db).await?;
@@ -70,6 +80,8 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
         .await
         .context("failed to create deterministic benchmark source dataset")?;
     let source_load_ms = source_started.elapsed().as_millis();
+    let source = source_cardinality(&db).await?;
+    validate_cardinality("source dataset", source, &config.dataset)?;
 
     let mut prototypes = Vec::with_capacity(Prototype::ALL.len());
     for prototype in Prototype::ALL {
@@ -81,12 +93,17 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
         database,
         dataset: config.dataset.clone(),
         source_load_ms,
+        source_entity_rows: source.entity_rows,
+        source_link_rows: source.link_rows,
         prototypes,
     })
 }
 
 pub fn write_report(path: &Path, report: &BenchmarkReport) -> Result<()> {
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create benchmark output directory {parent:?}"))?;
     }
@@ -107,6 +124,8 @@ async fn run_prototype(
         .with_context(|| format!("failed to prepare {:?} prototype", prototype))?;
     let load_ms = load_started.elapsed().as_millis();
     let schema_bytes = schema_size_bytes(db, prototype.schema()).await?;
+    let cardinality = prototype_cardinality(db, prototype).await?;
+    validate_cardinality(prototype.schema(), cardinality, &config.dataset)?;
 
     let mut workload_reports = Vec::new();
     for workload in workloads(prototype, &config.dataset) {
@@ -118,6 +137,8 @@ async fn run_prototype(
         schema: prototype.schema(),
         load_ms,
         schema_bytes,
+        entity_rows: cardinality.entity_rows,
+        link_rows: cardinality.link_rows,
         workloads: workload_reports,
     })
 }
@@ -198,13 +219,66 @@ async fn schema_size_bytes(db: &DatabaseConnection, schema: &str) -> Result<i64>
     let statement = Statement::from_sql_and_values(
         DbBackend::Postgres,
         "SELECT COALESCE(sum(pg_total_relation_size(class.oid)), 0)::bigint AS bytes FROM pg_class AS class JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace WHERE namespace.nspname = $1 AND class.relkind IN ('r', 'm')",
-        [schema.into()],
+        vec![schema.into()],
     );
     let row = db
         .query_one(statement)
         .await?
         .context("schema size query returned no row")?;
     row.try_get("", "bytes").map_err(Into::into)
+}
+
+async fn source_cardinality(db: &DatabaseConnection) -> Result<Cardinality> {
+    cardinality_query(
+        db,
+        "SELECT ((SELECT count(*) FROM idx_bench_source.product) + (SELECT count(*) FROM idx_bench_source.variant) + (SELECT count(*) FROM idx_bench_source.channel))::bigint AS entity_rows, ((SELECT count(*) FROM idx_bench_source.variant) + (SELECT count(*) FROM idx_bench_source.variant_channel))::bigint AS link_rows",
+    )
+    .await
+}
+
+async fn prototype_cardinality(
+    db: &DatabaseConnection,
+    prototype: Prototype,
+) -> Result<Cardinality> {
+    let sql = match prototype {
+        Prototype::Jsonb => "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows".to_owned(),
+        Prototype::TypedEav => "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows".to_owned(),
+        Prototype::HotProjection => "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows".to_owned(),
+    };
+    cardinality_query(db, &sql).await
+}
+
+async fn cardinality_query(db: &DatabaseConnection, sql: &str) -> Result<Cardinality> {
+    let row = db
+        .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
+        .await?
+        .context("cardinality query returned no row")?;
+    Ok(Cardinality {
+        entity_rows: row.try_get("", "entity_rows")?,
+        link_rows: row.try_get("", "link_rows")?,
+    })
+}
+
+fn validate_cardinality(
+    label: &str,
+    actual: Cardinality,
+    dataset: &DatasetConfig,
+) -> Result<()> {
+    let expected_entities = i64::try_from(dataset.total_entity_rows())
+        .context("expected entity cardinality exceeds i64")?;
+    let expected_links =
+        i64::try_from(dataset.total_link_rows()).context("expected link cardinality exceeds i64")?;
+    ensure!(
+        actual.entity_rows == expected_entities,
+        "{label} entity cardinality drift: expected {expected_entities}, got {}",
+        actual.entity_rows
+    );
+    ensure!(
+        actual.link_rows == expected_links,
+        "{label} link cardinality drift: expected {expected_links}, got {}",
+        actual.link_rows
+    );
+    Ok(())
 }
 
 fn executable_prototype_sql(prototype: Prototype) -> String {
@@ -239,6 +313,7 @@ fn executable_prototype_sql(prototype: Prototype) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index_storage::DatasetScale;
 
     #[test]
     fn executable_sql_analyzes_real_relations() {
@@ -247,5 +322,16 @@ mod tests {
             assert!(!sql.contains(&format!("ANALYZE {};", prototype.schema())));
             assert!(sql.contains(&format!("ANALYZE {}.link;", prototype.schema())));
         }
+    }
+
+    #[test]
+    fn cardinality_contract_matches_generated_link_shape() {
+        let dataset = DatasetConfig::for_scale(
+            DatasetScale::Smoke,
+            vec!["en-US".to_owned(), "ru-RU".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(dataset.total_entity_rows(), 1_016);
+        assert_eq!(dataset.total_link_rows(), 2_400);
     }
 }
