@@ -32,12 +32,12 @@ provider descriptors, and writes cursor pages of idempotent pending candidates.
 privacy policy, and recipient-specific source authorization before one final
 in-app notification can be created. It creates no delivery attempt.
 
-The server now composes a tenant-scoped Profiles privacy owner port and explicit
-block/mute relation port contracts into `NotificationRecipientPolicyRuntime`.
-Missing relation providers remain retryable and keep candidate-worker readiness
-false. Concrete social-graph block/mute providers, the production outbox runner,
-grouping, channel delivery, retention/reconciliation, inbox APIs, and PostgreSQL
-runtime evidence remain open.
+The server composes tenant-scoped Profiles privacy with concrete Social Graph
+block/mute owner adapters inside `NotificationRecipientPolicyRuntime`. Relation
+ports are ready in the baseline distribution, while candidate worker enablement
+remains a separate explicit false gate. The production outbox runner, grouping,
+channel delivery, retention/reconciliation, inbox APIs, and PostgreSQL runtime
+evidence remain open.
 
 ## Milestones
 
@@ -140,6 +140,25 @@ runtime evidence remain open.
   `contracts/notifications-recipient-policy-runtime.json` and
   `scripts/verify/verify-notifications-recipient-policy-runtime.mjs`.
 
+### Delivered in `SOCIAL-01A / NOTIFY-07C`
+
+- `rustok-social-graph` owns PostgreSQL/SQLite block and mute persistence with
+  tenant-composite source/target user integrity;
+- one stable relation identity stores current active state and monotonic revision;
+- owner command ports require deadline, idempotency, source actor, and optional
+  expected revision semantics;
+- block privacy is strict when either direction is active, while mute remains
+  directional from recipient to actor;
+- server adapters implement Notifications block/mute ports through
+  `SocialGraphPrivacyReadPort` without reading owner tables;
+- the baseline distribution registers `SocialGraphModule` and relation policy
+  readiness is true;
+- candidate worker enablement remains explicitly false and is not inferred from
+  provider readiness;
+- machine contract and verifier are
+  `crates/rustok-social-graph/contracts/social-graph-notification-policy.json`
+  and `scripts/verify/verify-social-graph-notification-policy.mjs`.
+
 ### Remaining `NOTIFY-01` scope
 
 - promote module-local migrations into verified global server migration
@@ -151,8 +170,7 @@ runtime evidence remain open.
 ### Remaining `NOTIFY-03` scope
 
 - wire production outbox relay consumption into durable source enqueue;
-- register concrete social-graph block and mute providers, then compose and start
-  the production candidate worker only when policy readiness is true;
+- explicitly enable, compose, and start the production candidate worker;
 - add grouping policy and bounded moderator-audience expansion;
 - enqueue channel work only after policy acceptance and outside owner provider
   calls;
@@ -160,8 +178,8 @@ runtime evidence remain open.
 
 ### Remaining `NOTIFY-07` scope
 
-- implement and register concrete social-graph block/mute owner providers;
 - add tenant-specific notification restrictions beyond tenant identity guards;
+- add block/mute management transports and social relation change events;
 - recheck privacy and source authorization on inbox open and delayed delivery;
 - redact/archive notifications after source/profile state changes and reconcile
   unread counts;
@@ -179,9 +197,11 @@ store shadow inbox state in the host.
 cargo fmt --all -- --check
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications-api --all-targets --all-features
 RUSTFLAGS="-Dwarnings" cargo check -p rustok-notifications --all-targets
+RUSTFLAGS="-Dwarnings" cargo check -p rustok-social-graph --all-targets
 cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
+cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
@@ -194,11 +214,12 @@ node scripts/verify/verify-notifications-persistence.test.mjs
 node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
 node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
+node scripts/verify/verify-social-graph-notification-policy.mjs
 cargo xtask module validate notifications
 ```
 
 The commands above are the maintainer verification set. They were not executed
-while publishing the `NOTIFY-07B` source slice.
+while publishing the `SOCIAL-01A / NOTIFY-07C` source slice.
 
 ## Update Rules
 
