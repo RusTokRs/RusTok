@@ -34,6 +34,7 @@ The module-local migration source creates PostgreSQL/SQLite storage for:
 - delivery attempts and retry/lease/provider receipt state;
 - fan-out jobs/items and candidate processing leases;
 - a durable source-event inbox;
+- durable outbox-intake receipts;
 - source/type-scoped preferences;
 - digest jobs/items;
 - encrypted push subscriptions.
@@ -45,10 +46,39 @@ Candidate processing has typed processing/retryable/terminal states, recoverable
 leases, retry timing, and lease-expiry completion guards. JSON payloads, cursors,
 worker IDs, errors, scopes, and encrypted endpoint material are bounded.
 
+An intake receipt binds the committed outbox envelope ID to one accepted semantic
+source identity and source-inbox row. Source inbox and receipt are persisted in
+one transaction. The intake consumer does not mutate or depend on the general
+outbox relay status.
+
 The persistence schema stores no source-private payload, rendered HTML, email
 address, phone number, or plaintext push endpoint. The migrations are exposed
 through `NotificationsModule::migrations`; global server migrator registration
 remains open until maintainer verification.
+
+## Durable outbox intake
+
+`NotificationOutboxIntakeWorker` selects committed supported `sys_events` rows
+that have no Notifications receipt. The canonical batch is 32 and the hard
+maximum is 64. Selection is stable by `created_at`, then `id`, and is independent
+from whether the general relay row is pending, dispatched, or failed.
+
+The current mapping is deliberately explicit:
+
+- root `forum.topic.created` becomes source `forum`, source event `topic_id`,
+  revision `1`;
+- sealed `forum.mention.user_added` becomes source `forum`, source event equal to
+  the envelope ID, revision equal to `source_revision_id`.
+
+The owner validates the envelope against registered schemas and the persisted
+outbox metadata. It reads no Forum-owned table and calls no Forum service. Forum's
+own source provider accepts the new semantic identities while retaining its
+legacy journal UUID/sequence references.
+
+The executable intake loop is default-off behind
+`RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`. Invalid or unreadable values remain
+disabled. It runs only on a background-worker host and uses the shared shutdown
+signal before selection and between envelopes.
 
 ## Durable source fan-out
 
@@ -56,6 +86,9 @@ remains open until maintainer verification.
 description, and one bounded audience page capped at 256 recipients. Its output
 is idempotent pending candidates. Provider absence after acceptance is retryable;
 changed source/descriptor replay and stalled cursors fail closed.
+
+A production worker that leases source-inbox rows and drives descriptor/audience
+pages remains open. Outbox intake only creates the durable pending source row.
 
 ## Candidate policy and inbox creation
 
@@ -107,10 +140,10 @@ deferred until a bounded moderator-directory owner port exists.
 
 Producer transactions remain independent from notification availability.
 
-Pending capabilities include the production outbox consumer runner, channel
-delivery commands, moderator audience expansion, grouping, inbox APIs,
-PostgreSQL lease evidence, worker health/lag metrics, retention/reconciliation,
-and complete module-owned UI products.
+Pending capabilities include source-inbox materialization/fan-out runtime,
+tenant capability enforcement, channel delivery commands, moderator expansion,
+grouping, inbox APIs, PostgreSQL concurrency evidence, worker health/lag metrics,
+retention/reconciliation, and complete module-owned UI products.
 
 ## Verification
 
@@ -122,6 +155,7 @@ cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
+cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
   cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
@@ -136,10 +170,11 @@ node scripts/verify/verify-notifications-candidate-policy.mjs
 node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
 node scripts/verify/verify-social-graph-notification-policy.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
+node scripts/verify/verify-notifications-outbox-intake.mjs
 cargo xtask module validate notifications
 ```
 
-The commands above were not run while publishing `NOTIFY-03C`.
+The commands above were not run while publishing `NOTIFY-03D`.
 
 ## Related Documents
 
@@ -147,5 +182,6 @@ The commands above were not run while publishing `NOTIFY-03C`.
 - [Module-local implementation gates](implementation-plan.md)
 - [NOTIFY-03B/07A implementation record](notify-03b-candidate-policy.md)
 - [Candidate worker machine contract](../contracts/notifications-candidate-worker.json)
+- [Outbox intake machine contract](../contracts/notifications-outbox-intake.json)
 - Canonical cross-module status:
   `crates/rustok-forum/docs/implementation-plan.md`
