@@ -1,12 +1,13 @@
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use icu_locale_core::LanguageIdentifier;
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use uuid::Uuid;
 
 use super::DomainError;
 
 fn validate_identifier(kind: &'static str, value: &str) -> Result<(), DomainError> {
-    if value.is_empty() {
+    if value.trim().is_empty() {
         return Err(DomainError::EmptyIdentifier { kind });
     }
 
@@ -25,9 +26,7 @@ fn validate_identifier(kind: &'static str, value: &str) -> Result<(), DomainErro
 
 macro_rules! string_identifier {
     ($name:ident, $kind:literal) => {
-        #[derive(
-            Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-        )]
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
         #[serde(transparent)]
         pub struct $name(String);
 
@@ -68,6 +67,16 @@ macro_rules! string_identifier {
                 Self::new(value)
             }
         }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                let value = String::deserialize(deserializer)?;
+                Self::new(value).map_err(D::Error::custom)
+            }
+        }
     };
 }
 
@@ -75,11 +84,73 @@ string_identifier!(ModuleName, "module");
 string_identifier!(EntityName, "entity");
 string_identifier!(FieldName, "field");
 string_identifier!(LinkName, "link");
-string_identifier!(LocaleKey, "locale");
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+/// Canonical language identifier used in entity keys and query scope.
+///
+/// Parsing and serialization normalize casing and separator rules, so values
+/// such as `EN-us` and `en-US` produce the same key.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct LocaleKey(String);
+
+impl LocaleKey {
+    pub fn new(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        let value = value.as_ref().trim();
+        if value.is_empty() {
+            return Err(DomainError::EmptyIdentifier { kind: "locale" });
+        }
+
+        let locale = value
+            .parse::<LanguageIdentifier>()
+            .map_err(|_| DomainError::InvalidLocale {
+                value: value.to_owned(),
+            })?;
+
+        Ok(Self(locale.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Display for LocaleKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl TryFrom<String> for LocaleKey {
+    type Error = DomainError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl TryFrom<&str> for LocaleKey {
+    type Error = DomainError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for LocaleKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(D::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SchemaVersion(u32);
 
@@ -134,6 +205,7 @@ mod tests {
     #[test]
     fn rejects_blank_and_whitespace_identifiers() {
         assert!(ModuleName::new("").is_err());
+        assert!(ModuleName::new("   ").is_err());
         assert!(FieldName::new("display name").is_err());
     }
 
@@ -147,5 +219,20 @@ mod tests {
             FieldName::new("updated_at").unwrap().as_str(),
             "updated_at"
         );
+    }
+
+    #[test]
+    fn canonicalizes_locale_keys() {
+        assert_eq!(LocaleKey::new("EN-us").unwrap().as_str(), "en-US");
+        assert_eq!(
+            LocaleKey::new("zh-hant-tw").unwrap().as_str(),
+            "zh-Hant-TW"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_locale_keys() {
+        assert!(LocaleKey::new("en_US").is_err());
+        assert!(LocaleKey::new("not a locale").is_err());
     }
 }
