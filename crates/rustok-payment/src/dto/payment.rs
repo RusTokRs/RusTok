@@ -27,12 +27,26 @@ impl PaymentCollectionStatusKind {
         }
     }
 
+    pub const fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Pending => Some("pending"),
+            Self::Authorized => Some("authorized"),
+            Self::Captured => Some("captured"),
+            Self::Cancelled => Some("cancelled"),
+            Self::Unknown => None,
+        }
+    }
+
     pub const fn can_authorize(self) -> bool {
         matches!(self, Self::Pending)
     }
 
     pub const fn can_capture(self) -> bool {
         matches!(self, Self::Authorized)
+    }
+
+    pub const fn can_cancel(self) -> bool {
+        matches!(self, Self::Pending | Self::Authorized)
     }
 
     pub const fn is_authorized_or_captured(self) -> bool {
@@ -69,6 +83,16 @@ impl PaymentStatusKind {
         }
     }
 
+    pub const fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Pending => Some("pending"),
+            Self::Authorized => Some("authorized"),
+            Self::Captured => Some("captured"),
+            Self::Cancelled => Some("cancelled"),
+            Self::Unknown => None,
+        }
+    }
+
     pub const fn is_terminal(self) -> bool {
         matches!(self, Self::Captured | Self::Cancelled)
     }
@@ -91,6 +115,23 @@ impl RefundStatusKind {
             "cancelled" => Self::Cancelled,
             _ => Self::Unknown,
         }
+    }
+
+    pub const fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Pending => Some("pending"),
+            Self::Refunded => Some("refunded"),
+            Self::Cancelled => Some("cancelled"),
+            Self::Unknown => None,
+        }
+    }
+
+    pub const fn can_complete(self) -> bool {
+        matches!(self, Self::Pending)
+    }
+
+    pub const fn can_cancel(self) -> bool {
+        matches!(self, Self::Pending)
     }
 
     pub const fn is_terminal(self) -> bool {
@@ -302,7 +343,13 @@ mod tests {
             PaymentCollectionStatusKind::Authorized
         );
         assert!(PaymentCollectionStatusKind::Authorized.can_capture());
+        assert!(PaymentCollectionStatusKind::Pending.can_cancel());
         assert!(PaymentCollectionStatusKind::Captured.is_terminal());
+        assert_eq!(
+            PaymentCollectionStatusKind::Captured.as_str(),
+            Some("captured")
+        );
+        assert_eq!(PaymentCollectionStatusKind::Unknown.as_str(), None);
         assert_eq!(
             PaymentCollectionStatusKind::from_raw("legacy_external_state"),
             PaymentCollectionStatusKind::Unknown
@@ -319,6 +366,8 @@ mod tests {
             RefundStatusKind::from_raw("refunded"),
             RefundStatusKind::Refunded
         );
+        assert!(RefundStatusKind::Pending.can_complete());
+        assert_eq!(RefundStatusKind::Refunded.as_str(), Some("refunded"));
         assert_eq!(
             RefundStatusKind::from_raw("provider_custom"),
             RefundStatusKind::Unknown
