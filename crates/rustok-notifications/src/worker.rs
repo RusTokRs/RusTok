@@ -8,7 +8,9 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::candidate::{NotificationCandidateService, NotificationRecipientPolicy};
+use crate::candidate::{
+    NotificationCandidateProcessResult, NotificationCandidateService, NotificationRecipientPolicy,
+};
 use crate::error::{NotificationError, NotificationResult};
 use crate::model::FanoutItemStatus;
 
@@ -103,11 +105,33 @@ impl NotificationCandidateWorker {
         self.batch_size
     }
 
-    /// Selects at most one bounded page of currently claimable candidates.
-    ///
-    /// Selection does not acquire a lease. Each item is claimed by
-    /// `NotificationCandidateService::process_candidate`, so concurrent workers
-    /// remain protected by the canonical lease CAS.
+    /// Selects at most one bounded page of currently claimable candidate IDs.
+    /// Selection itself never acquires a lease.
+    pub async fn claimable_candidate_ids(&self) -> NotificationResult<Vec<Uuid>> {
+        let timestamp = now();
+        let rows = candidate_item::Entity::find()
+            .filter(claimable_condition(timestamp))
+            .order_by_asc(candidate_item::Column::CreatedAt)
+            .order_by_asc(candidate_item::Column::Id)
+            .limit(self.batch_size as u64)
+            .all(&self.db)
+            .await?;
+        Ok(rows.into_iter().map(|row| row.id).collect())
+    }
+
+    /// Claims and processes one candidate through the canonical service lease CAS.
+    pub async fn process_candidate(
+        &self,
+        item_id: Uuid,
+    ) -> NotificationResult<NotificationCandidateProcessResult> {
+        self.service
+            .process_candidate(item_id, self.worker_id.as_str())
+            .await
+    }
+
+    /// Convenience bounded batch path for non-lifecycle callers.
+    /// Deployment-owned loops should use `claimable_candidate_ids` and check their
+    /// stop signal between calls to `process_candidate`.
     pub async fn process_next_batch(&self) -> NotificationResult<NotificationCandidateBatchResult> {
         let item_ids = self.claimable_candidate_ids().await?;
         let mut result = NotificationCandidateBatchResult {
@@ -116,11 +140,7 @@ impl NotificationCandidateWorker {
         };
 
         for item_id in item_ids {
-            match self
-                .service
-                .process_candidate(item_id, self.worker_id.as_str())
-                .await
-            {
+            match self.process_candidate(item_id).await {
                 Ok(processed) => {
                     result.completed += 1;
                     if processed.replayed {
@@ -139,18 +159,6 @@ impl NotificationCandidateWorker {
         }
 
         Ok(result)
-    }
-
-    async fn claimable_candidate_ids(&self) -> NotificationResult<Vec<Uuid>> {
-        let timestamp = now();
-        let rows = candidate_item::Entity::find()
-            .filter(claimable_condition(timestamp))
-            .order_by_asc(candidate_item::Column::CreatedAt)
-            .order_by_asc(candidate_item::Column::Id)
-            .limit(self.batch_size as u64)
-            .all(&self.db)
-            .await?;
-        Ok(rows.into_iter().map(|row| row.id).collect())
     }
 }
 
