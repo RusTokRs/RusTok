@@ -1,14 +1,11 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{AuthContext, RequestContext, graphql::require_module_enabled};
-use rustok_cart::{
-    CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
-    bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_storefront_port,
-};
+use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
 use rustok_payment::PaymentService;
 use uuid::Uuid;
 
-use crate::{CheckoutService, ShippingProfileService};
+use crate::ShippingProfileService;
 use rustok_fulfillment::FulfillmentService;
 
 use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
@@ -123,32 +120,6 @@ impl CommerceCheckoutMutation {
         let request_context = ctx.data::<RequestContext>()?;
         let event_bus = ctx.data::<rustok_outbox::TransactionalEventBus>()?;
         let tenant_id = current_tenant_scope(ctx, tenant_id, "Storefront checkout")?;
-        let cart_storefront_port = in_process_cart_storefront_port(db.clone());
-        let cart = cart_storefront_port
-            .read_storefront_cart(
-                storefront_cart_port_context(
-                    tenant_id,
-                    request_context,
-                    ctx.data_opt::<AuthContext>(),
-                    input.cart_id,
-                    "read",
-                    false,
-                ),
-                CartStorefrontReadRequest {
-                    cart_id: input.cart_id,
-                },
-            )
-            .await
-            .map_err(cart_port_error)?;
-        let customer_id =
-            resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
-                .await?;
-        ensure_storefront_cart_access(&cart, customer_id)?;
-        let actor_id = ctx
-            .data_opt::<AuthContext>()
-            .map(|auth| auth.user_id)
-            .unwrap_or_else(Uuid::nil);
-
         let checkout_input = crate::dto::CompleteCheckoutInput {
             cart_id: input.cart_id,
             shipping_option_id: input.shipping_option_id,
@@ -169,46 +140,21 @@ impl CommerceCheckoutMutation {
             create_fulfillment: input.create_fulfillment.unwrap_or(true),
             metadata: parse_optional_metadata(input.metadata.as_deref())?,
         };
-        let pricing_resolver = std::sync::Arc::new(crate::StorefrontCheckoutPricingResolver::new(
+        let runtime = crate::storefront_checkout_runtime::StorefrontCheckoutRuntime::new(
             db.clone(),
             event_bus.clone(),
-            request_context.channel_id,
-            request_context.channel_slug.clone(),
-        ));
-        let atomic_cart = bind_in_process_atomic_cart_checkout_with_pricing(
-            db.clone(),
-            PrepareCartCheckoutSnapshotRequest {
-                cart_id: checkout_input.cart_id,
-                input: rustok_cart::UpdateCartContextInput {
-                    email: None,
-                    region_id: checkout_input.region_id,
-                    country_code: checkout_input.country_code.clone(),
-                    locale_code: checkout_input.locale.clone(),
-                    selected_shipping_option_id: checkout_input.shipping_option_id,
-                    shipping_selections: checkout_input.shipping_selections.clone(),
-                },
-            },
-            pricing_resolver,
         );
-        let checkout = CheckoutService::new(
-            db.clone(),
-            event_bus.clone(),
-            std::sync::Arc::new(rustok_region::RegionService::new(db.clone())),
-            atomic_cart.port,
-            std::sync::Arc::new(rustok_inventory::InventoryService::new(
-                db.clone(),
-                event_bus.clone(),
-            )),
-            std::sync::Arc::new(rustok_product::CatalogService::new(
-                db.clone(),
-                event_bus.clone(),
-            )),
-        );
-        let response = crate::JournaledCheckoutService::new(checkout, db.clone())
-            .with_atomic_cart_checkout_handle(atomic_cart.handle)
-            .complete_checkout(tenant_id, actor_id, idempotency_key, checkout_input)
-            .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+        let response = crate::services::storefront_staged_checkout_runtime::complete_storefront_checkout_input(
+            &runtime,
+            crate::graphql_runtime::payment_provider_registry_from_context(ctx),
+            tenant_id,
+            request_context,
+            ctx.data_opt::<AuthContext>().cloned(),
+            idempotency_key,
+            checkout_input,
+        )
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
 
         Ok(response.into())
     }
