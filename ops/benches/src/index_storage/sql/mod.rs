@@ -36,6 +36,13 @@ pub struct Workload {
     pub sql: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct MutationWorkload {
+    pub name: &'static str,
+    pub sql: String,
+    pub expected_affected_entities: i64,
+}
+
 pub fn source_dataset_sql(config: &DatasetConfig) -> String {
     source::dataset_sql(config)
 }
@@ -74,11 +81,25 @@ pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> 
     }
 }
 
+pub fn mutation_workloads(
+    prototype: Prototype,
+    config: &DatasetConfig,
+) -> Vec<MutationWorkload> {
+    let context = WorkloadContext::new(config);
+    match prototype {
+        Prototype::Jsonb => jsonb::mutation_workloads(&context),
+        Prototype::TypedEav => eav::mutation_workloads(&context),
+        Prototype::HotProjection => hot::mutation_workloads(&context),
+    }
+}
+
 pub(super) struct WorkloadContext {
     pub tenant: &'static str,
     pub locale: String,
     pub anchor_price: i64,
     pub anchor_id: String,
+    pub mutation_batch: u32,
+    pub variants_per_product: u32,
 }
 
 impl WorkloadContext {
@@ -89,7 +110,13 @@ impl WorkloadContext {
             locale: sql_literal(&config.locales[0]),
             anchor_price: 500 + ((i64::from(anchor_no) * 7919 + 101) % 200000),
             anchor_id: format!("md5('product:1:{anchor_no}')::uuid"),
+            mutation_batch: config.products_per_tenant.min(1_000).max(1),
+            variants_per_product: config.variants_per_product,
         }
+    }
+
+    pub fn expected_deleted_links(&self) -> u64 {
+        u64::from(self.mutation_batch) * u64::from(self.variants_per_product)
     }
 }
 
@@ -102,13 +129,17 @@ mod tests {
     use super::*;
     use crate::index_storage::{DatasetConfig, DatasetScale};
 
-    #[test]
-    fn generated_sql_is_deterministic_and_separates_links() {
-        let config = DatasetConfig::for_scale(
+    fn smoke_config() -> DatasetConfig {
+        DatasetConfig::for_scale(
             DatasetScale::Smoke,
             vec!["en-US".to_owned(), "ru-RU".to_owned()],
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn generated_sql_is_deterministic_and_separates_links() {
+        let config = smoke_config();
         assert_eq!(source_dataset_sql(&config), source_dataset_sql(&config));
         for prototype in Prototype::ALL {
             let sql = full_prototype_sql(prototype);
@@ -120,13 +151,13 @@ mod tests {
     }
 
     #[test]
-    fn every_candidate_exposes_the_same_workload_names() {
-        let config = DatasetConfig::for_scale(
-            DatasetScale::Smoke,
-            vec!["en-US".to_owned(), "ru-RU".to_owned()],
-        )
-        .unwrap();
-        let expected = workloads(Prototype::Jsonb, &config)
+    fn every_candidate_exposes_the_same_read_and_mutation_names() {
+        let config = smoke_config();
+        let expected_reads = workloads(Prototype::Jsonb, &config)
+            .into_iter()
+            .map(|workload| workload.name)
+            .collect::<Vec<_>>();
+        let expected_mutations = mutation_workloads(Prototype::Jsonb, &config)
             .into_iter()
             .map(|workload| workload.name)
             .collect::<Vec<_>>();
@@ -136,7 +167,14 @@ mod tests {
                     .into_iter()
                     .map(|workload| workload.name)
                     .collect::<Vec<_>>(),
-                expected
+                expected_reads
+            );
+            assert_eq!(
+                mutation_workloads(prototype, &config)
+                    .into_iter()
+                    .map(|workload| workload.name)
+                    .collect::<Vec<_>>(),
+                expected_mutations
             );
         }
     }
