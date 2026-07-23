@@ -28,7 +28,7 @@ impl GroupMembershipEnforcementService {
         Self { db }
     }
 
-    pub async fn read_effective_state_owned(
+    async fn read_effective_state_owned(
         &self,
         tenant_id: Uuid,
         request: ReadGroupMembershipEnforcementRequest,
@@ -271,7 +271,7 @@ fn can_read_effective_membership(context: &PortContext, target_user_id: Uuid) ->
             matches!(
                 claim.as_str(),
                 "groups:access:read"
-                    | "groups:read"
+                    | "groups:moderate"
                     | "groups:manage"
                     | "groups:*"
                     | "*:*"
