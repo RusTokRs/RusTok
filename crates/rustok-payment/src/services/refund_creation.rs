@@ -9,7 +9,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::dto::{CreateRefundInput, RefundResponse};
+use crate::dto::{
+    CreateRefundInput, PaymentCollectionStatusKind, RefundResponse, RefundStatusKind,
+};
 use crate::entities::{payment_collection, refund_creation};
 use crate::error::{PaymentError, PaymentResult};
 
@@ -51,7 +53,9 @@ impl PaymentRefundCreationService {
             .one(&txn)
             .await?
             .ok_or(PaymentError::PaymentCollectionNotFound(collection_id))?;
-        if collection.status != "captured" {
+        if PaymentCollectionStatusKind::from_raw(collection.status.as_str())
+            != PaymentCollectionStatusKind::Captured
+        {
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: REFUND_STATUS_PENDING.to_string(),
@@ -142,6 +146,12 @@ fn replay_existing(
         return Err(PaymentError::Validation(format!(
             "refund creation key `{}` is already bound to another request",
             existing.creation_key.as_deref().unwrap_or("unknown")
+        )));
+    }
+    if RefundStatusKind::from_raw(existing.status.as_str()) == RefundStatusKind::Unknown {
+        return Err(PaymentError::Validation(format!(
+            "refund {} has an unsupported lifecycle status",
+            existing.id
         )));
     }
     Ok(to_response(existing))
