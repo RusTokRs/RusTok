@@ -18,6 +18,7 @@ const cartLib = read('crates/rustok-cart/src/lib.rs');
 const order = read('crates/rustok-order/src/status.rs');
 const orderLib = read('crates/rustok-order/src/lib.rs');
 const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs');
+const orderStage = read('crates/rustok-commerce/src/services/checkout_order_stages.rs');
 const payment = read('crates/rustok-payment/src/dto/payment.rs');
 const paymentStage = read('crates/rustok-commerce/src/services/checkout_payment_stages.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/status.rs');
@@ -45,6 +46,9 @@ for (const [source, value, label] of [
   [orderRecovery, 'OrderStatusKind::Pending', 'typed pending recovery'],
   [orderRecovery, 'OrderStatusKind::Cancelled', 'typed cancelled recovery'],
   [orderRecovery, 'OrderStatusKind::Unknown', 'typed unknown recovery'],
+  [orderStage, 'OrderStatusKind', 'mounted order status import'],
+  [orderStage, 'allowed_statuses: &[OrderStatusKind]', 'typed order projection policy'],
+  [orderStage, 'allowed_statuses.contains(&order.status_kind())', 'typed order projection check'],
   [payment, 'pub enum PaymentCollectionStatusKind', 'payment collection status enum'],
   [payment, 'pub enum PaymentStatusKind', 'payment status enum'],
   [payment, 'pub enum RefundStatusKind', 'refund status enum'],
@@ -94,6 +98,15 @@ for (const value of [
   forbidText(orderRecovery, value, 'order checkout recovery raw lifecycle status');
 }
 
+for (const value of [
+  'allowed_statuses: &[&str]',
+  'allowed_statuses.contains(&order.status.as_str())',
+  '&["confirmed"]',
+  '&["confirmed", "paid", "shipped", "delivered"]',
+]) {
+  forbidText(orderStage, value, 'mounted order projection raw lifecycle status');
+}
+
 forbidText(
   fulfillmentLib,
   'pub use checkout_execution::*;',
@@ -122,5 +135,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Ecommerce owners plus mounted payment and fulfillment paths use canonical typed lifecycle views',
+  '✔ Ecommerce owners plus mounted order, payment, and fulfillment paths use canonical typed lifecycle views',
 );
