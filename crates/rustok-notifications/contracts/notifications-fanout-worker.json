@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slice": "NOTIFY-03E",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
@@ -13,6 +13,7 @@
     "stable_order": ["created_at", "id"],
     "claimable_states": ["pending", "due_retryable_error", "expired_processing"],
     "selection_acquires_lease": false,
+    "tenant_scoped_work_item": true,
     "canonical_service_claims_each_record": true
   },
   "job_selection": {
@@ -23,6 +24,7 @@
     "stable_order": ["created_at", "id"],
     "claimable_states": ["pending", "due_retryable_error", "expired_leased"],
     "selection_acquires_lease": false,
+    "tenant_scoped_work_item": true,
     "canonical_service_claims_each_job": true,
     "one_audience_page_per_job_per_poll": true
   },
@@ -40,15 +42,20 @@
     "invalid_value_enabled": false,
     "requires_background_worker_host": true,
     "requires_materialized_nonempty_source_registry": true,
+    "requires_module_registry": true,
     "shared_stop_handle": true,
     "checks_between_source_records": true,
     "checks_between_fanout_jobs": true,
     "poll_interval_ms": 500
   },
   "tenant_capability_gate": {
-    "owner_neutral_port_available": false,
-    "direct_module_table_read_forbidden": true,
-    "required_before_default_enablement": true
+    "authority": "EffectiveModulePolicyService::is_enabled",
+    "module_slug": "notifications",
+    "checked_before_each_source_claim": true,
+    "checked_before_each_job_claim": true,
+    "policy_error_fails_closed": true,
+    "disabled_tenant_calls_provider": false,
+    "direct_module_table_read_forbidden": true
   },
   "tests": [
     "crates/rustok-notifications/tests/fanout_worker_sqlite.rs"
@@ -58,7 +65,7 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "tenant notification capability read port",
+    "durable backoff policy for disabled tenant work",
     "PostgreSQL lease contention and recovery evidence",
     "worker health, queue lag, and retry metrics",
     "default deployment enablement",
