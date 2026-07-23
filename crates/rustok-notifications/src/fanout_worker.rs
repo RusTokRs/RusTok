@@ -22,6 +22,18 @@ pub const MAX_NOTIFICATION_FANOUT_PAGE_SIZE: u16 = 256;
 const MAX_WORKER_ID_BYTES: usize = 191;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationFanoutSourceWorkItem {
+    pub inbox_id: Uuid,
+    pub tenant_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct NotificationFanoutJobWorkItem {
+    pub job_id: Uuid,
+    pub tenant_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationFanoutWorkerStage {
     SourceInbox,
@@ -109,9 +121,11 @@ impl NotificationFanoutWorker {
         self.page_size
     }
 
-    /// Selects one bounded stable page of source inbox records that the canonical
-    /// service can claim. Selection itself never acquires a lease.
-    pub async fn claimable_source_inbox_ids(&self) -> NotificationResult<Vec<Uuid>> {
+    /// Selects one bounded stable page of source inbox work. Selection itself
+    /// never acquires a lease; tenant identity is exposed for host policy gating.
+    pub async fn claimable_source_inbox_work(
+        &self,
+    ) -> NotificationResult<Vec<NotificationFanoutSourceWorkItem>> {
         let timestamp = now();
         let rows = source_inbox::Entity::find()
             .filter(claimable_source_condition(timestamp))
@@ -120,12 +134,20 @@ impl NotificationFanoutWorker {
             .limit(self.batch_size as u64)
             .all(&self.db)
             .await?;
-        Ok(rows.into_iter().map(|row| row.id).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| NotificationFanoutSourceWorkItem {
+                inbox_id: row.id,
+                tenant_id: row.tenant_id,
+            })
+            .collect())
     }
 
-    /// Selects one bounded stable page of fanout jobs that the canonical service
-    /// can claim. Selection itself never acquires a lease.
-    pub async fn claimable_fanout_job_ids(&self) -> NotificationResult<Vec<Uuid>> {
+    /// Selects one bounded stable page of fanout-job work. Selection itself never
+    /// acquires a lease; tenant identity is exposed for host policy gating.
+    pub async fn claimable_fanout_job_work(
+        &self,
+    ) -> NotificationResult<Vec<NotificationFanoutJobWorkItem>> {
         let timestamp = now();
         let rows = fanout_job::Entity::find()
             .filter(claimable_job_condition(timestamp))
@@ -134,7 +156,13 @@ impl NotificationFanoutWorker {
             .limit(self.batch_size as u64)
             .all(&self.db)
             .await?;
-        Ok(rows.into_iter().map(|row| row.id).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| NotificationFanoutJobWorkItem {
+                job_id: row.id,
+                tenant_id: row.tenant_id,
+            })
+            .collect())
     }
 
     pub async fn materialize_source_inbox(
@@ -155,18 +183,19 @@ impl NotificationFanoutWorker {
             .await
     }
 
-    /// Convenience bounded path for non-lifecycle callers. Executable hosts should
-    /// check shutdown between individual records instead.
+    /// Convenience bounded path for trusted callers that have already established
+    /// tenant capability. Executable hosts must gate each work item before calling
+    /// the canonical processing methods.
     pub async fn process_next_batch(
         &self,
     ) -> NotificationResult<NotificationFanoutWorkerBatchResult> {
-        let source_ids = self.claimable_source_inbox_ids().await?;
+        let source_work = self.claimable_source_inbox_work().await?;
         let mut result = NotificationFanoutWorkerBatchResult {
-            source_selected: source_ids.len(),
+            source_selected: source_work.len(),
             ..NotificationFanoutWorkerBatchResult::default()
         };
-        for inbox_id in source_ids {
-            match self.materialize_source_inbox(inbox_id).await {
+        for work in source_work {
+            match self.materialize_source_inbox(work.inbox_id).await {
                 Ok(receipt) => {
                     result.source_completed += 1;
                     if receipt.replayed {
@@ -176,17 +205,17 @@ impl NotificationFanoutWorker {
                 Err(NotificationError::LeaseUnavailable) => result.lease_conflicts += 1,
                 Err(error) => result.failures.push(NotificationFanoutWorkerFailure {
                     stage: NotificationFanoutWorkerStage::SourceInbox,
-                    record_id: inbox_id,
+                    record_id: work.inbox_id,
                     error_code: error.stable_code().to_string(),
                     retryable: error.is_retryable(),
                 }),
             }
         }
 
-        let job_ids = self.claimable_fanout_job_ids().await?;
-        result.jobs_selected = job_ids.len();
-        for job_id in job_ids {
-            match self.process_fanout_job(job_id).await {
+        let job_work = self.claimable_fanout_job_work().await?;
+        result.jobs_selected = job_work.len();
+        for work in job_work {
+            match self.process_fanout_job(work.job_id).await {
                 Ok(page) => {
                     result.pages_processed += 1;
                     if page.completed {
@@ -196,7 +225,7 @@ impl NotificationFanoutWorker {
                 Err(NotificationError::LeaseUnavailable) => result.lease_conflicts += 1,
                 Err(error) => result.failures.push(NotificationFanoutWorkerFailure {
                     stage: NotificationFanoutWorkerStage::FanoutJob,
-                    record_id: job_id,
+                    record_id: work.job_id,
                     error_code: error.stable_code().to_string(),
                     retryable: error.is_retryable(),
                 }),
