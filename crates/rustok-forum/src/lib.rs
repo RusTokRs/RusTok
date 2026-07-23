@@ -59,7 +59,7 @@ impl RusToKModule for ForumModule {
     }
 
     fn dependencies(&self) -> &[&'static str] {
-        &["content", "taxonomy", "page_builder"]
+        &["content", "taxonomy"]
     }
 
     fn permissions(&self) -> Vec<Permission> {
