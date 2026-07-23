@@ -212,6 +212,14 @@ impl GroupApplicationService {
         let group_model =
             find_group_for_update(&transaction, tenant_id, request.submission.group_id).await?;
         require_application_group(&group_model)?;
+        crate::effective_membership_guard::require_user_not_denied_owned(
+            &transaction,
+            tenant_id,
+            request.submission.group_id,
+            actor_user_id,
+            true,
+        )
+        .await?;
         let policy = load_policy_for_locale(
             &transaction,
             tenant_id,
@@ -226,14 +234,6 @@ impl GroupApplicationService {
             ));
         }
         validate_submission(&policy, &request.submission)?;
-        crate::effective_membership_guard::require_user_not_denied_owned(
-            &transaction,
-            tenant_id,
-            request.submission.group_id,
-            actor_user_id,
-            true,
-        )
-        .await?;
 
         let existing_membership = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
