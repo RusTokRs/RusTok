@@ -3,11 +3,12 @@
 Status: `source_ready_unvalidated`
 
 This source wave closes the public transport leak for technical owner-port errors
-without claiming that every owner mapper has correlation-aware internal logging.
+without claiming that every ecommerce owner mapper has correlation-aware internal
+logging.
 
 ## Enforced invariant
 
-`rustok-api::PortError` now treats these kinds as technical and fail-closed:
+`rustok-api::PortError` treats these kinds as technical and fail-closed:
 
 - `Unavailable` always exposes `the requested capability is temporarily unavailable`.
 - `InvariantViolation` always exposes `the requested operation could not be completed safely`.
@@ -21,9 +22,9 @@ The rule is applied in all three boundary locations:
 A caller cannot bypass transport sanitization by mutating `PortError.message` or by
 returning a remote payload containing raw SQL, SDK, provider, stack, or invariant text.
 Validation, not-found, conflict, forbidden, and explicit timeout messages remain
-available for actionable domain errors.
+available only for actionable domain errors.
 
-## Owner mapper hardening already present
+## Owner mapper hardening present
 
 - `rustok-channel`: database and serialization causes are logged internally and mapped
   to stable public messages.
@@ -31,15 +32,19 @@ available for actionable domain errors.
   message.
 - `rustok-cart` checkout snapshot: validator and serialization causes are logged
   internally; request/projection and encoding failures use stable public messages.
+- `rustok-pricing`: every read/write owner-port mapper receives the `PortContext` and
+  operation name. Database, rich, and core causes are logged with `correlation_id`,
+  tenant, operation, and stable code; public messages are stable. Pricing validation
+  cause text stays internal and the public boundary returns `pricing request is invalid`.
 
 ## Still open
 
-- Replace raw technical formatting in pricing and the remaining ecommerce owner mappers
-  even though the central transport invariant now prevents public disclosure.
+- Audit order, payment, fulfillment, inventory, customer, tax, promotion, and remaining
+  ecommerce adapters for technical text mislabeled as validation/conflict errors.
 - Add structured owner-side logging with `correlation_id`, owner operation, stable error
-  code, and the original cause before every technical `PortError` mapping.
-- Audit validation/conflict mappings so internal parser or serializer text is not
-  mislabeled as a domain error.
+  code, and the original cause before every remaining technical `PortError` mapping.
+- Remove raw technical text from non-`PortError` public REST, GraphQL, native, and
+  operator error envelopes.
 - Add compile and transport round-trip evidence before changing any FBA/FFA status.
 
 ## Verification
@@ -47,5 +52,8 @@ available for actionable domain errors.
 - `node scripts/verify/verify-port-error-public-safety.mjs`
 - `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - `cargo test -p rustok-api ports::tests`
+- `cargo check -p rustok-pricing --all-features`
+- Targeted pricing database, validation, rich/core invariant, correlation, and transport
+  round-trip tests.
 
-No command above was executed as part of this source wave.
+No verification command above was executed as part of this source wave.
