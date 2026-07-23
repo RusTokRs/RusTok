@@ -1,12 +1,13 @@
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError};
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::domain::{GroupMembershipEffectiveStatus, GroupRole};
 use crate::error::{GroupsError, GroupsResult};
 use crate::governance_entities::command_receipt;
 use crate::membership_enforcement::resolve_group_membership_enforcement;
+use crate::membership_enforcement_transaction::resolve_group_membership_enforcement_now_for_update;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum GroupManagerCapability {
@@ -39,10 +40,8 @@ pub(crate) fn has_platform_manage(context: &PortContext) -> bool {
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*") )
 }
 
-/// Receipt-first replay compatibility guard used by public facades.
-///
-/// Existing receipts are delegated before current effective-state evaluation so identical replay
-/// and changed-request conflict semantics remain owned by the command transaction.
+/// Receipt-first replay compatibility guard used by read-side facades that still need to detect
+/// an already committed write before performing an external precheck.
 pub(crate) async fn has_existing_receipt(
     db: &DatabaseConnection,
     context: &PortContext,
@@ -72,33 +71,109 @@ pub(crate) async fn has_existing_receipt(
 
 /// Canonical transaction-aware manager authorization.
 ///
-/// Call this with the same owner transaction that will mutate invitation/application state. The
-/// resolver reads the membership and enforcement projection through that transaction, eliminating
-/// the facade-precheck-to-mutation authorization race.
-pub(crate) async fn require_effective_manager_owned<C>(
-    connection: &C,
+/// The resolver acquires the Groups owner lock order `group -> membership -> enforcement` before
+/// evaluating authority, so a concurrent enforcement mutation cannot commit between this check
+/// and the command's first domain write.
+pub(crate) async fn require_effective_manager_owned(
+    transaction: &DatabaseTransaction,
     context: &PortContext,
     tenant_id: Uuid,
     group_id: Uuid,
     actor_user_id: Uuid,
     capability: GroupManagerCapability,
-) -> GroupsResult<()>
-where
-    C: ConnectionTrait,
-{
+) -> GroupsResult<()> {
     if has_platform_manage(context) {
         return Ok(());
     }
 
-    let effective = resolve_group_membership_enforcement(
-        connection,
+    let effective = resolve_group_membership_enforcement_now_for_update(
+        transaction,
         tenant_id,
         group_id,
         actor_user_id,
-        Utc::now(),
     )
     .await?;
+    require_manager_state(effective, capability)
+}
 
+/// Canonical transaction-aware candidate/subject authorization under the same owner lock order.
+pub(crate) async fn require_user_not_denied_owned(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_id: Uuid,
+    reject_active_member: bool,
+) -> GroupsResult<()> {
+    let effective = resolve_group_membership_enforcement_now_for_update(
+        transaction,
+        tenant_id,
+        group_id,
+        user_id,
+    )
+    .await?;
+    require_candidate_state(effective.effective_status, reject_active_member)
+}
+
+pub(crate) async fn require_effective_manager(
+    db: &DatabaseConnection,
+    context: &PortContext,
+    group_id: Uuid,
+    capability: GroupManagerCapability,
+) -> Result<(), PortError> {
+    if has_platform_manage(context) {
+        return Ok(());
+    }
+    let effective = resolve_group_membership_enforcement(
+        db,
+        tenant_id(context)?,
+        group_id,
+        actor_user_id(context)?,
+        Utc::now(),
+    )
+    .await
+    .map_err(PortError::from)?;
+    require_manager_state(effective, capability).map_err(Into::into)
+}
+
+pub(crate) async fn require_candidate_not_denied(
+    db: &DatabaseConnection,
+    context: &PortContext,
+    group_id: Uuid,
+    reject_active_member: bool,
+) -> Result<(), PortError> {
+    require_user_not_denied(
+        db,
+        tenant_id(context)?,
+        group_id,
+        actor_user_id(context)?,
+        reject_active_member,
+    )
+    .await
+}
+
+pub(crate) async fn require_user_not_denied(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    group_id: Uuid,
+    user_id: Uuid,
+    reject_active_member: bool,
+) -> Result<(), PortError> {
+    let effective = resolve_group_membership_enforcement(
+        db,
+        tenant_id,
+        group_id,
+        user_id,
+        Utc::now(),
+    )
+    .await
+    .map_err(PortError::from)?;
+    require_candidate_state(effective.effective_status, reject_active_member).map_err(Into::into)
+}
+
+fn require_manager_state(
+    effective: crate::dto::GroupMembershipEffectiveState,
+    capability: GroupManagerCapability,
+) -> GroupsResult<()> {
     if effective.effective_status == GroupMembershipEffectiveStatus::Suspended {
         return Err(GroupsError::Forbidden(
             "the actor's group membership is suspended".to_string(),
@@ -131,22 +206,11 @@ where
     }
 }
 
-/// Canonical transaction-aware candidate/subject authorization.
-pub(crate) async fn require_user_not_denied_owned<C>(
-    connection: &C,
-    tenant_id: Uuid,
-    group_id: Uuid,
-    user_id: Uuid,
+fn require_candidate_state(
+    effective_status: GroupMembershipEffectiveStatus,
     reject_active_member: bool,
-) -> GroupsResult<()>
-where
-    C: ConnectionTrait,
-{
-    let effective =
-        resolve_group_membership_enforcement(connection, tenant_id, group_id, user_id, Utc::now())
-            .await?;
-
-    match effective.effective_status {
+) -> GroupsResult<()> {
+    match effective_status {
         GroupMembershipEffectiveStatus::Suspended => Err(GroupsError::Forbidden(
             "group membership is suspended".to_string(),
         )),
@@ -158,56 +222,4 @@ where
         ),
         _ => Ok(()),
     }
-}
-
-pub(crate) async fn require_effective_manager(
-    db: &DatabaseConnection,
-    context: &PortContext,
-    group_id: Uuid,
-    capability: GroupManagerCapability,
-) -> Result<(), PortError> {
-    require_effective_manager_owned(
-        db,
-        context,
-        tenant_id(context)?,
-        group_id,
-        actor_user_id(context)?,
-        capability,
-    )
-    .await
-    .map_err(Into::into)
-}
-
-pub(crate) async fn require_candidate_not_denied(
-    db: &DatabaseConnection,
-    context: &PortContext,
-    group_id: Uuid,
-    reject_active_member: bool,
-) -> Result<(), PortError> {
-    require_user_not_denied(
-        db,
-        tenant_id(context)?,
-        group_id,
-        actor_user_id(context)?,
-        reject_active_member,
-    )
-    .await
-}
-
-pub(crate) async fn require_user_not_denied(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    group_id: Uuid,
-    user_id: Uuid,
-    reject_active_member: bool,
-) -> Result<(), PortError> {
-    require_user_not_denied_owned(
-        db,
-        tenant_id,
-        group_id,
-        user_id,
-        reject_active_member,
-    )
-    .await
-    .map_err(Into::into)
 }
