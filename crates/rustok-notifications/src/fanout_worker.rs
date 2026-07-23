@@ -216,14 +216,14 @@ impl NotificationFanoutWorker {
                 status: Set(NotificationSourceInboxStatus::RetryableError),
                 attempt_count: Set(current.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(Some(
-                    timestamp + Duration::seconds(reason.retry_seconds()),
+                    timestamp.clone() + Duration::seconds(reason.retry_seconds()),
                 )),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(reason.error_code().to_string())),
                 last_error_message: Set(Some(reason.error_message().to_string())),
                 completed_at: Set(None),
-                updated_at: Set(timestamp),
+                updated_at: Set(timestamp.clone()),
                 ..Default::default()
             })
             .filter(source_inbox::Column::Id.eq(work.inbox_id))
@@ -256,14 +256,14 @@ impl NotificationFanoutWorker {
                 status: Set(NotificationJobStatus::RetryableError),
                 attempt_count: Set(current.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(Some(
-                    timestamp + Duration::seconds(reason.retry_seconds()),
+                    timestamp.clone() + Duration::seconds(reason.retry_seconds()),
                 )),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),
                 last_error_code: Set(Some(reason.error_code().to_string())),
                 last_error_message: Set(Some(reason.error_message().to_string())),
                 completed_at: Set(None),
-                updated_at: Set(timestamp),
+                updated_at: Set(timestamp.clone()),
                 ..Default::default()
             })
             .filter(fanout_job::Column::Id.eq(work.job_id))
