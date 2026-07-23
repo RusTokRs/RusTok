@@ -3,14 +3,13 @@ use std::{fs, path::Path, time::Instant};
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, TransactionTrait,
-    TryGetable,
+    ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, TryGetable,
 };
 use serde::Serialize;
 
 use super::{
-    BenchmarkConfig, DatasetConfig, Prototype, analyze_sql, churn_cycle_sql, full_prototype_sql,
-    source_dataset_sql, vacuum_sql,
+    BenchmarkConfig, DatasetConfig, Prototype, analyze_sql, churn_cycle_sql,
+    connect_benchmark_database, full_prototype_sql, source_dataset_sql, vacuum_sql,
 };
 
 #[derive(Debug, Serialize)]
@@ -66,9 +65,7 @@ pub async fn run_maintenance(
     cycles: u32,
 ) -> Result<MaintenanceBenchmarkReport> {
     ensure!(cycles > 0, "maintenance benchmark cycles must be greater than zero");
-    let db = Database::connect(config.database_url.as_str())
-        .await
-        .context("failed to connect to PostgreSQL")?;
+    let db = connect_benchmark_database(&config.database_url).await?;
     db.execute_unprepared("SET jit = off; SET statement_timeout = '30min';")
         .await
         .context("failed to configure maintenance benchmark session")?;
@@ -149,9 +146,9 @@ async fn snapshot(
     prototype: Prototype,
     dataset: &DatasetConfig,
 ) -> Result<MaintenanceSnapshot> {
-    db.execute_unprepared("SELECT pg_stat_clear_snapshot();")
+    db.execute_unprepared("SELECT pg_stat_force_next_flush(); SELECT pg_stat_clear_snapshot();")
         .await
-        .context("failed to clear PostgreSQL statistics snapshot")?;
+        .context("failed to flush and clear PostgreSQL statistics snapshot")?;
     let cardinality = prototype_cardinality(db, prototype).await?;
     validate_cardinality(prototype.schema(), cardinality, dataset)?;
 
