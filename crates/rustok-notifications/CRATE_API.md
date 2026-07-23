@@ -9,11 +9,19 @@
 - `NotificationFanoutPageResult`
 - `NotificationCandidateService`
 - `NotificationCandidateProcessResult`
+- `NotificationCandidateWorker`
+- `NotificationCandidateBatchResult`
+- `NotificationCandidateWorkerFailure`
+- `DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE`
+- `MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE`
 - `NotificationRecipientPolicy`
 - `NotificationRecipientPolicyRequest`
 - `NotificationRecipientPolicyDecision`
 - `NotificationRecipientPolicyError`
 - `NotificationRecipientSuppression`
+- `NotificationRecipientPolicyRuntime`
+- `NotificationBlockReadPort` / `NotificationBlockReadRuntime`
+- `NotificationMuteReadPort` / `NotificationMuteReadRuntime`
 - `rustok_notifications::error::{NotificationError, NotificationResult}`
 - `rustok_notifications::api`
 - `rustok_notifications::entities`
@@ -103,9 +111,20 @@ lease and retain retry metadata. Changed semantic identity fails closed. This
 service does not create channel delivery attempts or perform provider calls
 inside the final notification transaction.
 
-The production profile/block implementation of `NotificationRecipientPolicy`
-remains a separate composition slice. Target visibility and privacy must be
-rechecked again when opening an inbox item and before delayed delivery.
+`NotificationCandidateWorker` is the owner-side bounded driver used by executable
+hosts. Its constructor accepts a batch size from 1 through 64; the canonical
+host uses 32. `claimable_candidate_ids` selects one stable page ordered by
+`created_at`, then `id`, but does not acquire leases. Each ID must be passed to
+`process_candidate`, which preserves the existing per-item lease CAS. This split
+allows deployment-owned shutdown handling to stop between candidates without
+moving private-table queries into the host.
+
+`NotificationRecipientPolicyRuntime` separates relation-port readiness from
+candidate-worker enablement. The server composes Profiles and Social Graph owner
+ports and enables the worker only when the explicit
+`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` flag is true. Missing or invalid
+enablement remains false. Target visibility and privacy must still be rechecked
+again when opening an inbox item and before delayed delivery.
 
 ## Cross-module contract
 
