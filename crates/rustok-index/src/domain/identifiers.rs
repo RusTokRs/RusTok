@@ -1,6 +1,6 @@
 use std::fmt;
 
-use icu_locale_core::LanguageIdentifier;
+use icu_locale::{Locale, LocaleCanonicalizer};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use uuid::Uuid;
 
@@ -85,7 +85,11 @@ string_identifier!(EntityName, "entity");
 string_identifier!(FieldName, "field");
 string_identifier!(LinkName, "link");
 
-/// Canonical language identifier used in entity keys and query scope.
+/// Canonical Unicode locale identifier used in entity keys and query scope.
+///
+/// Parsing normalizes syntax and casing; ICU4X canonicalization also resolves
+/// CLDR/UTS #35 aliases so deprecated language and region subtags cannot create
+/// duplicate index keys.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct LocaleKey(String);
@@ -97,11 +101,12 @@ impl LocaleKey {
             return Err(DomainError::EmptyIdentifier { kind: "locale" });
         }
 
-        let locale = value
-            .parse::<LanguageIdentifier>()
+        let mut locale = value
+            .parse::<Locale>()
             .map_err(|_| DomainError::InvalidLocale {
                 value: value.to_owned(),
             })?;
+        LocaleCanonicalizer::new_extended().canonicalize(&mut locale);
 
         Ok(Self(locale.to_string()))
     }
@@ -276,6 +281,12 @@ mod tests {
             LocaleKey::new("zh-hant-tw").unwrap().as_str(),
             "zh-Hant-TW"
         );
+    }
+
+    #[test]
+    fn canonicalizes_deprecated_cldr_aliases() {
+        assert_eq!(LocaleKey::new("iw-IL").unwrap().as_str(), "he-IL");
+        assert_eq!(LocaleKey::new("en-BU").unwrap().as_str(), "en-MM");
     }
 
     #[test]
