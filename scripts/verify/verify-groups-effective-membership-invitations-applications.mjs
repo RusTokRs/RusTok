@@ -46,6 +46,7 @@ if (failures.length === 0) {
     "UPDATE groups SET version = version",
     ".lock_exclusive()",
     "membership_enforcement::Entity::find_by_id",
+    "Do not use rows_affected as an existence test",
   ]);
 
   requireMarkers(files.guard, [
@@ -55,6 +56,9 @@ if (failures.length === 0) {
     "DatabaseTransaction",
     "effective.active_member && role_allowed",
   ]);
+  if (read(files.guard).includes("has_existing_receipt")) {
+    failures.push(`${files.guard}: obsolete facade receipt probe remains`);
+  }
 
   for (const relative of [files.invitationOwner, files.targetedOwner]) {
     requireMarkers(relative, [
@@ -169,7 +173,7 @@ if (failures.length === 0) {
   ]);
   requireMarkers(files.readme, [
     "transaction-aware invitation/application writes",
-    "authorization and mutation share one owner transaction",
+    "effective authorization and mutation",
     "runtime evidence and the remaining owner paths are open",
   ]);
 }
