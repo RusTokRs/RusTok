@@ -59,13 +59,17 @@ if (failures.length === 0) {
     failures.push(`${files.facade}: public/private read split is not source-locked`);
   }
 
+  const moduleSource = read(files.module);
   requireMarkers(files.module, [
-    "pub mod effective_service;",
+    "mod effective_service;",
+    "mod service;",
     "pub use effective_service::GroupsService;",
-    "Legacy implementation delegate",
+    "cannot bypass the effective membership facade",
   ]);
-  if (read(files.module).includes("pub use service::GroupsService;")) {
-    failures.push(`${files.module}: crate root still exports the legacy status-only service`);
+  for (const forbidden of ["pub mod effective_service;", "pub mod service;", "pub use service::GroupsService;"]) {
+    if (moduleSource.includes(forbidden)) {
+      failures.push(`${files.module}: public legacy/effective implementation surface remains: ${forbidden}`);
+    }
   }
 
   requireMarkers(files.enforcement, [
@@ -87,7 +91,10 @@ if (failures.length === 0) {
 
   requireMarkers(files.contract, [
     '"not_commercial_membership": true',
-    '"crate_root_reexport": "rustok_groups::GroupsService"',
+    '"type": "rustok_groups::GroupsService"',
+    '"implementation_module_visibility": "crate_private"',
+    '"legacy_delegate_visibility": "crate_private"',
+    '"external_legacy_delegate_bypass": "sealed"',
     '"group_access_decision": "effective_membership_resolver"',
     '"join_and_rejoin": "effective_membership_resolver"',
     '"feature_settings_authorization": "effective_membership_resolver"',
@@ -99,11 +106,13 @@ if (failures.length === 0) {
     "Group membership is social participation",
     "core public access facade is source-complete",
     "status-only access-path conversion remains open",
+    "crate-private",
     "verify-groups-effective-membership-access.mjs",
   ]);
   requireMarkers(files.readme, [
     "not a paid subscription",
-    "effective-membership `GroupsService` facade",
+    "effective-membership `GroupsService`",
+    "crate-private",
     "invitation/application/localization/governance",
   ]);
 }
@@ -115,5 +124,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Groups crate-root effective membership facade, private redaction, join/re-entry denial, settings authorization, terminology, and remaining gates passed source verification.",
+  "Groups sealed crate-root effective membership facade, private redaction, join/re-entry denial, settings authorization, terminology, and remaining gates passed source verification.",
 );
