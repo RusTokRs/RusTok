@@ -9,6 +9,7 @@ mod ssr_assets_browser_tests;
 
 pub mod browser_intent;
 mod capability_access;
+pub mod consumer_properties;
 pub mod draft_session;
 pub mod editor;
 mod i18n;
@@ -27,6 +28,14 @@ pub use browser_intent::{
 pub use capability_access::{
     BrowserCapabilityAccessError, BrowserCapabilityDenial, CapabilityFailure,
     browser_capability_denial, validate_browser_capability_access,
+};
+pub use consumer_properties::{
+    CONSUMER_PROPERTY_CONTRACT_INVALID, CONSUMER_PROPERTY_EDITOR_UNAVAILABLE,
+    CONSUMER_PROPERTY_SAVE_FAILED, ConsumerPropertyEditorError, ConsumerPropertyEditorPort,
+    ConsumerPropertyEditorRuntime, ConsumerPropertyEditorSchema, ConsumerPropertyEditorSnapshot,
+    ConsumerPropertyFieldDescriptor, ConsumerPropertyFieldKind, ConsumerPropertyLoadFuture,
+    ConsumerPropertySaveFuture, ConsumerPropertySaveReceipt, PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT,
+    SaveConsumerPropertiesInput,
 };
 pub use draft_session::{
     InMemorySsrDraftSessionStore, SsrDraftSessionError, SsrDraftSessionSnapshot,
