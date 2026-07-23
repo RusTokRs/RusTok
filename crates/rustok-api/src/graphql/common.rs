@@ -1,4 +1,6 @@
-use async_graphql::{Context, ErrorExtensions, InputObject, Result, SimpleObject};
+use std::sync::Arc;
+
+use async_graphql::{Context, Error, ErrorExtensions, InputObject, Result, SimpleObject};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
@@ -103,6 +105,13 @@ pub fn decode_cursor(s: &str) -> Option<i64> {
         .and_then(|value| value.parse().ok())
 }
 
+fn module_check_error(source: sea_orm::DbErr) -> Error {
+    let mut error = Error::new("Module availability check failed")
+        .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"));
+    error.source = Some(Arc::new(source));
+    error
+}
+
 pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()> {
     let db = ctx.data::<DatabaseConnection>()?;
     let tenant = ctx.data::<TenantContext>()?;
@@ -125,10 +134,7 @@ pub async fn require_module_enabled(ctx: &Context<'_>, slug: &str) -> Result<()>
             vec![tenant.id.into(), slug.into()],
         ))
         .await
-        .map_err(|e| {
-            async_graphql::Error::new(format!("Module check failed: {e}"))
-                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
-        })?;
+        .map_err(module_check_error)?;
 
     let enabled = row.is_some();
 
@@ -174,8 +180,9 @@ pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> Str
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_graphql_tenant_id;
-    use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Schema};
+    use super::{module_check_error, resolve_graphql_tenant_id};
+    use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Pos, Schema, Value};
+    use sea_orm::DbErr;
     use uuid::Uuid;
 
     struct Query;
@@ -201,6 +208,25 @@ mod tests {
             default_locale: "en".to_string(),
             is_active: true,
         }
+    }
+
+    #[test]
+    fn module_check_errors_keep_source_but_redact_public_message() {
+        let secret = "password=private host=internal";
+        let graphql_error = module_check_error(DbErr::Custom(secret.to_string()));
+
+        assert_eq!(graphql_error.message, "Module availability check failed");
+        assert!(!graphql_error.message.contains(secret));
+
+        let server_error = graphql_error.into_server_error(Pos::default());
+        assert!(server_error.source::<DbErr>().is_some());
+        assert_eq!(
+            server_error
+                .extensions
+                .as_ref()
+                .and_then(|extensions| extensions.get("code")),
+            Some(&Value::from("INTERNAL_SERVER_ERROR"))
+        );
     }
 
     #[tokio::test]
