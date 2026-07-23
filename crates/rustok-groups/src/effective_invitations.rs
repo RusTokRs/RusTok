@@ -2,7 +2,9 @@ use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use sea_orm::DatabaseConnection;
 
-use crate::effective_membership_guard::{GroupManagerCapability, require_effective_manager};
+use crate::effective_membership_guard::{
+    GroupManagerCapability, actor_user_id, require_effective_manager, tenant_id,
+};
 use crate::invitations_legacy::{
     AcceptGroupInvitationRequest, AcceptGroupInvitationResult, CreateGroupInvitationRequest,
     CreateGroupInvitationResult, GroupInvitationCommandPort, GroupInvitationConnection,
@@ -54,6 +56,9 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         context: PortContext,
         request: CreateGroupInvitationRequest,
     ) -> Result<CreateGroupInvitationResult, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        tenant_id(&context)?;
+        actor_user_id(&context)?;
         self.legacy
             .create_group_invitation_effective_owned(&context, request)
             .await
@@ -65,6 +70,9 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         context: PortContext,
         request: RevokeGroupInvitationRequest,
     ) -> Result<RevokeGroupInvitationResult, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        tenant_id(&context)?;
+        actor_user_id(&context)?;
         self.legacy
             .revoke_group_invitation_effective_owned(&context, request)
             .await
@@ -76,6 +84,9 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         context: PortContext,
         request: AcceptGroupInvitationRequest,
     ) -> Result<AcceptGroupInvitationResult, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        tenant_id(&context)?;
+        actor_user_id(&context)?;
         self.legacy
             .accept_group_invitation_effective_owned(&context, request)
             .await
@@ -103,6 +114,9 @@ impl GroupTargetedInvitationCommandPort for GroupTargetedInvitationService {
         context: PortContext,
         request: AcceptTargetedGroupInvitationRequest,
     ) -> Result<AcceptGroupInvitationResult, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        tenant_id(&context)?;
+        actor_user_id(&context)?;
         self.legacy
             .accept_targeted_group_invitation_effective_owned(&context, request)
             .await
