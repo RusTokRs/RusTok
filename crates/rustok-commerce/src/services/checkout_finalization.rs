@@ -3,6 +3,8 @@ use rustok_cart::{
     CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest, CartResponse,
     CartStatus,
 };
+use rustok_order::OrderStatusKind;
+use rustok_payment::PaymentCollectionStatusKind;
 use std::{sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
@@ -115,14 +117,10 @@ impl CheckoutFinalizationExecutor {
             stage if stage == CheckoutOperationStage::FulfillmentCreated.as_str() => {
                 let current = self.read_cart(tenant_id, actor_id, cart_id, &state).await?;
                 validate_cart_identity(&current, cart_id, &state)?;
-                let cart = if current.status == CartStatus::Completed.as_str() {
-                    current
-                } else if matches!(
-                    current.status.as_str(),
-                    status if status == CartStatus::CheckingOut.as_str()
-                        || status == CartStatus::Active.as_str()
-                ) {
-                    self.cart_checkout_port
+                let cart = match cart_status(&current)? {
+                    CartStatus::Completed => current,
+                    CartStatus::CheckingOut | CartStatus::Active => self
+                        .cart_checkout_port
                         .complete_cart_checkout(
                             cart_context(
                                 tenant_id,
@@ -135,12 +133,13 @@ impl CheckoutFinalizationExecutor {
                             CartCheckoutLifecycleRequest { cart_id },
                         )
                         .await
-                        .map_err(|error| cart_error("complete_cart_checkout", error))?
-                } else {
-                    return Err(CheckoutFinalizationError::Conflict(format!(
-                        "cart {} cannot complete checkout from status `{}`",
-                        current.id, current.status
-                    )));
+                        .map_err(|error| cart_error("complete_cart_checkout", error))?,
+                    CartStatus::Abandoned => {
+                        return Err(CheckoutFinalizationError::Conflict(format!(
+                            "cart {} is abandoned and cannot complete checkout",
+                            current.id
+                        )));
+                    }
                 };
                 ensure_completed_cart(&cart, cart_id, &state)?;
                 self.operation_journal
@@ -231,10 +230,10 @@ fn validate_state(
         || state.payment_collection.tenant_id != tenant_id
         || state.plan.checkout_operation_id != state.operation_id
         || state.payment_collection.order_id != Some(state.order.id)
-        || state.payment_collection.status != "captured"
+        || state.payment_collection.status_kind() != PaymentCollectionStatusKind::Captured
         || !matches!(
-            state.order.status.as_str(),
-            "paid" | "shipped" | "delivered"
+            state.order.status_kind(),
+            OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered
         )
         || cart_id == Uuid::nil()
     {
@@ -272,13 +271,22 @@ fn ensure_completed_cart(
     state: &CheckoutFulfillmentCreatedState,
 ) -> CheckoutFinalizationResult<()> {
     validate_cart_identity(cart, cart_id, state)?;
-    if cart.status != CartStatus::Completed.as_str() || cart.completed_at.is_none() {
+    if cart_status(cart)? != CartStatus::Completed || cart.completed_at.is_none() {
         return Err(CheckoutFinalizationError::Conflict(format!(
             "cart {} is not durably completed",
             cart.id
         )));
     }
     Ok(())
+}
+
+fn cart_status(cart: &CartResponse) -> CheckoutFinalizationResult<CartStatus> {
+    cart.lifecycle_status().map_err(|_| {
+        CheckoutFinalizationError::Conflict(format!(
+            "cart {} has an unsupported lifecycle state",
+            cart.id
+        ))
+    })
 }
 
 fn cart_context(

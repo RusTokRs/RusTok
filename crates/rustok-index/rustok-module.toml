@@ -2,7 +2,7 @@
 slug = "index"
 name = "Index"
 version = "0.1.0"
-description = "Cross-module index and read-model substrate."
+description = "Cross-module relational index and query engine."
 ownership = "first_party"
 trust_level = "core"
 ui_classification = "admin_only"
@@ -20,9 +20,3 @@ nav_label = "Index"
 default_locale = "en"
 supported_locales = ["en", "ru"]
 leptos_locales_path = "admin/locales"
-
-[fba.provider]
-registry = "contracts/index-fba-registry.json"
-contract_version = "index.read_model.v1"
-ports = ["IndexReadModelPort", "IndexRebuildPort"]
-fallback_profiles = ["embedded_native", "admin_read_only", "rebuild_disabled"]

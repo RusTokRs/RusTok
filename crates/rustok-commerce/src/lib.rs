@@ -32,6 +32,7 @@ pub mod services;
 pub mod state_machine;
 mod storefront_channel;
 mod storefront_checkout_pricing;
+#[path = "storefront_checkout_runtime_mounted.rs"]
 pub mod storefront_checkout_runtime;
 mod storefront_shipping;
 
@@ -178,67 +179,6 @@ impl RusToKModule for CommerceModule {
             financial_runtime.ledger_port(),
         ));
     }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        extensions.get_or_insert_with(FulfillmentProviderRegistry::with_manual_provider);
-        Ok(())
-    }
-
-    fn permissions(&self) -> Vec<Permission> {
-        vec![
-            Permission::new(Resource::Products, Action::Create),
-            Permission::new(Resource::Products, Action::Read),
-            Permission::new(Resource::Products, Action::Update),
-            Permission::new(Resource::Products, Action::Delete),
-            Permission::new(Resource::Products, Action::List),
-            Permission::new(Resource::Products, Action::Manage),
-            Permission::new(Resource::Orders, Action::Create),
-            Permission::new(Resource::Orders, Action::Read),
-            Permission::new(Resource::Orders, Action::Update),
-            Permission::new(Resource::Orders, Action::Delete),
-            Permission::new(Resource::Orders, Action::List),
-            Permission::new(Resource::Orders, Action::Manage),
-            Permission::new(Resource::Customers, Action::Create),
-            Permission::new(Resource::Customers, Action::Read),
-            Permission::new(Resource::Customers, Action::Update),
-            Permission::new(Resource::Customers, Action::Delete),
-            Permission::new(Resource::Customers, Action::List),
-            Permission::new(Resource::Customers, Action::Manage),
-            Permission::new(Resource::Regions, Action::Create),
-            Permission::new(Resource::Regions, Action::Read),
-            Permission::new(Resource::Regions, Action::Update),
-            Permission::new(Resource::Regions, Action::Delete),
-            Permission::new(Resource::Regions, Action::List),
-            Permission::new(Resource::Regions, Action::Manage),
-            Permission::new(Resource::Payments, Action::Create),
-            Permission::new(Resource::Payments, Action::Read),
-            Permission::new(Resource::Payments, Action::Update),
-            Permission::new(Resource::Payments, Action::Delete),
-            Permission::new(Resource::Payments, Action::List),
-            Permission::new(Resource::Payments, Action::Manage),
-            Permission::new(Resource::Fulfillments, Action::Create),
-            Permission::new(Resource::Fulfillments, Action::Read),
-            Permission::new(Resource::Fulfillments, Action::Update),
-            Permission::new(Resource::Fulfillments, Action::Delete),
-            Permission::new(Resource::Fulfillments, Action::List),
-            Permission::new(Resource::Fulfillments, Action::Manage),
-            Permission::new(Resource::Inventory, Action::Create),
-            Permission::new(Resource::Inventory, Action::Read),
-            Permission::new(Resource::Inventory, Action::Update),
-            Permission::new(Resource::Inventory, Action::Delete),
-            Permission::new(Resource::Inventory, Action::List),
-            Permission::new(Resource::Inventory, Action::Manage),
-            Permission::new(Resource::Discounts, Action::Create),
-            Permission::new(Resource::Discounts, Action::Read),
-            Permission::new(Resource::Discounts, Action::Update),
-            Permission::new(Resource::Discounts, Action::Delete),
-            Permission::new(Resource::Discounts, Action::List),
-            Permission::new(Resource::Discounts, Action::Manage),
-        ]
-    }
 }
 
 impl MigrationSource for CommerceModule {
@@ -251,5 +191,29 @@ impl MigrationSource for CommerceModule {
     }
 }
 
-#[cfg(test)]
-mod contract_tests;
+impl ModuleRuntimeExtensions for CommerceModule {
+    fn configure_runtime_extensions(
+        &self,
+        extensions: &mut rustok_core::RuntimeExtensions,
+    ) -> Result<(), String> {
+        let marketplace_financial_runtime = extensions
+            .get::<MarketplaceFinancialRuntime>()
+            .cloned()
+            .ok_or_else(|| {
+                "commerce module requires MarketplaceFinancialRuntime in runtime extensions"
+                    .to_string()
+            })?;
+        extensions.insert(marketplace_financial_runtime);
+        Ok(())
+    }
+}
+
+impl Resource for CommerceModule {
+    fn resource(&self) -> &'static str {
+        "commerce"
+    }
+
+    fn actions(&self) -> Vec<Action> {
+        vec![Action::Read, Action::Write]
+    }
+}

@@ -1,0 +1,94 @@
+{
+  "schema_version": 4,
+  "slice": "NOTIFY-03C",
+  "promoted_by_slices": ["NOTIFY-03D", "NOTIFY-03E", "NOTIFY-03G"],
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "owner_driver": "crates/rustok-notifications/src/worker.rs",
+  "candidate_service": "crates/rustok-notifications/src/candidate.rs",
+  "policy_runtime": "crates/rustok-notifications/src/recipient_policy.rs",
+  "server_worker": "apps/server/src/services/notification_candidate_worker.rs",
+  "policy_composition": "apps/server/src/services/notification_recipient_policy.rs",
+  "bootstrap": "apps/server/src/services/server_bootstrap.rs",
+  "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
+  "enablement": {
+    "environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
+    "default_enabled": false,
+    "invalid_value_enabled": false,
+    "requires_background_worker_host": true,
+    "requires_relation_ports_ready": true,
+    "requires_candidate_worker_ready": true,
+    "requires_module_registry": true
+  },
+  "bounded_loop": {
+    "default_batch_size": 32,
+    "maximum_batch_size": 64,
+    "stable_order": ["created_at", "id"],
+    "claimable_states": ["pending", "due_retryable_error", "expired_processing"],
+    "tenant_scoped_work_item": true,
+    "one_page_per_poll": true,
+    "poll_interval_ms": 500
+  },
+  "lease_semantics": {
+    "selection_acquires_lease": false,
+    "canonical_service_claims_each_item": true,
+    "lease_cas_preserved": true,
+    "contention_is_nonfatal": true,
+    "durable_candidate_failure_preserved": true
+  },
+  "tenant_capability_gate": {
+    "authority": "EffectiveModulePolicyService::is_enabled",
+    "module_slug": "notifications",
+    "checked_before_each_candidate_claim": true,
+    "policy_error_fails_closed": true,
+    "disabled_tenant_calls_recipient_policy": false,
+    "disabled_tenant_calls_source_provider": false,
+    "direct_module_table_read_forbidden": true,
+    "atomic_with_concurrent_tenant_disable": false
+  },
+  "tenant_policy_backoff": {
+    "disabled_retry_seconds": 300,
+    "policy_unavailable_retry_seconds": 30,
+    "candidate_transitions_to_retryable_error": true,
+    "attempt_count_incremented": true,
+    "lease_fields_cleared": true,
+    "stable_error_code_persisted": true,
+    "cas_rejects_concurrent_claim": true,
+    "prevents_disabled_tenant_head_of_line_starvation": true,
+    "prevents_post_fanout_processing_without_tenant_recheck": true
+  },
+  "shutdown": {
+    "shared_stop_handle": true,
+    "checks_before_selection": true,
+    "checks_between_candidates": true,
+    "already_processing_candidate_finishes": true,
+    "new_claims_after_stop": false
+  },
+  "upstream_runtime": {
+    "outbox_intake_delivered": true,
+    "source_inbox_materialization_worker_delivered": true,
+    "fanout_page_worker_delivered": true,
+    "fanout_tenant_effective_policy_gate_delivered": true,
+    "upstream_workers_default_enabled": false
+  },
+  "tests": [
+    "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
+    "outbox_intake_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
+    "fanout_worker_verifier": "scripts/verify/verify-notifications-fanout-worker.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "atomic control-plane revision guard for tenant disable concurrent with candidate claim",
+    "parallel candidate worker concurrency evidence",
+    "PostgreSQL lease and recovery evidence",
+    "worker health and lag metrics",
+    "default deployment enablement",
+    "grouping and channel delivery"
+  ]
+}

@@ -1,0 +1,20 @@
+[package]
+name = "rustok-social-graph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tenant-scoped social relation owner for blocks, mutes, follows, and friendship policy"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+rustok-api.workspace = true
+rustok-core.workspace = true
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

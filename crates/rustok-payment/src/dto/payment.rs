@@ -6,6 +6,139 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentCollectionStatusKind {
+    Pending,
+    Authorized,
+    Captured,
+    Cancelled,
+    Unknown,
+}
+
+impl PaymentCollectionStatusKind {
+    pub fn from_raw(status: &str) -> Self {
+        match status {
+            "pending" => Self::Pending,
+            "authorized" => Self::Authorized,
+            "captured" => Self::Captured,
+            "cancelled" => Self::Cancelled,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub const fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Pending => Some("pending"),
+            Self::Authorized => Some("authorized"),
+            Self::Captured => Some("captured"),
+            Self::Cancelled => Some("cancelled"),
+            Self::Unknown => None,
+        }
+    }
+
+    pub const fn can_authorize(self) -> bool {
+        matches!(self, Self::Pending)
+    }
+
+    pub const fn can_capture(self) -> bool {
+        matches!(self, Self::Authorized)
+    }
+
+    pub const fn can_cancel(self) -> bool {
+        matches!(self, Self::Pending | Self::Authorized)
+    }
+
+    pub const fn is_authorized_or_captured(self) -> bool {
+        matches!(self, Self::Authorized | Self::Captured)
+    }
+
+    pub const fn is_captured(self) -> bool {
+        matches!(self, Self::Captured)
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Captured | Self::Cancelled)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentStatusKind {
+    Pending,
+    Authorized,
+    Captured,
+    Cancelled,
+    Unknown,
+}
+
+impl PaymentStatusKind {
+    pub fn from_raw(status: &str) -> Self {
+        match status {
+            "pending" => Self::Pending,
+            "authorized" => Self::Authorized,
+            "captured" => Self::Captured,
+            "cancelled" => Self::Cancelled,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub const fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Pending => Some("pending"),
+            Self::Authorized => Some("authorized"),
+            Self::Captured => Some("captured"),
+            Self::Cancelled => Some("cancelled"),
+            Self::Unknown => None,
+        }
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Captured | Self::Cancelled)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RefundStatusKind {
+    Pending,
+    Refunded,
+    Cancelled,
+    Unknown,
+}
+
+impl RefundStatusKind {
+    pub fn from_raw(status: &str) -> Self {
+        match status {
+            "pending" => Self::Pending,
+            "refunded" => Self::Refunded,
+            "cancelled" => Self::Cancelled,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub const fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::Pending => Some("pending"),
+            Self::Refunded => Some("refunded"),
+            Self::Cancelled => Some("cancelled"),
+            Self::Unknown => None,
+        }
+    }
+
+    pub const fn can_complete(self) -> bool {
+        matches!(self, Self::Pending)
+    }
+
+    pub const fn can_cancel(self) -> bool {
+        matches!(self, Self::Pending)
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Refunded | Self::Cancelled)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, ToSchema)]
 pub struct CreatePaymentCollectionInput {
     pub cart_id: Option<Uuid>,
@@ -102,6 +235,12 @@ pub struct PaymentCollectionResponse {
     pub refunds: Vec<RefundResponse>,
 }
 
+impl PaymentCollectionResponse {
+    pub fn status_kind(&self) -> PaymentCollectionStatusKind {
+        PaymentCollectionStatusKind::from_raw(self.status.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaymentResponse {
     pub id: Uuid,
@@ -121,6 +260,12 @@ pub struct PaymentResponse {
     pub cancelled_at: Option<DateTime<Utc>>,
 }
 
+impl PaymentResponse {
+    pub fn status_kind(&self) -> PaymentStatusKind {
+        PaymentStatusKind::from_raw(self.status.as_str())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RefundResponse {
     pub id: Uuid,
@@ -135,6 +280,12 @@ pub struct RefundResponse {
     pub updated_at: DateTime<Utc>,
     pub refunded_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
+}
+
+impl RefundResponse {
+    pub fn status_kind(&self) -> RefundStatusKind {
+        RefundStatusKind::from_raw(self.status.as_str())
+    }
 }
 
 fn validate_currency_code(value: &str) -> Result<(), ValidationError> {
@@ -183,5 +334,43 @@ mod tests {
         assert!(input.validate().is_err());
         input.amount = -Decimal::ONE;
         assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn collection_status_kind_is_typed_and_fail_closed() {
+        assert_eq!(
+            PaymentCollectionStatusKind::from_raw("authorized"),
+            PaymentCollectionStatusKind::Authorized
+        );
+        assert!(PaymentCollectionStatusKind::Authorized.can_capture());
+        assert!(PaymentCollectionStatusKind::Pending.can_cancel());
+        assert!(PaymentCollectionStatusKind::Captured.is_terminal());
+        assert_eq!(
+            PaymentCollectionStatusKind::Captured.as_str(),
+            Some("captured")
+        );
+        assert_eq!(PaymentCollectionStatusKind::Unknown.as_str(), None);
+        assert_eq!(
+            PaymentCollectionStatusKind::from_raw("legacy_external_state"),
+            PaymentCollectionStatusKind::Unknown
+        );
+    }
+
+    #[test]
+    fn payment_and_refund_status_kinds_preserve_unknown_values() {
+        assert_eq!(
+            PaymentStatusKind::from_raw("captured"),
+            PaymentStatusKind::Captured
+        );
+        assert_eq!(
+            RefundStatusKind::from_raw("refunded"),
+            RefundStatusKind::Refunded
+        );
+        assert!(RefundStatusKind::Pending.can_complete());
+        assert_eq!(RefundStatusKind::Refunded.as_str(), Some("refunded"));
+        assert_eq!(
+            RefundStatusKind::from_raw("provider_custom"),
+            RefundStatusKind::Unknown
+        );
     }
 }

@@ -3,190 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationSubjectKind {
-    ForumTopic,
-    ForumPost,
-    BlogPost,
-    Comment,
-    Group,
-    GroupMembership,
-    Review,
-    ReviewResponse,
-    Product,
-    MarketplaceListing,
-    SellerProfile,
-    Message,
-    MediaAsset,
-    UserProfile,
-}
-
-impl ModerationSubjectKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::ForumTopic => "forum_topic",
-            Self::ForumPost => "forum_post",
-            Self::BlogPost => "blog_post",
-            Self::Comment => "comment",
-            Self::Group => "group",
-            Self::GroupMembership => "group_membership",
-            Self::Review => "review",
-            Self::ReviewResponse => "review_response",
-            Self::Product => "product",
-            Self::MarketplaceListing => "marketplace_listing",
-            Self::SellerProfile => "seller_profile",
-            Self::Message => "message",
-            Self::MediaAsset => "media_asset",
-            Self::UserProfile => "user_profile",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "forum_topic" => Some(Self::ForumTopic),
-            "forum_post" => Some(Self::ForumPost),
-            "blog_post" => Some(Self::BlogPost),
-            "comment" => Some(Self::Comment),
-            "group" => Some(Self::Group),
-            "group_membership" => Some(Self::GroupMembership),
-            "review" => Some(Self::Review),
-            "review_response" => Some(Self::ReviewResponse),
-            "product" => Some(Self::Product),
-            "marketplace_listing" => Some(Self::MarketplaceListing),
-            "seller_profile" => Some(Self::SellerProfile),
-            "message" => Some(Self::Message),
-            "media_asset" => Some(Self::MediaAsset),
-            "user_profile" => Some(Self::UserProfile),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationScopeKind {
-    Platform,
-    Group,
-    Page,
-    ForumCategory,
-    MarketplaceStore,
-}
-
-impl ModerationScopeKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Platform => "platform",
-            Self::Group => "group",
-            Self::Page => "page",
-            Self::ForumCategory => "forum_category",
-            Self::MarketplaceStore => "marketplace_store",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "platform" => Some(Self::Platform),
-            "group" => Some(Self::Group),
-            "page" => Some(Self::Page),
-            "forum_category" => Some(Self::ForumCategory),
-            "marketplace_store" => Some(Self::MarketplaceStore),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModerationScopeRef {
-    pub kind: ModerationScopeKind,
-    pub id: Option<Uuid>,
-}
-
-impl ModerationScopeRef {
-    pub const fn platform() -> Self {
-        Self {
-            kind: ModerationScopeKind::Platform,
-            id: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModerationSubjectRef {
-    pub module: String,
-    pub kind: ModerationSubjectKind,
-    pub id: Uuid,
-    pub revision: i64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationReasonCode {
-    Spam,
-    Fraud,
-    Harassment,
-    HateOrAbuse,
-    Threats,
-    SexualContent,
-    Violence,
-    IllegalGoods,
-    Counterfeit,
-    Misinformation,
-    PersonalDataExposure,
-    Copyright,
-    Impersonation,
-    ManipulatedRating,
-    OffTopic,
-    DuplicateContent,
-    Other,
-}
-
-impl ModerationReasonCode {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Spam => "spam",
-            Self::Fraud => "fraud",
-            Self::Harassment => "harassment",
-            Self::HateOrAbuse => "hate_or_abuse",
-            Self::Threats => "threats",
-            Self::SexualContent => "sexual_content",
-            Self::Violence => "violence",
-            Self::IllegalGoods => "illegal_goods",
-            Self::Counterfeit => "counterfeit",
-            Self::Misinformation => "misinformation",
-            Self::PersonalDataExposure => "personal_data_exposure",
-            Self::Copyright => "copyright",
-            Self::Impersonation => "impersonation",
-            Self::ManipulatedRating => "manipulated_rating",
-            Self::OffTopic => "off_topic",
-            Self::DuplicateContent => "duplicate_content",
-            Self::Other => "other",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "spam" => Some(Self::Spam),
-            "fraud" => Some(Self::Fraud),
-            "harassment" => Some(Self::Harassment),
-            "hate_or_abuse" => Some(Self::HateOrAbuse),
-            "threats" => Some(Self::Threats),
-            "sexual_content" => Some(Self::SexualContent),
-            "violence" => Some(Self::Violence),
-            "illegal_goods" => Some(Self::IllegalGoods),
-            "counterfeit" => Some(Self::Counterfeit),
-            "misinformation" => Some(Self::Misinformation),
-            "personal_data_exposure" => Some(Self::PersonalDataExposure),
-            "copyright" => Some(Self::Copyright),
-            "impersonation" => Some(Self::Impersonation),
-            "manipulated_rating" => Some(Self::ManipulatedRating),
-            "off_topic" => Some(Self::OffTopic),
-            "duplicate_content" => Some(Self::DuplicateContent),
-            "other" => Some(Self::Other),
-            _ => None,
-        }
-    }
-}
+pub use rustok_moderation_api::{
+    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationDecisionEffect,
+    ModerationDecisionEffectAction, ModerationDecisionKind, ModerationEffectValidationError,
+    ModerationReasonCode, ModerationScopeKind, ModerationScopeRef, ModerationSubjectKind,
+    ModerationSubjectRef, ModerationVisibilityState,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -334,60 +156,6 @@ impl ModerationCasePriority {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ModerationDecisionKind {
-    NoViolation,
-    Warning,
-    Hide,
-    Unpublish,
-    Remove,
-    Lock,
-    RestrictInteraction,
-    RequireEdit,
-    RejectPublication,
-    SuspendSubject,
-    Escalate,
-    AccountSanctionRecommended,
-}
-
-impl ModerationDecisionKind {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::NoViolation => "no_violation",
-            Self::Warning => "warning",
-            Self::Hide => "hide",
-            Self::Unpublish => "unpublish",
-            Self::Remove => "remove",
-            Self::Lock => "lock",
-            Self::RestrictInteraction => "restrict_interaction",
-            Self::RequireEdit => "require_edit",
-            Self::RejectPublication => "reject_publication",
-            Self::SuspendSubject => "suspend_subject",
-            Self::Escalate => "escalate",
-            Self::AccountSanctionRecommended => "account_sanction_recommended",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "no_violation" => Some(Self::NoViolation),
-            "warning" => Some(Self::Warning),
-            "hide" => Some(Self::Hide),
-            "unpublish" => Some(Self::Unpublish),
-            "remove" => Some(Self::Remove),
-            "lock" => Some(Self::Lock),
-            "restrict_interaction" => Some(Self::RestrictInteraction),
-            "require_edit" => Some(Self::RequireEdit),
-            "reject_publication" => Some(Self::RejectPublication),
-            "suspend_subject" => Some(Self::SuspendSubject),
-            "escalate" => Some(Self::Escalate),
-            "account_sanction_recommended" => Some(Self::AccountSanctionRecommended),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubmitModerationReportCommand {
     pub scope: ModerationScopeRef,
@@ -424,16 +192,8 @@ pub struct DecideModerationCaseCommand {
     pub expected_revision: i64,
     pub decision_kind: ModerationDecisionKind,
     pub reason_code: ModerationReasonCode,
+    pub effect: ModerationDecisionEffect,
     pub policy_snapshot: Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ApplyModerationDecisionCommand {
-    pub decision_id: Uuid,
-    pub subject: ModerationSubjectRef,
-    pub decision_kind: ModerationDecisionKind,
-    pub reason_code: ModerationReasonCode,
-    pub decision_hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -481,19 +241,12 @@ pub struct ModerationDecisionRecord {
     pub case_id: Uuid,
     pub decision_kind: ModerationDecisionKind,
     pub reason_code: ModerationReasonCode,
+    pub effect: Option<ModerationDecisionEffect>,
     pub policy_snapshot: Value,
     pub subject_revision: i64,
     pub decision_hash: String,
     pub decided_by: Uuid,
     pub decided_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ModerationDecisionApplication {
-    pub decision_id: Uuid,
-    pub subject: ModerationSubjectRef,
-    pub applied_revision: i64,
-    pub applied_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -516,41 +269,5 @@ impl Default for ModerationQueueFilter {
             limit: 50,
             cursor: None,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn platform_scope_has_no_domain_id() {
-        let scope = ModerationScopeRef::platform();
-        assert_eq!(scope.kind, ModerationScopeKind::Platform);
-        assert!(scope.id.is_none());
-    }
-
-    #[test]
-    fn subject_reference_carries_source_revision() {
-        let subject = ModerationSubjectRef {
-            module: "forum".to_string(),
-            kind: ModerationSubjectKind::ForumPost,
-            id: Uuid::new_v4(),
-            revision: 7,
-        };
-
-        assert_eq!(subject.revision, 7);
-    }
-
-    #[test]
-    fn stored_enum_values_round_trip() {
-        assert_eq!(
-            ModerationCaseStatus::parse(ModerationCaseStatus::AwaitingEvidence.as_str()),
-            Some(ModerationCaseStatus::AwaitingEvidence)
-        );
-        assert_eq!(
-            ModerationDecisionKind::parse(ModerationDecisionKind::RequireEdit.as_str()),
-            Some(ModerationDecisionKind::RequireEdit)
-        );
     }
 }

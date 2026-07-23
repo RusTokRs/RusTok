@@ -1,13 +1,14 @@
 use rust_decimal::Decimal;
 use rustok_payment::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
-    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse, RefundResponse,
+    CompleteRefundInput, CreateRefundInput, PaymentCollectionResponse,
+    PaymentCollectionStatusKind, RefundResponse,
 };
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
 use rustok_payment::{
-    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
     PaymentProviderOperationJournal, PaymentRefundCreationService, PaymentService,
+    PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -84,8 +85,8 @@ impl PaymentOrchestrationService {
             .unwrap_or_else(|| MANUAL_PROVIDER_ID.to_string());
         let idempotency_key = format!("payment_collection:{collection_id}:authorize");
 
-        match collection.status.as_str() {
-            "authorized" | "captured" => {
+        match collection.status_kind() {
+            PaymentCollectionStatusKind::Authorized | PaymentCollectionStatusKind::Captured => {
                 self.commit_existing_provider_operation(
                     tenant_id,
                     provider_id.as_str(),
@@ -95,10 +96,10 @@ impl PaymentOrchestrationService {
                 .await?;
                 return Ok(collection);
             }
-            "pending" => {}
-            status => {
+            PaymentCollectionStatusKind::Pending => {}
+            PaymentCollectionStatusKind::Cancelled | PaymentCollectionStatusKind::Unknown => {
                 return Err(PaymentError::InvalidTransition {
-                    from: status.to_string(),
+                    from: collection.status,
                     to: "authorized".to_string(),
                 }
                 .into());
@@ -192,8 +193,8 @@ impl PaymentOrchestrationService {
         let provider_id = provider_id_for_collection(&collection);
         let idempotency_key = format!("payment_collection:{collection_id}:capture");
 
-        match collection.status.as_str() {
-            "captured" => {
+        match collection.status_kind() {
+            PaymentCollectionStatusKind::Captured => {
                 self.commit_existing_provider_operation(
                     tenant_id,
                     provider_id.as_str(),
@@ -203,10 +204,12 @@ impl PaymentOrchestrationService {
                 .await?;
                 return Ok(collection);
             }
-            "authorized" => {}
-            status => {
+            PaymentCollectionStatusKind::Authorized => {}
+            PaymentCollectionStatusKind::Pending
+            | PaymentCollectionStatusKind::Cancelled
+            | PaymentCollectionStatusKind::Unknown => {
                 return Err(PaymentError::InvalidTransition {
-                    from: status.to_string(),
+                    from: collection.status,
                     to: "captured".to_string(),
                 }
                 .into());
@@ -292,8 +295,8 @@ impl PaymentOrchestrationService {
         let provider_id = provider_id_for_collection(&collection);
         let idempotency_key = format!("payment_collection:{collection_id}:cancel");
 
-        match collection.status.as_str() {
-            "cancelled" => {
+        match collection.status_kind() {
+            PaymentCollectionStatusKind::Cancelled => {
                 self.commit_existing_provider_operation(
                     tenant_id,
                     provider_id.as_str(),
@@ -303,17 +306,10 @@ impl PaymentOrchestrationService {
                 .await?;
                 return Ok(collection);
             }
-            "captured" => {
+            PaymentCollectionStatusKind::Pending | PaymentCollectionStatusKind::Authorized => {}
+            PaymentCollectionStatusKind::Captured | PaymentCollectionStatusKind::Unknown => {
                 return Err(PaymentError::InvalidTransition {
                     from: collection.status,
-                    to: "cancelled".to_string(),
-                }
-                .into());
-            }
-            "pending" | "authorized" => {}
-            status => {
-                return Err(PaymentError::InvalidTransition {
-                    from: status.to_string(),
                     to: "cancelled".to_string(),
                 }
                 .into());
@@ -414,6 +410,13 @@ impl PaymentOrchestrationService {
             .payment_service
             .get_collection(tenant_id, collection_id)
             .await?;
+        if collection.status_kind() != PaymentCollectionStatusKind::Captured {
+            return Err(PaymentError::InvalidTransition {
+                from: collection.status,
+                to: "pending".to_string(),
+            }
+            .into());
+        }
         let provider_id = provider_id_for_collection(&collection);
         let refund = self
             .refund_creation_service
@@ -519,7 +522,7 @@ fn provider_id_for_collection(collection: &PaymentCollectionResponse) -> String 
 }
 
 fn should_cancel_provider(collection: &PaymentCollectionResponse) -> bool {
-    collection.status == "authorized"
+    collection.status_kind() == PaymentCollectionStatusKind::Authorized
         || collection.authorized_amount > Decimal::ZERO
         || collection.provider_id.is_some()
 }
@@ -619,6 +622,11 @@ mod tests {
         let mut amount_bound = collection("pending");
         amount_bound.authorized_amount = dec!(25);
         assert!(should_cancel_provider(&amount_bound));
+    }
+
+    #[test]
+    fn unknown_collection_status_does_not_imply_provider_cancel() {
+        assert!(!should_cancel_provider(&collection("provider_custom")));
     }
 
     #[test]

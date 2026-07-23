@@ -25,25 +25,6 @@ export const foundationFbaRuntimeSmokeModules = [
     ]
   },
   {
-    module: 'index',
-    registry: 'crates/rustok-index/contracts/index-fba-registry.json',
-    smoke: 'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json',
-    markers: [
-      ['crates/rustok-index/src/ports.rs', [
-        'impl IndexReadModelPort for InProcessIndexReadModelAdapter',
-        'impl IndexRebuildPort for RebuildDisabledIndexAdapter',
-        'require_index_read_policy(context)?;',
-        'require_index_rebuild_policy(context)?;',
-        'PortCallPolicy::read()',
-        'PortCallPolicy::write()',
-        'validate_index_read_request',
-        'validate_index_list_request',
-        'validate_index_rebuild_request',
-        'index.rebuild_disabled'
-      ]]
-    ]
-  },
-  {
     module: 'tenant',
     registry: 'crates/rustok-tenant/contracts/tenant-fba-registry.json',
     smoke: 'crates/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json',

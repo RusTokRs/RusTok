@@ -4,9 +4,7 @@ use rustok_auth::{
 };
 use rustok_core::events::{DispatcherConfig, EventDispatcher};
 use rustok_core::{EventBus, ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
-use rustok_index::IndexerRuntimeConfig;
 use rustok_mcp::McpManagementRuntime;
-use rustok_telemetry::metrics;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
@@ -183,37 +181,13 @@ fn ensure_stop_handle(ctx: &ServerRuntimeContext) {
 
 pub fn build_shared_runtime_extensions(
     registry: &ModuleRegistry,
-    settings: &RustokSettings,
+    _settings: &RustokSettings,
 ) -> Result<Arc<ModuleRuntimeExtensions>> {
-    let mut extensions = registry.build_runtime_extensions().map_err(|error| {
+    let extensions = registry.build_runtime_extensions().map_err(|error| {
         Error::Message(format!(
             "module runtime extension initialization failed: {error}"
         ))
     })?;
-    let indexer_runtime = IndexerRuntimeConfig::new(
-        settings.search.reindex.parallelism,
-        settings.search.reindex.entity_budget,
-        settings.search.reindex.yield_every,
-    );
-    metrics::record_index_reindex_runtime_config(
-        "content_indexer",
-        settings.search.reindex.parallelism,
-        settings.search.reindex.entity_budget,
-        settings.search.reindex.yield_every,
-    );
-    metrics::record_index_reindex_runtime_config(
-        "product_indexer",
-        settings.search.reindex.parallelism,
-        settings.search.reindex.entity_budget,
-        settings.search.reindex.yield_every,
-    );
-    metrics::record_index_reindex_runtime_config(
-        "flex_indexer",
-        settings.search.reindex.parallelism,
-        settings.search.reindex.entity_budget,
-        settings.search.reindex.yield_every,
-    );
-    extensions.insert(indexer_runtime);
     Ok(Arc::new(extensions))
 }
 
@@ -309,9 +283,19 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     );
     extensions.insert(McpManagementRuntime::new(mcp_management_provider));
 
+    #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+    {
+        let policy = crate::services::notification_recipient_policy::ServerNotificationRecipientPolicy::compose(
+            db.clone(),
+            &extensions,
+        );
+        extensions.insert(policy);
+    }
+
     #[cfg(feature = "mod-notifications")]
     {
-        let host = extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db));
+        let host =
+            extensions.apply_to_host_runtime(rustok_api::HostRuntimeContext::new(db.clone()));
         rustok_notifications::api::materialize_notification_source_registry(&mut extensions, &host)
             .map_err(|error| {
                 Error::Message(format!(
@@ -377,7 +361,7 @@ mod tests {
         let dispatcher =
             build_module_event_dispatcher(&registry, EventBus::default(), db, extensions.as_ref());
 
-        let expected = if cfg!(feature = "mod-workflow") { 5 } else { 4 };
+        let expected = if cfg!(feature = "mod-workflow") { 2 } else { 1 };
         assert_eq!(dispatcher.handler_count(), expected);
     }
 
@@ -412,6 +396,12 @@ mod tests {
                 extensions.as_ref()
             )
             .is_some()
+        );
+        #[cfg(all(feature = "mod-notifications", feature = "mod-profiles"))]
+        assert!(
+            extensions
+                .get::<rustok_notifications::NotificationRecipientPolicyRuntime>()
+                .is_some_and(|runtime| !runtime.candidate_worker_ready())
         );
         #[cfg(feature = "mod-fulfillment")]
         {

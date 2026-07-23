@@ -2,38 +2,30 @@
 name = "rustok-index"
 version.workspace = true
 edition.workspace = true
-description = "CQRS Read Model - Denormalized indexes for RusToK"
+description = "Cross-module relational index and query engine for RusToK"
 license.workspace = true
 
 [dependencies]
 rustok-core.workspace = true
-rustok-api.workspace = true
-rustok-events.workspace = true
-rustok-product.workspace = true
-rustok-telemetry.workspace = true
 
-# Database
-sea-orm.workspace = true
+# Module metadata
+async-trait.workspace = true
 sea-orm-migration.workspace = true
 
-# Async
-tokio.workspace = true
-async-trait.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-rust_decimal.workspace = true
-
-# Types
-uuid.workspace = true
+# Domain and application core
+base64.workspace = true
 chrono.workspace = true
-
-# Logging
-tracing.workspace = true
-
-# Error handling
+hex.workspace = true
+icu_locale = { version = "2.2", features = ["compiled_data"] }
+petgraph = "0.8.3"
+postcard.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
+sea-orm.workspace = true
 tokio.workspace = true

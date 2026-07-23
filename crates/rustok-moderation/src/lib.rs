@@ -14,6 +14,16 @@ use sea_orm_migration::MigrationTrait;
 pub use domain::*;
 pub use error::{ModerationError, ModerationResult};
 pub use ports::*;
+pub use rustok_moderation_api::{
+    MAX_MODERATION_CAPABILITY_KEY_BYTES, MAX_MODERATION_EFFECT_CAPABILITIES,
+    MODERATION_DECISION_EFFECT_SCHEMA_V1, ModerationCapabilityKey,
+    ModerationSubjectAdapterBuildError, ModerationSubjectAdapterFactory,
+    ModerationSubjectAdapterFactoryRegistry, ModerationSubjectAdapterKey,
+    ModerationSubjectAdapterRegistry, ModerationSubjectAdapterRegistryError,
+    materialize_moderation_subject_adapter_registry,
+    moderation_subject_adapter_registry_from_extensions, register_moderation_subject_adapter,
+    register_moderation_subject_adapter_factory,
+};
 pub use service::ModerationService;
 
 pub struct ModerationModule;
@@ -56,8 +66,8 @@ mod tests {
         let module = ModerationModule;
         assert_eq!(module.slug(), "moderation");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 2);
-        assert_eq!(module.migration_dependencies().len(), 2);
+        assert_eq!(module.migrations().len(), 3);
+        assert_eq!(module.migration_dependencies().len(), 3);
         assert!(module.permissions().is_empty());
     }
 }

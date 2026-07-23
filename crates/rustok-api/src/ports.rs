@@ -10,7 +10,10 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+const PUBLIC_UNAVAILABLE_MESSAGE: &str = "the requested capability is temporarily unavailable";
+const PUBLIC_INVARIANT_MESSAGE: &str = "the requested operation could not be completed safely";
 
 /// Transport-agnostic context that must cross module service ports.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,7 +216,7 @@ pub enum PortActorKind {
     System,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PortError {
     pub kind: PortErrorKind,
     pub code: String,
@@ -256,12 +259,73 @@ impl PortError {
         message: impl Into<String>,
         retryable: bool,
     ) -> Self {
+        let code = code.into();
+        let message = sanitize_public_message(&kind, message.into());
         Self {
             kind,
-            code: code.into(),
-            message: message.into(),
+            code,
+            message,
             retryable,
         }
+    }
+}
+
+#[derive(Serialize)]
+struct PortErrorRef<'a> {
+    kind: &'a PortErrorKind,
+    code: &'a str,
+    message: &'a str,
+    retryable: bool,
+}
+
+impl Serialize for PortError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let message = sanitize_public_message(&self.kind, self.message.clone());
+        PortErrorRef {
+            kind: &self.kind,
+            code: self.code.as_str(),
+            message: message.as_str(),
+            retryable: self.retryable,
+        }
+        .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+struct PortErrorOwned {
+    kind: PortErrorKind,
+    code: String,
+    message: String,
+    retryable: bool,
+}
+
+impl<'de> Deserialize<'de> for PortError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = PortErrorOwned::deserialize(deserializer)?;
+        Ok(Self::new(
+            wire.kind,
+            wire.code,
+            wire.message,
+            wire.retryable,
+        ))
+    }
+}
+
+fn sanitize_public_message(kind: &PortErrorKind, message: String) -> String {
+    match kind {
+        PortErrorKind::Unavailable => PUBLIC_UNAVAILABLE_MESSAGE.to_string(),
+        PortErrorKind::InvariantViolation => PUBLIC_INVARIANT_MESSAGE.to_string(),
+        PortErrorKind::Validation
+        | PortErrorKind::NotFound
+        | PortErrorKind::Conflict
+        | PortErrorKind::Forbidden
+        | PortErrorKind::Timeout => message,
     }
 }
 
@@ -378,5 +442,53 @@ mod tests {
         assert!(!invariant.retryable);
         assert_eq!(unavailable.kind, PortErrorKind::Unavailable);
         assert!(unavailable.retryable);
+    }
+
+    #[test]
+    fn technical_error_messages_are_sanitized() {
+        let unavailable = PortError::unavailable(
+            "pricing.database_unavailable",
+            "postgres://secret@host:5432 failed: relation pricing does not exist",
+        );
+        let invariant = PortError::invariant_violation(
+            "pricing.core_error",
+            "internal invariant payload with implementation details",
+        );
+
+        assert_eq!(unavailable.message, PUBLIC_UNAVAILABLE_MESSAGE);
+        assert_eq!(invariant.message, PUBLIC_INVARIANT_MESSAGE);
+        assert!(!unavailable.message.contains("postgres"));
+        assert!(!invariant.message.contains("implementation details"));
+    }
+
+    #[test]
+    fn serde_boundaries_reapply_technical_message_sanitization() {
+        let mutated = PortError {
+            kind: PortErrorKind::Unavailable,
+            code: "payment.provider_unavailable".to_string(),
+            message: "sdk response with secret provider payload".to_string(),
+            retryable: true,
+        };
+        let encoded = serde_json::to_string(&mutated).expect("serialize port error");
+        assert!(!encoded.contains("secret provider payload"));
+        assert!(encoded.contains(PUBLIC_UNAVAILABLE_MESSAGE));
+
+        let decoded: PortError = serde_json::from_value(serde_json::json!({
+            "kind": "invariant_violation",
+            "code": "order.internal_invariant",
+            "message": "database row and internal stack details",
+            "retryable": false
+        }))
+        .expect("deserialize port error");
+        assert_eq!(decoded.message, PUBLIC_INVARIANT_MESSAGE);
+    }
+
+    #[test]
+    fn domain_error_messages_remain_actionable() {
+        let validation = PortError::validation("pricing.currency_invalid", "currency is invalid");
+        let conflict = PortError::conflict("pricing.price_conflict", "price already exists");
+
+        assert_eq!(validation.message, "currency is invalid");
+        assert_eq!(conflict.message, "price already exists");
     }
 }

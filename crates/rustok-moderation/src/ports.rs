@@ -2,11 +2,12 @@ use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use uuid::Uuid;
 
+pub use rustok_moderation_api::ModerationSubjectCommandPort;
+
 use crate::domain::{
-    ApplyModerationDecisionCommand, AssignModerationCaseCommand, DecideModerationCaseCommand,
-    ModerationCaseRecord, ModerationDecisionApplication, ModerationDecisionRecord,
-    ModerationQueueFilter, ModerationReportRecord, OpenModerationCaseCommand,
-    SubmitModerationReportCommand,
+    AssignModerationCaseCommand, DecideModerationCaseCommand, ModerationCaseRecord,
+    ModerationDecisionRecord, ModerationQueueFilter, ModerationReportRecord,
+    OpenModerationCaseCommand, SubmitModerationReportCommand,
 };
 use crate::error::ModerationError;
 use crate::service::{ModerationService, parse_tenant_id};
@@ -63,19 +64,6 @@ pub trait ModerationReadPort: Send + Sync {
         context: PortContext,
         filter: ModerationQueueFilter,
     ) -> Result<Vec<ModerationCaseRecord>, PortError>;
-}
-
-/// Implemented by each domain owner that accepts moderation decisions.
-///
-/// The moderation owner never updates forum, blog, comment, review, group,
-/// listing, seller, media, message, or profile tables directly.
-#[async_trait]
-pub trait ModerationSubjectCommandPort: Send + Sync {
-    async fn apply_moderation_decision(
-        &self,
-        context: PortContext,
-        command: ApplyModerationDecisionCommand,
-    ) -> Result<ModerationDecisionApplication, PortError>;
 }
 
 #[async_trait]

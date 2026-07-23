@@ -7,6 +7,8 @@ pub use keys::*;
 pub use model::*;
 #[cfg(feature = "server")]
 pub use provider::*;
+#[cfg(feature = "server")]
+pub use rustok_api::{PortContext, PortError};
 
 #[cfg(test)]
 mod tests {

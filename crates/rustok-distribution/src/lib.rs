@@ -18,6 +18,7 @@ use rustok_modules::ModulesModule;
 use rustok_outbox::OutboxModule;
 use rustok_rbac::RbacModule;
 use rustok_search::SearchModule;
+use rustok_social_graph::SocialGraphModule;
 use rustok_tenant::TenantModule;
 use serde::Serialize;
 
@@ -69,7 +70,8 @@ pub fn build_registry() -> ModuleRegistry {
         .register(OutboxModule)
         .register(EventsModule)
         .register(TenantModule)
-        .register(RbacModule);
+        .register(RbacModule)
+        .register(SocialGraphModule);
 
     #[cfg(feature = "mod-cart")]
     {
@@ -263,5 +265,11 @@ mod tests {
                 .all(|character| character.is_ascii_hexdigit())
         );
         assert!(first.modules.iter().any(|module| module.slug == "tenant"));
+        assert!(
+            first
+                .modules
+                .iter()
+                .any(|module| module.slug == "social_graph")
+        );
     }
 }

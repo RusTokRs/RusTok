@@ -1,16 +1,18 @@
 use crate::editor::{
     AdminEditorRuntime, AuditPanel, AuthoringToolbar, BindingPanel, CapabilityPolicyPanel,
-    ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel, DynamicRuntimePanel,
-    IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel, PropertiesAssetsPanel,
-    PublishScenarioSelectorPanel, ResponsiveStylePanel, RuntimePublishGatePanel,
-    RuntimeScenarioMatrixPanel, RuntimeScenarioPanel, RuntimeScenarioRegressionPanel,
-    ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel, SsrInspectorPanel,
-    SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel, SsrLocalePolicyPanel,
-    SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
+    ConsumerPropertiesPanel, ContextContractToolsPanel, ContextDependencyPanel, ContextSchemaPanel,
+    DynamicRuntimePanel, IsolatedAuthoringCanvas, PageManagerPanel, PaletteLayersPanel,
+    PropertiesAssetsPanel, PublishScenarioSelectorPanel, ResponsiveStylePanel,
+    RuntimePublishGatePanel, RuntimeScenarioMatrixPanel, RuntimeScenarioPanel,
+    RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel, SsrAssetPanel,
+    SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel, SsrLocalePanel,
+    SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel, TraitPanel,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
-use crate::{AdminCanvasController, PageBuilderAdminFacade};
+use crate::{
+    AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
+};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,
@@ -57,6 +59,11 @@ pub fn AdminCanvas(
     let evaluated_capabilities = editor_capability_evaluation
         .as_ref()
         .map(|evaluation| evaluation.effective);
+    let consumer_properties = facade
+        .as_ref()
+        .and_then(|facade| facade.consumer_properties())
+        .or_else(|| use_context::<Arc<ConsumerPropertyEditorRuntime>>());
+    let consumer_property_assembly = contribution_assembly.clone();
     let runtime = AdminEditorRuntime::new(
         controller,
         facade,
@@ -169,6 +176,10 @@ pub fn AdminCanvas(
                 <IsolatedAuthoringCanvas runtime=canvas_runtime />
                 <div class="space-y-3 overflow-auto">
                     <CapabilityPolicyPanel runtime=capability_runtime />
+                    <ConsumerPropertiesPanel
+                        runtime=consumer_properties
+                        contribution_assembly=consumer_property_assembly
+                    />
                     <SsrLocalePanel runtime=ssr_locale_runtime />
                     <SsrLocalePolicyPanel runtime=ssr_locale_policy_runtime />
                     <SsrLocaleCoveragePanel runtime=ssr_locale_coverage_runtime />

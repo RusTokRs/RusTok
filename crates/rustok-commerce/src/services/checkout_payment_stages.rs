@@ -1,12 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
-use rustok_order::OrderResponse;
+use rustok_order::{OrderResponse, OrderStatusKind};
 use rustok_payment::{
     AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
     CheckoutPaymentExecutionPort, CheckoutPaymentIdentity, InProcessCheckoutPaymentExecutionPort,
-    PaymentCollectionResponse, PaymentProviderRegistry, PrepareCheckoutPaymentCollectionRequest,
-    ReadCheckoutPaymentCollectionRequest, in_process_checkout_payment_execution_port,
+    PaymentCollectionResponse, PaymentCollectionStatusKind, PaymentProviderRegistry,
+    PrepareCheckoutPaymentCollectionRequest, ReadCheckoutPaymentCollectionRequest,
+    in_process_checkout_payment_execution_port,
 };
 use serde_json::Value;
 use thiserror::Error;
@@ -161,7 +162,7 @@ impl CheckoutPaymentStageExecutor {
                         tenant_id,
                         &payment_identity(&operation, &order, &plan),
                     )?;
-                    if !matches!(authorized.status.as_str(), "authorized" | "captured") {
+                    if !authorized.status_kind().is_authorized_or_captured() {
                         return Err(CheckoutPaymentStageError::Conflict(format!(
                             "payment collection {} is `{}` after authorization",
                             authorized.id, authorized.status
@@ -212,7 +213,7 @@ impl CheckoutPaymentStageExecutor {
                         tenant_id,
                         &payment_identity(&operation, &order, &plan),
                     )?;
-                    if captured.status != "captured"
+                    if !captured.status_kind().is_captured()
                         || captured.captured_amount != order.total_amount
                     {
                         return Err(CheckoutPaymentStageError::Conflict(format!(
@@ -296,7 +297,9 @@ impl CheckoutPaymentStageExecutor {
             .await
             .map_err(|error| boundary_error("read", error))?;
         validate_collection(&collection, tenant_id, &identity)?;
-        if collection.status != "captured" || collection.captured_amount != order.total_amount {
+        if !collection.status_kind().is_captured()
+            || collection.captured_amount != order.total_amount
+        {
             return Err(CheckoutPaymentStageError::Conflict(format!(
                 "checkout operation {} is payment_captured but collection {} is `{}`",
                 operation.id, collection.id, collection.status
@@ -373,8 +376,11 @@ fn validate_order_plan(
         )));
     }
     if !matches!(
-        order.status.as_str(),
-        "confirmed" | "paid" | "shipped" | "delivered"
+        order.status_kind(),
+        OrderStatusKind::Confirmed
+            | OrderStatusKind::Paid
+            | OrderStatusKind::Shipped
+            | OrderStatusKind::Delivered
     ) {
         return Err(CheckoutPaymentStageError::Conflict(format!(
             "order {} is `{}` before payment stages",

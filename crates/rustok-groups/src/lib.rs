@@ -5,9 +5,14 @@ use rustok_notifications_api::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
 pub mod application_entities;
-pub mod applications;
+#[path = "applications.rs"]
+mod applications_legacy_module;
 pub mod domain;
 pub mod dto;
+mod effective_applications;
+mod effective_invitations;
+mod effective_membership_guard;
+mod effective_service;
 pub mod entities;
 pub mod error;
 pub mod governance;
@@ -32,25 +37,81 @@ pub mod graphql_localization;
 pub mod graphql_policy_history;
 pub mod group_event_entities;
 pub mod invitation_entities;
-pub mod invitations;
+#[path = "invitations.rs"]
+mod invitations_legacy;
 pub mod localization;
+pub mod membership_enforcement;
+pub mod membership_enforcement_entities;
 pub mod migrations;
 mod notification_source;
 pub mod policy_history;
 pub mod ports;
-pub mod service;
-pub mod targeted_invitations;
+// Transitional status-only core implementation delegate. It is crate-private so external
+// consumers and module-owned transports cannot bypass the effective membership facade.
+mod service;
+#[path = "targeted_invitations.rs"]
+mod targeted_invitations_legacy;
+
+/// Compatibility module preserving the public application types and paths while sealing the
+/// status-only owner implementation behind the effective-membership facade.
+pub mod applications {
+    pub use crate::applications_legacy_module::{
+        BulkReviewGroupMembershipApplicationItemResult,
+        BulkReviewGroupMembershipApplicationsRequest,
+        BulkReviewGroupMembershipApplicationsResult, CancelGroupMembershipApplicationRequest,
+        GROUP_APPLICATION_POLICY_CHANGED_CODE, GroupApplicationBulkReviewCommandPort,
+        GroupApplicationCasCommandPort, GroupApplicationCommandPort,
+        GroupApplicationLifecycleCommandPort, GroupApplicationLifecycleReadPort,
+        GroupApplicationLifecycleResult, GroupApplicationPolicy,
+        GroupApplicationPolicyLocaleCatalog, GroupApplicationPolicyManagementReadPort,
+        GroupApplicationPolicyManagementView, GroupApplicationPolicyPrecondition,
+        GroupApplicationQuestion, GroupApplicationReadPort, GroupApplicationReviewCommandPort,
+        GroupApplicationReviewDecision, GroupApplicationRule, GroupApplicationStatus,
+        GroupMembershipApplication, GroupMembershipApplicationConnection,
+        ListGroupApplicationPolicyLocalesRequest, ListGroupMembershipApplicationsRequest,
+        ReadGroupApplicationPolicyForManagementRequest, ReadGroupApplicationPolicyRequest,
+        ReadMyGroupMembershipApplicationRequest, ReopenGroupMembershipApplicationRequest,
+        ReviewGroupMembershipApplicationRequest, ReviewGroupMembershipApplicationResult,
+        SubmitGroupMembershipApplicationIfCurrentRequest,
+        SubmitGroupMembershipApplicationRequest, SubmitGroupMembershipApplicationResult,
+        UpsertGroupApplicationPolicyIfCurrentRequest, UpsertGroupApplicationPolicyRequest,
+        UpsertGroupApplicationPolicyResult,
+    };
+    pub use crate::effective_applications::GroupApplicationService;
+}
+
+/// Compatibility module preserving invitation contracts while routing the service type through
+/// effective group-membership authorization.
+pub mod invitations {
+    pub use crate::effective_invitations::GroupInvitationService;
+    pub use crate::invitations_legacy::{
+        AcceptGroupInvitationRequest, AcceptGroupInvitationResult, CreateGroupInvitationRequest,
+        CreateGroupInvitationResult, GroupInvitation, GroupInvitationCommandPort,
+        GroupInvitationConnection, GroupInvitationReadPort, GroupInvitationStatus,
+        ListGroupInvitationsRequest, RevokeGroupInvitationRequest, RevokeGroupInvitationResult,
+    };
+}
+
+/// Compatibility module preserving targeted-invitation contracts while sealing the legacy
+/// implementation delegate.
+pub mod targeted_invitations {
+    pub use crate::effective_invitations::GroupTargetedInvitationService;
+    pub use crate::targeted_invitations_legacy::{
+        AcceptTargetedGroupInvitationRequest, GroupTargetedInvitationCommandPort,
+    };
+}
 
 pub use applications::*;
 pub use domain::*;
 pub use dto::*;
+pub use effective_service::GroupsService;
 pub use error::{GroupsError, GroupsResult};
 pub use governance::*;
 pub use invitations::*;
 pub use localization::GroupLocalizationService;
+pub use membership_enforcement::GroupMembershipEnforcementService;
 pub use policy_history::*;
 pub use ports::*;
-pub use service::GroupsService;
 pub use targeted_invitations::*;
 
 /// Social group identity, membership, privacy, and modular feature owner.
@@ -120,7 +181,7 @@ mod tests {
         assert_eq!(module.slug(), "groups");
         assert_eq!(module.name(), "Groups");
         assert!(module.dependencies().is_empty());
-        assert_eq!(module.migrations().len(), 7);
+        assert_eq!(module.migrations().len(), 8);
         assert_eq!(module.permissions().len(), 7);
     }
 
@@ -130,5 +191,10 @@ mod tests {
         assert_eq!(descriptor.contract_version, "groups.access.v1");
         assert_eq!(descriptor.private_content_fallback, "deny");
         assert!(!descriptor.implicit_transport_fallback);
+        assert!(
+            descriptor
+                .ports
+                .contains(&"GroupMembershipEnforcementReadPort")
+        );
     }
 }

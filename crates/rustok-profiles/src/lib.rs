@@ -9,6 +9,7 @@ pub mod error;
 pub mod graphql;
 pub mod loader;
 pub mod migrations;
+pub mod privacy;
 pub mod reader;
 pub mod services;
 
@@ -16,6 +17,9 @@ pub use dto::{ProfileStatus, ProfileSummary, ProfileVisibility, UpsertProfileInp
 pub use entities::ProfileRecord;
 pub use error::{ProfileError, ProfileResult};
 pub use loader::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
+pub use privacy::{
+    ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest, ProfilePrivacyRuntime,
+};
 pub use reader::ProfilesReader;
 pub use services::{ProfileBackfillResult, ProfileService};
 

@@ -1,0 +1,79 @@
+{
+  "schema_version": 3,
+  "slice": "NOTIFY-03D",
+  "promoted_by_slices": ["NOTIFY-03E"],
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "receipt_migration": "crates/rustok-notifications/src/migrations/m20260723_000013_add_outbox_intake_receipts.rs",
+  "rejection_migration": "crates/rustok-notifications/src/migrations/m20260723_000014_add_outbox_intake_rejections.rs",
+  "owner_driver": "crates/rustok-notifications/src/outbox_intake.rs",
+  "server_worker": "apps/server/src/services/notification_outbox_intake_worker.rs",
+  "bootstrap": "apps/server/src/services/server_bootstrap.rs",
+  "forum_provider": "crates/rustok-forum/src/notification_source.rs",
+  "intake": {
+    "source_table": "sys_events",
+    "mutates_general_relay_state": false,
+    "requires_relay_dispatched_status": false,
+    "reads_producer_private_tables": false,
+    "calls_producer_services": false,
+    "owner_imports_event_or_outbox_crates": false,
+    "decoder_injected_by_executable_host": true,
+    "receipt_table": "notification_outbox_intake_receipts",
+    "rejection_table": "notification_outbox_intake_rejections",
+    "receipt_identity": "outbox_event_id",
+    "rejection_identity": "outbox_event_id",
+    "rejection_has_cross_module_foreign_key": false,
+    "source_inbox_and_receipt_same_transaction": true,
+    "semantic_replay_validation": true,
+    "permanent_failure_quarantined": true,
+    "retryable_failure_has_no_terminal_record": true,
+    "accepted_and_rejected_mutually_exclusive": true,
+    "postgres_terminal_outcome_advisory_lock": true
+  },
+  "supported_envelopes": {
+    "forum.topic.created": {
+      "family": "root",
+      "source_slug": "forum",
+      "source_event_identity": "topic_id",
+      "source_revision": 1
+    },
+    "forum.mention.user_added": {
+      "family": "forum_mention_contract",
+      "source_slug": "forum",
+      "source_event_identity": "envelope_id",
+      "source_revision": "source_revision_id"
+    }
+  },
+  "selection": {
+    "default_batch_size": 32,
+    "maximum_batch_size": 64,
+    "stable_order": ["created_at", "id"],
+    "anti_joins_receipts": true,
+    "anti_joins_rejections": true,
+    "committed_pending_dispatched_failed_are_visible": true,
+    "permanent_invalid_does_not_block_later_events": true
+  },
+  "runtime": {
+    "environment_variable": "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED",
+    "default_enabled": false,
+    "invalid_value_enabled": false,
+    "requires_background_worker_host": true,
+    "shared_stop_handle": true,
+    "checks_between_envelopes": true
+  },
+  "tests": [
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "apps/server/src/services/notification_outbox_intake_worker.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "tenant capability gate before materialization and delivery",
+    "administrative replay and purge commands for quarantine",
+    "PostgreSQL concurrent intake evidence",
+    "worker health and intake lag metrics",
+    "additional producer event families"
+  ]
+}

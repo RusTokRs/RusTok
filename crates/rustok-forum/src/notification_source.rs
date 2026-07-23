@@ -91,17 +91,44 @@ impl ForumNotificationSourceProvider {
         if event.source() != &forum_source_slug() || !is_supported_event_type(event.event_type()) {
             return Err(NotificationProviderError::InvalidEvent);
         }
-        let sequence_no = i64::try_from(event.source_revision())
+        let requested_revision = i64::try_from(event.source_revision())
             .map_err(|_| NotificationProviderError::InvalidEvent)?;
-        forum_domain_event::Entity::find()
+
+        let exact = forum_domain_event::Entity::find()
             .filter(forum_domain_event::Column::TenantId.eq(event.tenant_id()))
             .filter(forum_domain_event::Column::EventId.eq(event.event_id()))
             .filter(forum_domain_event::Column::EventType.eq(event.event_type().as_str()))
-            .filter(forum_domain_event::Column::SequenceNo.eq(sequence_no))
             .one(&self.db)
             .await
-            .map_err(retryable_database_error)?
-            .ok_or(NotificationProviderError::InvalidEvent)
+            .map_err(retryable_database_error)?;
+        let persisted = match exact {
+            Some(persisted) => persisted,
+            None if event.event_type() == &topic_created_type() => {
+                forum_domain_event::Entity::find()
+                    .filter(forum_domain_event::Column::TenantId.eq(event.tenant_id()))
+                    .filter(forum_domain_event::Column::AggregateType.eq("topic"))
+                    .filter(forum_domain_event::Column::AggregateId.eq(event.event_id()))
+                    .filter(forum_domain_event::Column::EventType.eq(TOPIC_CREATED_TYPE))
+                    .order_by_asc(forum_domain_event::Column::SequenceNo)
+                    .one(&self.db)
+                    .await
+                    .map_err(retryable_database_error)?
+                    .ok_or(NotificationProviderError::InvalidEvent)?
+            }
+            None => return Err(NotificationProviderError::InvalidEvent),
+        };
+
+        if requested_revision != persisted.sequence_no {
+            let semantic_revision = match persisted.event_type.as_str() {
+                TOPIC_CREATED_TYPE if persisted.schema_version == 1 => 1,
+                USER_MENTION_ADDED_TYPE => self.parse_user_mention(&persisted)?.source_revision_id,
+                _ => return Err(NotificationProviderError::InvalidEvent),
+            };
+            if requested_revision != semantic_revision {
+                return Err(NotificationProviderError::InvalidEvent);
+            }
+        }
+        Ok(persisted)
     }
 
     async fn load_open_topic(

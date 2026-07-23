@@ -1,62 +1,136 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
-const json = (path) => JSON.parse(read(path));
-const fail = (message) => { console.error(`[verify-index-fba] ${message}`); process.exit(1); };
-const sameSet = (actual, expected) => Array.isArray(actual) && Array.isArray(expected) && actual.length === expected.length && expected.every((item) => actual.includes(item));
+const exists = (path) => existsSync(new URL(path, root));
+const fail = (message) => {
+  console.error(`[verify-index-fba] ${message}`);
+  process.exit(1);
+};
 
-const registryPath = 'crates/rustok-index/contracts/index-fba-registry.json';
-const evidencePath = 'crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json';
-const runtimeSmokePath = 'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json';
-const registry = json(registryPath);
-const evidence = json(evidencePath);
-const runtimeSmoke = json(runtimeSmokePath);
+const lib = read('crates/rustok-index/src/lib.rs');
+const domain = read('crates/rustok-index/src/domain/mod.rs');
+const cargo = read('crates/rustok-index/Cargo.toml');
 const manifest = read('crates/rustok-index/rustok-module.toml');
 const plan = read('crates/rustok-index/docs/implementation-plan.md');
-const central = read('docs/modules/registry.md');
-const unified = read('docs/research/fluid-backend-architecture-unified-plan.md');
-const lib = read('crates/rustok-index/src/lib.rs');
-const ports = read('crates/rustok-index/src/ports.rs');
+const benchmarkDoc = read('crates/rustok-index/docs/storage-benchmark.md');
+const benchmarkCargo = read('ops/benches/Cargo.toml');
+const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
+const benchmarkSql = [
+  'ops/benches/src/index_storage/sql/mod.rs',
+  'ops/benches/src/index_storage/sql/source.rs',
+  'ops/benches/src/index_storage/sql/common.rs',
+  'ops/benches/src/index_storage/sql/jsonb.rs',
+  'ops/benches/src/index_storage/sql/eav.rs',
+  'ops/benches/src/index_storage/sql/hot.rs',
+].map(read).join('\n');
+const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
+const serverDispatcher = read('apps/server/src/services/module_event_dispatcher.rs');
 
-if (registry.schema_version !== 1) fail('registry schema_version must be 1');
-if (registry.module !== 'index' || registry.role !== 'provider' || registry.status !== 'boundary_ready') fail('registry identity/status drift');
-if (registry.contract_version !== 'index.read_model.v1') fail('contract version drift');
-if (registry.deployment_topology?.current_class !== 'modular_monolith' || registry.deployment_topology?.extraction_class !== 'search_ingestion_worker' || registry.deployment_topology?.remote_status !== 'deferred_until_replay_evidence') fail('index/search extraction topology drift');
-for (const [name, op] of [['IndexReadModelPort', 'read_index_document'], ['IndexReadModelPort', 'list_index_documents'], ['IndexRebuildPort', 'request_rebuild']]) {
-  const port = registry.ports.find((entry) => entry.name === name);
-  if (!port || !port.operations.includes(op)) fail(`${name} lacks ${op}`);
-  if (port.context !== 'rustok_api::PortContext' || port.error !== 'rustok_api::PortError') fail(`${name} context/error drift`);
+for (const obsolete of [
+  'crates/rustok-index/src/ports.rs',
+  'crates/rustok-index/src/models.rs',
+  'crates/rustok-index/src/error.rs',
+  'crates/rustok-index/src/traits.rs',
+  'crates/rustok-index/src/content',
+  'crates/rustok-index/src/product',
+  'crates/rustok-index/src/flex',
+  'crates/rustok-index/src/search',
+  'crates/rustok-index/src/migrations',
+  'crates/rustok-index/contracts/index-fba-registry.json',
+  'crates/rustok-index/contracts/evidence/index-contract-test-static-matrix.json',
+  'crates/rustok-index/contracts/evidence/index-runtime-fallback-smoke.json',
+]) {
+  if (exists(obsolete)) fail(`obsolete rewrite artifact still exists: ${obsolete}`);
 }
-const readPort = registry.ports.find((entry) => entry.name === 'IndexReadModelPort');
-const rebuildPort = registry.ports.find((entry) => entry.name === 'IndexRebuildPort');
-if (readPort.deadline_required !== true || readPort.idempotency_required !== false || readPort.semantics !== 'read_only') fail('read model port must be read-only with deadline semantics');
-if (rebuildPort.deadline_required !== true || rebuildPort.idempotency_required !== true || rebuildPort.semantics !== 'operator_write') fail('rebuild port must require deadline + idempotency semantics');
-if (!manifest.includes('[fba.provider]') || !manifest.includes('registry = "contracts/index-fba-registry.json"') || !manifest.includes('contract_version = "index.read_model.v1"')) fail('manifest metadata drift');
-if (!lib.includes('pub mod ports;') || !lib.includes('pub use ports::*;')) fail('lib.rs must export ports');
-for (const marker of ['trait IndexReadModelPort', 'trait IndexRebuildPort', 'PortCallPolicy::read()', 'PortCallPolicy::write()', 'IndexReadRequest', 'IndexListRequest', 'IndexRebuildRequest', 'IndexRebuildOutcome', 'IndexDocument', 'PortErrorKind::Timeout', 'PortContext', 'PortError']) {
-  if (!ports.includes(marker) && !registryPath.includes(marker) && !evidencePath.includes(marker)) fail(`source/metadata missing ${marker}`);
+
+for (const marker of ['pub mod domain;', 'pub mod application;', 'pub use domain::*;', 'pub use application::*;']) {
+  if (!lib.includes(marker)) fail(`lib.rs missing ${marker}`);
 }
-if (!ports.includes('Serialize, Deserialize')) fail('index FBA DTOs must be serializable');
-if (!plan.includes('- FBA status: `boundary_ready`') || !plan.includes(registryPath) || !plan.includes('IndexReadModelPort') || !plan.includes('index-contract-test-static-matrix.json') || !plan.includes('index-runtime-fallback-smoke.json') || !plan.includes('Deployment relationship with Search') || !plan.includes('replayable event or gRPC stream')) fail('local plan FBA evidence drift');
-if (!central.includes('| `index` | admin | `in_progress` | `boundary_ready`') || !central.includes(registryPath) || !central.includes('index-runtime-fallback-smoke.json')) fail('central readiness board drift');
-if (!unified.includes('`index` added as a provider track') || !unified.includes(registryPath)) fail('unified FBA plan drift');
-if (evidence.schema_version !== 1 || evidence.module !== 'index' || evidence.status !== 'static_matrix_locked') fail('evidence identity drift');
-if (evidence.generated_from !== registryPath || evidence.runner !== 'scripts/verify/verify-index-fba.mjs' || evidence.contract_version !== registry.contract_version) fail('evidence source/runner/version drift');
-if (!sameSet(evidence.profiles, registry.contract_tests.profiles)) fail('evidence profile drift');
-for (const registryCase of registry.contract_tests.cases) {
-  const evidenceCase = evidence.cases.find((entry) => entry.operation === registryCase.operation);
-  if (!evidenceCase || evidenceCase.execution_status !== 'static_locked_runtime_pending' || !sameSet(evidenceCase.assertions, registryCase.assertions)) fail(`${registryCase.operation} evidence case drift`);
+for (const marker of ['IndexSchema', 'IndexRecord', 'IndexMutation', 'IndexQuery', 'FilterExpr']) {
+  if (!domain.includes(marker)) fail(`domain surface missing ${marker}`);
 }
-if (!sameSet(evidence.fallback_smoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('fallback profile drift');
-if (runtimeSmoke.schema_version !== 1 || runtimeSmoke.module !== 'index' || !['no_compile_executable_runtime_fallback_smoke', 'no_compile_source_locked_runtime_adapter_smoke'].includes(runtimeSmoke.status)) fail('runtime smoke identity drift');
-if (runtimeSmoke.generated_from !== registryPath || runtimeSmoke.runner !== 'scripts/verify/verify-index-runtime-fallback-smoke.mjs' || runtimeSmoke.contract_version !== registry.contract_version) fail('runtime smoke source/runner/version drift');
-if (!sameSet(runtimeSmoke.profiles, registry.contract_tests.fallback_smoke.profiles)) fail('runtime smoke profile drift');
-for (const profile of registry.contract_tests.fallback_smoke.profiles) {
-  if (!runtimeSmoke.smoke_cases.some((entry) => entry.profile === profile && entry.execution_status === 'no_compile_executable_locked')) fail(`runtime smoke missing executable no-compile profile ${profile}`);
+for (const dependency of [
+  'rustok-api',
+  'rustok-events',
+  'rustok-product',
+  'rustok-content',
+  'rustok-telemetry',
+]) {
+  if (cargo.includes(dependency)) fail(`Index core must not depend on ${dependency}`);
 }
-if (registry.in_process_provider_impl?.read_adapter !== 'InProcessIndexReadModelAdapter' || registry.in_process_provider_impl?.rebuild_adapter !== 'RebuildDisabledIndexAdapter') fail('in-process provider impl metadata drift');
-for (const marker of ['validate_index_read_request', 'validate_index_list_request', 'validate_index_rebuild_request', 'ensure_index_document_tenant_scope', 'index.rebuild_disabled', 'impl IndexReadModelPort for InProcessIndexReadModelAdapter', 'impl IndexRebuildPort for RebuildDisabledIndexAdapter', 'parse_index_context_tenant_id']) {
-  if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
+for (const sourceModule of [
+  'pub mod content;',
+  'pub mod product;',
+  'pub mod flex;',
+  'pub mod search;',
+  'pub mod migrations;',
+  'pub mod traits;',
+  'pub mod error;',
+]) {
+  if (lib.includes(sourceModule)) fail(`legacy module export returned: ${sourceModule}`);
 }
-console.log('[verify-index-fba] Index FBA provider metadata, port semantics and static evidence and source-locked runtime fallback smoke are consistent');
+for (const runtimeMarker of [
+  'IndexerRuntimeConfig',
+  'content_indexer',
+  'product_indexer',
+  'flex_indexer',
+  'record_index_reindex_runtime_config',
+]) {
+  if (serverDispatcher.includes(runtimeMarker)) {
+    fail(`server dispatcher still contains legacy Index marker: ${runtimeMarker}`);
+  }
+}
+
+if (manifest.includes('[fba.provider]')) fail('legacy FBA provider metadata must not return');
+if (!plan.includes('- FBA status: `in_progress`')) fail('plan must keep FBA status in_progress during rewrite');
+if (!plan.includes('Backward compatibility with the rejected implementation is not a goal')) {
+  fail('plan must preserve destructive rewrite policy');
+}
+
+for (const marker of [
+  '- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.',
+  '- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.',
+  '- [x] Prototype normalized typed field-value rows.',
+  '- [x] Prototype a specialized hot typed projection as the comparison baseline.',
+  '- [x] Verify source/candidate entity and link cardinality before timing.',
+  '- [x] Verify identical workload result digests across all candidates.',
+  '- [ ] Run and archive 100k Product-locale row evidence.',
+  '- [ ] Record the selected model and rejected alternatives in an ADR.',
+]) {
+  if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
+}
+for (const marker of ['DatasetScale', 'Rows100k', 'Rows1m', 'LocaleKey::new', 'total_link_rows']) {
+  if (!benchmarkConfig.includes(marker)) fail(`benchmark config missing ${marker}`);
+}
+for (const marker of [
+  'Prototype::Jsonb',
+  'Prototype::TypedEav',
+  'Prototype::HotProjection',
+  'idx_bench_jsonb',
+  'idx_bench_eav',
+  'idx_bench_hot',
+  'two_hop_channel_filter',
+  'keyset_page',
+  'CREATE TABLE {schema}.link',
+]) {
+  if (!benchmarkSql.includes(marker)) fail(`benchmark SQL missing ${marker}`);
+}
+for (const marker of [
+  'EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)',
+  'pg_total_relation_size',
+  'validate_cardinality',
+  'validate_semantic_parity',
+  'result_digest',
+  'write_report',
+]) {
+  if (!benchmarkRunner.includes(marker)) fail(`benchmark runner missing ${marker}`);
+}
+if (!benchmarkCargo.includes('name = "index-storage-benchmark"')) {
+  fail('benchmark executable is not registered');
+}
+if (!benchmarkDoc.includes('Production migrations: intentionally absent')) {
+  fail('benchmark documentation must preserve the production-migration boundary');
+}
+
+console.log('[verify-index-fba] Index core boundary and M2 benchmark separation are consistent');

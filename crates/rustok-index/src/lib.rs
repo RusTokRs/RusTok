@@ -1,27 +1,18 @@
-//! RusToK Index - Cross-module read model
+//! RusToK Index - cross-module relational Index Engine.
 //!
-//! Denormalized indexes for fast reads, linking, and cross-module filtering.
+//! The active implementation is the database-independent generic engine core
+//! under [`domain`] and [`application`]. Storage, ingestion, rebuild, and query
+//! infrastructure are introduced only through the milestones in the live plan.
 
 use async_trait::async_trait;
-use rustok_core::{
-    MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry, ModuleKind,
-    ModuleRuntimeExtensions, RusToKModule,
-};
+use rustok_core::{MigrationSource, ModuleKind, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
-pub mod content;
-pub mod error;
-pub mod flex;
-pub mod migrations;
-pub mod models;
-pub mod ports;
-pub mod product;
-pub mod search;
-pub mod traits;
+pub mod application;
+pub mod domain;
 
-pub use error::{IndexError, IndexResult};
-pub use ports::*;
-pub use traits::{Indexer, IndexerContext, IndexerRuntimeConfig, LocaleIndexer};
+pub use application::*;
+pub use domain::*;
 
 pub struct IndexModule;
 
@@ -36,7 +27,7 @@ impl RusToKModule for IndexModule {
     }
 
     fn description(&self) -> &'static str {
-        "Cross-module index and read-model substrate."
+        "Cross-module relational index and query engine."
     }
 
     fn version(&self) -> &'static str {
@@ -46,43 +37,11 @@ impl RusToKModule for IndexModule {
     fn kind(&self) -> ModuleKind {
         ModuleKind::Core
     }
-
-    fn register_event_listeners(
-        &self,
-        registry: &mut ModuleEventListenerRegistry,
-        ctx: &ModuleEventListenerContext<'_>,
-    ) {
-        let runtime = ctx
-            .extensions
-            .get::<IndexerRuntimeConfig>()
-            .cloned()
-            .expect("index module requires IndexerRuntimeConfig in ModuleRuntimeExtensions");
-        registry.register(content::ContentIndexer::with_runtime(
-            ctx.db.clone(),
-            runtime.clone(),
-        ));
-        registry.register(flex::FlexIndexer::with_runtime(
-            ctx.db.clone(),
-            runtime.clone(),
-        ));
-        registry.register(product::ProductIndexer::with_runtime(
-            ctx.db.clone(),
-            runtime,
-        ));
-    }
-
-    fn register_runtime_extensions(
-        &self,
-        extensions: &mut ModuleRuntimeExtensions,
-    ) -> rustok_core::Result<()> {
-        extensions.get_or_insert_with(IndexerRuntimeConfig::load);
-        Ok(())
-    }
 }
 
 impl MigrationSource for IndexModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
-        migrations::migrations()
+        Vec::new()
     }
 }
 

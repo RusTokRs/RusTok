@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "module": "groups",
+  "status": "in_progress",
+  "terminology": {
+    "group_membership": "social participation in one group with group-local role and lifecycle",
+    "not_commercial_membership": true,
+    "paid_plan_subscription_entitlement_owner": "outside rustok-groups"
+  },
+  "public_service": {
+    "type": "rustok_groups::GroupsService",
+    "implementation_module_visibility": "crate_private",
+    "legacy_delegate_visibility": "crate_private",
+    "module_owned_graphql_native_consumers_use_crate_root": true,
+    "external_legacy_delegate_bypass": "sealed"
+  },
+  "converted_source_paths": {
+    "group_access_decision": "effective_membership_resolver",
+    "closed_group_private_read_redaction": "effective_membership_resolver",
+    "secret_group_summary_non_disclosure": "effective_membership_resolver",
+    "membership_list_authorization": "effective_membership_resolver",
+    "enabled_feature_visibility": "effective_membership_resolver",
+    "join_and_rejoin": "effective_membership_resolver",
+    "feature_settings_authorization": "effective_membership_resolver"
+  },
+  "access_semantics": {
+    "public_read_during_suspension": "preserved",
+    "closed_private_read_during_suspension": "denied",
+    "secret_summary_during_suspension": "not_found",
+    "post_comment_invite_moderate_manage_transfer_during_suspension": "denied",
+    "join_during_active_suspension": "denied",
+    "join_for_legacy_banned_status": "denied",
+    "expired_or_revoked_enforcement": "falls_back_to_stored_group_membership_lifecycle",
+    "platform_groups_manage": "explicit_bypass"
+  },
+  "wire_compatibility": {
+    "group_access_decision_membership_status": "stored_lifecycle_status",
+    "effective_state_owner": "GroupMembershipEnforcementReadPort",
+    "denial_codes": [
+      "groups.access.membership_suspended",
+      "groups.access.membership_banned",
+      "groups.access.denied"
+    ]
+  },
+  "remaining_paths": [
+    "invitation_management_and_acceptance",
+    "membership_application_read_submit_reopen_review",
+    "localization_management_authorization",
+    "governance_authorization",
+    "provider_specific_acl_adapters",
+    "member_count_suspend_restore_transitions",
+    "direct_suspend_revoke_commands",
+    "moderation_subject_adapter"
+  ],
+  "evidence": {
+    "static_guard": "scripts/verify/verify-groups-effective-membership-access.mjs",
+    "cargo_check": null,
+    "unit_tests": null,
+    "postgresql_runtime": null,
+    "sqlite_runtime": null,
+    "graphql_native_parity": null,
+    "provider_acl_runtime": null
+  }
+}

@@ -68,7 +68,7 @@ if (contract.final_notification?.creates_delivery_attempts !== false) {
   failures.push("03B/07A must not enqueue channel delivery attempts");
 }
 if (contract.final_notification?.candidate_completion_same_transaction !== true) {
-  failures.push("notification insert and candidate completion must share a transaction");
+  failures.push("notification insert and candidate completion must share one transaction");
 }
 
 for (const marker of [
@@ -170,7 +170,7 @@ for (const marker of [
   "NotificationCandidateService",
   "NotificationRecipientPolicy",
   "NotificationCandidateProcessResult",
-  "module.migrations().len(), 3",
+  "module.migrations().len(), 5",
 ]) {
   requireText(library, marker, `notifications facade is missing ${marker}`);
 }

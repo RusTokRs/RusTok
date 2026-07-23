@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "slice": "NOTIFY-07B",
+  "promoted_by_slices": ["SOCIAL-01A/NOTIFY-07C", "NOTIFY-03C"],
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "profile_owner_port": {
+    "contract": "crates/rustok-profiles/src/privacy.rs",
+    "runtime": "ProfilePrivacyRuntime",
+    "implementation": "ProfileService",
+    "tenant_scoped": true,
+    "decisions": [
+      "allow",
+      "recipient_unavailable",
+      "restricted"
+    ]
+  },
+  "relation_owner_ports": {
+    "contract": "crates/rustok-notifications/src/recipient_policy.rs",
+    "concrete_owner_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
+    "block_runtime": "NotificationBlockReadRuntime",
+    "mute_runtime": "NotificationMuteReadRuntime",
+    "permissive_default_forbidden": true,
+    "missing_provider_is_retryable": true,
+    "concrete_social_graph_owner_deferred": false
+  },
+  "server_composition": {
+    "adapter": "apps/server/src/services/notification_recipient_policy.rs",
+    "composition_root": "apps/server/src/services/module_event_dispatcher.rs",
+    "runtime": "NotificationRecipientPolicyRuntime",
+    "evaluation_order": [
+      "profile_privacy",
+      "block_relation",
+      "mute_relation"
+    ],
+    "profile_restriction_suppresses": true,
+    "block_suppresses": true,
+    "mute_suppresses": true,
+    "actorless_events_skip_relation_checks": true,
+    "relation_ports_ready_requires_both": true,
+    "baseline_relation_ports_ready": true
+  },
+  "worker_gate": {
+    "runtime_delivered": true,
+    "worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
+    "enable_environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
+    "candidate_worker_default_enabled": false,
+    "requires_relation_ports_ready": true,
+    "missing_ports_must_not_allow_delivery": true,
+    "readiness_separate_from_enablement": true
+  },
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-recipient-policy-runtime.mjs",
+    "concrete_owner_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "default deployment enablement after worker health and lag metrics",
+    "privacy recheck on inbox open",
+    "privacy recheck before delayed delivery",
+    "PostgreSQL concurrency evidence"
+  ]
+}

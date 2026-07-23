@@ -4,6 +4,7 @@ use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
 pub mod checkout_execution;
+mod checkout_execution_typed;
 pub mod dto;
 pub mod entities;
 pub mod error;
@@ -11,12 +12,21 @@ pub mod migrations;
 pub mod ports;
 pub mod providers;
 pub mod services;
+pub mod status;
 
-pub use checkout_execution::*;
+pub use checkout_execution::{
+    CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
+    EnsureCheckoutFulfillmentsRequest, InProcessCheckoutFulfillmentExecutionPort,
+    ReadCheckoutFulfillmentsRequest,
+};
+pub use checkout_execution_typed::{
+    TypedCheckoutFulfillmentExecutionPort, in_process_checkout_fulfillment_execution_port,
+};
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
 pub use providers::*;
+pub use status::*;
 
 pub use error::{FulfillmentError, FulfillmentResult};
 pub use services::{

@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-fulfillment`
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-23
 
 ## Current state
 
@@ -16,12 +16,20 @@ seller_id`; legacy `seller_scope` is not accepted. Provider registry guards
 capability, health, unavailable mode, and degraded fallback before an adapter
 call, while `FulfillmentService` remains the lifecycle owner.
 
-Checkout fulfillment create/adopt/read now enters through
+Checkout fulfillment create/adopt/read enters through
 `CheckoutFulfillmentExecutionPort`. Commerce sends typed order-line commands
 derived from the immutable checkout plan and receives normalized fulfillment
 projections. Fulfillment owner uses `FulfillmentService::list_by_order` and
 `create_fulfillment`; mounted commerce checkout no longer queries the
 `fulfillments` table or constructs `FulfillmentService`.
+
+The root in-process checkout factory now mounts
+`TypedCheckoutFulfillmentExecutionPort`. Ensure and recovery reads accept
+`Pending`, `Shipped`, and `Delivered` owner states. `Cancelled` and unknown
+lifecycle values fail closed with a typed manual-reconciliation outcome instead
+of being adopted as a successful checkout fulfillment set. The underlying
+execution adapter remains the persistence/idempotency delegate, so transport
+contracts and request DTOs are unchanged.
 
 Stable fulfillment keys and metadata identity remain owner-local compatibility
 mechanisms. Duplicate keys fail closed. A typed durable checkout fulfillment
@@ -37,17 +45,37 @@ identity and database uniqueness migration remain open.
 - Additional workflow contract: `fulfillment.checkout_execution.v1` in
   `crates/rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json`.
 - Published checkout execution port: `CheckoutFulfillmentExecutionPort`.
+- Mounted in-process provider: `TypedCheckoutFulfillmentExecutionPort` over the
+  existing owner execution adapter.
 - Contract and provider evidence:
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-contract-test-static-matrix.json`,
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-static-matrix.json`,
   `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-runtime-smoke.json`,
   and `crates/rustok-fulfillment/contracts/evidence/fulfillment-provider-spi-live-adapter-evidence.json`.
 - `scripts/verify/verify-fulfillment-admin-boundary.mjs`,
-  `scripts/verify/verify-fulfillment-storefront-boundary.mjs`, and
-  `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs` lock the
-  owner-admin/storefront and checkout execution split.
+  `scripts/verify/verify-fulfillment-storefront-boundary.mjs`,
+  `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`, and
+  `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the
+  owner-admin/storefront, checkout execution, and typed lifecycle split.
 - No status promotion is claimed from source. Compile, upgraded database,
   contention, restart, mounted transport, and remote evidence remain missing.
+
+## Checkout execution source checklist
+
+- [x] Publish typed create/adopt/read commands through
+  `CheckoutFulfillmentExecutionPort`.
+- [x] Keep fulfillment persistence and metadata compatibility lookup inside the
+  owner module.
+- [x] Mount the root in-process factory through typed lifecycle validation.
+- [x] Accept pending, shipped, and delivered replay projections.
+- [x] Route cancelled and unknown checkout fulfillment lifecycle states to
+  manual reconciliation.
+- [x] Guard the mounted commerce path against direct construction of the legacy
+  in-process execution adapter.
+- [ ] Replace metadata identity with owner-owned typed persistence and a
+  concurrency-safe uniqueness constraint.
+- [ ] Execute compile, create/adopt/read, duplicate identity, lifecycle,
+  process-exit, restart, contention, and remote-profile evidence.
 
 ## Open results
 
@@ -56,7 +84,7 @@ identity and database uniqueness migration remain open.
    upgraded metadata scenarios through the mounted commerce stage.
    **Depends on:** compiled commerce/fulfillment crates and migrated databases.
    **Done when:** one immutable plan produces one exact fulfillment set and every
-   conflicting or duplicate identity fails closed.
+   conflicting, cancelled, unknown, or duplicate identity fails closed.
 
 2. **Replace metadata identity with typed persistence.** Add an owner-owned
    checkout fulfillment identity and uniqueness constraint without adding a
@@ -92,13 +120,16 @@ identity and database uniqueness migration remain open.
 - `npm run verify:fulfillment:admin-boundary`
 - `npm run verify:fulfillment:storefront-boundary`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `npm run verify:ecommerce:fba`
 - `npm run verify:ecommerce:provider-spi-evidence`
 - `cargo xtask module validate fulfillment`
 - `cargo xtask module test fulfillment`
 - `cargo check -p rustok-fulfillment --all-features`
-- Targeted checkout fulfillment create/adopt/read, duplicate identity,
-  process-exit, restart, and multi-fulfillment tests.
+- Targeted checkout fulfillment create/adopt/read, cancelled/unknown lifecycle,
+  duplicate identity, process-exit, restart, and multi-fulfillment tests.
+
+No verification command was executed in this source wave.
 
 ## Change rules
 

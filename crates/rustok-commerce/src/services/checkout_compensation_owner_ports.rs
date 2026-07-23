@@ -2,20 +2,22 @@ use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_cart::{
-    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest, CartStatus,
+    CartCheckoutLifecycleRequest, CartCheckoutPort, CartCheckoutSnapshotRequest, CartResponse,
+    CartStatus,
 };
 use rustok_inventory::{
     InventoryIdentityReservationReleaseRequest, InventoryReservationIdentityPort,
 };
 use rustok_order::{
-    CheckoutOrderCompensationPort, CheckoutOrderCompensationRequest, CheckoutOrderIdentityPort,
-    InProcessCheckoutOrderCompensationPort, in_process_checkout_order_compensation_port,
+    in_process_checkout_order_compensation_port, CheckoutOrderCompensationPort,
+    CheckoutOrderCompensationRequest, CheckoutOrderIdentityPort,
+    InProcessCheckoutOrderCompensationPort, OrderStatusKind,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{
-    CheckoutPaymentCompensationPort, CheckoutPaymentCompensationRequest,
-    InProcessCheckoutPaymentCompensationPort, PaymentProviderRegistry,
-    in_process_checkout_payment_compensation_port,
+    in_process_checkout_payment_compensation_port, CheckoutPaymentCompensationPort,
+    CheckoutPaymentCompensationRequest, InProcessCheckoutPaymentCompensationPort,
+    PaymentCollectionStatusKind, PaymentProviderRegistry,
 };
 use sea_orm::DatabaseConnection;
 use serde_json::json;
@@ -265,7 +267,7 @@ impl CheckoutCompensationService {
             .map_err(|error| owner_boundary_error("compensate_payment", error))?;
         if let Some(snapshot) = snapshot {
             if operation.payment_collection_id != Some(snapshot.collection_id)
-                || snapshot.status != "cancelled"
+                || snapshot.status_kind() != PaymentCollectionStatusKind::Cancelled
             {
                 return Err(CheckoutCompensationError::Conflict(format!(
                     "payment compensation result does not match checkout operation {}",
@@ -307,10 +309,10 @@ impl CheckoutCompensationService {
                     operation.id
                 )));
             }
-            if snapshot.status != "cancelled" {
+            if snapshot.status_kind() != OrderStatusKind::Cancelled {
                 return Err(CheckoutCompensationError::Conflict(format!(
-                    "order {} is `{}` after checkout compensation",
-                    snapshot.order_id, snapshot.status
+                    "order {} is not cancelled after checkout compensation",
+                    snapshot.order_id
                 )));
             }
         } else if operation.order_id.is_some() {
@@ -398,8 +400,8 @@ impl CheckoutCompensationService {
             )
             .await
             .map_err(|error| boundary_error("read_cart", error))?;
-        match current.status.as_str() {
-            status if status == CartStatus::CheckingOut.as_str() => {
+        match cart_status(&current)? {
+            CartStatus::CheckingOut => {
                 let released = self
                     .cart_port
                     .release_cart_checkout(
@@ -410,29 +412,38 @@ impl CheckoutCompensationService {
                     )
                     .await
                     .map_err(|error| boundary_error("release_cart", error))?;
-                if released.status != CartStatus::Active.as_str() {
+                if cart_status(&released)? != CartStatus::Active {
                     return Err(CheckoutCompensationError::Conflict(format!(
-                        "cart {} is `{}` after checkout release",
-                        released.id, released.status
+                        "cart {} is not active after checkout release",
+                        released.id
                     )));
                 }
             }
-            status if status == CartStatus::Active.as_str() => {}
-            status if status == CartStatus::Completed.as_str() => {
+            CartStatus::Active => {}
+            CartStatus::Completed => {
                 return Err(CheckoutCompensationError::ManualReconciliation(format!(
                     "cart {} is already completed",
                     current.id
                 )));
             }
-            status => {
+            CartStatus::Abandoned => {
                 return Err(CheckoutCompensationError::Conflict(format!(
-                    "cart {} cannot be released from `{status}`",
+                    "cart {} is abandoned and cannot be released",
                     current.id
                 )));
             }
         }
         Ok(())
     }
+}
+
+fn cart_status(cart: &CartResponse) -> CheckoutCompensationResult<CartStatus> {
+    cart.lifecycle_status().map_err(|_| {
+        CheckoutCompensationError::ManualReconciliation(format!(
+            "cart {} has an unknown lifecycle state",
+            cart.id
+        ))
+    })
 }
 
 fn inventory_context(

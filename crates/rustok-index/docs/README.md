@@ -1,45 +1,118 @@
 # Documentation `rustok-index`
 
-`rustok-index` is the core module of the platform for the centralized index/read-model
-layer. Its purpose is not product-facing search UX, but denormalized storage,
-ingestion and cross-module query substrate.
+`rustok-index` is the platform-owned cross-module relational Index Engine. It
+addresses the same problem class as the Medusa Index Module: source modules
+publish generic schemas, records, mutations, and links; Index materializes them
+into optimized relational storage and serves structured cross-module queries
+without runtime fan-out.
 
 ## Purpose
 
-- publish the canonical index/read-model contract for the platform;
-- keep ingestion, rebuild and consistency semantics inside the module;
-- provide the host and other modules with a stable internal query substrate for cross-module reads.
+- publish canonical schema, mutation, query, source, and rebuild contracts;
+- keep ingestion, storage, planning, rebuild, and consistency semantics inside
+  the module;
+- provide server, storefront, admin, and `rustok-search` with a stable substrate
+  for cross-module filtering, projection, sorting, count, and pagination;
+- scale reads and rebuilds independently from source-module query paths.
 
 ## Scope
 
-- index storage and denormalized projection records;
-- ingestion lifecycle: bootstrap, incremental sync, rebuild and drift control;
-- link-aware filtering and cross-module query substrate;
-- operator-facing health/rebuild controls for index state;
-- absence of product-facing search ranking and full-text UX semantics.
+- versioned schema and link registry;
+- generic records and mutations;
+- explicit tenant/locale query scope;
+- registry-backed record and query validation;
+- deterministic link graph and field paths;
+- versioned keyset cursors;
+- incremental ingestion and inbox deduplication;
+- PostgreSQL storage and distributed coordination;
+- SQL planning/compilation;
+- rebuild, checkpointing, reconciliation, and drift repair;
+- operator health, lag, failure, and rebuild controls.
 
-## Integration
+## Excluded scope
 
-- depends on `rustok-core` and stable integration contracts from source modules;
-- can be used by `apps/server` and other platform consumers as an internal query/read-model layer;
-- FBA owner ports (`IndexReadModelPort`, `IndexRebuildPort`) use shared `rustok_api::PortContext`/`PortError` and `PortCallPolicy` instead of package-local deadline/error shims;
-- adapter-side FBA guardrails include validation helpers for read/list/rebuild requests, tenant-scope guard `ensure_index_document_tenant_scope` and typed degraded-mode error `index.rebuild_disabled`;
-- must not collapse with `rustok-search`: `search` may read projections, but `index` does not become a search module;
-- event-driven consumers of the module are published through `IndexModule::register_event_listeners(...)` and assembled by the server from `ModuleRegistry`, not through a separate host-owned dispatcher path;
-- current module-owned consumers include `content_indexer`, `product_indexer` and `flex_indexer` for the standalone Flex read-model slice `index_flex_entries`;
-- remains a `Core` module without its own storefront UX as a primary surface; operator-facing admin overview lives in `rustok-index-admin` and is structured as FFA `core` + native-only `transport` + `ui/leptos` adapter.
+- text relevance and ranking;
+- typo tolerance, synonyms, autocomplete, and search UX;
+- external search-engine connectors;
+- source-module table reads from Index core;
+- source-specific Product, Content, or Flex logic in the engine.
+
+## Rewrite policy
+
+Backward compatibility with the rejected implementation is not a goal.
+Conflicting code is deleted instead of preserved through compatibility layers.
+M0 removed the complete source-specific implementation and its migrations,
+contracts, runtime scheduler, server wiring, and admin table reads.
+
+## Implemented core
+
+M1 provides:
+
+- bounded lowercase schema identifiers;
+- ICU4X locale parsing and UTS #35/CLDR alias canonicalization;
+- stable SHA-256 schema fingerprints;
+- atomic versioned schema registration with idempotency and conflict detection;
+- link target/type/cardinality validation;
+- deterministic shortest-path graph resolution through `petgraph`;
+- typed root and linked field paths;
+- explicit tenant and locale query scope;
+- select/filter/order/operator/type validation and bounded query complexity;
+- rejection of ambiguous ordering through `many` links;
+- checksummed postcard/Base64 keyset cursors bound to query scope and schema
+  fingerprint;
+- a test-only mutation/query reference engine and property invariants for later
+  PostgreSQL equivalence testing.
+
+## M2 storage benchmark
+
+The benchmark harness is implemented outside the production crate in
+`ops/benches/src/index_storage`.
+
+It currently provides:
+
+- deterministic `smoke`, `100k`, and `1m` Product-locale datasets;
+- Product, Variant, SalesChannel, tag, price, timestamp, locale, and link data;
+- JSONB, normalized typed EAV, and specialized hot-projection candidates;
+- independent relational link storage for every candidate;
+- shared equality, range, multi-value, two-hop link, keyset, and count workloads;
+- load duration and schema-size measurement;
+- repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence;
+- machine-readable reports under `target/index-storage-benchmark`.
+
+The harness does not select a model. Real smoke/100k/1m runs, write-amplification
+and vacuum workloads, evidence comparison, and the storage ADR are still open.
+No production migration may be added before the ADR is accepted.
+
+## Status
+
+- Rewrite: `in_progress`
+- Current milestone: `M2 - PostgreSQL storage benchmark`
+- FFA: `in_progress`
+- FBA: `in_progress`
+- M0 code reset: `complete`
+- M1 generic core: `complete`
+- M2 harness: `implemented`
+- M2 evidence and ADR: `pending`
+- Production migrations: intentionally absent pending M2 benchmark evidence
 
 ## Verification
 
+The repository owner runs the checks and database evidence during this rewrite:
+
+- `cargo fmt --all -- --check`
+- `cargo check --workspace --all-targets --all-features`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - `cargo xtask module validate index`
 - `cargo xtask module test index`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
-- targeted tests for ingestion, rebuild, link-aware queries and consistency semantics when changing the contract
+- `cargo run -p rustok-benchmarks --bin index-storage-benchmark --release`
 
 ## Related documents
 
-- [README crate](../README.md)
-- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [Live implementation plan](./implementation-plan.md)
+- [M2 storage benchmark contract](./storage-benchmark.md)
+- [Index Engine rewrite ADR](../../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)

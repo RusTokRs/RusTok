@@ -2,48 +2,94 @@
 
 ## Purpose
 
-`rustok-index` owns read-model and indexing contracts for RusToK.
+`rustok-index` is RusToK's cross-module relational Index Engine. Source modules
+publish generic schemas, records, mutations, and links; Index materializes them
+into optimized storage and executes filtering, projection, sorting, counting,
+and pagination without runtime fan-out to source modules.
+
+Backward compatibility with the rejected source-specific implementation is not
+a rewrite goal.
 
 ## Responsibilities
 
-- Provide `IndexModule` metadata for the runtime registry.
-- Define indexer traits and indexing runtime contracts.
-- Own index migrations and index rebuild helpers.
-- Serve as the long-term cross-module index/read-model substrate rather than the
-  product-facing search module.
+- Own the generic schema and link registry.
+- Own incremental ingestion, deduplication, rebuild, reconciliation, and drift
+  control.
+- Own PostgreSQL index storage and distributed coordination.
+- Validate and plan cross-module queries.
+- Compile projection, filtering, sorting, count, and pagination to Index storage
+  queries.
+- Publish stable query, source, rebuild, and operator contracts.
+- Keep product-facing relevance and ranking in `rustok-search`.
 
-## Interactions
+## Boundaries
 
-- Depends on `rustok-core` for module contracts and `rustok-api` for shared transport-agnostic port context/error/policy primitives.
-- Consumes domain events published by content, commerce, blog, forum, pages, workflow, and Flex standalone paths.
-- Content-node tag extraction now reads `nodes.metadata.tags` directly and no longer depends on
-  legacy `tags` / `taggables` joins from `rustok-content`.
-- Used by `apps/server` runtime wiring for index rebuild and cross-module index integrations.
-- Publishes its event-driven consumers through `IndexModule::register_event_listeners(...)` and the shared module event dispatcher path.
-- Current live event-driven consumers are `content_indexer`, `product_indexer`, and `flex_indexer`.
-- Exposes a module-owned Leptos admin overview through `rustok-index-admin`.
-- Does not publish its own RBAC surface.
-- Admin access to indexing operations is enforced by `apps/server` through the permissions
-  of the domain being managed, not through direct role checks inside the module.
-- Product-facing search belongs to `rustok-search`; this crate does not expose a second
-  search-engine contract.
-- During the first Search extraction pilot, Index remains the canonical
-  ingestion/read-model owner in the modular monolith. A later worker split is
-  allowed only after replay, deduplication, lag, rebuild, and recovery evidence.
+- Index core must not depend on Product, Content, Flex, Pricing, Inventory, or
+  other source-domain crates.
+- Source modules own conversion from domain state/events into generic records and
+  mutations.
+- Index must not read source-module tables directly.
+- `rustok-search` owns ranking, typo tolerance, autocomplete, synonyms, search
+  UX, and external search-engine connectors.
+- M2 candidate schemas and benchmark DDL live under `ops/benches`; they are not
+  production migrations or runtime storage contracts.
 
-## Entry points
+## Rewrite status
+
+- Current milestone: `M2 - PostgreSQL storage benchmark`
+- FFA status: `in_progress`
+- FBA status: `in_progress`
+- M0 code reset: complete
+- M1 generic domain/application core: complete
+- M2 benchmark harness: implemented
+- M2 PostgreSQL evidence and storage ADR: pending
+
+All legacy ports, adapters, source indexers, projections, migrations, runtime
+configuration, scheduler, errors, and server composition have been deleted.
+Production persistence is intentionally absent until M2 selects a physical
+storage model from PostgreSQL benchmark evidence.
+
+## Current entry points
 
 - `IndexModule`
-- `Indexer`
-- `LocaleIndexer`
-- `IndexerContext`
-- `IndexerRuntimeConfig`
-- `IndexReadModelPort` / `IndexRebuildPort`
-- `validate_index_read_request`, `validate_index_list_request`, `validate_index_rebuild_request` and `ensure_index_document_tenant_scope` for adapter-side FBA guardrails
+- `rustok_index::domain::*`
+- `rustok_index::application::*`
+- `SchemaRegistry`, `IndexSchema`, `IndexRecord`, and `IndexMutation`
+- `IndexQuery`, `IndexQueryScope`, `FilterExpr`, and typed `FieldPath`
+- `CursorCodec`, `IndexCursor`, and query-scope cursor validation
+
+## Implemented invariants
+
+- bounded lowercase identifiers;
+- ICU4X syntax and CLDR alias locale canonicalization;
+- stable order-independent schema fingerprints;
+- atomic versioned schema registration;
+- deterministic link-path resolution;
+- tenant/locale-scoped records and queries;
+- registry-backed type, cardinality, field, link, and operator validation;
+- bounded query complexity and pagination;
+- no ambiguous ordering through `many` links;
+- checksummed keyset cursors bound to tenant, schema, fingerprint, locale, and
+  order shape;
+- reference mutation/query engine and property-based invariants for future
+  PostgreSQL equivalence tests.
+
+## M2 benchmark
+
+The operational harness in `ops/benches` generates deterministic Product,
+Variant, SalesChannel, locale, tag, price, timestamp, and link data. It compares
+JSONB, normalized typed EAV, and specialized hot-projection candidates using the
+same equality, range, multi-value, two-hop link, keyset, and exact-count
+workloads. Reports contain load time, schema size, PostgreSQL settings, executed
+SQL, and repeated full JSON `EXPLAIN ANALYZE` evidence.
+
+No candidate is selected until the 100k and 1m runs, update/delete amplification,
+vacuum behavior, comparison report, and storage ADR are complete.
 
 ## Docs
 
-- [Module docs](./docs/README.md)
-- [Runtime fallback smoke evidence](./contracts/evidence/index-runtime-fallback-smoke.json)
-- [Media and Search extraction ADR](../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md)
+- [Module documentation](./docs/README.md)
+- [Live implementation plan](./docs/implementation-plan.md)
+- [M2 storage benchmark contract](./docs/storage-benchmark.md)
+- [Index Engine rewrite ADR](../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Platform docs index](../../docs/index.md)

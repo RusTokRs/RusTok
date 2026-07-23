@@ -16,43 +16,34 @@ fn crate_api_defines_minimal_contract_sections() {
 }
 
 #[tokio::test]
-async fn index_module_registers_registry_owned_event_listeners() {
+async fn index_module_registers_no_legacy_event_listeners() {
     use rustok_core::{ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
     use sea_orm::Database;
 
-    use crate::{IndexModule, IndexerRuntimeConfig};
+    use crate::IndexModule;
 
     let registry = ModuleRegistry::new().register(IndexModule);
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("in-memory sqlite should connect");
-    let mut extensions = ModuleRuntimeExtensions::default();
-    extensions.insert(IndexerRuntimeConfig::new(2, 100, 10));
+    let extensions = ModuleRuntimeExtensions::default();
     let ctx = ModuleEventListenerContext {
         db,
         extensions: &extensions,
     };
 
     let handlers = registry.build_event_listeners(&ctx);
-    let mut names: Vec<&'static str> = handlers.iter().map(|handler| handler.name()).collect();
-    names.sort_unstable();
-
-    assert_eq!(
-        names,
-        vec!["content_indexer", "flex_indexer", "product_indexer"]
+    assert!(
+        handlers.is_empty(),
+        "legacy Content/Product/Flex listeners must not return"
     );
 }
 
 #[test]
-fn index_module_registers_default_runtime_config() {
-    use rustok_core::ModuleRegistry;
+fn index_module_has_no_legacy_migrations() {
+    use rustok_core::MigrationSource;
 
-    use crate::{IndexModule, IndexerRuntimeConfig};
+    use crate::IndexModule;
 
-    let extensions = ModuleRegistry::new()
-        .register(IndexModule)
-        .build_runtime_extensions()
-        .expect("index runtime extensions should initialize");
-
-    assert!(extensions.contains::<IndexerRuntimeConfig>());
+    assert!(IndexModule.migrations().is_empty());
 }

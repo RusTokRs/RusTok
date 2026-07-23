@@ -33,6 +33,18 @@ impl CartStatus {
             _ => None,
         }
     }
+
+    pub const fn can_begin_checkout(self) -> bool {
+        matches!(self, Self::Active)
+    }
+
+    pub const fn can_complete_checkout(self) -> bool {
+        matches!(self, Self::CheckingOut)
+    }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Abandoned)
+    }
 }
 
 impl AsRef<str> for CartStatus {
@@ -56,6 +68,7 @@ impl PartialEq<&str> for CartStatus {
 impl CartResponse {
     /// Returns the typed lifecycle state while the persisted and transport field
     /// remains string-compatible during the incremental boundary migration.
+    /// Unknown legacy or external values fail closed instead of being guessed.
     pub fn lifecycle_status(&self) -> CartResult<CartStatus> {
         CartStatus::parse(self.status.as_str()).ok_or_else(|| {
             CartError::Validation(format!(
@@ -85,5 +98,13 @@ mod tests {
             );
         }
         assert_eq!(CartStatus::parse("unknown"), None);
+    }
+
+    #[test]
+    fn cart_status_transition_predicates_are_typed() {
+        assert!(CartStatus::Active.can_begin_checkout());
+        assert!(CartStatus::CheckingOut.can_complete_checkout());
+        assert!(CartStatus::Completed.is_terminal());
+        assert!(CartStatus::Abandoned.is_terminal());
     }
 }

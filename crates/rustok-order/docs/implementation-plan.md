@@ -1,6 +1,6 @@
 # Implementation plan for `rustok-order`
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-23
 
 ## Current state
 
@@ -28,6 +28,12 @@ order-owned in-process recovery adapter supplies the full order-line projection
 needed for inventory adoption and accepts the previous staged hash format only
 for upgraded/crash recovery. New order creation never uses that compatibility
 adapter.
+
+The recovery adapter and mounted commerce projection validation now use the
+canonical `OrderStatusKind`. Pending legacy orders resume through the owner
+confirm command. Confirmed, paid, shipped, and delivered outcomes are replay-safe;
+cancelled and unknown lifecycle states fail closed. Persisted and transport
+status fields remain strings for compatibility.
 
 Checkout compensation invokes `CheckoutOrderCompensationPort`. Identity
 resolution, legacy adoption, lifecycle reads, cancellation, replay adoption, and
@@ -69,9 +75,10 @@ typed identity exclusively.
   `scripts/verify/verify-commerce-storefront-transport-handoff.mjs`,
   `scripts/verify/verify-commerce-order-identity-boundary.mjs`,
   `scripts/verify/verify-commerce-checkout-completion-cutover.mjs`,
-  `scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`, and
-  `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs` lock the
-  current UI, transport, identity, staged-consumer, compensation, and payment
+  `scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`,
+  `scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`, and
+  `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` lock the current
+  UI, transport, identity, staged-consumer, lifecycle, compensation, and payment
   settlement split.
 - No status promotion is allowed from source inspection. Clean/upgraded
   migrations, compile/tests, contention, restart, mounted consumers, and
@@ -96,6 +103,8 @@ typed identity exclusively.
   identity fields when those facts are available.
 - [x] Cut staged checkout creation/confirmation over to
   `CheckoutCompletionPort` and owner-provided typed recovery projection.
+- [x] Use `OrderStatusKind` in checkout recovery and mounted projection
+  validation; unknown states fail closed without raw string policy matching.
 - [x] Publish `CheckoutOrderCompensationPort` with operation/cart/order identity,
   owner-local legacy adoption, cancellation replay, and manual-reconciliation
   outcomes for orders with financial or fulfillment effects.
@@ -110,7 +119,8 @@ typed identity exclusively.
 - [x] Add focused SQLite source tests for journal reads/replay/contention,
   completion result reads/conflict, and owner-port legacy adoption.
 - [x] Add static boundary verifiers for direct commerce order SQL, staged
-  completion, compensation, and payment/fulfillment owner-stage cutovers.
+  completion, typed recovery lifecycle, compensation, and payment/fulfillment
+  owner-stage cutovers.
 - [ ] Execute the full static verifier set against a repository checkout.
 - [ ] Execute order/commerce compile and targeted Rust tests.
 - [ ] Execute clean/upgraded/down/reapply migrations on SQLite, PostgreSQL, and
@@ -125,10 +135,10 @@ typed identity exclusively.
 
 1. **Prove idempotent checkout completion.** Execute the owner command and staged
    consumer together under duplicate request, conflicting request, process-exit,
-   restart, and database contention scenarios.
+   restart, unknown lifecycle, and database contention scenarios.
    **Depends on:** compiled order/commerce crates and migrated test databases.
    **Done when:** one operation returns one placed order, inventory adoption
-   resumes safely, and every mismatch is a typed conflict.
+   resumes safely, and every mismatch or unknown lifecycle is a typed failure.
 
 2. **Prove checkout order compensation.** Execute pending/confirmed/cancelled,
    identity mismatch, concurrent cancellation, process-exit, and upgraded legacy
@@ -186,6 +196,7 @@ typed identity exclusively.
 - `node --test scripts/verify/verify-commerce-checkout-completion-cutover.test.mjs`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `npm run verify:order:admin-boundary`
 - `npm run verify:order:storefront-boundary`
 - `npm run verify:commerce:storefront-transport-handoff`
@@ -196,12 +207,14 @@ typed identity exclusively.
 - `cargo test -p rustok-order --test order_checkout_identity`
 - `cargo test -p rustok-order --test checkout_order_identity_port`
 - `cargo test -p rustok-order --test checkout_completion_port`
-- Targeted staged checkout completion/adoption/replay, compensation, and payment
-  settlement tests.
+- Targeted staged checkout completion/adoption/replay, unknown lifecycle,
+  compensation, and payment settlement tests.
 - Clean/upgraded/down/reapply identity migrations on SQLite/PostgreSQL/MySQL.
 - Concurrent completion/compensation/settlement, process-exit, restart, tenant
   mismatch, legacy adoption, remote profile, lifecycle, snapshot, and rollback
   tests.
+
+No verification command was executed in this source wave.
 
 ## Change rules
 

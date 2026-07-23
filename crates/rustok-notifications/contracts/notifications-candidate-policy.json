@@ -1,26 +1,30 @@
 {
-  "schema_version": 1,
+  "schema_version": 6,
   "slice": "NOTIFY-03B/07A",
+  "promoted_by_slices": [
+    "SOCIAL-01A/NOTIFY-07C",
+    "NOTIFY-03C",
+    "NOTIFY-03D",
+    "NOTIFY-03E",
+    "NOTIFY-03F",
+    "NOTIFY-03G"
+  ],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
   "migration": "crates/rustok-notifications/src/migrations/m20260722_000012_add_candidate_processing.rs",
   "service": "crates/rustok-notifications/src/candidate.rs",
+  "outbox_intake_contract": "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
+  "fanout_worker_contract": "crates/rustok-notifications/contracts/notifications-fanout-worker.json",
+  "candidate_worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json",
   "candidate_processing": {
     "table": "notification_fanout_items",
-    "claimable_states": [
-      "pending",
-      "retryable_error",
-      "expired_processing"
-    ],
-    "terminal_states": [
-      "processed",
-      "skipped",
-      "failed"
-    ],
+    "claimable_states": ["pending", "retryable_error", "expired_processing"],
+    "terminal_states": ["processed", "skipped", "failed"],
     "lease_seconds": 60,
     "expired_lease_cannot_finish": true,
     "attempt_count_persisted": true,
-    "retry_schedule_persisted": true
+    "retry_schedule_persisted": true,
+    "worker_contract": "crates/rustok-notifications/contracts/notifications-candidate-worker.json"
   },
   "preference_policy": {
     "precedence": [
@@ -45,7 +49,21 @@
       "tenant_restricted"
     ],
     "retryable_failure_persisted": true,
-    "production_profile_block_adapter_deferred": true
+    "production_runtime_composition_delivered": true,
+    "runtime_contract": "crates/rustok-notifications/contracts/notifications-recipient-policy-runtime.json",
+    "concrete_owner_contract": "crates/rustok-social-graph/contracts/social-graph-notification-policy.json",
+    "concrete_block_mute_providers_deferred": false,
+    "candidate_worker_runtime_delivered": true,
+    "candidate_worker_default_enabled": false
+  },
+  "upstream_runtime": {
+    "production_outbox_intake_delivered": true,
+    "source_inbox_materialization_worker_delivered": true,
+    "fanout_page_worker_delivered": true,
+    "fanout_tenant_effective_policy_gate_delivered": true,
+    "candidate_preclaim_tenant_effective_policy_gate_delivered": true,
+    "candidate_gate_atomic_with_concurrent_tenant_disable": false,
+    "default_enabled": false
   },
   "source_authorization": {
     "authorize_target_open_before_creation": true,
@@ -70,15 +88,23 @@
     "grouping_deferred": true
   },
   "tests": [
-    "crates/rustok-notifications/tests/candidate_sqlite.rs"
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs",
+    "crates/rustok-notifications/tests/fanout_worker_sqlite.rs",
+    "crates/rustok-notifications/tests/candidate_sqlite.rs",
+    "crates/rustok-notifications/tests/candidate_worker_sqlite.rs",
+    "crates/rustok-social-graph/tests/privacy_sqlite.rs"
   ],
   "verification": {
     "source_verifier": "scripts/verify/verify-notifications-candidate-policy.mjs",
+    "outbox_intake_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
+    "fanout_worker_verifier": "scripts/verify/verify-notifications-fanout-worker.mjs",
+    "concrete_owner_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "worker_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "production profile and block privacy adapter",
-    "production outbox consumer runner",
+    "atomic control-plane revision guard for tenant disable concurrent with candidate claim",
+    "default deployment enablement after worker health and lag metrics",
     "channel delivery enqueue",
     "grouping policy",
     "moderator audience expansion",

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind,
-    normalize_locale_tag,
+    normalize_locale_tag, PLATFORM_FALLBACK_LOCALE, PortActor, PortCallPolicy, PortContext,
+    PortError, PortErrorKind,
 };
 use sea_orm::DatabaseConnection;
 use std::{
@@ -12,13 +12,14 @@ use std::{
 use uuid::Uuid;
 
 use crate::checkout_snapshot::{
+    in_process_cart_checkout_port as in_process_cart_checkout_snapshot_port,
     CartCheckoutPort as CartCheckoutSnapshotPort, PrepareCartCheckoutSnapshotRequest,
-    PreparedCartCheckoutSnapshot, in_process_cart_checkout_port as in_process_cart_checkout_snapshot_port,
+    PreparedCartCheckoutSnapshot,
 };
 use crate::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate, CartResponse,
-    CartService, CartStatus,
+    CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate, CartResponse, CartService,
+    CartStatus,
 };
 
 const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
@@ -137,12 +138,9 @@ impl AtomicCartCheckoutHandle {
             allow_existing_lock,
         )
         .await?;
+        let status = cart_status(&cart)?;
 
-        if !matches!(
-            cart.status.as_str(),
-            status if status == CartStatus::CheckingOut.as_str()
-                || status == CartStatus::Completed.as_str()
-        ) {
+        if !matches!(status, CartStatus::CheckingOut | CartStatus::Completed) {
             return Err(PortError::conflict(
                 "cart.checkout_not_locked",
                 format!(
@@ -159,7 +157,7 @@ impl AtomicCartCheckoutHandle {
                 self.prepare_request.clone(),
             )
             .await?;
-        if cart.status == CartStatus::CheckingOut.as_str() {
+        if status == CartStatus::CheckingOut {
             store_snapshot(&self.prepared_state, snapshot.clone())?;
         }
         Ok(snapshot)
@@ -306,18 +304,15 @@ async fn prepare_bound_cart(
         .get_cart(tenant_id, prepare_request.cart_id)
         .await
         .map_err(cart_error_to_port_error)?;
+    let current_status = cart_status(&current)?;
 
     if allow_existing_lock
-        && matches!(
-            current.status.as_str(),
-            status if status == CartStatus::CheckingOut.as_str()
-                || status == CartStatus::Completed.as_str()
-        )
+        && matches!(current_status, CartStatus::CheckingOut | CartStatus::Completed)
     {
         return Ok(current);
     }
 
-    let pricing_plan = if current.status == CartStatus::Active.as_str() {
+    let pricing_plan = if current_status == CartStatus::Active {
         match pricing_resolver {
             Some(resolver) => Some(
                 resolver
@@ -338,9 +333,8 @@ async fn prepare_bound_cart(
         Err(CartError::InvalidTransition { from, .. })
             if allow_existing_lock
                 && matches!(
-                    from.as_str(),
-                    status if status == CartStatus::CheckingOut.as_str()
-                        || status == CartStatus::Completed.as_str()
+                    CartStatus::parse(from.as_str()),
+                    Some(CartStatus::CheckingOut | CartStatus::Completed)
                 ) =>
         {
             service
@@ -350,6 +344,10 @@ async fn prepare_bound_cart(
         }
         Err(error) => Err(cart_error_to_port_error(error)),
     }
+}
+
+fn cart_status(cart: &CartResponse) -> Result<CartStatus, PortError> {
+    cart.lifecycle_status().map_err(cart_error_to_port_error)
 }
 
 fn snapshot_port_context(

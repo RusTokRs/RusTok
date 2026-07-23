@@ -1,4 +1,6 @@
-use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
+use rustok_api::{
+    AuthContext, OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext,
+};
 use rustok_cart::{
     CartStorefrontReadRequest, PrepareCartCheckoutSnapshotRequest,
     bind_in_process_atomic_cart_checkout_with_pricing, in_process_cart_checkout_port,
@@ -26,6 +28,10 @@ pub enum StorefrontStagedCheckoutRuntimeError {
     ReconciliationRequired,
 }
 
+/// Backward-compatible native storefront command wrapper.
+///
+/// New transports should call `complete_storefront_checkout_input` so every
+/// checkout field is preserved while using the same staged owner-port runtime.
 pub async fn complete_storefront_checkout(
     runtime: &StorefrontCheckoutRuntime,
     payment_provider_registry: PaymentProviderRegistry,
@@ -35,48 +41,83 @@ pub async fn complete_storefront_checkout(
     idempotency_key: impl Into<String>,
     command: StorefrontCheckoutCompletionCommand,
 ) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
+    complete_storefront_checkout_input(
+        runtime,
+        payment_provider_registry,
+        tenant.id,
+        request_context,
+        auth.0,
+        idempotency_key,
+        crate::dto::CompleteCheckoutInput {
+            cart_id: command.cart_id,
+            shipping_option_id: None,
+            shipping_selections: None,
+            region_id: None,
+            country_code: None,
+            locale: Some(request_context.locale.clone()),
+            create_fulfillment: command.create_fulfillment,
+            metadata: command.metadata,
+        },
+    )
+    .await
+}
+
+/// Completes one storefront checkout through the durable staged owner-port
+/// pipeline. REST, GraphQL, and native transports must converge here rather
+/// than constructing the legacy `CheckoutService` facade.
+pub async fn complete_storefront_checkout_input(
+    runtime: &StorefrontCheckoutRuntime,
+    payment_provider_registry: PaymentProviderRegistry,
+    tenant_id: Uuid,
+    request_context: &RequestContext,
+    auth: Option<AuthContext>,
+    idempotency_key: impl Into<String>,
+    mut checkout_input: crate::dto::CompleteCheckoutInput,
+) -> Result<crate::dto::CompleteCheckoutResponse, StorefrontStagedCheckoutRuntimeError> {
     let idempotency_key = idempotency_key.into().trim().to_string();
     if idempotency_key.is_empty() || idempotency_key.len() > 191 {
         return Err(StorefrontStagedCheckoutRuntimeError::Validation(
             "idempotency key must contain 1 to 191 bytes".to_string(),
         ));
     }
+    if checkout_input.cart_id.is_nil() {
+        return Err(StorefrontStagedCheckoutRuntimeError::Validation(
+            "cart_id must be a non-nil UUID".to_string(),
+        ));
+    }
+    if checkout_input
+        .locale
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        checkout_input.locale = Some(request_context.locale.clone());
+    }
 
-    let auth_context = auth.0;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
     let cart = cart_storefront_port
         .read_storefront_cart(
             cart_context(
-                tenant.id,
-                command.cart_id,
+                tenant_id,
+                checkout_input.cart_id,
                 request_context,
-                auth_context.as_ref(),
+                auth.as_ref(),
             ),
             CartStorefrontReadRequest {
-                cart_id: command.cart_id,
+                cart_id: checkout_input.cart_id,
             },
         )
         .await
         .map_err(|_| StorefrontStagedCheckoutRuntimeError::CartAccess)?;
-    let customer_id = resolve_customer_id(runtime, tenant.id, auth_context.as_ref()).await?;
+    let customer_id = resolve_customer_id(runtime, tenant_id, auth.as_ref()).await?;
     if cart.customer_id.is_some() && cart.customer_id != customer_id {
         return Err(StorefrontStagedCheckoutRuntimeError::CartAccess);
     }
-    let actor_id = auth_context
+    let actor_id = auth
         .as_ref()
         .map(|auth| auth.user_id)
         .unwrap_or_else(Uuid::nil);
 
-    let checkout_input = crate::dto::CompleteCheckoutInput {
-        cart_id: command.cart_id,
-        shipping_option_id: None,
-        shipping_selections: None,
-        region_id: None,
-        country_code: None,
-        locale: Some(request_context.locale.clone()),
-        create_fulfillment: command.create_fulfillment,
-        metadata: command.metadata,
-    };
     let event_bus = runtime.event_bus();
     let pricing_resolver = Arc::new(crate::StorefrontCheckoutPricingResolver::new(
         runtime.db_clone(),
@@ -87,14 +128,14 @@ pub async fn complete_storefront_checkout(
     let atomic_cart = bind_in_process_atomic_cart_checkout_with_pricing(
         runtime.db_clone(),
         PrepareCartCheckoutSnapshotRequest {
-            cart_id: command.cart_id,
+            cart_id: checkout_input.cart_id,
             input: rustok_cart::UpdateCartContextInput {
                 email: None,
-                region_id: None,
-                country_code: None,
-                locale_code: Some(request_context.locale.clone()),
-                selected_shipping_option_id: None,
-                shipping_selections: None,
+                region_id: checkout_input.region_id,
+                country_code: checkout_input.country_code.clone(),
+                locale_code: checkout_input.locale.clone(),
+                selected_shipping_option_id: checkout_input.shipping_option_id,
+                shipping_selections: checkout_input.shipping_selections.clone(),
             },
         },
         pricing_resolver,
@@ -153,7 +194,7 @@ pub async fn complete_storefront_checkout(
     .with_payment_provider_registry(payment_provider_registry);
 
     crate::RecoveringStagedCheckoutService::new(staged, compensation)
-        .complete_checkout(tenant.id, actor_id, idempotency_key, checkout_input)
+        .complete_checkout(tenant_id, actor_id, idempotency_key, checkout_input)
         .await
         .map_err(map_checkout_error)
 }
@@ -161,7 +202,7 @@ pub async fn complete_storefront_checkout(
 async fn resolve_customer_id(
     runtime: &StorefrontCheckoutRuntime,
     tenant_id: Uuid,
-    auth: Option<&rustok_api::AuthContext>,
+    auth: Option<&AuthContext>,
 ) -> Result<Option<Uuid>, StorefrontStagedCheckoutRuntimeError> {
     let Some(auth) = auth else {
         return Ok(None);
@@ -191,16 +232,16 @@ fn cart_context(
     tenant_id: Uuid,
     cart_id: Uuid,
     request_context: &RequestContext,
-    auth: Option<&rustok_api::AuthContext>,
+    auth: Option<&AuthContext>,
 ) -> PortContext {
     let actor = auth
         .map(|auth| PortActor::user(auth.user_id.to_string()))
-        .unwrap_or_else(|| PortActor::service("storefront-native-checkout"));
+        .unwrap_or_else(|| PortActor::service("storefront-checkout"));
     let mut context = PortContext::new(
         tenant_id.to_string(),
         actor,
         request_context.locale.clone(),
-        format!("storefront-native-checkout:cart:{cart_id}"),
+        format!("storefront-checkout:cart:{cart_id}"),
     )
     .with_deadline(Duration::from_secs(2));
     if let Some(channel) = request_context.channel_slug.as_deref() {

@@ -126,6 +126,21 @@ pub async fn bootstrap_application_router(
         bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;
     tracing::info!("RusTok app runtime bootstrap completed");
 
+    #[cfg(feature = "mod-notifications")]
+    crate::services::notification_outbox_intake_worker::start_notification_outbox_intake_if_enabled(
+        &runtime_ctx,
+    )?;
+
+    #[cfg(feature = "mod-notifications")]
+    crate::services::notification_fanout_worker::start_notification_fanout_worker_if_ready(
+        &runtime_ctx,
+    )?;
+
+    #[cfg(feature = "mod-notifications")]
+    crate::services::notification_candidate_worker::start_notification_candidate_worker_if_ready(
+        &runtime_ctx,
+    )?;
+
     connect_runtime_workers_with_runtime(runtime_ctx.clone()).await?;
     tracing::info!("RusTok runtime workers connected");
 

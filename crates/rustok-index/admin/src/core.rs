@@ -8,15 +8,8 @@ pub struct IndexInfoCardViewModel {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IndexCounterCardViewModel {
-    pub label: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexAdminOverviewViewModel {
-    pub tenant_cards: Vec<IndexInfoCardViewModel>,
-    pub counter_cards: Vec<IndexCounterCardViewModel>,
+    pub info_cards: Vec<IndexInfoCardViewModel>,
     pub module_description: String,
 }
 
@@ -24,14 +17,8 @@ pub fn build_index_admin_overview_view_model(
     locale: Option<&str>,
     bootstrap: IndexAdminBootstrap,
 ) -> IndexAdminOverviewViewModel {
-    let backend = if bootstrap.module.supports_postgres_fts {
-        t(locale, "index.value.postgres", "postgres")
-    } else {
-        t(locale, "index.value.generic", "generic")
-    };
-
     IndexAdminOverviewViewModel {
-        tenant_cards: vec![
+        info_cards: vec![
             IndexInfoCardViewModel {
                 label: t(locale, "index.info.tenant", "Tenant"),
                 value: bootstrap.tenant.slug,
@@ -41,22 +28,14 @@ pub fn build_index_admin_overview_view_model(
                 value: bootstrap.tenant.default_locale,
             },
             IndexInfoCardViewModel {
-                label: t(locale, "index.info.backend", "FTS backend"),
-                value: backend,
+                label: t(locale, "index.info.rewriteStatus", "Rewrite status"),
+                value: bootstrap.module.rewrite_status,
             },
             IndexInfoCardViewModel {
-                label: t(locale, "index.info.documentTypes", "Document types"),
-                value: bootstrap.module.document_types.join(", "),
+                label: t(locale, "index.info.currentMilestone", "Current milestone"),
+                value: bootstrap.module.current_milestone,
             },
         ],
-        counter_cards: bootstrap
-            .counters
-            .into_iter()
-            .map(|counter| IndexCounterCardViewModel {
-                label: counter.label,
-                value: counter.value.to_string(),
-            })
-            .collect(),
         module_description: bootstrap.module.description,
     }
 }
@@ -78,12 +57,10 @@ pub fn format_index_admin_bootstrap_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{
-        IndexAdminBootstrap, IndexCounterSnapshot, IndexModuleSnapshot, IndexTenantSnapshot,
-    };
+    use crate::model::{IndexAdminBootstrap, IndexModuleSnapshot, IndexTenantSnapshot};
 
     #[test]
-    fn overview_view_model_formats_bootstrap_without_framework_runtime() {
+    fn overview_view_model_formats_rewrite_state_without_framework_runtime() {
         let view_model = build_index_admin_overview_view_model(
             Some("en"),
             IndexAdminBootstrap {
@@ -96,23 +73,20 @@ mod tests {
                 module: IndexModuleSnapshot {
                     slug: "index".to_string(),
                     name: "Index".to_string(),
-                    description: "Read-model substrate".to_string(),
-                    supports_postgres_fts: true,
-                    document_types: vec!["node".to_string(), "product".to_string()],
+                    description: "Cross-module relational index and query engine.".to_string(),
+                    rewrite_status: "in_progress".to_string(),
+                    current_milestone: "M0/M1".to_string(),
                 },
-                counters: vec![IndexCounterSnapshot {
-                    key: "content".to_string(),
-                    label: "Content index rows".to_string(),
-                    value: 42,
-                }],
             },
         );
 
-        assert_eq!(view_model.tenant_cards.len(), 4);
-        assert_eq!(view_model.tenant_cards[0].value, "acme");
-        assert_eq!(view_model.tenant_cards[2].value, "postgres");
-        assert_eq!(view_model.tenant_cards[3].value, "node, product");
-        assert_eq!(view_model.counter_cards[0].value, "42");
-        assert_eq!(view_model.module_description, "Read-model substrate");
+        assert_eq!(view_model.info_cards.len(), 4);
+        assert_eq!(view_model.info_cards[0].value, "acme");
+        assert_eq!(view_model.info_cards[2].value, "in_progress");
+        assert_eq!(view_model.info_cards[3].value, "M0/M1");
+        assert_eq!(
+            view_model.module_description,
+            "Cross-module relational index and query engine."
+        );
     }
 }

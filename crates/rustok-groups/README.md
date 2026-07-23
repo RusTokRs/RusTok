@@ -3,131 +3,174 @@
 ## Purpose
 
 `rustok-groups` owns social-group identity, multilingual presentation, privacy,
-membership, local roles, invitations, membership applications, feature bindings,
-and group access policy for RusToK. Exact-locale translation management, bounded
-invitation tokens, targeted invitation source events, localized application policies,
-append-only policy revision history, explicit policy-locale management, atomic policy
-preconditions, candidate application lifecycle, authorization-first application
-review, bounded partial-result bulk review, role delegation, ownership transfer,
-command receipts, immutable audit, and native/GraphQL transports are implemented at
+memberships, local roles, invitations, membership applications, feature bindings,
+group-local enforcement state, and group access policy for RusToK.
+
+A **group membership** is social participation in one group with a group-local role and
+lifecycle. It is not a paid subscription, commercial membership plan, billing agreement, or
+entitlement. Paid plans and purchased access belong to separate subscription, entitlement, and
+billing owners rather than `rustok-groups`.
+
+Exact-locale translation management, bounded invitation tokens, targeted invitation source
+events, localized application policies, append-only policy history, policy CAS, candidate
+lifecycle, authorization-first review, bounded partial-result bulk review, role delegation,
+ownership transfer, command receipts, immutable audit, and native/GraphQL transports exist at
 source level.
 
-Bans, complete legacy application-command API removal, consumer-side notification
-fan-out, and full runtime evidence remain plan-led work.
+The current GROUPS-07 foundation provides a monotonic group-membership revision, bounded current
+enforcement projection, owner-clock effective-state resolver,
+`GroupMembershipEnforcementReadPort`, a crate-root effective-membership `GroupsService` facade,
+and effective invitation and membership-application facades. Core access decisions,
+closed/secret read redaction, membership-list authorization, enabled-feature visibility,
+join/rejoin, feature settings, invitation management/acceptance, membership-application candidate
+and manager reads, policy writes, submit/reopen/review, and bounded bulk review now pass through an
+effective-state public boundary.
 
-A group is a social container and policy owner. It is not the persistence owner for
-forum topics, blog posts, Pages documents, marketplace listings, products, media
-assets, comments, notification inbox/delivery, or search documents.
+The invitation/application facades preserve compatibility module paths and receipt-first replay:
+when an idempotency key already has a receipt, the legacy owner transaction remains responsible
+for returning the matching replay or changed-request conflict before current authorization is
+re-evaluated. The underlying status-only services are crate-private. A same-transaction effective
+recheck remains open because the transitional owner transactions still recheck stored lifecycle
+state internally; concurrent enforcement-change evidence is therefore not claimed yet.
+
+Direct suspend/revoke commands, localization/governance conversion, provider ACL integration,
+member-count suspension semantics, the moderation adapter/application orchestration, and runtime
+evidence remain open.
+
+A group is a social container and policy owner. It is not the persistence owner for forum
+topics, blog posts, Pages documents, marketplace listings, products, media assets, comments,
+notification inbox/delivery, search documents, moderation cases/decisions, subscriptions,
+billing plans, or entitlements.
 
 ## Responsibilities
 
-- Own tenant-scoped group identity, handle, lifecycle, visibility, and join policy.
-- Store language-neutral state in `groups` and localized title, summary, and body in
-  `group_translations` with normalized `VARCHAR(32)` locales.
-- Consume the host-resolved effective locale without English or arbitrary first-row
-  fallback.
-- Publish exact-locale translation management, preserving last-row rejection and
-  atomic group-version updates.
-- Separate discoverable shell access (`view_summary`) from private content access
-  (`view`), with closed redaction and secret-group non-disclosure.
-- Own memberships, local roles, membership state, role delegation, and atomic
-  ownership transfer.
-- Own bounded invitation records, SHA-256 token digests, expiry, revocation, use
-  counts, redemptions, and targeted invitation source events.
-- Own one current membership-application policy per group and exact-locale ordered
-  questions/rules.
-- Store one tenant/group/user application with policy identity, revision, locale,
-  immutable policy snapshot, answers, acknowledgements, status, and review metadata.
-- Revalidate required answers and rule acknowledgements in the owner service. Only
-  active `request` groups accept applications, and secret groups use not-found
-  semantics.
-- Capture every successful policy translation INSERT/UPDATE in
-  `group_membership_policy_revisions` in the same database transaction. Revision rows
-  reject UPDATE and DELETE.
-- Publish manager-only policy history through typed Rust, GraphQL, native server
-  function, and admin FFA surfaces.
-- Publish `GroupApplicationPolicyManagementReadPort` for:
-  - an authorized catalog of existing policy locales;
-  - an explicit selected-locale management view;
-  - an empty view without precondition when no policy exists;
-  - an empty view with current policy ID/revision when the selected translation is
-    missing, enabling CAS-safe creation.
-- Keep `PortContext.locale` host-owned. The selected management locale is carried in a
-  normalized typed request and never substituted into request/UI locale context.
-- Publish `GroupApplicationCasCommandPort` for interactive policy saves and candidate
-  submissions. Commands carry rendered policy ID, revision, and exact locale.
-- Lock an existing candidate application before the group during CAS resubmit; for a
-  first submission, repeat the application lookup after the group lock before writes.
-- Compare expected policy before changing policy, membership, application, group
-  version, audit, or receipt state. A mismatch returns
-  `groups.application_policy_changed`.
-- Check an identical idempotent receipt before re-evaluating the policy precondition,
-  so a committed command can replay after later policy revisions.
-- Publish `GroupApplicationLifecycleReadPort` for the authenticated candidate's exact
-  tenant/group application without cross-candidate enumeration.
-- Publish `GroupApplicationLifecycleCommandPort` for pending-only candidate
-  cancellation and rejected/cancelled-only manager reopen.
-- Publish `GroupApplicationReviewCommandPort` as the focused review write boundary used
-  by final GraphQL and module-owned native admin surfaces.
-- Authorize the review actor before pending-status disclosure in focused single and
-  bulk review paths.
-- Publish `GroupApplicationBulkReviewCommandPort` for explicit-confirmation batches of
-  1..50 unique application IDs. The operation is intentionally partial-result: each
-  item reuses the focused owner review path with its own locks, transaction, audit,
-  receipt, and deterministic order-independent child idempotency key.
-- Publish a final GraphQL bulk-review mutation and module-owned admin FFA with
-  framework-neutral preparation, native/GraphQL adapters, no-fallback transport,
-  bounded row selection, confirmation invalidation, disabled invalid submit, per-item
-  success/failure/replay output, and English/Russian UI plus ARIA catalogs.
-- Candidate cancellation moves membership to `left`, marks the application
-  `cancelled`, and preserves the submitted snapshot.
-- Manager reopen restores membership/application to `pending`, clears prior review
-  metadata, and preserves policy identity, snapshot, answers, acknowledgements, and
-  submitted time.
-- Keep fresh rejected/cancelled resubmit separate from reopen: it uses current-policy
-  CAS and replaces the snapshot only after a successful new submission.
-- Publish a visual policy editor with an existing/new exact-locale datalist. Locale
-  changes invalidate loaded CAS state; save remains disabled until the selected
-  management view is loaded.
-- Require explicit selected-locale reload after stale policy conflict.
-- Publish storefront lifecycle/stale-form recovery that preserves
-  `apply=<group_uuid>` after cancellation or errors, blocks invalid duplicate submit,
-  clears old answers on explicit stale reload, and clears route only after successful
-  fresh submission.
-- Review applications through owner/admin/moderator authorization. Approval activates
-  membership and increments member count; rejection moves membership to `left`.
-- Persist successful governance, invitation, and membership-application commands with
-  idempotency receipts and immutable audit evidence. Localization replay receipts
-  remain pending.
-- Append `groups.invitation.targeted_created` without token data and register a neutral
-  `NotificationSourceProvider` factory resolving at most one exact recipient.
-- Own namespaced feature bindings such as `forum.discussions`, `blog.posts`,
-  `pages.wiki`, and `marketplace.store` without importing provider tables.
-- Keep Notifications optional. Groups owner commands do not synchronously depend on
-  inbox, preference, fan-out, retry, email, or push persistence.
-- Publish module-owned Leptos admin/storefront FFA packages with framework-neutral
-  core, transport facade, native `#[server]`, GraphQL, and thin UI bindings.
-- Publish the typed RBAC surface for `groups:*`.
+### Group identity, presentation, and access
 
-The older unconditional policy-save and candidate-submit methods on
-`GroupApplicationCommandPort` remain available only for Rust source compatibility.
-Final GraphQL, module-owned admin/storefront FFA, and routable native policy writes do
-not use them. Application review uses the focused `GroupApplicationReviewCommandPort`.
-Complete removal or versioned deprecation of the legacy Rust methods remains a separate
-API migration gate.
+- Own tenant-scoped group identity, handle, lifecycle, visibility, join policy, member count,
+  and group version.
+- Store language-neutral state in `groups` and exact-locale title, summary, and body in
+  `group_translations`.
+- Consume the host-resolved locale without English or arbitrary first-row fallback.
+- Separate discoverable shell access (`view_summary`) from private content access (`view`).
+- Preserve closed-group redaction and secret-group non-disclosure.
+- Own namespaced feature bindings such as `forum.discussions`, `blog.posts`, `pages.wiki`,
+  and `marketplace.store` without importing provider tables or UI business trees.
+
+### Group memberships and governance
+
+- Own group memberships, local roles, lifecycle state, role delegation, and atomic ownership
+  transfer.
+- Keep owner/admin/moderator/member hierarchy in Groups rather than copying RBAC state into
+  provider modules.
+- Preserve owner protection and tenant-scoped command/audit/receipt identity.
+- Keep legacy `status=banned` fail-closed for re-entry while migrating to expiring owner
+  enforcement state.
+- Never reuse group-membership tables or ports for paid plans, recurring subscriptions, product
+  entitlements, organization seats, event attendance, or chat participation.
+
+### Membership revision and enforcement read foundation
+
+- Add `group_memberships.revision`, initialized at one and protected from regression.
+- Bump membership revision when role, lifecycle status, invitation lifecycle fields, or
+  Groups-owned enforcement state changes.
+- Use database revision guards as a compatibility bridge while legacy command owners migrate
+  to one explicit shared owner command path.
+- Store one bounded current `group_membership_enforcements` row per membership with tenant,
+  group, user, state, reason, source, effective interval, restoration state, actor, optional
+  moderation decision provenance, revision, revocation, and timestamps.
+- Never copy reports, cases, policy snapshots, queue state, appeals, or arbitrary moderation
+  JSON into Groups enforcement persistence.
+- Publish `GroupMembershipEnforcementReadPort` and `GroupMembershipEnforcementService` for
+  exact-user or authorized Groups access reads.
+- Evaluate current state using the Groups UTC clock. Future, expired, or revoked enforcement
+  falls back to stored group-membership lifecycle without requiring a cleanup worker.
+- Return effective states `missing`, `active`, `inactive`, `suspended`, or `legacy_banned`,
+  plus membership revision, bounded provenance, and fail-closed access booleans.
+- Keep the projection read-only in the current command surface: no public enforcement command
+  port and no moderation adapter is published yet.
+
+### Effective core access facade
+
+- Re-export a single public core type as `rustok_groups::GroupsService`.
+- Keep both the effective implementation module and the transitional status-only delegate
+  crate-private so external consumers and module-owned transports cannot bypass the facade.
+- Use the canonical owner-clock resolver for `GroupAccessReadPort` decisions.
+- Redact closed-group body/features and return not-found for secret-group summary when the viewer
+  is effectively suspended.
+- Gate membership listing and enabled feature visibility through the effective access decision.
+- Deny join/rejoin for active suspension and legacy banned state while allowing expired/revoked
+  enforcement to fall back to stored lifecycle.
+- Require effective active owner/admin authority for feature settings; a suspended local manager
+  has no settings, moderation, or ownership-transfer authority.
+- Preserve public read access during group-local suspension while denying post/comment and other
+  membership-authority actions.
+
+### Effective invitation and membership-application facades
+
+- Preserve public compatibility paths under `rustok_groups::invitations`,
+  `rustok_groups::targeted_invitations`, and `rustok_groups::applications` while exporting only
+  effective service implementations.
+- Require effective active owner/admin/moderator authority, or platform manage, for invitation
+  listing, creation, and revocation.
+- Deny token and targeted acceptance for active suspension or legacy banned state and preserve
+  active-member conflict behavior.
+- Require effective candidate state for application policy/current-state reads, legacy and CAS
+  submission, cancellation, reopen, review, and approval/rejection paths.
+- Require effective active owner/admin authority for policy management and effective active
+  owner/admin/moderator authority for application list, history, single review, reopen, and bulk
+  review.
+- Preserve bounded partial-result bulk review by deriving the same order-independent child
+  idempotency key and routing each item through effective single review.
+- Preserve receipt-first replay before effective prechecks for write methods.
+- Keep same-transaction effective recheck, enforcement/write concurrency, and direct owner-command
+  convergence explicitly open.
+
+### Invitations and membership applications
+
+- Own bounded invitation records, SHA-256 token digests, expiry, revocation, redemption,
+  use counts, membership activation, and targeted invitation source events.
+- Keep Notifications optional; Groups commands do not synchronously depend on inbox,
+  preference, email, push, retry, or fan-out persistence.
+- Own one current membership-application policy per group, exact-locale ordered questions and
+  rules, append-only policy revision history, and one current application per
+  tenant/group/user.
+- Preserve exact policy identity, locale, immutable question/rule snapshot, answers,
+  acknowledgements, status, and review metadata on application rows.
+- Publish focused policy-management, CAS, lifecycle, review, and bounded bulk-review ports.
+- Replay identical receipts before CAS precondition re-evaluation.
+- Authorize managers before sensitive application status disclosure.
+- Use one transaction/audit/receipt per bulk-review item and never silently fall back between
+  native and GraphQL transports.
+
+### FFA/FBA and module composition
+
+- Publish module-owned Leptos admin/storefront packages with framework-neutral core,
+  explicit transport facade, native server functions, GraphQL adapters, and thin UI.
+- Publish typed RBAC permissions for `groups:*`.
+- Keep Groups business logic out of host applications.
+- Keep provider modules authoritative for their persistence and consume Groups access via
+  typed ports.
+- Fail closed for private content when Groups access/enforcement evaluation is unavailable.
 
 ## Entry points
 
+Core owner/runtime:
+
 - `GroupsModule`
-- `GroupsService`
+- crate-root `rustok_groups::GroupsService` effective-membership facade
+- `GroupMembershipEnforcementService`
 - `GroupLocalizationService`
-- `GroupInvitationService`
-- `GroupTargetedInvitationService`
-- `GroupApplicationService`
+- crate-root `GroupInvitationService` effective facade
+- crate-root `GroupTargetedInvitationService` effective facade
+- crate-root `GroupApplicationService` effective facade
 - `GroupApplicationPolicyHistoryService`
 - `GroupGovernanceService`
+
+Primary ports:
+
 - `GroupSummaryReadPort`
 - `GroupMembershipReadPort`
+- `GroupMembershipEnforcementReadPort`
 - `GroupAccessReadPort`
 - `GroupLocalizationReadPort`
 - `GroupInvitationReadPort`
@@ -145,63 +188,39 @@ API migration gate.
 - `GroupTargetedInvitationCommandPort`
 - `GroupApplicationCommandPort` for legacy Rust compatibility only
 - `GroupGovernanceCommandPort`
-- `graphql_application_cas::GroupsQueryRoot` with policy history, policy management,
-  lifecycle, and core query composition
-- `graphql_application_cas::GroupsMutationRoot` with core, localization, governance,
-  invitations, CAS, focused review, bounded bulk review, and lifecycle composition
-- `rustok_groups_admin::GroupsAdmin`
-- `rustok_groups_admin::load_group_admin_application_policy_locale_catalog`
-- `rustok_groups_admin::load_group_admin_application_policy_for_management`
-- `rustok_groups_admin::load_group_admin_application_policy` compatibility facade
-- `rustok_groups_admin::upsert_group_admin_application_policy`
-- `rustok_groups_admin::load_group_admin_application_policy_revisions`
-- `rustok_groups_admin::load_group_admin_membership_applications`
-- `rustok_groups_admin::review_group_admin_membership_application`
-- `rustok_groups_admin::bulk_review_group_admin_membership_applications`
-- `rustok_groups_admin::reopen_group_admin_membership_application`
-- `rustok_groups_admin::load_group_admin_translations`
-- `rustok_groups_admin::upsert_group_admin_translation`
-- `rustok_groups_admin::delete_group_admin_translation`
-- `rustok_groups_admin::load_group_admin_invitations`
-- `rustok_groups_admin::create_group_admin_invitation`
-- `rustok_groups_admin::revoke_group_admin_invitation`
-- `rustok_groups_admin::change_group_admin_role`
-- `rustok_groups_admin::transfer_group_admin_ownership`
-- `rustok_groups_storefront::GroupsView`
-- `rustok_groups_storefront::load_groups_storefront_application_policy`
-- `rustok_groups_storefront::load_groups_storefront_my_application`
-- `rustok_groups_storefront::submit_groups_storefront_membership_application`
-- `rustok_groups_storefront::cancel_groups_storefront_membership_application`
-- `rustok_groups_storefront::accept_groups_storefront_targeted_invitation`
+
+No `GroupMembershipEnforcementCommandPort` is published in the current read-only command slice.
 
 ## Interactions
 
-- Auth/users remains the authority for credentials, sessions, and user identity.
-- `rustok-profiles` supplies public member summaries; Groups never copies canonical
-  profile display state.
-- `rustok-media` owns uploads and asset lifecycle; Groups stores typed media UUID
-  references only.
-- Forum, Blog, Pages, Marketplace, Media Social, Events, and future modules retain
-  their own persistence and consume Groups access through typed ports.
-- `rustok-notifications-api` supplies the neutral source-provider contract. Groups
-  registers a deferred factory without depending on Notifications persistence.
-- `rustok-notifications` may consume committed targeted-invitation events. Groups does
-  not synchronously send email, push, or notification messages.
-- `rustok-moderation` may use a future validated command adapter; it must never update
-  Groups tables directly.
-- `rustok-index` and `rustok-search` may consume committed semantic events in later
-  slices while preserving closed/secret visibility.
-- Host applications provide tenant, auth, effective locale, channel, route, and
-  transport context. Management selection remains an explicit Groups request field;
-  hosts do not own Groups business policy or UI workflows.
+- Auth/users remains authoritative for credentials, sessions, and user identity.
+- Subscription/billing/entitlement modules remain authoritative for paid plans and purchased
+  access; they do not use group-membership persistence.
+- `rustok-profiles` supplies member summaries; Groups never copies canonical profile display
+  state.
+- `rustok-media` owns uploads and asset lifecycle; Groups stores typed media references only.
+- Forum, Blog, Pages, Marketplace, Media Social, Events, and future modules retain their own
+  persistence and consume Groups access through typed ports.
+- `rustok-notifications-api` supplies the neutral source-provider contract; Notifications may
+  consume committed targeted-invitation events asynchronously.
+- `rustok-moderation-api` supplies neutral subject/effect/adapter contracts. A later Groups
+  adapter will call the shared Groups enforcement owner command; `rustok-moderation` must
+  never update Groups tables directly.
+- Index/search/feed consumers may consume committed semantic events while preserving
+  closed/secret visibility.
+- Host applications provide tenant, auth, locale, channel, route, transport, and runtime
+  composition only.
 
 ## Readiness
 
-Source presence does not prove migration, runtime, locale-catalog parity, replay,
-concurrency, lock ordering, security, accessibility, retry, or recovery behavior.
-FFA, FBA, GROUPS-06, and GROUPS-19 remain `in_progress`; policy-revision,
-application-policy-CAS, application-lifecycle, policy-locale-management, and
-application-bulk-review runtime evidence keys remain `null`.
+Source presence does not prove compilation, migrations, revision-trigger behavior,
+owner-clock expiry handling, same-transaction effective authorization, replay, concurrency,
+security, transport parity, accessibility, retry, or recovery.
+
+FFA, FBA, GROUPS-06, GROUPS-07, and GROUPS-19 remain `in_progress`. Core public access and the
+public invitation/application boundaries are source-converted through effective facades, but
+same-transaction effective rechecks, localization, governance, provider ACL, member-count,
+direct enforcement command, moderation application, and runtime gates remain open.
 
 ## Documentation
 
@@ -209,6 +228,10 @@ application-bulk-review runtime evidence keys remain `null`.
 - [Canonical implementation plan](docs/implementation-plan.md)
 - [Bulk review contract](docs/bulk-review-contract.md)
 - [FBA registry](contracts/groups-fba-registry.json)
-- [Application no-bypass static guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
-- [Bulk review static guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
-- [Platform documentation map](../../docs/index.md)
+- [Effective membership access contract](contracts/groups-effective-membership-access.json)
+- [Effective invitation/application contract](contracts/groups-effective-membership-invitations-applications.json)
+- [Application no-bypass guard](../../scripts/verify/verify-groups-application-native-no-bypass.mjs)
+- [Bulk review guard](../../scripts/verify/verify-groups-application-bulk-review.mjs)
+- [Membership enforcement read guard](../../scripts/verify/verify-groups-membership-enforcement-read-path.mjs)
+- [Effective membership access guard](../../scripts/verify/verify-groups-effective-membership-access.mjs)
+- [Effective invitation/application guard](../../scripts/verify/verify-groups-effective-membership-invitations-applications.mjs)

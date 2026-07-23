@@ -1,5 +1,7 @@
 # Implementation plan for `rustok-cart`
 
+Last reviewed: 2026-07-23
+
 ## Current state
 
 `rustok-cart` owns cart state, line items, pricing and tax snapshots, cart
@@ -19,6 +21,13 @@ The Axum guest-cart capability adapter is owner-owned in
 `rustok_cart::guest_access_http`; hosts compose it around REST/GraphQL requests
 without reimplementing token parsing, cookie emission, or task-local scope.
 
+The canonical `CartStatus` remains the only cart lifecycle type. Atomic checkout
+admission, existing-lock adoption, pricing resolution, and transition-race
+recovery use `CartResponse::lifecycle_status()` or `CartStatus::parse`; unknown
+persisted values fail closed. Mounted commerce finalization and compensation use
+the same owner type for complete/release/replay decisions. Persisted and
+transport `status` fields remain strings for backward compatibility.
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`
@@ -36,6 +45,9 @@ without reimplementing token parsing, cookie emission, or task-local scope.
 - `scripts/verify/verify-cart-storefront-boundary.mjs` locks the storefront
   core/transport/UI split, native host runtime, GraphQL fallback, and removal
   of the legacy API layer.
+- `scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs` locks the
+  canonical cart type plus atomic checkout, mounted finalization, and mounted
+  compensation source cutover.
 - Storefront repricing calls the pricing-owned `PricingReadPort` with a
   variant-first request and full resolved-price projection; it no longer calls
   `PricingService::resolve_variant_price` directly.
@@ -56,6 +68,22 @@ without reimplementing token parsing, cookie emission, or task-local scope.
   deadline, and write-idempotency context at the owner boundary.
 - Admin cart-promotion preview and application consume `CartPromotionPort`,
   with scope validation and owner-side typed error mapping.
+- No new compile, lifecycle, restart, contention, or remote evidence is claimed
+  by the typed source cutover.
+
+## Checkout lifecycle source checklist
+
+- [x] Keep one canonical `CartStatus` in the cart owner.
+- [x] Use typed status admission in atomic checkout prepare and lock adoption.
+- [x] Fail closed when a cart projection contains an unknown lifecycle value.
+- [x] Use typed cart/payment/order lifecycle views in mounted checkout
+  finalization.
+- [x] Use typed cart and owner compensation snapshot views in mounted checkout
+  compensation.
+- [x] Guard processed paths against raw cart lifecycle matching.
+- [ ] Execute atomic checkout, finalization, release, duplicate request,
+  process-exit, restart, and unknown-status evidence.
+- [ ] Prove remote/fallback lifecycle parity before any FBA promotion.
 
 ## Open results
 
@@ -81,7 +109,7 @@ without reimplementing token parsing, cookie emission, or task-local scope.
    `CartService` construction outside owner-side composition.
    **Depends on:** compiled or live provider-consumer execution.
    **Done when:** transport execution covers checkout, storefront writes,
-   promotion application, fallback, and recovery behavior.
+   promotion application, fallback, recovery, and unknown lifecycle behavior.
 
 4. **Document operational changes with checkout changes.** Add diagnostics only
    where runtime pressure identifies a concrete cart or snapshot failure mode,
@@ -93,16 +121,19 @@ without reimplementing token parsing, cookie emission, or task-local scope.
 ## Verification
 
 - `npm run verify:cart:storefront-boundary`
+- `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 - `npm run verify:ecommerce:fba`
 - `cargo xtask module validate cart`
 - `cargo xtask module test cart`
-- Targeted cart lifecycle, snapshot, repricing, shipping-selection, and
-  checkout-preflight tests.
+- Targeted cart lifecycle, atomic checkout, finalization, compensation,
+  repricing, shipping-selection, and checkout-preflight tests.
+
+No verification command was executed in this source wave.
 
 ## Change rules
 
 1. Keep cart persistence and storefront presentation in this module.
 2. Update local docs, `rustok-module.toml`, and the umbrella commerce plan with
    a cross-module checkout contract change.
-3. Update this status block and `docs/modules/registry.md` with any FFA/FBA
-   boundary change.
+3. Update this status block and `docs/modules/registry.md` only with proven
+   FFA/FBA boundary changes.

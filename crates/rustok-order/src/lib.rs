@@ -23,6 +23,7 @@ pub mod error;
 pub mod migrations;
 pub mod ports;
 pub mod services;
+pub mod status;
 
 pub use analytics::{OrderStatsSnapshot, load_order_stats_snapshot};
 pub use checkout_compensation::*;
@@ -31,6 +32,7 @@ pub use checkout_payment_settlement::*;
 pub use dto::*;
 pub use entities::*;
 pub use ports::*;
+pub use status::*;
 
 pub use error::{OrderError, OrderResult};
 pub use services::{

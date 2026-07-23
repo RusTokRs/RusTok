@@ -49,26 +49,28 @@ pub fn attach_schema_data(
     })
 }
 
+pub(crate) fn payment_provider_registry_from_context(
+    ctx: &Context<'_>,
+) -> PaymentProviderRegistry {
+    ctx.data_opt::<CommerceGraphqlRuntimeData>()
+        .map(CommerceGraphqlRuntimeData::payment_provider_registry)
+        .unwrap_or_else(PaymentProviderRegistry::with_manual_provider)
+}
+
 pub(crate) fn payment_orchestration_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
 ) -> crate::PaymentOrchestrationService {
-    let service = crate::PaymentOrchestrationService::new(db);
-    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
-        Some(runtime) => service.with_provider_registry(runtime.payment_provider_registry()),
-        None => service,
-    }
+    crate::PaymentOrchestrationService::new(db)
+        .with_provider_registry(payment_provider_registry_from_context(ctx))
 }
 
 pub(crate) fn refund_reconciliation_from_context(
     ctx: &Context<'_>,
     db: DatabaseConnection,
 ) -> crate::RefundReconciliationService {
-    let service = crate::RefundReconciliationService::new(db);
-    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
-        Some(runtime) => service.with_provider_registry(runtime.payment_provider_registry()),
-        None => service,
-    }
+    crate::RefundReconciliationService::new(db)
+        .with_provider_registry(payment_provider_registry_from_context(ctx))
 }
 
 pub(crate) fn fulfillment_orchestration_from_context(
@@ -87,13 +89,8 @@ pub(crate) fn post_order_orchestration_from_context(
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
 ) -> crate::PostOrderOrchestrationService {
-    let service = crate::PostOrderOrchestrationService::new(db, event_bus);
-    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
-        Some(runtime) => {
-            service.with_payment_provider_registry(runtime.payment_provider_registry())
-        }
-        None => service,
-    }
+    crate::PostOrderOrchestrationService::new(db, event_bus)
+        .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
 }
 
 pub(crate) fn order_change_orchestration_from_context(
@@ -101,13 +98,8 @@ pub(crate) fn order_change_orchestration_from_context(
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
 ) -> crate::OrderChangeOrchestrationService {
-    let service = crate::OrderChangeOrchestrationService::new(db, event_bus);
-    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
-        Some(runtime) => {
-            service.with_payment_provider_registry(runtime.payment_provider_registry())
-        }
-        None => service,
-    }
+    crate::OrderChangeOrchestrationService::new(db, event_bus)
+        .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
 }
 
 pub(crate) fn return_completion_orchestration_from_context(
@@ -115,11 +107,6 @@ pub(crate) fn return_completion_orchestration_from_context(
     db: DatabaseConnection,
     event_bus: rustok_outbox::TransactionalEventBus,
 ) -> crate::ReturnCompletionOrchestrationService {
-    let service = crate::ReturnCompletionOrchestrationService::new(db, event_bus);
-    match ctx.data_opt::<CommerceGraphqlRuntimeData>() {
-        Some(runtime) => {
-            service.with_payment_provider_registry(runtime.payment_provider_registry())
-        }
-        None => service,
-    }
+    crate::ReturnCompletionOrchestrationService::new(db, event_bus)
+        .with_payment_provider_registry(payment_provider_registry_from_context(ctx))
 }

@@ -13,7 +13,8 @@ use rustok_core::generate_id;
 use crate::dto::{
     AuthorizePaymentInput, CancelPaymentInput, CancelRefundInput, CapturePaymentInput,
     CompleteRefundInput, CreatePaymentCollectionInput, ListPaymentCollectionsInput,
-    ListRefundsInput, PaymentCollectionResponse, PaymentResponse, RefundResponse,
+    ListRefundsInput, PaymentCollectionResponse, PaymentCollectionStatusKind, PaymentResponse,
+    PaymentStatusKind, RefundResponse, RefundStatusKind,
 };
 use crate::entities;
 use crate::error::{PaymentError, PaymentResult};
@@ -228,7 +229,8 @@ impl PaymentService {
             .filter(entities::payment_collection::Column::TenantId.eq(tenant_id));
 
         if let Some(status) = input.status {
-            query = query.filter(entities::payment_collection::Column::Status.eq(status));
+            let normalized_status = Self::normalize_collection_status_filter(&status)?;
+            query = query.filter(entities::payment_collection::Column::Status.eq(normalized_status));
         }
         if let Some(order_id) = input.order_id {
             query = query.filter(entities::payment_collection::Column::OrderId.eq(order_id));
@@ -370,19 +372,30 @@ impl PaymentService {
         Ok(count > 0)
     }
 
+    fn normalize_collection_status_filter(status: &str) -> PaymentResult<String> {
+        let normalized = status.trim().to_ascii_lowercase();
+        PaymentCollectionStatusKind::from_raw(normalized.as_str())
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| {
+                PaymentError::Validation(
+                    "invalid payment collection status filter: expected one of pending, authorized, captured, cancelled"
+                        .to_string(),
+                )
+            })
+    }
+
     fn normalize_refund_status_filter(status: &str) -> PaymentResult<String> {
         let normalized = status.trim().to_ascii_lowercase();
-        if matches!(
-            normalized.as_str(),
-            STATUS_REFUND_PENDING | STATUS_REFUNDED | STATUS_REFUND_CANCELLED
-        ) {
-            return Ok(normalized);
-        }
-
-        Err(PaymentError::Validation(
-            "invalid refund status filter: expected one of pending, refunded, cancelled"
-                .to_string(),
-        ))
+        RefundStatusKind::from_raw(normalized.as_str())
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| {
+                PaymentError::Validation(
+                    "invalid refund status filter: expected one of pending, refunded, cancelled"
+                        .to_string(),
+                )
+            })
     }
 
     pub async fn complete_refund(
@@ -393,7 +406,7 @@ impl PaymentService {
     ) -> PaymentResult<RefundResponse> {
         let txn = self.db.begin().await?;
         let refund = self.load_refund_in_tx(&txn, tenant_id, refund_id).await?;
-        if refund.status != STATUS_REFUND_PENDING {
+        if !RefundStatusKind::from_raw(refund.status.as_str()).can_complete() {
             return Err(PaymentError::InvalidTransition {
                 from: refund.status,
                 to: STATUS_REFUNDED.to_string(),
@@ -421,7 +434,7 @@ impl PaymentService {
     ) -> PaymentResult<RefundResponse> {
         let txn = self.db.begin().await?;
         let refund = self.load_refund_in_tx(&txn, tenant_id, refund_id).await?;
-        if refund.status != STATUS_REFUND_PENDING {
+        if !RefundStatusKind::from_raw(refund.status.as_str()).can_cancel() {
             return Err(PaymentError::InvalidTransition {
                 from: refund.status,
                 to: STATUS_REFUND_CANCELLED.to_string(),
@@ -457,7 +470,7 @@ impl PaymentService {
         let collection = self
             .load_collection_in_tx(&txn, tenant_id, collection_id)
             .await?;
-        if collection.status != STATUS_PENDING {
+        if !PaymentCollectionStatusKind::from_raw(collection.status.as_str()).can_authorize() {
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: STATUS_AUTHORIZED.to_string(),
@@ -516,7 +529,7 @@ impl PaymentService {
         let collection = self
             .load_collection_in_tx(&txn, tenant_id, collection_id)
             .await?;
-        if collection.status != STATUS_AUTHORIZED {
+        if !PaymentCollectionStatusKind::from_raw(collection.status.as_str()).can_capture() {
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: STATUS_CAPTURED.to_string(),
@@ -567,7 +580,8 @@ impl PaymentService {
         let collection = self
             .load_collection_in_tx(&txn, tenant_id, collection_id)
             .await?;
-        if collection.status == STATUS_CAPTURED || collection.status == STATUS_CANCELLED {
+        let collection_status = PaymentCollectionStatusKind::from_raw(collection.status.as_str());
+        if !collection_status.can_cancel() {
             return Err(PaymentError::InvalidTransition {
                 from: collection.status,
                 to: STATUS_CANCELLED.to_string(),
@@ -579,12 +593,23 @@ impl PaymentService {
             .await
         {
             Ok(payment) => Some(payment),
-            Err(PaymentError::PaymentNotFound(_)) if collection.status == STATUS_PENDING => None,
+            Err(PaymentError::PaymentNotFound(_))
+                if collection_status == PaymentCollectionStatusKind::Pending =>
+            {
+                None
+            }
             Err(error) => return Err(error),
         };
 
         let now = Utc::now();
         if let Some(payment) = payment {
+            let payment_status = PaymentStatusKind::from_raw(payment.status.as_str());
+            if matches!(payment_status, PaymentStatusKind::Captured | PaymentStatusKind::Unknown) {
+                return Err(PaymentError::InvalidTransition {
+                    from: payment.status,
+                    to: STATUS_CANCELLED.to_string(),
+                });
+            }
             let mut payment_active: entities::payment::ActiveModel = payment.into();
             let reason = input
                 .reason
@@ -703,7 +728,9 @@ impl PaymentService {
             .await?;
         let refunded_amount = refunds
             .iter()
-            .filter(|refund| refund.status == STATUS_REFUNDED)
+            .filter(|refund| {
+                RefundStatusKind::from_raw(refund.status.as_str()) == RefundStatusKind::Refunded
+            })
             .fold(Decimal::ZERO, |sum, refund| sum + refund.amount);
 
         Ok(PaymentCollectionResponse {
@@ -808,6 +835,12 @@ fn validate_reusable_collection(
             existing.id, existing.amount, amount
         )));
     }
+    if matches!(existing.status_kind(), PaymentCollectionStatusKind::Cancelled | PaymentCollectionStatusKind::Unknown) {
+        return Err(PaymentError::InvalidTransition {
+            from: existing.status.clone(),
+            to: STATUS_PENDING.to_string(),
+        });
+    }
     Ok(())
 }
 
@@ -869,6 +902,35 @@ fn merge_metadata(current: serde_json::Value, patch: serde_json::Value) -> serde
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_collection_status_filter_accepts_supported_values() {
+        assert_eq!(
+            PaymentService::normalize_collection_status_filter("pending")
+                .expect("pending status"),
+            "pending"
+        );
+        assert_eq!(
+            PaymentService::normalize_collection_status_filter("  AuThOrIzEd  ")
+                .expect("authorized status"),
+            "authorized"
+        );
+        assert_eq!(
+            PaymentService::normalize_collection_status_filter("CAPTURED")
+                .expect("captured status"),
+            "captured"
+        );
+    }
+
+    #[test]
+    fn normalize_collection_status_filter_rejects_unknown_values() {
+        let error = PaymentService::normalize_collection_status_filter("processing")
+            .expect_err("unknown status must fail validation");
+        assert!(
+            matches!(error, PaymentError::Validation(ref message) if message.contains("invalid payment collection status filter")),
+            "expected validation error for unknown collection status, got: {error:?}"
+        );
+    }
 
     #[test]
     fn normalize_refund_status_filter_accepts_supported_values() {

@@ -2,9 +2,13 @@ mod candidate;
 pub mod entities;
 pub mod error;
 mod fanout;
+mod fanout_worker;
 pub mod migrations;
 pub mod model;
+mod outbox_intake;
+mod recipient_policy;
 mod service;
+mod worker;
 
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleRuntimeExtensions, RusToKModule};
@@ -20,8 +24,34 @@ pub use error::{NotificationError, NotificationResult};
 pub use fanout::{
     NotificationFanoutPageResult, NotificationFanoutService, NotificationSourceInboxReceipt,
 };
+pub use fanout_worker::{
+    DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE, DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE,
+    MAX_NOTIFICATION_FANOUT_BATCH_SIZE, MAX_NOTIFICATION_FANOUT_PAGE_SIZE,
+    NotificationFanoutJobWorkItem, NotificationFanoutPolicyDeferral,
+    NotificationFanoutSourceWorkItem, NotificationFanoutWorker,
+    NotificationFanoutWorkerBatchResult, NotificationFanoutWorkerFailure,
+    NotificationFanoutWorkerStage,
+};
+pub use outbox_intake::{
+    DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
+    NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
+    NotificationOutboxIntakeBatchResult, NotificationOutboxIntakeFailure,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeRejection,
+    NotificationOutboxIntakeResult, NotificationOutboxIntakeWorker,
+};
+pub use recipient_policy::{
+    NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
+    NotificationMuteReadRuntime, NotificationRecipientPolicyRuntime,
+    NotificationRelationPolicyRequest,
+};
 pub use rustok_notifications_api as api;
 pub use service::NotificationsService;
+pub use worker::{
+    DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE,
+    NotificationCandidateBatchResult, NotificationCandidatePolicyDeferral,
+    NotificationCandidateWorkItem, NotificationCandidateWorker,
+    NotificationCandidateWorkerFailure,
+};
 
 pub struct NotificationsModule;
 
@@ -78,8 +108,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 3);
-        assert_eq!(module.migration_dependencies().len(), 3);
+        assert_eq!(module.migrations().len(), 5);
+        assert_eq!(module.migration_dependencies().len(), 5);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module

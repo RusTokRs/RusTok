@@ -1,6 +1,6 @@
 # RusToK ecommerce implementation plan
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-23
 
 ## Source of truth
 
@@ -120,6 +120,45 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Add static compensation and owner-stage guards plus versioned order/payment/
   fulfillment workflow contracts without promoting FBA/FFA status.
 - [x] Execute isolated unit fixtures for the completion-cutover verifier: 3/3 pass.
+- [x] Add fail-closed `PortError` sanitization for unavailable/invariant failures at
+  construction and serde transport boundaries, plus static source guards.
+- [x] Harden pricing read/write port mapping: technical causes are internal-only and
+  logged with correlation id, tenant, owner operation, and stable error code.
+- [x] Harden `PaymentCollectionPort` create/reuse/status mapping with correlation-aware
+  validation, lifecycle, provider, and database logging plus stable public messages.
+- [ ] Finish correlation-safe mapper cleanup for order, payment execution/compensation,
+  fulfillment, inventory, customer, tax, promotion, remaining ecommerce adapters, and
+  non-`PortError` public envelopes.
+- [x] Publish canonical typed lifecycle views for cart, order, order change, order
+  return, payment collection, payment, refund, and fulfillment while preserving
+  backward-compatible string transport fields and fail-closing unknown values.
+- [x] Cut checkout order payment settlement and order compensation over to
+  `OrderStatusKind` with manual reconciliation for unknown or effectful states.
+- [x] Cut payment checkout compensation over to `PaymentCollectionStatusKind`, including
+  cancel-race adoption, captured/manual-reconciliation routing, and provider-cancel
+  admission.
+- [x] Cut payment owner checkout execution authorize/capture admission and replay over
+  to `PaymentCollectionStatusKind`; unknown states require manual reconciliation.
+- [x] Cut the mounted commerce payment stage over to typed payment collection and order
+  lifecycle views for authorization, capture, replay, and order admission.
+- [x] Mount fulfillment ensure/read through the root typed lifecycle factory; pending,
+  shipped, and delivered states are replay-safe while cancelled and unknown states
+  require manual reconciliation.
+- [x] Cut order checkout recovery and mounted order projection validation over to
+  `OrderStatusKind`; pending resumes through owner confirmation and unknown states fail
+  closed without raw string policy matching.
+- [x] Cut atomic cart admission, mounted checkout finalization, and mounted compensation
+  release/result validation over to canonical cart/order/payment lifecycle views;
+  unknown cart states require manual reconciliation or fail closed.
+- [x] Cut payment owner core transitions, refund creation, public provider
+  orchestration, normalized webhook application, and mounted fulfillment captured-state
+  recovery over to canonical typed lifecycle views.
+- [x] Cut mounted REST, GraphQL, native, and root storefront checkout completion over to
+  one staged recovery entrypoint with explicit idempotency and host payment-provider
+  registry composition.
+- [ ] Remove private legacy `CheckoutService` / `JournaledCheckoutService`
+  compatibility source and public re-exports after compile, replay, and upgraded-path
+  evidence; compatibility tests still construct those facades.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -130,8 +169,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   typed owner identity.
 - [ ] Replace remaining direct foreign owner service construction outside the mounted
   staged checkout path with typed owner ports or explicit owner-provided adapters.
-- [ ] Remove raw DB/provider/internal text from all public ecommerce port errors and
-  retain internal structured logs with correlation identity.
 - [ ] Propagate typed lifecycle statuses through owner ports and remove string status
   matching from critical checkout, compensation, order, payment, and fulfillment paths.
 
@@ -170,8 +207,9 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Require stable checkout idempotency across REST, GraphQL, native, and UI.
 - [x] Route production checkout through staged recovery orchestration.
 - [ ] Resolve cart, product, pricing, inventory, order, payment, and fulfillment only
-  through typed owner boundaries on every production path; the mounted staged checkout
-  path is cut over, while other ecommerce orchestration paths still require audit.
+  through typed owner boundaries on every production path; mounted storefront checkout
+  completion is cut over, while other ecommerce orchestration paths still require
+  cutover/audit.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
 - [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
@@ -223,14 +261,33 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   values for upgraded journal replay.
 - [x] Add static guards for order identity, completion, compensation, and mounted
   payment/fulfillment/pipeline owner boundaries.
+- [x] Use canonical typed order/payment collection lifecycle views in payment owner
+  execution/compensation and mounted payment execution; unknown values fail closed.
+- [x] Route mounted fulfillment ensure/read through
+  `TypedCheckoutFulfillmentExecutionPort`; cancelled and unknown owner states require
+  manual reconciliation before checkout can continue.
+- [x] Use `OrderStatusKind` in the owner recovery adapter and mounted order projection
+  policy; legacy pending resumes through the owner confirm command.
+- [x] Use canonical `CartStatus` in atomic checkout admission, mounted finalization, and
+  mounted compensation release; compensation snapshots expose typed order/payment
+  status views without changing wire fields.
+- [x] Use canonical payment collection/payment/refund statuses in owner core lifecycle,
+  refund admission/replay, public provider orchestration, webhook application, and
+  mounted fulfillment captured-state validation.
+- [x] Route REST, GraphQL, native, and root storefront completion through
+  `RecoveringStagedCheckoutService`; all mounted transports preserve the caller
+  idempotency key and host payment-provider registry.
+- [ ] Remove private legacy checkout completion and journal facade source after
+  compile/replay/upgraded evidence, then migrate compatibility tests to the staged
+  harness and remove public re-exports.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
   pipeline source after upgraded/restart evidence proves every recovery path uses typed
   identity.
-- [ ] Retain order completion/adoption, payment execution, fulfillment execution,
-  settlement, and compensation parity, kill-point, restart, and PostgreSQL/MySQL
-  contention evidence.
+- [ ] Retain REST/GraphQL/native staged parity plus order completion/adoption, payment
+  execution, fulfillment execution, settlement, cart finalization/release, compensation,
+  kill-point, restart, and PostgreSQL/MySQL contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
 ### Return completion
@@ -434,6 +491,19 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   only after payment owner application, and mark provider events processed only after observers
   succeed.
 - [x] Keep marketplace reversal consumers free of raw provider payloads and signatures.
+- [x] Use `PaymentCollectionStatusKind` in checkout execution, checkout compensation,
+  and the mounted payment stage; unknown collection states require manual reconciliation
+  or fail closed.
+- [x] Use canonical payment/refund lifecycle policy in `PaymentService`, idempotent
+  refund creation, public provider orchestration, normalized webhook application, and
+  mounted fulfillment captured-state recovery.
+- [x] Remove production storefront completion use of the legacy `CheckoutService`;
+  mounted REST, GraphQL, native, and root completion use staged payment-owner execution.
+- [x] Make `PaymentCollectionPort` error mapping correlation-aware and keep validation,
+  lifecycle, provider, configuration, outcome, and storage causes out of public messages.
+- [ ] Audit payment execution/compensation and remaining admin/provider adapters, then
+  remove the compatibility checkout service/journal source after retained compile and
+  replay evidence.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
 - [ ] Execute checkout compensation and payment execution provider replay, crash,
@@ -441,7 +511,6 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [ ] Execute production-like Stripe, real signature, redelivery, restart, replica,
   degraded, reconciliation, observer replay, and operator evidence.
 - [ ] Prove adapters never own payment/refund lifecycle state.
-- [ ] Remove raw database/provider error strings from payment-facing public port errors.
 
 ## Verification and promotion checklist
 
@@ -462,6 +531,8 @@ Source inspection is not execution evidence.
   (isolated fixture execution: 3/3 pass)
 - [ ] `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - [ ] `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- [ ] `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
+- [ ] `node scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -479,7 +550,17 @@ Source inspection is not execution evidence.
 - [x] Add a static guard that forbids `PaymentService`, `FulfillmentService`,
   `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
   fulfillment, and pipeline source.
-- [ ] Add a static guard for public `PortError` construction from raw `DbErr`/SDK errors.
+- [x] Add static guards for fail-closed public `PortError` transport sanitization and
+  typed order/payment/fulfillment/cart lifecycle use in checkout execution, recovery,
+  finalization, settlement, compensation, provider orchestration, webhook application,
+  and mounted owner stages.
+- [x] Add a storefront staged-cutover guard that forbids `CheckoutService` and
+  `JournaledCheckoutService` construction in mounted REST, GraphQL, native, root, and
+  staged completion paths.
+- [x] Extend the public-error guard to pricing and `PaymentCollectionPort`, including
+  correlation, tenant, operation, stable code, and raw-cause bans.
+- [ ] Execute the new public-error, typed-lifecycle, and storefront-cutover static guards
+  against a repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -491,11 +572,21 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-order --test checkout_completion_port`
 - [ ] Targeted staged checkout completion/adoption/replay, compensation, and order
   payment settlement tests.
+- [ ] Targeted REST/GraphQL/native staged checkout parity, idempotency conflict, provider
+  registry composition, and reconciliation mapping tests.
+- [ ] `cargo check -p rustok-pricing --all-features`
+- [ ] Targeted pricing database, validation, rich/core invariant, correlation, and
+  transport round-trip tests.
 - [ ] `cargo check -p rustok-payment --all-features`
-- [ ] Targeted payment compensation and execution canonical-key/legacy-payload replay tests.
+- [ ] Targeted payment collection error mapping plus owner lifecycle,
+  compensation/execution canonical-key, legacy-payload replay, refund admission, and
+  webhook adaptation tests.
 - [ ] `cargo check -p rustok-fulfillment --all-features`
-- [ ] Targeted fulfillment create/adopt/read, duplicate identity, partial set, and
-  concurrent create tests.
+- [ ] Targeted fulfillment create/adopt/read, cancelled/unknown lifecycle, duplicate
+  identity, partial set, and concurrent create tests.
+- [ ] `cargo check -p rustok-cart --all-features`
+- [ ] Targeted atomic cart admission, finalization, release, unknown lifecycle, and
+  compensation snapshot tests.
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
 - [ ] `cargo test -p rustok-marketplace-ledger`
@@ -523,16 +614,19 @@ Source inspection is not execution evidence.
   on all supported backends.
 - [ ] Prove payment compensation/execution adopts pre-cutover provider journal rows and
   never repeats an executing, succeeded, or reconciliation-required external effect.
-- [ ] Prove fulfillment create/adopt/read returns one exact immutable set under duplicate,
-  concurrent, process-exit, restart, and upgraded metadata scenarios.
+- [ ] Prove fulfillment create/adopt/read returns one exact immutable set and routes
+  cancelled/unknown lifecycle states to reconciliation under duplicate, concurrent,
+  process-exit, restart, and upgraded metadata scenarios.
+- [ ] Prove atomic cart admission, complete/release replay, unknown lifecycle,
+  process-exit, and restart behavior through the mounted finalization/compensation paths.
 - [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
 - [ ] Execute seller balance transfer replay, duplicate source, cumulative reference capacity,
   concurrent admission, projection rebuild, and append-only trigger scenarios.
 - [ ] Prove declared routers and module-owned UI packages are mounted.
-- [ ] Exercise authenticated checkout, recovery, compensation, seller admin, listing admin,
-  reconciliation, and replay.
+- [ ] Exercise authenticated REST/GraphQL/native checkout, recovery, compensation, seller
+  admin, listing admin, reconciliation, and replay.
 - [ ] Retain remote-profile and real payment/provider evidence.
 
 ## Immediate execution order
@@ -549,8 +643,15 @@ Source inspection is not execution evidence.
    services/journal access from the mounted compensation path.
 9. [x] Cut payment and fulfillment stages plus pipeline recovery over to explicit
    payment, fulfillment, and order owner ports.
-10. [ ] Remove raw public ecommerce port error leakage and add correlation-safe logging.
-11. [ ] Introduce typed lifecycle status snapshots and remove critical string matching.
+10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
+    central fail-closed transport sanitization plus channel, region, cart checkout,
+    pricing, and payment collection mapper hardening are complete. Remaining owners and
+    non-`PortError` envelopes stay open.
+11. [x] Finish typed lifecycle and mounted storefront checkout source cutover: REST,
+    GraphQL, native, root completion, payment owner/provider/webhook policy, order
+    recovery/settlement/compensation, typed fulfillment recovery, and cart
+    atomic/finalization/compensation all use staged or canonical typed paths.
+    Compatibility source removal and execution evidence remain separate open tasks.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -587,6 +688,22 @@ Source inspection is not execution evidence.
   retaining fail-closed manual reconciliation for uncertain external outcomes.
 - [x] Cut mounted payment, fulfillment, order settlement, and pipeline recovery over to
   owner ports while preserving canonical provider replay identities.
+- [x] Add fail-closed public `PortError` transport sanitization and canonical typed
+  lifecycle owner views without changing persisted or transport status strings.
+- [x] Cut payment owner execution, order settlement, order/payment compensation, and
+  mounted payment execution admission/replay over to typed owner lifecycle status views.
+- [x] Mount fulfillment ensure/read recovery through the typed root factory and fail
+  closed cancelled or unknown owner lifecycle states.
+- [x] Cut order checkout recovery and mounted order projection validation over to
+  `OrderStatusKind`.
+- [x] Cut atomic cart admission, mounted finalization, and mounted compensation
+  release/result validation over to canonical typed lifecycle views.
+- [x] Cut payment core/refund/provider/webhook and mounted captured-state recovery over
+  to canonical typed lifecycle views without changing persisted status strings.
+- [x] Cut mounted REST, GraphQL, native, and root storefront checkout completion over to
+  one staged recovery runtime with explicit idempotency and host provider composition.
+- [x] Harden pricing and payment collection owner-port errors with stable public
+  messages plus correlation-aware internal logging.
 
 ## Change rules
 
@@ -606,6 +723,7 @@ Source inspection is not execution evidence.
 - [Commerce FBA registry](../contracts/commerce-fba-registry.json)
 - [Checkout compensation owner cutover](./checkout-compensation-owner-cutover.md)
 - [Checkout owner stage cutover](./checkout-owner-stage-cutover.md)
+- [Public ecommerce port error safety](./public-port-error-safety.md)
 - [Order checkout compensation contract](../../rustok-order/contracts/order-checkout-compensation-v1.json)
 - [Order checkout payment settlement contract](../../rustok-order/contracts/order-checkout-payment-settlement-v1.json)
 - [Payment FBA registry](../../rustok-payment/contracts/payment-fba-registry.json)
@@ -614,7 +732,7 @@ Source inspection is not execution evidence.
 - [Fulfillment checkout execution contract](../../rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json)
 - [Marketplace root plan](../../rustok-marketplace/docs/implementation-plan.md)
 - [Marketplace root FBA registry](../../rustok-marketplace/contracts/marketplace-fba-registry.json)
-- [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json)
+- [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-fba-registry.json)
 - [Seller balance transfer contract](../../rustok-marketplace-ledger/contracts/seller-balance-transfer-v1.json)
 - [Marketplace seller plan](../../rustok-marketplace-seller/docs/implementation-plan.md)
 - [Marketplace listing plan](../../rustok-marketplace-listing/docs/implementation-plan.md)

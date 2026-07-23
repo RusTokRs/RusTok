@@ -253,7 +253,13 @@ impl PricingReadPort for crate::PricingService {
                     None,
                 )
                 .await
-                .map_err(pricing_error_to_port_error)?;
+                .map_err(|error| {
+                    pricing_error_to_port_error(
+                        &context,
+                        "resolve_product_price.product_projection",
+                        error,
+                    )
+                })?;
             if !product
                 .variants
                 .iter()
@@ -280,7 +286,9 @@ impl PricingReadPort for crate::PricingService {
                 },
             )
             .await
-            .map_err(pricing_error_to_port_error)?
+            .map_err(|error| {
+                pricing_error_to_port_error(&context, "resolve_product_price", error)
+            })?
             .ok_or_else(|| {
                 PortError::new(
                     rustok_api::PortErrorKind::NotFound,
@@ -318,7 +326,9 @@ impl PricingReadPort for crate::PricingService {
         let lists = self
             .list_active_price_lists(tenant_id, Some(locale), Some(locale))
             .await
-            .map_err(pricing_error_to_port_error)?;
+            .map_err(|error| {
+                pricing_error_to_port_error(&context, "read_price_list_projection", error)
+            })?;
         let list = lists
             .into_iter()
             .find(|list| list.id == request.price_list_id)
@@ -356,7 +366,13 @@ impl PricingReadPort for crate::PricingService {
                 request.fallback_locale.as_deref(),
             )
             .await
-            .map_err(pricing_error_to_port_error)?;
+            .map_err(|error| {
+                pricing_error_to_port_error(
+                    &context,
+                    "list_active_price_list_projections",
+                    error,
+                )
+            })?;
 
         Ok(lists
             .into_iter()
@@ -387,7 +403,13 @@ impl PricingReadPort for crate::PricingService {
             request.selected_price_list_id,
         )
         .await
-        .map_err(pricing_error_to_port_error)
+        .map_err(|error| {
+            pricing_error_to_port_error(
+                &context,
+                "read_admin_product_pricing_projection",
+                error,
+            )
+        })
     }
 
     async fn read_storefront_product_pricing_projection(
@@ -405,7 +427,13 @@ impl PricingReadPort for crate::PricingService {
             request.public_channel_slug.as_deref(),
         )
         .await
-        .map_err(pricing_error_to_port_error)
+        .map_err(|error| {
+            pricing_error_to_port_error(
+                &context,
+                "read_storefront_product_pricing_projection",
+                error,
+            )
+        })
     }
 
     async fn preview_variant_discount(
@@ -436,7 +464,9 @@ impl PricingReadPort for crate::PricingService {
             )
             .await
         };
-        preview.map_err(pricing_error_to_port_error)
+        preview.map_err(|error| {
+            pricing_error_to_port_error(&context, "preview_variant_discount", error)
+        })
     }
 }
 
@@ -465,7 +495,9 @@ impl PricingWritePort for crate::PricingService {
             request.max_quantity,
         )
         .await
-        .map_err(pricing_error_to_port_error)
+        .map_err(|error| {
+            pricing_error_to_port_error(&context, "upsert_variant_price", error)
+        })
     }
 
     async fn set_price_list_scope(
@@ -485,8 +517,11 @@ impl PricingWritePort for crate::PricingService {
             request.channel_slug,
         )
         .await
-        .map_err(pricing_error_to_port_error)
+        .map_err(|error| {
+            pricing_error_to_port_error(&context, "set_price_list_scope", error)
+        })
     }
+
     async fn apply_variant_discount(
         &self,
         context: PortContext,
@@ -520,7 +555,9 @@ impl PricingWritePort for crate::PricingService {
             )
             .await
         };
-        result.map_err(pricing_error_to_port_error)
+        result.map_err(|error| {
+            pricing_error_to_port_error(&context, "apply_variant_discount", error)
+        })
     }
 
     async fn set_price_list_percentage_rule(
@@ -541,7 +578,9 @@ impl PricingWritePort for crate::PricingService {
             request.fallback_locale.as_deref(),
         )
         .await
-        .map_err(pricing_error_to_port_error)
+        .map_err(|error| {
+            pricing_error_to_port_error(&context, "set_price_list_percentage_rule", error)
+        })
     }
 }
 
@@ -564,15 +603,27 @@ fn parse_port_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
 }
 
 fn pricing_error_to_port_error(
+    context: &PortContext,
+    operation: &'static str,
     error: rustok_commerce_foundation::error::CommerceError,
 ) -> PortError {
     use rustok_commerce_foundation::error::CommerceError;
 
     match error {
-        CommerceError::Database(error) => PortError::unavailable(
-            "pricing.database_unavailable",
-            format!("pricing storage unavailable: {error}"),
-        ),
+        CommerceError::Database(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "pricing.database_unavailable",
+                "pricing owner storage operation failed"
+            );
+            PortError::unavailable(
+                "pricing.database_unavailable",
+                "pricing storage is temporarily unavailable",
+            )
+        }
         CommerceError::ProductNotFound(id) => PortError::new(
             rustok_api::PortErrorKind::NotFound,
             "pricing.product_not_found",
@@ -598,7 +649,15 @@ fn pricing_error_to_port_error(
             false,
         ),
         CommerceError::InvalidPrice(message) | CommerceError::Validation(message) => {
-            PortError::validation("pricing.validation", message)
+            tracing::warn!(
+                cause = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "pricing.validation",
+                "pricing owner rejected a domain request"
+            );
+            PortError::validation("pricing.validation", "pricing request is invalid")
         }
         CommerceError::InsufficientInventory {
             requested,
@@ -635,17 +694,33 @@ fn pricing_error_to_port_error(
             "cannot delete published product",
             false,
         ),
-        CommerceError::Rich(error) => PortError::new(
-            rustok_api::PortErrorKind::InvariantViolation,
-            "pricing.rich_error",
-            error.to_string(),
-            false,
-        ),
-        CommerceError::Core(error) => PortError::new(
-            rustok_api::PortErrorKind::InvariantViolation,
-            "pricing.core_error",
-            error.to_string(),
-            false,
-        ),
+        CommerceError::Rich(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "pricing.rich_error",
+                "pricing owner rich error"
+            );
+            PortError::invariant_violation(
+                "pricing.rich_error",
+                "pricing operation failed an internal invariant",
+            )
+        }
+        CommerceError::Core(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "pricing.core_error",
+                "pricing owner core error"
+            );
+            PortError::invariant_violation(
+                "pricing.core_error",
+                "pricing operation failed an internal invariant",
+            )
+        }
     }
 }

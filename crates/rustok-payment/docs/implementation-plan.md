@@ -38,8 +38,41 @@ Staged checkout prepare, authorize, capture, and recovery reads enter payment
 through `CheckoutPaymentExecutionPort`. Collection lifecycle, provider registry,
 provider operation journal, CAS execution, provider-result checkpointing, local
 collection mutation, and reconciliation policy remain inside `rustok-payment`.
-The mounted commerce payment stage receives only normalized
-`PaymentCollectionResponse` projections.
+The mounted commerce payment and fulfillment stages receive normalized
+`PaymentCollectionResponse` projections and use typed captured-state admission.
+
+Payment DTOs expose backward-compatible typed lifecycle views:
+
+- `PaymentCollectionStatusKind`
+- `PaymentStatusKind`
+- `RefundStatusKind`
+- `PaymentCollectionResponse::status_kind()`
+- `PaymentResponse::status_kind()`
+- `RefundResponse::status_kind()`
+- `PaymentCollectionStatusSnapshot::status_kind()`
+
+The persisted and transport fields remain strings during migration. Known owner
+values map to typed variants; every unknown legacy/provider value maps to `Unknown`
+without guessing or rewriting the raw stored fact. Owner enums publish canonical
+storage names plus authorize, capture, cancel, complete, terminal, and replay
+predicates.
+
+The typed policy is now used by:
+
+- `PaymentService` collection authorize/capture/cancel and refund complete/cancel;
+- collection/refund list-filter normalization and refunded aggregation;
+- `PaymentRefundCreationService` collection admission and unknown replay rejection;
+- `CheckoutPaymentExecutionPort` and `CheckoutPaymentCompensationPort`;
+- public `PaymentOrchestrationService` authorize/capture/cancel/refund preflight;
+- normalized provider webhook lifecycle application;
+- mounted commerce payment, fulfillment, finalization, and compensation recovery.
+
+Provider-operation journal, webhook inbox, and commerce checkout-operation statuses
+remain separate state machines and intentionally keep their own storage strings.
+The legacy production-facing `CheckoutService` still constructs foreign services and
+contains raw payment/order/cart lifecycle matching; its staged-runtime cutover remains
+an explicit umbrella-plan task. Other unreviewed provider/admin adapters must also be
+audited before the broad lifecycle P0 is closed.
 
 The execution owner preserves the pre-cutover provider identities and immutable
 request payload values:
@@ -65,6 +98,8 @@ Boundary guards:
 - `npm run verify:payment:storefront-boundary`
 - `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- `node scripts/verify/verify-payment-typed-lifecycle-statuses.mjs`
+- `node scripts/verify/verify-ecommerce-typed-lifecycle-statuses.mjs`
 
 Compile, provider replay, process-exit, restart, contention, mounted transport, and
 remote-profile evidence remain unexecuted. No FBA/FFA status promotion is claimed.

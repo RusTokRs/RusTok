@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     AdoptLegacyCheckoutOrderIdentityRequest, CheckoutOrderIdentityPort,
-    InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse, OrderService,
+    InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse, OrderService, OrderStatusKind,
     ReadCheckoutOrderIdentityByOperationRequest,
 };
 
@@ -148,8 +148,8 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
         }
 
         let current = self.load_order(tenant_id, &request).await?;
-        let settled = match current.status.as_str() {
-            "confirmed" => self
+        let settled = match current.status_kind() {
+            OrderStatusKind::Confirmed => self
                 .service
                 .mark_paid(
                     tenant_id,
@@ -160,11 +160,13 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
                 )
                 .await
                 .map_err(order_error_to_port_error)?,
-            "paid" | "shipped" | "delivered" => current,
-            status => {
+            OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => current,
+            OrderStatusKind::Pending
+            | OrderStatusKind::Cancelled
+            | OrderStatusKind::Unknown => {
                 return Err(PortError::conflict(
                     "order.checkout_payment_state_conflict",
-                    format!("checkout order cannot settle payment from `{status}`"),
+                    "checkout order lifecycle does not allow payment settlement",
                 ));
             }
         };

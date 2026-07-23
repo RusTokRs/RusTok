@@ -11,6 +11,7 @@ chrono.workspace = true
 hex.workspace = true
 rustok-api.workspace = true
 rustok-core.workspace = true
+rustok-moderation-api = { path = "../rustok-moderation-api" }
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
