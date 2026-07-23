@@ -78,13 +78,18 @@ impl CategoryService {
             .await
     }
 
+    /// Archive the complete category subtree from normal product delete flows.
+    /// Physical purge remains a separate retention concern.
     pub async fn delete(
         &self,
         tenant_id: Uuid,
         category_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<()> {
-        self.inner.delete(tenant_id, category_id, security).await
+        self.lifecycle
+            .archive_subtree_for_delete(tenant_id, category_id, security)
+            .await?;
+        Ok(())
     }
 
     pub async fn tree(
