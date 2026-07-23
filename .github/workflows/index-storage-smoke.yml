@@ -1,0 +1,182 @@
+name: Index Storage Smoke Evidence
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "crates/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - "crates/rustok-index/**"
+      - "ops/benches/**"
+      - "scripts/verify/verify-index-fba.mjs"
+      - ".github/workflows/index-storage-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_bench
+  INDEX_BENCH_SCALE: smoke
+  INDEX_BENCH_REPETITIONS: "3"
+  INDEX_BENCH_CHURN_CYCLES: "5"
+  INDEX_BENCH_OUTPUT: evidence/index-storage/smoke/read-report.json
+  INDEX_BENCH_MUTATION_OUTPUT: evidence/index-storage/smoke/mutation-report.json
+  INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/smoke/maintenance-report.json
+
+jobs:
+  contract:
+    name: Index boundary contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify Index boundary and benchmark contract
+        shell: bash
+        run: |
+          mkdir -p evidence/index-storage/contract
+          set -o pipefail
+          node scripts/verify/verify-index-fba.mjs 2>&1 | tee evidence/index-storage/contract/verify.log
+      - name: Archive contract diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-contract-${{ github.sha }}
+          path: evidence/index-storage/contract/verify.log
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke-evidence:
+    name: PostgreSQL smoke evidence
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_bench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-storage-smoke
+
+      - name: Build smoke evidence executables
+        shell: bash
+        run: |
+          mkdir -p evidence/index-storage/build
+          set -o pipefail
+          cargo build -p rustok-benchmarks --release \
+            --bin index-storage-benchmark \
+            --bin index-storage-mutation-benchmark \
+            --bin index-storage-maintenance-benchmark \
+            2>&1 | tee evidence/index-storage/build/release-build.log
+
+      - name: Archive release build diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-build-${{ github.sha }}
+          path: evidence/index-storage/build/release-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Run read/query smoke evidence
+        run: target/release/index-storage-benchmark
+
+      - name: Run mutation/WAL smoke evidence
+        run: target/release/index-storage-mutation-benchmark
+
+      - name: Run persistent churn/VACUUM smoke evidence
+        run: target/release/index-storage-maintenance-benchmark
+
+      - name: Validate evidence packet
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const root = 'evidence/index-storage/smoke';
+          const files = [
+            'read-report.json',
+            'mutation-report.json',
+            'maintenance-report.json',
+          ];
+
+          for (const filename of files) {
+            const fullPath = path.join(root, filename);
+            if (!fs.existsSync(fullPath)) {
+              throw new Error(`missing smoke evidence file: ${fullPath}`);
+            }
+            const report = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+            if (!Array.isArray(report.prototypes) || report.prototypes.length !== 3) {
+              throw new Error(`${filename} must contain exactly three prototype reports`);
+            }
+          }
+
+          const read = JSON.parse(fs.readFileSync(path.join(root, 'read-report.json'), 'utf8'));
+          if (read.dataset?.scale !== 'smoke') {
+            throw new Error(`read report scale mismatch: ${read.dataset?.scale}`);
+          }
+
+          const mutation = JSON.parse(fs.readFileSync(path.join(root, 'mutation-report.json'), 'utf8'));
+          if (mutation.repetitions !== 3) {
+            throw new Error(`mutation repetitions mismatch: ${mutation.repetitions}`);
+          }
+
+          const maintenance = JSON.parse(fs.readFileSync(path.join(root, 'maintenance-report.json'), 'utf8'));
+          if (maintenance.dataset_scale !== 'smoke' || maintenance.cycles !== 5) {
+            throw new Error('maintenance report does not match the smoke evidence contract');
+          }
+
+          fs.writeFileSync(
+            path.join(root, 'provenance.json'),
+            JSON.stringify({
+              generated_at: new Date().toISOString(),
+              repository: process.env.GITHUB_REPOSITORY,
+              commit: process.env.GITHUB_SHA,
+              ref: process.env.GITHUB_REF,
+              run_id: process.env.GITHUB_RUN_ID,
+              run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+              runner_os: process.env.RUNNER_OS,
+              postgres_image: 'postgres:16',
+              scale: 'smoke',
+              repetitions: 3,
+              churn_cycles: 5,
+              reports: files,
+            }, null, 2) + '\n',
+          );
+          NODE
+
+      - name: Archive smoke evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-smoke-${{ github.sha }}
+          path: evidence/index-storage/smoke
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9

@@ -6,9 +6,11 @@
 - Read harness: implemented in `ops/benches/src/index_storage`
 - Mutation/WAL harness: implemented with transaction rollback isolation
 - Persistent churn/VACUUM harness: implemented with committed cycles
+- Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
 - Production migrations: intentionally absent
-- Evidence runs: pending repository-owner execution
-- Storage decision ADR: pending evidence
+- Smoke evidence: archived from Actions run `30041091121`
+- 100k/1m evidence: pending repository-owner execution
+- Storage decision ADR: pending scale evidence and comparison
 
 ## Goal
 
@@ -17,6 +19,10 @@ repeatable evidence rather than preference. The benchmark compares three models
 while keeping the generated source dataset, entity identity, links, filters,
 ordering, pagination, mutation batch, churn cycle count, and PostgreSQL session
 constant.
+
+Every executable uses a pool constrained to exactly one physical PostgreSQL
+connection. This keeps session settings, temporary execution state, maintenance
+statistics, and VACUUM sequencing on one reproducible session per report.
 
 ## Candidates
 
@@ -172,6 +178,29 @@ cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --relea
 
 All three executables must be run at `smoke`, `100k`, and `1m` before the storage
 ADR is accepted.
+
+### CI smoke evidence
+
+`.github/workflows/index-storage-smoke.yml` runs all three release executables
+against PostgreSQL 16 with the deterministic `smoke` preset. It validates that
+each report contains all three prototypes, writes a provenance manifest tied to
+the commit and workflow run, and uploads the evidence packet for 90 days.
+
+The workflow is path-scoped to Index, benchmark, verifier, and workflow changes
+and can also be started manually. A successful artifact is inspected before the
+canonical plan marks smoke evidence complete.
+
+The first inspected packet is Actions run `30041091121`, artifact
+`index-storage-smoke-8efd318091098bb5bce0d5f83b8b51653dc4934c`. It contains
+`read-report.json`, `mutation-report.json`, `maintenance-report.json`, and
+`provenance.json` for PostgreSQL 16, three repetitions, and five churn cycles.
+All candidates preserved 1,216 entities and 2,400 links, produced identical read
+result digests, validated equal mutation effects, and preserved exact
+cardinality after churn and VACUUM.
+
+This smoke packet proves harness sanity only. Its small-scale latency, size, WAL,
+and VACUUM values must not select a production candidate; the 100k and 1m runs
+and the cross-scale comparison remain required.
 
 Optional settings:
 
