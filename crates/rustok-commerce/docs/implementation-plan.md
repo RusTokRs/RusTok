@@ -147,8 +147,12 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Cut payment owner core transitions, refund creation, public provider
   orchestration, normalized webhook application, and mounted fulfillment captured-state
   recovery over to canonical typed lifecycle views.
-- [ ] Cut the production legacy `CheckoutService` and remaining unreviewed critical
-  lifecycle paths over to staged owner-port orchestration and canonical typed statuses.
+- [x] Cut mounted REST, GraphQL, native, and root storefront checkout completion over to
+  one staged recovery entrypoint with explicit idempotency and host payment-provider
+  registry composition.
+- [ ] Remove private legacy `CheckoutService` / `JournaledCheckoutService`
+  compatibility source and public re-exports after compile, replay, and upgraded-path
+  evidence; compatibility tests still construct those facades.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -199,9 +203,9 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Require stable checkout idempotency across REST, GraphQL, native, and UI.
 - [x] Route production checkout through staged recovery orchestration.
 - [ ] Resolve cart, product, pricing, inventory, order, payment, and fulfillment only
-  through typed owner boundaries on every production path; the mounted staged checkout
-  path is cut over, while the production legacy checkout facade and other ecommerce
-  orchestration paths still require cutover/audit.
+  through typed owner boundaries on every production path; mounted storefront checkout
+  completion is cut over, while other ecommerce orchestration paths still require
+  cutover/audit.
 - [x] Persist immutable plans, operation identity, hashes, lease, stages, errors, and
   owner ids.
 - [x] Keep the checkout inventory reservation entity aligned with the adopted order-line
@@ -266,17 +270,20 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Use canonical payment collection/payment/refund statuses in owner core lifecycle,
   refund admission/replay, public provider orchestration, webhook application, and
   mounted fulfillment captured-state validation.
-- [ ] Replace the production legacy `CheckoutService` with the staged owner-port runtime;
-  it still constructs foreign services and contains raw cart/order/payment lifecycle
-  matching.
+- [x] Route REST, GraphQL, native, and root storefront completion through
+  `RecoveringStagedCheckoutService`; all mounted transports preserve the caller
+  idempotency key and host payment-provider registry.
+- [ ] Remove private legacy checkout completion and journal facade source after
+  compile/replay/upgraded evidence, then migrate compatibility tests to the staged
+  harness and remove public re-exports.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
   pipeline source after upgraded/restart evidence proves every recovery path uses typed
   identity.
-- [ ] Retain order completion/adoption, payment execution, fulfillment execution,
-  settlement, cart finalization/release, and compensation parity, kill-point, restart,
-  and PostgreSQL/MySQL contention evidence.
+- [ ] Retain REST/GraphQL/native staged parity plus order completion/adoption, payment
+  execution, fulfillment execution, settlement, cart finalization/release, compensation,
+  kill-point, restart, and PostgreSQL/MySQL contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
 ### Return completion
@@ -486,8 +493,10 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Use canonical payment/refund lifecycle policy in `PaymentService`, idempotent
   refund creation, public provider orchestration, normalized webhook application, and
   mounted fulfillment captured-state recovery.
-- [ ] Replace raw lifecycle matching and foreign service construction in production
-  legacy `CheckoutService`, then audit remaining payment admin/provider adapters.
+- [x] Remove production storefront completion use of the legacy `CheckoutService`;
+  mounted REST, GraphQL, native, and root completion use staged payment-owner execution.
+- [ ] Audit remaining payment admin/provider adapters and remove the compatibility
+  checkout service/journal source after retained compile and replay evidence.
 - [ ] Detect marketplace-associated reversal events that omit required typed marketplace facts
   and route them to durable operator review.
 - [ ] Execute checkout compensation and payment execution provider replay, crash,
@@ -516,6 +525,7 @@ Source inspection is not execution evidence.
   (isolated fixture execution: 3/3 pass)
 - [ ] `node scripts/verify/verify-commerce-checkout-compensation-owner-boundary.mjs`
 - [ ] `node scripts/verify/verify-commerce-checkout-owner-stage-boundary.mjs`
+- [ ] `node scripts/verify/verify-commerce-storefront-staged-checkout-cutover.mjs`
 - [ ] `cargo xtask module validate commerce`
 - [ ] `cargo xtask module validate order`
 - [ ] `cargo xtask module validate payment`
@@ -537,8 +547,11 @@ Source inspection is not execution evidence.
   typed order/payment/fulfillment/cart lifecycle use in checkout execution, recovery,
   finalization, settlement, compensation, provider orchestration, webhook application,
   and mounted owner stages.
-- [ ] Execute the new public-error and typed-lifecycle static guards against a repository
-  checkout and retain their output.
+- [x] Add a storefront staged-cutover guard that forbids `CheckoutService` and
+  `JournaledCheckoutService` construction in mounted REST, GraphQL, native, root, and
+  staged completion paths.
+- [ ] Execute the new public-error, typed-lifecycle, and storefront-cutover static guards
+  against a repository checkout and retain their output.
 
 ### Compile/tests
 
@@ -550,6 +563,8 @@ Source inspection is not execution evidence.
 - [ ] `cargo test -p rustok-order --test checkout_completion_port`
 - [ ] Targeted staged checkout completion/adoption/replay, compensation, and order
   payment settlement tests.
+- [ ] Targeted REST/GraphQL/native staged checkout parity, idempotency conflict, provider
+  registry composition, and reconciliation mapping tests.
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] Targeted payment owner lifecycle, compensation/execution canonical-key,
   legacy-payload replay, refund admission, and webhook adaptation tests.
@@ -597,8 +612,8 @@ Source inspection is not execution evidence.
 - [ ] Execute seller balance transfer replay, duplicate source, cumulative reference capacity,
   concurrent admission, projection rebuild, and append-only trigger scenarios.
 - [ ] Prove declared routers and module-owned UI packages are mounted.
-- [ ] Exercise authenticated checkout, recovery, compensation, seller admin, listing admin,
-  reconciliation, and replay.
+- [ ] Exercise authenticated REST/GraphQL/native checkout, recovery, compensation, seller
+  admin, listing admin, reconciliation, and replay.
 - [ ] Retain remote-profile and real payment/provider evidence.
 
 ## Immediate execution order
@@ -617,11 +632,11 @@ Source inspection is not execution evidence.
    payment, fulfillment, and order owner ports.
 10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
     central fail-closed construction/serde sanitization and source guards are complete.
-11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment owner/provider/
-    webhook policy, order recovery/settlement/compensation, mounted order/payment stages,
-    typed fulfillment recovery, and cart atomic/finalization/compensation paths are
-    complete. Production legacy `CheckoutService` and remaining unreviewed adapters stay
-    open.
+11. [x] Finish typed lifecycle and mounted storefront checkout source cutover: REST,
+    GraphQL, native, root completion, payment owner/provider/webhook policy, order
+    recovery/settlement/compensation, typed fulfillment recovery, and cart
+    atomic/finalization/compensation all use staged or canonical typed paths.
+    Compatibility source removal and execution evidence remain separate open tasks.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -670,6 +685,8 @@ Source inspection is not execution evidence.
   release/result validation over to canonical typed lifecycle views.
 - [x] Cut payment core/refund/provider/webhook and mounted captured-state recovery over
   to canonical typed lifecycle views without changing persisted status strings.
+- [x] Cut mounted REST, GraphQL, native, and root storefront checkout completion over to
+  one staged recovery runtime with explicit idempotency and host provider composition.
 
 ## Change rules
 
