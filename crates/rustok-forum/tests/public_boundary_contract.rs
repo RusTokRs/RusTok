@@ -20,6 +20,10 @@ fn category_owner_does_not_expose_raw_persistence_service() {
     ] {
         assert!(source.contains(method), "missing explicit owner method: {method}");
     }
+    assert!(
+        source.contains("archive_subtree_for_delete"),
+        "normal category deletion must route through lifecycle archival"
+    );
 }
 
 #[test]
@@ -65,4 +69,16 @@ fn category_reads_do_not_silently_default_missing_translations() {
     assert!(!source.contains("name: resolved"));
     assert!(!source.contains("slug: resolved"));
     assert!(source.contains("Column::TenantId.eq(tenant_id)"));
+}
+
+#[test]
+fn page_builder_is_an_optional_forum_capability() {
+    let module = include_str!("../src/lib.rs");
+    let manifest = include_str!("../rustok-module.toml");
+
+    assert!(module.contains("&[\"content\", \"taxonomy\"]"));
+    assert!(!module.contains("&[\"content\", \"taxonomy\", \"page_builder\"]"));
+    assert!(!manifest.contains("[dependencies.page_builder]"));
+    assert!(manifest.contains("[fba.builder_consumer]"));
+    assert!(manifest.contains("builder_disabled"));
 }
