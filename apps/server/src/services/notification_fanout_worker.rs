@@ -5,7 +5,8 @@ use std::time::Duration;
 use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_notifications::{
     DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE, DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE,
-    NotificationError, NotificationFanoutWorker,
+    NotificationError, NotificationFanoutJobWorkItem, NotificationFanoutPolicyDeferral,
+    NotificationFanoutSourceWorkItem, NotificationFanoutWorker,
 };
 use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
@@ -20,6 +21,13 @@ pub const NOTIFICATION_FANOUT_WORKER_ENABLED_ENV: &str =
 const FANOUT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
 static NOTIFICATION_FANOUT_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TenantNotificationPolicy {
+    Enabled,
+    Disabled,
+    Unavailable,
+}
 
 pub struct NotificationFanoutWorkerHandle {
     instance_id: u64,
@@ -140,7 +148,7 @@ async fn notification_fanout_worker_loop(
                 );
                 return;
             }
-            if !tenant_notifications_enabled(&db, &module_registry, work.tenant_id).await {
+            if !source_work_is_enabled(&worker, &db, &module_registry, work).await {
                 continue;
             }
             match worker.materialize_source_inbox(work.inbox_id).await {
@@ -192,7 +200,7 @@ async fn notification_fanout_worker_loop(
                 );
                 return;
             }
-            if !tenant_notifications_enabled(&db, &module_registry, work.tenant_id).await {
+            if !job_work_is_enabled(&worker, &db, &module_registry, work).await {
                 continue;
             }
             match worker.process_fanout_job(work.job_id).await {
@@ -235,11 +243,119 @@ async fn notification_fanout_worker_loop(
     }
 }
 
-async fn tenant_notifications_enabled(
+async fn source_work_is_enabled(
+    worker: &NotificationFanoutWorker,
+    db: &DatabaseConnection,
+    module_registry: &ModuleRegistry,
+    work: NotificationFanoutSourceWorkItem,
+) -> bool {
+    match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+        TenantNotificationPolicy::Enabled => true,
+        TenantNotificationPolicy::Disabled => {
+            defer_source_work(worker, work, NotificationFanoutPolicyDeferral::TenantDisabled).await;
+            false
+        }
+        TenantNotificationPolicy::Unavailable => {
+            defer_source_work(
+                worker,
+                work,
+                NotificationFanoutPolicyDeferral::PolicyUnavailable,
+            )
+            .await;
+            false
+        }
+    }
+}
+
+async fn job_work_is_enabled(
+    worker: &NotificationFanoutWorker,
+    db: &DatabaseConnection,
+    module_registry: &ModuleRegistry,
+    work: NotificationFanoutJobWorkItem,
+) -> bool {
+    match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+        TenantNotificationPolicy::Enabled => true,
+        TenantNotificationPolicy::Disabled => {
+            defer_job_work(worker, work, NotificationFanoutPolicyDeferral::TenantDisabled).await;
+            false
+        }
+        TenantNotificationPolicy::Unavailable => {
+            defer_job_work(
+                worker,
+                work,
+                NotificationFanoutPolicyDeferral::PolicyUnavailable,
+            )
+            .await;
+            false
+        }
+    }
+}
+
+async fn defer_source_work(
+    worker: &NotificationFanoutWorker,
+    work: NotificationFanoutSourceWorkItem,
+    reason: NotificationFanoutPolicyDeferral,
+) {
+    match worker.defer_source_inbox(work, reason).await {
+        Ok(()) => tracing::debug!(
+            worker_id = worker.worker_id(),
+            tenant_id = %work.tenant_id,
+            inbox_id = %work.inbox_id,
+            reason = ?reason,
+            "Notification source work deferred by tenant policy"
+        ),
+        Err(NotificationError::LeaseUnavailable) => tracing::debug!(
+            worker_id = worker.worker_id(),
+            tenant_id = %work.tenant_id,
+            inbox_id = %work.inbox_id,
+            "Notification source deferral lost to concurrent claim"
+        ),
+        Err(error) => tracing::warn!(
+            worker_id = worker.worker_id(),
+            tenant_id = %work.tenant_id,
+            inbox_id = %work.inbox_id,
+            error_code = error.stable_code(),
+            error = %error,
+            "Notification source tenant-policy deferral failed"
+        ),
+    }
+}
+
+async fn defer_job_work(
+    worker: &NotificationFanoutWorker,
+    work: NotificationFanoutJobWorkItem,
+    reason: NotificationFanoutPolicyDeferral,
+) {
+    match worker.defer_fanout_job(work, reason).await {
+        Ok(()) => tracing::debug!(
+            worker_id = worker.worker_id(),
+            tenant_id = %work.tenant_id,
+            job_id = %work.job_id,
+            reason = ?reason,
+            "Notification fanout job deferred by tenant policy"
+        ),
+        Err(NotificationError::LeaseUnavailable) => tracing::debug!(
+            worker_id = worker.worker_id(),
+            tenant_id = %work.tenant_id,
+            job_id = %work.job_id,
+            "Notification job deferral lost to concurrent claim"
+        ),
+        Err(error) => tracing::warn!(
+            worker_id = worker.worker_id(),
+            tenant_id = %work.tenant_id,
+            job_id = %work.job_id,
+            error_code = error.stable_code(),
+            error = %error,
+            "Notification job tenant-policy deferral failed"
+        ),
+    }
+}
+
+async fn tenant_notification_policy(
     db: &DatabaseConnection,
     module_registry: &ModuleRegistry,
     tenant_id: uuid::Uuid,
-) -> bool {
+) -> TenantNotificationPolicy {
     match EffectiveModulePolicyService::is_enabled(
         db,
         module_registry,
@@ -248,14 +364,14 @@ async fn tenant_notifications_enabled(
     )
     .await
     {
-        Ok(true) => true,
+        Ok(true) => TenantNotificationPolicy::Enabled,
         Ok(false) => {
             tracing::debug!(
                 tenant_id = %tenant_id,
                 module_slug = NOTIFICATIONS_MODULE_SLUG,
                 "Notification fanout skipped because tenant capability is disabled"
             );
-            false
+            TenantNotificationPolicy::Disabled
         }
         Err(error) => {
             tracing::warn!(
@@ -264,7 +380,7 @@ async fn tenant_notifications_enabled(
                 error = %error,
                 "Notification fanout policy lookup failed closed"
             );
-            false
+            TenantNotificationPolicy::Unavailable
         }
     }
 }
