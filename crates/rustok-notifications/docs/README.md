@@ -69,8 +69,9 @@ metadata before any producer call. The loop is default-off behind
 
 `NotificationCandidateWorker` selects bounded tenant-scoped work without acquiring
 a lease. Before canonical claim, the server calls
-`EffectiveModulePolicyService::resolve`, requires `notifications`, and forwards the
-exact deterministic policy revision. Disabled or unresolved work receives the
+`EffectiveModulePolicyService::resolve_snapshot`, requires `notifications`, and
+captures both the deterministic policy revision and the manifest default-enabled
+module set used to compute it. Disabled or unresolved work receives the
 300/30-second owner CAS backoff without invoking recipient privacy or source
 providers.
 
@@ -81,16 +82,18 @@ Enabled work is processed in this order:
 3. evaluate Profiles/Social Graph recipient policy;
 4. reauthorize the target for the recipient;
 5. open the final notification transaction and validate the lease;
-6. invoke `NotificationTenantCapabilityCommitGuard`;
+6. invoke `NotificationTenantCapabilityCommitGuard` with the observed policy
+   revision and manifest defaults;
 7. recheck preferences;
 8. insert or validate one notification and complete the candidate under the same
    lease CAS.
 
-The production server guard loads the active static manifest, then delegates to
-`SeaOrmModulePolicyRevisionConsumer`. The Modules owner locks the
-`module.lifecycle` cursor and resolves `tenant_modules` on the candidate
-transaction. Current `notifications` enablement and the observed policy revision
-must both match.
+The commit guard delegates to `SeaOrmModulePolicyRevisionConsumer`. The Modules
+owner locks the `module.lifecycle` cursor and resolves `tenant_modules` on the
+candidate transaction using the already-observed manifest defaults. The manifest
+is not reloaded through another pool connection while the final transaction is
+active. Current `notifications` enablement and the observed policy revision must
+both match.
 
 On PostgreSQL, the cursor uses `FOR UPDATE`. Production lifecycle tenant toggles
 advance the same cursor inside their tenant-state transaction, so final candidate
