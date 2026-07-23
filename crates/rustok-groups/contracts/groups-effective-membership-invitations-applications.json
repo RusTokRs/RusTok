@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "module": "groups",
+  "status": "in_progress",
+  "terminology": {
+    "group_membership": "social participation in one group",
+    "commercial_membership_or_subscription": false
+  },
+  "public_services": {
+    "invitation": "rustok_groups::GroupInvitationService",
+    "targeted_invitation": "rustok_groups::GroupTargetedInvitationService",
+    "membership_application": "rustok_groups::GroupApplicationService",
+    "compatibility_module_paths_preserved": true,
+    "legacy_service_visibility": "crate_private"
+  },
+  "effective_state_source": {
+    "resolver": "resolve_group_membership_enforcement",
+    "clock": "groups_owner_utc_clock",
+    "active_suspension": "deny_group_membership_authority_and_reentry",
+    "legacy_banned": "deny_reentry",
+    "expired_or_revoked": "fall_back_to_stored_group_membership_lifecycle"
+  },
+  "invitation_paths": {
+    "list_management": "effective_active_owner_admin_moderator_or_platform_manage",
+    "create_management": "effective_active_owner_admin_moderator_or_platform_manage",
+    "revoke_management": "effective_active_owner_admin_moderator_or_platform_manage",
+    "token_acceptance": "effective_candidate_reentry_check",
+    "targeted_acceptance": "effective_candidate_reentry_check",
+    "active_member_acceptance": "conflict",
+    "suspended_or_legacy_banned_acceptance": "forbidden"
+  },
+  "application_paths": {
+    "candidate_policy_read": "effective_candidate_not_suspended_or_legacy_banned",
+    "candidate_current_application_read": "effective_candidate_not_suspended_or_legacy_banned",
+    "legacy_submit": "effective_candidate_reentry_check",
+    "cas_submit": "effective_candidate_reentry_check",
+    "candidate_cancel": "effective_candidate_not_suspended_or_legacy_banned",
+    "manager_list": "effective_active_owner_admin_moderator_or_platform_manage",
+    "policy_management_read": "effective_active_owner_admin_or_platform_manage",
+    "legacy_policy_write": "effective_active_owner_admin_or_platform_manage",
+    "cas_policy_write": "effective_active_owner_admin_or_platform_manage",
+    "single_review": "effective_manager_and_candidate_checks",
+    "reopen": "effective_manager_and_candidate_checks",
+    "bulk_review": "bounded_partial_result_via_effective_single_review",
+    "policy_history": "inherits_effective_manager_list_boundary"
+  },
+  "replay": {
+    "existing_receipt_checked_before_effective_precheck": true,
+    "matching_replay_or_changed_request_conflict_owner": "legacy_owner_transaction",
+    "bulk_child_key_algorithm_preserved": "sha256_base_key_plus_application_uuid"
+  },
+  "transaction_boundary": {
+    "effective_facade_precheck": "before_legacy_owner_transaction",
+    "legacy_owner_transaction_still_rechecks_stored_status": true,
+    "same_transaction_effective_recheck": "open",
+    "concurrent_enforcement_change_race_evidence": null,
+    "reason_not_done": "shared owner mutation and authorization path has not replaced legacy transactions"
+  },
+  "remaining_paths": [
+    "localization_management_authorization",
+    "governance_role_and_ownership_authorization",
+    "provider_specific_acl_adapters",
+    "leave_and_member_count_suspend_restore_transitions",
+    "same_transaction_effective_recheck",
+    "direct_suspend_revoke_commands",
+    "moderation_subject_adapter"
+  ],
+  "evidence": {
+    "static_guard": "scripts/verify/verify-groups-effective-membership-invitations-applications.mjs",
+    "cargo_check": null,
+    "unit_tests": null,
+    "postgresql_runtime": null,
+    "sqlite_runtime": null,
+    "concurrency": null,
+    "native_graphql_parity": null
+  }
+}
