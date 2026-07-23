@@ -241,7 +241,7 @@ pub struct ModerationDecisionRecord {
     pub case_id: Uuid,
     pub decision_kind: ModerationDecisionKind,
     pub reason_code: ModerationReasonCode,
-    pub effect: ModerationDecisionEffect,
+    pub effect: Option<ModerationDecisionEffect>,
     pub policy_snapshot: Value,
     pub subject_revision: i64,
     pub decision_hash: String,
