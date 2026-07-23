@@ -20,11 +20,11 @@ foundation states exist. Forum publishes live providers for
 `forum.topic.created` and `forum.mention.user_added`.
 
 The owner persistence migrations create notification, delivery-attempt, fan-out,
-preference, digest, encrypted push-subscription, durable source-inbox, and
-candidate-processing state for PostgreSQL and SQLite. Typed Rust/DB values,
-tenant-composite recipient integrity, bounded payloads, stable
-dedupe/idempotency, leases, retry timing, completion guards, and source-event
-conflicts are enforced.
+preference, digest, encrypted push-subscription, durable source-inbox,
+candidate-processing, and outbox-intake receipt state for PostgreSQL and SQLite.
+Typed Rust/DB values, tenant-composite recipient integrity, bounded payloads,
+stable dedupe/idempotency, leases, retry timing, completion guards, and
+source-event conflicts are enforced.
 
 `NotificationFanoutService` durably accepts source events, materializes bounded
 provider descriptors, and writes cursor pages of idempotent pending candidates.
@@ -34,11 +34,11 @@ in-app notification can be created. It creates no delivery attempt.
 
 The server composes tenant-scoped Profiles privacy with concrete Social Graph
 block/mute owner adapters inside `NotificationRecipientPolicyRuntime`. Relation
-ports are ready in the baseline distribution. A production candidate worker now
-exists, but remains fail-closed and disabled by default until
-`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` is explicitly enabled on a
-background-worker host. The production outbox runner, grouping, channel delivery,
-retention/reconciliation, inbox APIs, and PostgreSQL runtime evidence remain open.
+ports are ready in the baseline distribution. Production outbox intake and
+candidate worker loops now exist, but both remain fail-closed and disabled by
+default behind separate environment flags. Source-inbox materialization/fan-out,
+grouping, channel delivery, retention/reconciliation, inbox APIs, tenant
+capability enforcement, and PostgreSQL runtime evidence remain open.
 
 ## Milestones
 
@@ -183,6 +183,33 @@ retention/reconciliation, inbox APIs, and PostgreSQL runtime evidence remain ope
   `contracts/notifications-candidate-worker.json` and
   `scripts/verify/verify-notifications-candidate-worker.mjs`.
 
+### Delivered in `NOTIFY-03D`
+
+- migration `m20260723_000013_add_outbox_intake_receipts` adds a durable receipt
+  identity for each accepted outbox envelope and a tenant-composite source-inbox
+  reference;
+- `NotificationOutboxIntakeWorker` selects at most 32 committed supported
+  envelopes per poll, with a hard maximum of 64 and stable `created_at/id` order;
+- intake is independent from general relay delivery state and never mutates
+  `sys_events`; pending, dispatched, and failed relay rows remain visible until a
+  Notifications receipt exists;
+- root `forum.topic.created` maps to immutable source identity `topic_id/1`;
+- sealed `forum.mention.user_added` maps to envelope ID plus relation revision;
+- Forum provider accepts these semantic source revisions while preserving legacy
+  journal UUID/sequence replay;
+- Notifications reads only the public outbox envelope and no Forum-owned table or
+  producer service;
+- source-inbox insert/replay validation and receipt insert commit in one owner
+  transaction;
+- the host loop is disabled by default behind
+  `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`, fails closed for invalid values,
+  and checks the shared stop signal between envelopes;
+- SQLite evidence covers root and sealed contracts, bounded receipt anti-join,
+  distinct outbox/source identities, replay, and hard batch rejection;
+- machine contract and verifier are
+  `contracts/notifications-outbox-intake.json` and
+  `scripts/verify/verify-notifications-outbox-intake.mjs`.
+
 ### Remaining `NOTIFY-01` scope
 
 - promote module-local migrations into verified global server migration
@@ -193,13 +220,15 @@ retention/reconciliation, inbox APIs, and PostgreSQL runtime evidence remain ope
 
 ### Remaining `NOTIFY-03` scope
 
-- wire production outbox relay consumption into durable source enqueue;
+- add a production source-inbox materialization and bounded fan-out page worker;
+- enforce tenant capability state before materialization and delivery;
 - add grouping policy and bounded moderator-audience expansion;
 - enqueue channel work only after policy acceptance and outside owner provider
   calls;
-- add PostgreSQL lease/concurrency/retry evidence and DLQ/replay controls;
-- add worker health, queue lag, and recovery metrics before enabling the flag in
-  a default deployment profile.
+- add PostgreSQL lease/concurrency/retry evidence and permanent intake/fan-out
+  DLQ/replay controls;
+- add worker health, queue lag, and recovery metrics before enabling either flag
+  in a default deployment profile.
 
 ### Remaining `NOTIFY-07` scope
 
@@ -227,6 +256,7 @@ cargo test -p rustok-notifications --test persistence_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
+cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-social-graph --test privacy_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
@@ -242,11 +272,12 @@ node scripts/verify/verify-notifications-candidate-policy.mjs
 node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
 node scripts/verify/verify-social-graph-notification-policy.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
+node scripts/verify/verify-notifications-outbox-intake.mjs
 cargo xtask module validate notifications
 ```
 
 The commands above are the maintainer verification set. They were not executed
-while publishing the `NOTIFY-03C` source slice.
+while publishing the `NOTIFY-03D` source slice.
 
 ## Update Rules
 
