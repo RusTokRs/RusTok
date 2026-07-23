@@ -69,7 +69,12 @@ if (failures.length === 0) {
     "evaluated_at < until",
     "moderation-driven enforcement decision identity is invalid",
     "groups.membership_enforcement_forbidden",
+    '"groups:access:read"',
+    '"groups:moderate"',
   ]);
+  if (read(files.service).includes('"groups:read"')) {
+    failures.push(`${files.service}: broad groups:read must not reveal enforcement provenance`);
+  }
   for (const forbidden of [
     "rustok_moderation::",
     "moderation_case::",
@@ -96,8 +101,13 @@ if (failures.length === 0) {
     "fk_group_membership_enforcements_tenant_membership",
     "effective_until IS NULL OR effective_until > effective_from",
     "groups_guard_membership_revision",
+    "groups_guard_membership_enforcement",
+    "group membership enforcement identity is immutable",
+    "group membership enforcement revision must be monotonic",
     "groups_bump_membership_revision_from_enforcement",
     "groups_20_membership_revision_bump",
+    "groups_24_membership_enforcement_identity_insert",
+    "groups_27_membership_enforcement_revision_bump",
     "groups_30_enforcement_membership_revision_insert",
   ]);
   requireMarkers(files.migrationRegistry, [
