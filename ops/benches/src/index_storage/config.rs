@@ -31,6 +31,7 @@ pub struct DatasetConfig {
     pub locales: Vec<String>,
     pub variants_per_product: u32,
     pub channels_per_tenant: u32,
+    pub sales_channels_per_variant: u32,
 }
 
 impl DatasetConfig {
@@ -57,6 +58,7 @@ impl DatasetConfig {
             locales,
             variants_per_product: 2,
             channels_per_tenant: 8,
+            sales_channels_per_variant: 2,
         })
     }
 
@@ -76,6 +78,13 @@ impl DatasetConfig {
 
     pub fn total_entity_rows(&self) -> u64 {
         self.product_rows() + self.variant_rows() + self.channel_rows()
+    }
+
+    pub fn total_link_rows(&self) -> u64 {
+        let product_variant_links = self.variant_rows();
+        let variant_channel_links =
+            self.variant_rows() * u64::from(self.sales_channels_per_variant);
+        product_variant_links + variant_channel_links
     }
 }
 
@@ -140,17 +149,14 @@ mod tests {
     #[test]
     fn scale_presets_have_exact_product_row_counts() {
         let locales = vec!["en-US".to_owned(), "ru-RU".to_owned()];
-        assert_eq!(
-            DatasetConfig::for_scale(DatasetScale::Rows100k, locales.clone())
-                .unwrap()
-                .product_rows(),
-            100_000
-        );
-        assert_eq!(
-            DatasetConfig::for_scale(DatasetScale::Rows1m, locales)
-                .unwrap()
-                .product_rows(),
-            1_000_000
-        );
+        let rows_100k = DatasetConfig::for_scale(DatasetScale::Rows100k, locales.clone()).unwrap();
+        assert_eq!(rows_100k.product_rows(), 100_000);
+        assert_eq!(rows_100k.total_entity_rows(), 300_080);
+        assert_eq!(rows_100k.total_link_rows(), 600_000);
+
+        let rows_1m = DatasetConfig::for_scale(DatasetScale::Rows1m, locales).unwrap();
+        assert_eq!(rows_1m.product_rows(), 1_000_000);
+        assert_eq!(rows_1m.total_entity_rows(), 3_000_160);
+        assert_eq!(rows_1m.total_link_rows(), 6_000_000);
     }
 }
