@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "slice": "NOTIFY-03C",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "owner_driver": "crates/rustok-notifications/src/worker.rs",
+  "candidate_service": "crates/rustok-notifications/src/candidate.rs",
+  "policy_runtime": "crates/rustok-notifications/src/recipient_policy.rs",
+  "server_worker": "apps/server/src/services/notification_candidate_worker.rs",
+  "policy_composition": "apps/server/src/services/notification_recipient_policy.rs",
+  "bootstrap": "apps/server/src/services/server_bootstrap.rs",
+  "enablement": {
+    "environment_variable": "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
+    "default_enabled": false,
+    "invalid_value_enabled": false,
+    "requires_background_worker_host": true,
+    "requires_relation_ports_ready": true,
+    "requires_candidate_worker_ready": true
+  },
+  "bounded_loop": {
+    "default_batch_size": 32,
+    "maximum_batch_size": 64,
+    "stable_order": ["created_at", "id"],
+    "claimable_states": ["pending", "due_retryable_error", "expired_processing"],
+    "one_page_per_poll": true,
+    "poll_interval_ms": 500
+  },
+  "lease_semantics": {
+    "selection_acquires_lease": false,
+    "canonical_service_claims_each_item": true,
+    "lease_cas_preserved": true,
+    "contention_is_nonfatal": true,
+    "durable_candidate_failure_preserved": true
+  },
+  "shutdown": {
+    "shared_stop_handle": true,
+    "checks_before_selection": true,
+    "checks_between_candidates": true,
+    "already_processing_candidate_finishes": true,
+    "new_claims_after_stop": false
+  },
+  "tests": [
+    "crates/rustok-notifications/tests/candidate_worker_sqlite.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-candidate-worker.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "production outbox relay consumption into notification source inbox",
+    "parallel candidate worker concurrency",
+    "PostgreSQL lease and recovery evidence",
+    "worker health and lag metrics",
+    "grouping and channel delivery"
+  ]
+}
