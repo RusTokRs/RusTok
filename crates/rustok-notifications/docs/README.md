@@ -1,151 +1,122 @@
 # `rustok-notifications` live contract
 
-## Purpose
+## Responsibility zone
 
-Define the live owner and integration boundary for notifications without
-copying the canonical cross-module backlog.
+Notifications owns inbox/read state, preferences, bounded fanout, grouping,
+digests, retention, delivery attempts, intake receipts/quarantine, and
+replay/reconciliation. Source modules own semantic state, subscriptions, audience
+facts, visibility, target authorization, and routes. Profiles and Social Graph own
+recipient privacy. Delivery modules own channel transports.
 
-## Responsibility Zone
+## Integration boundary
 
-Notifications owns inbox rows, unread/read state, preferences, bounded fan-out,
-grouping, digests, retention, delivery attempts, and replay/reconciliation.
-Source modules own semantic event state, audience facts, subscriptions,
-visibility, target authorization, and target routes. Identity/profile modules own
-recipient and block/privacy facts. Delivery modules own channel transport.
+`rustok-notifications-api` is the neutral source contract. Producers register
+`NotificationSourceProviderFactory` values through `ModuleRuntimeExtensions`; the
+server materializes them with `HostRuntimeContext`. Duplicate slugs, source
+identity mismatches, and build failures are startup errors.
 
-## Integration
+The owner does not decode platform envelopes and does not read producer-private
+tables. The executable server injects envelope decoding and composes cross-owner
+policy. Producer transactions remain independent from notification availability.
 
-`rustok-notifications-api` provides the neutral source contract. Source modules
-register `NotificationSourceProviderFactory` values through
-`ModuleRuntimeExtensions`; the server materializes them with a neutral
-`HostRuntimeContext` after database-backed host services exist. Duplicate
-factory/provider slugs, identity mismatches, and factory build failures are
-startup errors rather than silent provider loss.
-
-`rustok-notifications` is present in module/distribution/server composition but
-remains absent from `settings.default_enabled`, so tenants stay notifications-off
-unless the capability is explicitly enabled.
+Notifications remains absent from `settings.default_enabled`; tenants must have an
+effective `notifications` capability before provider materialization or audience
+resolution.
 
 ## Persistence
 
-The module-local migration source creates PostgreSQL/SQLite storage for:
+Five module-local PostgreSQL/SQLite migrations create:
 
-- notifications and read/seen/archive lifecycle;
-- delivery attempts and retry/lease/provider receipt state;
-- fan-out jobs/items and candidate processing leases;
-- a durable source-event inbox;
-- durable outbox-intake receipts;
-- source/type-scoped preferences;
-- digest jobs/items;
-- encrypted push subscriptions.
+- notification/read lifecycle and delivery-attempt state;
+- fanout jobs/items and candidate leases;
+- durable source inbox state;
+- accepted outbox intake receipts;
+- permanent owner-local intake quarantine;
+- source/type preferences, digests, and encrypted push subscriptions.
 
-Recipient and user references are tenant-composite. Notification identity is
-deduplicated by tenant, recipient, source event, source slug, and notification
-type. Source inbox identity is deduplicated by tenant, source slug, and event ID.
-Candidate processing has typed processing/retryable/terminal states, recoverable
-leases, retry timing, and lease-expiry completion guards. JSON payloads, cursors,
-worker IDs, errors, scopes, and encrypted endpoint material are bounded.
+Accepted and rejected intake outcomes are keyed by outbox event ID and mutually
+exclusive. Source inbox and accepted receipt commit in one transaction. Permanent
+invalid envelopes are quarantined; retryable failures retain no terminal intake
+record. The intake consumer neither depends on nor mutates relay status.
 
-An intake receipt binds the committed outbox envelope ID to one accepted semantic
-source identity and source-inbox row. Source inbox and receipt are persisted in
-one transaction. The intake consumer does not mutate or depend on the general
-outbox relay status.
+The schema stores no source-private payload, rendered HTML, contact address, phone
+number, or plaintext push endpoint. Global server migration composition remains a
+maintainer verification gate.
 
-The persistence schema stores no source-private payload, rendered HTML, email
-address, phone number, or plaintext push endpoint. The migrations are exposed
-through `NotificationsModule::migrations`; global server migrator registration
-remains open until maintainer verification.
+## Runtime pipeline
 
-## Durable outbox intake
+### Durable outbox intake
 
-`NotificationOutboxIntakeWorker` selects committed supported `sys_events` rows
-that have no Notifications receipt. The canonical batch is 32 and the hard
-maximum is 64. Selection is stable by `created_at`, then `id`, and is independent
-from whether the general relay row is pending, dispatched, or failed.
+`NotificationOutboxIntakeWorker` selects supported committed `sys_events` rows in
+stable `created_at/id` order, 32 by default and 64 maximum. Both accepted receipts
+and permanent rejections are anti-joined, preventing invalid head-of-line
+starvation.
 
-The current mapping is deliberately explicit:
+The server decoder maps:
 
-- root `forum.topic.created` becomes source `forum`, source event `topic_id`,
-  revision `1`;
-- sealed `forum.mention.user_added` becomes source `forum`, source event equal to
-  the envelope ID, revision equal to `source_revision_id`.
+- root `forum.topic.created` to `forum/topic_id/1`;
+- sealed `forum.mention.user_added` to `forum/envelope_id/source_revision_id`.
 
-The owner validates the envelope against registered schemas and the persisted
-outbox metadata. It reads no Forum-owned table and calls no Forum service. Forum's
-own source provider accepts the new semantic identities while retaining its
-legacy journal UUID/sequence references.
+The executable loop is default-off behind
+`RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED` and uses the shared shutdown signal.
 
-The executable intake loop is default-off behind
-`RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`. Invalid or unreadable values remain
-disabled. It runs only on a background-worker host and uses the shared shutdown
-signal before selection and between envelopes.
+### Durable source fanout
 
-## Durable source fan-out
+`NotificationFanoutService` is the canonical lease and persistence authority for
+source descriptor materialization and bounded audience pages.
 
-`NotificationFanoutService` provides durable source acceptance, leased provider
-description, and one bounded audience page capped at 256 recipients. Its output
-is idempotent pending candidates. Provider absence after acceptance is retryable;
-changed source/descriptor replay and stalled cursors fail closed.
+`NotificationFanoutWorker` selects tenant-scoped source/job work without acquiring
+leases. The default/hard batch is 32/64; one audience page is capped at 256. Before
+each source or job call, the server resolves
+`EffectiveModulePolicyService::is_enabled(..., "notifications")`. Disabled or
+unresolved policy fails closed before producer provider execution.
 
-A production worker that leases source-inbox rows and drives descriptor/audience
-pages remains open. Outbox intake only creates the durable pending source row.
+The executable loop is default-off behind
+`RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`, requires a background-worker host,
+materialized non-empty source registry, and module registry, and checks shutdown
+between records. It creates only pending candidates—never final notifications or
+delivery attempts.
 
-## Candidate policy and inbox creation
+### Candidate policy and inbox creation
 
-`NotificationCandidateService` requires an injected
-`NotificationRecipientPolicy`; no permissive implementation is supplied by the
-owner. One candidate is processed in this order:
+`NotificationCandidateService` requires an injected `NotificationRecipientPolicy`.
+One candidate is processed in this order:
 
-1. claim or recover its lease;
-2. resolve exact source/type preference scopes before wildcard scopes;
-3. evaluate recipient/profile/block/mute/tenant privacy through the injected port;
-4. reauthorize the current source target for that recipient;
-5. recheck preferences inside the final database transaction;
-6. insert or validate one deduplicated in-app notification and complete the
-   candidate under the same lease CAS.
+1. claim/recover its lease;
+2. resolve exact preference scopes before wildcard scopes;
+3. evaluate recipient/profile/block/mute/tenant privacy;
+4. reauthorize the target for the recipient;
+5. recheck preferences inside the final transaction;
+6. insert or validate one in-app notification and complete the candidate under the
+   same lease CAS.
 
-Disabled preferences and policy/source suppression produce stable `skipped`
-rows. Retryable owner/provider failures retain retry state. Semantic mismatch
-fails permanently. The workflow creates no channel delivery attempts and invokes
-no source or privacy provider inside the final notification transaction.
+`NotificationCandidateWorker` is default-off behind
+`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`. It requires a materialized source
+registry and ready relation-policy ports. Candidate finalization creates no
+channel delivery attempt.
 
-Profiles privacy and Social Graph block/mute providers are composed through
-owner ports. Privacy and source authorization must be checked again on inbox open
-and before delayed delivery.
-
-## Candidate worker
-
-`NotificationCandidateWorker` selects one stable, bounded page of claimable
-candidate IDs and delegates every item to `NotificationCandidateService`. The
-canonical batch is 32 and the hard maximum is 64. Selection is ordered by
-`created_at`, then `id`, and does not acquire a lease; the existing per-item claim
-CAS remains authoritative under worker contention.
-
-The executable server loop is fail-closed and disabled by default. It starts only
-on a background-worker host when
-`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED` is explicitly enabled, the source
-registry has been materialized, and `candidate_worker_ready()` confirms both
-relation ports and enablement. Invalid or unreadable flag values remain disabled.
-The shared shutdown signal prevents later claims while allowing an already
-processing candidate to complete its canonical transaction.
+The server starts workers in intake → fanout → candidate order. Invalid or
+unreadable flags remain disabled.
 
 ## Forum sources
 
-Forum supports `forum.topic.created` and `forum.mention.user_added`. The mention
-provider verifies the exact immutable relation row and rechecks current
-source visibility while describing, resolving, and authorizing the target. A
-pending reply is retryable; closed, hidden, deleted, self-mentioned, or
-channel-restricted sources fail closed. `forum.mention.audience_added` remains
-deferred until a bounded moderator-directory owner port exists.
+Forum supports `forum.topic.created` and `forum.mention.user_added`. Its provider
+accepts both legacy journal UUID/sequence references and semantic source identities
+from committed envelopes. Mention handling verifies the immutable relation and
+current target visibility at describe, audience, and open time. Pending replies
+are retryable; closed, hidden, deleted, self-mentioned, or restricted sources fail
+closed. Moderator audience expansion remains deferred.
 
-Producer transactions remain independent from notification availability.
+## Pending capabilities
 
-Pending capabilities include source-inbox materialization/fan-out runtime,
-tenant capability enforcement, channel delivery commands, moderator expansion,
-grouping, inbox APIs, PostgreSQL concurrency evidence, worker health/lag metrics,
-retention/reconciliation, and complete module-owned UI products.
+- durable backoff for disabled-tenant work;
+- PostgreSQL contention/recovery evidence and operational health/lag metrics;
+- grouping and bounded moderator-directory expansion;
+- channel delivery enqueue and transports;
+- inbox APIs with open-time authorization/privacy rechecks;
+- retention, reconciliation, quarantine replay/purge, and full module-owned UI.
 
-## Verification
+## Maintainer verification
 
 ```bash
 cargo fmt --all -- --check
@@ -156,32 +127,24 @@ cargo test -p rustok-notifications --test fanout_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
-NOTIFICATIONS_TEST_DATABASE_URL="$DATABASE_URL" \
-  cargo test -p rustok-notifications --test persistence_postgres -- --nocapture --test-threads=1
-node scripts/verify/verify-notifications-foundation.mjs
-node scripts/verify/verify-notifications-foundation.test.mjs
-node scripts/verify/verify-notifications-runtime.mjs
-node scripts/verify/verify-notifications-runtime.test.mjs
-node scripts/verify/verify-notifications-persistence.mjs
-node scripts/verify/verify-notifications-persistence.test.mjs
 node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
 node scripts/verify/verify-notifications-recipient-policy-runtime.mjs
-node scripts/verify/verify-social-graph-notification-policy.mjs
 node scripts/verify/verify-notifications-candidate-worker.mjs
 node scripts/verify/verify-notifications-outbox-intake.mjs
+node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-The commands above were not run while publishing `NOTIFY-03D`.
+These commands were not run while publishing `NOTIFY-03D/03E`.
 
-## Related Documents
+## Related documents
 
 - [Module README](../README.md)
-- [Module-local implementation gates](implementation-plan.md)
-- [NOTIFY-03B/07A implementation record](notify-03b-candidate-policy.md)
-- [Candidate worker machine contract](../contracts/notifications-candidate-worker.json)
-- [Outbox intake machine contract](../contracts/notifications-outbox-intake.json)
-- Canonical cross-module status:
-  `crates/rustok-forum/docs/implementation-plan.md`
+- [Implementation gates](implementation-plan.md)
+- [Outbox intake contract](../contracts/notifications-outbox-intake.json)
+- [Fanout worker contract](../contracts/notifications-fanout-worker.json)
+- [Candidate worker contract](../contracts/notifications-candidate-worker.json)
+- Canonical roadmap: `crates/rustok-forum/docs/implementation-plan.md`
