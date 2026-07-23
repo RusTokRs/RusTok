@@ -14,6 +14,7 @@ pub mod marketplace_snapshot;
 pub mod migrations;
 pub mod ports;
 pub mod services;
+pub mod status;
 
 pub use atomic_checkout_port::*;
 pub use checkout_snapshot::*;
@@ -39,6 +40,7 @@ pub use services::cart::{
     CartLineItemPricingUpdate, CartPricingAdjustmentUpdate, CartPromotionPreview,
 };
 pub use services::{CartMarketplaceSnapshotService, CartService};
+pub use status::*;
 
 pub struct CartModule;
 
