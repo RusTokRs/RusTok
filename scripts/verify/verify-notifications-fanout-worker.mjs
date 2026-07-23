@@ -170,8 +170,8 @@ requireOrder(
   server,
   [
     "for work in source_work",
-    "source_work_is_enabled(&worker, &db, &module_registry, work).await",
-    "worker.materialize_source_inbox(work.inbox_id).await",
+    "source_work_is_enabled",
+    "materialize_source_inbox(work.inbox_id)",
   ],
   "tenant policy/backoff must precede source provider materialization",
 );
@@ -179,8 +179,8 @@ requireOrder(
   server,
   [
     "for work in job_work",
-    "job_work_is_enabled(&worker, &db, &module_registry, work).await",
-    "worker.process_fanout_job(work.job_id).await",
+    "job_work_is_enabled",
+    "process_fanout_job(work.job_id)",
   ],
   "tenant policy/backoff must precede audience provider resolution",
 );
