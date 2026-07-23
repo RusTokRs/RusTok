@@ -48,18 +48,25 @@ ownership boundaries:
 
 ## Architectural invariants
 
-### Ownership
+### Ownership and terminology
 
-Groups owns group identity, localized presentation, memberships, local roles, join policy,
+Groups owns group identity, localized presentation, group memberships, local roles, join policy,
 invitations, membership applications, rules/questions, authoritative group-local
 membership/access enforcement state, feature bindings, command receipts, domain audit, and
 Groups semantic events.
+
+Group membership is social participation in one group with a group-local role and lifecycle.
+It is not a paid subscription, recurring commercial membership plan, billing agreement,
+purchased entitlement, organization seat, event attendance record, or chat participation.
+Subscription, billing, entitlement, organization, Events, and Chat owners retain those separate
+concepts and persistence boundaries.
 
 Groups does not own profile presentation, media binaries, forum topics, blog posts, Pages
 documents, marketplace listings, products, comments, notification inboxes, search documents,
 feed entries, checkout, payment, orders, fulfillment, moderation reports, moderation cases,
 moderation policies, immutable moderation decisions, decision-application scheduling,
-appeals, or cross-domain moderation audit history.
+appeals, commercial subscriptions, billing plans, entitlements, or cross-domain moderation
+audit history.
 
 Optional modules never receive database foreign keys from Groups. Cross-module composition
 uses typed identifiers, neutral typed ports, semantic events, and host-owned UI/runtime
@@ -69,7 +76,7 @@ composition.
 
 `rustok-moderation` owns reports, cases, decisions, durable application orchestration,
 retries, appeals, and cross-domain moderation history. Groups remains authoritative for the
-group or membership mutation produced by an applicable decision.
+group or group-membership mutation produced by an applicable decision.
 
 Compatibility uses `rustok-moderation-api`; Groups must never depend on moderation entities,
 migrations, or owner services. The neutral API owns subject/scope types, typed and versioned
@@ -114,9 +121,9 @@ request and never mutates or substitutes the host locale.
 
 - public groups expose their localized shell and enabled public features;
 - closed groups expose a summary shell but gate body, members, features, and provider
-  content behind effective active membership or platform authority;
+  content behind effective active group membership or platform authority;
 - secret groups remain undisclosed to unauthorized users;
-- effective suspension is not active membership for private content, posting, comments,
+- effective suspension is not active group membership for private content, posting, comments,
   invitation, application, management, or provider ACL decisions;
 - expiry is evaluated by the Groups owner clock on reads and writes;
 - restoration must not depend on a cleanup job;
@@ -140,9 +147,9 @@ Source exists for:
 
 - module manifest, migrations, RBAC, registration, admin/storefront package registration,
   and generated host composition;
-- tenant-scoped groups, translations, memberships, local roles, feature bindings, receipts,
-  immutable audit, public/closed/secret access, join/leave, role delegation, and ownership
-  transfer;
+- tenant-scoped groups, translations, group memberships, local roles, feature bindings,
+  receipts, immutable audit, public/closed/secret access, join/leave, role delegation, and
+  ownership transfer;
 - bounded token invitations, revocation, token/targeted acceptance, SHA-256-only storage,
   redemption, membership activation, targeted source events, and a neutral Notifications
   source provider;
@@ -158,7 +165,11 @@ Source exists for:
   `group_memberships.revision`, bounded `group_membership_enforcements`, database revision
   guards, `GroupMembershipEnforcementReadPort`, and Groups-owner clock evaluation exist;
 - current effective-state evaluation distinguishes missing, active, inactive, suspended,
-  legacy banned, future, expired, and revoked enforcement without cleanup-worker dependence.
+  legacy banned, future, expired, and revoked enforcement without cleanup-worker dependence;
+- the core public access facade is source-complete: crate-root `GroupsService` resolves effective
+  group membership for access decisions, closed/secret read redaction, membership-list access,
+  enabled-feature visibility, join/rejoin, and feature-settings authorization; both the
+  effective implementation and transitional status-only delegate are crate-private.
 
 Evidence still open and must not be inferred:
 
@@ -169,8 +180,8 @@ Evidence still open and must not be inferred:
 - policy history, CAS, lifecycle, bulk-review, replay, lock-order, contention, security,
   retry, recovery, and accessibility execution;
 - profile-backed candidate summaries and application lifecycle events/Notifications;
-- status-only access-path conversion remains open for core access, invitations,
-  applications, provider ACLs, and member-count behavior;
+- status-only access-path conversion remains open for invitation, application, localization,
+  governance, provider-specific ACL, and member-count behavior;
 - direct suspend/revoke commands, shared owner mutation path, moderation adapter, and durable
   moderation application orchestration remain open;
 - fail-closed remote-provider and disabled-module runtime evidence.
@@ -182,11 +193,11 @@ Evidence still open and must not be inferred:
 | GROUPS-00 | in_progress | ADR, ownership map, phpFox parity map, FFA/FBA contracts | executable architecture review |
 | GROUPS-01 | in_progress | module skeleton, manifest, RBAC, migrations, host composition | build/module-validation evidence |
 | GROUPS-02 | in_progress | identity, localization, visibility, join policy, features, receipts/audit/events | lifecycle/runtime/concurrency evidence |
-| GROUPS-03 | in_progress | memberships, join/leave, local roles, ownership transfer | enforcement integration and concurrency |
-| GROUPS-04 | in_progress | summary, membership, enforcement read, access, localization, invitation, application, governance ports | provider/consumer/fallback runtime matrix |
+| GROUPS-03 | in_progress | group memberships, join/leave, local roles, ownership transfer | remaining enforcement integration and concurrency |
+| GROUPS-04 | in_progress | summary, membership, enforcement read, effective core access, localization, invitation, application, governance ports | provider/consumer/fallback runtime matrix |
 | GROUPS-05 | in_progress | GraphQL/native transports, discovery, invitation acceptance/delivery | runtime parity and Notifications evidence |
 | GROUPS-06 | in_progress | localized application policy, CAS, lifecycle, focused/bulk review, admin/storefront UX | legacy API migration, profiles/events, parity/concurrency/accessibility |
-| GROUPS-07 | in_progress | membership revision and read-only enforcement projection/resolver are source-complete; direct commands and adapter remain open | status-only access integration, command/runtime/moderation application evidence |
+| GROUPS-07 | in_progress | membership revision, read-only enforcement resolver, and core public access facade are source-complete; direct commands and adapter remain open | remaining owner-path integration, command/runtime/moderation application evidence |
 | GROUPS-08 | planned | dynamic feature-provider registry and navigation | registry/runtime degradation evidence |
 | GROUPS-09 | planned | Forum group spaces and ACL inheritance | Forum owner integration evidence |
 | GROUPS-10 | planned | Blog and Pages/Wiki group contexts | owner integration/privacy evidence |
@@ -236,7 +247,7 @@ projection/resolver are source-complete:
 - enforcement insert/update/delete bumps membership revision in the same transaction;
 - `group_membership_enforcements` stores one bounded current row per membership;
 - `GroupMembershipEnforcementReadPort` resolves effective state using the Groups UTC clock;
-- future, expired, or revoked enforcement falls back to stored lifecycle state;
+- future, expired, or revoked enforcement falls back to stored group-membership lifecycle;
 - legacy `status=banned` remains fail-closed for re-entry;
 - no Groups dependency on moderation owner entities/services exists.
 
@@ -263,7 +274,7 @@ or arbitrary moderation payload JSON.
 ### Read boundary
 
 `GroupMembershipEnforcementReadPort` is source-complete. It allows the exact user or an
-explicit Groups access/read/manage claim to read a tenant-scoped effective state. The result
+explicit Groups access/moderate/manage claim to read a tenant-scoped effective state. The result
 contains stored lifecycle status, membership revision, effective status, active-member and
 denied-reentry booleans, optional bounded provenance, and evaluation time.
 
@@ -271,21 +282,41 @@ The canonical resolver is owner-internal so existing and future access services 
 without importing persistence details. It validates stored identity, revision, source,
 provenance, expiry, restoration state, and actor fields before returning a decision input.
 
-### Open access-path conversion
+### Core public access cutover
 
-Status-only access-path conversion remains open. The next atomic slice must switch every
-relevant owner path to the canonical resolver:
+The core public access facade is source-complete:
 
-- `GroupsService::decide_access_owned` and feature visibility;
-- join/rejoin and leave lifecycle semantics;
-- invitation management and acceptance;
-- membership application read/submit/reopen/review;
-- governance authorization;
-- provider ACL decisions and member count transitions.
+- `rustok_groups::GroupsService` is the only public core service type and is used by
+  module-owned GraphQL and native consumers;
+- the effective implementation module and transitional status-only delegate are crate-private,
+  preventing explicit external or module-owned transport bypass;
+- `GroupAccessReadPort` evaluates `GroupAction` through the canonical owner-clock resolver;
+- closed-group body/features are redacted and secret-group summary reads return not-found when
+  the viewer is effectively suspended;
+- membership listing and enabled-feature reads use effective access decisions;
+- join/rejoin denies active suspension and legacy banned state, while expired/revoked
+  enforcement falls back to stored lifecycle;
+- feature settings require effective active owner/admin authority or platform manage;
+- public group reads remain public during local suspension, but post/comment/invite/moderate/
+  manage/transfer actions lose group-membership authority;
+- `GroupAccessDecision.membership_status` remains the stored lifecycle field for wire
+  compatibility; focused effective state and provenance remain owned by
+  `GroupMembershipEnforcementReadPort`.
 
-Until that conversion lands, no product command writes enforcement rows and no suspension is
-claimed end-to-end. The current table and resolver are a migration/read contract, not a
-shipped moderation workflow.
+### Remaining access-path conversion
+
+The status-only access-path conversion remains open for:
+
+- invitation management, token acceptance, and targeted acceptance;
+- membership-application policy reads, submit/resubmit, reopen, review, and bulk review;
+- localization management authorization;
+- governance role-change and ownership-transfer authorization inside their owner transactions;
+- provider-specific ACL adapters and remote-provider profiles;
+- leave semantics and member-count suspend/restore transitions.
+
+Until those conversions and a write boundary land, no product command writes enforcement rows
+and no suspension is claimed end-to-end. The current table, resolver, and core facade are
+migration/read/access contracts, not a complete moderation workflow.
 
 ### Planned owner command boundary
 
@@ -318,7 +349,7 @@ Initial mapping remains:
 ### GROUPS-07 definition of done
 
 - no Groups dependency on moderation owner crate and no moderation writes/FKs into Groups;
-- exact membership identity and monotonic revision evidence;
+- exact group-membership identity and monotonic revision evidence;
 - permanent/expiring/revoked enforcement across every owner access path;
 - hierarchy, owner protection, tenant isolation, replay, changed-hash, stale revision,
   expiry, revoke, member-count, and concurrency evidence;
@@ -345,6 +376,8 @@ Groups never embeds another module's business UI directly.
 - Enforcement row corrupt or unsupported: return invariant failure; never infer active.
 - Expired/revoked enforcement: evaluate immediately from owner clock and stored lifecycle;
   cleanup is optional normalization only.
+- Active suspension: remove local membership authority without hiding otherwise public group
+  content.
 - Legacy banned membership: deny re-entry until explicitly migrated/reviewed.
 - Candidate exact-locale policy unavailable: form unavailable; never choose another locale.
 - Policy CAS conflict: write no owner state and require explicit reload.
@@ -381,12 +414,13 @@ node scripts/verify/verify-groups-application-lifecycle.mjs
 node scripts/verify/verify-groups-application-policy-locales.mjs
 node scripts/verify/verify-groups-application-bulk-review.mjs
 node scripts/verify/verify-groups-membership-enforcement-read-path.mjs
+node scripts/verify/verify-groups-effective-membership-access.mjs
 node scripts/verify/verify-db-multilingual-contract.mjs
 npm run verify:i18n:ui
 npm run verify:frontend:host-ffa-contract
 ```
 
 Additional GROUPS-07 evidence remains open for clean/upgraded migration and rollback,
-revision trigger behavior, owner-clock expiry/revoke evaluation, complete access integration,
-direct/moderation replay and conflicts, concurrency, enabled/disabled runtime matrices,
-separate FFA ownership, and accessibility.
+revision trigger behavior, owner-clock expiry/revoke evaluation, core facade compile/runtime and
+native/GraphQL parity, remaining owner-path integration, direct/moderation replay and conflicts,
+concurrency, enabled/disabled runtime matrices, separate FFA ownership, and accessibility.
