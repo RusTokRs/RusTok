@@ -19,7 +19,9 @@ use crate::{
     PROVIDER_OPERATION_RECONCILIATION_REQUIRED, PROVIDER_OPERATION_SUCCEEDED, PaymentError,
     PaymentProviderOperationJournal, PaymentService,
 };
-use crate::{PaymentCollectionResponse, PaymentCollectionStatusSnapshot};
+use crate::{
+    PaymentCollectionResponse, PaymentCollectionStatusKind, PaymentCollectionStatusSnapshot,
+};
 
 #[async_trait]
 pub trait CheckoutPaymentCompensationPort: Send + Sync {
@@ -364,7 +366,7 @@ impl InProcessCheckoutPaymentCompensationPort {
                     .get_collection(tenant_id, collection.id)
                     .await
                     .map_err(payment_error_to_port_error)?;
-                if current.status == "cancelled" {
+                if current.status_kind() == PaymentCollectionStatusKind::Cancelled {
                     Ok(current)
                 } else {
                     Err(PortError::conflict(
@@ -412,24 +414,23 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
             .map_err(payment_error_to_port_error)?;
         self.reject_unsafe_provider_operations(tenant_id, collection_id)
             .await?;
-        match collection.status.as_str() {
-            "cancelled" => {
+        match collection.status_kind() {
+            PaymentCollectionStatusKind::Cancelled => {
                 self.commit_completed_cancel_if_needed(tenant_id, collection_id)
                     .await?;
                 return Ok(Some(PaymentCollectionStatusSnapshot::from_response(
                     &collection,
                 )));
             }
-            "captured" => {
+            PaymentCollectionStatusKind::Captured => {
                 return Err(manual_reconciliation(
                     "captured payment collection must be reconciled through refund policy",
                 ));
             }
-            "pending" | "authorized" => {}
-            _ => {
-                return Err(PortError::conflict(
-                    "payment.checkout_compensation_state_conflict",
-                    "payment collection is in an unsupported compensation state",
+            PaymentCollectionStatusKind::Pending | PaymentCollectionStatusKind::Authorized => {}
+            PaymentCollectionStatusKind::Unknown => {
+                return Err(manual_reconciliation(
+                    "payment collection lifecycle is unknown and requires manual reconciliation",
                 ));
             }
         }
@@ -518,7 +519,7 @@ fn persisted_cancel_result(
 }
 
 fn should_cancel_provider(collection: &PaymentCollectionResponse) -> bool {
-    collection.status == "authorized"
+    collection.status_kind() == PaymentCollectionStatusKind::Authorized
         || collection.authorized_amount > Decimal::ZERO
         || collection.provider_id.is_some()
 }
