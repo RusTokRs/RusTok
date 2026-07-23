@@ -190,11 +190,13 @@ for (const marker of ["rustok-events.workspace = true", "rustok-outbox.workspace
   requireText(manifest, marker, `Notifications manifest is missing ${marker}`);
 }
 for (const marker of [
-  "dispatched_root_and_contract_envelopes_enter_source_inbox_once",
+  "committed_root_and_contract_envelopes_enter_source_inbox_once",
   "ContractEventEnvelope::new",
   "ForumMentionEvent::UserMentionAdded",
   "assert_eq!(first.selected, 32)",
   "assert_ne!(topic_outbox_event_id, topic_row.source_event_id)",
+  "assert_eq!(mention_outbox_row.status, SysEventStatus::Pending)",
+  "assert!(mention_outbox_row.dispatched_at.is_none())",
   "assert!(replay.replayed)",
   "MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE + 1",
 ]) {
