@@ -230,7 +230,7 @@ fn validate_state(
         || state.payment_collection.tenant_id != tenant_id
         || state.plan.checkout_operation_id != state.operation_id
         || state.payment_collection.order_id != Some(state.order.id)
-        || !state.payment_collection.status_kind().is_captured()
+        || state.payment_collection.status_kind() != PaymentCollectionStatusKind::Captured
         || !matches!(
             state.order.status_kind(),
             OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered
