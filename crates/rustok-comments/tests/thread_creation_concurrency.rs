@@ -1,11 +1,10 @@
 use rustok_comments::entities::comment_thread;
 use rustok_comments::migrations;
-use rustok_comments::{
-    CommentStatus, CommentsService, CreateCommentInput,
-};
+use rustok_comments::{CommentStatus, CommentsService, CreateCommentInput};
 use rustok_core::{SecurityContext, UserRole};
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
+    QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use std::{collections::HashSet, error::Error};
