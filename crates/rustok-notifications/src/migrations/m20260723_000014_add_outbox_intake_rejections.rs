@@ -63,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_notification_outbox_intake_rejection_created
 CREATE OR REPLACE FUNCTION notification_outbox_intake_receipt_terminal_guard()
 RETURNS TRIGGER AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.outbox_event_id::text, 0));
     IF EXISTS (
         SELECT 1 FROM notification_outbox_intake_rejections
         WHERE outbox_event_id = NEW.outbox_event_id
@@ -76,6 +77,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION notification_outbox_intake_rejection_terminal_guard()
 RETURNS TRIGGER AS $$
 BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(NEW.outbox_event_id::text, 0));
     IF EXISTS (
         SELECT 1 FROM notification_outbox_intake_receipts
         WHERE outbox_event_id = NEW.outbox_event_id
