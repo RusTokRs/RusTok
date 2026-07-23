@@ -16,7 +16,7 @@ fn crate_api_defines_minimal_contract_sections() {
 }
 
 #[tokio::test]
-async fn index_module_registers_registry_owned_event_listeners() {
+async fn index_module_registers_no_legacy_event_listeners() {
     use rustok_core::{ModuleEventListenerContext, ModuleRegistry, ModuleRuntimeExtensions};
     use sea_orm::Database;
 
@@ -34,17 +34,14 @@ async fn index_module_registers_registry_owned_event_listeners() {
     };
 
     let handlers = registry.build_event_listeners(&ctx);
-    let mut names: Vec<&'static str> = handlers.iter().map(|handler| handler.name()).collect();
-    names.sort_unstable();
-
-    assert_eq!(
-        names,
-        vec!["content_indexer", "flex_indexer", "product_indexer"]
+    assert!(
+        handlers.is_empty(),
+        "legacy Content/Product/Flex listeners must not return"
     );
 }
 
 #[test]
-fn index_module_registers_default_runtime_config() {
+fn index_module_registers_temporary_runtime_config() {
     use rustok_core::ModuleRegistry;
 
     use crate::{IndexModule, IndexerRuntimeConfig};
