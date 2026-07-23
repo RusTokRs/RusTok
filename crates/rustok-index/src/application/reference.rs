@@ -96,6 +96,12 @@ impl<'a> ReferenceIndex<'a> {
             .registry
             .get(&key.schema)
             .ok_or_else(|| RecordValidationError::SchemaNotFound(key.schema.clone()))?;
+        if key.tenant_id.is_nil() {
+            return Err(RecordValidationError::NilTenantId);
+        }
+        if key.entity_id.is_nil() {
+            return Err(RecordValidationError::NilEntityId);
+        }
         match (schema.schema.locale_mode, key.locale.is_some()) {
             (LocaleMode::Required, false) => {
                 return Err(RecordValidationError::LocaleRequired(key.schema.clone()));
@@ -121,6 +127,8 @@ impl<'a> ReferenceIndex<'a> {
             .records
             .values()
             .filter(|record| record.key.schema == query.schema)
+            .filter(|record| record.key.tenant_id == query.scope.tenant_id)
+            .filter(|record| record.key.locale == query.scope.locale)
             .filter(|record| {
                 query
                     .filter
@@ -303,8 +311,8 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        EntityName, FieldCardinality, FieldName, IndexField, IndexSchema, IndexValueType,
-        LocaleKey, ModuleName, SchemaRef, SchemaVersion,
+        EntityName, FieldCardinality, FieldName, IndexField, IndexQueryScope, IndexSchema,
+        IndexValueType, LocaleKey, ModuleName, SchemaRef, SchemaVersion,
     };
 
     fn schema_ref() -> SchemaRef {
@@ -361,6 +369,7 @@ mod tests {
             value in any::<i64>(),
             event in any::<u128>(),
         ) {
+            prop_assume!(tenant != 0 && entity != 0);
             let registry = registry();
             let mut index = ReferenceIndex::new(&registry);
             let mutation = IndexMutation::Upsert {
@@ -385,7 +394,7 @@ mod tests {
             tenant_b in any::<u128>(),
             entity in any::<u128>(),
         ) {
-            prop_assume!(tenant_a != tenant_b);
+            prop_assume!(tenant_a != 0 && tenant_b != 0 && tenant_a != tenant_b && entity != 0);
             let registry = registry();
             let mut index = ReferenceIndex::new(&registry);
             let entity = Uuid::from_u128(entity);
@@ -408,6 +417,7 @@ mod tests {
             entity in any::<u128>(),
             delete_version in 2u64..u64::MAX,
         ) {
+            prop_assume!(tenant != 0 && entity != 0);
             let registry = registry();
             let mut index = ReferenceIndex::new(&registry);
             let tenant = Uuid::from_u128(tenant);
@@ -435,12 +445,13 @@ mod tests {
     }
 
     #[test]
-    fn reference_query_filters_and_sorts_deterministically() {
+    fn reference_query_is_tenant_locale_scoped_and_sorted() {
         use crate::domain::{IndexQuery, OrderExpr};
 
         let registry = registry();
         let mut index = ReferenceIndex::new(&registry);
         let tenant = Uuid::new_v4();
+        let foreign_tenant = Uuid::new_v4();
         for value in [3, 1, 2] {
             index
                 .apply(IndexMutation::Upsert {
@@ -449,15 +460,25 @@ mod tests {
                 })
                 .unwrap();
         }
+        index
+            .apply(IndexMutation::Upsert {
+                event_id: Uuid::new_v4(),
+                record: record(foreign_tenant, Uuid::new_v4(), 1, 999),
+            })
+            .unwrap();
 
         let query = IndexQuery {
+            scope: IndexQueryScope {
+                tenant_id: tenant,
+                locale: Some(LocaleKey::new("en-US").unwrap()),
+            },
             schema: schema_ref(),
             fields: vec![FieldPath::new(FieldName::new("value").unwrap())],
             filter: Some(FilterExpr::Gte(
                 FieldPath::new(FieldName::new("value").unwrap()),
                 IndexValue::Integer(2),
             )),
-            order_by: vec![OrderExpr {
+            order_by: vec![crate::domain::OrderExpr {
                 field: FieldPath::new(FieldName::new("value").unwrap()),
                 direction: OrderDirection::Asc,
             }],
