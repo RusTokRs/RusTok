@@ -1,6 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "slice": "NOTIFY-03D",
+  "promoted_by_slices": ["NOTIFY-03E"],
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
   "receipt_migration": "crates/rustok-notifications/src/migrations/m20260723_000013_add_outbox_intake_receipts.rs",
@@ -21,6 +22,7 @@
     "rejection_table": "notification_outbox_intake_rejections",
     "receipt_identity": "outbox_event_id",
     "rejection_identity": "outbox_event_id",
+    "rejection_has_cross_module_foreign_key": false,
     "source_inbox_and_receipt_same_transaction": true,
     "semantic_replay_validation": true,
     "permanent_failure_quarantined": true,
@@ -68,7 +70,6 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "source inbox materialization and fanout page worker",
     "tenant capability gate before materialization and delivery",
     "administrative replay and purge commands for quarantine",
     "PostgreSQL concurrent intake evidence",
