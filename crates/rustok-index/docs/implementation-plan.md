@@ -45,9 +45,9 @@ Commits record which checks and evidence runs were not executed.
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- M2 read/query harness: `implemented; evidence runs pending`
-- M2 transactional mutation/WAL harness: `implemented; evidence runs pending`
-- M2 persistent churn/VACUUM harness: `implemented; evidence runs pending`
+- M2 read/query harness: `smoke evidence archived; 100k/1m pending`
+- M2 transactional mutation/WAL harness: `smoke evidence archived; 100k/1m pending`
+- M2 persistent churn/VACUUM harness: `smoke evidence archived; 100k/1m pending`
 - Production persistence: intentionally absent until the M2 ADR selects a model
 
 The active production crate contains only the generic domain/application core,
@@ -241,7 +241,7 @@ migrations.
 - [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.
 - [x] Add a separate release-mode maintenance evidence executable/report with
       configurable churn-cycle count.
-- [ ] Run and archive the `smoke` read, mutation, and maintenance evidence as a
+- [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a
       harness sanity check.
 - [ ] Run and archive 100k Product-locale row read, mutation, and maintenance
       evidence.
@@ -397,5 +397,10 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   separate machine-readable mutation report.
 - 2026-07-23: added persistent committed churn with delete/reinsert restoration,
   baseline/after-churn/after-VACUUM size and table-stat snapshots, cardinality
-  guards, and a dedicated maintenance report. Real PostgreSQL evidence,
-  comparison, and the storage ADR remain open.
+  guards, and a dedicated maintenance report.
+- 2026-07-23: archived PostgreSQL 16 smoke evidence from Actions run `30041091121`
+  as artifact `index-storage-smoke-8efd318091098bb5bce0d5f83b8b51653dc4934c`.
+  All candidates preserved 1,216 entities and 2,400 links, produced identical
+  read-workload digests, validated equal mutation effects, and preserved exact
+  cardinality through five committed churn cycles and VACUUM. The 100k/1m runs,
+  cross-scale comparison, storage ADR, and prototype cleanup remain open.
