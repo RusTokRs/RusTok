@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "module": "comments",
+  "surface": "thread_write_invariants",
+  "status": "executable_no_run",
+  "compile_policy": "not_run_by_request",
+  "owner": "rustok-comments",
+  "production_contract": {
+    "position_owner": "crates/rustok-comments/src/entities/comment.rs",
+    "counter_owner": "crates/rustok-comments/src/entities/comment_thread.rs",
+    "repair_migration": "crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs",
+    "migration_registry": "crates/rustok-comments/src/migrations/mod.rs",
+    "executable_test": "crates/rustok-comments/tests/thread_write_invariants.rs"
+  },
+  "cases": [
+    {
+      "name": "serialized_position_allocation",
+      "expected": "every ActiveModel comment insert locks the tenant thread row before reading the highest position and overwrites caller-supplied position with the next checked value"
+    },
+    {
+      "name": "exact_active_comment_count",
+      "expected": "every existing thread ActiveModel save locks the tenant thread row and replaces caller-supplied comment_count with the number of tenant comments whose deleted_at is null"
+    },
+    {
+      "name": "historical_counter_repair",
+      "expected": "the append-only migration recalculates all stored thread counters from active owner rows for PostgreSQL and SQLite"
+    },
+    {
+      "name": "historical_position_repair",
+      "expected": "the migration deterministically ranks existing comments by position, creation time, and id within each thread before adding the uniqueness constraint"
+    },
+    {
+      "name": "bulk_bypass_rejection",
+      "expected": "a unique thread_id plus position index rejects direct Entity insert paths that bypass ActiveModelBehavior"
+    }
+  ],
+  "runtime_promotion_requirements": [
+    "execute cargo test -p rustok-comments --test thread_write_invariants",
+    "execute concurrent PostgreSQL create and soft-delete transactions against one existing thread",
+    "retain final active-row count and gap-free unique position evidence",
+    "retain migration output for a fixture containing stale counters and duplicate positions"
+  ]
+}
