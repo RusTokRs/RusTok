@@ -135,9 +135,12 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   to `PaymentCollectionStatusKind`; unknown states require manual reconciliation.
 - [x] Cut the mounted commerce payment stage over to typed payment collection and order
   lifecycle views for authorization, capture, replay, and order admission.
-- [ ] Cut the remaining fulfillment stage/recovery, order recovery, cart
-  completion/compensation, payment recovery/provider adaptation, and other audited
-  critical lifecycle paths over to canonical typed owner statuses.
+- [x] Mount fulfillment ensure/read through the root typed lifecycle factory; pending,
+  shipped, and delivered states are replay-safe while cancelled and unknown states
+  require manual reconciliation.
+- [ ] Cut the remaining order recovery, cart completion/compensation, payment
+  recovery/provider adaptation, and other audited critical lifecycle paths over to
+  canonical typed owner statuses.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -243,6 +246,9 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   payment/fulfillment/pipeline owner boundaries.
 - [x] Use canonical typed order/payment collection lifecycle views in payment owner
   execution/compensation and mounted payment execution; unknown values fail closed.
+- [x] Route mounted fulfillment ensure/read through
+  `TypedCheckoutFulfillmentExecutionPort`; cancelled and unknown owner states require
+  manual reconciliation before checkout can continue.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
@@ -505,8 +511,8 @@ Source inspection is not execution evidence.
   `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
   fulfillment, and pipeline source.
 - [x] Add static guards for fail-closed public `PortError` transport sanitization and
-  typed order/payment lifecycle use in checkout execution, settlement, compensation,
-  and mounted payment stages.
+  typed order/payment/fulfillment lifecycle use in checkout execution, settlement,
+  compensation, and mounted payment/fulfillment stages.
 - [ ] Execute the new public-error and typed-lifecycle static guards against a repository
   checkout and retain their output.
 
@@ -523,8 +529,8 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-payment --all-features`
 - [ ] Targeted payment compensation and execution canonical-key/legacy-payload replay tests.
 - [ ] `cargo check -p rustok-fulfillment --all-features`
-- [ ] Targeted fulfillment create/adopt/read, duplicate identity, partial set, and
-  concurrent create tests.
+- [ ] Targeted fulfillment create/adopt/read, cancelled/unknown lifecycle, duplicate
+  identity, partial set, and concurrent create tests.
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
 - [ ] `cargo test -p rustok-marketplace-ledger`
@@ -552,8 +558,9 @@ Source inspection is not execution evidence.
   on all supported backends.
 - [ ] Prove payment compensation/execution adopts pre-cutover provider journal rows and
   never repeats an executing, succeeded, or reconciliation-required external effect.
-- [ ] Prove fulfillment create/adopt/read returns one exact immutable set under duplicate,
-  concurrent, process-exit, restart, and upgraded metadata scenarios.
+- [ ] Prove fulfillment create/adopt/read returns one exact immutable set and routes
+  cancelled/unknown lifecycle states to reconciliation under duplicate, concurrent,
+  process-exit, restart, and upgraded metadata scenarios.
 - [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
@@ -581,9 +588,10 @@ Source inspection is not execution evidence.
 10. [ ] Finish raw public ecommerce port error removal and correlation-safe owner logging;
     central fail-closed construction/serde sanitization and source guards are complete.
 11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment execution,
-    order settlement, order/payment compensation, and mounted payment-stage source are
-    complete, while payment recovery/provider adaptation, fulfillment, order recovery,
-    and remaining critical string matching stay open.
+    order settlement, order/payment compensation, mounted payment-stage source, and
+    typed fulfillment ensure/read recovery are complete, while payment provider
+    adaptation, order recovery, cart lifecycle, and remaining critical string matching
+    stay open.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -624,6 +632,8 @@ Source inspection is not execution evidence.
   lifecycle owner views without changing persisted or transport status strings.
 - [x] Cut payment owner execution, order settlement, order/payment compensation, and
   mounted payment execution admission/replay over to typed owner lifecycle status views.
+- [x] Mount fulfillment ensure/read recovery through the typed root factory and fail
+  closed cancelled or unknown owner lifecycle states.
 
 ## Change rules
 
@@ -651,7 +661,7 @@ Source inspection is not execution evidence.
 - [Fulfillment checkout execution contract](../../rustok-fulfillment/contracts/fulfillment-checkout-execution-v1.json)
 - [Marketplace root plan](../../rustok-marketplace/docs/implementation-plan.md)
 - [Marketplace root FBA registry](../../rustok-marketplace/contracts/marketplace-fba-registry.json)
-- [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-ledger-fba-registry.json)
+- [Marketplace ledger FBA registry](../../rustok-marketplace-ledger/contracts/marketplace-fba-registry.json)
 - [Seller balance transfer contract](../../rustok-marketplace-ledger/contracts/seller-balance-transfer-v1.json)
 - [Marketplace seller plan](../../rustok-marketplace-seller/docs/implementation-plan.md)
 - [Marketplace listing plan](../../rustok-marketplace-listing/docs/implementation-plan.md)
