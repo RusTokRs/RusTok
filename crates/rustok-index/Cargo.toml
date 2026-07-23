@@ -16,7 +16,7 @@ sea-orm-migration.workspace = true
 base64.workspace = true
 chrono.workspace = true
 hex.workspace = true
-icu_locale_core = "2.2"
+icu_locale = { version = "2.2", features = ["compiled_data"] }
 petgraph = "0.8.3"
 postcard.workspace = true
 rust_decimal.workspace = true
