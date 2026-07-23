@@ -23,6 +23,7 @@ const region = read('crates/rustok-region/src/ports.rs');
 const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
 const pricing = read('crates/rustok-pricing/src/ports.rs');
 const payment = read('crates/rustok-payment/src/ports.rs');
+const fulfillment = read('crates/rustok-fulfillment/src/ports.rs');
 const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
 const orderPaymentSettlement = read(
   'crates/rustok-order/src/checkout_payment_settlement.rs',
@@ -37,6 +38,7 @@ for (const [source, label] of [
   [cart, 'cart checkout port'],
   [pricing, 'pricing port'],
   [payment, 'payment collection port'],
+  [fulfillment, 'fulfillment shipping selection port'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -84,6 +86,18 @@ for (const value of [
 }
 
 for (const value of [
+  'PortError::validation("fulfillment.validation", message)',
+  'format!("shipping option {id} not found")',
+  'format!("fulfillment {id} not found")',
+  'format!("invalid fulfillment transition from `{from}` to `{to}`")',
+  'format!("fulfillment storage unavailable: {error}")',
+  '.map_err(fulfillment_error_to_port_error)',
+  '"PortContext.tenant_id must be a UUID for fulfillment ports"',
+]) {
+  forbidText(fulfillment, value, 'fulfillment public error mapping');
+}
+
+for (const value of [
   'fn manual_reconciliation(message: impl Into<String>)',
   'PortError::validation("order.validation", message)',
   '.map_err(order_error_to_port_error)',
@@ -128,6 +142,23 @@ for (const [source, value, label] of [
   [payment, '"payment provider rejected the requested operation"', 'payment stable rejection message'],
   [payment, '"payment request is invalid"', 'payment stable validation message'],
   [payment, 'payment_error_to_port_error(&context, "read_collection_status"', 'payment read operation mapping'],
+  [fulfillment, 'correlation_id = %context.correlation_id', 'fulfillment correlation logging'],
+  [fulfillment, 'tenant_id = %context.tenant_id', 'fulfillment tenant logging'],
+  [fulfillment, 'operation = owner_operation', 'fulfillment owner operation logging'],
+  [fulfillment, 'code = "fulfillment.context_invalid"', 'fulfillment context stable code'],
+  [fulfillment, 'code = "fulfillment.validation"', 'fulfillment validation stable code'],
+  [fulfillment, 'code = "fulfillment.shipping_option_not_found"', 'fulfillment shipping option stable code'],
+  [fulfillment, 'code = "fulfillment.fulfillment_not_found"', 'fulfillment resource stable code'],
+  [fulfillment, 'code = "fulfillment.invalid_transition"', 'fulfillment transition stable code'],
+  [fulfillment, 'code = "fulfillment.database_unavailable"', 'fulfillment database stable code'],
+  [fulfillment, '"fulfillment request context is invalid"', 'fulfillment stable context message'],
+  [fulfillment, '"fulfillment request is invalid"', 'fulfillment stable validation message'],
+  [fulfillment, '"shipping option was not found"', 'fulfillment stable shipping option message'],
+  [fulfillment, '"fulfillment was not found"', 'fulfillment stable resource message'],
+  [fulfillment, '"fulfillment lifecycle transition conflicts with the current state"', 'fulfillment stable transition message'],
+  [fulfillment, '"fulfillment storage is temporarily unavailable"', 'fulfillment stable storage message'],
+  [fulfillment, 'parse_port_tenant_id(&context, "list_seller_shipping_options")', 'fulfillment list operation mapping'],
+  [fulfillment, 'parse_port_tenant_id(&context, "select_shipping_option")', 'fulfillment select operation mapping'],
   [orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging'],
   [orderCompensation, 'tenant_id = %context.tenant_id', 'order compensation tenant logging'],
   [orderCompensation, 'operation,', 'order compensation owner operation logging'],
@@ -185,5 +216,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, payment, fulfillment, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );
