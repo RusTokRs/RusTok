@@ -46,18 +46,21 @@ const bootstrap = read(contract.bootstrap ?? "");
 const library = read("crates/rustok-notifications/src/lib.rs");
 const test = read(contract.tests?.[0] ?? "");
 
-if (contract.slice !== "NOTIFY-03E") {
-  failures.push("fanout worker contract must identify NOTIFY-03E");
+if (contract.slice !== "NOTIFY-03E" || contract.schema_version !== 2) {
+  failures.push("fanout worker contract must identify NOTIFY-03E schema 2");
 }
 if (contract.runtime?.default_enabled !== false || contract.runtime?.invalid_value_enabled !== false) {
   failures.push("fanout worker must fail closed and remain disabled by default");
 }
-if (contract.runtime?.requires_materialized_nonempty_source_registry !== true) {
-  failures.push("fanout worker requires a materialized nonempty source registry");
+if (contract.runtime?.requires_materialized_nonempty_source_registry !== true
+  || contract.runtime?.requires_module_registry !== true) {
+  failures.push("fanout worker requires materialized source and module registries");
 }
-if (contract.tenant_capability_gate?.owner_neutral_port_available !== false
-  || contract.tenant_capability_gate?.required_before_default_enablement !== true) {
-  failures.push("missing tenant capability port must remain an explicit enablement blocker");
+if (contract.tenant_capability_gate?.authority !== "EffectiveModulePolicyService::is_enabled"
+  || contract.tenant_capability_gate?.checked_before_each_source_claim !== true
+  || contract.tenant_capability_gate?.checked_before_each_job_claim !== true
+  || contract.tenant_capability_gate?.policy_error_fails_closed !== true) {
+  failures.push("fanout worker must use the authoritative effective tenant policy before every claim");
 }
 if (contract.durability?.creates_final_notification_rows !== false
   || contract.durability?.creates_delivery_attempts !== false) {
@@ -69,8 +72,11 @@ for (const marker of [
   "MAX_NOTIFICATION_FANOUT_BATCH_SIZE: usize = 64",
   "DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE: u16 = 256",
   "MAX_NOTIFICATION_FANOUT_PAGE_SIZE: u16 = 256",
-  "claimable_source_inbox_ids",
-  "claimable_fanout_job_ids",
+  "NotificationFanoutSourceWorkItem",
+  "NotificationFanoutJobWorkItem",
+  "claimable_source_inbox_work",
+  "claimable_fanout_job_work",
+  "tenant_id: row.tenant_id",
   "NotificationSourceInboxStatus::Pending",
   "NotificationSourceInboxStatus::RetryableError",
   "NotificationSourceInboxStatus::Processing",
@@ -103,12 +109,17 @@ for (const marker of [
   "RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED",
   "runs_background_workers()",
   "notification_source_registry_from_extensions",
-  "registry.is_empty()",
+  "source_registry.is_empty()",
+  "shared_get::<ModuleRegistry>()",
+  "EffectiveModulePolicyService::is_enabled",
+  "tenant_notifications_enabled",
+  "NOTIFICATIONS_MODULE_SLUG",
+  "claimable_source_inbox_work().await",
+  "materialize_source_inbox(work.inbox_id).await",
+  "claimable_fanout_job_work().await",
+  "process_fanout_job(work.job_id).await",
+  "policy lookup failed closed",
   "StopHandle",
-  "claimable_source_inbox_ids().await",
-  "materialize_source_inbox(inbox_id).await",
-  "claimable_fanout_job_ids().await",
-  "process_fanout_job(job_id).await",
   "tokio::select!",
 ]) {
   requireText(server, marker, `server fanout worker is missing ${marker}`);
@@ -118,10 +129,29 @@ requireOrder(
   [
     "fanout_worker_enabled_from_environment()",
     "notification_source_registry_from_extensions",
+    "shared_get::<ModuleRegistry>()",
     "NotificationFanoutWorker::new",
     "tokio::spawn",
   ],
   "fanout worker readiness must be checked before spawn",
+);
+requireOrder(
+  server,
+  [
+    "for work in source_work",
+    "tenant_notifications_enabled(&db, &module_registry, work.tenant_id).await",
+    "worker.materialize_source_inbox(work.inbox_id).await",
+  ],
+  "tenant policy must precede source provider materialization",
+);
+requireOrder(
+  server,
+  [
+    "for work in job_work",
+    "tenant_notifications_enabled(&db, &module_registry, work.tenant_id).await",
+    "worker.process_fanout_job(work.job_id).await",
+  ],
+  "tenant policy must precede audience provider resolution",
 );
 requireOrder(
   bootstrap,
@@ -135,20 +165,22 @@ requireOrder(
 reject(
   server,
   /tenant_module|module_installation|ModuleControlPlane|SELECT.+module/i,
-  "fanout worker must not invent a tenant capability check through private tables",
+  "fanout worker must not bypass effective policy through private module tables",
 );
 
 for (const marker of [
   "NotificationFanoutWorker",
-  "NotificationFanoutWorkerBatchResult",
+  "NotificationFanoutSourceWorkItem",
+  "NotificationFanoutJobWorkItem",
   "DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE",
 ]) {
   requireText(library, marker, `Notifications facade is missing ${marker}`);
 }
 for (const marker of [
   "bounded_worker_materializes_sources_and_pages_without_final_delivery",
+  "claimable_source_inbox_work",
+  "assert_eq!(first_work[0].tenant_id, tenant_id)",
   "assert_eq!(first.source_selected, 1)",
-  "assert_eq!(first.jobs_selected, 1)",
   "assert_eq!(items.len(), 4)",
   "FanoutItemStatus::Pending",
   "delivery_attempt::Entity::find",
