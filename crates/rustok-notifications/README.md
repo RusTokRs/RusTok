@@ -102,22 +102,29 @@ delivery attempts.
 ### 3. Candidate policy and commit guard
 
 `NotificationCandidateWorker` selects tenant-scoped candidate work. Before
-canonical claim, the server resolves the full effective tenant policy and forwards
-its deterministic `policy_revision`. Disabled candidates receive a 300-second
-retry backoff; temporary policy lookup failure receives 30 seconds. No recipient
-privacy policy or source provider is called for deferred work.
+canonical claim, the server resolves one `EffectiveModulePolicySnapshot` containing
+the deterministic `policy_revision` and the exact manifest default-enabled module
+set used to compute it. Disabled candidates receive a 300-second retry backoff;
+temporary policy lookup failure receives 30 seconds. No recipient privacy policy
+or source provider is called for deferred work.
 
 When capability is enabled, the service claims the candidate, resolves exact
 preference scopes before wildcards, evaluates Profiles/Social Graph recipient
 policy, and reauthorizes the source target. The final notification transaction then:
 
 1. validates the candidate lease;
-2. invokes `NotificationTenantCapabilityCommitGuard`;
+2. invokes `NotificationTenantCapabilityCommitGuard` with the observed revision and
+   manifest defaults;
 3. locks the Modules-owned `module.lifecycle` policy cursor;
 4. resolves tenant overrides through the Modules owner on the same transaction;
 5. requires current `notifications` enablement and the observed revision;
 6. rechecks preferences;
 7. inserts or validates one notification and completes the candidate.
+
+The manifest is not reloaded through another pool connection while the final
+transaction is active. This avoids a small-pool/SQLite connection deadlock and
+keeps the commit guard limited to transaction-bound owner reads. Manifest mutation
+is deliberately outside the cursor guarantee and remains a separate gate.
 
 On PostgreSQL, the cursor `FOR UPDATE` lock serializes this final transaction with
 tenant lifecycle enable/disable commits. Whichever transaction commits first is
