@@ -31,21 +31,7 @@ fn ensure_permission(
 }
 
 fn quote_command_error(error: ForumError) -> HttpError {
-    match error {
-        ForumError::Database(error) => HttpError::internal(error.to_string()),
-        ForumError::Content(error) => HttpError::internal(error.to_string()),
-        ForumError::Internal(error) => HttpError::internal(error.to_string()),
-        ForumError::TopicNotFound(topic_id) => HttpError::not_found(
-            "forum_topic_not_found",
-            format!("Topic not found: {topic_id}"),
-        ),
-        ForumError::ReplyNotFound(reply_id) => HttpError::not_found(
-            "forum_reply_not_found",
-            format!("Reply not found: {reply_id}"),
-        ),
-        ForumError::Forbidden(message) => HttpError::forbidden("forum_permission_denied", message),
-        error => HttpError::bad_request(error.stable_code(), error.to_string()),
-    }
+    crate::controllers::map_forum_error(error)
 }
 
 #[utoipa::path(

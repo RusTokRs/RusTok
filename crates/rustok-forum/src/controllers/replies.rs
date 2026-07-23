@@ -70,7 +70,7 @@ pub async fn list_replies(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     metrics::record_read_path_query(
         "http",
         "forum.list_replies",
@@ -144,7 +144,7 @@ pub async fn get_reply(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(reply))
 }
 
@@ -178,7 +178,7 @@ pub async fn create_reply(
     let reply = service
         .create(tenant.id, forum_security(&auth), topic_id, input)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok((StatusCode::CREATED, Json(reply)))
 }
 
@@ -212,7 +212,7 @@ pub async fn update_reply(
     let reply = service
         .update(tenant.id, id, forum_security(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(reply))
 }
 
@@ -244,7 +244,7 @@ pub async fn delete_reply(
     service
         .delete(tenant.id, id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -278,7 +278,7 @@ pub async fn set_reply_vote(
     VoteService::new(runtime.db_clone())
         .set_reply_vote(tenant.id, reply_id, forum_security(&auth), value)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
@@ -290,7 +290,7 @@ pub async fn set_reply_vote(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(reply))
 }
 
@@ -321,7 +321,7 @@ pub async fn clear_reply_vote(
     VoteService::new(runtime.db_clone())
         .clear_reply_vote(tenant.id, reply_id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
     let service = ReplyService::new(runtime.db_clone(), runtime.event_bus());
     let reply = service
@@ -333,7 +333,7 @@ pub async fn clear_reply_vote(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(reply))
 }
 

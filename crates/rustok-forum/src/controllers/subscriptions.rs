@@ -220,5 +220,5 @@ fn ensure_permission(
 }
 
 fn operation_error(error: crate::ForumError) -> HttpError {
-    HttpError::bad_request("forum_operation_failed", error.to_string())
+    crate::controllers::map_forum_error(error)
 }

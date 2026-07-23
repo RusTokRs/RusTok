@@ -67,17 +67,7 @@ pub async fn update_category_topic_policy(
 }
 
 fn category_policy_error(error: ForumError) -> HttpError {
-    match error {
-        ForumError::Database(error) => HttpError::internal(error.to_string()),
-        ForumError::Content(error) => HttpError::internal(error.to_string()),
-        ForumError::Internal(error) => HttpError::internal(error.to_string()),
-        ForumError::CategoryNotFound(category_id) => HttpError::not_found(
-            "forum_category_not_found",
-            format!("Category not found: {category_id}"),
-        ),
-        ForumError::Forbidden(message) => HttpError::forbidden("forum_permission_denied", message),
-        error => HttpError::bad_request("forum_category_policy_failed", error.to_string()),
-    }
+    crate::controllers::map_forum_error(error)
 }
 
 fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {

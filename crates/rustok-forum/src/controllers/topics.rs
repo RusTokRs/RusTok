@@ -52,6 +52,10 @@ fn default_per_page() -> u64 {
     20
 }
 
+fn forum_security(auth: &AuthContext) -> rustok_core::SecurityContext {
+    rustok_core::SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions)
+}
+
 #[utoipa::path(
     get,
     path = "/api/forum/topics",
@@ -85,15 +89,12 @@ pub async fn list_topics(
     let (topics, _) = service
         .list_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             filter,
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     metrics::record_read_path_query(
         "http",
         "forum.list_topics",
@@ -101,7 +102,6 @@ pub async fn list_topics(
         list_started_at.elapsed().as_secs_f64(),
         topics.len() as u64,
     );
-
     metrics::record_read_path_budget(
         "http",
         "forum.list_topics",
@@ -166,20 +166,16 @@ pub async fn get_topic(
     let locale = filter
         .locale
         .unwrap_or_else(|| request_context.locale.clone());
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             id,
             &locale,
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -207,18 +203,10 @@ pub async fn create_topic(
         "Permission denied: forum_topics:create required",
     )?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
-        .create(
-            tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+        .create(tenant.id, forum_security(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok((StatusCode::CREATED, Json(topic)))
 }
 
@@ -248,19 +236,10 @@ pub async fn update_topic(
         "Permission denied: forum_topics:update required",
     )?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
-        .update(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            input,
-        )
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
+        .update(tenant.id, id, forum_security(&auth), input)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -288,18 +267,10 @@ pub async fn delete_topic(
         "Permission denied: forum_topics:delete required",
     )?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    service
-        .delete(
-            tenant.id,
-            id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+    TopicService::new(runtime.db_clone(), runtime.event_bus())
+        .delete(tenant.id, id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -334,34 +305,21 @@ pub async fn mark_topic_solution(
     )?;
 
     let event_bus = runtime.event_bus();
-    let moderation = ModerationService::new(runtime.db_clone(), event_bus.clone());
-    moderation
-        .mark_solution(
-            tenant.id,
-            topic_id,
-            reply_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+    ModerationService::new(runtime.db_clone(), event_bus.clone())
+        .mark_solution(tenant.id, topic_id, reply_id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
-    let service = TopicService::new(runtime.db_clone(), event_bus);
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), event_bus)
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -393,33 +351,21 @@ pub async fn clear_topic_solution(
     )?;
 
     let event_bus = runtime.event_bus();
-    let moderation = ModerationService::new(runtime.db_clone(), event_bus.clone());
-    moderation
-        .clear_solution(
-            tenant.id,
-            topic_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+    ModerationService::new(runtime.db_clone(), event_bus.clone())
+        .clear_solution(tenant.id, topic_id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
-    let service = TopicService::new(runtime.db_clone(), event_bus);
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), event_bus)
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -451,32 +397,20 @@ pub async fn set_topic_vote(
     )?;
 
     VoteService::new(runtime.db_clone())
-        .set_topic_vote(
-            tenant.id,
-            topic_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-            value,
-        )
+        .set_topic_vote(tenant.id, topic_id, forum_security(&auth), value)
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -505,31 +439,20 @@ pub async fn clear_topic_vote(
     )?;
 
     VoteService::new(runtime.db_clone())
-        .clear_topic_vote(
-            tenant.id,
-            topic_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .clear_topic_vote(tenant.id, topic_id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -558,31 +481,20 @@ pub async fn subscribe_topic(
     )?;
 
     SubscriptionService::new(runtime.db_clone())
-        .set_topic_subscription(
-            tenant.id,
-            topic_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .set_topic_subscription(tenant.id, topic_id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -611,31 +523,20 @@ pub async fn unsubscribe_topic(
     )?;
 
     SubscriptionService::new(runtime.db_clone())
-        .clear_topic_subscription(
-            tenant.id,
-            topic_id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
-        )
+        .clear_topic_subscription(tenant.id, topic_id, forum_security(&auth))
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
 
-    let service = TopicService::new(runtime.db_clone(), runtime.event_bus());
-    let topic = service
+    let topic = TopicService::new(runtime.db_clone(), runtime.event_bus())
         .get_with_locale_fallback(
             tenant.id,
-            rustok_core::SecurityContext::from_permission_snapshot(
-                Some(auth.user_id),
-                &auth.permissions,
-            ),
+            forum_security(&auth),
             topic_id,
             request_context.locale.as_str(),
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("forum_operation_failed", err.to_string()))?;
+        .map_err(crate::controllers::map_forum_error)?;
     Ok(Json(topic))
 }
 
@@ -645,7 +546,7 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "forum_permission_denied",
             message.to_string(),
         ));

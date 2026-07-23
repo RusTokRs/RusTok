@@ -205,22 +205,22 @@ END
     execute(
         &db,
         r#"
-CREATE TRIGGER forum_test_reject_category_delete
-BEFORE DELETE ON forum_categories
+CREATE TRIGGER forum_test_reject_category_archive
+BEFORE INSERT ON forum_category_lifecycle
 FOR EACH ROW
 BEGIN
-    SELECT RAISE(ABORT, 'forced category delete failure');
+    SELECT RAISE(ABORT, 'forced category archive failure');
 END
 "#,
     )
     .await?;
 
-    let failed_delete = service
+    let failed_archive = service
         .delete(tenant_id, category.id, admin_security())
         .await;
     assert!(
-        failed_delete.is_err(),
-        "forced category delete failure must make category delete fail"
+        failed_archive.is_err(),
+        "forced lifecycle failure must make category deletion/archive fail"
     );
     assert_eq!(
         scalar_i64(
@@ -231,7 +231,8 @@ END
             ),
         )
         .await?,
-        1
+        1,
+        "normal category deletion must preserve the category row"
     );
     assert_eq!(
         scalar_i64(
@@ -245,7 +246,52 @@ END
         )
         .await?,
         1,
-        "translation deletion must roll back with the failed category deletion"
+        "normal category deletion must preserve translations"
+    );
+    assert_eq!(
+        scalar_i64(
+            &db,
+            format!(
+                "SELECT COUNT(*) AS value
+                 FROM forum_category_lifecycle
+                 WHERE tenant_id = '{tenant_id}' AND category_id = '{}'",
+                category.id
+            ),
+        )
+        .await?,
+        0,
+        "failed category archive must not leak lifecycle state"
+    );
+
+    execute(&db, "DROP TRIGGER forum_test_reject_category_archive").await?;
+
+    service
+        .delete(tenant_id, category.id, admin_security())
+        .await?;
+    assert_eq!(
+        scalar_i64(
+            &db,
+            format!(
+                "SELECT COUNT(*) AS value
+                 FROM forum_category_lifecycle
+                 WHERE tenant_id = '{tenant_id}' AND category_id = '{}'",
+                category.id
+            ),
+        )
+        .await?,
+        1,
+        "successful category deletion must archive the category"
+    );
+    assert_eq!(
+        scalar_i64(
+            &db,
+            format!(
+                "SELECT COUNT(*) AS value FROM forum_categories WHERE id = '{}'",
+                category.id
+            ),
+        )
+        .await?,
+        1
     );
 
     Ok(())

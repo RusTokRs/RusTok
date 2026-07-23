@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
+    Statement, TransactionTrait,
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -14,7 +15,7 @@ use rustok_content::{
 use rustok_core::SecurityContext;
 
 use crate::dto::{CategoryListItem, CategoryResponse, CreateCategoryInput, UpdateCategoryInput};
-use crate::entities::{forum_category, forum_category_translation};
+use crate::entities::{forum_category, forum_category_lifecycle, forum_category_translation};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
@@ -39,15 +40,36 @@ impl CategoryService {
         validate_category_name(&input.name)?;
         let locale = normalize_locale(&input.locale)?;
         let slug = normalize_required_slug(&input.slug)?;
+        let requested_position = input.position.unwrap_or(0);
+        if requested_position < 0 {
+            return Err(ForumError::Validation(
+                "Category position cannot be negative".to_string(),
+            ));
+        }
+
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+
+        if let Some(parent_id) = input.parent_id {
+            Self::find_category_in_tx(&txn, tenant_id, parent_id).await?;
+        }
+
+        shift_siblings_for_insert_in_tx(
+            &txn,
+            tenant_id,
+            input.parent_id,
+            requested_position,
+            now,
+        )
+        .await?;
 
         forum_category::ActiveModel {
             id: Set(id),
             tenant_id: Set(tenant_id),
             parent_id: Set(input.parent_id),
-            position: Set(input.position.unwrap_or(0)),
+            position: Set(requested_position),
             icon: Set(input.icon),
             color: Set(input.color),
             moderated: Set(input.moderated),
@@ -104,20 +126,20 @@ impl CategoryService {
             .one(&self.db)
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
-        let translations = self.load_translations(category_id).await?;
+        let translations = self.load_translations(tenant_id, category_id).await?;
         let is_subscribed = SubscriptionService::new(self.db.clone())
             .category_subscription_flags(tenant_id, &[category_id], security.user_id)
             .await?
             .get(&category_id)
             .copied()
             .unwrap_or(false);
-        Ok(to_category_response(
+        to_category_response(
             category,
             translations,
             is_subscribed,
             &locale,
             fallback_locale.as_deref(),
-        ))
+        )
     }
 
     #[instrument(skip(self, security, input))]
@@ -285,64 +307,73 @@ impl CategoryService {
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let paginator = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
+        let archived_category_ids = forum_category_lifecycle::Entity::find()
+            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|lifecycle| lifecycle.category_id)
+            .collect::<Vec<_>>();
+        let query = forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id));
+        let query = if archived_category_ids.is_empty() {
+            query
+        } else {
+            query.filter(forum_category::Column::Id.is_not_in(archived_category_ids))
+        };
+        let paginator = query
             .order_by_asc(forum_category::Column::Position)
             .paginate(&self.db, per_page.max(1));
         let total = paginator.num_items().await?;
         let categories = paginator.fetch_page(page.saturating_sub(1)).await?;
         let category_ids: Vec<Uuid> = categories.iter().map(|item| item.id).collect();
         let translations_by_category_id = self
-            .load_translations_map_for_categories(&category_ids)
+            .load_translations_map_for_categories(tenant_id, &category_ids)
             .await?;
         let subscription_flags = SubscriptionService::new(self.db.clone())
             .category_subscription_flags(tenant_id, &category_ids, security.user_id)
             .await?;
 
-        let items = categories
-            .into_iter()
-            .map(|category| {
-                let localized = translations_by_category_id
-                    .get(&category.id)
-                    .cloned()
-                    .unwrap_or_default();
-                let resolved = resolve_by_locale_with_fallback(
-                    &localized,
-                    &locale,
-                    fallback_locale.as_deref(),
-                    |translation| translation.locale.as_str(),
-                );
+        let mut items = Vec::with_capacity(categories.len());
+        for category in categories {
+            let localized = translations_by_category_id
+                .get(&category.id)
+                .cloned()
+                .unwrap_or_default();
+            let resolved = resolve_by_locale_with_fallback(
+                &localized,
+                &locale,
+                fallback_locale.as_deref(),
+                |translation| translation.locale.as_str(),
+            );
+            let translation = resolved.item.ok_or_else(|| {
+                ForumError::Validation(format!(
+                    "Forum category {} has no localized translation",
+                    category.id
+                ))
+            })?;
 
-                CategoryListItem {
-                    id: category.id,
-                    requested_locale: locale.clone(),
-                    locale: locale.clone(),
-                    effective_locale: resolved.effective_locale,
-                    available_locales: available_locales_from(&localized, |translation| {
-                        translation.locale.as_str()
-                    }),
-                    name: resolved
-                        .item
-                        .map(|translation| translation.name.clone())
-                        .unwrap_or_default(),
-                    slug: resolved
-                        .item
-                        .map(|translation| translation.slug.clone())
-                        .unwrap_or_default(),
-                    description: resolved
-                        .item
-                        .and_then(|translation| translation.description.clone()),
-                    icon: category.icon.clone(),
-                    color: category.color.clone(),
-                    topic_count: category.topic_count,
-                    reply_count: category.reply_count,
-                    is_subscribed: subscription_flags
-                        .get(&category.id)
-                        .copied()
-                        .unwrap_or(false),
-                }
-            })
-            .collect();
+            items.push(CategoryListItem {
+                id: category.id,
+                requested_locale: locale.clone(),
+                locale: locale.clone(),
+                effective_locale: resolved.effective_locale,
+                available_locales: available_locales_from(&localized, |translation| {
+                    translation.locale.as_str()
+                }),
+                name: translation.name.clone(),
+                slug: translation.slug.clone(),
+                description: translation.description.clone(),
+                icon: category.icon.clone(),
+                color: category.color.clone(),
+                topic_count: category.topic_count,
+                reply_count: category.reply_count,
+                is_subscribed: subscription_flags
+                    .get(&category.id)
+                    .copied()
+                    .unwrap_or(false),
+            });
+        }
 
         Ok((items, total))
     }
@@ -391,9 +422,11 @@ impl CategoryService {
 
     async fn load_translations(
         &self,
+        tenant_id: Uuid,
         category_id: Uuid,
     ) -> ForumResult<Vec<forum_category_translation::Model>> {
         Ok(forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_category_translation::Column::CategoryId.eq(category_id))
             .all(&self.db)
             .await?)
@@ -401,12 +434,14 @@ impl CategoryService {
 
     async fn load_translations_for_categories(
         &self,
+        tenant_id: Uuid,
         category_ids: &[Uuid],
     ) -> ForumResult<Vec<forum_category_translation::Model>> {
         if category_ids.is_empty() {
             return Ok(Vec::new());
         }
         Ok(forum_category_translation::Entity::find()
+            .filter(forum_category_translation::Column::TenantId.eq(tenant_id))
             .filter(forum_category_translation::Column::CategoryId.is_in(category_ids.to_vec()))
             .all(&self.db)
             .await?)
@@ -414,10 +449,14 @@ impl CategoryService {
 
     async fn load_translations_map_for_categories(
         &self,
+        tenant_id: Uuid,
         category_ids: &[Uuid],
     ) -> ForumResult<HashMap<Uuid, Vec<forum_category_translation::Model>>> {
         let mut map: HashMap<Uuid, Vec<forum_category_translation::Model>> = HashMap::new();
-        for translation in self.load_translations_for_categories(category_ids).await? {
+        for translation in self
+            .load_translations_for_categories(tenant_id, category_ids)
+            .await?
+        {
             map.entry(translation.category_id)
                 .or_default()
                 .push(translation);
@@ -426,19 +465,85 @@ impl CategoryService {
     }
 }
 
+async fn lock_category_tree_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+) -> ForumResult<()> {
+    match txn.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            txn.execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                [tenant_id.to_string().into()],
+            ))
+            .await?;
+            Ok(())
+        }
+        DatabaseBackend::Sqlite => Ok(()),
+        backend => Err(ForumError::Validation(format!(
+            "Forum category creation does not support {backend:?}"
+        ))),
+    }
+}
+
+async fn shift_siblings_for_insert_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    parent_id: Option<Uuid>,
+    requested_position: i32,
+    now: chrono::DateTime<Utc>,
+) -> ForumResult<()> {
+    let siblings = match parent_id {
+        Some(parent_id) => forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .filter(forum_category::Column::ParentId.eq(parent_id))
+            .filter(forum_category::Column::Position.gte(requested_position))
+            .order_by_desc(forum_category::Column::Position)
+            .order_by_desc(forum_category::Column::Id)
+            .all(txn)
+            .await?,
+        None => forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .filter(forum_category::Column::ParentId.is_null())
+            .filter(forum_category::Column::Position.gte(requested_position))
+            .order_by_desc(forum_category::Column::Position)
+            .order_by_desc(forum_category::Column::Id)
+            .all(txn)
+            .await?,
+    };
+
+    for sibling in siblings {
+        let next_position = sibling.position.checked_add(1).ok_or_else(|| {
+            ForumError::Validation("Category sibling position exceeds i32 range".to_string())
+        })?;
+        let mut active: forum_category::ActiveModel = sibling.into();
+        active.position = Set(next_position);
+        active.updated_at = Set(now.into());
+        active.update(txn).await?;
+    }
+
+    Ok(())
+}
+
 fn to_category_response(
     category: forum_category::Model,
     translations: Vec<forum_category_translation::Model>,
     is_subscribed: bool,
     locale: &str,
     fallback_locale: Option<&str>,
-) -> CategoryResponse {
+) -> ForumResult<CategoryResponse> {
     let resolved =
         resolve_by_locale_with_fallback(&translations, locale, fallback_locale, |translation| {
             translation.locale.as_str()
         });
+    let translation = resolved.item.ok_or_else(|| {
+        ForumError::Validation(format!(
+            "Forum category {} has no localized translation",
+            category.id
+        ))
+    })?;
 
-    CategoryResponse {
+    Ok(CategoryResponse {
         id: category.id,
         requested_locale: locale.to_string(),
         locale: locale.to_string(),
@@ -446,17 +551,9 @@ fn to_category_response(
         available_locales: available_locales_from(&translations, |translation| {
             translation.locale.as_str()
         }),
-        name: resolved
-            .item
-            .map(|translation| translation.name.clone())
-            .unwrap_or_default(),
-        slug: resolved
-            .item
-            .map(|translation| translation.slug.clone())
-            .unwrap_or_default(),
-        description: resolved
-            .item
-            .and_then(|translation| translation.description.clone()),
+        name: translation.name.clone(),
+        slug: translation.slug.clone(),
+        description: translation.description.clone(),
         icon: category.icon,
         color: category.color,
         parent_id: category.parent_id,
@@ -465,7 +562,7 @@ fn to_category_response(
         reply_count: category.reply_count,
         moderated: category.moderated,
         is_subscribed,
-    }
+    })
 }
 
 fn validate_category_name(name: &str) -> ForumResult<()> {

@@ -50,15 +50,23 @@ function collectRustFiles(root, relative = "") {
 }
 
 const servicesModPath = "crates/rustok-forum/src/services/mod.rs";
+const categoryOwnerPath = "crates/rustok-forum/src/services/category_owner.rs";
 const topicFacadePath = "crates/rustok-forum/src/services/topic_facade.rs";
 const replyFacadePath = "crates/rustok-forum/src/services/reply_facade.rs";
 const libPath = "crates/rustok-forum/src/lib.rs";
 
-for (const filePath of [servicesModPath, topicFacadePath, replyFacadePath, libPath]) {
+for (const filePath of [
+  servicesModPath,
+  categoryOwnerPath,
+  topicFacadePath,
+  replyFacadePath,
+  libPath,
+]) {
   assertExists(filePath, `${filePath}: required forum owner-boundary file is missing`);
 }
 
 const servicesMod = readRepo(servicesModPath);
+const categoryOwner = readRepo(categoryOwnerPath);
 const topicFacade = readRepo(topicFacadePath);
 const replyFacade = readRepo(replyFacadePath);
 const lib = readRepo(libPath);
@@ -70,8 +78,30 @@ assertContains(servicesMod, "pub use reply_facade::ReplyService;", `${servicesMo
 assertNotMatch(servicesMod, /(^|\n)\s*pub\s+mod\s+(topic|reply|topic_owner|reply_owner)\s*;/, `${servicesModPath}: raw lifecycle modules must not be public`);
 assertNotMatch(servicesMod, /pub\s+use\s+(topic_owner|reply_owner)::/, `${servicesModPath}: internal owner implementations must not be re-exported`);
 
-for (const [filePath, source] of [[topicFacadePath, topicFacade], [replyFacadePath, replyFacade]]) {
+for (const [filePath, source] of [
+  [categoryOwnerPath, categoryOwner],
+  [topicFacadePath, topicFacade],
+  [replyFacadePath, replyFacade],
+]) {
   assertNotMatch(source, /std::ops::Deref|impl\s+Deref\s+for/, `${filePath}: public facade must not dereference into an implementation service`);
+}
+
+for (const method of [
+  "pub async fn create(",
+  "pub async fn get(",
+  "pub async fn get_with_locale_fallback(",
+  "pub async fn update(",
+  "pub async fn delete(",
+  "pub async fn list(",
+  "pub async fn list_with_locale_fallback(",
+  "pub async fn list_paginated_with_locale_fallback(",
+  "pub async fn tree(",
+  "pub async fn move_category(",
+  "pub async fn reorder_siblings(",
+  "pub async fn archive_subtree(",
+  "pub async fn restore_subtree(",
+]) {
+  assertContains(categoryOwner, method, `${categoryOwnerPath}: explicit category owner method missing: ${method}`);
 }
 
 for (const method of [
@@ -101,6 +131,7 @@ for (const method of [
   assertContains(replyFacade, method, `${replyFacadePath}: explicit reply facade method missing: ${method}`);
 }
 
+assertContains(lib, "CategoryService", `${libPath}: root CategoryService export must remain available`);
 assertContains(lib, "ReplyService", `${libPath}: root ReplyService export must remain available`);
 assertContains(lib, "TopicService", `${libPath}: root TopicService export must remain available`);
 

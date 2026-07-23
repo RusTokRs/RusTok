@@ -16,12 +16,6 @@ tags = ["community", "content", "discussions"]
 content = { version_req = ">=0.1.0" }
 taxonomy = { version_req = ">=0.1.0" }
 
-[dependencies.page_builder]
-version_req = ">=0.1.0"
-module = "page-builder"
-contract = "grapesjs_v1"
-contract_version = "1.0"
-
 [crate]
 entry_type = "ForumModule"
 

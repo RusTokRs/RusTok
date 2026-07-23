@@ -70,7 +70,7 @@ fn ensure_forum_permission(
     message: &str,
 ) -> HttpResult<()> {
     if !has_any_effective_permission(&auth.permissions, permissions) {
-        return Err(HttpError::unauthorized(
+        return Err(HttpError::forbidden(
             "forum_permission_denied",
             message.to_string(),
         ));

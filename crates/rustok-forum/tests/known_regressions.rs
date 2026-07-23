@@ -343,8 +343,8 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_new_category_locale();
 }
 
 #[tokio::test]
-async fn forum_03_category_delete_rolls_back_translation_delete() -> TestResult<()> {
-    let Some(context) = PostgresForumTestDb::setup("category_atomic_delete").await? else {
+async fn forum_03_category_archive_rolls_back_when_lifecycle_insert_fails() -> TestResult<()> {
+    let Some(context) = PostgresForumTestDb::setup("category_atomic_archive").await? else {
         return Ok(());
     };
     let outcome = async {
@@ -371,16 +371,16 @@ async fn forum_03_category_delete_rolls_back_translation_delete() -> TestResult<
         execute(
             &context.db,
             r#"
-CREATE FUNCTION forum_test_reject_category_delete()
+CREATE FUNCTION forum_test_reject_category_archive()
 RETURNS trigger AS $$
 BEGIN
-    RAISE EXCEPTION 'forced category delete failure';
+    RAISE EXCEPTION 'forced category archive failure';
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER forum_test_reject_category_delete
-BEFORE DELETE ON forum_categories
-FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_delete();
+CREATE TRIGGER forum_test_reject_category_archive
+BEFORE INSERT ON forum_category_lifecycle
+FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_archive();
 "#,
         )
         .await?;
@@ -390,7 +390,7 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_delete();
             .await;
         if result.is_ok() {
             return Err(test_error(
-                "forced category delete failure must make category delete fail",
+                "forced lifecycle failure must make category delete/archive fail",
             ));
         }
 
@@ -412,11 +412,21 @@ FOR EACH ROW EXECUTE FUNCTION forum_test_reject_category_delete();
             ),
         )
         .await?;
+        let lifecycle_count = scalar_i64(
+            &context.db,
+            format!(
+                "SELECT COUNT(*) AS value
+                 FROM forum_category_lifecycle
+                 WHERE tenant_id = '{tenant_id}' AND category_id = '{}'",
+                category.id
+            ),
+        )
+        .await?;
 
-        if category_count != 1 || translation_count != 1 {
+        if category_count != 1 || translation_count != 1 || lifecycle_count != 0 {
             return Err(test_error(format!(
-                "category delete failure leaked partial deletion: \
-                 categories={category_count}, translations={translation_count}"
+                "category archive failure leaked state: categories={category_count}, \
+                 translations={translation_count}, lifecycle={lifecycle_count}"
             )));
         }
         Ok(())
