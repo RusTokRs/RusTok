@@ -16,11 +16,13 @@ const forbidText = (source, value, label) => {
 const channel = read('crates/rustok-channel/src/ports.rs');
 const region = read('crates/rustok-region/src/ports.rs');
 const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
+const pricing = read('crates/rustok-pricing/src/ports.rs');
 
 for (const [source, label] of [
   [channel, 'channel port'],
   [region, 'region port'],
   [cart, 'cart checkout port'],
+  [pricing, 'pricing port'],
 ]) {
   requireText(source, 'tracing::error!', label);
 }
@@ -41,6 +43,29 @@ for (const value of [
   'PortError::validation("cart.checkout_validation", message)',
 ]) {
   forbidText(cart, value, 'cart checkout public error mapping');
+}
+
+for (const value of [
+  'format!("pricing storage unavailable: {error}")',
+  '"pricing.rich_error",\n            error.to_string()',
+  '"pricing.core_error",\n            error.to_string()',
+  'PortError::validation("pricing.validation", message)',
+  '.map_err(pricing_error_to_port_error)',
+]) {
+  forbidText(pricing, value, 'pricing public error mapping');
+}
+
+for (const [value, label] of [
+  ['correlation_id = %context.correlation_id', 'pricing correlation logging'],
+  ['tenant_id = %context.tenant_id', 'pricing tenant logging'],
+  ['code = "pricing.database_unavailable"', 'pricing database stable code'],
+  ['"pricing storage is temporarily unavailable"', 'pricing stable storage message'],
+  ['"pricing operation failed an internal invariant"', 'pricing stable invariant message'],
+  ['"pricing request is invalid"', 'pricing stable validation message'],
+  ['pricing_error_to_port_error(&context, "resolve_product_price"', 'pricing operation mapping'],
+  ['pricing_error_to_port_error(&context, "upsert_variant_price"', 'pricing write operation mapping'],
+]) {
+  requireText(pricing, value, label);
 }
 
 requireText(
@@ -71,5 +96,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, and cart ports keep raw owner errors out of public PortError messages',
+  '✔ Channel, region, cart, and pricing ports keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );
