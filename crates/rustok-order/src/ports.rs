@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::services::{
     OrderCheckoutIdentityError, OrderCheckoutIdentityJournal, RecordOrderCheckoutIdentity,
 };
-use crate::{OrderError, OrderResponse, OrderService};
+use crate::{OrderError, OrderResponse, OrderService, OrderStatusKind};
 
 /// Transport-neutral order-owner boundary for durable checkout identity.
 #[async_trait]
@@ -423,8 +423,8 @@ impl InProcessCheckoutCompletionPort {
         let mut order = self
             .load_order(tenant_id, identity.order_id, locale, fallback_locale)
             .await?;
-        match order.status.as_str() {
-            "pending" => {
+        match order.status_kind() {
+            OrderStatusKind::Pending => {
                 order = self
                     .order_service
                     .confirm_order(tenant_id, actor_id, order.id)
@@ -443,19 +443,20 @@ impl InProcessCheckoutCompletionPort {
                         .map_err(order_error_to_port_error)?;
                 }
             }
-            "confirmed" | "paid" | "shipped" | "delivered" => {}
-            "cancelled" => {
+            OrderStatusKind::Confirmed
+            | OrderStatusKind::Paid
+            | OrderStatusKind::Shipped
+            | OrderStatusKind::Delivered => {}
+            OrderStatusKind::Cancelled => {
                 return Err(PortError::conflict(
                     "order.checkout_order_cancelled",
                     "checkout order is already cancelled",
                 ));
             }
-            _ => {
-                return Err(PortError::new(
-                    rustok_api::PortErrorKind::InvariantViolation,
+            OrderStatusKind::Unknown => {
+                return Err(PortError::invariant_violation(
                     "order.checkout_order_status_invalid",
                     "checkout order has an unsupported lifecycle state",
-                    false,
                 ));
             }
         }
