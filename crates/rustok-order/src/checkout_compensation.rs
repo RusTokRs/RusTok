@@ -323,7 +323,7 @@ fn manual_reconciliation(
         tenant_id = %context.tenant_id,
         operation,
         code = "order.checkout_compensation_manual_reconciliation",
-        reason,
+        reason = %reason,
         "checkout order compensation requires manual reconciliation"
     );
     PortError::conflict(
@@ -371,7 +371,6 @@ fn order_error_to_port_error(
         }
         OrderError::InvalidTransition { .. } => {
             tracing::warn!(
-                error = ?error,
                 correlation_id = %context.correlation_id,
                 tenant_id = %context.tenant_id,
                 operation,
