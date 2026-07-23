@@ -27,6 +27,9 @@ const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs
 const orderPaymentSettlement = read(
   'crates/rustok-order/src/checkout_payment_settlement.rs',
 );
+const orderRecovery = read('crates/rustok-order/src/checkout_order_recovery.rs');
+const orderCheckoutAdapters =
+  orderCompensation + orderPaymentSettlement + orderRecovery;
 
 for (const [source, label] of [
   [channel, 'channel port'],
@@ -36,6 +39,7 @@ for (const [source, label] of [
   [payment, 'payment collection port'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
+  [orderRecovery, 'order checkout recovery adapter'],
 ]) {
   requireText(source, 'tracing::error!', label);
 }
@@ -85,9 +89,10 @@ for (const value of [
   '.map_err(order_error_to_port_error)',
   '"PortContext.tenant_id must be a UUID for order ports"',
   '"PortContext.actor.id must be a UUID for order write ports"',
+  'format!(\n                "{field} must be a lowercase hexadecimal value',
 ]) {
   forbidText(
-    orderCompensation + orderPaymentSettlement,
+    orderCheckoutAdapters,
     value,
     'order checkout adapter public error mapping',
   );
@@ -129,7 +134,7 @@ for (const [source, value, label] of [
   [orderCompensation, 'code = "order.checkout_compensation_manual_reconciliation"', 'order compensation reconciliation stable code'],
   [orderCompensation, '"checkout requires manual reconciliation"', 'order compensation stable reconciliation message'],
   [orderCompensation, '"order request context is invalid"', 'order compensation stable context message'],
-  [orderCompensation, 'order_error_to_port_error(&context, "read_checkout_order_for_compensation"', 'order compensation operation mapping'],
+  [orderCompensation, '"read_checkout_order_for_compensation"', 'order compensation operation mapping'],
   [orderPaymentSettlement, 'correlation_id = %context.correlation_id', 'order payment correlation logging'],
   [orderPaymentSettlement, 'tenant_id = %context.tenant_id', 'order payment tenant logging'],
   [orderPaymentSettlement, 'operation,', 'order payment owner operation logging'],
@@ -137,7 +142,17 @@ for (const [source, value, label] of [
   [orderPaymentSettlement, 'code = "order.checkout_payment_state_conflict"', 'order payment transition stable code'],
   [orderPaymentSettlement, '"checkout requires manual reconciliation"', 'order payment stable reconciliation message'],
   [orderPaymentSettlement, '"order request context is invalid"', 'order payment stable context message'],
-  [orderPaymentSettlement, 'order_error_to_port_error(&context, "mark_checkout_order_paid"', 'order payment operation mapping'],
+  [orderPaymentSettlement, '"mark_checkout_order_paid"', 'order payment operation mapping'],
+  [orderRecovery, 'correlation_id = %context.correlation_id', 'order recovery correlation logging'],
+  [orderRecovery, 'tenant_id = %context.tenant_id', 'order recovery tenant logging'],
+  [orderRecovery, 'operation,', 'order recovery owner operation logging'],
+  [orderRecovery, 'code = "order.checkout_request_encoding_failed"', 'order recovery encoding stable code'],
+  [orderRecovery, 'code = "order.checkout_recovery_validation"', 'order recovery validation stable code'],
+  [orderRecovery, 'code = "order.checkout_hash_invalid"', 'order recovery hash stable code'],
+  [orderRecovery, '"checkout hash evidence is invalid"', 'order recovery stable hash message'],
+  [orderRecovery, '"order request context is invalid"', 'order recovery stable context message'],
+  [orderRecovery, '"confirm_recovered_checkout_order"', 'order recovery confirm operation mapping'],
+  [orderRecovery, 'hash_json(context, "encode_checkout_snapshot_hash"', 'order recovery snapshot hash mapping'],
 ]) {
   requireText(source, value, label);
 }
