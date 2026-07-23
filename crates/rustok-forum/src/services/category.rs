@@ -15,7 +15,7 @@ use rustok_content::{
 use rustok_core::SecurityContext;
 
 use crate::dto::{CategoryListItem, CategoryResponse, CreateCategoryInput, UpdateCategoryInput};
-use crate::entities::{forum_category, forum_category_translation};
+use crate::entities::{forum_category, forum_category_lifecycle, forum_category_translation};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
@@ -307,8 +307,21 @@ impl CategoryService {
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let paginator = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id))
+        let archived_category_ids = forum_category_lifecycle::Entity::find()
+            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
+            .all(&self.db)
+            .await?
+            .into_iter()
+            .map(|lifecycle| lifecycle.category_id)
+            .collect::<Vec<_>>();
+        let query = forum_category::Entity::find()
+            .filter(forum_category::Column::TenantId.eq(tenant_id));
+        let query = if archived_category_ids.is_empty() {
+            query
+        } else {
+            query.filter(forum_category::Column::Id.is_not_in(archived_category_ids))
+        };
+        let paginator = query
             .order_by_asc(forum_category::Column::Position)
             .paginate(&self.db, per_page.max(1));
         let total = paginator.num_items().await?;
