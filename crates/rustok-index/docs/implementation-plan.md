@@ -38,7 +38,7 @@ Rules:
 ## Current status
 
 - Rewrite status: `in_progress`
-- Current milestone: `M0 - hard reset and architecture lock`
+- Current milestone: `M0/M1 - architecture lock and domain core`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
 - Structural shape: `core_transport_ui`
@@ -173,8 +173,9 @@ Goal: remove the rejected architecture and establish the new source of truth.
 
 - [x] Replace the live implementation plan with the Index Engine roadmap.
 - [x] Record the rewrite policy and target ownership in an ADR.
-- [x] Reset FBA readiness from `boundary_ready` to `in_progress`.
+- [x] Reset local FBA readiness from `boundary_ready` to `in_progress`.
 - [x] Update crate/module documentation to describe the Index Engine mission.
+- [ ] Synchronize the central module registry with the FBA readiness reset.
 - [ ] Inventory legacy files and classify each as delete, migrate, or reuse.
 - [ ] Remove incomplete source-specific query services.
 - [ ] Remove duplicate in-memory/in-process adapters.
@@ -192,11 +193,11 @@ registry updates.
 
 Goal: implement a database-independent, strongly typed engine core.
 
-- [ ] Add strong identifiers for modules, schemas, entities, fields, links,
+- [x] Add strong identifiers for modules, schemas, entities, fields, links,
   locales, and schema versions.
-- [ ] Add `IndexValue`, `IndexRecord`, and `IndexMutation`.
-- [ ] Add `IndexSchema`, field metadata, link metadata, and schema validation.
-- [ ] Add `IndexQuery`, selected field paths, filter AST, ordering, and cursor
+- [x] Add `IndexValue`, `IndexRecord`, and `IndexMutation`.
+- [x] Add `IndexSchema`, field metadata, link metadata, and schema validation.
+- [x] Add `IndexQuery`, selected field paths, filter AST, ordering, and cursor
   pagination models.
 - [ ] Add locale canonicalization.
 - [ ] Add schema hashing/versioning.
@@ -357,3 +358,7 @@ Additional gates:
 - 2026-07-23: rewrite approved; module target redefined as a generic
   cross-module relational Index Engine; destructive replacement explicitly
   allowed; M0 started; documentation/ADR/status reset initiated.
+- 2026-07-23: initial M1 domain core added with strong identifiers, typed
+  values, generic schemas and links, records, mutations, query AST, shape
+  validation, and unit tests. Legacy runtime remains connected until the hard
+  reset inventory and deletion pass.
