@@ -77,6 +77,9 @@ impl fmt::Display for SchemaFingerprint {
 
 impl IndexSchema {
     pub fn validate(&self) -> Result<(), DomainError> {
+        if self.reference.version.get() == 0 {
+            return Err(DomainError::ZeroSchemaVersion);
+        }
         if self.fields.is_empty() {
             return Err(DomainError::EmptySchema);
         }
@@ -259,6 +262,13 @@ mod tests {
                 cardinality: LinkCardinality::Many,
             }],
         }
+    }
+
+    #[test]
+    fn rejects_zero_schema_version() {
+        let mut schema = linked_schema();
+        schema.reference.version = SchemaVersion::new(0);
+        assert_eq!(schema.validate(), Err(DomainError::ZeroSchemaVersion));
     }
 
     #[test]
