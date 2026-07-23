@@ -42,7 +42,8 @@ function reject(source, pattern, message) {
 const contractPath =
   "crates/rustok-notifications/contracts/notifications-outbox-intake.json";
 const contract = JSON.parse(read(contractPath) || "{}");
-const migration = read(contract.migration ?? "");
+const receiptMigration = read(contract.receipt_migration ?? "");
+const rejectionMigration = read(contract.rejection_migration ?? "");
 const owner = read(contract.owner_driver ?? "");
 const server = read(contract.server_worker ?? "");
 const bootstrap = read(contract.bootstrap ?? "");
@@ -51,57 +52,64 @@ const library = read("crates/rustok-notifications/src/lib.rs");
 const manifest = read("crates/rustok-notifications/Cargo.toml");
 const test = read(contract.tests?.[0] ?? "");
 
-if (contract.slice !== "NOTIFY-03D") {
-  failures.push("outbox intake contract must identify NOTIFY-03D");
+if (contract.slice !== "NOTIFY-03D" || contract.schema_version !== 2) {
+  failures.push("outbox intake contract must identify hardened NOTIFY-03D schema 2");
 }
-if (contract.intake?.mutates_general_relay_state !== false) {
-  failures.push("Notifications intake must not mutate general outbox relay state");
-}
-if (contract.intake?.requires_relay_dispatched_status !== false) {
-  failures.push("Notifications intake must consume committed envelopes independently of relay delivery");
-}
-if (contract.intake?.source_inbox_and_receipt_same_transaction !== true) {
-  failures.push("source inbox and intake receipt must share one transaction");
+for (const [field, expected, message] of [
+  ["mutates_general_relay_state", false, "intake must not mutate relay state"],
+  ["requires_relay_dispatched_status", false, "intake must be relay-status independent"],
+  ["reads_producer_private_tables", false, "intake must not read producer tables"],
+  ["owner_imports_event_or_outbox_crates", false, "owner must not import event/outbox crates"],
+  ["decoder_injected_by_executable_host", true, "decoder must be host injected"],
+  ["permanent_failure_quarantined", true, "permanent failures must be quarantined"],
+  ["retryable_failure_has_no_terminal_record", true, "retryable failures must remain retryable"],
+  ["accepted_and_rejected_mutually_exclusive", true, "terminal outcomes must be exclusive"],
+]) {
+  if (contract.intake?.[field] !== expected) failures.push(message);
 }
 if (contract.runtime?.default_enabled !== false) {
   failures.push("outbox intake must remain disabled by default");
 }
-if (contract.selection?.default_batch_size !== 32) {
-  failures.push("outbox intake default batch must remain 32");
+if (contract.selection?.default_batch_size !== 32 || contract.selection?.maximum_batch_size !== 64) {
+  failures.push("outbox intake batch bounds must remain 32/64");
 }
-if (contract.selection?.maximum_batch_size !== 64) {
-  failures.push("outbox intake hard batch maximum must remain 64");
+if (contract.selection?.anti_joins_receipts !== true || contract.selection?.anti_joins_rejections !== true) {
+  failures.push("selection must exclude both terminal outcome tables");
 }
 
 for (const marker of [
   "notification_outbox_intake_receipts",
   "outbox_event_id UUID PRIMARY KEY",
   "outbox_event_id TEXT PRIMARY KEY NOT NULL",
-  "ux_notification_source_inbox_tenant_id",
   "FOREIGN KEY (tenant_id, source_inbox_id)",
   "source_revision > 0",
-  "idx_notification_outbox_intake_source",
 ]) {
-  requireText(migration, marker, `outbox intake migration is missing ${marker}`);
+  requireText(receiptMigration, marker, `receipt migration is missing ${marker}`);
+}
+for (const marker of [
+  "notification_outbox_intake_rejections",
+  "REFERENCES sys_events(id) ON DELETE CASCADE",
+  "notification_outbox_intake_receipt_terminal_guard_insert",
+  "notification_outbox_intake_rejection_terminal_guard_insert",
+  "pg_advisory_xact_lock",
+  "RAISE(ABORT",
+]) {
+  requireText(rejectionMigration, marker, `rejection migration is missing ${marker}`);
 }
 
 for (const marker of [
-  "DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 32",
-  "MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE: usize = 64",
-  "pending_outbox_event_ids",
+  "pub trait NotificationOutboxEnvelopeDecoder",
+  "NotificationOutboxEnvelopeRecord",
+  "NotificationOutboxIntakeOutcome",
   "notification_outbox_intake_receipts",
-  "not_in_subquery",
+  "notification_outbox_intake_rejections",
+  "not_in_subquery(receipts)",
+  "not_in_subquery(rejections)",
   "order_by_asc(outbox_event::Column::CreatedAt)",
-  "order_by_asc(outbox_event::Column::Id)",
-  "ContractEventEnvelope",
-  "ContractEventPayload::ForumMention",
-  "ForumMentionEvent::UserMentionAdded",
-  "DomainEvent::ForumTopicCreated { topic_id",
-  "source_event_ref(envelope.tenant_id, topic_id, FORUM_TOPIC_CREATED, 1)",
   "source_inbox::Entity::insert",
   "intake_receipt::Entity::insert",
-  "ensure_source_inbox_identity",
-  "ensure_receipt_identity",
+  "persist_rejection",
+  "error.is_retryable()",
 ]) {
   requireText(owner, marker, `Notifications outbox intake owner is missing ${marker}`);
 }
@@ -117,34 +125,27 @@ requireOrder(
 );
 reject(
   owner,
-  /rustok_forum::|forum_domain_event::|forum_topic::|forum_user_mention::/,
-  "Notifications intake must not read Forum-owned tables or services",
+  /rustok_events|rustok_outbox|rustok_forum::|forum_domain_event::|forum_topic::|forum_user_mention::/,
+  "Notifications owner must not decode platform envelopes or read producer state",
 );
 reject(
   owner,
   /SysEventStatus|outbox_event::ActiveModel|outbox_event::Entity::update|Column::Status\.eq/,
-  "Notifications intake must not gate on or mutate general relay status",
+  "Notifications intake must not gate on or mutate relay status",
 );
 
 for (const marker of [
-  "None if event.event_type() == &topic_created_type()",
-  "AggregateId.eq(event.event_id())",
-  "requested_revision != persisted.sequence_no",
-  "TOPIC_CREATED_TYPE if persisted.schema_version == 1 => 1",
-  "self.parse_user_mention(&persisted)?.source_revision_id",
-]) {
-  requireText(forumProvider, marker, `Forum source compatibility is missing ${marker}`);
-}
-
-for (const marker of [
+  "ServerNotificationOutboxEnvelopeDecoder",
+  "ContractEventEnvelope",
+  "ContractEventPayload::ForumMention",
+  "ForumMentionEvent::UserMentionAdded",
+  "DomainEvent::ForumTopicCreated { topic_id",
+  "NotificationOutboxIntakeOutcome::Accepted",
+  "NotificationOutboxIntakeOutcome::Rejected",
   "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED",
   "runs_background_workers()",
-  "NotificationOutboxIntakeWorker::new",
   "StopHandle",
-  "pending_outbox_event_ids().await",
   "if *stop_rx.borrow()",
-  "worker.process_outbox_event(outbox_event_id).await",
-  "tokio::select!",
 ]) {
   requireText(server, marker, `server outbox intake worker is missing ${marker}`);
 }
@@ -155,7 +156,7 @@ requireOrder(
     "NotificationOutboxIntakeWorker::new",
     "tokio::spawn",
   ],
-  "outbox intake must validate explicit enablement before spawn",
+  "outbox intake must validate enablement before spawn",
 );
 requireOrder(
   server,
@@ -164,7 +165,7 @@ requireOrder(
     "if *stop_rx.borrow()",
     "worker.process_outbox_event(outbox_event_id).await",
   ],
-  "shutdown must be checked before each next outbox envelope",
+  "shutdown must be checked before each envelope",
 );
 
 requireOrder(
@@ -175,32 +176,36 @@ requireOrder(
     "start_notification_candidate_worker_if_ready",
     "connect_runtime_workers_with_runtime",
   ],
-  "outbox intake must start after composition and before candidate/runtime workers",
+  "outbox intake must start after composition and before later workers",
 );
 
 for (const marker of [
-  "mod outbox_intake;",
-  "NotificationOutboxIntakeWorker",
-  "DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE",
-  "module.migrations().len(), 4",
+  "NotificationOutboxEnvelopeDecoder",
+  "NotificationOutboxIntakeOutcome",
+  "module.migrations().len(), 5",
 ]) {
   requireText(library, marker, `Notifications facade is missing ${marker}`);
 }
-for (const marker of ["rustok-events.workspace = true", "rustok-outbox.workspace = true"]) {
-  requireText(manifest, marker, `Notifications manifest is missing ${marker}`);
-}
+reject(manifest, /rustok-events|rustok-outbox|rustok-api\.workspace/, "owner manifest must remain lock-compatible and neutral");
+
 for (const marker of [
-  "committed_root_and_contract_envelopes_enter_source_inbox_once",
-  "ContractEventEnvelope::new",
-  "ForumMentionEvent::UserMentionAdded",
-  "assert_eq!(first.selected, 32)",
-  "assert_ne!(topic_outbox_event_id, topic_row.source_event_id)",
-  "assert_eq!(mention_outbox_row.status, SysEventStatus::Pending)",
-  "assert!(mention_outbox_row.dispatched_at.is_none())",
-  "assert!(replay.replayed)",
+  "accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker",
+  "assert_eq!(first.accepted, 31)",
+  "assert_eq!(first.rejected, 1)",
+  "NotificationOutboxIntakeOutcome::Rejected",
+  "retryable event remains claimable",
   "MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE + 1",
 ]) {
   requireText(test, marker, `outbox intake SQLite evidence is missing ${marker}`);
+}
+
+for (const marker of [
+  "None if event.event_type() == &topic_created_type()",
+  "AggregateId.eq(event.event_id())",
+  "requested_revision != persisted.sequence_no",
+  "TOPIC_CREATED_TYPE if persisted.schema_version == 1 => 1",
+]) {
+  requireText(forumProvider, marker, `Forum source compatibility is missing ${marker}`);
 }
 
 if (failures.length > 0) {
@@ -209,4 +214,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Notifications outbox intake boundary verified.");
+console.log("Notifications hardened outbox intake boundary verified.");
