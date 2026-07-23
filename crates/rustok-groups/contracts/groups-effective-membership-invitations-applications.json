@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "module": "groups",
   "status": "in_progress",
   "terminology": {
@@ -11,21 +11,33 @@
     "targeted_invitation": "rustok_groups::GroupTargetedInvitationService",
     "membership_application": "rustok_groups::GroupApplicationService",
     "compatibility_module_paths_preserved": true,
-    "legacy_service_visibility": "crate_private"
+    "legacy_status_only_service_visibility": "crate_private"
   },
   "effective_state_source": {
-    "resolver": "resolve_group_membership_enforcement",
+    "read_resolver": "resolve_group_membership_enforcement",
+    "write_resolver": "resolve_group_membership_enforcement_for_update",
     "clock": "groups_owner_utc_clock",
     "active_suspension": "deny_group_membership_authority_and_reentry",
     "legacy_banned": "deny_reentry",
     "expired_or_revoked": "fall_back_to_stored_group_membership_lifecycle"
   },
+  "owner_lock_protocol": {
+    "order": [
+      "group",
+      "membership",
+      "enforcement"
+    ],
+    "postgresql_mysql": "row_lock_for_update",
+    "sqlite": "group_noop_write_then_transaction_reads",
+    "authorization_and_mutation_same_transaction": true,
+    "missing_membership_serialization": "group_lock"
+  },
   "invitation_paths": {
     "list_management": "effective_active_owner_admin_moderator_or_platform_manage",
-    "create_management": "effective_active_owner_admin_moderator_or_platform_manage",
-    "revoke_management": "effective_active_owner_admin_moderator_or_platform_manage",
-    "token_acceptance": "effective_candidate_reentry_check",
-    "targeted_acceptance": "effective_candidate_reentry_check",
+    "create_management": "transactional_effective_manager_check",
+    "revoke_management": "transactional_effective_manager_check",
+    "token_acceptance": "transactional_effective_candidate_reentry_check",
+    "targeted_acceptance": "transactional_effective_candidate_reentry_check",
     "active_member_acceptance": "conflict",
     "suspended_or_legacy_banned_acceptance": "forbidden"
   },
@@ -33,36 +45,35 @@
     "secret_candidate_surface": "not_found_before_membership_specific_denial",
     "candidate_policy_read": "effective_candidate_not_suspended_or_legacy_banned",
     "candidate_current_application_read": "effective_candidate_not_suspended_or_legacy_banned",
-    "legacy_submit": "effective_candidate_reentry_check",
-    "cas_submit": "effective_candidate_reentry_check",
-    "candidate_cancel": "effective_candidate_not_suspended_or_legacy_banned",
+    "legacy_submit": "transactional_effective_candidate_reentry_check",
+    "cas_submit": "transactional_effective_candidate_reentry_check",
+    "candidate_cancel": "transactional_effective_candidate_check",
     "manager_list": "effective_active_owner_admin_moderator_or_platform_manage",
     "policy_management_read": "effective_active_owner_admin_or_platform_manage",
-    "legacy_policy_write": "effective_active_owner_admin_or_platform_manage",
-    "cas_policy_write": "effective_active_owner_admin_or_platform_manage",
-    "single_review": "effective_manager_and_candidate_checks",
-    "reopen": "effective_manager_and_candidate_checks",
-    "bulk_review": "bounded_partial_result_via_effective_single_review",
+    "legacy_policy_write": "transactional_effective_owner_admin_check",
+    "cas_policy_write": "transactional_effective_owner_admin_check",
+    "single_review": "transactional_effective_manager_and_candidate_checks",
+    "reopen": "transactional_effective_manager_and_candidate_checks",
+    "bulk_review": "bounded_partial_result_via_transactional_effective_single_review",
     "policy_history": "inherits_effective_manager_list_boundary"
   },
   "replay": {
-    "existing_receipt_checked_before_effective_precheck": true,
-    "matching_replay_or_changed_request_conflict_owner": "legacy_owner_transaction",
+    "receipt_replay_before_effective_authorization_in_owner_transaction": true,
+    "matching_replay_or_changed_request_conflict_owner": "same_owner_transaction",
+    "facade_receipt_probe_for_writes": false,
     "bulk_child_key_algorithm_preserved": "sha256_base_key_plus_application_uuid"
   },
   "transaction_boundary": {
-    "effective_facade_precheck": "before_legacy_owner_transaction",
-    "legacy_owner_transaction_still_rechecks_stored_status": true,
-    "same_transaction_effective_recheck": "open",
+    "same_transaction_effective_authorization": "implemented_source",
+    "legacy_stored_status_guard": "retained_as_secondary_invariant_where_applicable",
     "concurrent_enforcement_change_race_evidence": null,
-    "reason_not_done": "shared owner mutation and authorization path has not replaced legacy transactions"
+    "reason_not_done": "runtime concurrency evidence and shared direct enforcement mutation path remain open"
   },
   "remaining_paths": [
     "localization_management_authorization",
     "governance_role_and_ownership_authorization",
     "provider_specific_acl_adapters",
     "leave_and_member_count_suspend_restore_transitions",
-    "same_transaction_effective_recheck",
     "direct_suspend_revoke_commands",
     "moderation_subject_adapter"
   ],
