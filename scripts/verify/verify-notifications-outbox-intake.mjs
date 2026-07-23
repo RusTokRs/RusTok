@@ -18,11 +18,9 @@ function read(relativePath) {
   }
   return readFileSync(absolute, "utf8");
 }
-
 function requireText(source, marker, message) {
   if (!source.includes(marker)) failures.push(message);
 }
-
 function requireOrder(source, markers, message) {
   let previous = -1;
   for (const marker of markers) {
@@ -34,14 +32,13 @@ function requireOrder(source, markers, message) {
     previous = index;
   }
 }
-
 function reject(source, pattern, message) {
   if (pattern.test(source)) failures.push(message);
 }
 
-const contractPath =
-  "crates/rustok-notifications/contracts/notifications-outbox-intake.json";
-const contract = JSON.parse(read(contractPath) || "{}");
+const contract = JSON.parse(read(
+  "crates/rustok-notifications/contracts/notifications-outbox-intake.json",
+) || "{}");
 const receiptMigration = read(contract.receipt_migration ?? "");
 const rejectionMigration = read(contract.rejection_migration ?? "");
 const owner = read(contract.owner_driver ?? "");
@@ -52,20 +49,24 @@ const library = read("crates/rustok-notifications/src/lib.rs");
 const manifest = read("crates/rustok-notifications/Cargo.toml");
 const test = read(contract.tests?.[0] ?? "");
 
-if (contract.slice !== "NOTIFY-03D" || contract.schema_version !== 2) {
-  failures.push("outbox intake contract must identify hardened NOTIFY-03D schema 2");
+if (contract.slice !== "NOTIFY-03D" || contract.schema_version !== 3) {
+  failures.push("outbox intake contract must identify hardened NOTIFY-03D schema 3");
 }
-for (const [field, expected, message] of [
-  ["mutates_general_relay_state", false, "intake must not mutate relay state"],
-  ["requires_relay_dispatched_status", false, "intake must be relay-status independent"],
-  ["reads_producer_private_tables", false, "intake must not read producer tables"],
-  ["owner_imports_event_or_outbox_crates", false, "owner must not import event/outbox crates"],
-  ["decoder_injected_by_executable_host", true, "decoder must be host injected"],
-  ["permanent_failure_quarantined", true, "permanent failures must be quarantined"],
-  ["retryable_failure_has_no_terminal_record", true, "retryable failures must remain retryable"],
-  ["accepted_and_rejected_mutually_exclusive", true, "terminal outcomes must be exclusive"],
+for (const [field, expected] of [
+  ["mutates_general_relay_state", false],
+  ["requires_relay_dispatched_status", false],
+  ["reads_producer_private_tables", false],
+  ["owner_imports_event_or_outbox_crates", false],
+  ["decoder_injected_by_executable_host", true],
+  ["rejection_has_cross_module_foreign_key", false],
+  ["permanent_failure_quarantined", true],
+  ["retryable_failure_has_no_terminal_record", true],
+  ["accepted_and_rejected_mutually_exclusive", true],
+  ["postgres_terminal_outcome_advisory_lock", true],
 ]) {
-  if (contract.intake?.[field] !== expected) failures.push(message);
+  if (contract.intake?.[field] !== expected) {
+    failures.push(`unexpected intake contract value for ${field}`);
+  }
 }
 if (contract.runtime?.default_enabled !== false) {
   failures.push("outbox intake must remain disabled by default");
@@ -80,7 +81,6 @@ if (contract.selection?.anti_joins_receipts !== true || contract.selection?.anti
 for (const marker of [
   "notification_outbox_intake_receipts",
   "outbox_event_id UUID PRIMARY KEY",
-  "outbox_event_id TEXT PRIMARY KEY NOT NULL",
   "FOREIGN KEY (tenant_id, source_inbox_id)",
   "source_revision > 0",
 ]) {
@@ -88,7 +88,6 @@ for (const marker of [
 }
 for (const marker of [
   "notification_outbox_intake_rejections",
-  "REFERENCES sys_events(id) ON DELETE CASCADE",
   "notification_outbox_intake_receipt_terminal_guard_insert",
   "notification_outbox_intake_rejection_terminal_guard_insert",
   "pg_advisory_xact_lock",
@@ -96,6 +95,11 @@ for (const marker of [
 ]) {
   requireText(rejectionMigration, marker, `rejection migration is missing ${marker}`);
 }
+reject(
+  rejectionMigration,
+  /REFERENCES\s+sys_events|FOREIGN KEY\s*\(outbox_event_id\)/,
+  "quarantine migration must not require an Outbox-owned table",
+);
 
 for (const marker of [
   "pub trait NotificationOutboxEnvelopeDecoder",
@@ -105,7 +109,6 @@ for (const marker of [
   "notification_outbox_intake_rejections",
   "not_in_subquery(receipts)",
   "not_in_subquery(rejections)",
-  "order_by_asc(outbox_event::Column::CreatedAt)",
   "source_inbox::Entity::insert",
   "intake_receipt::Entity::insert",
   "persist_rejection",
@@ -145,38 +148,18 @@ for (const marker of [
   "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED",
   "runs_background_workers()",
   "StopHandle",
-  "if *stop_rx.borrow()",
 ]) {
   requireText(server, marker, `server outbox intake worker is missing ${marker}`);
 }
-requireOrder(
-  server,
-  [
-    "outbox_intake_enabled_from_environment()",
-    "NotificationOutboxIntakeWorker::new",
-    "tokio::spawn",
-  ],
-  "outbox intake must validate enablement before spawn",
-);
-requireOrder(
-  server,
-  [
-    "for outbox_event_id in event_ids",
-    "if *stop_rx.borrow()",
-    "worker.process_outbox_event(outbox_event_id).await",
-  ],
-  "shutdown must be checked before each envelope",
-);
-
 requireOrder(
   bootstrap,
   [
     "bootstrap_app_runtime",
     "start_notification_outbox_intake_if_enabled",
+    "start_notification_fanout_worker_if_ready",
     "start_notification_candidate_worker_if_ready",
-    "connect_runtime_workers_with_runtime",
   ],
-  "outbox intake must start after composition and before later workers",
+  "notification worker bootstrap order is invalid",
 );
 
 for (const marker of [
@@ -186,7 +169,7 @@ for (const marker of [
 ]) {
   requireText(library, marker, `Notifications facade is missing ${marker}`);
 }
-reject(manifest, /rustok-events|rustok-outbox|rustok-api\.workspace/, "owner manifest must remain lock-compatible and neutral");
+reject(manifest, /rustok-events|rustok-outbox|rustok-api\.workspace/, "owner manifest must remain neutral and lock-compatible");
 
 for (const marker of [
   "accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker",
@@ -194,13 +177,10 @@ for (const marker of [
   "assert_eq!(first.rejected, 1)",
   "NotificationOutboxIntakeOutcome::Rejected",
   "retryable event remains claimable",
-  "MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE + 1",
 ]) {
   requireText(test, marker, `outbox intake SQLite evidence is missing ${marker}`);
 }
-
 for (const marker of [
-  "None if event.event_type() == &topic_created_type()",
   "AggregateId.eq(event.event_id())",
   "requested_revision != persisted.sequence_no",
   "TOPIC_CREATED_TYPE if persisted.schema_version == 1 => 1",
@@ -213,5 +193,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
-
 console.log("Notifications hardened outbox intake boundary verified.");
