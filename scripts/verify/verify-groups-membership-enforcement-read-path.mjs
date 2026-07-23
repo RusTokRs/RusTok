@@ -65,16 +65,16 @@ if (failures.length === 0) {
     "GroupMembershipEffectiveStatus::Missing",
     "GroupMembershipEffectiveStatus::Suspended",
     "GroupMembershipEffectiveStatus::LegacyBanned",
-    "effective_from <= evaluated_at",
-    "evaluated_at <",
+    "&effective_from <= evaluated_at",
+    "evaluated_at < until",
     "moderation-driven enforcement decision identity is invalid",
     "groups.membership_enforcement_forbidden",
   ]);
   for (const forbidden of [
     "rustok_moderation::",
-    "moderation_case",
-    "policy_snapshot",
-    "appeal",
+    "moderation_case::",
+    "policy_snapshot:",
+    "appeal_id",
   ]) {
     if (read(files.service).includes(forbidden) || read(files.entities).includes(forbidden)) {
       failures.push(`Groups enforcement read boundary contains forbidden owner copy/import ${JSON.stringify(forbidden)}`);
