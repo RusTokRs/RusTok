@@ -21,7 +21,7 @@ use rustok_notifications::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, EntityTrait, PaginatorTrait,
+    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, Statement, TryGetable,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -189,18 +189,52 @@ async fn tenant_policy_deferral_removes_candidate_from_bounded_head() {
         .await
         .expect("disabled tenant candidate should receive durable backoff");
 
-    let deferred_row = fanout_item::Entity::find_by_id(deferred.item_id)
-        .one(&db)
+    let deferred_row = db
+        .query_one(Statement::from_string(
+            DbBackend::Sqlite,
+            format!(
+                "SELECT status, attempt_count, next_attempt_at, lease_owner, lease_expires_at, last_error_code FROM notification_fanout_items WHERE id = '{}'",
+                deferred.item_id
+            ),
+        ))
         .await
-        .expect("deferred candidate should load")
+        .expect("deferred candidate projection should load")
         .expect("deferred candidate should exist");
-    assert_eq!(deferred_row.status, FanoutItemStatus::RetryableError);
-    assert_eq!(deferred_row.attempt_count, 1);
-    assert!(deferred_row.next_attempt_at.is_some());
-    assert!(deferred_row.lease_owner.is_none());
-    assert!(deferred_row.lease_expires_at.is_none());
     assert_eq!(
-        deferred_row.last_error_code.as_deref(),
+        deferred_row
+            .try_get::<String>("", "status")
+            .expect("candidate status should decode"),
+        "retryable_error"
+    );
+    assert_eq!(
+        deferred_row
+            .try_get::<i32>("", "attempt_count")
+            .expect("candidate attempt count should decode"),
+        1
+    );
+    assert!(
+        deferred_row
+            .try_get::<Option<String>>("", "next_attempt_at")
+            .expect("candidate retry time should decode")
+            .is_some()
+    );
+    assert!(
+        deferred_row
+            .try_get::<Option<String>>("", "lease_owner")
+            .expect("candidate lease owner should decode")
+            .is_none()
+    );
+    assert!(
+        deferred_row
+            .try_get::<Option<String>>("", "lease_expires_at")
+            .expect("candidate lease expiry should decode")
+            .is_none()
+    );
+    assert_eq!(
+        deferred_row
+            .try_get::<Option<String>>("", "last_error_code")
+            .expect("candidate error code should decode")
+            .as_deref(),
         Some("NOTIFICATION_TENANT_CAPABILITY_DISABLED")
     );
 
