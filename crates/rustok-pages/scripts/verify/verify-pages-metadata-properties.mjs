@@ -54,6 +54,18 @@ if (
   fail("consumer metadata property contract status or ownership is invalid");
 }
 if (
+  JSON.stringify(contract.provider.identity_binding) !==
+    JSON.stringify([
+      "contribution_id",
+      "property_editor_id",
+      "provider",
+      "component_type",
+    ]) ||
+  contract.pages_consumer.provider !== "rustok.pages"
+) {
+  fail("consumer property provider identity binding is invalid");
+}
+if (
   contract.pages_consumer.legacy_form.state !== "pending_removal" ||
   contract.pages_consumer.legacy_form.component !== "PageMetadataEditor"
 ) {
@@ -68,6 +80,11 @@ for (const marker of [
   "pub struct ConsumerPropertySaveReceipt",
   "pub trait ConsumerPropertyEditorPort: Send + Sync",
   "pub struct ConsumerPropertyEditorRuntime",
+  "pub provider: String",
+  "pub component_type: String",
+  "contribution.provider != self.provider",
+  "property_editor.provider != self.provider",
+  "property_editor.component_type != self.component_type",
   "verify_contribution(",
   "registered_schema != self.schema",
   "validate_values(&snapshot.values)",
@@ -119,6 +136,7 @@ for (const marker of [
 for (const marker of [
   `PAGES_METADATA_CONTRIBUTION_ID: &str = "${contract.pages_consumer.contribution_id}"`,
   `PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "${contract.pages_consumer.property_editor_id}"`,
+  `PAGES_OWNER_PROVIDER: &str = "${contract.pages_consumer.provider}"`,
   `PAGES_METADATA_COMPONENT_TYPE: &str = "${contract.pages_consumer.component_type}"`,
   "pub fn pages_metadata_property_schema()",
   "PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT",
@@ -140,6 +158,8 @@ for (const field of contract.pages_consumer.fields) {
 
 for (const marker of [
   "pub fn pages_metadata_property_runtime(",
+  "PAGES_OWNER_PROVIDER",
+  "PAGES_METADATA_COMPONENT_TYPE",
   "impl ConsumerPropertyEditorPort for PagesMetadataPropertyPort",
   "fn load(&self) -> ConsumerPropertyLoadFuture",
   "fn save(&self, input: SaveConsumerPropertiesInput)",
