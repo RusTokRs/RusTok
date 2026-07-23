@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "slice": "NOTIFY-03B/07A",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
   "owner": "rustok-notifications",
@@ -45,7 +45,9 @@
       "tenant_restricted"
     ],
     "retryable_failure_persisted": true,
-    "production_profile_block_adapter_deferred": true
+    "production_runtime_composition_delivered": true,
+    "runtime_contract": "crates/rustok-notifications/contracts/notifications-recipient-policy-runtime.json",
+    "concrete_block_mute_providers_deferred": true
   },
   "source_authorization": {
     "authorize_target_open_before_creation": true,
@@ -77,8 +79,9 @@
     "execution_status": "not_run_by_implementation_agent"
   },
   "deferred": [
-    "production profile and block privacy adapter",
+    "concrete social-graph block and mute providers",
     "production outbox consumer runner",
+    "candidate worker startup after policy readiness",
     "channel delivery enqueue",
     "grouping policy",
     "moderator audience expansion",
