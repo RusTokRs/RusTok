@@ -36,7 +36,7 @@ use submission_aggregation::{
 };
 
 const SITEMAP_SUBMIT_TIMEOUT_SECS: u64 = 5;
-const DELIVERY_STATUS_PENDING: &str = "pending";
+const DELIVERY_STATUS_SENT: &str = "sent";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PublicOrigin(String);
@@ -362,12 +362,12 @@ impl SeoService {
             idempotency_key: Set(idempotency_key),
             source_kind: Set(Some("sitemap_job".to_string())),
             source_id: Set(Some(job_id)),
-            status: Set(DELIVERY_STATUS_PENDING.to_string()),
+            status: Set(DELIVERY_STATUS_SENT.to_string()),
             outbox_event_id: Set(Some(outbox_event_id)),
             last_error: Set(None),
             created_at: Set(occurred_at),
             updated_at: Set(occurred_at),
-            dispatched_at: Set(None),
+            dispatched_at: Set(Some(occurred_at)),
         }
         .insert(txn)
         .await?;
