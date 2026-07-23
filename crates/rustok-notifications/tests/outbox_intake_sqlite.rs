@@ -16,7 +16,7 @@ use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn dispatched_root_and_contract_envelopes_enter_source_inbox_once() {
+async fn committed_root_and_contract_envelopes_enter_source_inbox_once() {
     let db = setup().await;
     let tenant_id = Uuid::new_v4();
     insert_tenant(&db, tenant_id).await;
@@ -61,8 +61,7 @@ async fn dispatched_root_and_contract_envelopes_enter_source_inbox_once() {
     transport
         .write_contract_to_outbox(&db, mention)
         .await
-        .expect("contract envelope should persist in outbox");
-    mark_dispatched(&db, mention_outbox_event_id).await;
+        .expect("contract envelope should persist in pending outbox state");
 
     let worker = NotificationOutboxIntakeWorker::new(db.clone(), 32)
         .expect("bounded intake worker should compose");
@@ -122,6 +121,14 @@ async fn dispatched_root_and_contract_envelopes_enter_source_inbox_once() {
         .expect("mention source inbox row should exist");
     assert_eq!(mention_row.event_type, "forum.mention.user_added");
     assert_eq!(mention_row.source_revision, mention_revision);
+
+    let mention_outbox_row = outbox_event::Entity::find_by_id(mention_outbox_event_id)
+        .one(&db)
+        .await
+        .expect("mention outbox row query should succeed")
+        .expect("mention outbox row should remain available");
+    assert_eq!(mention_outbox_row.status, SysEventStatus::Pending);
+    assert!(mention_outbox_row.dispatched_at.is_none());
 
     let replay = worker
         .process_outbox_event(topic_outbox_event_id)
