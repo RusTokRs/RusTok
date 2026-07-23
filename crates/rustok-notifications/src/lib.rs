@@ -4,6 +4,7 @@ pub mod error;
 mod fanout;
 pub mod migrations;
 pub mod model;
+mod outbox_intake;
 mod recipient_policy;
 mod service;
 mod worker;
@@ -21,6 +22,11 @@ pub use candidate::{
 pub use error::{NotificationError, NotificationResult};
 pub use fanout::{
     NotificationFanoutPageResult, NotificationFanoutService, NotificationSourceInboxReceipt,
+};
+pub use outbox_intake::{
+    DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
+    NotificationOutboxIntakeBatchResult, NotificationOutboxIntakeFailure,
+    NotificationOutboxIntakeResult, NotificationOutboxIntakeWorker,
 };
 pub use recipient_policy::{
     NotificationBlockReadPort, NotificationBlockReadRuntime, NotificationMuteReadPort,
@@ -90,8 +96,8 @@ mod tests {
         let module = NotificationsModule;
         assert_eq!(module.slug(), "notifications");
         assert_eq!(module.dependencies(), &["outbox"]);
-        assert_eq!(module.migrations().len(), 3);
-        assert_eq!(module.migration_dependencies().len(), 3);
+        assert_eq!(module.migrations().len(), 4);
+        assert_eq!(module.migration_dependencies().len(), 4);
 
         let mut extensions = ModuleRuntimeExtensions::default();
         module
