@@ -33,6 +33,7 @@ const nativeCheckout = read(
 const journaledCheckout = read(
   'crates/rustok-commerce/src/services/journaled_checkout.rs',
 );
+const orderPorts = read('crates/rustok-order/src/ports.rs');
 
 for (const [source, value, label] of [
   [lib, '#[path = "storefront_checkout_runtime_mounted.rs"]', 'commerce root mounted storefront runtime'],
@@ -55,6 +56,8 @@ for (const [source, value, label] of [
   [journaledCheckout, 'Execution is fully delegated to', 'journaled compatibility-only contract'],
   [journaledCheckout, 'RecoveringStagedCheckoutService::new(staged, compensation)', 'journaled staged delegation'],
   [legacyRuntime, 'pub async fn complete_storefront_checkout(', 'retained private legacy completion source'],
+  [orderPorts, 'match order.status_kind()', 'typed checkout order lifecycle recovery'],
+  [orderPorts, 'OrderStatusKind::Unknown', 'unknown checkout order lifecycle fail-close'],
 ]) {
   requireText(source, value, label);
 }
@@ -82,6 +85,12 @@ forbidText(mountedRuntime, 'pub use legacy::*;', 'mounted wildcard legacy export
 forbidText(mountedRuntime, 'legacy::complete_storefront_checkout', 'mounted legacy completion export');
 forbidText(restCheckout, 'recovering_checkout_http_error', 'REST private staged error mapper drift');
 forbidText(restCheckout, 'staged_checkout_http_error', 'REST private checkout error mapper drift');
+forbidText(orderPorts, 'match order.status.as_str()', 'raw checkout order lifecycle matching');
+forbidText(
+  orderPorts,
+  '"confirmed" | "paid" | "shipped" | "delivered"',
+  'raw checkout order lifecycle alternatives',
+);
 
 if (failures.length > 0) {
   console.error('Commerce storefront staged checkout cutover verification failed:');
@@ -90,5 +99,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime; journaled compatibility stays on the same recovery pipeline',
+  '✔ REST, GraphQL, native, and mounted storefront checkout delegate to the shared staged runtime; journaled compatibility and order recovery use the same typed recovery policy',
 );
