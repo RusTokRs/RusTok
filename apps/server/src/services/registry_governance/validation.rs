@@ -567,6 +567,7 @@ pub(crate) fn rejected_publish_request_can_retry(
         .is_some_and(|reason| !reason.trim().starts_with("Governance rejection reason:"))
 }
 
+#[allow(dead_code)]
 pub(crate) fn deserialize_message_list(value: &serde_json::Value) -> Vec<String> {
     value
         .as_array()

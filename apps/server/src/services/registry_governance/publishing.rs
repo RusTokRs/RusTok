@@ -472,6 +472,7 @@ pub fn request_status_label(status: RegistryPublishRequestStatus) -> &'static st
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn lifecycle_governance_actions(
     latest_request: Option<&registry_publish_request::Model>,
     latest_release: Option<&registry_module_release::Model>,

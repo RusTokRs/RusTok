@@ -525,6 +525,7 @@ fn authority_actor(authority: &RegistryAuthority) -> &str {
     authority.principal.label()
 }
 
+#[allow(dead_code)]
 fn governance_event_payload(details: &serde_json::Value) -> RegistryGovernanceEventPayload {
     let warnings = details
         .get("warnings")
