@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod bounded_compat;
 mod category;
 mod category_command;
