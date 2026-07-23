@@ -2849,7 +2849,7 @@ fn validate_module_registry_docs_contract_rejects_missing_row() {
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
         docs_modules_dir.join("registry.md"),
-        "### Core-модули\n\n| Slug | Crate | Role |\n|---|---|---|\n| `auth` | `rustok-auth` | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n",
+        "### Core-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n",
     )
     .expect("temporary registry.md should be writable");
     let manifest_path = base.join("modules.toml");
@@ -2887,7 +2887,7 @@ fn validate_module_registry_docs_contract_rejects_dependency_drift() {
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
         docs_modules_dir.join("registry.md"),
-        "### Core-модули\n\n| Slug | Crate | Role |\n|---|---|---|\n| `auth` | `rustok-auth` | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | `content` | demo |\n",
+        "### Core-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | `content` | demo |\n",
     )
     .expect("temporary registry.md should be writable");
     let manifest_path = base.join("modules.toml");
@@ -2928,7 +2928,7 @@ fn validate_central_module_registry_inventory_contract_rejects_undocumented_modu
     std::fs::create_dir_all(&docs_modules_dir).expect("temporary docs/modules dir should exist");
     std::fs::write(
         docs_modules_dir.join("registry.md"),
-        "### Core-модули\n\n| Slug | Crate | Role |\n|---|---|---|\n| `auth` | `rustok-auth` | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | — | demo |\n| `ghost` | `rustok-ghost` | — | ghost |\n",
+        "### Core-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `auth` | `rustok-auth` | — | auth |\n\n### Optional-модули\n\n| Slug | Crate | Dependencies | Role |\n|---|---|---|---|\n| `demo` | `rustok-demo` | — | demo |\n| `ghost` | `rustok-ghost` | — | ghost |\n",
     )
     .expect("temporary registry.md should be writable");
     let manifest_path = base.join("modules.toml");

@@ -37,6 +37,18 @@ await build({
   sourcemap: false
 });
 
+await build({
+  entryPoints: [resolve(root, 'src/leptos-adapter.ts')],
+  outfile: resolve(temporary, 'leptos-adapter.mjs'),
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  target: ['es2022'],
+  minify: true,
+  legalComments: 'none',
+  sourcemap: false
+});
+
 const bundle = await readFile(temporaryBundle);
 const css = await readFile(resolve(root, 'src/frame/frame.css'));
 const releaseHash = createHash('sha256').update(bundle).update(css).digest('hex').slice(0, 16);
@@ -45,6 +57,7 @@ const styleName = `richtext-frame.${releaseHash}.css`;
 await writeFile(resolve(dist, scriptName), bundle);
 await writeFile(resolve(dist, styleName), css);
 await cp(resolve(temporary, 'core.mjs'), resolve(dist, 'core.mjs'));
+await cp(resolve(temporary, 'leptos-adapter.mjs'), resolve(dist, 'leptos-adapter.mjs'));
 
 const html = `<!doctype html>
 <html lang="en">

@@ -34,6 +34,7 @@ email = { crate = "rustok-email", source = "path", path = "crates/rustok-email",
 index = { crate = "rustok-index", source = "path", path = "crates/rustok-index", required = true }
 search = { crate = "rustok-search", source = "path", path = "crates/rustok-search", required = true }
 outbox = { crate = "rustok-outbox", source = "path", path = "crates/rustok-outbox", required = true }
+events = { crate = "rustok-events-module", source = "path", path = "crates/rustok-events-module", required = true, depends_on = ["outbox"] }
 tenant = { crate = "rustok-tenant", source = "path", path = "crates/rustok-tenant", required = true }
 rbac = { crate = "rustok-rbac", source = "path", path = "crates/rustok-rbac", required = true }
 
@@ -43,6 +44,8 @@ cart = { crate = "rustok-cart", source = "path", path = "crates/rustok-cart" }
 customer = { crate = "rustok-customer", source = "path", path = "crates/rustok-customer" }
 product = { crate = "rustok-product", source = "path", path = "crates/rustok-product", depends_on = ["taxonomy"] }
 profiles = { crate = "rustok-profiles", source = "path", path = "crates/rustok-profiles", depends_on = ["taxonomy"] }
+social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/rustok-social-graph" }
+groups = { crate = "rustok-groups", source = "path", path = "crates/rustok-groups" }
 region = { crate = "rustok-region", source = "path", path = "crates/rustok-region" }
 pricing = { crate = "rustok-pricing", source = "path", path = "crates/rustok-pricing", depends_on = ["product"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/rustok-inventory", depends_on = ["product"] }
@@ -52,11 +55,18 @@ fulfillment = { crate = "rustok-fulfillment", source = "path", path = "crates/ru
 commerce = { crate = "rustok-commerce", source = "path", path = "crates/rustok-commerce", depends_on = ["cart", "customer", "product", "region", "pricing", "inventory", "order", "payment", "fulfillment"] }
 marketplace_seller = { crate = "rustok-marketplace-seller", source = "path", path = "crates/rustok-marketplace-seller" }
 marketplace_listing = { crate = "rustok-marketplace-listing", source = "path", path = "crates/rustok-marketplace-listing", depends_on = ["marketplace_seller", "product"] }
-marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing"] }
+marketplace_allocation = { crate = "rustok-marketplace-allocation", source = "path", path = "crates/rustok-marketplace-allocation", depends_on = ["order", "marketplace_seller", "marketplace_listing"] }
+marketplace_commission = { crate = "rustok-marketplace-commission", source = "path", path = "crates/rustok-marketplace-commission", depends_on = ["marketplace_allocation"] }
+marketplace_ledger = { crate = "rustok-marketplace-ledger", source = "path", path = "crates/rustok-marketplace-ledger", depends_on = ["marketplace_commission"] }
+marketplace_payout = { crate = "rustok-marketplace-payout", source = "path", path = "crates/rustok-marketplace-payout", depends_on = ["marketplace_ledger"] }
+marketplace = { crate = "rustok-marketplace", source = "path", path = "crates/rustok-marketplace", depends_on = ["marketplace_seller", "marketplace_listing", "marketplace_allocation", "marketplace_commission", "marketplace_ledger", "marketplace_payout"] }
+moderation = { crate = "rustok-moderation", source = "path", path = "crates/rustok-moderation" }
 blog = { crate = "rustok-blog", source = "path", path = "crates/rustok-blog", depends_on = ["content", "comments", "taxonomy"] }
 forum = { crate = "rustok-forum", source = "path", path = "crates/rustok-forum", depends_on = ["content", "taxonomy", "page_builder"] }
+notifications = { crate = "rustok-notifications", source = "path", path = "crates/rustok-notifications", depends_on = ["outbox"] }
 comments = { crate = "rustok-comments", source = "path", path = "crates/rustok-comments" }
 pages = { crate = "rustok-pages", source = "path", path = "crates/rustok-pages", depends_on = ["content", "page_builder"] }
+navigation = { crate = "rustok-navigation", source = "path", path = "crates/rustok-navigation", depends_on = ["channel"] }
 page_builder = { crate = "rustok-page-builder", source = "path", path = "crates/rustok-page-builder" }
 taxonomy = { crate = "rustok-taxonomy", source = "path", path = "crates/rustok-taxonomy", depends_on = ["content"] }
 media = { crate = "rustok-media", source = "path", path = "crates/rustok-media" }
@@ -67,6 +77,7 @@ flex = { crate = "flex", source = "path", path = "crates/flex" }
 
 # Capability extensions are deployment-scoped and globally active when compiled.
 ai = { crate = "rustok-ai", source = "path", path = "crates/rustok-ai", runtime = "extension" }
+iggy_connector = { crate = "rustok-iggy-connector", source = "path", path = "crates/rustok-iggy-connector", runtime = "extension" }
 
 [settings]
-default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "page_builder"]
+default_enabled = ["content", "cart", "customer", "product", "taxonomy", "region", "pricing", "inventory", "order", "payment", "fulfillment", "commerce", "pages", "navigation", "page_builder"]

@@ -137,7 +137,7 @@ fn load_registry_docs_rows(path: &Path) -> Result<HashMap<String, RegistryDocsRo
             .map(|column| column.trim())
             .collect::<Vec<_>>();
         let minimum_columns = match active_section {
-            RegistryDocsSection::Core => 3,
+            RegistryDocsSection::Core => 4,
             RegistryDocsSection::Optional => 4,
         };
         if columns.len() < minimum_columns {
@@ -151,8 +151,9 @@ fn load_registry_docs_rows(path: &Path) -> Result<HashMap<String, RegistryDocsRo
         }
 
         let dependencies = match active_section {
-            RegistryDocsSection::Core => HashSet::new(),
-            RegistryDocsSection::Optional => extract_backtick_tokens(columns[2]),
+            RegistryDocsSection::Core | RegistryDocsSection::Optional => {
+                extract_backtick_tokens(columns[2])
+            }
         };
 
         if rows

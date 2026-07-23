@@ -1,4 +1,5 @@
 import { graphqlRequest } from '@/lib/graphql';
+import type { RichTextDocument } from '@rustok/richtext';
 
 // ---------- GqlOpts ----------
 
@@ -28,8 +29,11 @@ export interface PostResponse {
   title: string;
   slug: string | null;
   excerpt: string | null;
-  body: string | null;
-  contentJson?: Record<string, unknown> | null;
+  content?: {
+    document: RichTextDocument;
+    html: string;
+  } | null;
+  contentPlainText?: string | null;
   status: BlogPostStatus;
   authorId: string | null;
   createdAt: string;
@@ -56,9 +60,7 @@ export interface PostListQuery {
 export interface CreatePostInput {
   locale: string;
   title: string;
-  body: string;
-  bodyFormat?: 'markdown' | 'rt_json_v1';
-  contentJson?: Record<string, unknown>;
+  content?: RichTextDocument;
   excerpt?: string;
   slug?: string;
   publish: boolean;
@@ -72,9 +74,7 @@ export interface CreatePostInput {
 export interface UpdatePostInput {
   locale?: string;
   title?: string;
-  body?: string;
-  bodyFormat?: 'markdown' | 'rt_json_v1';
-  contentJson?: Record<string, unknown>;
+  content?: RichTextDocument;
   excerpt?: string;
   slug?: string;
   status?: BlogPostStatus;
@@ -112,8 +112,11 @@ query Post($tenantId: UUID!, $id: UUID!) {
     title
     slug
     excerpt
-    body
-    contentJson
+    content {
+      document
+      html
+    }
+    contentPlainText
     status
     authorId
     createdAt
@@ -225,10 +228,6 @@ export async function getPost(
   return data.post;
 }
 
-/**
- * Example (markdown): { bodyFormat: "markdown", body: "# Title" }
- * Example (rich): { bodyFormat: "rt_json_v1", contentJson: { version: "rt_json_v1", locale: "en", doc: { type: "doc", content: [] } }, body: "" }
- */
 export async function createPost(
   input: CreatePostInput,
   opts: GqlOpts = {}
@@ -245,10 +244,6 @@ export async function createPost(
   return data.createPost;
 }
 
-/**
- * Example (markdown): { bodyFormat: "markdown", body: "Updated markdown" }
- * Example (rich): { bodyFormat: "rt_json_v1", contentJson: { version: "rt_json_v1", locale: "en", doc: { type: "doc", content: [] } } }
- */
 export async function updatePost(
   id: string,
   input: UpdatePostInput,

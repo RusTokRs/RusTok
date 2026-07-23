@@ -3,93 +3,58 @@
 import {
   FormInput,
   FormTextarea,
-  FormSwitch,
-  FormSelect
+  FormSwitch
 } from '@/shared/ui/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Form } from '@/shared/ui/shadcn/form';
+import {
+  emptyRichTextDocument,
+  getRichTextProfile,
+  validateRichTextDocument,
+  type RichTextDocument
+} from '@rustok/richtext';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, type Resolver } from 'react-hook-form';
 import { toast } from 'sonner';
 import * as z from 'zod';
 import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 import { RichTextEditor } from './rich-text-editor';
-import {
-  extractRtDoc,
-  markdownToRtDoc,
-  normalizeRtJsonPayload,
-  stringifyRtDoc,
-  type RtDoc
-} from './rt-json-format';
 
-const formSchema = z
-  .object({
-    title: z.string().min(2, 'Title must be at least 2 characters.'),
-    slug: z.string().optional(),
-    locale: z.string().min(2),
-    bodyFormat: z.enum(['markdown', 'rt_json_v1']).default('rt_json_v1'),
-    body: z.string().default(''),
-    contentJson: z.string().optional(),
-    excerpt: z.string().optional(),
-    tags: z.string().optional(),
-    featuredImageUrl: z.string().url().optional().or(z.literal('')),
-    seoTitle: z.string().optional(),
-    seoDescription: z.string().optional(),
-    publish: z.boolean().default(false)
-  })
-  .superRefine((values, ctx) => {
-    if (values.bodyFormat === 'markdown' && !values.body.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['body'],
-        message: 'Body is required for markdown format.'
-      });
-    }
-    if (values.bodyFormat === 'rt_json_v1' && !values.contentJson?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['contentJson'],
-        message: 'content_json is required for rt_json_v1 format.'
-      });
-    }
-    if (values.bodyFormat === 'rt_json_v1' && values.contentJson?.trim()) {
-      try {
-        JSON.parse(values.contentJson);
-      } catch {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['contentJson'],
-          message: 'content_json must be valid JSON.'
-        });
-      }
-    }
-  });
+const formSchema = z.object({
+  title: z.string().min(2, 'Title must be at least 2 characters.'),
+  slug: z.string().optional(),
+  locale: z.string().min(2),
+  excerpt: z.string().optional(),
+  tags: z.string().optional(),
+  featuredImageUrl: z.string().url().optional().or(z.literal('')),
+  seoTitle: z.string().optional(),
+  seoDescription: z.string().optional(),
+  publish: z.boolean().default(false)
+});
 
 type FormValues = z.infer<typeof formSchema>;
 
-function resolveInitialDoc(
-  initialData: PostResponse | null,
-  locale: string
-): RtDoc {
-  if (initialData?.contentJson) {
-    try {
-      return extractRtDoc(initialData.contentJson, locale);
-    } catch {
-      // fallthrough to markdown
+function resolveInitialDoc(initialData: PostResponse | null): RichTextDocument {
+  return initialData?.content?.document ?? emptyRichTextDocument();
+}
+
+function documentHasText(document: RichTextDocument): boolean {
+  const stack = [...document.content];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node?.text?.trim()) {
+      return true;
+    }
+    if (node?.content) {
+      stack.push(...node.content);
     }
   }
-
-  if (initialData?.body?.trim()) {
-    return markdownToRtDoc(initialData.body);
-  }
-
-  return { type: 'doc', content: [] };
+  return false;
 }
 
 export default function PostForm({
@@ -105,31 +70,15 @@ export default function PostForm({
   const hostLocale = useLocale();
   const defaultLocale = hostLocale;
   const initialDoc = useMemo(
-    () => resolveInitialDoc(initialData, defaultLocale),
-    [defaultLocale, initialData]
+    () => resolveInitialDoc(initialData),
+    [initialData]
   );
-  const [rtDoc, setRtDoc] = useState<RtDoc>(initialDoc);
-  const [migrationWarnings, setMigrationWarnings] = useState<string[]>(
-    initialData?.body?.trim() && !initialData?.contentJson
-      ? [
-          'Markdown content detected. Convert it to rt_json_v1 for rich editor features.'
-        ]
-      : []
-  );
+  const [content, setContent] = useState<RichTextDocument>(initialDoc);
 
   const defaultValues: FormValues = {
     title: initialData?.title ?? '',
     slug: initialData?.slug ?? '',
     locale: defaultLocale,
-    bodyFormat: initialData
-      ? initialData.contentJson
-        ? 'rt_json_v1'
-        : 'markdown'
-      : 'rt_json_v1',
-    body: initialData?.body ?? '',
-    contentJson: initialData?.contentJson
-      ? stringifyRtDoc(initialDoc, defaultLocale)
-      : '',
     excerpt: initialData?.excerpt ?? '',
     tags: initialData?.tags?.join(', ') ?? '',
     featuredImageUrl: initialData?.featuredImageUrl ?? '',
@@ -143,41 +92,6 @@ export default function PostForm({
     defaultValues
   });
 
-  const watchedLocale = form.watch('locale');
-  const watchedBodyFormat = form.watch('bodyFormat');
-
-  useEffect(() => {
-    if (watchedBodyFormat !== 'rt_json_v1') {
-      return;
-    }
-
-    const locale = watchedLocale?.trim() || defaultLocale;
-    form.setValue('contentJson', stringifyRtDoc(rtDoc, locale), {
-      shouldDirty: true,
-      shouldValidate: true
-    });
-  }, [defaultLocale, form, rtDoc, watchedBodyFormat, watchedLocale]);
-
-  function convertMarkdownToRtJson() {
-    const markdown = form.getValues('body');
-    const locale = form.getValues('locale')?.trim() || defaultLocale;
-    if (!markdown.trim()) {
-      toast.error('Markdown body is empty.');
-      return;
-    }
-    const converted = markdownToRtDoc(markdown);
-    setRtDoc(converted);
-    form.setValue('contentJson', stringifyRtDoc(converted, locale), {
-      shouldValidate: true
-    });
-    form.setValue('bodyFormat', 'rt_json_v1', { shouldValidate: true });
-    const warnings = markdown.includes('```')
-      ? ['Code blocks were migrated as plain text paragraphs.']
-      : [];
-    setMigrationWarnings(warnings);
-    toast.success('Markdown converted to rt_json_v1 editor document.');
-  }
-
   async function onSubmit(values: FormValues) {
     const tags = values.tags
       ? values.tags
@@ -186,13 +100,14 @@ export default function PostForm({
           .filter(Boolean)
       : [];
 
-    const contentJson =
-      values.bodyFormat === 'rt_json_v1'
-        ? normalizeRtJsonPayload(
-            values.contentJson || stringifyRtDoc(rtDoc, values.locale),
-            values.locale
-          )
-        : undefined;
+    const validation = validateRichTextDocument(
+      content,
+      getRichTextProfile('article')
+    );
+    if (!validation.valid || !documentHasText(content)) {
+      toast.error(validation.error ?? 'Post content is required.');
+      return;
+    }
 
     try {
       if (initialData) {
@@ -202,9 +117,7 @@ export default function PostForm({
             title: values.title,
             slug: values.slug || undefined,
             locale: values.locale,
-            body: values.body,
-            bodyFormat: values.bodyFormat,
-            contentJson,
+            content,
             excerpt: values.excerpt || undefined,
             tags,
             featuredImageUrl: values.featuredImageUrl || undefined,
@@ -220,9 +133,7 @@ export default function PostForm({
             title: values.title,
             slug: values.slug || undefined,
             locale: values.locale,
-            body: values.body,
-            bodyFormat: values.bodyFormat,
-            contentJson,
+            content,
             excerpt: values.excerpt || undefined,
             publish: values.publish,
             tags,
@@ -286,67 +197,11 @@ export default function PostForm({
             />
           </div>
 
-          <FormSelect
-            control={form.control}
-            name='bodyFormat'
-            label='Body format'
-            options={[
-              { label: 'Markdown', value: 'markdown' },
-              { label: 'RT JSON v1 (rich editor)', value: 'rt_json_v1' }
-            ]}
+          <RichTextEditor
+            label='Content'
+            value={content}
+            onChange={setContent}
           />
-
-          {watchedBodyFormat === 'markdown' ? (
-            <>
-              <FormTextarea
-                control={form.control}
-                name='body'
-                label='Body'
-                placeholder='Write your post content...'
-                required
-                config={{ rows: 12 }}
-              />
-              <Button
-                type='button'
-                variant='outline'
-                onClick={convertMarkdownToRtJson}
-              >
-                Convert markdown to rt_json_v1
-              </Button>
-            </>
-          ) : (
-            <RichTextEditor
-              label='Body (rt_json_v1)'
-              value={rtDoc}
-              onChange={(doc) => {
-                const locale =
-                  form.getValues('locale')?.trim() || defaultLocale;
-                setRtDoc(doc);
-                form.setValue('contentJson', stringifyRtDoc(doc, locale), {
-                  shouldValidate: true
-                });
-              }}
-            />
-          )}
-
-          {migrationWarnings.length > 0 && (
-            <Alert>
-              <AlertTitle>Content format notice</AlertTitle>
-              <AlertDescription>
-                <ul className='list-disc pl-4'>
-                  {migrationWarnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {watchedBodyFormat === 'rt_json_v1' && (
-            <pre className='bg-muted max-h-52 overflow-auto rounded-md border p-3 text-xs'>
-              {form.watch('contentJson')}
-            </pre>
-          )}
 
           <FormTextarea
             control={form.control}

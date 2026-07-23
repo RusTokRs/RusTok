@@ -1,4 +1,4 @@
-use rustok_api::{WritePathIssue, WritePathIssueKind};
+use rustok_api::{RichTextDocument, RichTextNode, WritePathIssue, WritePathIssueKind};
 pub use rustok_ui_core::normalize_ui_text as optional_text;
 use rustok_ui_core::{
     AdminQueryKey, UiRouteQueryIntent, parse_ui_csv, ui_busy_key, ui_busy_key_last_segment_matches,
@@ -259,14 +259,13 @@ pub fn locale_arg(locale: &str) -> Option<String> {
     Some(locale.to_string())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlogPostFormInput<'a> {
     pub locale: &'a str,
     pub title: &'a str,
     pub slug: &'a str,
     pub excerpt: &'a str,
-    pub body: &'a str,
-    pub body_format: &'a str,
+    pub content: &'a RichTextDocument,
     pub publish: bool,
     pub tags: &'a str,
 }
@@ -277,22 +276,20 @@ pub fn build_blog_post_draft(input: BlogPostFormInput<'_>) -> BlogPostDraft {
         title: trimmed_text(input.title),
         slug: trimmed_text(input.slug),
         excerpt: trimmed_text(input.excerpt),
-        body: trimmed_text(input.body),
-        body_format: input.body_format.to_string(),
+        content: input.content.clone(),
         publish: input.publish,
         tags: parse_tags(input.tags),
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlogPostEditorFormState {
     pub editing_post_id: Option<String>,
     pub title: String,
     pub slug: String,
     pub excerpt: String,
-    pub body: String,
+    pub content: RichTextDocument,
     pub locale: String,
-    pub body_format: String,
     pub tags_input: String,
     pub publish_now: bool,
 }
@@ -304,9 +301,8 @@ impl BlogPostEditorFormState {
             title: String::new(),
             slug: String::new(),
             excerpt: String::new(),
-            body: String::new(),
+            content: RichTextDocument::empty(),
             locale: default_locale.to_string(),
-            body_format: "markdown".to_string(),
             tags_input: String::new(),
             publish_now: false,
         }
@@ -318,17 +314,29 @@ impl BlogPostEditorFormState {
             title: post.title.clone(),
             slug: optional_text_or_default(post.slug.clone()),
             excerpt: optional_text_or_default(post.excerpt.clone()),
-            body: optional_text_or_default(post.body.clone()),
+            content: post
+                .content
+                .as_ref()
+                .map(|view| view.document.clone())
+                .unwrap_or_default(),
             locale: post.requested_locale.clone(),
-            body_format: post.body_format.clone(),
             tags_input: tags_input_value(post.tags.as_slice()),
             publish_now: is_published_status(post.status.as_str()),
         }
     }
 }
 
-pub fn has_required_draft_fields(title: &str, body: &str) -> bool {
-    !title.is_empty() && !body.is_empty()
+pub fn has_required_draft_fields(title: &str, content: &RichTextDocument) -> bool {
+    !title.is_empty() && document_has_text(content)
+}
+
+fn document_has_text(document: &RichTextDocument) -> bool {
+    fn node_has_text(node: &RichTextNode) -> bool {
+        node.text.as_deref().is_some_and(|text| !text.trim().is_empty())
+            || node.content.iter().any(node_has_text)
+    }
+
+    document.content.iter().any(node_has_text)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -349,7 +357,7 @@ pub fn prepare_blog_post_save_command(
     draft: BlogPostDraft,
     required_fields_message: String,
 ) -> Result<BlogPostSaveCommand, WritePathIssue> {
-    if !has_required_draft_fields(draft.title.as_str(), draft.body.as_str()) {
+    if !has_required_draft_fields(draft.title.as_str(), &draft.content) {
         return Err(WritePathIssue::new(required_fields_message));
     }
 
@@ -574,9 +582,8 @@ pub struct BlogPostAdminEditorFormCopyViewModel {
     pub title_label: String,
     pub slug_label: String,
     pub locale_label: String,
-    pub body_format_label: String,
     pub excerpt_label: String,
-    pub body_label: String,
+    pub content_label: String,
     pub tags_label: String,
     pub tags_placeholder: String,
     pub publish_now_label: String,
@@ -588,9 +595,8 @@ pub struct BlogPostAdminEditorFormCopyLabels {
     pub title_label: String,
     pub slug_label: String,
     pub locale_label: String,
-    pub body_format_label: String,
     pub excerpt_label: String,
-    pub body_label: String,
+    pub content_label: String,
     pub tags_label: String,
     pub tags_placeholder: String,
     pub publish_now_label: String,
@@ -604,9 +610,8 @@ pub fn blog_post_admin_editor_form_copy_view(
         title_label: labels.title_label,
         slug_label: labels.slug_label,
         locale_label: labels.locale_label,
-        body_format_label: labels.body_format_label,
         excerpt_label: labels.excerpt_label,
-        body_label: labels.body_label,
+        content_label: labels.content_label,
         tags_label: labels.tags_label,
         tags_placeholder: labels.tags_placeholder,
         publish_now_label: labels.publish_now_label,
@@ -785,33 +790,6 @@ pub fn blog_post_admin_edit_banner_view(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlogPostAdminRawBodyWarningViewModel {
-    pub visible: bool,
-    pub class: &'static str,
-    pub message: String,
-}
-
-pub fn raw_body_warning_class(visible: bool) -> &'static str {
-    if visible {
-        "rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-    } else {
-        "hidden"
-    }
-}
-
-pub fn blog_post_admin_raw_body_warning_view(
-    body_format: &str,
-    warning_message: String,
-) -> BlogPostAdminRawBodyWarningViewModel {
-    let visible = should_show_raw_body_warning(body_format);
-    BlogPostAdminRawBodyWarningViewModel {
-        visible,
-        class: raw_body_warning_class(visible),
-        message: warning_message,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlogPostAdminPostsLoadViewModel {
     Loaded {
         items: Vec<BlogPostListItem>,
@@ -847,69 +825,6 @@ pub fn blog_post_admin_posts_load_view_from_list(
         contract_unavailable,
         error_context,
     )
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlogPostAdminBodyFormatOptionViewModel {
-    pub value: String,
-    pub label: String,
-    pub selected: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlogPostAdminBodyFormatSelectViewModel {
-    pub options: Vec<BlogPostAdminBodyFormatOptionViewModel>,
-}
-
-pub fn supported_blog_post_body_formats() -> &'static [&'static str] {
-    &["markdown", "rt_json_v1"]
-}
-
-pub fn normalize_blog_post_body_format(value: &str) -> String {
-    supported_blog_post_body_formats()
-        .iter()
-        .copied()
-        .find(|format| value.trim().eq_ignore_ascii_case(format))
-        .unwrap_or("markdown")
-        .to_string()
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlogPostAdminBodyFormatChangeViewModel {
-    pub body_format: String,
-}
-
-pub fn blog_post_admin_body_format_change_view(
-    selected_format: String,
-) -> BlogPostAdminBodyFormatChangeViewModel {
-    BlogPostAdminBodyFormatChangeViewModel {
-        body_format: normalize_blog_post_body_format(selected_format.as_str()),
-    }
-}
-
-pub fn blog_post_admin_body_format_select_view(
-    selected_format: &str,
-) -> BlogPostAdminBodyFormatSelectViewModel {
-    let selected_format = normalize_blog_post_body_format(selected_format);
-    BlogPostAdminBodyFormatSelectViewModel {
-        options: supported_blog_post_body_formats()
-            .iter()
-            .copied()
-            .map(|format| BlogPostAdminBodyFormatOptionViewModel {
-                value: format.to_string(),
-                label: format.to_string(),
-                selected: selected_format.eq(format),
-            })
-            .collect(),
-    }
-}
-
-pub fn is_markdown_format(value: &str) -> bool {
-    value.trim().eq_ignore_ascii_case("markdown")
-}
-
-pub fn should_show_raw_body_warning(body_format: &str) -> bool {
-    !is_markdown_format(body_format)
 }
 
 pub fn issue_banner_class(kind: WritePathIssueKind) -> &'static str {

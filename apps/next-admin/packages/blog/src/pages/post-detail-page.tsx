@@ -59,7 +59,12 @@ export default async function PostDetailPage({
         {post.excerpt && (
           <p className='text-muted-foreground italic'>{post.excerpt}</p>
         )}
-        <div className='prose max-w-none whitespace-pre-wrap'>{post.body}</div>
+        {post.content?.html && (
+          <div
+            className='prose max-w-none'
+            dangerouslySetInnerHTML={{ __html: post.content.html }}
+          />
+        )}
         {post.tags.length > 0 && (
           <div className='flex flex-wrap gap-2'>
             {post.tags.map((tag) => (

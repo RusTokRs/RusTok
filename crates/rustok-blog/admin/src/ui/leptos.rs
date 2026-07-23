@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
-use rustok_api::WritePathIssue;
+use rustok_api::{RichTextDocument, WritePathIssue};
 use rustok_seo_admin_support::SeoEntityPanel;
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
@@ -11,6 +11,7 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use crate::i18n::t;
 use crate::model::{BlogPostDetail, BlogPostListItem};
 use crate::{core, transport};
+use super::richtext::BlogRichTextEditor;
 
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
@@ -45,20 +46,14 @@ pub fn BlogAdmin() -> impl IntoView {
         "blog.form.createNewInstead",
         "Create new instead",
     );
-    let form_raw_warning = t(
-        ui_locale.as_deref(),
-        "blog.form.rawWarning",
-        "This exemplar edits non-markdown content as raw serialized payload through the same GraphQL contract.",
-    );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (editing_post_id, set_editing_post_id) = signal(Option::<String>::None);
     let (title, set_title) = signal(String::new());
     let (slug, set_slug) = signal(String::new());
     let (excerpt, set_excerpt) = signal(String::new());
-    let (body, set_body) = signal(String::new());
+    let (content, set_content) = signal(RichTextDocument::empty());
     let (locale, set_locale) = signal(default_locale.clone());
-    let (body_format, set_body_format) = signal("markdown".to_string());
     let (tags_input, set_tags_input) = signal(String::new());
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
@@ -71,9 +66,8 @@ pub fn BlogAdmin() -> impl IntoView {
                 set_title,
                 set_slug,
                 set_excerpt,
-                set_body,
+                set_content,
                 set_locale,
-                set_body_format,
                 set_tags_input,
                 set_publish_now,
                 default_locale.as_str(),
@@ -93,16 +87,6 @@ pub fn BlogAdmin() -> impl IntoView {
             .as_str(),
             editing_banner_create_new_label.clone(),
         )
-    });
-    let raw_body_warning_msg = form_raw_warning.clone();
-    let raw_body_warning_view = Memo::new(move |_| {
-        core::blog_post_admin_raw_body_warning_view(
-            body_format.get().as_str(),
-            raw_body_warning_msg.clone(),
-        )
-    });
-    let body_format_select_view = Memo::new(move |_| {
-        core::blog_post_admin_body_format_select_view(body_format.get().as_str())
     });
     let issue_banner_view =
         Memo::new(move |_| core::blog_post_admin_issue_banner_view(submit_error.get().as_ref()));
@@ -175,9 +159,8 @@ pub fn BlogAdmin() -> impl IntoView {
                                     set_title,
                                     set_slug,
                                     set_excerpt,
-                                    set_body,
+                                    set_content,
                                     set_locale,
-                                    set_body_format,
                                     set_tags_input,
                                     set_publish_now,
                                     &post,
@@ -236,16 +219,14 @@ pub fn BlogAdmin() -> impl IntoView {
         let title_value = title.get_untracked();
         let slug_value = slug.get_untracked();
         let excerpt_value = excerpt.get_untracked();
-        let body_value = body.get_untracked();
-        let body_format_value = body_format.get_untracked();
+        let content_value = content.get_untracked();
         let tags_value = tags_input.get_untracked();
         let draft = core::build_blog_post_draft(core::BlogPostFormInput {
             locale: &locale_value,
             title: &title_value,
             slug: &slug_value,
             excerpt: &excerpt_value,
-            body: &body_value,
-            body_format: &body_format_value,
+            content: &content_value,
             publish: publish_now.get_untracked(),
             tags: &tags_value,
         });
@@ -253,7 +234,7 @@ pub fn BlogAdmin() -> impl IntoView {
         let required_fields_message = t(
             submit_ui_locale.as_deref(),
             "blog.error.requiredFields",
-            "Title and body are required to save a blog post.",
+            "Title and content are required to save a blog post.",
         );
         let command = match core::prepare_blog_post_save_command(
             editing_post_id.get_untracked(),
@@ -290,9 +271,8 @@ pub fn BlogAdmin() -> impl IntoView {
                             set_title,
                             set_slug,
                             set_excerpt,
-                            set_body,
+                            set_content,
                             set_locale,
-                            set_body_format,
                             set_tags_input,
                             set_publish_now,
                             &post,
@@ -366,9 +346,8 @@ pub fn BlogAdmin() -> impl IntoView {
                                 set_title,
                                 set_slug,
                                 set_excerpt,
-                                set_body,
+                                set_content,
                                 set_locale,
-                                set_body_format,
                                 set_tags_input,
                                 set_publish_now,
                                 &post,
@@ -424,10 +403,9 @@ pub fn BlogAdmin() -> impl IntoView {
                             set_title,
                             set_slug,
                             set_excerpt,
-                            set_body,
-                            set_locale,
-                            set_body_format,
-                            set_tags_input,
+                        set_content,
+                        set_locale,
+                        set_tags_input,
                             set_publish_now,
                             &post,
                         );
@@ -675,7 +653,7 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
-                            <div class="grid gap-4 md:grid-cols-2">
+                            <div class="grid gap-4">
                                 <label class=shell_classes.locale_filter_label>
                                     <span class=form_field_classes.label_text>
                                         {form_copy_view.locale_label.clone()}
@@ -688,35 +666,6 @@ pub fn BlogAdmin() -> impl IntoView {
                                     />
                                 </label>
 
-                                <label class=shell_classes.locale_filter_label>
-                                    <span class=form_field_classes.label_text>
-                                        {form_copy_view.body_format_label.clone()}
-                                    </span>
-                                    <select
-                                        class=form_field_classes.text_input
-                                        prop:value=body_format
-                                        on:change=move |ev| {
-                                            let body_format_change =
-                                                core::blog_post_admin_body_format_change_view(
-                                                    event_target_value(&ev),
-                                                );
-                                            set_body_format.set(body_format_change.body_format);
-                                        }
-                                    >
-                                        {move || {
-                                            body_format_select_view
-                                                .get()
-                                                .options
-                                                .into_iter()
-                                                .map(|option| view! {
-                                                    <option value=option.value.clone() selected=option.selected>
-                                                        {option.label}
-                                                    </option>
-                                                })
-                                                .collect_view()
-                                        }}
-                                    </select>
-                                </label>
                             </div>
 
                             <label class=shell_classes.locale_filter_label>
@@ -730,22 +679,11 @@ pub fn BlogAdmin() -> impl IntoView {
                                 />
                             </label>
 
-                            <label class=shell_classes.locale_filter_label>
-                                <span class=form_field_classes.label_text>
-                                    {form_copy_view.body_label.clone()}
-                                </span>
-                                <textarea
-                                    class=form_field_classes.textarea_long
-                                    prop:value=body
-                                    on:input=move |ev| set_body.set(event_target_value(&ev))
-                                />
-                            </label>
-
-                            <Show when=move || raw_body_warning_view.get().visible>
-                                <div class=move || raw_body_warning_view.get().class>
-                                    {move || raw_body_warning_view.get().message}
-                                </div>
-                            </Show>
+                            <BlogRichTextEditor
+                                document=content
+                                set_document=set_content
+                                label=form_copy_view.content_label.clone()
+                            />
 
                             <label class=shell_classes.locale_filter_label>
                                 <span class=form_field_classes.label_text>
@@ -849,9 +787,8 @@ fn blog_form_copy_view_model(locale: Option<&str>) -> core::BlogPostAdminEditorF
         title_label: t(locale, "blog.form.title", "Title"),
         slug_label: t(locale, "blog.form.slug", "Slug"),
         locale_label: t(locale, "blog.form.locale", "Locale"),
-        body_format_label: t(locale, "blog.form.bodyFormat", "Body format"),
         excerpt_label: t(locale, "blog.form.excerpt", "Excerpt"),
-        body_label: t(locale, "blog.form.body", "Body"),
+        content_label: t(locale, "blog.form.content", "Content"),
         tags_label: t(locale, "blog.form.tags", "Tags"),
         tags_placeholder: t(locale, "blog.form.tagsPlaceholder", "news, launch, release"),
         publish_now_label: t(locale, "blog.form.publishNow", "Publish immediately"),
@@ -1053,9 +990,8 @@ fn apply_post_to_form(
     set_title: WriteSignal<String>,
     set_slug: WriteSignal<String>,
     set_excerpt: WriteSignal<String>,
-    set_body: WriteSignal<String>,
+    set_content: WriteSignal<RichTextDocument>,
     set_locale: WriteSignal<String>,
-    set_body_format: WriteSignal<String>,
     set_tags_input: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
     post: &BlogPostDetail,
@@ -1065,9 +1001,8 @@ fn apply_post_to_form(
         set_title,
         set_slug,
         set_excerpt,
-        set_body,
+        set_content,
         set_locale,
-        set_body_format,
         set_tags_input,
         set_publish_now,
         core::BlogPostEditorFormState::from_post(post),
@@ -1080,9 +1015,8 @@ fn reset_form(
     set_title: WriteSignal<String>,
     set_slug: WriteSignal<String>,
     set_excerpt: WriteSignal<String>,
-    set_body: WriteSignal<String>,
+    set_content: WriteSignal<RichTextDocument>,
     set_locale: WriteSignal<String>,
-    set_body_format: WriteSignal<String>,
     set_tags_input: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
     default_locale: &str,
@@ -1092,9 +1026,8 @@ fn reset_form(
         set_title,
         set_slug,
         set_excerpt,
-        set_body,
+        set_content,
         set_locale,
-        set_body_format,
         set_tags_input,
         set_publish_now,
         core::BlogPostEditorFormState::empty(default_locale),
@@ -1107,9 +1040,8 @@ fn apply_form_state(
     set_title: WriteSignal<String>,
     set_slug: WriteSignal<String>,
     set_excerpt: WriteSignal<String>,
-    set_body: WriteSignal<String>,
+    set_content: WriteSignal<RichTextDocument>,
     set_locale: WriteSignal<String>,
-    set_body_format: WriteSignal<String>,
     set_tags_input: WriteSignal<String>,
     set_publish_now: WriteSignal<bool>,
     state: core::BlogPostEditorFormState,
@@ -1118,9 +1050,8 @@ fn apply_form_state(
     set_title.set(state.title);
     set_slug.set(state.slug);
     set_excerpt.set(state.excerpt);
-    set_body.set(state.body);
+    set_content.set(state.content);
     set_locale.set(state.locale);
-    set_body_format.set(state.body_format);
     set_tags_input.set(state.tags_input);
     set_publish_now.set(state.publish_now);
 }

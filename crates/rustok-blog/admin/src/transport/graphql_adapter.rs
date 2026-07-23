@@ -1,6 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use leptos::web_sys;
 use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
+use rustok_api::RichTextDocument;
 use serde::{Deserialize, Serialize};
 
 use crate::core;
@@ -9,7 +10,7 @@ use crate::model::{BlogPostDetail, BlogPostDraft, BlogPostList};
 pub type ApiError = GraphqlHttpError;
 
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { total items { id title effectiveLocale slug excerpt status createdAt publishedAt } } }";
-const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt body bodyFormat contentJson status createdAt updatedAt publishedAt tags featuredImageUrl seoTitle seoDescription } }";
+const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt tags featuredImageUrl seoTitle seoDescription } }";
 const CREATE_POST_MUTATION: &str =
     "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
 const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: UpdatePostInput!) { updatePost(id: $id, input: $input) }";
@@ -84,9 +85,7 @@ struct UpdatePostVariables {
 struct CreatePostInput {
     locale: String,
     title: String,
-    body: String,
-    #[serde(rename = "bodyFormat")]
-    body_format: String,
+    content: RichTextDocument,
     excerpt: Option<String>,
     slug: Option<String>,
     publish: bool,
@@ -105,9 +104,7 @@ struct CreatePostInput {
 struct UpdatePostInput {
     locale: Option<String>,
     title: Option<String>,
-    body: Option<String>,
-    #[serde(rename = "bodyFormat")]
-    body_format: Option<String>,
+    content: Option<RichTextDocument>,
     excerpt: Option<String>,
     slug: Option<String>,
     tags: Option<Vec<String>>,
@@ -226,8 +223,7 @@ pub async fn create_post(
             input: CreatePostInput {
                 locale: draft.locale.clone(),
                 title: draft.title,
-                body: draft.body,
-                body_format: draft.body_format,
+                content: draft.content,
                 excerpt: core::optional_text(draft.excerpt.as_str()),
                 slug: core::optional_text(draft.slug.as_str()),
                 publish: draft.publish,
@@ -261,8 +257,7 @@ pub async fn update_post(
             input: UpdatePostInput {
                 locale: Some(draft.locale.clone()),
                 title: Some(draft.title),
-                body: Some(draft.body),
-                body_format: Some(draft.body_format),
+                content: Some(draft.content),
                 excerpt: Some(draft.excerpt),
                 slug: Some(draft.slug),
                 tags: Some(draft.tags),

@@ -785,6 +785,7 @@ impl DirectTaskHandler for BlogDraftHandler {
                         body: Some(body.clone()),
                         body_format: Some(CONTENT_FORMAT_MARKDOWN.to_string()),
                         content_json: None,
+                        content: None,
                         excerpt: excerpt.clone(),
                         slug: slug.clone(),
                         tags: if tags.is_empty() {
@@ -1396,6 +1397,7 @@ fn build_blog_draft_create_input(
         body: body.to_string(),
         body_format: CONTENT_FORMAT_MARKDOWN.to_string(),
         content_json: None,
+        content: None,
         excerpt: excerpt.map(ToString::to_string),
         slug: slug.map(ToString::to_string),
         publish: false,

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rustok_api::{RichTextDocument, RichTextView};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -17,6 +18,7 @@ pub struct CreatePostInput {
     #[serde(default = "default_content_format")]
     pub body_format: String,
     pub content_json: Option<Value>,
+    pub content: Option<RichTextDocument>,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
     #[schema(max_length = 255)]
@@ -40,6 +42,7 @@ pub struct UpdatePostInput {
     pub body: Option<String>,
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
+    pub content: Option<RichTextDocument>,
     #[schema(max_length = 1000)]
     pub excerpt: Option<String>,
     #[schema(max_length = 255)]
@@ -69,6 +72,8 @@ pub struct PostResponse {
     pub body: String,
     pub body_format: String,
     pub content_json: Option<Value>,
+    pub content: Option<RichTextView>,
+    pub content_plain_text: Option<String>,
     pub excerpt: Option<String>,
     pub status: BlogPostStatus,
     pub category_id: Option<Uuid>,
@@ -112,6 +117,8 @@ mod tests {
             body: body.to_string(),
             body_format: body_format.to_string(),
             content_json,
+            content: None,
+            content_plain_text: None,
             excerpt: None,
             status: BlogPostStatus::Draft,
             category_id: None,

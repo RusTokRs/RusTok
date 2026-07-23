@@ -36,40 +36,22 @@ if ([string]::IsNullOrWhiteSpace($repository)) {
     throw 'Could not resolve the current GitHub repository.'
 }
 
-$diagnosticRunsJson = Invoke-GitHubCli -Arguments @(
-    'run', 'list',
-    '--repo', $repository,
-    '--workflow', 'Failed workflow diagnostics',
-    '--limit', $RunLimit,
-    '--json', 'databaseId,status,conclusion,updatedAt'
+$workflowRunsJson = Invoke-GitHubCli -Arguments @(
+    'api',
+    "/repos/$repository/actions/runs?status=completed&per_page=$RunLimit"
 )
-$diagnosticRuns = ($diagnosticRunsJson -join [Environment]::NewLine) | ConvertFrom-Json
+$workflowRuns = (($workflowRunsJson -join [Environment]::NewLine) | ConvertFrom-Json).workflow_runs
+$failureConclusions = @('failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale')
+$selectedRun = $workflowRuns |
+    Where-Object {
+        $_.name -ne 'Failed workflow diagnostics' -and
+        $failureConclusions -contains $_.conclusion
+    } |
+    Sort-Object updated_at -Descending |
+    Select-Object -First 1
 
-$selectedRun = $null
-$selectedArtifact = $null
-foreach ($diagnosticRun in $diagnosticRuns) {
-    if ($diagnosticRun.status -ne 'completed' -or $diagnosticRun.conclusion -ne 'success') {
-        continue
-    }
-
-    $artifactsJson = Invoke-GitHubCli -Arguments @(
-        'api',
-        "/repos/$repository/actions/runs/$($diagnosticRun.databaseId)/artifacts?per_page=100"
-    )
-    $artifacts = (($artifactsJson -join [Environment]::NewLine) | ConvertFrom-Json).artifacts
-    $artifact = $artifacts |
-        Where-Object { $_.name -like 'ci-errors-*' -and -not $_.expired } |
-        Select-Object -First 1
-
-    if ($artifact) {
-        $selectedRun = $diagnosticRun
-        $selectedArtifact = $artifact
-        break
-    }
-}
-
-if (-not $selectedArtifact) {
-    throw 'No retained CI error artifact was found. Run the failed workflow first, then wait for Failed workflow diagnostics to complete.'
+if (-not $selectedRun) {
+    throw 'No completed failed GitHub Actions run was found.'
 }
 
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "rustok-ci-errors-$([guid]::NewGuid().ToString('N'))"
@@ -82,34 +64,40 @@ if (-not $temporaryRootFull.StartsWith($temporaryPrefix, [System.StringCompariso
 
 try {
     New-Item -ItemType Directory -Path $temporaryRootFull | Out-Null
-    Invoke-GitHubCli -Arguments @(
-        'run', 'download', $selectedRun.databaseId,
-        '--repo', $repository,
-        '--name', $selectedArtifact.name,
-        '--dir', $temporaryRootFull
-    ) | Out-Null
-
-    $metadata = Get-ChildItem -LiteralPath $temporaryRootFull -Filter 'metadata.json' -File -Recurse |
-        Select-Object -First 1
-    if (-not $metadata) {
-        throw 'The downloaded artifact does not contain metadata.json.'
+    $archivePath = Join-Path $temporaryRootFull 'workflow-logs.zip'
+    $logsRoot = Join-Path $temporaryRootFull 'logs'
+    $githubToken = ((Invoke-GitHubCli -Arguments @('auth', 'token')) -join [Environment]::NewLine).Trim()
+    if ([string]::IsNullOrWhiteSpace($githubToken)) {
+        throw 'Could not read the GitHub CLI authentication token.'
     }
+    $requestHeaders = @{ Authorization = "Bearer $githubToken"; Accept = 'application/vnd.github+json' }
+    Invoke-WebRequest -Uri "https://api.github.com/repos/$repository/actions/runs/$($selectedRun.id)/logs" -Headers $requestHeaders -OutFile $archivePath -MaximumRedirection 5
+    Expand-Archive -LiteralPath $archivePath -DestinationPath $logsRoot -Force
 
-    $bundleRoot = $metadata.Directory.FullName
-    $logsRoot = Join-Path $bundleRoot 'logs'
-    if (-not (Test-Path -LiteralPath $logsRoot -PathType Container)) {
-        throw 'The downloaded artifact does not contain the logs directory.'
+    $logFiles = @(Get-ChildItem -LiteralPath $logsRoot -File -Recurse)
+    if ($logFiles.Count -eq 0) {
+        throw 'The downloaded workflow log archive contains no files.'
     }
 
     if (Test-Path -LiteralPath $destinationRoot) {
         Remove-Item -LiteralPath $destinationRoot -Recurse -Force
     }
     New-Item -ItemType Directory -Path $destinationRoot | Out-Null
-    Get-ChildItem -LiteralPath $logsRoot -Force |
-        Copy-Item -Destination $destinationRoot -Recurse -Force
-    Copy-Item -LiteralPath $metadata.FullName -Destination (Join-Path $destinationRoot 'metadata.json') -Force
+    foreach ($logFile in $logFiles) {
+        $relativePath = $logFile.FullName.Substring($logsRoot.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+        $flatName = $relativePath -replace '[\\/]', '__'
+        Copy-Item -LiteralPath $logFile.FullName -Destination (Join-Path $destinationRoot $flatName) -Force
+    }
 
-    Write-Host "Downloaded $($selectedArtifact.name) to $destinationRoot"
+    [ordered]@{
+        source_run_id = $selectedRun.id
+        source_workflow = $selectedRun.name
+        source_conclusion = $selectedRun.conclusion
+        source_url = $selectedRun.html_url
+        source_updated_at = $selectedRun.updated_at
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $destinationRoot 'metadata.json') -Encoding utf8
+
+    Write-Host "Downloaded logs for $($selectedRun.name) run $($selectedRun.id) to $destinationRoot"
 }
 finally {
     if (Test-Path -LiteralPath $temporaryRootFull) {

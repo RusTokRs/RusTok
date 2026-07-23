@@ -56,6 +56,7 @@ pub mod graphql;
 pub mod locale;
 pub mod migrations;
 pub mod openapi;
+pub mod richtext;
 mod seo_targets;
 pub mod services;
 pub mod state_machine;

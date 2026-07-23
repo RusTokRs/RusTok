@@ -127,6 +127,7 @@ pub struct CreatePostInput {
     pub locale: String,
     pub title: String,            // max 512
     pub body: String,
+    pub content: Option<RichTextDocument>, // canonical article document
     pub excerpt: Option<String>,  // max 1000
     pub slug: Option<String>,     // max 255
     pub publish: bool,
@@ -146,6 +147,7 @@ pub struct UpdatePostInput {
     pub locale: Option<String>,
     pub title: Option<String>,
     pub body: Option<String>,
+    pub content: Option<RichTextDocument>,
     pub excerpt: Option<String>,
     pub slug: Option<String>,
     pub tags: Option<Vec<String>>,
@@ -172,6 +174,8 @@ pub struct PostResponse {
     pub available_locales: Vec<String>,
     pub body: String,
     pub body_format: String,
+    pub content: Option<RichTextView>,
+    pub content_plain_text: Option<String>,
     pub excerpt: Option<String>,
     pub status: BlogPostStatus,
     pub category_id: Option<Uuid>,

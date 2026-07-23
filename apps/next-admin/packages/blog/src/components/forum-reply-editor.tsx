@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormInput } from '@/shared/ui/forms';
 import { Form } from '@/shared/ui/shadcn/form';
+import { emptyRichTextDocument, type RichTextDocument } from '@rustok/richtext';
 import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { useState } from 'react';
@@ -28,11 +29,12 @@ export function ForumReplyEditor({
   const form = useForm<{ locale: string }>({
     defaultValues: { locale: hostLocale }
   });
-  const [doc, setDoc] = useState<RtDoc>({ type: 'doc', content: [] });
+  const [doc, setDoc] = useState<RichTextDocument>(emptyRichTextDocument());
 
   async function submit(values: { locale: string }) {
-    const contentJson = normalizeRtJsonPayload(doc, values.locale);
-    const plain = stringifyRtDoc(doc, values.locale);
+    const legacyDoc = doc as RtDoc;
+    const contentJson = normalizeRtJsonPayload(legacyDoc, values.locale);
+    const plain = stringifyRtDoc(legacyDoc, values.locale);
     try {
       await createForumReply(
         topicId,
@@ -65,7 +67,10 @@ export function ForumReplyEditor({
             onChange={setDoc}
           />
           <pre className='bg-muted max-h-44 overflow-auto rounded-md border p-3 text-xs'>
-            {stringifyRtDoc(doc, form.watch('locale') || hostLocale)}
+            {stringifyRtDoc(
+              doc as RtDoc,
+              form.watch('locale') || hostLocale
+            )}
           </pre>
           <Button type='submit'>Send reply</Button>
         </CardContent>

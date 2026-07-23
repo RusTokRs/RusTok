@@ -58,6 +58,13 @@ fallback now copies the same hashed assets and applies the dedicated frame
 headers; Firefox/WebKit evidence and wiring the first owner Leptos form remain
 required before Phase 2 is marked complete.
 
+The first Blog article boundary slice is also implemented: the owner validates
+submitted documents with the fixed `article` profile, writes canonical root JSON
+for that path, and exposes server-derived HTML/plain text to the Next admin
+form. This is not the atomic owner cutover yet: the Leptos/storefront
+transports, storage columns, revisions, and Search/AI projections still need
+to move together.
+
 ## Decisions fixed by this plan
 
 1. **One document, one editor.** A migrated field accepts and returns a typed
@@ -93,9 +100,10 @@ The following inventory was verified on 2026-07-22. Items explicitly marked
 resolved record completed slices; all others are implementation gaps, not
 target behavior:
 
-- the former Blog-local Tiptap prototype has been replaced by the shared
-  `packages/richtext` runtime; the Blog API/form still carries the owner-local
-  legacy migration fields until the atomic Blog cutover;
+- resolved for the first Next article slice 2026-07-23: the Blog post form now
+  sends one shared `RichTextDocument`, uses the shared framed runtime, and
+  renders only server-projected HTML; the owner transport/storage cutover is
+  still pending;
 - the Blog package also owns a Forum reply editor and Forum API helpers, which
   violates module UI ownership;
 - the prototype maintains a lossy manual mapping between snake-case RT nodes

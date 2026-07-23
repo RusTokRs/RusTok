@@ -8,7 +8,6 @@ import type {
   RichTextProfileId
 } from '@rustok/richtext';
 import { useTranslations } from 'next-intl';
-import type { RtDoc } from './rt-json-format';
 
 export function RichTextEditor({
   label,
@@ -17,9 +16,9 @@ export function RichTextEditor({
   onChange
 }: {
   label: string;
-  value: RtDoc;
+  value: RichTextDocument;
   profile?: RichTextProfileId;
-  onChange: (doc: RtDoc) => void;
+  onChange: (doc: RichTextDocument) => void;
 }) {
   const t = useTranslations('richText');
   const messages = {
@@ -50,9 +49,9 @@ export function RichTextEditor({
         frameUrl='/richtext/frame'
         label={label}
         profile={profile}
-        value={value as RichTextDocument}
+        value={value}
         messages={messages}
-        onChange={(document) => onChange(document as RtDoc)}
+        onChange={onChange}
         style={{ width: '100%', minHeight: '18rem', border: 0 }}
       />
     </div>

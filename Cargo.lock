@@ -12373,6 +12373,8 @@ dependencies = [
  "rustok-ui-i18n-leptos",
  "serde",
  "serde_json",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

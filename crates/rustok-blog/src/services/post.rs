@@ -30,6 +30,7 @@ use crate::dto::{
 };
 use crate::entities::{blog_post, blog_post_channel_visibility, blog_post_translation};
 use crate::error::{BlogError, BlogResult};
+use crate::richtext::{canonical_article_body, normalize_article, project_stored_article};
 use crate::services::category::CategoryService;
 use crate::services::rbac::{
     can_read_non_public_posts, enforce_create_author, enforce_owned_scope, enforce_scope,
@@ -65,6 +66,7 @@ impl PostService {
             body,
             body_format,
             content_json,
+            content,
             excerpt,
             slug,
             publish,
@@ -82,14 +84,22 @@ impl PostService {
         validate_tags(&tags)?;
 
         let author_id = enforce_create_author(&security, Resource::BlogPosts, Action::Create)?;
-        let prepared_body = prepare_content_payload(
-            Some(&body_format),
-            Some(&body),
-            content_json.as_ref(),
-            &locale,
-            "Body",
-        )
-        .map_err(BlogError::validation)?;
+        let prepared_body = if let Some(content) = content {
+            let content = normalize_article(content)?;
+            rustok_core::PreparedContent {
+                format: "richtext".to_string(),
+                body: canonical_article_body(&content)?,
+            }
+        } else {
+            prepare_content_payload(
+                Some(&body_format),
+                Some(&body),
+                content_json.as_ref(),
+                &locale,
+                "Body",
+            )
+            .map_err(BlogError::validation)?
+        };
 
         let slug = normalize_slug(slug.as_deref().unwrap_or(&title));
         if slug.is_empty() {
@@ -239,7 +249,16 @@ impl PostService {
         let replace_channel_visibility = input.channel_slugs.is_some();
 
         let mut prepared_body = None;
-        if input.body.is_some() || input.content_json.is_some() || input.body_format.is_some() {
+        if let Some(content) = input.content.clone() {
+            let content = normalize_article(content)?;
+            prepared_body = Some(rustok_core::PreparedContent {
+                format: "richtext".to_string(),
+                body: canonical_article_body(&content)?,
+            });
+        } else if input.body.is_some()
+            || input.content_json.is_some()
+            || input.body_format.is_some()
+        {
             prepared_body = Some(
                 prepare_content_payload(
                     input.body_format.as_deref(),
@@ -1105,6 +1124,8 @@ impl PostService {
         } else {
             None
         };
+        let (content, content_plain_text) = project_stored_article(&body, &body_format)
+            .map_or((None, None), |(view, text)| (Some(view), Some(text)));
 
         Ok(PostResponse {
             id: post.id,
@@ -1121,6 +1142,8 @@ impl PostService {
             body,
             body_format,
             content_json,
+            content,
+            content_plain_text,
             excerpt: translation.and_then(|item| item.excerpt.clone()),
             status: storage_to_status(&post.status)?,
             category_id: post.category_id,
@@ -1564,6 +1587,7 @@ mod tests {
                     body: "Content".to_string(),
                     body_format: "markdown".to_string(),
                     content_json: None,
+                    content: None,
                     excerpt: None,
                     slug: Some("draft-post".to_string()),
                     publish: false,
@@ -1623,6 +1647,7 @@ mod tests {
                     body: "Body".to_string(),
                     body_format: "markdown".to_string(),
                     content_json: None,
+                    content: None,
                     excerpt: None,
                     slug: Some("customer-draft".to_string()),
                     publish: false,
@@ -1649,6 +1674,7 @@ mod tests {
                     body: "Body".to_string(),
                     body_format: "markdown".to_string(),
                     content_json: None,
+                    content: None,
                     excerpt: None,
                     slug: Some("admin-draft".to_string()),
                     publish: false,
@@ -1708,6 +1734,7 @@ mod tests {
                     body: "Body".to_string(),
                     body_format: "markdown".to_string(),
                     content_json: None,
+                    content: None,
                     excerpt: None,
                     slug: Some("visible-post".to_string()),
                     publish: true,
@@ -1751,6 +1778,7 @@ mod tests {
                     body: None,
                     body_format: None,
                     content_json: None,
+                    content: None,
                     excerpt: None,
                     slug: None,
                     tags: None,
@@ -1812,6 +1840,7 @@ mod tests {
                         body: "Body".to_string(),
                         body_format: "markdown".to_string(),
                         content_json: None,
+                        content: None,
                         excerpt: None,
                         slug: Some(slug.to_string()),
                         publish: true,

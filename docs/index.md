@@ -93,7 +93,8 @@ Local documents for applications and crates live in `apps/*/docs/`,
 - [SEO Runtime/Control-plane Contracts (`rustok-seo`)](../crates/rustok-seo/docs/README.md)
 - [SEO Operations Runbook](../crates/rustok-seo/docs/operations-runbook.md)
 - [Rust UI Component Catalog](./UI/rust-ui-component-catalog.md)
-- [Richtext Track](./modules/rich-text-implementation-plan.md)
+- [Richtext Track](./modules/rich-text-implementation-plan.md) — shared
+  editor runtime and the first Blog article owner boundary
 - [Shared browser richtext runtime](../packages/richtext/README.md)
 - [Page Builder Track](./modules/page-builder-implementation-plan.md)
 - [i18n Architecture](./architecture/i18n.md)

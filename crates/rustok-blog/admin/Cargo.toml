@@ -19,6 +19,8 @@ rustok-ui-i18n-leptos.workspace = true
 leptos-ui-routing.workspace = true
 rustok-seo-targets = { path = "../../rustok-seo-targets", default-features = false }
 rustok-seo-admin-support.workspace = true
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["HtmlIFrameElement"] }
 
 [package.metadata.cargo-udeps.ignore]
 normal = ["leptos-ui"]

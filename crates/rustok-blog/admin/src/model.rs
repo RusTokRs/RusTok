@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use rustok_api::{RichTextDocument, RichTextView};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct BlogPostList {
@@ -34,11 +34,9 @@ pub struct BlogPostDetail {
     pub title: String,
     pub slug: Option<String>,
     pub excerpt: Option<String>,
-    pub body: Option<String>,
-    #[serde(rename = "bodyFormat")]
-    pub body_format: String,
-    #[serde(rename = "contentJson")]
-    pub content_json: Option<Value>,
+    pub content: Option<RichTextView>,
+    #[serde(rename = "contentPlainText")]
+    pub content_plain_text: Option<String>,
     pub status: String,
     #[serde(rename = "createdAt")]
     pub created_at: String,
@@ -100,8 +98,7 @@ pub struct BlogPostDraft {
     pub title: String,
     pub slug: String,
     pub excerpt: String,
-    pub body: String,
-    pub body_format: String,
+    pub content: RichTextDocument,
     pub publish: bool,
     pub tags: Vec<String>,
 }

@@ -13,8 +13,10 @@ The neutral `rustok-api::richtext` contract and executable
 already a typed consumer of the Comments owner: comment writes use
 `RichTextDocument`, and moderation responses return `RichTextView` plus the
 server-derived plain text. Blog posts remain on their separate article
-cutover; do not add new `rt_json`/Markdown aliases, `content_json` fields, or
-local renderers while that migration is prepared.
+cutover. The owner now has a fixed `article` profile boundary and a
+canonical-document write/read projection for the Next admin contract. Do not
+add new `rt_json`/Markdown aliases, `content_json` fields, or local renderers;
+the Leptos/storefront and storage-schema cutover must finish atomically.
 
 The host path limiter protects `/api/*`, including Blog REST and GraphQL. Blog
 adds field-aware GraphQL classification backed by the host
@@ -84,6 +86,9 @@ outbox publication.
 - Category HTTP errors retain typed status semantics.
 - GraphQL rate-limit exceeded responses preserve HTTP `Retry-After`.
 - Comment public/admin projections remain isolated by owner contracts.
+- Blog Next post forms use one shared `RichTextDocument` editor and consume
+  server-rendered `RichTextView` HTML; no format selector or local post
+  renderer remains in that path.
 
 ## Evidence and guardrails
 
@@ -133,7 +138,10 @@ outbox publication.
     parser, constants, OAuth groups, built-in roles, public authority, Blog owner,
     HTTP adapter, module registration, tests, evidence, and guardrails.
 12. Removed alternate category permission paths and made
-    `TransactionalEventBus` a required `CategoryService` constructor argument.
+   `TransactionalEventBus` a required `CategoryService` constructor argument.
+13. Added the Blog article richtext owner boundary: fixed `article` profile
+    validation, canonical root JSON writes, and server HTML/plain-text
+    projections for the Next admin post API/form.
 
 ## Next results
 
@@ -155,8 +163,9 @@ outbox publication.
    reads, moderation, pagination, independent create commands, duplicate event
    delivery, concurrent counters, missing-post retry, rollback, and outbox
    publication.
-6. **Join the atomic richtext cutover for Blog posts.** **Comments consumer
-   slice implemented.** Replace the string body plus `content_json` transport
+6. **Finish the atomic richtext cutover for Blog posts.** **Owner article
+   boundary and Next admin slice implemented; storage/Leptos/storefront parity
+   remains.** Replace the string body plus `content_json` transport everywhere
    with `RichTextDocument`, assign the `article` profile in the owner service,
    migrate `blog_post_translations` and relevant revision/audit data, and use
    the canonical server HTML/plain-text projections for admin, both

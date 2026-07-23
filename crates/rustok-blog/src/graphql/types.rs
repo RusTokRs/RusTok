@@ -1,6 +1,7 @@
 use async_graphql::{ComplexObject, Context, Enum, FieldError, InputObject, Result, SimpleObject};
 use rustok_api::{
-    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_any_effective_permission,
+    AuthContext, Permission, RichTextDocument, RichTextView, TenantContext, graphql::GraphQLError,
+    has_any_effective_permission,
 };
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
@@ -79,6 +80,8 @@ pub struct GqlPost {
     pub body: Option<String>,
     pub body_format: String,
     pub content_json: Option<Value>,
+    pub content: Option<RichTextView>,
+    pub content_plain_text: Option<String>,
     pub status: GqlContentStatus,
     pub author_id: Option<Uuid>,
     pub author_profile: Option<GqlProfileSummary>,
@@ -268,9 +271,10 @@ pub struct GqlPostList {
 pub struct CreatePostInput {
     pub locale: String,
     pub title: String,
-    pub body: String,
+    pub body: Option<String>,
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
+    pub content: Option<RichTextDocument>,
     pub excerpt: Option<String>,
     pub slug: Option<String>,
     pub publish: bool,
@@ -289,6 +293,7 @@ pub struct UpdatePostInput {
     pub body: Option<String>,
     pub body_format: Option<String>,
     pub content_json: Option<Value>,
+    pub content: Option<RichTextDocument>,
     pub excerpt: Option<String>,
     pub slug: Option<String>,
     pub status: Option<GqlContentStatus>,
@@ -323,6 +328,8 @@ impl From<PostResponse> for GqlPost {
             body: Some(post.body),
             body_format: post.body_format,
             content_json: post.content_json,
+            content: post.content,
+            content_plain_text: post.content_plain_text,
             status: match post.status {
                 BlogPostStatus::Draft => GqlContentStatus::Draft,
                 BlogPostStatus::Published => GqlContentStatus::Published,
@@ -392,11 +399,12 @@ impl From<CreatePostInput> for DomainCreatePostInput {
         Self {
             locale: input.locale,
             title: input.title,
-            body: input.body,
+            body: input.body.unwrap_or_default(),
             body_format: input
                 .body_format
                 .unwrap_or_else(|| rustok_core::CONTENT_FORMAT_MARKDOWN.to_string()),
             content_json: input.content_json,
+            content: input.content,
             excerpt: input.excerpt,
             slug: input.slug,
             publish: input.publish,

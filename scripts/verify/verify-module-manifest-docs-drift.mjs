@@ -107,7 +107,7 @@ function parseOverviewTable(source, startHeading, endHeading, category) {
       continue;
     }
 
-    const dependencies = category === "optional" && cells[2] && cells[2] !== "—"
+    const dependencies = (category === "core" || category === "optional") && cells[2] && cells[2] !== "—"
       ? [...cells[2].matchAll(/`([^`]+)`/g)].map((entry) => entry[1])
       : [];
     const runtime = category === "extension"

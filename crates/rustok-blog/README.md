@@ -22,6 +22,11 @@
 - Blog comment writes consume `RichTextDocument`; comment moderation reads
   consume the Comments-owned `RichTextView` and plain-text projection. Blog
   does not parse or render comment JSON locally.
+- Blog article writes may submit the shared `RichTextDocument`; the owner
+  applies the fixed `article` profile and persists canonical root JSON. Reads
+  expose the server-owned `RichTextView` and plain-text projection to the
+  target Next contract. The Leptos/storefront and storage-schema cutover
+  remains an explicit follow-up in the module plan.
 - Routes comment reads, update, and moderation through the public `CommentsThreadPort`, including create/delete; no Blog code calls `CommentsService` directly. Comments lifecycle events are consumed by Blog's idempotent reply-count projection, which atomically publishes `BlogPostUpdated`.
 - Depends on `rustok-taxonomy` for the shared tag dictionary while keeping `blog_post_tags` Blog-owned.
 - Depends on `rustok-core` for module contracts, permissions, and `SecurityContext`.

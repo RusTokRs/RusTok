@@ -2181,6 +2181,7 @@ mod tests {
                     body: "Original blog body".to_string(),
                     body_format: "markdown".to_string(),
                     content_json: None,
+                    content: None,
                     excerpt: None,
                     slug: Some("legacy-post".to_string()),
                     publish: true,

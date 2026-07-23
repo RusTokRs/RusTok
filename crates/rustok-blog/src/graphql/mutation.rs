@@ -80,6 +80,7 @@ impl BlogMutation {
             body: input.body,
             body_format: input.body_format,
             content_json: input.content_json,
+            content: input.content,
             excerpt: input.excerpt,
             slug: input.slug,
             tags: input.tags,
