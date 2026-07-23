@@ -27,9 +27,10 @@ pub use fanout::{
 pub use fanout_worker::{
     DEFAULT_NOTIFICATION_FANOUT_BATCH_SIZE, DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE,
     MAX_NOTIFICATION_FANOUT_BATCH_SIZE, MAX_NOTIFICATION_FANOUT_PAGE_SIZE,
-    NotificationFanoutJobWorkItem, NotificationFanoutSourceWorkItem,
-    NotificationFanoutWorker, NotificationFanoutWorkerBatchResult,
-    NotificationFanoutWorkerFailure, NotificationFanoutWorkerStage,
+    NotificationFanoutJobWorkItem, NotificationFanoutPolicyDeferral,
+    NotificationFanoutSourceWorkItem, NotificationFanoutWorker,
+    NotificationFanoutWorkerBatchResult, NotificationFanoutWorkerFailure,
+    NotificationFanoutWorkerStage,
 };
 pub use outbox_intake::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, MAX_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
