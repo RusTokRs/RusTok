@@ -5,7 +5,8 @@
 - `domain`
 
 The active engine contract is database independent. Source-specific Content,
-Product, Flex, search, and migration modules have been deleted.
+Product, Flex, search, migration, runtime, and scheduler modules have been
+deleted.
 
 ## Primary Public Types
 
@@ -19,25 +20,21 @@ Product, Flex, search, and migration modules have been deleted.
 - `IndexQuery`, `FilterExpr`, `OrderExpr`, `OrderDirection`, `Pagination`
 - `DomainError`
 
-`Indexer`, `LocaleIndexer`, `IndexerContext`, `IndexerRuntimeConfig`,
-`IndexError`, and `IndexResult` are temporary M0 compatibility exports only.
-They are not part of the target API and will be removed with the server runtime
-configuration tail.
-
 ## Contract Status
 
-Storage, source, ingestion, rebuild, query-port, and operator APIs will be
-published by their corresponding milestones. No compatibility contract exists
-for deleted source-specific behavior.
+The generic domain types are the only intentional engine contract at this
+stage. Storage, source, ingestion, rebuild, query-port, and operator APIs are
+published by their corresponding milestones.
 
-Legacy `IndexDocument`, `DocumentType`, v1 read/rebuild ports, fallback adapters,
-source query DTOs, indexers, projection models, and migrations must not return.
+No compatibility contract exists for deleted behavior. `IndexDocument`,
+`DocumentType`, old ports/adapters, source DTOs/indexers/models/migrations,
+`IndexerRuntimeConfig`, `IndexerContext`, and the old scheduler must not return.
 
 ## Dependencies on Other RusToK Crates
 
-The generic engine core must not depend on source-domain crates. `rustok-core`
-is allowed for module metadata and shared platform primitives. Source adapters
-belong to owner modules or explicit integration crates.
+The generic engine core does not depend on source-domain crates. `rustok-core`
+is used only for module metadata and platform contracts. Source adapters belong
+to owner modules or explicit integration crates.
 
 ## Common AI Mistakes
 
@@ -48,7 +45,7 @@ belong to owner modules or explicit integration crates.
 - Reintroducing a catch-all JSON document as the public contract.
 - Implementing rebuild by collecting every source ID before processing.
 - Publishing unvalidated JSON filters instead of the typed query AST.
-- Restoring deleted v1 ports or source indexers as compatibility code.
+- Restoring deleted v1 or source-specific code as a compatibility layer.
 
 ## Minimum Contract Set
 
@@ -64,7 +61,7 @@ belong to owner modules or explicit integration crates.
 
 - Every record and mutation is tenant scoped.
 - Every record belongs to a registered schema and entity identity.
-- Locale identity is explicit and will be canonicalized before persistence.
+- Locale identity is explicit and is canonicalized before persistence.
 - Field and link paths are validated against the schema registry.
 - Source versions prevent stale mutation overwrite.
 - Generic engine types remain source-domain agnostic.
@@ -74,7 +71,7 @@ belong to owner modules or explicit integration crates.
 - Source events are converted to `IndexMutation` through owner-published
   adapters.
 - Delivery is replayable and idempotent.
-- Mutation application will use inbox deduplication and transactional storage.
+- Mutation application uses inbox deduplication and transactional storage.
 
 ### Errors / Failure Codes
 
