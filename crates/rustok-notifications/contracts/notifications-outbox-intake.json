@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "slice": "NOTIFY-03D",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/rustok-notifications/docs/implementation-plan.md",
+  "migration": "crates/rustok-notifications/src/migrations/m20260723_000013_add_outbox_intake_receipts.rs",
+  "owner_driver": "crates/rustok-notifications/src/outbox_intake.rs",
+  "server_worker": "apps/server/src/services/notification_outbox_intake_worker.rs",
+  "bootstrap": "apps/server/src/services/server_bootstrap.rs",
+  "forum_provider": "crates/rustok-forum/src/notification_source.rs",
+  "intake": {
+    "source_table": "sys_events",
+    "mutates_general_relay_state": false,
+    "requires_relay_dispatched_status": false,
+    "reads_producer_private_tables": false,
+    "calls_producer_services": false,
+    "receipt_table": "notification_outbox_intake_receipts",
+    "receipt_identity": "outbox_event_id",
+    "source_inbox_and_receipt_same_transaction": true,
+    "semantic_replay_validation": true
+  },
+  "supported_envelopes": {
+    "forum.topic.created": {
+      "family": "root",
+      "source_slug": "forum",
+      "source_event_identity": "topic_id",
+      "source_revision": 1
+    },
+    "forum.mention.user_added": {
+      "family": "forum_mention_contract",
+      "source_slug": "forum",
+      "source_event_identity": "envelope_id",
+      "source_revision": "source_revision_id"
+    }
+  },
+  "selection": {
+    "default_batch_size": 32,
+    "maximum_batch_size": 64,
+    "stable_order": ["created_at", "id"],
+    "anti_joins_receipts": true,
+    "committed_pending_dispatched_failed_are_visible": true
+  },
+  "runtime": {
+    "environment_variable": "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED",
+    "default_enabled": false,
+    "invalid_value_enabled": false,
+    "requires_background_worker_host": true,
+    "shared_stop_handle": true,
+    "checks_between_envelopes": true
+  },
+  "tests": [
+    "crates/rustok-notifications/tests/outbox_intake_sqlite.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-notifications-outbox-intake.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "source inbox materialization and fanout page worker",
+    "tenant capability gate before materialization and delivery",
+    "permanent intake conflict DLQ controls",
+    "PostgreSQL concurrent intake evidence",
+    "worker health and intake lag metrics",
+    "additional producer event families"
+  ]
+}
