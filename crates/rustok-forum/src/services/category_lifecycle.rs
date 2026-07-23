@@ -33,7 +33,17 @@ impl CategoryLifecycleService {
         root_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<CategorySubtreeLifecycleResponse> {
-        self.set_subtree_archived(tenant_id, root_id, security, true)
+        self.set_subtree_archived(tenant_id, root_id, security, true, Action::Manage)
+            .await
+    }
+
+    pub(super) async fn archive_subtree_for_delete(
+        &self,
+        tenant_id: Uuid,
+        root_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<CategorySubtreeLifecycleResponse> {
+        self.set_subtree_archived(tenant_id, root_id, security, true, Action::Delete)
             .await
     }
 
@@ -43,7 +53,7 @@ impl CategoryLifecycleService {
         root_id: Uuid,
         security: SecurityContext,
     ) -> ForumResult<CategorySubtreeLifecycleResponse> {
-        self.set_subtree_archived(tenant_id, root_id, security, false)
+        self.set_subtree_archived(tenant_id, root_id, security, false, Action::Manage)
             .await
     }
 
@@ -53,8 +63,9 @@ impl CategoryLifecycleService {
         root_id: Uuid,
         security: SecurityContext,
         archived: bool,
+        required_action: Action,
     ) -> ForumResult<CategorySubtreeLifecycleResponse> {
-        enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
+        enforce_scope(&security, Resource::ForumCategories, required_action)?;
         let txn = self.db.begin().await?;
         lock_category_tree_in_tx(&txn, tenant_id).await?;
 
