@@ -13,7 +13,7 @@ use rustok_notifications::{
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait,
-    QueryFilter,
+    PaginatorTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
