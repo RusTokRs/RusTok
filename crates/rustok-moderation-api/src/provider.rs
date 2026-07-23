@@ -12,8 +12,8 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ModerationSubjectAdapterKey {
-    pub module: String,
-    pub kind: ModerationSubjectKind,
+    module: String,
+    kind: ModerationSubjectKind,
 }
 
 impl ModerationSubjectAdapterKey {
@@ -37,6 +37,14 @@ impl ModerationSubjectAdapterKey {
             return Err(ModerationSubjectAdapterRegistryError::InvalidModule);
         }
         Ok(Self { module, kind })
+    }
+
+    pub fn module(&self) -> &str {
+        self.module.as_str()
+    }
+
+    pub const fn kind(&self) -> ModerationSubjectKind {
+        self.kind
     }
 }
 
@@ -122,8 +130,8 @@ impl ModerationSubjectAdapterRegistry {
         let key = adapter.key();
         if self.adapters.contains_key(&key) {
             return Err(ModerationSubjectAdapterRegistryError::DuplicateAdapter {
-                module: key.module,
-                kind: key.kind.as_str(),
+                module: key.module().to_string(),
+                kind: key.kind().as_str(),
             });
         }
         self.adapters.insert(key, adapter);
@@ -141,6 +149,10 @@ impl ModerationSubjectAdapterRegistry {
 
     pub fn contains(&self, module: &str, kind: ModerationSubjectKind) -> bool {
         self.get(module, kind).is_some()
+    }
+
+    pub fn keys(&self) -> Vec<ModerationSubjectAdapterKey> {
+        self.adapters.keys().cloned().collect()
     }
 
     pub fn len(&self) -> usize {
@@ -165,8 +177,8 @@ impl ModerationSubjectAdapterFactoryRegistry {
         let key = factory.key();
         if self.factories.contains_key(&key) {
             return Err(ModerationSubjectAdapterRegistryError::DuplicateFactory {
-                module: key.module,
-                kind: key.kind.as_str(),
+                module: key.module().to_string(),
+                kind: key.kind().as_str(),
             });
         }
         self.factories.insert(key, Arc::new(factory));
@@ -225,18 +237,18 @@ pub fn materialize_moderation_subject_adapter_registry(
     for (declared, factory) in &factories.factories {
         let built = factory.build(host).map_err(|error| {
             ModerationSubjectAdapterRegistryError::FactoryBuild {
-                module: declared.module.clone(),
-                kind: declared.kind.as_str(),
+                module: declared.module().to_string(),
+                kind: declared.kind().as_str(),
                 error,
             }
         })?;
         let built_key = built.key();
         if built_key != *declared {
             return Err(ModerationSubjectAdapterRegistryError::FactoryKeyMismatch {
-                declared_module: declared.module.clone(),
-                declared_kind: declared.kind.as_str(),
-                built_module: built_key.module,
-                built_kind: built_key.kind.as_str(),
+                declared_module: declared.module().to_string(),
+                declared_kind: declared.kind().as_str(),
+                built_module: built_key.module().to_string(),
+                built_kind: built_key.kind().as_str(),
             });
         }
         adapters.register_arc(built)?;
