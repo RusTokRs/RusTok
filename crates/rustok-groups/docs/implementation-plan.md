@@ -72,11 +72,15 @@ subject revision must conflict and must never be retargeted.
 
 ### Commands, replay, and locking
 
-Writes require deadline and idempotency key. Identical receipts replay before current authorization,
-CAS, or lifecycle re-evaluation; changed requests using the same key conflict.
+Writes require deadline and idempotency key. Established command lock ordering is preserved. A
+command may lock the identity/serialization row needed to locate its owner aggregate before receipt
+lookup, such as the group on invitation create or the invitation on revoke.
 
-For invitation/application writes, effective authorization and mutation now share one owner
-transaction with the lock order:
+After those required pre-replay locks, an identical receipt is returned before current effective
+authorization, CAS, lifecycle validation, or domain mutation. A changed request using the same key
+conflicts. Replay is never denied because membership authority changed after the original commit.
+
+For invitation/application effective authorization, the canonical membership lock sequence is:
 
 ```text
 Group -> GroupMembership -> GroupMembershipEnforcement
@@ -87,8 +91,9 @@ already resolved group before membership/enforcement reads. Authorization runs a
 and owner locking but before the first domain mutation.
 
 Application CAS preserves existing application-before-group ordering where an application row
-already exists; after the group lock, effective membership locking follows the canonical order.
-Bulk review remains one transaction, audit, receipt, and result per item.
+already exists. Invitation/application identity locks do not create a cycle with the future
+enforcement command because that command will not lock invitation or application rows. Bulk review
+remains one transaction, audit, receipt, and result per item.
 
 ## Current implementation state
 
@@ -109,8 +114,8 @@ Source exists for:
 - sealed effective public invitation/application services with compatibility module paths;
 - transaction-aware invitation/application writes using the group/membership/enforcement lock
   protocol;
-- secret application non-disclosure, receipt-first replay, CAS conflict mapping, and per-item bulk
-  semantics preserved through the transactional paths.
+- secret application non-disclosure, authorization-first status handling, receipt-first replay,
+  stable effective error codes, CAS conflict mapping, and per-item bulk semantics.
 
 Evidence still open:
 
@@ -197,20 +202,32 @@ Source-complete public write paths now include:
 
 Each path:
 
-1. validates request/deadline/idempotency;
+1. validates stateless request/deadline/idempotency inputs;
 2. starts the owner transaction;
-3. replays an existing receipt or rejects changed hash;
-4. acquires existing command-specific locks;
-5. acquires group, membership, and enforcement locks;
+3. acquires any established identity/serialization row required before receipt lookup;
+4. returns matching receipt replay or changed-request conflict;
+5. acquires the remaining group/membership/enforcement locks;
 6. evaluates effective manager/candidate state using the Groups clock;
-7. performs lifecycle/CAS mutation;
+7. performs authorization-first lifecycle/CAS validation and mutation;
 8. commits state, version/revision effects, audit, and receipt together.
 
 Read-only list/policy/history surfaces continue to use the canonical read resolver. Secret candidate
-surfaces preserve not-found semantics before membership-specific denial.
+surfaces preserve not-found semantics before membership-specific denial. Public facades retain only
+stateless PortContext validation so deadline/actor/tenant error codes remain stable; no effective
+state is evaluated outside the owner transaction for writes.
 
 Runtime proof remains open; source completeness does not prove SQLite/PostgreSQL contention,
 timeout, retry, deadlock, or lost-response behavior.
+
+### Stable effective errors
+
+Transactional effective authorization preserves:
+
+- `groups.membership_suspended`;
+- `groups.membership_banned`;
+- `groups.manager_required`;
+- `groups.membership_already_active`;
+- `groups.application_policy_changed` for CAS mismatch.
 
 ### Planned owner enforcement command
 
