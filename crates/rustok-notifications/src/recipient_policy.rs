@@ -72,6 +72,7 @@ impl NotificationMuteReadRuntime {
 pub struct NotificationRecipientPolicyRuntime {
     policy: Arc<dyn NotificationRecipientPolicy>,
     relation_ports_ready: bool,
+    candidate_worker_enabled: bool,
 }
 
 impl NotificationRecipientPolicyRuntime {
@@ -82,7 +83,13 @@ impl NotificationRecipientPolicyRuntime {
         Self {
             policy,
             relation_ports_ready,
+            candidate_worker_enabled: false,
         }
+    }
+
+    pub fn with_candidate_worker_enabled(mut self, enabled: bool) -> Self {
+        self.candidate_worker_enabled = enabled;
+        self
     }
 
     pub fn policy(&self) -> &dyn NotificationRecipientPolicy {
@@ -93,7 +100,11 @@ impl NotificationRecipientPolicyRuntime {
         self.relation_ports_ready
     }
 
+    pub const fn candidate_worker_enabled(&self) -> bool {
+        self.candidate_worker_enabled
+    }
+
     pub const fn candidate_worker_ready(&self) -> bool {
-        self.relation_ports_ready
+        self.relation_ports_ready && self.candidate_worker_enabled
     }
 }
