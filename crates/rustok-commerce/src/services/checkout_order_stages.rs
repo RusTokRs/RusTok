@@ -3,8 +3,9 @@ use rustok_cart::PreparedCartCheckoutSnapshot;
 use rustok_inventory::InventoryReservationIdentityPort;
 use rustok_order::{
     CheckoutCompletionPort, CheckoutOrderRecoveryAdapter, CompleteCheckoutPortRequest,
-    OrderResponse, ReadCheckoutOrderProjectionRequest, RecoverExistingCheckoutOrderRequest,
-    in_process_checkout_completion_port, in_process_checkout_order_recovery_adapter,
+    OrderResponse, OrderStatusKind, ReadCheckoutOrderProjectionRequest,
+    RecoverExistingCheckoutOrderRequest, in_process_checkout_completion_port,
+    in_process_checkout_order_recovery_adapter,
 };
 use rustok_outbox::TransactionalEventBus;
 use serde_json::Value;
@@ -223,7 +224,11 @@ impl CheckoutOrderStageExecutor {
                             order
                         }
                     };
-                    validate_order_projection(&operation, &order, &["confirmed"])?;
+                    validate_order_projection(
+                        &operation,
+                        &order,
+                        &[OrderStatusKind::Confirmed],
+                    )?;
                     self.inventory_adoption
                         .adopt_and_checkpoint(tenant_id, operation_id, lease_owner.clone(), &order)
                         .await?;
@@ -233,7 +238,11 @@ impl CheckoutOrderStageExecutor {
                     let order = self
                         .read_order_projection(tenant_id, operation_id, &plan)
                         .await?;
-                    validate_order_projection(&operation, &order, &["confirmed"])?;
+                    validate_order_projection(
+                        &operation,
+                        &order,
+                        &[OrderStatusKind::Confirmed],
+                    )?;
                     self.operation_journal
                         .checkpoint(CheckoutOperationCheckpoint {
                             tenant_id,
@@ -292,7 +301,12 @@ impl CheckoutOrderStageExecutor {
         validate_order_projection(
             &operation,
             &order,
-            &["confirmed", "paid", "shipped", "delivered"],
+            &[
+                OrderStatusKind::Confirmed,
+                OrderStatusKind::Paid,
+                OrderStatusKind::Shipped,
+                OrderStatusKind::Delivered,
+            ],
         )?;
         Ok(CheckoutPaymentReadyState {
             operation_id,
@@ -442,7 +456,7 @@ fn validate_line_item_provenance(
 fn validate_order_projection(
     operation: &checkout_operation::Model,
     order: &OrderResponse,
-    allowed_statuses: &[&str],
+    allowed_statuses: &[OrderStatusKind],
 ) -> CheckoutOrderStageResult<()> {
     if order.tenant_id != operation.tenant_id
         || operation.order_id.is_some() && operation.order_id != Some(order.id)
@@ -452,10 +466,10 @@ fn validate_order_projection(
             operation.id
         )));
     }
-    if !allowed_statuses.contains(&order.status.as_str()) {
+    if !allowed_statuses.contains(&order.status_kind()) {
         return Err(CheckoutOrderStageError::Conflict(format!(
-            "checkout operation {} resolved order {} in unsupported status `{}`",
-            operation.id, order.id, order.status
+            "checkout operation {} resolved order {} in an unsupported lifecycle state",
+            operation.id, order.id
         )));
     }
     Ok(())
