@@ -1,0 +1,168 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const repoRoot = path.resolve(path.dirname(__filename), "..", "..", "..", "..");
+const read = (relativePath) =>
+  fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+
+const providerContract = read(
+  "crates/rustok-page-builder/admin/src/consumer_properties.rs",
+);
+const providerPanel = read(
+  "crates/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+);
+const providerFacade = read(
+  "crates/rustok-page-builder/admin/src/transport/mod.rs",
+);
+const providerCanvas = read(
+  "crates/rustok-page-builder/admin/src/editor/modular_canvas.rs",
+);
+const pagesContributions = read(
+  "crates/rustok-pages/admin/src/contributions.rs",
+);
+const pagesOwnerPort = read(
+  "crates/rustok-pages/admin/src/metadata_properties.rs",
+);
+const pagesBoundary = read("crates/rustok-pages/admin/src/lib.rs");
+const pagesComposition = read("crates/rustok-pages/admin/src/composition.rs");
+
+function fail(message) {
+  console.error(`[verify-pages-metadata-properties] ${message}`);
+  process.exit(1);
+}
+
+function requireMarker(source, marker, label) {
+  if (!source.includes(marker)) fail(`${label} is missing ${marker}`);
+}
+
+function forbidMarker(source, marker, label) {
+  if (source.includes(marker)) fail(`${label} still contains ${marker}`);
+}
+
+function requireOrderedMarkers(source, markers, label) {
+  let previous = -1;
+  for (const marker of markers) {
+    const index = source.indexOf(marker, previous + 1);
+    if (index < 0) fail(`${label} is missing or out of order at ${marker}`);
+    previous = index;
+  }
+}
+
+for (const marker of [
+  '"page_builder_consumer_properties_v1"',
+  "pub struct ConsumerPropertyEditorSchema",
+  "pub struct ConsumerPropertyEditorSnapshot",
+  "pub struct SaveConsumerPropertiesInput",
+  "pub struct ConsumerPropertySaveReceipt",
+  "pub trait ConsumerPropertyEditorPort: Send + Sync",
+  "pub struct ConsumerPropertyEditorRuntime",
+  "verify_contribution(",
+  "registered_schema != self.schema",
+  "validate_values(&snapshot.values)",
+  "validate_values(&values)",
+  "PAGE_BUILDER_CONSUMER_PROPERTY_CONTRACT_INVALID",
+  "PAGE_BUILDER_CONSUMER_PROPERTY_EDITOR_UNAVAILABLE",
+  "PAGE_BUILDER_CONSUMER_PROPERTY_SAVE_FAILED",
+]) {
+  requireMarker(providerContract, marker, "Page Builder consumer property contract");
+}
+
+for (const marker of [
+  "pub(crate) fn ConsumerPropertiesPanel",
+  "runtime.verify_contribution(&assembly)",
+  "LocalResource::new",
+  "runtime.load().await",
+  "prepare_save_input(&current_snapshot, current_values)",
+  "runtime.save(input).await",
+  'data-fly-consumer-properties="ready"',
+  "data-fly-consumer-property-editor",
+]) {
+  requireMarker(providerPanel, marker, "Page Builder consumer property panel");
+}
+requireOrderedMarkers(
+  providerPanel,
+  [
+    "runtime.verify_contribution(&assembly)",
+    "LocalResource::new",
+    "runtime.load().await",
+  ],
+  "consumer property descriptor validation before load",
+);
+
+for (const marker of [
+  "fn consumer_properties(&self) -> Option<Arc<ConsumerPropertyEditorRuntime>>",
+  "None",
+]) {
+  requireMarker(providerFacade, marker, "optional Page Builder consumer property facade");
+}
+for (const marker of [
+  "facade.consumer_properties()",
+  "use_context::<Arc<ConsumerPropertyEditorRuntime>>()",
+  "<ConsumerPropertiesPanel",
+  "contribution_assembly=consumer_property_assembly",
+]) {
+  requireMarker(providerCanvas, marker, "Page Builder consumer property composition");
+}
+
+for (const marker of [
+  'PAGES_METADATA_CONTRIBUTION_ID: &str = "rustok.pages.metadata"',
+  'PAGES_METADATA_PROPERTY_EDITOR_ID: &str = "rustok.pages.metadata.editor"',
+  'PAGES_METADATA_COMPONENT_TYPE: &str = "rustok-pages-metadata"',
+  "pub fn pages_metadata_property_schema()",
+  "PAGE_BUILDER_CONSUMER_PROPERTIES_FORMAT",
+  "pub fn pages_metadata_contribution()",
+  "PropertyEditorDescriptor",
+  "property_schema: serde_json::to_value(schema)",
+  "pages_metadata_contribution(),",
+  "registered_schema.validate()",
+]) {
+  requireMarker(pagesContributions, marker, "Pages metadata contribution");
+}
+
+for (const marker of [
+  "pub fn pages_metadata_property_runtime(",
+  "impl ConsumerPropertyEditorPort for PagesMetadataPropertyPort",
+  "fn load(&self) -> ConsumerPropertyLoadFuture",
+  "fn save(&self, input: SaveConsumerPropertiesInput)",
+  "fetch_expected_page(&snapshot).await?",
+  "schema.validate_values(&input.values)?",
+  "expected_metadata_version(&snapshot.page_id, &input.expected_revision)",
+  "current.version != expected_version",
+  "transport::patch_page_metadata(",
+  "page.version <= expected_version",
+  "on_saved(PageMutationResult::from(&page))",
+  'format!("pages:{page_id}:metadata:v{version}")',
+  "PAGE_METADATA_REVISION_CONFLICT",
+]) {
+  requireMarker(pagesOwnerPort, marker, "Pages metadata owner port");
+}
+for (const forbidden of [
+  "save_page_document",
+  "PageBuilderCapabilityRequest::Publish",
+  "EditorCommand",
+  "PageCommand",
+  "content_json",
+  "project_data",
+]) {
+  forbidMarker(pagesOwnerPort, forbidden, "Pages metadata owner port");
+}
+
+for (const marker of [
+  "let metadata_runtime = pages_metadata_property_runtime(",
+  "provide_context(metadata_runtime)",
+  "PagesBuilderSaveSnapshot",
+  "metadata_refresh.update",
+]) {
+  requireMarker(pagesBoundary, marker, "Pages admin metadata composition boundary");
+}
+
+const legacyFormPresent =
+  pagesComposition.includes("fn PageMetadataEditor(") ||
+  pagesComposition.includes("<PageMetadataEditor");
+console.log(
+  `[verify-pages-metadata-properties] PASS legacy_form_pending=${legacyFormPresent}`,
+);
