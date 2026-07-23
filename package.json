@@ -23,7 +23,7 @@
     "verify:axum:runtime": "node scripts/verify/verify-axum-runtime.mjs",
     "verify:module-control-plane:write-path": "node scripts/verify/verify-module-control-plane-write-path.mjs",
     "verify:module-build-worker:isolation": "node scripts/verify/verify-module-build-worker-isolation.mjs",
-    "generate:cli-registry": "node scripts/generate/generate-cli-registry.mjs --check",
+    "generate:cli-registry": "node scripts/generate/generate-cli-registry.mjs",
     "verify:cli-registry": "node scripts/generate/generate-cli-registry.mjs --check",
     "verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.mjs",
     "test:verify:inventory:admin-boundary": "node scripts/verify/verify-inventory-admin-boundary.test.mjs",
