@@ -20,7 +20,13 @@ const orderLib = read('crates/rustok-order/src/lib.rs');
 const payment = read('crates/rustok-payment/src/dto/payment.rs');
 const paymentStage = read('crates/rustok-commerce/src/services/checkout_payment_stages.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/status.rs');
+const fulfillmentTypedExecution = read(
+  'crates/rustok-fulfillment/src/checkout_execution_typed.rs',
+);
 const fulfillmentLib = read('crates/rustok-fulfillment/src/lib.rs');
+const fulfillmentStage = read(
+  'crates/rustok-commerce/src/services/checkout_fulfillment_stages.rs',
+);
 
 for (const [source, value, label] of [
   [cart, 'pub enum CartStatus', 'canonical cart status enum'],
@@ -47,7 +53,21 @@ for (const [source, value, label] of [
   [fulfillment, 'pub enum FulfillmentStatusKind', 'fulfillment status enum'],
   [fulfillment, 'pub fn status_kind(&self) -> FulfillmentStatusKind', 'fulfillment typed accessor'],
   [fulfillment, '_ => Self::Unknown', 'fulfillment unknown mapping'],
+  [fulfillmentTypedExecution, 'match fulfillment.status_kind()', 'typed fulfillment dispatch'],
+  [fulfillmentTypedExecution, 'FulfillmentStatusKind::Cancelled', 'cancelled reconciliation'],
+  [fulfillmentTypedExecution, 'FulfillmentStatusKind::Unknown', 'unknown reconciliation'],
+  [fulfillmentLib, 'mod checkout_execution_typed;', 'typed fulfillment factory module'],
+  [
+    fulfillmentLib,
+    'TypedCheckoutFulfillmentExecutionPort, in_process_checkout_fulfillment_execution_port',
+    'typed fulfillment root factory export',
+  ],
   [fulfillmentLib, 'pub mod status;', 'fulfillment status module export'],
+  [
+    fulfillmentStage,
+    'in_process_checkout_fulfillment_execution_port',
+    'mounted fulfillment typed root factory',
+  ],
 ]) {
   requireText(source, value, label);
 }
@@ -61,6 +81,22 @@ for (const value of [
   forbidText(paymentStage, value, 'mounted payment stage raw lifecycle status');
 }
 
+forbidText(
+  fulfillmentLib,
+  'pub use checkout_execution::*;',
+  'unsafe fulfillment root factory wildcard export',
+);
+forbidText(
+  fulfillmentStage,
+  'checkout_execution::in_process_checkout_fulfillment_execution_port',
+  'mounted fulfillment legacy factory bypass',
+);
+forbidText(
+  fulfillmentStage,
+  'InProcessCheckoutFulfillmentExecutionPort',
+  'mounted fulfillment direct adapter construction',
+);
+
 forbidText(cartLib, 'pub mod status;', 'duplicate cart status module export');
 if (existsSync(new URL('crates/rustok-cart/src/status.rs', root))) {
   failures.push('duplicate cart lifecycle status file must not exist');
@@ -73,5 +109,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Ecommerce owners and mounted payment stage use canonical typed lifecycle views',
+  '✔ Ecommerce owners plus mounted payment and fulfillment paths use canonical typed lifecycle views',
 );
