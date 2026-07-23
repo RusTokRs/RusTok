@@ -145,6 +145,12 @@ async fn bounded_worker_materializes_sources_and_pages_without_final_delivery() 
 
     let worker = NotificationFanoutWorker::new(db.clone(), registry, "fanout-worker", 1, 1)
         .expect("bounded fanout worker should compose");
+    let first_work = worker
+        .claimable_source_inbox_work()
+        .await
+        .expect("tenant-scoped source work should select");
+    assert_eq!(first_work.len(), 1);
+    assert_eq!(first_work[0].tenant_id, tenant_id);
 
     let first = worker.process_next_batch().await.expect("first poll");
     assert_eq!(first.source_selected, 1);
@@ -172,12 +178,12 @@ async fn bounded_worker_materializes_sources_and_pages_without_final_delivery() 
     assert_eq!(fourth.jobs_selected, 1);
     assert_eq!(fourth.jobs_completed, 1);
     assert!(worker
-        .claimable_source_inbox_ids()
+        .claimable_source_inbox_work()
         .await
         .expect("source selection")
         .is_empty());
     assert!(worker
-        .claimable_fanout_job_ids()
+        .claimable_fanout_job_work()
         .await
         .expect("job selection")
         .is_empty());
