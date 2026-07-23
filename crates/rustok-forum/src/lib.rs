@@ -10,9 +10,11 @@ pub mod constants;
 pub mod controllers;
 pub mod dto;
 pub mod entities;
+#[allow(clippy::explicit_auto_deref)]
 pub mod error;
 pub mod graphql;
 pub mod locale;
+#[allow(clippy::collapsible_if, clippy::redundant_closure)]
 pub mod mentions;
 pub mod migrations;
 mod notification_source;
