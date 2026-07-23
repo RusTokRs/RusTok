@@ -1,7 +1,7 @@
 use crate::builder::PagesBuilderSaveSnapshot;
 use crate::contributions::{
-    PAGES_METADATA_CONTRIBUTION_ID, PAGES_METADATA_PROPERTY_EDITOR_ID,
-    pages_metadata_property_schema,
+    PAGES_METADATA_COMPONENT_TYPE, PAGES_METADATA_CONTRIBUTION_ID,
+    PAGES_METADATA_PROPERTY_EDITOR_ID, PAGES_OWNER_PROVIDER, pages_metadata_property_schema,
 };
 use crate::core;
 use crate::model::{PageDetail, PageMutationResult};
@@ -27,6 +27,8 @@ pub fn pages_metadata_property_runtime(
     Arc::new(ConsumerPropertyEditorRuntime::new(
         PAGES_METADATA_CONTRIBUTION_ID,
         PAGES_METADATA_PROPERTY_EDITOR_ID,
+        PAGES_OWNER_PROVIDER,
+        PAGES_METADATA_COMPONENT_TYPE,
         schema.clone(),
         Arc::new(PagesMetadataPropertyPort {
             snapshot: Arc::new(snapshot),
