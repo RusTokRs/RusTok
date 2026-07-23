@@ -74,6 +74,16 @@ pub struct NotificationCandidateWorker {
     batch_size: usize,
 }
 
+impl std::fmt::Debug for NotificationCandidateWorker {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NotificationCandidateWorker")
+            .field("worker_id", &self.worker_id)
+            .field("batch_size", &self.batch_size)
+            .finish_non_exhaustive()
+    }
+}
+
 impl NotificationCandidateWorker {
     pub fn new(
         db: DatabaseConnection,
