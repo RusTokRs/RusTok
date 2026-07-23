@@ -62,13 +62,15 @@ const implPorts = ports.slice(implStart);
 for (const op of port.write_operations) {
   const idx = implPorts.indexOf(`async fn ${op}`);
   if (idx === -1) fail(`ports.rs missing write operation ${op}`);
-  const body = implPorts.slice(idx, implPorts.indexOf('\n    async fn ', idx + 1) === -1 ? implPorts.length : implPorts.indexOf('\n    async fn ', idx + 1));
+  const next = implPorts.indexOf('\n    async fn ', idx + 1);
+  const body = implPorts.slice(idx, next === -1 ? implPorts.length : next);
   if (!body.includes('context.require_policy(PortCallPolicy::write())?')) fail(`${op} does not require shared write policy`);
 }
 for (const op of port.read_operations) {
   const idx = implPorts.indexOf(`async fn ${op}`);
   if (idx === -1) fail(`ports.rs missing read operation ${op}`);
-  const body = implPorts.slice(idx, implPorts.indexOf('\n    async fn ', idx + 1) === -1 ? implPorts.length : implPorts.indexOf('\n    async fn ', idx + 1));
+  const next = implPorts.indexOf('\n    async fn ', idx + 1);
+  const body = implPorts.slice(idx, next === -1 ? implPorts.length : next);
   if (!body.includes('context.require_policy(PortCallPolicy::read())?')) fail(`${op} does not require shared read policy`);
 }
 
@@ -102,7 +104,9 @@ if (threadWriteCases !== [
   'exact_active_comment_count',
   'historical_counter_repair',
   'historical_position_repair',
+  'postgres_concurrent_create_delete',
   'serialized_position_allocation',
+  'status_only_update_preserves_count',
 ].sort().join('|')) fail('thread write evidence case matrix drift');
 
 const threadContract = threadWriteEvidence.production_contract ?? {};
@@ -112,8 +116,9 @@ for (const [key, expected] of Object.entries({
   repair_migration: 'crates/rustok-comments/src/migrations/m20260723_000008_repair_comment_thread_counters.rs',
   migration_registry: 'crates/rustok-comments/src/migrations/mod.rs',
   executable_test: registry.evidence.thread_write_invariants_test,
+  postgres_environment: 'RUSTOK_COMMENTS_TEST_DATABASE_URL',
 })) {
-  if (threadContract[key] !== expected) fail(`thread write ${key} path drift`);
+  if (threadContract[key] !== expected) fail(`thread write ${key} drift`);
 }
 const positionOwner = read(threadContract.position_owner);
 hasAll(positionOwner, [
@@ -127,6 +132,7 @@ hasAll(positionOwner, [
 const counterOwner = read(threadContract.counter_owner);
 hasAll(counterOwner, [
   'impl ActiveModelBehavior for ActiveModel',
+  'matches!(&self.comment_count, ActiveValue::Set(_))',
   'update_many()',
   'Column::TenantId.eq(tenant_id)',
   'DeletedAt.is_null()',
@@ -150,15 +156,24 @@ hasAll(migrationRegistry, [
 const invariantTest = read(threadContract.executable_test);
 hasAll(invariantTest, [
   'active_model_hooks_override_stale_positions_and_counts',
+  'status_only_thread_update_preserves_comment_count',
   'unique_position_index_rejects_active_model_bypass',
+  'postgres_concurrent_creates_and_delete_preserve_thread_invariants',
+  'RUSTOK_COMMENTS_TEST_DATABASE_URL',
+  'tokio::join!',
+  'max_connections(1)',
   'stale_thread.comment_count = Set(999)',
+  'assert_eq!(positions, vec![1, 2, 3])',
+  'assert_eq!(thread.comment_count, active_count as i32)',
 ], 'thread write invariant test');
 const threadWriteVerifier = read(registry.evidence.thread_write_invariants_runner);
 hasAll(threadWriteVerifier, [
+  'matches!(&self.comment_count, ActiveValue::Set(_))',
   'self.position = Set(next_position)',
   'self.comment_count = Set(count)',
   'ROW_NUMBER() OVER',
-  'unique_position_index_rejects_active_model_bypass',
+  'status_only_thread_update_preserves_comment_count',
+  'postgres_concurrent_creates_and_delete_preserve_thread_invariants',
 ], 'thread write invariant verifier');
 
 const plan = read('crates/rustok-comments/docs/implementation-plan.md');
@@ -171,8 +186,10 @@ hasAll(plan, [
   registry.evidence.thread_write_invariants,
   'ActiveModelBehavior',
   'UNIQUE(thread_id, position)',
+  'RUSTOK_COMMENTS_TEST_DATABASE_URL',
+  'concurrent PostgreSQL',
 ], 'local plan');
 const central = read('docs/modules/registry.md');
 hasAll(central, ['| `comments` |', 'crates/rustok-comments/contracts/comments-fba-registry.json', registry.evidence.runtime_order_smoke, '`in_progress` | `boundary_ready`'], 'central registry');
 
-console.log('[verify-comments-fba] comments FBA provider metadata, port semantics, runtime-order evidence, and thread write invariants are consistent');
+console.log('[verify-comments-fba] comments FBA provider metadata, port semantics, runtime-order evidence, and transactional thread write invariants are consistent');
