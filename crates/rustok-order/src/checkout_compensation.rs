@@ -36,6 +36,12 @@ pub struct CheckoutOrderCompensationSnapshot {
     pub status: String,
 }
 
+impl CheckoutOrderCompensationSnapshot {
+    pub fn status_kind(&self) -> OrderStatusKind {
+        OrderStatusKind::from_raw(self.status.as_str())
+    }
+}
+
 pub struct InProcessCheckoutOrderCompensationPort {
     order_service: OrderService,
     identity_port: Arc<dyn CheckoutOrderIdentityPort>,
