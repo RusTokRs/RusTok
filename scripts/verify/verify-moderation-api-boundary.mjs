@@ -11,6 +11,7 @@ const files = {
   ownerCargo: "crates/rustok-moderation/Cargo.toml",
   ownerDomain: "crates/rustok-moderation/src/domain.rs",
   ownerPorts: "crates/rustok-moderation/src/ports.rs",
+  ownerService: "crates/rustok-moderation/src/service.rs",
   decide: "crates/rustok-moderation/src/commands/case_decide.rs",
   entity: "crates/rustok-moderation/src/entities/moderation_decision_effect.rs",
   migration: "crates/rustok-moderation/src/migrations/m20260723_000003_create_moderation_decision_effects.rs",
@@ -54,6 +55,9 @@ if (failures.length === 0) {
   requireMarkers(files.apiProvider, [
     "ModerationSubjectCommandPort",
     "ModerationSubjectAdapterKey",
+    "module: String",
+    "kind: ModerationSubjectKind",
+    "pub fn module(&self)",
     "ModerationSubjectAdapterRegistry",
     "ModerationSubjectAdapterFactoryRegistry",
     "DuplicateAdapter",
@@ -61,6 +65,11 @@ if (failures.length === 0) {
     "FactoryKeyMismatch",
     "materialize_moderation_subject_adapter_registry",
   ]);
+  for (const forbidden of ["pub module: String", "pub kind: ModerationSubjectKind"]) {
+    if (read(files.apiProvider).includes(forbidden)) {
+      failures.push(`${files.apiProvider}: adapter key bypasses validated construction with ${JSON.stringify(forbidden)}`);
+    }
+  }
   requireMarkers(files.ownerCargo, ['rustok-moderation-api = { path = "../rustok-moderation-api" }']);
   requireMarkers(files.ownerDomain, [
     "pub use rustok_moderation_api",
@@ -77,7 +86,14 @@ if (failures.length === 0) {
     '"effect": &command.effect',
     "moderation_decision_effect::ActiveModel",
     "effect_schema_version",
-    "map_decision(decision, Some(command.effect))",
+    "Some((command.decision_kind, command.effect))",
+  ]);
+  requireMarkers(files.ownerService, [
+    "parse_stored_effect",
+    "stored moderation decision effect version does not match its envelope",
+    "stored moderation decision effect kind does not match decision kind",
+    "validate_for_decision_kind(effect_kind)",
+    "effect: Option<(ModerationDecisionKind, ModerationDecisionEffect)>",
   ]);
   requireMarkers(files.entity, [
     'table_name = "moderation_decision_effects"',
@@ -99,4 +115,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Moderation neutral API, typed effect, registry, owner bridge, hash binding, and persistence source checks passed.");
+console.log("Moderation neutral API, sealed registry, typed effect, owner bridge, hash binding, persistence, and stored-integrity source checks passed.");
