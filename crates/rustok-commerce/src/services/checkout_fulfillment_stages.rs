@@ -2,16 +2,16 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_fulfillment::{
-    CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
+    in_process_checkout_fulfillment_execution_port, CheckoutFulfillmentCommand,
+    CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
     EnsureCheckoutFulfillmentsRequest, FulfillmentResponse, ReadCheckoutFulfillmentsRequest,
-    in_process_checkout_fulfillment_execution_port,
 };
 use rustok_order::{
-    CheckoutOrderPaymentSettlementPort, OrderLineItemResponse, OrderResponse,
-    SettleCheckoutOrderPaymentRequest, in_process_checkout_order_payment_settlement_port,
+    in_process_checkout_order_payment_settlement_port, CheckoutOrderPaymentSettlementPort,
+    OrderLineItemResponse, OrderResponse, SettleCheckoutOrderPaymentRequest,
 };
 use rustok_outbox::TransactionalEventBus;
-use rustok_payment::PaymentCollectionResponse;
+use rustok_payment::{PaymentCollectionResponse, PaymentCollectionStatusKind};
 use serde_json::Value;
 use thiserror::Error;
 use uuid::Uuid;
@@ -395,7 +395,7 @@ fn validate_captured_state(
         || state.payment_collection.tenant_id != tenant_id
         || state.plan.checkout_operation_id != state.operation_id
         || state.payment_collection.order_id != Some(state.order.id)
-        || state.payment_collection.status != "captured"
+        || state.payment_collection.status_kind() != PaymentCollectionStatusKind::Captured
         || state.payment_collection.captured_amount != state.order.total_amount
     {
         return Err(CheckoutFulfillmentStageError::Conflict(
