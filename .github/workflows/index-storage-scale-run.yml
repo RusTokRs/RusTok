@@ -11,6 +11,14 @@ on:
         description: Job timeout for the selected scale
         required: true
         type: number
+      runner_label:
+        description: GitHub Actions runner label
+        required: true
+        type: string
+      minimum_free_bytes:
+        description: Minimum free root-filesystem bytes before the evidence run
+        required: true
+        type: number
 
 permissions:
   contents: read
@@ -31,7 +39,7 @@ env:
 jobs:
   evidence:
     name: PostgreSQL ${{ inputs.scale }} evidence
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner_label }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
     services:
       postgres:
@@ -54,6 +62,19 @@ jobs:
         with:
           shared-key: index-storage-scale
 
+      - name: Verify runner disk capacity
+        shell: bash
+        env:
+          MINIMUM_FREE_BYTES: ${{ inputs.minimum_free_bytes }}
+        run: |
+          available_bytes=$(df --output=avail -B1 / | tail -n 1 | tr -d ' ')
+          echo "available_bytes=$available_bytes"
+          echo "minimum_free_bytes=$MINIMUM_FREE_BYTES"
+          if (( available_bytes < MINIMUM_FREE_BYTES )); then
+            echo "::error::Index ${INDEX_BENCH_SCALE} evidence requires at least ${MINIMUM_FREE_BYTES} free bytes; runner has ${available_bytes}"
+            exit 1
+          fi
+
       - name: Capture runner resources before evidence
         shell: bash
         run: |
@@ -61,6 +82,7 @@ jobs:
           {
             echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "phase=before"
+            echo "runner_label=${{ inputs.runner_label }}"
             uname -a
             echo "nproc=$(nproc)"
             free -b
@@ -89,6 +111,7 @@ jobs:
           {
             echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "phase=after"
+            echo "runner_label=${{ inputs.runner_label }}"
             uname -a
             echo "nproc=$(nproc)"
             free -b
