@@ -1,6 +1,7 @@
 use rustok_core::CONTENT_FORMAT_GRAPESJS;
 use sea_orm::{
-    ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -262,7 +263,10 @@ fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
             "unable to encode page artifact set identity: {error}"
         ))
     })?;
-    Ok(hex::encode(Sha256::digest(bytes)))
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn is_sha256(value: &str) -> bool {

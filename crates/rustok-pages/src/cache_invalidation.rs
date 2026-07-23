@@ -457,7 +457,10 @@ fn cache_variant_hash(variant: &str) -> Result<String, PageCacheError> {
             maximum: MAX_PAGE_CACHE_KEY_VARIANT_BYTES,
         });
     }
-    Ok(format!("{:x}", Sha256::digest(variant.as_bytes())))
+    Ok(Sha256::digest(variant.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn validate_cache_value_size(length: usize) -> Result<(), PageCacheError> {

@@ -11,7 +11,11 @@ repository.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+schemars = { workspace = true, features = ["uuid1", "chrono04"] }
 thiserror.workspace = true
 ulid.workspace = true
 uuid.workspace = true
 rustok-telemetry.workspace = true
+
+[dev-dependencies]
+jsonschema = { version = "=0.46.10", default-features = false }

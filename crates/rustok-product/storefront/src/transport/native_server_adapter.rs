@@ -125,7 +125,7 @@ fn map_product_list_item(value: rustok_product::StorefrontProductListItem) -> Pr
 }
 
 #[cfg(feature = "ssr")]
-fn map_product_detail(value: rustok_commerce_foundation::dto::ProductResponse) -> ProductDetail {
+fn map_product_detail(value: rustok_product::dto::ProductResponse) -> ProductDetail {
     ProductDetail {
         id: value.id.to_string(),
         status: value.status.to_string(),

@@ -106,7 +106,6 @@ impl MenuService {
         input: PreparedMenuItem,
     ) -> Pin<Box<dyn Future<Output = NavigationResult<Uuid>> + Send + 'a>> {
         Box::pin(async move {
-
             let now = Utc::now();
             let item_id = Uuid::new_v4();
             menu_item::ActiveModel {
@@ -114,7 +113,6 @@ impl MenuService {
                 menu_id: Set(menu_id),
                 tenant_id: Set(tenant_id),
                 parent_item_id: Set(parent_item_id),
-                page_id: Set(None),
                 position: Set(input.position),
                 url: Set(input.url),
                 icon: Set(input.icon),
@@ -315,7 +313,9 @@ fn normalize_menu_item(
         }
         let title = translation.title.trim().to_string();
         if title.is_empty() {
-            return Err(NavigationError::validation("Menu item title cannot be empty"));
+            return Err(NavigationError::validation(
+                "Menu item title cannot be empty",
+            ));
         }
         if title.chars().count() > MAX_MENU_ITEM_TITLE_CHARS {
             return Err(NavigationError::validation(format!(

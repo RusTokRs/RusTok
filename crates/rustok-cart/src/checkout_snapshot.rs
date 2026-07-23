@@ -1,10 +1,6 @@
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
-use rustok_commerce_foundation::delivery_groups::{
-    CheckoutDeliveryGroupSnapshot, CheckoutLineAssignment,
-    build_checkout_delivery_group_snapshots,
-};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -13,15 +9,15 @@ use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::dto::{CartAddressResponse, CartResponse, UpdateCartInput};
+use crate::dto::{CartDeliveryGroupResponse, CartResponse, UpdateCartContextInput};
 use crate::{CartError, CartService, CartStatus};
 
 /// Immutable, transport-neutral checkout snapshot owned by the cart module.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedCartCheckoutSnapshot {
     pub cart: CartResponse,
-    pub shipping_address: Option<CartAddressResponse>,
-    pub billing_address: Option<CartAddressResponse>,
+    pub shipping_address: Option<Value>,
+    pub billing_address: Option<Value>,
     pub subtotal: Decimal,
     pub discount_total: Decimal,
     pub tax_total: Decimal,
@@ -30,15 +26,15 @@ pub struct PreparedCartCheckoutSnapshot {
     pub projection_hash: String,
     pub status: String,
     pub locked: bool,
-    pub delivery_groups: Vec<CheckoutDeliveryGroupSnapshot>,
+    pub delivery_groups: Vec<CartDeliveryGroupResponse>,
     pub tax_context: Option<Value>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrepareCartCheckoutRequest {
+pub struct PrepareCartCheckoutSnapshotRequest {
     pub cart_id: Uuid,
-    pub input: UpdateCartInput,
+    pub input: UpdateCartContextInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,7 +49,7 @@ pub trait CartCheckoutPort: Send + Sync {
     async fn prepare_checkout(
         &self,
         context: PortContext,
-        request: PrepareCartCheckoutRequest,
+        request: PrepareCartCheckoutSnapshotRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError>;
 
     async fn read_checkout_snapshot(
@@ -95,29 +91,33 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
     async fn prepare_checkout(
         &self,
         context: PortContext,
-        request: PrepareCartCheckoutRequest,
+        request: PrepareCartCheckoutSnapshotRequest,
     ) -> Result<PreparedCartCheckoutSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_tenant_id(&context)?;
-        let actor_id = parse_actor_id(&context)?;
-        validate_prepare_input(&request.input)?;
+        validate_prepare_input(&request.input).map_err(cart_error_to_port_error)?;
 
         let cart = self
             .service
             .get_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)?;
-        match CartStatus::parse(cart.status.as_str()).map_err(cart_error_to_port_error)? {
-            CartStatus::Active => {}
-            CartStatus::CheckingOut => {
-                return self
+        let status = CartStatus::parse(cart.status.as_str()).ok_or_else(|| {
+            PortError::validation(
+                "cart.invalid_status",
+                format!("invalid cart status `{}`", cart.status),
+            )
+        })?;
+        match status {
+            CartStatus::Active => {
+                let _ = self
                     .service
-                    .get_cart_with_addresses(tenant_id, request.cart_id)
+                    .begin_checkout(tenant_id, request.cart_id)
                     .await
-                    .map_err(cart_error_to_port_error)
-                    .and_then(snapshot_from_cart);
+                    .map_err(cart_error_to_port_error)?;
             }
+            CartStatus::CheckingOut => {}
             status => {
                 return Err(PortError::conflict(
                     "cart.checkout_status_conflict",
@@ -128,7 +128,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
 
         let cart = self
             .service
-            .update_cart(tenant_id, actor_id, request.cart_id, request.input)
+            .update_context(tenant_id, request.cart_id, request.input)
             .await
             .map_err(cart_error_to_port_error)?;
         snapshot_from_cart(cart)
@@ -142,7 +142,7 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context)?;
         self.service
-            .get_cart_with_addresses(tenant_id, cart_id)
+            .get_cart(tenant_id, cart_id)
             .await
             .map_err(cart_error_to_port_error)
             .and_then(snapshot_from_cart)
@@ -156,15 +156,9 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_tenant_id(&context)?;
-        let actor_id = parse_actor_id(&context)?;
         let cart = self
             .service
-            .transition_status(
-                tenant_id,
-                actor_id,
-                request.cart_id,
-                CartStatus::Completed,
-            )
+            .complete_cart(tenant_id, request.cart_id)
             .await
             .map_err(cart_error_to_port_error)?;
         let mut cart = cart;
@@ -180,26 +174,20 @@ impl CartCheckoutPort for InProcessCartCheckoutPort {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
         let tenant_id = parse_tenant_id(&context)?;
-        let actor_id = parse_actor_id(&context)?;
         let cart = self
             .service
-            .transition_status(tenant_id, actor_id, cart_id, CartStatus::Active)
+            .abandon_cart(tenant_id, cart_id)
             .await
             .map_err(cart_error_to_port_error)?;
         snapshot_from_cart(cart)
     }
 }
 
-fn validate_prepare_input(input: &UpdateCartInput) -> Result<(), CartError> {
+fn validate_prepare_input(input: &UpdateCartContextInput) -> Result<(), CartError> {
     input.validate().map_err(|error| {
         tracing::warn!(error = ?error, "cart checkout input validation failed");
         CartError::Validation("cart checkout input is invalid".to_string())
     })?;
-    if input.status.as_deref() != Some(CartStatus::CheckingOut.as_str()) {
-        return Err(CartError::Validation(
-            "checkout preparation requires status=checking_out".to_string(),
-        ));
-    }
     Ok(())
 }
 
@@ -212,26 +200,26 @@ fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
     })
 }
 
-fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.actor.id.as_str()).map_err(|_| {
-        PortError::validation(
-            "cart.actor_id_invalid",
-            "PortContext.actor.id must be a UUID for cart checkout writes",
-        )
-    })
-}
-
 fn snapshot_from_cart(cart: CartResponse) -> Result<PreparedCartCheckoutSnapshot, PortError> {
-    let (subtotal, discount_total, tax_total, total) = calculate_checkout_totals(&cart);
+    let subtotal = cart.subtotal_amount;
+    let discount_total = cart.adjustment_total;
+    let tax_total = cart.tax_total;
+    let total = cart.total_amount;
     let snapshot_hash = cart_snapshot_hash(&cart, subtotal, discount_total, tax_total, total)
         .map_err(cart_error_to_port_error)?;
     let projection_hash = projection_hash(&cart).map_err(cart_error_to_port_error)?;
-    let status = CartStatus::parse(cart.status.as_str()).map_err(cart_error_to_port_error)?;
-    let delivery_groups = delivery_groups_from_cart(&cart).map_err(cart_error_to_port_error)?;
+    let status = CartStatus::parse(cart.status.as_str()).ok_or_else(|| {
+        PortError::validation(
+            "cart.invalid_status",
+            format!("invalid cart status `{}`", cart.status),
+        )
+    })?;
+    let shipping_address = cart.metadata.get("shipping_address").cloned();
+    let billing_address = cart.metadata.get("billing_address").cloned();
     let tax_context = cart.metadata.get("tax_context").cloned();
     Ok(PreparedCartCheckoutSnapshot {
-        shipping_address: cart.shipping_address.clone(),
-        billing_address: cart.billing_address.clone(),
+        shipping_address,
+        billing_address,
         subtotal,
         discount_total,
         tax_total,
@@ -239,24 +227,12 @@ fn snapshot_from_cart(cart: CartResponse) -> Result<PreparedCartCheckoutSnapshot
         projection_hash,
         status: status.as_str().to_string(),
         locked: status == CartStatus::CheckingOut,
-        delivery_groups,
+        delivery_groups: cart.delivery_groups.clone(),
         tax_context,
-        updated_at: cart.updated_at,
+        updated_at: cart.updated_at.into(),
         cart,
         snapshot_hash,
     })
-}
-
-fn calculate_checkout_totals(cart: &CartResponse) -> (Decimal, Decimal, Decimal, Decimal) {
-    let subtotal = cart.line_items.iter().map(|line| line.subtotal).sum();
-    let discount_total = cart
-        .line_items
-        .iter()
-        .map(|line| line.discount_total)
-        .sum();
-    let tax_total = cart.line_items.iter().map(|line| line.tax_total).sum();
-    let total = cart.line_items.iter().map(|line| line.total).sum();
-    (subtotal, discount_total, tax_total, total)
 }
 
 fn cart_snapshot_hash(
@@ -287,48 +263,6 @@ fn projection_hash(cart: &CartResponse) -> Result<String, CartError> {
     })?;
     normalize_snapshot_value(&mut value)?;
     hash_json(value)
-}
-
-fn delivery_groups_from_cart(
-    cart: &CartResponse,
-) -> Result<Vec<CheckoutDeliveryGroupSnapshot>, CartError> {
-    let assignments = cart
-        .line_items
-        .iter()
-        .map(|line| CheckoutLineAssignment {
-            cart_line_item_id: line.id,
-            shipping_profile_slug: line.shipping_profile_slug.clone(),
-            seller_id: line.seller_id,
-        })
-        .collect::<Vec<_>>();
-    let groups = build_checkout_delivery_group_snapshots(assignments)
-        .map_err(|error| CartError::Validation(error.to_string()))?;
-    let selected = cart
-        .delivery_groups
-        .iter()
-        .map(|group| {
-            (
-                (
-                    group.shipping_profile_slug.clone(),
-                    group.seller_id.unwrap_or(Uuid::nil()),
-                ),
-                group.selected_shipping_option_id,
-            )
-        })
-        .collect::<std::collections::HashMap<_, _>>();
-    Ok(groups
-        .into_iter()
-        .map(|mut group| {
-            group.selected_shipping_option_id = selected
-                .get(&(
-                    group.shipping_profile_slug.clone(),
-                    group.seller_id.unwrap_or(Uuid::nil()),
-                ))
-                .copied()
-                .flatten();
-            group
-        })
-        .collect())
 }
 
 fn normalize_snapshot_value(value: &mut Value) -> Result<(), CartError> {
@@ -405,7 +339,10 @@ fn hash_json(value: Value) -> Result<String, CartError> {
         tracing::error!(error = ?error, "cart checkout snapshot hash encoding failed");
         CartError::Validation("cart checkout snapshot could not be encoded".to_string())
     })?;
-    Ok(hex::encode(Sha256::digest(bytes)))
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn canonicalize_json(value: Value) -> Value {

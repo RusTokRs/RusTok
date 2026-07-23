@@ -478,7 +478,7 @@ async fn admin_graphql_pricing_product_resolves_effective_price_for_explicit_cha
             tenant_id,
             actor_id,
             variant.id,
-            vec![PriceInput {
+            vec![rustok_commerce_foundation::dto::PriceInput {
                 currency_code: "EUR".to_string(),
                 channel_id: Some(channel_id),
                 channel_slug: Some("web-store".to_string()),

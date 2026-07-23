@@ -4,8 +4,8 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
-    prepare_group_membership_application_query, prepare_reopen_group_membership_application,
-    prepare_review_group_membership_application, GroupsAdminApplicationInputError,
+    GroupsAdminApplicationInputError, prepare_group_membership_application_query,
+    prepare_reopen_group_membership_application, prepare_review_group_membership_application,
 };
 use crate::application_model::{
     GroupsAdminApplicationReviewDecision, GroupsAdminMembershipApplication,
@@ -13,8 +13,8 @@ use crate::application_model::{
 use crate::core::{GroupsAdminTransportProfile, groups_admin_error, selected_transport_profile};
 use crate::i18n::t;
 use crate::transport::{
-    load_group_admin_membership_applications, reopen_group_admin_membership_application,
-    review_group_admin_membership_application, GroupsAdminTransportContext,
+    GroupsAdminTransportContext, load_group_admin_membership_applications,
+    reopen_group_admin_membership_application, review_group_admin_membership_application,
 };
 
 #[derive(Clone)]
@@ -252,67 +252,90 @@ pub fn GroupsApplicationsAdmin() -> impl IntoView {
                 <p class="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-foreground" role="status">{move || success.get().unwrap_or_default()}</p>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">{busy_label}</p>
+                <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">{busy_label.clone()}</p>
             </Show>
 
             <div class="mt-6">
-                {move || {
-                    let items = applications.get();
-                    if items.is_empty() {
-                        view! { <p class="text-sm text-muted-foreground">{empty.clone()}</p> }.into_any()
-                    } else {
-                        view! {
-                            <ul class="grid gap-4">
-                                {items.into_iter().map(|item| {
-                                    let application_id_for_pick = item.id.clone();
-                                    let application_id_for_reopen = item.id.clone();
-                                    let reopenable = matches!(item.status.as_str(), "rejected" | "cancelled");
-                                    let reopen_callback = on_reopen.clone();
-                                    let answers = item.answers.clone();
-                                    let acknowledgements = item.acknowledged_rule_keys.join(", ");
-                                    view! {
-                                        <li class="rounded-2xl border border-border p-5">
-                                            <div class="flex flex-wrap items-center justify-between gap-3">
-                                                <button
-                                                    class="text-left font-mono text-xs text-primary underline-offset-4 hover:underline"
-                                                    type="button"
-                                                    on:click=move |_| set_application_id.set(application_id_for_pick.clone())
-                                                >
-                                                    {item.id.clone()}
-                                                </button>
-                                                <div class="flex items-center gap-2">
-                                                    <span class="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{item.status.clone()}</span>
-                                                    <Show when=move || reopenable>
-                                                        <button
-                                                            class="rounded-lg border border-border bg-background px-3 py-1 text-xs font-medium"
-                                                            type="button"
-                                                            on:click=move |_| reopen_callback.run(application_id_for_reopen.clone())
-                                                        >
-                                                            {reopen.clone()}
-                                                        </button>
-                                                    </Show>
+                {
+                    let empty = empty.clone();
+                    let reopen = reopen.clone();
+                    let user_label = user_label.clone();
+                    let policy_label = policy_label.clone();
+                    let answers_label = answers_label.clone();
+                    let acknowledgements_label = acknowledgements_label.clone();
+                    move || {
+                        let items = applications.get();
+                        let empty = empty.clone();
+                        let reopen = reopen.clone();
+                        let user_label = user_label.clone();
+                        let policy_label = policy_label.clone();
+                        let answers_label = answers_label.clone();
+                        let acknowledgements_label = acknowledgements_label.clone();
+                        if items.is_empty() {
+                            view! { <p class="text-sm text-muted-foreground">{empty}</p> }.into_any()
+                        } else {
+                            view! {
+                                <ul class="grid gap-4">
+                                    {items.into_iter().map(|item| {
+                                        let application_id_for_pick = item.id.clone();
+                                        let application_id_for_reopen = item.id.clone();
+                                        let reopenable = matches!(item.status.as_str(), "rejected" | "cancelled");
+                                        let reopen_callback = on_reopen.clone();
+                                        let answers = item.answers.clone();
+                                        let acknowledgements = item.acknowledged_rule_keys.join(", ");
+                                        let reopen = reopen.clone();
+                                        let user_label = user_label.clone();
+                                        let policy_label = policy_label.clone();
+                                        let answers_label = answers_label.clone();
+                                        let acknowledgements_label = acknowledgements_label.clone();
+                                        view! {
+                                            <li class="rounded-2xl border border-border p-5">
+                                                <div class="flex flex-wrap items-center justify-between gap-3">
+                                                    <button
+                                                        class="text-left font-mono text-xs text-primary underline-offset-4 hover:underline"
+                                                        type="button"
+                                                        on:click=move |_| set_application_id.set(application_id_for_pick.clone())
+                                                    >
+                                                        {item.id.clone()}
+                                                    </button>
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{item.status.clone()}</span>
+                                                        <Show when=move || reopenable>
+                                                            <button
+                                                                class="rounded-lg border border-border bg-background px-3 py-1 text-xs font-medium"
+                                                                type="button"
+                                                                on:click={
+                                                                    let reopen_callback = reopen_callback.clone();
+                                                                    let application_id_for_reopen = application_id_for_reopen.clone();
+                                                                    move |_| reopen_callback.run(application_id_for_reopen.clone())
+                                                                }
+                                                            >
+                                                                {reopen.clone()}
+                                                            </button>
+                                                        </Show>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <dl class="mt-4 grid gap-3 text-sm md:grid-cols-2">
-                                                <div><dt class="text-xs text-muted-foreground">{user_label.clone()}</dt><dd class="break-all">{item.user_id}</dd></div>
-                                                <div><dt class="text-xs text-muted-foreground">{policy_label.clone()}</dt><dd>{format!("{} · rev {} · {}", item.policy_id, item.policy_revision, item.policy_locale)}</dd></div>
-                                            </dl>
-                                            <div class="mt-4">
-                                                <h3 class="text-sm font-medium text-card-foreground">{answers_label.clone()}</h3>
-                                                <ul class="mt-2 space-y-2">
-                                                    {answers.into_iter().map(|answer| view! {
-                                                        <li class="rounded-xl bg-muted px-3 py-2 text-sm"><strong>{answer.key}</strong><p class="mt-1 whitespace-pre-wrap">{answer.value}</p></li>
-                                                    }).collect_view()}
-                                                </ul>
-                                            </div>
-                                            <p class="mt-4 text-xs text-muted-foreground">{format!("{}: {}", acknowledgements_label.clone(), acknowledgements)}</p>
-                                        </li>
-                                    }
-                                }).collect_view()}
-                            </ul>
-                        }.into_any()
+                                                <dl class="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                                                    <div><dt class="text-xs text-muted-foreground">{user_label}</dt><dd class="break-all">{item.user_id}</dd></div>
+                                                    <div><dt class="text-xs text-muted-foreground">{policy_label}</dt><dd>{format!("{} · rev {} · {}", item.policy_id, item.policy_revision, item.policy_locale)}</dd></div>
+                                                </dl>
+                                                <div class="mt-4">
+                                                    <h3 class="text-sm font-medium text-card-foreground">{answers_label}</h3>
+                                                    <ul class="mt-2 space-y-2">
+                                                        {answers.into_iter().map(|answer| view! {
+                                                            <li class="rounded-xl bg-muted px-3 py-2 text-sm"><strong>{answer.key}</strong><p class="mt-1 whitespace-pre-wrap">{answer.value}</p></li>
+                                                        }).collect_view()}
+                                                    </ul>
+                                                </div>
+                                                <p class="mt-4 text-xs text-muted-foreground">{format!("{}: {}", acknowledgements_label, acknowledgements)}</p>
+                                            </li>
+                                        }
+                                    }).collect_view()}
+                                </ul>
+                            }.into_any()
+                        }
                     }
-                }}
+                }
             </div>
 
             <form class="mt-6 grid gap-3 rounded-2xl border border-border p-5 md:grid-cols-2" on:submit=on_review>
@@ -375,17 +398,41 @@ fn application_input_error_message(
 
 fn application_copy(locale: Option<&str>) -> ApplicationCopy {
     ApplicationCopy {
-        title: t(locale, "groups.admin.applications.title", "Membership applications"),
-        body: t(locale, "groups.admin.applications.body", "Review pending applications or reopen rejected and cancelled applications while preserving their policy snapshot."),
+        title: t(
+            locale,
+            "groups.admin.applications.title",
+            "Membership applications",
+        ),
+        body: t(
+            locale,
+            "groups.admin.applications.body",
+            "Review pending applications or reopen rejected and cancelled applications while preserving their policy snapshot.",
+        ),
         group_id: t(locale, "groups.admin.applications.groupId", "Group UUID"),
-        status: t(locale, "groups.admin.applications.status", "Application status"),
+        status: t(
+            locale,
+            "groups.admin.applications.status",
+            "Application status",
+        ),
         pending: t(locale, "groups.admin.applications.pending", "Pending"),
         approved: t(locale, "groups.admin.applications.approved", "Approved"),
         rejected: t(locale, "groups.admin.applications.rejected", "Rejected"),
         cancelled: t(locale, "groups.admin.applications.cancelled", "Cancelled"),
-        load: t(locale, "groups.admin.applications.load", "Load applications"),
-        empty: t(locale, "groups.admin.applications.empty", "No applications loaded."),
-        application_id: t(locale, "groups.admin.applications.applicationId", "Application UUID"),
+        load: t(
+            locale,
+            "groups.admin.applications.load",
+            "Load applications",
+        ),
+        empty: t(
+            locale,
+            "groups.admin.applications.empty",
+            "No applications loaded.",
+        ),
+        application_id: t(
+            locale,
+            "groups.admin.applications.applicationId",
+            "Application UUID",
+        ),
         decision: t(locale, "groups.admin.applications.decision", "Decision"),
         approve: t(locale, "groups.admin.applications.approve", "Approve"),
         reject: t(locale, "groups.admin.applications.reject", "Reject"),
@@ -396,11 +443,31 @@ fn application_copy(locale: Option<&str>) -> ApplicationCopy {
         ),
         review: t(locale, "groups.admin.applications.review", "Apply review"),
         reopen: t(locale, "groups.admin.applications.reopen", "Reopen"),
-        busy: t(locale, "groups.admin.applications.busy", "Applying membership application command..."),
-        error: t(locale, "groups.admin.applications.error", "Membership application command failed"),
-        loaded: t(locale, "groups.admin.applications.loaded", "Applications loaded"),
-        reviewed: t(locale, "groups.admin.applications.reviewed", "Application reviewed"),
-        reopened: t(locale, "groups.admin.applications.reopened", "Application reopened"),
+        busy: t(
+            locale,
+            "groups.admin.applications.busy",
+            "Applying membership application command...",
+        ),
+        error: t(
+            locale,
+            "groups.admin.applications.error",
+            "Membership application command failed",
+        ),
+        loaded: t(
+            locale,
+            "groups.admin.applications.loaded",
+            "Applications loaded",
+        ),
+        reviewed: t(
+            locale,
+            "groups.admin.applications.reviewed",
+            "Application reviewed",
+        ),
+        reopened: t(
+            locale,
+            "groups.admin.applications.reopened",
+            "Application reopened",
+        ),
         user: t(locale, "groups.admin.applications.user", "Candidate"),
         policy: t(
             locale,

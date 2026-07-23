@@ -87,12 +87,17 @@ fn render_directory(
         return view! { <p class="groups-storefront__empty">{empty.to_string()}</p> }.into_any();
     }
 
+    let members_label = members_label.to_string();
+    let apply_label = apply_label.to_string();
+
     view! {
         <div class="groups-storefront__grid">
             {directory.items.into_iter().map(|group| {
                 let summary = group.summary.unwrap_or_default();
                 let application_href = format!("/modules/groups?apply={}", group.id);
                 let can_apply = group.join_policy == "request";
+                let apply_label = apply_label.clone();
+                let members_label = members_label.clone();
                 view! {
                     <article class="groups-storefront__card">
                         <h2>{group.title}</h2>
@@ -100,7 +105,7 @@ fn render_directory(
                         <p>{format!("@{} · {}", group.handle, group.visibility)}</p>
                         <small>{format!("{} {}", group.member_count, members_label)}</small>
                         <Show when=move || can_apply>
-                            <a class="mt-4 inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" href=application_href.clone()>{apply_label.to_string()}</a>
+                            <a class="mt-4 inline-flex rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" href=application_href.clone()>{apply_label.clone()}</a>
                         </Show>
                     </article>
                 }

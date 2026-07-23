@@ -221,7 +221,6 @@ fn map_publication_error(error: PagesError) -> HttpError {
         PagesError::Validation(_)
         | PagesError::DuplicateSlug { .. }
         | PagesError::CannotDeletePublished
-        | PagesError::MenuNotFound(_)
         | PagesError::Content(_) => HttpError::bad_request("PAGES_PUBLICATION_FAILED", message),
     }
 }

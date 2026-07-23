@@ -88,11 +88,14 @@ pub async fn complete_storefront_checkout(
         runtime.db_clone(),
         PrepareCartCheckoutSnapshotRequest {
             cart_id: command.cart_id,
-            region_id: None,
-            country_code: None,
-            locale_code: Some(request_context.locale.clone()),
-            selected_shipping_option_id: None,
-            shipping_selections: None,
+            input: rustok_cart::UpdateCartContextInput {
+                email: None,
+                region_id: None,
+                country_code: None,
+                locale_code: Some(request_context.locale.clone()),
+                selected_shipping_option_id: None,
+                shipping_selections: None,
+            },
         },
         pricing_resolver,
     );

@@ -386,21 +386,21 @@ async fn test_set_prices_bulk() {
     let (_product_id, variant_id) = create_test_product(&catalog, tenant_id).await;
 
     let prices = vec![
-        PriceInput {
+        rustok_commerce_foundation::dto::PriceInput {
             currency_code: "USD".to_string(),
             channel_id: None,
             channel_slug: None,
             amount: dec!(99.99),
             compare_at_amount: None,
         },
-        PriceInput {
+        rustok_commerce_foundation::dto::PriceInput {
             currency_code: "EUR".to_string(),
             channel_id: None,
             channel_slug: None,
             amount: dec!(89.99),
             compare_at_amount: None,
         },
-        PriceInput {
+        rustok_commerce_foundation::dto::PriceInput {
             currency_code: "GBP".to_string(),
             channel_id: None,
             channel_slug: None,
@@ -437,7 +437,7 @@ async fn test_set_prices_persists_decimal_and_legacy_cents_for_new_scoped_row() 
             tenant_id,
             actor_id,
             variant_id,
-            vec![PriceInput {
+            vec![rustok_commerce_foundation::dto::PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: Some(channel_id),
                 channel_slug: Some("WEB-STORE".to_string()),
@@ -480,14 +480,14 @@ async fn test_set_prices_rolls_back_existing_row_updates_when_any_price_is_inval
             actor_id,
             variant_id,
             vec![
-                PriceInput {
+                rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "USD".to_string(),
                     channel_id: None,
                     channel_slug: None,
                     amount: dec!(79.99),
                     compare_at_amount: Some(dec!(99.99)),
                 },
-                PriceInput {
+                rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "EUR".to_string(),
                     channel_id: None,
                     channel_slug: None,
@@ -511,14 +511,14 @@ async fn test_set_prices_rolls_back_existing_row_updates_when_any_price_is_inval
             actor_id,
             variant_id,
             vec![
-                PriceInput {
+                rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "USD".to_string(),
                     channel_id: None,
                     channel_slug: None,
                     amount: dec!(59.99),
                     compare_at_amount: Some(dec!(79.99)),
                 },
-                PriceInput {
+                rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "GBP".to_string(),
                     channel_id: None,
                     channel_slug: None,
@@ -599,14 +599,14 @@ async fn test_set_prices_publishes_price_updated_events_with_old_and_new_cents()
             actor_id,
             variant_id,
             vec![
-                PriceInput {
+                rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "USD".to_string(),
                     channel_id: None,
                     channel_slug: None,
                     amount: dec!(89.994),
                     compare_at_amount: Some(dec!(99.996)),
                 },
-                PriceInput {
+                rustok_commerce_foundation::dto::PriceInput {
                     currency_code: "EUR".to_string(),
                     channel_id: None,
                     channel_slug: None,

@@ -76,7 +76,7 @@ impl CartService {
         request: PrepareCartCheckoutSnapshotRequest,
         pricing_plan: Option<CartCheckoutPricingPlan>,
     ) -> CartResult<CartResponse> {
-        for selection in request.shipping_selections.iter().flatten() {
+        for selection in request.input.shipping_selections.iter().flatten() {
             selection
                 .validate()
                 .map_err(|error| CartError::Validation(error.to_string()))?;
@@ -124,10 +124,11 @@ impl CartService {
         }
 
         let shipping_patch_requested =
-            request.shipping_selections.is_some() || request.selected_shipping_option_id.is_some();
+            request.input.shipping_selections.is_some() || request.input.selected_shipping_option_id.is_some();
         let country_code = match cart.country_code.clone() {
             Some(country_code) => Some(country_code),
             None => request
+                .input
                 .country_code
                 .as_deref()
                 .map(normalize_country_code)
@@ -136,23 +137,24 @@ impl CartService {
         let locale_code = match cart.locale_code.clone() {
             Some(locale_code) => Some(locale_code),
             None => request
+                .input
                 .locale_code
                 .as_deref()
                 .map(normalize_locale_code)
                 .transpose()?,
         };
         let selected_shipping_option_id = if shipping_patch_requested {
-            request.selected_shipping_option_id
+            request.input.selected_shipping_option_id
         } else {
             cart.selected_shipping_option_id
         };
         let context_input = UpdateCartContextInput {
             email: cart.email.clone(),
-            region_id: cart.region_id.or(request.region_id),
+            region_id: cart.region_id.or(request.input.region_id),
             country_code,
             locale_code,
             selected_shipping_option_id,
-            shipping_selections: request.shipping_selections,
+            shipping_selections: request.input.shipping_selections.clone(),
         };
 
         let mut active: entities::cart::ActiveModel = cart.clone().into();
@@ -247,7 +249,7 @@ async fn apply_checkout_pricing_plan(
             pricing_plan.currency_code, cart.currency_code
         )));
     }
-    if pricing_plan.effective_region_id != cart.region_id.or(request.region_id) {
+    if pricing_plan.effective_region_id != cart.region_id.or(request.input.region_id) {
         return Err(checkout_pricing_changed(
             "effective region changed while resolving checkout prices",
         ));

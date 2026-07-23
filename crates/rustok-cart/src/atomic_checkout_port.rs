@@ -11,11 +11,14 @@ use std::{
 };
 use uuid::Uuid;
 
+use crate::checkout_snapshot::{
+    CartCheckoutPort as CartCheckoutSnapshotPort, PrepareCartCheckoutSnapshotRequest,
+    PreparedCartCheckoutSnapshot, in_process_cart_checkout_port as in_process_cart_checkout_snapshot_port,
+};
 use crate::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
-    CartCheckoutSnapshotPort, CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate,
-    CartResponse, CartService, CartStatus, PrepareCartCheckoutSnapshotRequest,
-    PreparedCartCheckoutSnapshot, in_process_cart_checkout_snapshot_port,
+    CartCheckoutSnapshotRequest, CartError, CartPricingAdjustmentUpdate, CartResponse,
+    CartService, CartStatus,
 };
 
 const CHECKOUT_PRICING_CHANGED_PREFIX: &str = "checkout pricing snapshot changed:";
@@ -84,10 +87,10 @@ impl AtomicCartCheckoutPort {
         db: DatabaseConnection,
         prepare_request: PrepareCartCheckoutSnapshotRequest,
     ) -> Self {
-        let service = Arc::new(CartService::new(db.clone()));
+        let service = Arc::new(CartService::new(db));
         Self {
+            snapshot_port: in_process_cart_checkout_snapshot_port((*service).clone()),
             service,
-            snapshot_port: in_process_cart_checkout_snapshot_port(db),
             prepare_request,
             pricing_resolver: None,
             prepared_state: Arc::new(Mutex::new(None)),
@@ -151,7 +154,7 @@ impl AtomicCartCheckoutHandle {
 
         let snapshot = self
             .snapshot_port
-            .prepare_checkout_snapshot(
+            .prepare_checkout(
                 snapshot_port_context(tenant_id, &self.prepare_request),
                 self.prepare_request.clone(),
             )
@@ -183,8 +186,8 @@ fn bind_atomic_cart_checkout(
     prepare_request: PrepareCartCheckoutSnapshotRequest,
     pricing_resolver: Option<Arc<dyn AtomicCartCheckoutPricingResolver>>,
 ) -> AtomicCartCheckoutBinding {
-    let service = Arc::new(CartService::new(db.clone()));
-    let snapshot_port = in_process_cart_checkout_snapshot_port(db);
+    let service = Arc::new(CartService::new(db));
+    let snapshot_port = in_process_cart_checkout_snapshot_port((*service).clone());
     let prepared_state = Arc::new(Mutex::new(None));
     let port = Arc::new(AtomicCartCheckoutPort {
         service: service.clone(),
@@ -240,7 +243,7 @@ impl CartCheckoutPort for AtomicCartCheckoutPort {
             return Ok(cart);
         }
         self.snapshot_port
-            .prepare_checkout_snapshot(context, self.prepare_request.clone())
+            .prepare_checkout(context, self.prepare_request.clone())
             .await
             .map(|snapshot| snapshot.cart)
     }
@@ -354,6 +357,7 @@ fn snapshot_port_context(
     request: &PrepareCartCheckoutSnapshotRequest,
 ) -> PortContext {
     let locale = request
+        .input
         .locale_code
         .as_deref()
         .and_then(normalize_locale_tag)

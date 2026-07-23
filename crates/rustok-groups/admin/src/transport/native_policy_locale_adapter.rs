@@ -60,8 +60,8 @@ async fn groups_admin_application_policy_locale_catalog_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationPolicyManagementReadPort, GroupApplicationService,
@@ -95,13 +95,14 @@ async fn groups_admin_application_policy_locale_catalog_native(
         for permission in auth.permissions {
             context = context.with_claim(permission.to_string());
         }
-        let catalog = GroupApplicationPolicyManagementReadPort::list_group_application_policy_locales(
-            &GroupApplicationService::new(runtime.db_clone()),
-            context,
-            ListGroupApplicationPolicyLocalesRequest { group_id },
-        )
-        .await
-        .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
+        let catalog =
+            GroupApplicationPolicyManagementReadPort::list_group_application_policy_locales(
+                &GroupApplicationService::new(runtime.db_clone()),
+                context,
+                ListGroupApplicationPolicyLocalesRequest { group_id },
+            )
+            .await
+            .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
         Ok(GroupsAdminApplicationPolicyLocaleCatalog {
             group_id: catalog.group_id.to_string(),
             policy_id: catalog.policy_id.map(|value| value.to_string()),
@@ -130,8 +131,8 @@ async fn groups_admin_application_policy_for_management_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationPolicyManagementReadPort, GroupApplicationService,
@@ -165,16 +166,17 @@ async fn groups_admin_application_policy_for_management_native(
         for permission in auth.permissions {
             context = context.with_claim(permission.to_string());
         }
-        let view = GroupApplicationPolicyManagementReadPort::read_group_application_policy_for_management(
-            &GroupApplicationService::new(runtime.db_clone()),
-            context,
-            ReadGroupApplicationPolicyForManagementRequest {
-                group_id,
-                locale: query.locale,
-            },
-        )
-        .await
-        .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
+        let view =
+            GroupApplicationPolicyManagementReadPort::read_group_application_policy_for_management(
+                &GroupApplicationService::new(runtime.db_clone()),
+                context,
+                ReadGroupApplicationPolicyForManagementRequest {
+                    group_id,
+                    locale: query.locale,
+                },
+            )
+            .await
+            .map_err(|error| ServerFnError::new(format!("{}: {}", error.code, error.message)))?;
         Ok(map_management_view(view))
     }
     #[cfg(not(feature = "ssr"))]
@@ -197,8 +199,8 @@ async fn groups_admin_upsert_application_policy_if_current_native(
     {
         use leptos::prelude::expect_context;
         use rustok_api::{
-            request::RequestContext, AuthContext, HostRuntimeContext, PortActor, PortContext,
-            TenantContext,
+            AuthContext, HostRuntimeContext, PortActor, PortContext, TenantContext,
+            request::RequestContext,
         };
         use rustok_groups::{
             GroupApplicationCasCommandPort, GroupApplicationPolicyPrecondition,
@@ -226,7 +228,7 @@ async fn groups_admin_upsert_application_policy_if_current_native(
         let expected_policy = command
             .expected_policy
             .map(|expected| {
-                Ok(GroupApplicationPolicyPrecondition {
+                Ok::<GroupApplicationPolicyPrecondition, ServerFnError>(GroupApplicationPolicyPrecondition {
                     policy_id: Uuid::parse_str(&expected.policy_id)
                         .map_err(|_| ServerFnError::new("policy_id must be a UUID"))?,
                     revision: expected.revision,
@@ -310,23 +312,27 @@ fn map_management_view(
         questions: value
             .questions
             .into_iter()
-            .map(|question| crate::application_model::GroupsAdminApplicationQuestion {
-                key: question.key,
-                prompt: question.prompt,
-                help_text: question.help_text,
-                required: question.required,
-                max_answer_chars: question.max_answer_chars,
-            })
+            .map(
+                |question| crate::application_model::GroupsAdminApplicationQuestion {
+                    key: question.key,
+                    prompt: question.prompt,
+                    help_text: question.help_text,
+                    required: question.required,
+                    max_answer_chars: question.max_answer_chars,
+                },
+            )
             .collect(),
         rules: value
             .rules
             .into_iter()
-            .map(|rule| crate::application_model::GroupsAdminApplicationRule {
-                key: rule.key,
-                title: rule.title,
-                body: rule.body,
-                required: rule.required,
-            })
+            .map(
+                |rule| crate::application_model::GroupsAdminApplicationRule {
+                    key: rule.key,
+                    title: rule.title,
+                    body: rule.body,
+                    required: rule.required,
+                },
+            )
             .collect(),
     }
 }
@@ -342,23 +348,27 @@ fn map_policy(value: rustok_groups::GroupApplicationPolicy) -> GroupsAdminApplic
         questions: value
             .questions
             .into_iter()
-            .map(|question| crate::application_model::GroupsAdminApplicationQuestion {
-                key: question.key,
-                prompt: question.prompt,
-                help_text: question.help_text,
-                required: question.required,
-                max_answer_chars: question.max_answer_chars,
-            })
+            .map(
+                |question| crate::application_model::GroupsAdminApplicationQuestion {
+                    key: question.key,
+                    prompt: question.prompt,
+                    help_text: question.help_text,
+                    required: question.required,
+                    max_answer_chars: question.max_answer_chars,
+                },
+            )
             .collect(),
         rules: value
             .rules
             .into_iter()
-            .map(|rule| crate::application_model::GroupsAdminApplicationRule {
-                key: rule.key,
-                title: rule.title,
-                body: rule.body,
-                required: rule.required,
-            })
+            .map(
+                |rule| crate::application_model::GroupsAdminApplicationRule {
+                    key: rule.key,
+                    title: rule.title,
+                    body: rule.body,
+                    required: rule.required,
+                },
+            )
             .collect(),
     }
 }

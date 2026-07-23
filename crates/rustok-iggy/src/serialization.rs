@@ -24,7 +24,11 @@ impl EventSerializer for JsonSerializer {
     }
 
     fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
-        Ok(serde_json::from_slice(payload)?)
+        let envelope: EventEnvelope = serde_json::from_slice(payload)?;
+        envelope
+            .validate_registered_schema()
+            .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+        Ok(envelope)
     }
 
     fn serialize_contract(&self, envelope: &ContractEventEnvelope) -> Result<Vec<u8>> {
@@ -49,7 +53,12 @@ impl EventSerializer for PostcardSerializer {
     }
 
     fn deserialize(&self, payload: &[u8]) -> Result<EventEnvelope> {
-        postcard::from_bytes(payload).map_err(|err| rustok_core::Error::External(err.to_string()))
+        let envelope: EventEnvelope = postcard::from_bytes(payload)
+            .map_err(|err| rustok_core::Error::External(err.to_string()))?;
+        envelope
+            .validate_registered_schema()
+            .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+        Ok(envelope)
     }
 
     fn serialize_contract(&self, envelope: &ContractEventEnvelope) -> Result<Vec<u8>> {

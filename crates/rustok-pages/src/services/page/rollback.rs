@@ -3,8 +3,8 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
+    DbBackend, EntityTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -443,7 +443,10 @@ fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
             "unable to encode page rollback identity: {error}"
         ))
     })?;
-    Ok(hex::encode(Sha256::digest(bytes)))
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn is_sha256(value: &str) -> bool {

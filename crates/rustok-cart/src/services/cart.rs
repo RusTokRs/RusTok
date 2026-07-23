@@ -34,6 +34,7 @@ use crate::error::{CartError, CartResult};
 
 use helpers::*;
 
+#[derive(Clone)]
 pub struct CartService {
     db: DatabaseConnection,
     tax_calculation_port: Arc<dyn TaxCalculationPort>,

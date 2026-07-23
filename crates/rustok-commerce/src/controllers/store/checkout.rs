@@ -190,11 +190,14 @@ pub async fn complete_cart_checkout(
         runtime.db_clone(),
         PrepareCartCheckoutSnapshotRequest {
             cart_id,
-            region_id: checkout_input.region_id,
-            country_code: checkout_input.country_code.clone(),
-            locale_code: checkout_input.locale.clone(),
-            selected_shipping_option_id: checkout_input.shipping_option_id,
-            shipping_selections: checkout_input.shipping_selections.clone(),
+            input: rustok_cart::UpdateCartContextInput {
+                email: None,
+                region_id: checkout_input.region_id,
+                country_code: checkout_input.country_code.clone(),
+                locale_code: checkout_input.locale.clone(),
+                selected_shipping_option_id: checkout_input.shipping_option_id,
+                shipping_selections: checkout_input.shipping_selections.clone(),
+            },
         },
         pricing_resolver,
     );

@@ -1300,7 +1300,10 @@ fn request_hash<T: Serialize>(request: &T) -> GroupsResult<String> {
     let bytes = serde_json::to_vec(request).map_err(|error| {
         GroupsError::Validation(format!("group command request is not serializable: {error}"))
     })?;
-    Ok(format!("{:x}", Sha256::digest(bytes)))
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn normalize_policy_key(value: &str) -> GroupsResult<String> {

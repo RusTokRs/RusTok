@@ -167,26 +167,32 @@ pub fn GroupsInvitationAcceptance(transport: GroupsStorefrontTransportContext) -
                         </div>
                     }
                 >
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-card-foreground" for="groups-invitation-token">{token_label}</label>
-                        <input
-                            id="groups-invitation-token"
-                            class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                            type="password"
-                            autocomplete="off"
-                            spellcheck="false"
-                            prop:value=move || token.get()
-                            on:input=move |event| set_token.set(event_target_value(&event))
-                        />
-                        <p class="mt-2 text-xs text-muted-foreground">{token_hint}</p>
-                    </div>
+                    {
+                        let token_label = token_label.clone();
+                        let token_hint = token_hint.clone();
+                        view! {
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-card-foreground" for="groups-invitation-token">{token_label}</label>
+                                <input
+                                    id="groups-invitation-token"
+                                    class="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                                    type="password"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                    prop:value=move || token.get()
+                                    on:input=move |event| set_token.set(event_target_value(&event))
+                                />
+                                <p class="mt-2 text-xs text-muted-foreground">{token_hint}</p>
+                            </div>
+                        }
+                    }
                 </Show>
                 <button
                     class="self-end rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
                     type="submit"
                     disabled=move || busy.get()
                 >
-                    {accept}
+                    {accept.clone()}
                 </button>
             </form>
 
@@ -199,28 +205,38 @@ pub fn GroupsInvitationAcceptance(transport: GroupsStorefrontTransportContext) -
                 </p>
             </Show>
             <Show when=move || result.get().is_some()>
-                {move || result.get().map(|accepted| {
-                    let membership = accepted.membership;
-                    view! {
-                        <div class="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3" role="status">
-                            <p class="font-medium text-foreground">{success.clone()}</p>
-                            <dl class="mt-3 grid gap-2 text-sm md:grid-cols-3">
-                                <div>
-                                    <dt class="text-xs text-muted-foreground">{group_label.clone()}</dt>
-                                    <dd class="break-all text-foreground">{accepted.group_id}</dd>
-                                </div>
-                                <div>
-                                    <dt class="text-xs text-muted-foreground">{role_label.clone()}</dt>
-                                    <dd class="text-foreground">{membership.role}</dd>
-                                </div>
-                                <div>
-                                    <dt class="text-xs text-muted-foreground">{status_label.clone()}</dt>
-                                    <dd class="text-foreground">{membership.status}</dd>
-                                </div>
-                            </dl>
-                        </div>
-                    }
-                })}
+                {
+                    let success = success.clone();
+                    let group_label = group_label.clone();
+                    let role_label = role_label.clone();
+                    let status_label = status_label.clone();
+                    move || result.get().map(|accepted| {
+                        let membership = accepted.membership;
+                        let success = success.clone();
+                        let group_label = group_label.clone();
+                        let role_label = role_label.clone();
+                        let status_label = status_label.clone();
+                        view! {
+                            <div class="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3" role="status">
+                                <p class="font-medium text-foreground">{success}</p>
+                                <dl class="mt-3 grid gap-2 text-sm md:grid-cols-3">
+                                    <div>
+                                        <dt class="text-xs text-muted-foreground">{group_label}</dt>
+                                        <dd class="break-all text-foreground">{accepted.group_id}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs text-muted-foreground">{role_label}</dt>
+                                        <dd class="text-foreground">{membership.role}</dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs text-muted-foreground">{status_label}</dt>
+                                        <dd class="text-foreground">{membership.status}</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        }
+                    })
+                }
             </Show>
         </section>
     }

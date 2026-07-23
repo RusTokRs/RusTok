@@ -6,19 +6,17 @@ use leptos::task::spawn_local;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_bulk_core::{
-    prepare_bulk_review_group_membership_application_query,
-    prepare_bulk_review_group_membership_applications, GroupsAdminBulkReviewInputError,
+    GroupsAdminBulkReviewInputError, prepare_bulk_review_group_membership_application_query,
+    prepare_bulk_review_group_membership_applications,
 };
 use crate::application_bulk_transport::bulk_review_group_admin_membership_applications;
 use crate::application_model::{
     GroupsAdminApplicationReviewDecision, GroupsAdminBulkReviewApplicationItemResult,
     GroupsAdminMembershipApplication,
 };
-use crate::core::{groups_admin_error, selected_transport_profile, GroupsAdminTransportProfile};
+use crate::core::{GroupsAdminTransportProfile, groups_admin_error, selected_transport_profile};
 use crate::i18n::t;
-use crate::transport::{
-    load_group_admin_membership_applications, GroupsAdminTransportContext,
-};
+use crate::transport::{GroupsAdminTransportContext, load_group_admin_membership_applications};
 
 const MAX_BULK_REVIEW_ITEMS: usize = 50;
 
@@ -79,16 +77,16 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
     let load_copy = copy.clone();
     let on_load = move |event: SubmitEvent| {
         event.prevent_default();
-        let query = match prepare_bulk_review_group_membership_application_query(
-            &group_id.get_untracked(),
-        ) {
-            Ok(query) => query,
-            Err(_) => {
-                set_error.set(Some(load_copy.invalid_group_id.clone()));
-                set_success.set(None);
-                return;
-            }
-        };
+        let query =
+            match prepare_bulk_review_group_membership_application_query(&group_id.get_untracked())
+            {
+                Ok(query) => query,
+                Err(_) => {
+                    set_error.set(Some(load_copy.invalid_group_id.clone()));
+                    set_success.set(None);
+                    return;
+                }
+            };
         let context = load_transport.clone();
         let copy = load_copy.clone();
         set_busy.set(true);
@@ -162,7 +160,9 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
                     let item_results = result.items;
                     let successful_ids = item_results
                         .iter()
-                        .filter_map(|item| item.result.as_ref().map(|_| item.application_id.clone()))
+                        .filter_map(|item| {
+                            item.result.as_ref().map(|_| item.application_id.clone())
+                        })
                         .collect::<BTreeSet<_>>();
                     set_applications.update(|items| {
                         items.retain(|item| !successful_ids.contains(&item.id));
@@ -174,11 +174,7 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
                     set_results.set(item_results);
                     set_success.set(Some(format!(
                         "{} · {}: {} · {}: {}",
-                        copy.completed,
-                        copy.succeeded,
-                        succeeded_count,
-                        copy.failed,
-                        failed_count
+                        copy.completed, copy.succeeded, succeeded_count, copy.failed, failed_count
                     )));
                 }
                 Err(submit_error) => set_error.set(Some(groups_admin_error(
@@ -237,7 +233,7 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
                 <p class="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-foreground" role="status" aria-live="polite">{move || success.get().unwrap_or_default()}</p>
             </Show>
             <Show when=move || busy.get()>
-                <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">{busy_label}</p>
+                <p class="mt-4 text-sm text-muted-foreground" aria-live="polite">{busy_label.clone()}</p>
             </Show>
 
             <div class="mt-6 flex flex-wrap items-center gap-3">
@@ -323,23 +319,38 @@ pub fn GroupsApplicationsBulkReviewAdmin() -> impl IntoView {
             </form>
 
             <Show when=move || !results.get().is_empty()>
-                <ul class="mt-6 grid gap-2" aria-live="polite">
-                    {move || results.get().into_iter().map(|item| {
-                        let GroupsAdminBulkReviewApplicationItemResult {
-                            application_id,
-                            result,
-                            error,
-                        } = item;
-                        let message = if let Some(result) = result {
-                            format!("{} · {}{}", application_id, succeeded, if result.replayed { format!(" · {replayed}") } else { String::new() })
-                        } else if let Some(error) = error {
-                            format!("{} · {} · {}: {}", application_id, failed, error.code, error.message)
-                        } else {
-                            format!("{} · {}", application_id, failed)
-                        };
-                        view! { <li class="rounded-xl border border-border px-4 py-3 text-sm">{message}</li> }
-                    }).collect_view()}
-                </ul>
+                {
+                    let succeeded = succeeded.clone();
+                    let replayed = replayed.clone();
+                    let failed = failed.clone();
+                    move || {
+                        let succeeded = succeeded.clone();
+                        let replayed = replayed.clone();
+                        let failed = failed.clone();
+                        view! {
+                            <ul class="mt-6 grid gap-2" aria-live="polite">
+                                {results.get().into_iter().map(|item| {
+                                    let GroupsAdminBulkReviewApplicationItemResult {
+                                        application_id,
+                                        result,
+                                        error,
+                                    } = item;
+                                    let succeeded = succeeded.clone();
+                                    let replayed = replayed.clone();
+                                    let failed = failed.clone();
+                                    let message = if let Some(result) = result {
+                                        format!("{} · {}{}", application_id, succeeded, if result.replayed { format!(" · {replayed}") } else { String::new() })
+                                    } else if let Some(error) = error {
+                                        format!("{} · {} · {}: {}", application_id, failed, error.code, error.message)
+                                    } else {
+                                        format!("{} · {}", application_id, failed)
+                                    };
+                                    view! { <li class="rounded-xl border border-border bg-muted px-4 py-2 text-xs font-mono">{message}</li> }
+                                }).collect_view()}
+                            </ul>
+                        }
+                    }
+                }
             </Show>
         </section>
     }
@@ -357,45 +368,139 @@ fn bulk_input_error_message(
         GroupsAdminBulkReviewInputError::InvalidApplicationId => {
             copy.invalid_application_id.clone()
         }
-        GroupsAdminBulkReviewInputError::ConfirmationRequired => {
-            copy.confirmation_required.clone()
-        }
+        GroupsAdminBulkReviewInputError::ConfirmationRequired => copy.confirmation_required.clone(),
         GroupsAdminBulkReviewInputError::ReviewNoteTooLong => copy.review_note_too_long.clone(),
     }
 }
 
 fn bulk_review_copy(locale: Option<&str>) -> BulkReviewCopy {
     BulkReviewCopy {
-        title: t(locale, "groups.admin.applications.bulk.title", "Bulk membership application review"),
-        body: t(locale, "groups.admin.applications.bulk.body", "Load pending applications, select up to 50, confirm one decision, and inspect every item result."),
+        title: t(
+            locale,
+            "groups.admin.applications.bulk.title",
+            "Bulk membership application review",
+        ),
+        body: t(
+            locale,
+            "groups.admin.applications.bulk.body",
+            "Load pending applications, select up to 50, confirm one decision, and inspect every item result.",
+        ),
         group_id: t(locale, "groups.admin.applications.groupId", "Group UUID"),
-        load: t(locale, "groups.admin.applications.bulk.load", "Load pending applications"),
-        empty: t(locale, "groups.admin.applications.bulk.empty", "No pending applications loaded."),
-        select_all: t(locale, "groups.admin.applications.bulk.selectAll", "Select all loaded"),
-        select_application: t(locale, "groups.admin.applications.bulk.selectApplication", "Select application"),
-        clear: t(locale, "groups.admin.applications.bulk.clear", "Clear selection"),
-        selected: t(locale, "groups.admin.applications.bulk.selected", "Selected"),
+        load: t(
+            locale,
+            "groups.admin.applications.bulk.load",
+            "Load pending applications",
+        ),
+        empty: t(
+            locale,
+            "groups.admin.applications.bulk.empty",
+            "No pending applications loaded.",
+        ),
+        select_all: t(
+            locale,
+            "groups.admin.applications.bulk.selectAll",
+            "Select all loaded",
+        ),
+        select_application: t(
+            locale,
+            "groups.admin.applications.bulk.selectApplication",
+            "Select application",
+        ),
+        clear: t(
+            locale,
+            "groups.admin.applications.bulk.clear",
+            "Clear selection",
+        ),
+        selected: t(
+            locale,
+            "groups.admin.applications.bulk.selected",
+            "Selected",
+        ),
         decision: t(locale, "groups.admin.applications.decision", "Decision"),
         approve: t(locale, "groups.admin.applications.approve", "Approve"),
         reject: t(locale, "groups.admin.applications.reject", "Reject"),
-        note: t(locale, "groups.admin.applications.note", "Review note (optional)"),
+        note: t(
+            locale,
+            "groups.admin.applications.note",
+            "Review note (optional)",
+        ),
         revision: t(locale, "groups.admin.policyEditor.revision", "revision"),
-        confirm: t(locale, "groups.admin.applications.bulk.confirm", "I confirm this bulk decision for the selected applications"),
-        submit: t(locale, "groups.admin.applications.bulk.submit", "Apply bulk review"),
-        busy: t(locale, "groups.admin.applications.bulk.busy", "Applying bulk review..."),
-        loaded: t(locale, "groups.admin.applications.loaded", "Applications loaded"),
-        completed: t(locale, "groups.admin.applications.bulk.completed", "Bulk review completed"),
-        error: t(locale, "groups.admin.applications.error", "Membership application command failed"),
-        invalid_group_id: t(locale, "groups.admin.applications.invalidGroupId", "Enter a valid group UUID."),
-        empty_selection: t(locale, "groups.admin.applications.bulk.emptySelection", "Select at least one application."),
-        too_many: t(locale, "groups.admin.applications.bulk.tooMany", "Select no more than 50 applications."),
-        duplicate: t(locale, "groups.admin.applications.bulk.duplicate", "The selection contains duplicate applications."),
-        invalid_application_id: t(locale, "groups.admin.applications.invalidApplicationId", "Enter a valid application UUID."),
-        confirmation_required: t(locale, "groups.admin.applications.bulk.confirmationRequired", "Confirm the bulk decision before submitting."),
-        review_note_too_long: t(locale, "groups.admin.applications.reviewNoteTooLong", "The review note must not exceed 2000 characters."),
-        succeeded: t(locale, "groups.admin.applications.bulk.succeeded", "Succeeded"),
+        confirm: t(
+            locale,
+            "groups.admin.applications.bulk.confirm",
+            "I confirm this bulk decision for the selected applications",
+        ),
+        submit: t(
+            locale,
+            "groups.admin.applications.bulk.submit",
+            "Apply bulk review",
+        ),
+        busy: t(
+            locale,
+            "groups.admin.applications.bulk.busy",
+            "Applying bulk review...",
+        ),
+        loaded: t(
+            locale,
+            "groups.admin.applications.loaded",
+            "Applications loaded",
+        ),
+        completed: t(
+            locale,
+            "groups.admin.applications.bulk.completed",
+            "Bulk review completed",
+        ),
+        error: t(
+            locale,
+            "groups.admin.applications.error",
+            "Membership application command failed",
+        ),
+        invalid_group_id: t(
+            locale,
+            "groups.admin.applications.invalidGroupId",
+            "Enter a valid group UUID.",
+        ),
+        empty_selection: t(
+            locale,
+            "groups.admin.applications.bulk.emptySelection",
+            "Select at least one application.",
+        ),
+        too_many: t(
+            locale,
+            "groups.admin.applications.bulk.tooMany",
+            "Select no more than 50 applications.",
+        ),
+        duplicate: t(
+            locale,
+            "groups.admin.applications.bulk.duplicate",
+            "The selection contains duplicate applications.",
+        ),
+        invalid_application_id: t(
+            locale,
+            "groups.admin.applications.invalidApplicationId",
+            "Enter a valid application UUID.",
+        ),
+        confirmation_required: t(
+            locale,
+            "groups.admin.applications.bulk.confirmationRequired",
+            "Confirm the bulk decision before submitting.",
+        ),
+        review_note_too_long: t(
+            locale,
+            "groups.admin.applications.reviewNoteTooLong",
+            "The review note must not exceed 2000 characters.",
+        ),
+        succeeded: t(
+            locale,
+            "groups.admin.applications.bulk.succeeded",
+            "Succeeded",
+        ),
         failed: t(locale, "groups.admin.applications.bulk.failed", "Failed"),
-        replayed: t(locale, "groups.admin.applications.bulk.replayed", "replayed"),
+        replayed: t(
+            locale,
+            "groups.admin.applications.bulk.replayed",
+            "replayed",
+        ),
     }
 }
 

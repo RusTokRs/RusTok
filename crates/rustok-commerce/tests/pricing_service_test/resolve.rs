@@ -247,7 +247,7 @@ async fn test_resolve_variant_price_matches_channel_slug_without_channel_id() {
             tenant_id,
             actor_id,
             variant_id,
-            vec![PriceInput {
+            vec![rustok_commerce_foundation::dto::PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: None,
                 channel_slug: Some("web-store".to_string()),
@@ -298,7 +298,7 @@ async fn test_resolve_variant_price_prefers_channel_scoped_base_price() {
             tenant_id,
             actor_id,
             variant_id,
-            vec![PriceInput {
+            vec![rustok_commerce_foundation::dto::PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: Some(channel_id),
                 channel_slug: Some("web-store".to_string()),
@@ -349,7 +349,7 @@ async fn test_resolve_variant_price_does_not_leak_channel_scoped_price() {
             tenant_id,
             actor_id,
             variant_id,
-            vec![PriceInput {
+            vec![rustok_commerce_foundation::dto::PriceInput {
                 currency_code: "USD".to_string(),
                 channel_id: Some(channel_id),
                 channel_slug: Some("web-store".to_string()),

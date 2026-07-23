@@ -42,7 +42,7 @@ impl AtomicCartCheckoutPricingResolver for StorefrontCheckoutPricingResolver {
     ) -> Result<CartCheckoutPricingPlan, PortError> {
         let pricing_read_port =
             in_process_pricing_read_port(self.db.clone(), self.event_bus.clone());
-        let effective_region_id = cart.region_id.or(request.region_id);
+        let effective_region_id = cart.region_id.or(request.input.region_id);
         let cart_channel_slug = normalize_channel_slug(cart.channel_slug.as_deref());
         let currency_code = cart.currency_code.trim().to_ascii_uppercase();
         let mut line_items = Vec::new();

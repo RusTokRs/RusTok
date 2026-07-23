@@ -7,10 +7,10 @@ use leptos_ui_routing::use_route_query_writer;
 use rustok_ui_core::UiRouteContext;
 
 use crate::application_core::{
+    GROUP_APPLICATION_QUERY_KEY, GroupsStorefrontApplicationInputError,
     is_application_policy_changed, prepare_cancel_group_membership_application,
     prepare_group_application_policy_query, prepare_my_group_membership_application_query,
-    prepare_submit_group_membership_application, GroupsStorefrontApplicationInputError,
-    GROUP_APPLICATION_QUERY_KEY,
+    prepare_submit_group_membership_application,
 };
 use crate::application_model::{
     GroupsStorefrontApplicationPolicy, GroupsStorefrontMembershipApplication,
@@ -19,9 +19,9 @@ use crate::application_model::{
 use crate::core::groups_storefront_error;
 use crate::i18n::t;
 use crate::transport::{
-    cancel_groups_storefront_membership_application,
+    GroupsStorefrontTransportContext, cancel_groups_storefront_membership_application,
     load_groups_storefront_application_policy, load_groups_storefront_my_application,
-    submit_groups_storefront_membership_application, GroupsStorefrontTransportContext,
+    submit_groups_storefront_membership_application,
 };
 
 #[derive(Clone)]
@@ -88,7 +88,7 @@ pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) 
         let locale = locale_for_load.clone();
         async move {
             if group_id.trim().is_empty() {
-                return Ok((None, None));
+                return Ok::<_, String>((None, None));
             }
             let my_query = prepare_my_group_membership_application_query(&group_id)
                 .map_err(|_| "invalid application group UUID".to_string())?;
@@ -277,12 +277,20 @@ pub fn GroupsMembershipApplication(transport: GroupsStorefrontTransportContext) 
                 <p class="mt-4 rounded-xl border border-border bg-muted px-4 py-3 text-sm text-foreground" role="status">{move || notice.get().unwrap_or_default()}</p>
             </Show>
             <Show when=move || result.get().is_some()>
-                {move || result.get().map(|submitted| view! {
-                    <div class="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3" role="status">
-                        <p class="font-medium text-foreground">{success.clone()}</p>
-                        <p class="mt-1 text-sm text-muted-foreground">{format!("{} · {}", pending.clone(), submitted.application.id)}</p>
-                    </div>
-                })}
+                {
+                    let success = success.clone();
+                    let pending = pending.clone();
+                    move || result.get().map(|submitted| {
+                        let success = success.clone();
+                        let pending = pending.clone();
+                        view! {
+                            <div class="mt-4 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3" role="status">
+                                <p class="font-medium text-foreground">{success}</p>
+                                <p class="mt-1 text-sm text-muted-foreground">{format!("{} · {}", pending, submitted.application.id)}</p>
+                            </div>
+                        }
+                    })
+                }
             </Show>
         </section>
     }
@@ -384,13 +392,20 @@ fn render_policy_form(
     let questions = policy.questions;
     let rules = policy.rules;
     let has_rules = !rules.is_empty();
+
+    let required = required.to_string();
+    let optional = optional.to_string();
+    let rules_label = rules_label.to_string();
+    let acknowledge = acknowledge.to_string();
+    let submit = submit.to_string();
+
     view! {
         <form class="mt-6 space-y-6" on:submit=move |event| on_submit.run(event)>
             <div class="space-y-4">
                 {questions.into_iter().map(|question| {
                     let answer_key = question.key.clone();
                     let value_key = question.key.clone();
-                    let requirement = if question.required { required.to_string() } else { optional.to_string() };
+                    let requirement = if question.required { required.clone() } else { optional.clone() };
                     view! {
                         <label class="block rounded-2xl border border-border p-4">
                             <span class="flex flex-wrap items-center justify-between gap-2 text-sm font-medium text-card-foreground">
@@ -415,37 +430,50 @@ fn render_policy_form(
             </div>
 
             <Show when=move || has_rules>
-                <fieldset class="space-y-3 rounded-2xl border border-border p-4">
-                    <legend class="px-2 text-sm font-semibold text-card-foreground">{rules_label.to_string()}</legend>
-                    {rules.into_iter().map(|rule| {
-                        let rule_key = rule.key.clone();
-                        let checked_key = rule.key.clone();
+                {
+                    let rules_label = rules_label.to_string();
+                    let acknowledge = acknowledge.to_string();
+                    let rules = rules.clone();
+                    move || {
+                        let rules_label = rules_label.clone();
+                        let acknowledge = acknowledge.clone();
+                        let rules = rules.clone();
                         view! {
-                            <label class="flex items-start gap-3 rounded-xl bg-muted p-3">
-                                <input
-                                    class="mt-1"
-                                    type="checkbox"
-                                    prop:checked=move || acknowledged_rules.get().contains(&checked_key)
-                                    on:change=move |event| {
-                                        let checked = event_target_checked(&event);
-                                        set_acknowledged_rules.update(|items| {
-                                            if checked {
-                                                items.insert(rule_key.clone());
-                                            } else {
-                                                items.remove(&rule_key);
-                                            }
-                                        });
+                            <fieldset class="space-y-3 rounded-2xl border border-border p-4">
+                                <legend class="px-2 text-sm font-semibold text-card-foreground">{rules_label}</legend>
+                                {rules.into_iter().map(|rule| {
+                                    let rule_key = rule.key.clone();
+                                    let checked_key = rule.key.clone();
+                                    let acknowledge = acknowledge.clone();
+                                    view! {
+                                        <label class="flex items-start gap-3 rounded-xl bg-muted p-3">
+                                            <input
+                                                class="mt-1"
+                                                type="checkbox"
+                                                prop:checked=move || acknowledged_rules.get().contains(&checked_key)
+                                                on:change=move |event| {
+                                                    let checked = event_target_checked(&event);
+                                                    set_acknowledged_rules.update(|items| {
+                                                        if checked {
+                                                            items.insert(rule_key.clone());
+                                                        } else {
+                                                            items.remove(&rule_key);
+                                                        }
+                                                    });
+                                                }
+                                            />
+                                            <span>
+                                                <strong class="text-sm text-card-foreground">{rule.title}</strong>
+                                                <p class="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{rule.body}</p>
+                                                <small class="mt-1 block text-xs text-muted-foreground">{acknowledge}</small>
+                                            </span>
+                                        </label>
                                     }
-                                />
-                                <span>
-                                    <strong class="text-sm text-card-foreground">{rule.title}</strong>
-                                    <p class="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{rule.body}</p>
-                                    <small class="mt-1 block text-xs text-muted-foreground">{acknowledge.to_string()}</small>
-                                </span>
-                            </label>
+                                }).collect_view()}
+                            </fieldset>
                         }
-                    }).collect_view()}
-                </fieldset>
+                    }
+                }
             </Show>
 
             <button class="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled=move || policy_changed.get()>{submit.to_string()}</button>
@@ -474,36 +502,144 @@ fn application_input_error_message(
 
 fn application_copy(locale: Option<&str>) -> ApplicationCopy {
     ApplicationCopy {
-        title: t(locale, "groups.storefront.application.title", "Apply to join this group"),
-        body: t(locale, "groups.storefront.application.body", "Answer the current membership questions and acknowledge required rules. Your submission keeps an immutable snapshot for review."),
-        loading: t(locale, "groups.storefront.application.loading", "Loading membership application..."),
-        unavailable: t(locale, "groups.storefront.application.unavailable", "Membership applications are unavailable for this group or locale."),
+        title: t(
+            locale,
+            "groups.storefront.application.title",
+            "Apply to join this group",
+        ),
+        body: t(
+            locale,
+            "groups.storefront.application.body",
+            "Answer the current membership questions and acknowledge required rules. Your submission keeps an immutable snapshot for review.",
+        ),
+        loading: t(
+            locale,
+            "groups.storefront.application.loading",
+            "Loading membership application...",
+        ),
+        unavailable: t(
+            locale,
+            "groups.storefront.application.unavailable",
+            "Membership applications are unavailable for this group or locale.",
+        ),
         required: t(locale, "groups.storefront.application.required", "Required"),
         optional: t(locale, "groups.storefront.application.optional", "Optional"),
         rules: t(locale, "groups.storefront.application.rules", "Group rules"),
-        acknowledge: t(locale, "groups.storefront.application.acknowledge", "I acknowledge this rule"),
-        submit: t(locale, "groups.storefront.application.submit", "Submit application"),
-        cancel: t(locale, "groups.storefront.application.cancel", "Cancel application"),
-        busy: t(locale, "groups.storefront.application.busy", "Applying membership application command..."),
-        error: t(locale, "groups.storefront.application.error", "Membership application command failed"),
-        success: t(locale, "groups.storefront.application.success", "Application submitted for review."),
+        acknowledge: t(
+            locale,
+            "groups.storefront.application.acknowledge",
+            "I acknowledge this rule",
+        ),
+        submit: t(
+            locale,
+            "groups.storefront.application.submit",
+            "Submit application",
+        ),
+        cancel: t(
+            locale,
+            "groups.storefront.application.cancel",
+            "Cancel application",
+        ),
+        busy: t(
+            locale,
+            "groups.storefront.application.busy",
+            "Applying membership application command...",
+        ),
+        error: t(
+            locale,
+            "groups.storefront.application.error",
+            "Membership application command failed",
+        ),
+        success: t(
+            locale,
+            "groups.storefront.application.success",
+            "Application submitted for review.",
+        ),
         pending: t(locale, "groups.storefront.application.pending", "Pending"),
-        pending_existing: t(locale, "groups.storefront.application.pendingExisting", "Your membership application is pending review."),
-        approved_existing: t(locale, "groups.storefront.application.approvedExisting", "Your membership application was approved."),
-        rejected_existing: t(locale, "groups.storefront.application.rejectedExisting", "Your previous application was rejected. You may submit a fresh application using the current policy."),
-        cancelled_existing: t(locale, "groups.storefront.application.cancelledExisting", "Your previous application was cancelled. You may submit a fresh application using the current policy."),
-        cancelled_success: t(locale, "groups.storefront.application.cancelledSuccess", "Application cancelled. A fresh application may now be submitted."),
-        policy_changed: t(locale, "groups.storefront.application.policyChanged", "The membership policy changed before your application was submitted."),
-        policy_changed_hint: t(locale, "groups.storefront.application.policyChangedHint", "Reload the current questions and rules, review them, and submit a new application."),
-        reload_policy: t(locale, "groups.storefront.application.reloadPolicy", "Reload current policy"),
-        invalid_group_id: t(locale, "groups.storefront.application.invalidGroupId", "The application link contains an invalid group UUID."),
-        invalid_application_id: t(locale, "groups.storefront.application.invalidApplicationId", "The membership application identifier is invalid."),
-        invalid_locale: t(locale, "groups.storefront.application.invalidLocale", "The application locale is unavailable."),
-        invalid_policy: t(locale, "groups.storefront.application.invalidPolicy", "The loaded membership policy is invalid. Reload the current policy."),
-        unknown_question: t(locale, "groups.storefront.application.unknownQuestion", "The application contains an unknown question."),
-        missing_answer: t(locale, "groups.storefront.application.missingAnswer", "Answer every required question."),
-        answer_too_long: t(locale, "groups.storefront.application.answerTooLong", "One or more answers exceed their character limit."),
-        unknown_rule: t(locale, "groups.storefront.application.unknownRule", "The application contains an unknown rule acknowledgement."),
-        missing_rule: t(locale, "groups.storefront.application.missingRule", "Acknowledge every required group rule."),
+        pending_existing: t(
+            locale,
+            "groups.storefront.application.pendingExisting",
+            "Your membership application is pending review.",
+        ),
+        approved_existing: t(
+            locale,
+            "groups.storefront.application.approvedExisting",
+            "Your membership application was approved.",
+        ),
+        rejected_existing: t(
+            locale,
+            "groups.storefront.application.rejectedExisting",
+            "Your previous application was rejected. You may submit a fresh application using the current policy.",
+        ),
+        cancelled_existing: t(
+            locale,
+            "groups.storefront.application.cancelledExisting",
+            "Your previous application was cancelled. You may submit a fresh application using the current policy.",
+        ),
+        cancelled_success: t(
+            locale,
+            "groups.storefront.application.cancelledSuccess",
+            "Application cancelled. A fresh application may now be submitted.",
+        ),
+        policy_changed: t(
+            locale,
+            "groups.storefront.application.policyChanged",
+            "The membership policy changed before your application was submitted.",
+        ),
+        policy_changed_hint: t(
+            locale,
+            "groups.storefront.application.policyChangedHint",
+            "Reload the current questions and rules, review them, and submit a new application.",
+        ),
+        reload_policy: t(
+            locale,
+            "groups.storefront.application.reloadPolicy",
+            "Reload current policy",
+        ),
+        invalid_group_id: t(
+            locale,
+            "groups.storefront.application.invalidGroupId",
+            "The application link contains an invalid group UUID.",
+        ),
+        invalid_application_id: t(
+            locale,
+            "groups.storefront.application.invalidApplicationId",
+            "The membership application identifier is invalid.",
+        ),
+        invalid_locale: t(
+            locale,
+            "groups.storefront.application.invalidLocale",
+            "The application locale is unavailable.",
+        ),
+        invalid_policy: t(
+            locale,
+            "groups.storefront.application.invalidPolicy",
+            "The loaded membership policy is invalid. Reload the current policy.",
+        ),
+        unknown_question: t(
+            locale,
+            "groups.storefront.application.unknownQuestion",
+            "The application contains an unknown question.",
+        ),
+        missing_answer: t(
+            locale,
+            "groups.storefront.application.missingAnswer",
+            "Answer every required question.",
+        ),
+        answer_too_long: t(
+            locale,
+            "groups.storefront.application.answerTooLong",
+            "One or more answers exceed their character limit.",
+        ),
+        unknown_rule: t(
+            locale,
+            "groups.storefront.application.unknownRule",
+            "The application contains an unknown rule acknowledgement.",
+        ),
+        missing_rule: t(
+            locale,
+            "groups.storefront.application.missingRule",
+            "Acknowledge every required group rule.",
+        ),
     }
 }

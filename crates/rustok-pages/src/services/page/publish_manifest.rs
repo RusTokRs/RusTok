@@ -117,7 +117,10 @@ fn stable_hash(value: &impl Serialize) -> PagesResult<String> {
             "unable to encode publish artifact manifest: {error}"
         ))
     })?;
-    Ok(hex::encode(Sha256::digest(bytes)))
+    Ok(Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn is_sha256(value: &str) -> bool {
