@@ -38,16 +38,16 @@ record which checks were not run.
 ## Current status
 
 - Rewrite status: `in_progress`
-- Current milestone: `M0/M1 - runtime-tail removal and domain core`
+- Current milestone: `M1 - domain core and schema registry`
 - FFA status: `in_progress`
 - FBA status: `in_progress`
-- Legacy `index.read_model.v1` and `index.rebuild.v1`: **deleted**
-- Legacy source-specific indexers and migrations: **deleted**
+- M0 code reset: `complete`
+- Legacy v1 contracts, source indexers, migrations, scheduler, and server runtime
+  composition: **deleted**
 
-The active crate consists of the generic domain core, module metadata, and one
-temporary compatibility tail in `traits.rs`. That tail exists only because the
-server still inserts `IndexerRuntimeConfig`; it is the final code-removal task
-in M0.
+The active crate now contains only the generic database-independent domain core,
+`IndexModule` metadata, and an intentionally empty migration source. New
+persistence is not introduced until the M2 storage benchmark selects a model.
 
 ## Ownership
 
@@ -100,8 +100,8 @@ src/
 
 Use existing workspace libraries where possible:
 
-- `sea-orm` and SeaQuery for connections, transactions, migrations, execution,
-  and dynamic SQL;
+- `sea-orm` and SeaQuery for PostgreSQL connections, transactions, migrations,
+  execution, and dynamic SQL;
 - `tokio` and `futures-util` for bounded async work;
 - `serde` and `postcard` for DTO/cursor serialization;
 - `thiserror` for typed errors;
@@ -148,15 +148,16 @@ Forbidden in Index core:
 - [x] Remove all direct source-table SQL from Index.
 - [x] Delete all legacy Index migrations, including the misplaced search table.
 - [x] Remove source-domain Cargo dependencies.
+- [x] Delete `Indexer`, `LocaleIndexer`, `IndexerContext`,
+      `IndexerRuntimeConfig`, the old scheduler, and operational `IndexError`.
+- [x] Remove legacy server dispatcher config and metrics.
 - [x] Add repository verification preventing legacy/source-domain artifacts from
       returning.
-- [ ] Remove `Indexer`, `LocaleIndexer`, `IndexerContext`,
-      `IndexerRuntimeConfig`, and the old bounded scheduler.
-- [ ] Remove the corresponding server dispatcher configuration/metrics.
 - [ ] Synchronize the central module registry and historical FBA overview.
 
-Done when the crate contains only generic engine code and intentional module
-metadata, with no compatibility runtime tail.
+Code acceptance criterion is complete: the crate contains only generic engine
+code and intentional module metadata. The remaining unchecked item is a
+cross-repository documentation synchronization task, not a code dependency.
 
 ### M1 - Domain core and schema registry
 
@@ -289,5 +290,6 @@ npm run verify:index:runtime-fallback-smoke
 - 2026-07-23: detached admin from legacy index/search tables.
 - 2026-07-23: deleted all Content/Product/Flex indexers, projection models,
   source SQL, and legacy migrations.
-- 2026-07-23: removed `rustok-api`, `rustok-events`, and `rustok-product` from the
-  Index crate dependencies and added guards against their return.
+- 2026-07-23: removed source-domain dependencies and added regression guards.
+- 2026-07-23: removed the final legacy runtime/scheduler/error tail and its
+  server dispatcher composition. M0 code reset is complete.
