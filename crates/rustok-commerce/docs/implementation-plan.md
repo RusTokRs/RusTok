@@ -149,6 +149,11 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Require explicit native/GraphQL transport selection; silent fallback is
   forbidden unless explicitly contracted and verified.
 - [x] Use `core_only -> core_transport -> core_transport_ui`.
+- [x] Keep the commerce admin FFA boundary locked by
+  `scripts/verify/verify-commerce-admin-boundary.mjs`; the native adapter lives at
+  `admin/src/transport/native_server_adapter.rs`.
+- [x] Keep root GraphQL and state-machine aliases removed so callers use explicit
+  module paths rather than umbrella re-exports.
 - [ ] Keep provider raw payloads, signatures, SQL errors, SDK errors, and internal
   invariant details out of owner persistence and public errors on every ecommerce port.
 - [x] Preserve unknown historical attribution as typed unknown provenance rather than
