@@ -1,16 +1,20 @@
 mod config;
+mod maintenance_runner;
 mod mutation_runner;
 mod runner;
 mod sql;
 
 pub use config::{BenchmarkConfig, DatasetConfig, DatasetScale};
+pub use maintenance_runner::{
+    MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
+};
 pub use mutation_runner::{
     MutationBenchmarkReport, run_mutations, write_mutation_report,
 };
 pub use runner::{BenchmarkReport, run, write_report};
 pub use sql::{
-    MutationWorkload, Prototype, Workload, full_prototype_sql, mutation_workloads, prototype_sql,
-    source_dataset_sql, workloads,
+    MutationWorkload, Prototype, Workload, analyze_sql, churn_cycle_sql, full_prototype_sql,
+    mutation_workloads, prototype_sql, source_dataset_sql, vacuum_sql, workloads,
 };
 
 pub async fn run_from_env() -> anyhow::Result<BenchmarkReport> {
