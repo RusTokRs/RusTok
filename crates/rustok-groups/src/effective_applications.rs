@@ -6,7 +6,6 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::application_entities::membership_application;
 use crate::applications_legacy_module::{
     BulkReviewGroupMembershipApplicationItemResult,
     BulkReviewGroupMembershipApplicationsRequest, BulkReviewGroupMembershipApplicationsResult,
@@ -27,8 +26,7 @@ use crate::applications_legacy_module::{
 };
 use crate::domain::GroupVisibility;
 use crate::effective_membership_guard::{
-    GroupManagerCapability, actor_user_id, has_existing_receipt, require_candidate_not_denied,
-    require_effective_manager, require_user_not_denied, tenant_id,
+    GroupManagerCapability, require_candidate_not_denied, require_effective_manager, tenant_id,
 };
 use crate::entities::group;
 
@@ -49,26 +47,9 @@ impl GroupApplicationService {
         }
     }
 
-    async fn application_subject(
-        &self,
-        context: &PortContext,
-        application_id: Uuid,
-    ) -> Result<Option<(Uuid, Uuid)>, PortError> {
-        let tenant_id = tenant_id(context)?;
-        membership_application::Entity::find()
-            .filter(membership_application::Column::TenantId.eq(tenant_id))
-            .filter(membership_application::Column::Id.eq(application_id))
-            .one(&self.db)
-            .await
-            .map(|row| row.map(|row| (row.group_id, row.user_id)))
-            .map_err(|error| {
-                PortError::unavailable("groups.application_lookup_unavailable", error.to_string())
-            })
-    }
-
     /// Preserve application-surface non-disclosure before returning a membership-specific denial.
-    /// Secret groups never accept applications, so candidate policy/current-state/submit paths
-    /// return not-found even when a historical membership enforcement row exists.
+    /// Secret groups never accept applications, so candidate policy/current-state reads return
+    /// not-found even when a historical membership enforcement row exists.
     async fn require_candidate_surface_visible(
         &self,
         context: &PortContext,
@@ -91,49 +72,15 @@ impl GroupApplicationService {
         }
     }
 
-    async fn precheck_review(
-        &self,
-        context: &PortContext,
-        application_id: Uuid,
-    ) -> Result<(), PortError> {
-        if has_existing_receipt(&self.db, context).await? {
-            return Ok(());
-        }
-        let Some((group_id, candidate_user_id)) =
-            self.application_subject(context, application_id).await?
-        else {
-            return Ok(());
-        };
-        require_effective_manager(
-            &self.db,
-            context,
-            group_id,
-            GroupManagerCapability::Moderate,
-        )
-        .await?;
-        require_user_not_denied(
-            &self.db,
-            tenant_id(context)?,
-            group_id,
-            candidate_user_id,
-            true,
-        )
-        .await
-    }
-
     async fn review_effective(
         &self,
         context: PortContext,
         request: ReviewGroupMembershipApplicationRequest,
     ) -> Result<ReviewGroupMembershipApplicationResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        self.precheck_review(&context, request.application_id).await?;
-        GroupApplicationReviewCommandPort::review_group_membership_application(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .review_application_effective_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -180,22 +127,10 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: UpsertGroupApplicationPolicyRequest,
     ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !has_existing_receipt(&self.db, &context).await? {
-            require_effective_manager(
-                &self.db,
-                &context,
-                request.group_id,
-                GroupManagerCapability::ManageSettings,
-            )
-            .await?;
-        }
-        GroupApplicationCommandPort::upsert_group_application_policy(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .upsert_policy_effective_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn submit_group_membership_application(
@@ -203,18 +138,10 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         context: PortContext,
         request: SubmitGroupMembershipApplicationRequest,
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !has_existing_receipt(&self.db, &context).await? {
-            self.require_candidate_surface_visible(&context, request.group_id)
-                .await?;
-            require_candidate_not_denied(&self.db, &context, request.group_id, true).await?;
-        }
-        GroupApplicationCommandPort::submit_group_membership_application(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .submit_application_effective_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn review_group_membership_application(
@@ -244,22 +171,10 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
         context: PortContext,
         request: UpsertGroupApplicationPolicyIfCurrentRequest,
     ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !has_existing_receipt(&self.db, &context).await? {
-            require_effective_manager(
-                &self.db,
-                &context,
-                request.policy.group_id,
-                GroupManagerCapability::ManageSettings,
-            )
-            .await?;
-        }
-        GroupApplicationCasCommandPort::upsert_group_application_policy_if_current(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .upsert_policy_if_current_effective_owned(&context, request)
+            .await
+            .map_err(crate::applications_legacy_module::map_effective_application_cas_error)
     }
 
     async fn submit_group_membership_application_if_current(
@@ -267,24 +182,10 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
         context: PortContext,
         request: SubmitGroupMembershipApplicationIfCurrentRequest,
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !has_existing_receipt(&self.db, &context).await? {
-            self.require_candidate_surface_visible(&context, request.submission.group_id)
-                .await?;
-            require_candidate_not_denied(
-                &self.db,
-                &context,
-                request.submission.group_id,
-                true,
-            )
-            .await?;
-        }
-        GroupApplicationCasCommandPort::submit_group_membership_application_if_current(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .submit_application_if_current_effective_owned(&context, request)
+            .await
+            .map_err(crate::applications_legacy_module::map_effective_application_cas_error)
     }
 }
 
@@ -315,23 +216,10 @@ impl GroupApplicationLifecycleCommandPort for GroupApplicationService {
         context: PortContext,
         request: CancelGroupMembershipApplicationRequest,
     ) -> Result<GroupApplicationLifecycleResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !has_existing_receipt(&self.db, &context).await? {
-            if let Some((group_id, candidate_user_id)) =
-                self.application_subject(&context, request.application_id).await?
-            {
-                let actor_user_id = actor_user_id(&context)?;
-                if actor_user_id == candidate_user_id {
-                    require_candidate_not_denied(&self.db, &context, group_id, false).await?;
-                }
-            }
-        }
-        GroupApplicationLifecycleCommandPort::cancel_group_membership_application(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .cancel_application_effective_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 
     async fn reopen_group_membership_application(
@@ -339,34 +227,10 @@ impl GroupApplicationLifecycleCommandPort for GroupApplicationService {
         context: PortContext,
         request: ReopenGroupMembershipApplicationRequest,
     ) -> Result<GroupApplicationLifecycleResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !has_existing_receipt(&self.db, &context).await? {
-            if let Some((group_id, candidate_user_id)) =
-                self.application_subject(&context, request.application_id).await?
-            {
-                require_effective_manager(
-                    &self.db,
-                    &context,
-                    group_id,
-                    GroupManagerCapability::Moderate,
-                )
-                .await?;
-                require_user_not_denied(
-                    &self.db,
-                    tenant_id(&context)?,
-                    group_id,
-                    candidate_user_id,
-                    true,
-                )
-                .await?;
-            }
-        }
-        GroupApplicationLifecycleCommandPort::reopen_group_membership_application(
-            &self.legacy,
-            context,
-            request,
-        )
-        .await
+        self.legacy
+            .reopen_application_effective_owned(&context, request)
+            .await
+            .map_err(Into::into)
     }
 }
 
