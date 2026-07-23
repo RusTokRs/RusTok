@@ -84,16 +84,6 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
     assert_ne!(disabled.policy_revision(), enabled_revision);
     disabled_txn.commit().await.expect("disabled policy commit");
 
-    let cursor_count = db
-        .query_one(Statement::from_string(
-            DbBackend::Sqlite,
-            "SELECT COUNT(*) AS count FROM module_policy_revision_cursors WHERE tenant_id = '\
-             "
-            .to_string(),
-        ))
-        .await;
-    assert!(cursor_count.is_err(), "invalid unscoped query is not evidence");
-
     let row = db
         .query_one(Statement::from_sql_and_values(
             DbBackend::Sqlite,
@@ -110,30 +100,33 @@ async fn static_policy_resolves_tenant_override_under_lifecycle_cursor_lock() {
     let current_revision: Option<String> = row
         .try_get("", "current_revision")
         .expect("cursor revision should decode");
-    assert!(current_revision.is_none(), "guard locks but never advances owner cursor");
+    assert!(
+        current_revision.is_none(),
+        "commit guard locks but never advances the lifecycle owner cursor"
+    );
 }
 
 async fn setup() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:")
         .await
         .expect("policy guard sqlite database");
-    db.execute(Statement::from_string(
-        DbBackend::Sqlite,
-        "CREATE TABLE tenant_modules (\
-            tenant_id TEXT NOT NULL, \
-            module_slug TEXT NOT NULL, \
-            enabled BOOLEAN NOT NULL, \
-            PRIMARY KEY (tenant_id, module_slug)\
-        );\
-        CREATE TABLE module_policy_revision_cursors (\
-            tenant_id TEXT NOT NULL, \
-            consumer_key TEXT NOT NULL, \
-            current_revision TEXT NULL, \
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
-            PRIMARY KEY (tenant_id, consumer_key)\
-        )"
-        .to_string(),
-    ))
+    db.execute_unprepared(
+        r#"
+        CREATE TABLE tenant_modules (
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled BOOLEAN NOT NULL,
+            PRIMARY KEY (tenant_id, module_slug)
+        );
+        CREATE TABLE module_policy_revision_cursors (
+            tenant_id TEXT NOT NULL,
+            consumer_key TEXT NOT NULL,
+            current_revision TEXT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, consumer_key)
+        );
+        "#,
+    )
     .await
     .expect("policy guard schema");
     db
