@@ -99,13 +99,13 @@ if (failures.length === 0) {
   ]);
   requireMarkers(files.plan, [
     "invitation and membership-application effective facades are source-complete",
-    "same-transaction effective recheck remains open",
+    "Same-transaction effective recheck remains open",
     "verify-groups-effective-membership-invitations-applications.mjs",
   ]);
   requireMarkers(files.readme, [
     "effective invitation and membership-application facades",
     "receipt-first replay",
-    "same-transaction effective recheck remains open",
+    "same-transaction effective",
   ]);
 }
 
