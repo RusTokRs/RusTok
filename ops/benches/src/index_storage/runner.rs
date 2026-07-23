@@ -168,11 +168,9 @@ async fn explain(db: &DatabaseConnection, sql: &str) -> Result<ExplainEvidence> 
 }
 
 async fn configure_session(db: &DatabaseConnection) -> Result<()> {
-    db.execute_unprepared(
-        "SET jit = off; SET track_io_timing = on; SET statement_timeout = '30min';",
-    )
-    .await
-    .context("failed to configure benchmark PostgreSQL session")?;
+    db.execute_unprepared("SET jit = off; SET statement_timeout = '30min';")
+        .await
+        .context("failed to configure benchmark PostgreSQL session")?;
     Ok(())
 }
 
