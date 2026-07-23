@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
+use rustok_api::{PortCallPolicy, PortContext, PortError};
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,8 @@ use crate::{
     CheckoutOrderIdentitySnapshot, InProcessCheckoutOrderIdentityPort, OrderError, OrderResponse,
     OrderService, OrderStatusKind, ReadCheckoutOrderIdentityByOperationRequest,
 };
+
+const COMPENSATE_OPERATION: &str = "compensate_checkout_order";
 
 #[async_trait]
 pub trait CheckoutOrderCompensationPort: Send + Sync {
@@ -98,6 +100,7 @@ impl InProcessCheckoutOrderCompensationPort {
 
     async fn cancel_or_adopt_cancelled(
         &self,
+        context: &PortContext,
         tenant_id: Uuid,
         actor_id: Uuid,
         order: OrderResponse,
@@ -115,7 +118,13 @@ impl InProcessCheckoutOrderCompensationPort {
                         .order_service
                         .get_order(tenant_id, order.id)
                         .await
-                        .map_err(order_error_to_port_error)?;
+                        .map_err(|error| {
+                            order_error_to_port_error(
+                                context,
+                                "read_order_after_compensation_transition",
+                                error,
+                            )
+                        })?;
                     if current.status_kind() == OrderStatusKind::Cancelled {
                         Ok(current)
                     } else {
@@ -125,16 +134,24 @@ impl InProcessCheckoutOrderCompensationPort {
                         ))
                     }
                 }
-                Err(error) => Err(order_error_to_port_error(error)),
+                Err(error) => Err(order_error_to_port_error(
+                    context,
+                    "cancel_checkout_order",
+                    error,
+                )),
             },
             OrderStatusKind::Cancelled => Ok(order),
             OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => {
                 Err(manual_reconciliation(
+                    context,
+                    "cancel_checkout_order",
                     "checkout order has financial or fulfillment effects and cannot be cancelled automatically",
                 ))
             }
             OrderStatusKind::Unknown => Err(manual_reconciliation(
-                "checkout order lifecycle is unknown and requires manual reconciliation",
+                context,
+                "cancel_checkout_order",
+                "checkout order lifecycle is unknown",
             )),
         }
     }
@@ -156,13 +173,24 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
     ) -> Result<Option<CheckoutOrderCompensationSnapshot>, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_tenant_id(&context)?;
-        let actor_id = parse_actor_id(&context)?;
-        require_operation_context(&context, request.checkout_operation_id)?;
+        let tenant_id = parse_tenant_id(&context, COMPENSATE_OPERATION)?;
+        let actor_id = parse_actor_id(&context, COMPENSATE_OPERATION)?;
+        require_operation_context(
+            &context,
+            COMPENSATE_OPERATION,
+            request.checkout_operation_id,
+        )?;
         if request.checkout_operation_id.is_nil() || request.cart_id.is_nil() {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = COMPENSATE_OPERATION,
+                code = "order.checkout_compensation_identity_invalid",
+                "checkout compensation rejected invalid owner identity"
+            );
             return Err(PortError::validation(
                 "order.checkout_compensation_identity_invalid",
-                "checkout operation and cart identity must be non-nil UUIDs",
+                "checkout compensation request is invalid",
             ));
         }
 
@@ -171,6 +199,8 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
                 Ok(None)
             } else {
                 Err(manual_reconciliation(
+                    &context,
+                    COMPENSATE_OPERATION,
                     "checkout operation records an order but the order owner has no durable checkout identity",
                 ))
             };
@@ -181,9 +211,17 @@ impl CheckoutOrderCompensationPort for InProcessCheckoutOrderCompensationPort {
             .order_service
             .get_order(tenant_id, identity.order_id)
             .await
-            .map_err(order_error_to_port_error)?;
+            .map_err(|error| {
+                order_error_to_port_error(&context, "read_checkout_order_for_compensation", error)
+            })?;
         let order = self
-            .cancel_or_adopt_cancelled(tenant_id, actor_id, order, request.reason)
+            .cancel_or_adopt_cancelled(
+                &context,
+                tenant_id,
+                actor_id,
+                order,
+                request.reason,
+            )
             .await?;
         Ok(Some(CheckoutOrderCompensationSnapshot {
             order_id: order.id,
@@ -216,6 +254,7 @@ fn validate_identity(
 
 fn require_operation_context(
     context: &PortContext,
+    operation: &'static str,
     checkout_operation_id: Uuid,
 ) -> Result<(), PortError> {
     let context_operation = context
@@ -223,45 +262,91 @@ fn require_operation_context(
         .as_deref()
         .and_then(|value| Uuid::parse_str(value).ok());
     if context_operation != Some(checkout_operation_id) {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation,
+            code = "order.checkout_compensation_causation_invalid",
+            expected_checkout_operation_id = %checkout_operation_id,
+            "checkout compensation received invalid causation identity"
+        );
         return Err(PortError::validation(
             "order.checkout_compensation_causation_invalid",
-            "checkout compensation causation_id must match the checkout operation",
+            "checkout operation context is invalid",
         ));
     }
     Ok(())
 }
 
-fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+fn parse_tenant_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.tenant_id).map_err(|_| {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            operation,
+            field = "tenant_id",
+            value_length = context.tenant_id.len(),
+            code = "order.tenant_id_invalid",
+            "order port received invalid request context"
+        );
         PortError::validation(
             "order.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for order ports",
+            "order request context is invalid",
         )
     })
 }
 
-fn parse_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
+fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid, PortError> {
     Uuid::parse_str(&context.actor.id).map_err(|_| {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation,
+            field = "actor_id",
+            value_length = context.actor.id.len(),
+            code = "order.actor_id_invalid",
+            "order port received invalid request context"
+        );
         PortError::validation(
             "order.actor_id_invalid",
-            "PortContext.actor.id must be a UUID for order write ports",
+            "order request context is invalid",
         )
     })
 }
 
-fn manual_reconciliation(message: impl Into<String>) -> PortError {
-    PortError::new(
-        PortErrorKind::Conflict,
+fn manual_reconciliation(
+    context: &PortContext,
+    operation: &'static str,
+    reason: &'static str,
+) -> PortError {
+    tracing::error!(
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        operation,
+        code = "order.checkout_compensation_manual_reconciliation",
+        reason,
+        "checkout order compensation requires manual reconciliation"
+    );
+    PortError::conflict(
         "order.checkout_compensation_manual_reconciliation",
-        message,
-        false,
+        "checkout requires manual reconciliation",
     )
 }
 
-fn order_error_to_port_error(error: OrderError) -> PortError {
+fn order_error_to_port_error(
+    context: &PortContext,
+    operation: &'static str,
+    error: OrderError,
+) -> PortError {
     match error {
         OrderError::Database(error) => {
-            tracing::error!(error = ?error, "order checkout compensation storage failed");
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.database_unavailable",
+                "order checkout compensation storage failed"
+            );
             PortError::unavailable(
                 "order.database_unavailable",
                 "order storage is temporarily unavailable",
@@ -270,27 +355,52 @@ fn order_error_to_port_error(error: OrderError) -> PortError {
         OrderError::OrderNotFound(_) => {
             PortError::not_found("order.order_not_found", "order was not found")
         }
-        OrderError::Validation(_) => PortError::validation(
-            "order.checkout_compensation_validation",
-            "checkout order compensation request is invalid",
-        ),
-        OrderError::InvalidTransition { .. } => PortError::conflict(
-            "order.checkout_compensation_state_conflict",
-            "checkout order lifecycle conflicts with compensation",
-        ),
-        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => PortError::new(
-            PortErrorKind::NotFound,
-            "order.related_resource_not_found",
-            "related order resource was not found",
-            false,
-        ),
+        OrderError::Validation(cause) => {
+            tracing::warn!(
+                cause = %cause,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.checkout_compensation_validation",
+                "order owner rejected checkout compensation"
+            );
+            PortError::validation(
+                "order.checkout_compensation_validation",
+                "checkout order compensation request is invalid",
+            )
+        }
+        OrderError::InvalidTransition { .. } => {
+            tracing::warn!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.checkout_compensation_state_conflict",
+                "order lifecycle conflicts with checkout compensation"
+            );
+            PortError::conflict(
+                "order.checkout_compensation_state_conflict",
+                "checkout order lifecycle conflicts with compensation",
+            )
+        }
+        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => {
+            PortError::not_found(
+                "order.related_resource_not_found",
+                "related order resource was not found",
+            )
+        }
         OrderError::Core(error) => {
-            tracing::error!(error = ?error, "order checkout compensation invariant failed");
-            PortError::new(
-                PortErrorKind::InvariantViolation,
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation,
+                code = "order.invariant_violation",
+                "order checkout compensation invariant failed"
+            );
+            PortError::invariant_violation(
                 "order.invariant_violation",
                 "order compensation failed an internal invariant",
-                false,
             )
         }
     }
