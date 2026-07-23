@@ -70,7 +70,7 @@ tracing::error!(
 );
 "checkout requires manual reconciliation";
 "order request context is invalid";
-.map_err(|error| order_error_to_port_error(&context, "read_checkout_order_for_compensation", error));
+"read_checkout_order_for_compensation";
 `;
 }
 
@@ -85,7 +85,24 @@ tracing::error!(
 tracing::warn!(code = "order.checkout_payment_state_conflict");
 "checkout requires manual reconciliation";
 "order request context is invalid";
-.map_err(|error| order_error_to_port_error(&context, "mark_checkout_order_paid", error));
+"mark_checkout_order_paid";
+`;
+}
+
+function canonicalOrderRecovery() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation,
+  code = "order.checkout_request_encoding_failed",
+);
+tracing::warn!(code = "order.checkout_recovery_validation");
+tracing::warn!(code = "order.checkout_hash_invalid");
+"checkout hash evidence is invalid";
+"order request context is invalid";
+"confirm_recovered_checkout_order";
+hash_json(context, "encode_checkout_snapshot_hash", snapshot);
 `;
 }
 
@@ -141,6 +158,15 @@ function fixture(options = {}) {
     'crates/rustok-order/src/checkout_payment_settlement.rs',
     orderPaymentSettlement,
   );
+
+  let orderRecovery = `${canonicalOrderRecovery()}${options.orderRecoveryAppend ?? ''}`;
+  if (options.removeOrderRecoveryCorrelation) {
+    orderRecovery = orderRecovery.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
+  }
+  put(root, 'crates/rustok-order/src/checkout_order_recovery.rs', orderRecovery);
   return root;
 }
 
@@ -242,6 +268,16 @@ test('public port error verifier rejects raw order validation cause', () => {
   );
 });
 
+test('public port error verifier rejects dynamic checkout hash detail', () => {
+  expectFailure(
+    {
+      orderRecoveryAppend:
+        'format!(\n                "{field} must be a lowercase hexadecimal value with {min_len} to {max_len} bytes"\n            );',
+    },
+    /order checkout adapter public error mapping: forbidden/,
+  );
+});
+
 test('public port error verifier requires pricing correlation logging', () => {
   expectFailure(
     { removePricingCorrelation: true },
@@ -260,5 +296,12 @@ test('public port error verifier requires order compensation correlation logging
   expectFailure(
     { removeOrderCompensationCorrelation: true },
     /order compensation correlation logging: missing/,
+  );
+});
+
+test('public port error verifier requires order recovery correlation logging', () => {
+  expectFailure(
+    { removeOrderRecoveryCorrelation: true },
+    /order recovery correlation logging: missing/,
   );
 });
