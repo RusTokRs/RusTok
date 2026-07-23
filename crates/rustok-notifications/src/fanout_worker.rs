@@ -217,7 +217,7 @@ fn claimable_source_condition(timestamp: DateTime<FixedOffset>) -> Condition {
                 .add(
                     Condition::any()
                         .add(source_inbox::Column::NextAttemptAt.is_null())
-                        .add(source_inbox::Column::NextAttemptAt.lte(timestamp)),
+                        .add(source_inbox::Column::NextAttemptAt.lte(timestamp.clone())),
                 ),
         )
         .add(
@@ -236,7 +236,7 @@ fn claimable_job_condition(timestamp: DateTime<FixedOffset>) -> Condition {
                 .add(
                     Condition::any()
                         .add(fanout_job::Column::NextAttemptAt.is_null())
-                        .add(fanout_job::Column::NextAttemptAt.lte(timestamp)),
+                        .add(fanout_job::Column::NextAttemptAt.lte(timestamp.clone())),
                 ),
         )
         .add(
