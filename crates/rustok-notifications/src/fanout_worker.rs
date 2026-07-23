@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use rustok_notifications_api::NotificationSourceRegistry;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,6 +21,8 @@ pub const MAX_NOTIFICATION_FANOUT_BATCH_SIZE: usize = 64;
 pub const DEFAULT_NOTIFICATION_FANOUT_PAGE_SIZE: u16 = 256;
 pub const MAX_NOTIFICATION_FANOUT_PAGE_SIZE: u16 = 256;
 const MAX_WORKER_ID_BYTES: usize = 191;
+const TENANT_DISABLED_RETRY_SECONDS: i64 = 300;
+const TENANT_POLICY_UNAVAILABLE_RETRY_SECONDS: i64 = 30;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NotificationFanoutSourceWorkItem {
@@ -31,6 +34,36 @@ pub struct NotificationFanoutSourceWorkItem {
 pub struct NotificationFanoutJobWorkItem {
     pub job_id: Uuid,
     pub tenant_id: Uuid,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationFanoutPolicyDeferral {
+    TenantDisabled,
+    PolicyUnavailable,
+}
+
+impl NotificationFanoutPolicyDeferral {
+    const fn retry_seconds(self) -> i64 {
+        match self {
+            Self::TenantDisabled => TENANT_DISABLED_RETRY_SECONDS,
+            Self::PolicyUnavailable => TENANT_POLICY_UNAVAILABLE_RETRY_SECONDS,
+        }
+    }
+
+    const fn error_code(self) -> &'static str {
+        match self {
+            Self::TenantDisabled => "NOTIFICATION_TENANT_CAPABILITY_DISABLED",
+            Self::PolicyUnavailable => "NOTIFICATION_TENANT_POLICY_UNAVAILABLE",
+        }
+    }
+
+    const fn error_message(self) -> &'static str {
+        match self {
+            Self::TenantDisabled => "notifications capability is disabled for tenant",
+            Self::PolicyUnavailable => "notifications tenant policy is temporarily unavailable",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -163,6 +196,86 @@ impl NotificationFanoutWorker {
                 tenant_id: row.tenant_id,
             })
             .collect())
+    }
+
+    pub async fn defer_source_inbox(
+        &self,
+        work: NotificationFanoutSourceWorkItem,
+        reason: NotificationFanoutPolicyDeferral,
+    ) -> NotificationResult<()> {
+        let current = source_inbox::Entity::find_by_id(work.inbox_id)
+            .one(&self.db)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        if current.tenant_id != work.tenant_id {
+            return Err(NotificationError::SourceIdentityConflict);
+        }
+        let timestamp = now();
+        let result = source_inbox::Entity::update_many()
+            .set(source_inbox::ActiveModel {
+                status: Set(NotificationSourceInboxStatus::RetryableError),
+                attempt_count: Set(current.attempt_count.saturating_add(1)),
+                next_attempt_at: Set(Some(
+                    timestamp + Duration::seconds(reason.retry_seconds()),
+                )),
+                lease_owner: Set(None),
+                lease_expires_at: Set(None),
+                last_error_code: Set(Some(reason.error_code().to_string())),
+                last_error_message: Set(Some(reason.error_message().to_string())),
+                completed_at: Set(None),
+                updated_at: Set(timestamp),
+                ..Default::default()
+            })
+            .filter(source_inbox::Column::Id.eq(work.inbox_id))
+            .filter(source_inbox::Column::TenantId.eq(work.tenant_id))
+            .filter(source_inbox::Column::AttemptCount.eq(current.attempt_count))
+            .filter(claimable_source_condition(timestamp))
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected != 1 {
+            return Err(NotificationError::LeaseUnavailable);
+        }
+        Ok(())
+    }
+
+    pub async fn defer_fanout_job(
+        &self,
+        work: NotificationFanoutJobWorkItem,
+        reason: NotificationFanoutPolicyDeferral,
+    ) -> NotificationResult<()> {
+        let current = fanout_job::Entity::find_by_id(work.job_id)
+            .one(&self.db)
+            .await?
+            .ok_or(NotificationError::InvalidEvent)?;
+        if current.tenant_id != work.tenant_id {
+            return Err(NotificationError::SourceIdentityConflict);
+        }
+        let timestamp = now();
+        let result = fanout_job::Entity::update_many()
+            .set(fanout_job::ActiveModel {
+                status: Set(NotificationJobStatus::RetryableError),
+                attempt_count: Set(current.attempt_count.saturating_add(1)),
+                next_attempt_at: Set(Some(
+                    timestamp + Duration::seconds(reason.retry_seconds()),
+                )),
+                lease_owner: Set(None),
+                lease_expires_at: Set(None),
+                last_error_code: Set(Some(reason.error_code().to_string())),
+                last_error_message: Set(Some(reason.error_message().to_string())),
+                completed_at: Set(None),
+                updated_at: Set(timestamp),
+                ..Default::default()
+            })
+            .filter(fanout_job::Column::Id.eq(work.job_id))
+            .filter(fanout_job::Column::TenantId.eq(work.tenant_id))
+            .filter(fanout_job::Column::AttemptCount.eq(current.attempt_count))
+            .filter(claimable_job_condition(timestamp))
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected != 1 {
+            return Err(NotificationError::LeaseUnavailable);
+        }
+        Ok(())
     }
 
     pub async fn materialize_source_inbox(
