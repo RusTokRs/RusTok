@@ -63,6 +63,26 @@ M1 provides:
 - a test-only mutation/query reference engine and property invariants for later
   PostgreSQL equivalence testing.
 
+## M2 storage benchmark
+
+The benchmark harness is implemented outside the production crate in
+`ops/benches/src/index_storage`.
+
+It currently provides:
+
+- deterministic `smoke`, `100k`, and `1m` Product-locale datasets;
+- Product, Variant, SalesChannel, tag, price, timestamp, locale, and link data;
+- JSONB, normalized typed EAV, and specialized hot-projection candidates;
+- independent relational link storage for every candidate;
+- shared equality, range, multi-value, two-hop link, keyset, and count workloads;
+- load duration and schema-size measurement;
+- repeated full JSON `EXPLAIN (ANALYZE, BUFFERS, WAL)` evidence;
+- machine-readable reports under `target/index-storage-benchmark`.
+
+The harness does not select a model. Real smoke/100k/1m runs, write-amplification
+and vacuum workloads, evidence comparison, and the storage ADR are still open.
+No production migration may be added before the ADR is accepted.
+
 ## Status
 
 - Rewrite: `in_progress`
@@ -71,11 +91,13 @@ M1 provides:
 - FBA: `in_progress`
 - M0 code reset: `complete`
 - M1 generic core: `complete`
+- M2 harness: `implemented`
+- M2 evidence and ADR: `pending`
 - Production migrations: intentionally absent pending M2 benchmark evidence
 
 ## Verification
 
-The repository owner runs the checks during this rewrite:
+The repository owner runs the checks and database evidence during this rewrite:
 
 - `cargo fmt --all -- --check`
 - `cargo check --workspace --all-targets --all-features`
@@ -84,11 +106,13 @@ The repository owner runs the checks during this rewrite:
 - `cargo xtask module test index`
 - `npm run verify:index:fba`
 - `npm run verify:index:runtime-fallback-smoke`
+- `cargo run -p rustok-benchmarks --bin index-storage-benchmark --release`
 
 ## Related documents
 
 - [Crate README](../README.md)
 - [Live implementation plan](./implementation-plan.md)
+- [M2 storage benchmark contract](./storage-benchmark.md)
 - [Index Engine rewrite ADR](../../../DECISIONS/2026-07-23-index-engine-rewrite.md)
 - [Event flow contract](../../../docs/architecture/event-flow-contract.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
