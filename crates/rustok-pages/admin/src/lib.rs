@@ -14,7 +14,6 @@ mod model;
 mod rollback_control;
 mod transport;
 
-use builder::PagesBuilderSaveSnapshot;
 use composition::PagesAdmin as PagesWorkspace;
 use leptos::prelude::*;
 use leptos_auth::hooks::{use_tenant, use_token};
