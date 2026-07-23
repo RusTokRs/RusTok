@@ -53,7 +53,10 @@
     "verifier": "scripts/verify/verify-comments-fba.mjs",
     "static_matrix": "crates/rustok-comments/contracts/evidence/comments-contract-test-static-matrix.json",
     "runtime_order_smoke": "crates/rustok-comments/contracts/evidence/comments-provider-runtime-order-smoke.json",
-    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs"
+    "runtime_order_smoke_runner": "scripts/verify/verify-owner-fba-runtime-order.mjs",
+    "thread_write_invariants": "crates/rustok-comments/contracts/evidence/comments-thread-write-invariants.json",
+    "thread_write_invariants_runner": "scripts/verify/verify-comments-thread-write-invariants.mjs",
+    "thread_write_invariants_test": "crates/rustok-comments/tests/thread_write_invariants.rs"
   },
   "in_process_provider_impl": {
     "service": "InProcessCommentsThreadProvider",
