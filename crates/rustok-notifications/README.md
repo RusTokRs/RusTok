@@ -19,6 +19,7 @@ Channel delivery remains a later workflow.
 - enforce effective tenant capability before source and candidate provider calls;
 - durably defer disabled or unresolved tenant work so bounded queues continue to
   later tenants;
+- serialize final candidate creation with PostgreSQL tenant lifecycle toggles;
 - apply preferences, recipient privacy, and current target authorization before
   creating an inbox row;
 - own replay, reconciliation, retention, and delivery lifecycle.
@@ -39,6 +40,7 @@ Channel delivery remains a later workflow.
 - `NotificationFanoutPolicyDeferral`;
 - `NotificationCandidateService` / `NotificationCandidateWorker`;
 - `NotificationCandidateWorkItem` / `NotificationCandidatePolicyDeferral`;
+- `NotificationTenantCapabilityCommitGuard` and its request/decision contracts;
 - `NotificationRecipientPolicy` / `NotificationRecipientPolicyRuntime`;
 - `rustok_notifications::api`, `entities`, `model`, and `migrations`.
 
@@ -97,30 +99,42 @@ The host loop is default-off behind
 Fanout creates only idempotent pending candidates—never final notifications or
 delivery attempts.
 
-### 3. Candidate policy
+### 3. Candidate policy and commit guard
 
-`NotificationCandidateWorker` now selects tenant-scoped candidate work. Before
-calling the canonical candidate service, the server rechecks effective
-`notifications` capability for that exact tenant. Disabled candidates receive a
-300-second retry backoff; a temporary policy lookup failure receives 30 seconds.
-The owner CAS increments attempt count, clears lease state, records a stable error
-code, and prevents disabled tenants from blocking the bounded queue head. No
-recipient privacy policy or source provider is called for deferred work.
+`NotificationCandidateWorker` selects tenant-scoped candidate work. Before
+canonical claim, the server resolves the full effective tenant policy and forwards
+its deterministic `policy_revision`. Disabled candidates receive a 300-second
+retry backoff; temporary policy lookup failure receives 30 seconds. No recipient
+privacy policy or source provider is called for deferred work.
 
-When capability is enabled, `NotificationCandidateService` claims the candidate,
-resolves exact preference scopes before wildcards, evaluates Profiles/Social Graph
-recipient policy, reauthorizes the source target, rechecks preferences inside the
-final transaction, and inserts or validates one in-app notification under the same
-lease CAS.
+When capability is enabled, the service claims the candidate, resolves exact
+preference scopes before wildcards, evaluates Profiles/Social Graph recipient
+policy, and reauthorizes the source target. The final notification transaction then:
+
+1. validates the candidate lease;
+2. invokes `NotificationTenantCapabilityCommitGuard`;
+3. locks the Modules-owned `module.lifecycle` policy cursor;
+4. resolves tenant overrides through the Modules owner on the same transaction;
+5. requires current `notifications` enablement and the observed revision;
+6. rechecks preferences;
+7. inserts or validates one notification and completes the candidate.
+
+On PostgreSQL, the cursor `FOR UPDATE` lock serializes this final transaction with
+tenant lifecycle enable/disable commits. Whichever transaction commits first is
+authoritative: a prior disable rejects notification creation, while a candidate
+that already owns the lock commits before the later disable. Revision changes or
+disabled capability roll back the notification transaction and move the candidate
+to durable retry state.
+
+SQLite scenarios prove rollback, revision rejection, and transaction-bound policy
+resolution, but do not claim PostgreSQL row-lock concurrency evidence. Active
+manifest, artifact-security, maintenance, and node-readiness mutations are not yet
+serialized by this lifecycle cursor and remain a separate policy-expansion gate.
 
 The candidate loop is default-off behind
-`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`. It also requires a materialized
-source registry, ready recipient-policy ports, and the shared `ModuleRegistry`.
-Candidate finalization creates no channel delivery attempt.
-
-The capability recheck is intentionally pre-claim and fail-closed. Atomic exclusion
-of a control-plane disable that commits concurrently with an already-approved
-candidate claim still requires a future revision-token or transactional guard.
+`RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED`. It requires a materialized source
+registry, ready recipient-policy ports, and the shared `ModuleRegistry`. Candidate
+finalization creates no channel delivery attempt.
 
 The server bootstrap order is intake → fanout → candidate. All loops use the
 shared shutdown signal and check it between work items.
@@ -139,8 +153,9 @@ continue to succeed when the module is absent or disabled.
 
 ## Remaining gates
 
-- atomic control-plane revision guard for disable concurrent with candidate claim;
-- PostgreSQL contention/recovery evidence and worker health/lag metrics;
+- serialize active-manifest, artifact-security, maintenance, and node-readiness
+  policy changes with final candidate commits;
+- PostgreSQL cursor/lease contention evidence and worker health/lag metrics;
 - grouping and moderator-directory expansion;
 - inbox APIs and open-time privacy/source rechecks;
 - channel delivery enqueue after candidate acceptance;
