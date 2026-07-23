@@ -70,20 +70,20 @@ async fn repair_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         .get_connection()
         .execute_unprepared(
             r#"
-UPDATE comment_threads AS thread
+UPDATE comment_threads AS thread_row
 SET comment_count = counts.comment_count
 FROM (
     SELECT
         thread_source.id,
-        COUNT(comment.id)::INTEGER AS comment_count
+        COUNT(comment_row.id)::INTEGER AS comment_count
     FROM comment_threads AS thread_source
-    LEFT JOIN comments AS comment
-        ON comment.thread_id = thread_source.id
-       AND comment.tenant_id = thread_source.tenant_id
-       AND comment.deleted_at IS NULL
+    LEFT JOIN comments AS comment_row
+        ON comment_row.thread_id = thread_source.id
+       AND comment_row.tenant_id = thread_source.tenant_id
+       AND comment_row.deleted_at IS NULL
     GROUP BY thread_source.id
 ) AS counts
-WHERE thread.id = counts.id;
+WHERE thread_row.id = counts.id;
 
 WITH ranked AS (
     SELECT
@@ -94,10 +94,10 @@ WITH ranked AS (
         ) AS repaired_position
     FROM comments
 )
-UPDATE comments AS comment
+UPDATE comments AS comment_row
 SET position = ranked.repaired_position
 FROM ranked
-WHERE comment.id = ranked.id;
+WHERE comment_row.id = ranked.id;
 "#,
         )
         .await?;
@@ -112,10 +112,10 @@ async fn repair_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 UPDATE comment_threads
 SET comment_count = (
     SELECT COUNT(*)
-    FROM comments AS comment
-    WHERE comment.thread_id = comment_threads.id
-      AND comment.tenant_id = comment_threads.tenant_id
-      AND comment.deleted_at IS NULL
+    FROM comments AS comment_row
+    WHERE comment_row.thread_id = comment_threads.id
+      AND comment_row.tenant_id = comment_threads.tenant_id
+      AND comment_row.deleted_at IS NULL
 );
 
 WITH ranked AS (
