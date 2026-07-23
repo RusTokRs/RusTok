@@ -84,6 +84,29 @@ parse_port_tenant_id(&context, "select_shipping_option");
 `;
 }
 
+function canonicalCustomer() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation = owner_operation,
+  code = "customer.database_unavailable",
+);
+tracing::warn!(code = "customer.context_invalid");
+tracing::warn!(code = "customer.validation");
+tracing::error!(code = "customer.profile_unavailable");
+PortError::validation("customer.context_invalid", "customer request context is invalid");
+PortError::unavailable("customer.database_unavailable", "customer storage is temporarily unavailable");
+PortError::validation("customer.validation", "customer request is invalid");
+PortError::unavailable("customer.profile_unavailable", "customer profile projection is temporarily unavailable");
+.map_err(|error| customer_error_to_port_error(&context, owner_operation, error));
+let owner_operation = "read_customer_projection";
+let owner_operation = "read_customer_projection_by_user";
+let owner_operation = "list_customer_projections";
+let owner_operation = "list_profile_enrichment";
+`;
+}
+
 function canonicalOrderCompensation() {
   return `
 tracing::error!(
@@ -171,6 +194,15 @@ function fixture(options = {}) {
     );
   }
   put(root, 'crates/rustok-fulfillment/src/ports.rs', fulfillment);
+
+  let customer = `${canonicalCustomer()}${options.customerAppend ?? ''}`;
+  if (options.removeCustomerCorrelation) {
+    customer = customer.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
+  }
+  put(root, 'crates/rustok-customer/src/ports.rs', customer);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
   if (options.removeOrderCompensationCorrelation) {
@@ -301,6 +333,33 @@ test('public port error verifier rejects raw fulfillment storage cause', () => {
   );
 });
 
+test('public port error verifier rejects raw customer validation cause', () => {
+  expectFailure(
+    {
+      customerAppend: 'PortError::validation("customer.validation", message);',
+    },
+    /customer public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw customer storage cause', () => {
+  expectFailure(
+    {
+      customerAppend: 'format!("customer storage unavailable: {error}");',
+    },
+    /customer public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects customer email disclosure', () => {
+  expectFailure(
+    {
+      customerAppend: 'format!("duplicate customer email `{email}`");',
+    },
+    /customer public error mapping: forbidden/,
+  );
+});
+
 test('public port error verifier rejects legacy order reconciliation message passthrough', () => {
   expectFailure(
     {
@@ -349,6 +408,13 @@ test('public port error verifier requires fulfillment correlation logging', () =
   expectFailure(
     { removeFulfillmentCorrelation: true },
     /fulfillment correlation logging: missing/,
+  );
+});
+
+test('public port error verifier requires customer correlation logging', () => {
+  expectFailure(
+    { removeCustomerCorrelation: true },
+    /customer correlation logging: missing/,
   );
 });
 

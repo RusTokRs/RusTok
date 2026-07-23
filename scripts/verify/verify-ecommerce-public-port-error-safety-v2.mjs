@@ -24,6 +24,7 @@ const cart = read('crates/rustok-cart/src/checkout_snapshot.rs');
 const pricing = read('crates/rustok-pricing/src/ports.rs');
 const payment = read('crates/rustok-payment/src/ports.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/ports.rs');
+const customer = read('crates/rustok-customer/src/ports.rs');
 const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
 const orderPaymentSettlement = read(
   'crates/rustok-order/src/checkout_payment_settlement.rs',
@@ -39,6 +40,7 @@ for (const [source, label] of [
   [pricing, 'pricing port'],
   [payment, 'payment collection port'],
   [fulfillment, 'fulfillment shipping selection port'],
+  [customer, 'customer read port'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -95,6 +97,20 @@ for (const value of [
   '"PortContext.tenant_id must be a UUID for fulfillment ports"',
 ]) {
   forbidText(fulfillment, value, 'fulfillment public error mapping');
+}
+
+for (const value of [
+  'format!("customer storage unavailable: {error}")',
+  'format!("customer {id} not found")',
+  'format!("customer for user {id} not found")',
+  'format!("duplicate customer email `{email}`")',
+  'format!("customer already linked to user {user_id}")',
+  'PortError::validation("customer.validation", message)',
+  'format!("customer profile projection unavailable: {error}")',
+  '.map_err(customer_error_to_port_error)',
+  '"PortContext.tenant_id must be a UUID for customer ports"',
+]) {
+  forbidText(customer, value, 'customer public error mapping');
 }
 
 for (const value of [
@@ -159,6 +175,22 @@ for (const [source, value, label] of [
   [fulfillment, '"fulfillment storage is temporarily unavailable"', 'fulfillment stable storage message'],
   [fulfillment, 'parse_port_tenant_id(&context, "list_seller_shipping_options")', 'fulfillment list operation mapping'],
   [fulfillment, 'parse_port_tenant_id(&context, "select_shipping_option")', 'fulfillment select operation mapping'],
+  [customer, 'correlation_id = %context.correlation_id', 'customer correlation logging'],
+  [customer, 'tenant_id = %context.tenant_id', 'customer tenant logging'],
+  [customer, 'operation = owner_operation', 'customer owner operation logging'],
+  [customer, 'code = "customer.context_invalid"', 'customer context stable code'],
+  [customer, 'code = "customer.database_unavailable"', 'customer database stable code'],
+  [customer, 'code = "customer.validation"', 'customer validation stable code'],
+  [customer, 'code = "customer.profile_unavailable"', 'customer profile stable code'],
+  [customer, '"customer request context is invalid"', 'customer stable context message'],
+  [customer, '"customer storage is temporarily unavailable"', 'customer stable storage message'],
+  [customer, '"customer request is invalid"', 'customer stable validation message'],
+  [customer, '"customer profile projection is temporarily unavailable"', 'customer stable profile message'],
+  [customer, 'customer_error_to_port_error(&context, owner_operation, error)', 'customer context-aware mapping'],
+  [customer, 'let owner_operation = "read_customer_projection"', 'customer projection operation mapping'],
+  [customer, 'let owner_operation = "read_customer_projection_by_user"', 'customer user operation mapping'],
+  [customer, 'let owner_operation = "list_customer_projections"', 'customer list operation mapping'],
+  [customer, 'let owner_operation = "list_profile_enrichment"', 'customer enrichment operation mapping'],
   [orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging'],
   [orderCompensation, 'tenant_id = %context.tenant_id', 'order compensation tenant logging'],
   [orderCompensation, 'operation,', 'order compensation owner operation logging'],
@@ -216,5 +248,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment, fulfillment, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, payment, fulfillment, customer, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );
