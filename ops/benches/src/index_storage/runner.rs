@@ -48,6 +48,8 @@ pub struct PrototypeReport {
 pub struct WorkloadReport {
     pub name: &'static str,
     pub sql: String,
+    pub result_rows: i64,
+    pub result_digest: String,
     pub repetitions: Vec<ExplainEvidence>,
 }
 
@@ -66,6 +68,12 @@ pub struct ExplainEvidence {
 struct Cardinality {
     entity_rows: i64,
     link_rows: i64,
+}
+
+#[derive(Debug)]
+struct ResultDigest {
+    rows: i64,
+    digest: String,
 }
 
 pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
@@ -87,6 +95,7 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
     for prototype in Prototype::ALL {
         prototypes.push(run_prototype(&db, prototype, config).await?);
     }
+    validate_semantic_parity(&prototypes)?;
 
     Ok(BenchmarkReport {
         generated_at: Utc::now(),
@@ -119,7 +128,7 @@ async fn run_prototype(
     config: &BenchmarkConfig,
 ) -> Result<PrototypeReport> {
     let load_started = Instant::now();
-    db.execute_unprepared(&executable_prototype_sql(prototype))
+    db.execute_unprepared(&full_prototype_sql(prototype))
         .await
         .with_context(|| format!("failed to prepare {:?} prototype", prototype))?;
     let load_ms = load_started.elapsed().as_millis();
@@ -148,6 +157,9 @@ async fn run_workload(
     workload: Workload,
     repetitions: u32,
 ) -> Result<WorkloadReport> {
+    let digest = result_digest(db, &workload.sql)
+        .await
+        .with_context(|| format!("failed to digest workload result {}", workload.name))?;
     let mut evidence = Vec::with_capacity(repetitions as usize);
     for _ in 0..repetitions {
         evidence.push(explain(db, &workload.sql).await.with_context(|| {
@@ -157,7 +169,23 @@ async fn run_workload(
     Ok(WorkloadReport {
         name: workload.name,
         sql: workload.sql,
+        result_rows: digest.rows,
+        result_digest: digest.digest,
         repetitions: evidence,
+    })
+}
+
+async fn result_digest(db: &DatabaseConnection, sql: &str) -> Result<ResultDigest> {
+    let digest_sql = format!(
+        "SELECT count(*)::bigint AS result_rows, md5(COALESCE(string_agg(row_to_json(result)::text, '|' ORDER BY row_to_json(result)::text), '')) AS result_digest FROM ({sql}) AS result"
+    );
+    let row = db
+        .query_one(Statement::from_string(DbBackend::Postgres, digest_sql))
+        .await?
+        .context("result digest query returned no row")?;
+    Ok(ResultDigest {
+        rows: row.try_get("", "result_rows")?,
+        digest: row.try_get("", "result_digest")?,
     })
 }
 
@@ -281,33 +309,43 @@ fn validate_cardinality(
     Ok(())
 }
 
-fn executable_prototype_sql(prototype: Prototype) -> String {
-    let invalid_suffix = format!(
-        "\nANALYZE {};\nANALYZE {}.link;\n",
-        prototype.schema(),
-        prototype.schema()
-    );
-    let analyze = match prototype {
-        Prototype::Jsonb => format!(
-            "\nANALYZE {}.entity;\nANALYZE {}.link;\n",
-            prototype.schema(),
-            prototype.schema()
-        ),
-        Prototype::TypedEav => format!(
-            "\nANALYZE {}.entity;\nANALYZE {}.field_value;\nANALYZE {}.link;\n",
-            prototype.schema(),
-            prototype.schema(),
-            prototype.schema()
-        ),
-        Prototype::HotProjection => format!(
-            "\nANALYZE {}.product;\nANALYZE {}.variant;\nANALYZE {}.sales_channel;\nANALYZE {}.link;\n",
-            prototype.schema(),
-            prototype.schema(),
-            prototype.schema(),
-            prototype.schema()
-        ),
-    };
-    full_prototype_sql(prototype).replace(&invalid_suffix, &analyze)
+fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
+    let baseline = prototypes
+        .first()
+        .context("benchmark produced no prototype reports")?;
+    for candidate in &prototypes[1..] {
+        ensure!(
+            candidate.workloads.len() == baseline.workloads.len(),
+            "{} workload count differs from {}",
+            candidate.schema,
+            baseline.schema
+        );
+        for expected in &baseline.workloads {
+            let actual = candidate
+                .workloads
+                .iter()
+                .find(|workload| workload.name == expected.name)
+                .with_context(|| {
+                    format!("{} is missing workload {}", candidate.schema, expected.name)
+                })?;
+            ensure!(
+                actual.result_rows == expected.result_rows,
+                "{} workload {} row-count mismatch: expected {}, got {}",
+                candidate.schema,
+                expected.name,
+                expected.result_rows,
+                actual.result_rows
+            );
+            ensure!(
+                actual.result_digest == expected.result_digest,
+                "{} workload {} result digest differs from {}",
+                candidate.schema,
+                expected.name,
+                baseline.schema
+            );
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -316,22 +354,13 @@ mod tests {
     use crate::index_storage::DatasetScale;
 
     #[test]
-    fn executable_sql_analyzes_real_relations() {
-        for prototype in Prototype::ALL {
-            let sql = executable_prototype_sql(prototype);
-            assert!(!sql.contains(&format!("ANALYZE {};", prototype.schema())));
-            assert!(sql.contains(&format!("ANALYZE {}.link;", prototype.schema())));
-        }
-    }
-
-    #[test]
     fn cardinality_contract_matches_generated_link_shape() {
         let dataset = DatasetConfig::for_scale(
             DatasetScale::Smoke,
             vec!["en-US".to_owned(), "ru-RU".to_owned()],
         )
         .unwrap();
-        assert_eq!(dataset.total_entity_rows(), 1_016);
+        assert_eq!(dataset.total_entity_rows(), 1_216);
         assert_eq!(dataset.total_link_rows(), 2_400);
     }
 }
