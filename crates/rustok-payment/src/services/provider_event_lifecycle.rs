@@ -4,7 +4,10 @@ use serde_json::{Map, Value};
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::dto::{AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput};
+use crate::dto::{
+    AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput,
+    PaymentCollectionStatusKind,
+};
 use crate::error::PaymentError;
 use crate::providers::PaymentProviderWebhookResult;
 
@@ -46,14 +49,16 @@ impl PaymentProviderEventApplier for PaymentLifecycleEventApplier {
 
         match event.event_type.as_str() {
             EVENT_PAYMENT_AUTHORIZED => {
-                match collection.status.as_str() {
-                    "authorized" | "captured" => return Ok(()),
-                    "pending" => {}
-                    status => {
+                match collection.status_kind() {
+                    PaymentCollectionStatusKind::Authorized
+                    | PaymentCollectionStatusKind::Captured => return Ok(()),
+                    PaymentCollectionStatusKind::Pending => {}
+                    PaymentCollectionStatusKind::Cancelled
+                    | PaymentCollectionStatusKind::Unknown => {
                         return Err(non_retryable(
                             "payment.webhook_authorize_conflict",
                             format!(
-                                "payment collection {} cannot apply authorized event from `{status}`",
+                                "payment collection {} cannot apply authorized event from its current lifecycle state",
                                 collection.id
                             ),
                         ));
@@ -74,10 +79,10 @@ impl PaymentProviderEventApplier for PaymentLifecycleEventApplier {
                     .map_err(map_payment_error)?;
             }
             EVENT_PAYMENT_CAPTURED => {
-                match collection.status.as_str() {
-                    "captured" => return Ok(()),
-                    "authorized" => {}
-                    "pending" => {
+                match collection.status_kind() {
+                    PaymentCollectionStatusKind::Captured => return Ok(()),
+                    PaymentCollectionStatusKind::Authorized => {}
+                    PaymentCollectionStatusKind::Pending => {
                         return Err(retryable(
                             "payment.webhook_capture_out_of_order",
                             format!(
@@ -86,11 +91,12 @@ impl PaymentProviderEventApplier for PaymentLifecycleEventApplier {
                             ),
                         ));
                     }
-                    status => {
+                    PaymentCollectionStatusKind::Cancelled
+                    | PaymentCollectionStatusKind::Unknown => {
                         return Err(non_retryable(
                             "payment.webhook_capture_conflict",
                             format!(
-                                "payment collection {} cannot apply captured event from `{status}`",
+                                "payment collection {} cannot apply captured event from its current lifecycle state",
                                 collection.id
                             ),
                         ));
@@ -109,10 +115,11 @@ impl PaymentProviderEventApplier for PaymentLifecycleEventApplier {
                     .map_err(map_payment_error)?;
             }
             EVENT_PAYMENT_CANCELLED => {
-                match collection.status.as_str() {
-                    "cancelled" => return Ok(()),
-                    "pending" | "authorized" => {}
-                    "captured" => {
+                match collection.status_kind() {
+                    PaymentCollectionStatusKind::Cancelled => return Ok(()),
+                    PaymentCollectionStatusKind::Pending
+                    | PaymentCollectionStatusKind::Authorized => {}
+                    PaymentCollectionStatusKind::Captured => {
                         return Err(non_retryable(
                             "payment.webhook_cancel_after_capture",
                             format!(
@@ -121,11 +128,11 @@ impl PaymentProviderEventApplier for PaymentLifecycleEventApplier {
                             ),
                         ));
                     }
-                    status => {
+                    PaymentCollectionStatusKind::Unknown => {
                         return Err(non_retryable(
                             "payment.webhook_cancel_conflict",
                             format!(
-                                "payment collection {} cannot apply cancelled event from `{status}`",
+                                "payment collection {} has an unknown lifecycle state",
                                 collection.id
                             ),
                         ));
@@ -188,11 +195,11 @@ impl NormalizedPaymentEvent {
         })?;
         let collection_id = Uuid::parse_str(required_string(metadata, "collection_id")?.as_str())
             .map_err(|_| {
-            non_retryable(
-                "payment.webhook_collection_id_invalid",
-                "normalized payment webhook collection_id must be a UUID",
-            )
-        })?;
+                non_retryable(
+                    "payment.webhook_collection_id_invalid",
+                    "normalized payment webhook collection_id must be a UUID",
+                )
+            })?;
         let amount =
             Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(|_| {
                 non_retryable(
