@@ -2,19 +2,30 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use rustok_core::ModuleRuntimeExtensions;
+use rustok_core::{ModuleRegistry, ModuleRuntimeExtensions};
 use rustok_notifications::{
-    DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, NotificationCandidateWorker, NotificationError,
+    DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, NotificationCandidatePolicyDeferral,
+    NotificationCandidateWorkItem, NotificationCandidateWorker, NotificationError,
     NotificationRecipientPolicyRuntime,
 };
+use sea_orm::DatabaseConnection;
 use tokio::task::JoinHandle;
 
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
+use crate::services::effective_module_policy::EffectiveModulePolicyService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const CANDIDATE_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const NOTIFICATIONS_MODULE_SLUG: &str = "notifications";
 static NOTIFICATION_CANDIDATE_WORKER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TenantNotificationPolicy {
+    Enabled,
+    Disabled,
+    Unavailable,
+}
 
 pub struct NotificationCandidateWorkerHandle {
     instance_id: u64,
@@ -69,6 +80,9 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
     .ok_or_else(|| {
         Error::Message("notification source registry is unavailable for candidate worker".to_string())
     })?;
+    let module_registry = ctx
+        .shared_get::<ModuleRegistry>()
+        .ok_or_else(|| Error::Message("module registry is unavailable".to_string()))?;
 
     if !ctx.shared_contains::<StopHandle>() {
         let (stop_handle, _stop_rx) = StopHandle::new();
@@ -97,13 +111,20 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
     );
     ctx.shared_insert(NotificationCandidateWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(notification_candidate_worker_loop(worker, stop_rx)),
+        _handle: tokio::spawn(notification_candidate_worker_loop(
+            worker,
+            ctx.db_clone(),
+            module_registry,
+            stop_rx,
+        )),
     });
     Ok(())
 }
 
 async fn notification_candidate_worker_loop(
     worker: NotificationCandidateWorker,
+    db: DatabaseConnection,
+    module_registry: ModuleRegistry,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     loop {
@@ -112,11 +133,13 @@ async fn notification_candidate_worker_loop(
             return;
         }
 
-        let item_ids = match worker.claimable_candidate_ids().await {
-            Ok(item_ids) => item_ids,
+        let work_items = match worker.claimable_candidate_work().await {
+            Ok(work_items) => work_items,
             Err(error) => {
                 tracing::error!(
                     worker_id = worker.worker_id(),
+                    error_code = error.stable_code(),
+                    retryable = error.is_retryable(),
                     error = %error,
                     "Notification candidate worker failed to select claimable items"
                 );
@@ -124,7 +147,7 @@ async fn notification_candidate_worker_loop(
             }
         };
 
-        for item_id in item_ids {
+        for work in work_items {
             // A shutdown signal prevents future claims. A candidate already being
             // processed is allowed to finish its lease/CAS completion path.
             if *stop_rx.borrow() {
@@ -132,9 +155,14 @@ async fn notification_candidate_worker_loop(
                 return;
             }
 
-            match worker.process_candidate(item_id).await {
+            if !candidate_work_is_enabled(&worker, &db, &module_registry, work).await {
+                continue;
+            }
+
+            match worker.process_candidate(work.item_id).await {
                 Ok(result) => tracing::debug!(
                     worker_id = worker.worker_id(),
+                    tenant_id = %work.tenant_id,
                     item_id = %result.item_id,
                     status = ?result.status,
                     replayed = result.replayed,
@@ -142,12 +170,14 @@ async fn notification_candidate_worker_loop(
                 ),
                 Err(NotificationError::LeaseUnavailable) => tracing::debug!(
                     worker_id = worker.worker_id(),
-                    item_id = %item_id,
+                    tenant_id = %work.tenant_id,
+                    item_id = %work.item_id,
                     "Notification candidate claim lost to another worker"
                 ),
                 Err(error) => tracing::warn!(
                     worker_id = worker.worker_id(),
-                    item_id = %item_id,
+                    tenant_id = %work.tenant_id,
+                    item_id = %work.item_id,
                     error_code = error.stable_code(),
                     retryable = error.is_retryable(),
                     error = %error,
@@ -164,6 +194,87 @@ async fn notification_candidate_worker_loop(
                     return;
                 }
             }
+        }
+    }
+}
+
+async fn candidate_work_is_enabled(
+    worker: &NotificationCandidateWorker,
+    db: &DatabaseConnection,
+    module_registry: &ModuleRegistry,
+    work: NotificationCandidateWorkItem,
+) -> bool {
+    let reason = match tenant_notification_policy(db, module_registry, work.tenant_id).await {
+        TenantNotificationPolicy::Enabled => return true,
+        TenantNotificationPolicy::Disabled => NotificationCandidatePolicyDeferral::TenantDisabled,
+        TenantNotificationPolicy::Unavailable => {
+            NotificationCandidatePolicyDeferral::PolicyUnavailable
+        }
+    };
+
+    match worker.defer_candidate(work, reason).await {
+        Ok(()) => {
+            tracing::debug!(
+                worker_id = worker.worker_id(),
+                tenant_id = %work.tenant_id,
+                item_id = %work.item_id,
+                reason = ?reason,
+                "Notification candidate deferred before recipient policy evaluation"
+            );
+        }
+        Err(NotificationError::LeaseUnavailable) => {
+            tracing::debug!(
+                worker_id = worker.worker_id(),
+                tenant_id = %work.tenant_id,
+                item_id = %work.item_id,
+                "Notification candidate tenant-policy deferral lost to another claim"
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                worker_id = worker.worker_id(),
+                tenant_id = %work.tenant_id,
+                item_id = %work.item_id,
+                error_code = error.stable_code(),
+                retryable = error.is_retryable(),
+                error = %error,
+                "Notification candidate tenant-policy deferral failed"
+            );
+        }
+    }
+    false
+}
+
+async fn tenant_notification_policy(
+    db: &DatabaseConnection,
+    module_registry: &ModuleRegistry,
+    tenant_id: uuid::Uuid,
+) -> TenantNotificationPolicy {
+    match EffectiveModulePolicyService::is_enabled(
+        db,
+        module_registry,
+        tenant_id,
+        NOTIFICATIONS_MODULE_SLUG,
+    )
+    .await
+    {
+        Ok(true) => TenantNotificationPolicy::Enabled,
+        Ok(false) => {
+            tracing::debug!(
+                tenant_id = %tenant_id,
+                module_slug = NOTIFICATIONS_MODULE_SLUG,
+                "Notification candidate skipped because tenant capability is disabled"
+            );
+            TenantNotificationPolicy::Disabled
+        }
+        Err(error) => {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                module_slug = NOTIFICATIONS_MODULE_SLUG,
+                error = %error,
+                "Notification candidate policy lookup failed closed"
+            );
+            TenantNotificationPolicy::Unavailable
         }
     }
 }
