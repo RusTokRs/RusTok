@@ -1,4 +1,4 @@
-use super::{Workload, WorkloadContext};
+use super::{MutationWorkload, Workload, WorkloadContext};
 
 pub fn prototype_sql() -> String {
     r#"
@@ -180,6 +180,30 @@ pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
             sql: format!(
                 "SELECT count(*)::bigint AS result_count FROM idx_bench_eav.entity AS entity JOIN idx_bench_eav.field_value AS status ON status.tenant_id = entity.tenant_id AND status.entity_name = entity.entity_name AND status.entity_id = entity.entity_id AND status.locale = entity.locale AND status.field_name = 'status' WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND status.value_text = 'published'"
             ),
+        },
+    ]
+}
+
+pub fn mutation_workloads(context: &WorkloadContext) -> Vec<MutationWorkload> {
+    let tenant = context.tenant;
+    let locale = &context.locale;
+    let batch = context.mutation_batch;
+    let deleted_links = context.expected_deleted_links();
+
+    vec![
+        MutationWorkload {
+            name: "update_product_batch",
+            sql: format!(
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), updated_entities AS (UPDATE idx_bench_eav.entity AS entity SET source_version = entity.source_version + 1 FROM targets WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id), updated_fields AS (UPDATE idx_bench_eav.field_value AS field SET value_int = field.value_int + CASE field.field_name WHEN 'price_minor' THEN 17 ELSE 1 END FROM targets WHERE field.tenant_id = {tenant} AND field.entity_name = 'product' AND field.locale = {locale} AND field.entity_id = targets.product_id AND field.field_name IN ('price_minor', 'rating_milli') RETURNING field.entity_id) SELECT (SELECT count(*) FROM updated_entities)::bigint AS affected_entities, (SELECT count(*) FROM updated_fields)::bigint AS affected_fields"
+            ),
+            expected_affected_entities: i64::from(batch),
+        },
+        MutationWorkload {
+            name: "delete_product_batch",
+            sql: format!(
+                "WITH targets AS (SELECT product_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND product_no <= {batch}), deleted_fields AS (DELETE FROM idx_bench_eav.field_value AS field USING targets WHERE field.tenant_id = {tenant} AND field.entity_name = 'product' AND field.locale = {locale} AND field.entity_id = targets.product_id RETURNING 1), deleted_links AS (DELETE FROM idx_bench_eav.link AS link USING targets WHERE link.tenant_id = {tenant} AND link.source_entity = 'product' AND link.source_locale = {locale} AND link.source_entity_id = targets.product_id RETURNING 1), deleted_entities AS (DELETE FROM idx_bench_eav.entity AS entity USING targets WHERE entity.tenant_id = {tenant} AND entity.entity_name = 'product' AND entity.locale = {locale} AND entity.entity_id = targets.product_id RETURNING entity.entity_id) SELECT (SELECT count(*) FROM deleted_entities)::bigint AS affected_entities, (SELECT count(*) FROM deleted_fields)::bigint AS affected_fields, (SELECT count(*) FROM deleted_links)::bigint AS affected_links, {deleted_links}::bigint AS expected_links"
+            ),
+            expected_affected_entities: i64::from(batch),
         },
     ]
 }
