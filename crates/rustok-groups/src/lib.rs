@@ -5,8 +5,12 @@ use rustok_notifications_api::register_notification_source_provider_factory;
 use sea_orm_migration::MigrationTrait;
 
 pub mod application_entities;
-#[path = "applications.rs"]
-mod applications_legacy_module;
+mod applications_legacy_module {
+    include!("applications.rs");
+    include!("applications_transactional.rs");
+    include!("applications_transactional_cas.rs");
+    include!("applications_transactional_lifecycle.rs");
+}
 pub mod domain;
 pub mod dto;
 mod effective_applications;
@@ -37,8 +41,10 @@ pub mod graphql_localization;
 pub mod graphql_policy_history;
 pub mod group_event_entities;
 pub mod invitation_entities;
-#[path = "invitations.rs"]
-mod invitations_legacy;
+mod invitations_legacy {
+    include!("invitations.rs");
+    include!("invitations_transactional.rs");
+}
 pub mod localization;
 pub mod membership_enforcement;
 pub mod membership_enforcement_entities;
@@ -49,8 +55,10 @@ pub mod ports;
 // Transitional status-only core implementation delegate. It is crate-private so external
 // consumers and module-owned transports cannot bypass the effective membership facade.
 mod service;
-#[path = "targeted_invitations.rs"]
-mod targeted_invitations_legacy;
+mod targeted_invitations_legacy {
+    include!("targeted_invitations.rs");
+    include!("targeted_invitations_transactional.rs");
+}
 
 /// Compatibility module preserving the public application types and paths while sealing the
 /// status-only owner implementation behind the effective-membership facade.
