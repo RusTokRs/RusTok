@@ -48,17 +48,22 @@ const runtime = read(contract.policy_runtime ?? "");
 const server = read(contract.server_worker ?? "");
 const composition = read(contract.policy_composition ?? "");
 const bootstrap = read(contract.bootstrap ?? "");
-const test = read(contract.tests?.[0] ?? "");
+const moduleConsumer = read(contract.module_policy_consumer ?? "");
+const moduleTransition = read(contract.module_policy_transition ?? "");
+const moduleExecutor = read("crates/rustok-modules/src/executor.rs");
+const candidateTest = read(contract.tests?.[0] ?? "");
+const moduleTest = read(contract.tests?.[1] ?? "");
 const library = read("crates/rustok-notifications/src/lib.rs");
 
-if (contract.slice !== "NOTIFY-03C" || contract.schema_version !== 4) {
-  failures.push("candidate worker contract must identify NOTIFY-03C schema 4");
+if (contract.slice !== "NOTIFY-03C" || contract.schema_version !== 5) {
+  failures.push("candidate worker contract must identify NOTIFY-03C schema 5");
 }
-if (!contract.promoted_by_slices?.includes("NOTIFY-03G")) {
-  failures.push("candidate worker contract must record NOTIFY-03G tenant gate promotion");
+if (!contract.promoted_by_slices?.includes("NOTIFY-03H")) {
+  failures.push("candidate worker contract must record NOTIFY-03H commit guard promotion");
 }
-if (contract.enablement?.default_enabled !== false) {
-  failures.push("candidate worker must remain disabled by default");
+if (contract.enablement?.default_enabled !== false
+  || contract.enablement?.production_uses_guarded_constructor !== true) {
+  failures.push("candidate worker must remain default-off and use a guarded production constructor");
 }
 if (contract.enablement?.requires_candidate_worker_ready !== true
   || contract.enablement?.requires_module_registry !== true) {
@@ -69,13 +74,37 @@ if (contract.bounded_loop?.default_batch_size !== 32
   || contract.bounded_loop?.tenant_scoped_work_item !== true) {
   failures.push("candidate worker bounded tenant-scoped selection contract is invalid");
 }
-if (contract.tenant_capability_gate?.authority !== "EffectiveModulePolicyService::is_enabled"
+if (contract.tenant_capability_gate?.preclaim_authority
+    !== "EffectiveModulePolicyService::resolve"
   || contract.tenant_capability_gate?.checked_before_each_candidate_claim !== true
+  || contract.tenant_capability_gate?.observed_policy_revision_forwarded_to_commit !== true
   || contract.tenant_capability_gate?.policy_error_fails_closed !== true
   || contract.tenant_capability_gate?.disabled_tenant_calls_recipient_policy !== false
-  || contract.tenant_capability_gate?.disabled_tenant_calls_source_provider !== false
-  || contract.tenant_capability_gate?.atomic_with_concurrent_tenant_disable !== false) {
-  failures.push("candidate worker must enforce a bounded non-atomic tenant gate before recipient/source calls");
+  || contract.tenant_capability_gate?.disabled_tenant_calls_source_provider !== false) {
+  failures.push("candidate worker preclaim gate must resolve and forward the effective policy revision");
+}
+for (const field of [
+  "inside_final_notification_transaction",
+  "after_candidate_lease_validation",
+  "before_preference_recheck",
+  "before_notification_insert",
+  "module_owner_resolves_tenant_overrides",
+  "revision_match_required",
+  "enabled_module_required",
+  "revision_change_retryable",
+  "disabled_commit_retryable",
+  "postgres_serializes_with_lifecycle_tenant_toggle",
+]) {
+  if (contract.commit_time_guard?.[field] !== true) {
+    failures.push(`candidate commit guard contract must set ${field}=true`);
+  }
+}
+if (contract.commit_time_guard?.lifecycle_cursor_consumer_key !== "module.lifecycle"
+  || contract.commit_time_guard?.server_reads_tenant_modules_directly !== false
+  || contract.commit_time_guard?.rejected_commit_creates_notification !== false
+  || contract.commit_time_guard?.sqlite_behavioral_evidence_only !== true
+  || contract.commit_time_guard?.atomic_with_manifest_or_security_mutation !== false) {
+  failures.push("candidate commit guard scope or degraded evidence contract is invalid");
 }
 for (const field of [
   "candidate_transitions_to_retryable_error",
@@ -98,39 +127,24 @@ if (contract.tenant_policy_backoff?.disabled_retry_seconds !== 300
 for (const marker of [
   "DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE: usize = 32",
   "MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE: usize = 64",
-  "TENANT_DISABLED_RETRY_SECONDS: i64 = 300",
-  "TENANT_POLICY_UNAVAILABLE_RETRY_SECONDS: i64 = 30",
   "NotificationCandidateWorkItem",
   "NotificationCandidatePolicyDeferral",
+  "NotificationTenantCapabilityCommitGuard",
+  "new_with_commit_guard",
   "claimable_candidate_work",
   "claimable_candidate_ids",
   "defer_candidate",
+  "process_candidate_with_policy_revision",
   "FanoutItemStatus::Pending",
   "FanoutItemStatus::RetryableError",
   "FanoutItemStatus::Processing",
-  "LeaseExpiresAt.lt",
   "AttemptCount.eq(current.attempt_count)",
-  "next_attempt_at: Set(Some(",
-  "lease_owner: Set(None)",
-  "lease_expires_at: Set(None)",
-  "NOTIFICATION_TENANT_CAPABILITY_DISABLED",
-  "NOTIFICATION_TENANT_POLICY_UNAVAILABLE",
   "order_by_asc(candidate_item::Column::CreatedAt)",
   "order_by_asc(candidate_item::Column::Id)",
   ".limit(self.batch_size as u64)",
-  "process_candidate(item_id, self.worker_id.as_str())",
 ]) {
   requireText(owner, marker, `notification candidate owner driver is missing ${marker}`);
 }
-requireOrder(
-  owner,
-  [
-    "let work_items = self.claimable_candidate_work().await?",
-    "for work in work_items",
-    "self.process_candidate(work.item_id).await",
-  ],
-  "trusted bounded convenience batch must select before canonical processing",
-);
 reject(
   owner,
   /notification::Entity|delivery_attempt::Entity/,
@@ -138,13 +152,56 @@ reject(
 );
 
 for (const marker of [
+  "pub trait NotificationTenantCapabilityCommitGuard",
+  "NotificationTenantCapabilityCommitRequest",
+  "NotificationTenantCapabilityCommitDecision",
+  "new_with_commit_guard",
+  "process_candidate_with_policy_revision",
+  "commit_guard.evaluate",
+  "TenantCapabilityDisabled",
+  "TenantPolicyRevisionChanged",
   "claim_candidate(item_id, worker_id)",
-  "FanoutItemStatus::Processing",
   "LeaseOwner.eq(worker_id)",
   "LeaseExpiresAt.gt",
 ]) {
-  requireText(candidate, marker, `canonical candidate lease path is missing ${marker}`);
+  requireText(candidate, marker, `canonical candidate commit path is missing ${marker}`);
 }
+requireOrder(
+  candidate,
+  [
+    "ensure_candidate_lease(&current, worker_id)?",
+    "commit_guard.evaluate(&txn, request).await",
+    "self.preference_allows_in_app(&txn, &current, job).await?",
+    "notification::Entity::insert(active)",
+  ],
+  "commit guard must run after lease validation and before preference recheck/notification insert",
+);
+
+for (const marker of [
+  "lock_current_revision_in_transaction",
+  "lock_and_resolve_static_policy_in_transaction",
+  "ModuleEffectivePolicyQuery::new_with_context",
+  "load_tenant_overrides(transaction, tenant_id)",
+  "SELECT module_slug, enabled FROM tenant_modules",
+  '" FOR UPDATE"',
+]) {
+  requireText(moduleConsumer, marker, `module policy owner guard is missing ${marker}`);
+}
+for (const marker of [
+  "publish_and_advance",
+  "apply_in_transaction(transaction, tenant_id, consumer_key, transition)",
+]) {
+  requireText(moduleTransition, marker, `module lifecycle transition path is missing ${marker}`);
+}
+requireOrder(
+  moduleExecutor,
+  [
+    "TenantModuleStateStore::persist(transaction, state_request)",
+    "publish_and_advance(",
+    '"module.lifecycle"',
+  ],
+  "lifecycle state and policy cursor transition must share one transaction",
+);
 
 for (const marker of [
   "candidate_worker_enabled: bool",
@@ -154,7 +211,6 @@ for (const marker of [
 ]) {
   requireText(runtime, marker, `candidate worker readiness runtime is missing ${marker}`);
 }
-
 for (const marker of [
   "RUSTOK_NOTIFICATIONS_CANDIDATE_WORKER_ENABLED",
   "with_candidate_worker_enabled(candidate_worker_enabled_from_environment())",
@@ -168,16 +224,17 @@ for (const marker of [
   "candidate_worker_enabled()",
   "relation_ports_ready()",
   "candidate_worker_ready()",
-  "notification_source_registry_from_extensions",
   "shared_get::<ModuleRegistry>()",
-  "EffectiveModulePolicyService::is_enabled",
-  "TenantNotificationPolicy",
-  "candidate_work_is_enabled",
-  "NotificationCandidatePolicyDeferral::TenantDisabled",
-  "NotificationCandidatePolicyDeferral::PolicyUnavailable",
-  "defer_candidate(work, reason).await",
-  "claimable_candidate_work().await",
-  "worker.process_candidate(work.item_id).await",
+  "EffectiveModulePolicyService::resolve",
+  "policy.policy_revision().to_string()",
+  "ServerNotificationTenantCapabilityCommitGuard",
+  "PlatformCompositionService::active_manifest",
+  "SeaOrmModulePolicyRevisionConsumer::new",
+  "lock_and_resolve_static_policy_in_transaction",
+  "MODULE_LIFECYCLE_POLICY_CONSUMER",
+  "NotificationCandidateWorker::new_with_commit_guard",
+  "candidate_work_policy_revision",
+  "process_candidate_with_policy_revision",
   "NotificationError::LeaseUnavailable",
   "policy lookup failed closed",
   "StopHandle",
@@ -192,25 +249,25 @@ requireOrder(
     "relation_ports_ready()",
     "candidate_worker_ready()",
     "shared_get::<ModuleRegistry>()",
-    "NotificationCandidateWorker::new",
+    "NotificationCandidateWorker::new_with_commit_guard",
     "tokio::spawn",
   ],
-  "worker startup must validate enablement, policy readiness and module registry before spawn",
+  "worker startup must validate readiness and compose commit guard before spawn",
 );
 requireOrder(
   server,
   [
     "for work in work_items",
     "if *stop_rx.borrow()",
-    "candidate_work_is_enabled",
-    "worker.process_candidate(work.item_id).await",
+    "candidate_work_policy_revision",
+    "process_candidate_with_policy_revision",
   ],
-  "shutdown and tenant policy must be checked before each canonical candidate claim",
+  "shutdown and revisioned tenant policy must precede each canonical candidate claim",
 );
 reject(
   server,
-  /notification_fanout_items|candidate_item::Entity|Column::LeaseOwner|SELECT.+notification/i,
-  "server worker must not read Notifications private tables directly",
+  /tenant_modules|notification_fanout_items|candidate_item::Entity|Column::LeaseOwner|SELECT\s/i,
+  "server worker must not read module or Notifications private tables directly",
 );
 
 requireOrder(
@@ -226,24 +283,34 @@ requireOrder(
 for (const marker of [
   "NotificationCandidateWorkItem",
   "NotificationCandidatePolicyDeferral",
+  "NotificationTenantCapabilityCommitGuard",
+  "NotificationTenantCapabilityCommitRequest",
+  "NotificationTenantCapabilityCommitDecision",
   "NotificationCandidateWorker",
-  "DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE",
 ]) {
   requireText(library, marker, `Notifications facade is missing ${marker}`);
 }
 for (const marker of [
   "worker_selection_is_bounded_and_uses_candidate_lease_path",
-  "claimable_candidate_work",
-  "work.tenant_id == tenant_id",
-  "process_candidate(selected[0].item_id)",
   "tenant_policy_deferral_removes_candidate_from_bounded_head",
-  "NotificationCandidatePolicyDeferral::TenantDisabled",
-  "NOTIFICATION_TENANT_CAPABILITY_DISABLED",
-  "later enabled work should reach bounded head",
-  "assert_ne!(next_page[0].item_id, deferred.item_id)",
+  "commit_policy_revision_change_rolls_back_notification_and_retries_candidate",
+  "RevisionChangedCommitGuard",
+  "new_with_commit_guard",
+  "process_candidate_with_policy_revision",
+  "NOTIFICATION_TENANT_POLICY_REVISION_CHANGED",
+  "revision rejection must not create notifications",
   "MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE + 1",
 ]) {
-  requireText(test, marker, `candidate worker SQLite evidence is missing ${marker}`);
+  requireText(candidateTest, marker, `candidate worker SQLite evidence is missing ${marker}`);
+}
+for (const marker of [
+  "static_policy_resolves_tenant_override_under_lifecycle_cursor_lock",
+  "lock_and_resolve_static_policy_in_transaction",
+  "module.lifecycle",
+  "assert!(!disabled.contains(\"notifications\"))",
+  "guard locks but never advances",
+]) {
+  requireText(moduleTest, marker, `module policy cursor SQLite evidence is missing ${marker}`);
 }
 
 if (failures.length > 0) {
@@ -252,4 +319,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Notification candidate worker tenant policy boundary verified.");
+console.log("Notification candidate worker commit-time tenant policy boundary verified.");
