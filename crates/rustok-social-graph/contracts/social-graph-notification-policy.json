@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "slice": "SOCIAL-01A/NOTIFY-07C",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "owner_plan": "crates/rustok-social-graph/docs/implementation-plan.md",
+  "owner": "rustok-social-graph",
+  "migration": "crates/rustok-social-graph/src/migrations/m20260723_000001_create_social_graph_relations.rs",
+  "entity": "crates/rustok-social-graph/src/entities/relation.rs",
+  "service": "crates/rustok-social-graph/src/service.rs",
+  "ports": "crates/rustok-social-graph/src/ports.rs",
+  "relation_state": {
+    "table": "social_graph_relations",
+    "kinds": ["block", "mute"],
+    "identity": ["tenant_id", "source_user_id", "target_user_id", "relation_kind"],
+    "revisioned": true,
+    "semantic_replay": true,
+    "self_relation_forbidden": true,
+    "tenant_composite_source_fk": true,
+    "tenant_composite_target_fk": true
+  },
+  "privacy_semantics": {
+    "block_either_direction_suppresses": true,
+    "mute_source_to_target_only": true,
+    "notification_mute_source": "recipient_id",
+    "notification_mute_target": "actor_id"
+  },
+  "server_composition": {
+    "adapter": "apps/server/src/services/notification_recipient_policy.rs",
+    "profile_then_block_then_mute": true,
+    "reads_private_social_graph_tables": false,
+    "relation_ports_ready": true,
+    "candidate_worker_enabled": false,
+    "candidate_worker_ready": false
+  },
+  "distribution": {
+    "registry": "crates/rustok-distribution/src/generated_promotions.rs",
+    "manifest": "modules.toml",
+    "compiled_in_baseline": true,
+    "tenant_default_enabled": false
+  },
+  "tests": [
+    "crates/rustok-social-graph/tests/privacy_sqlite.rs"
+  ],
+  "verification": {
+    "source_verifier": "scripts/verify/verify-social-graph-notification-policy.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  },
+  "deferred": [
+    "candidate worker startup",
+    "friend and follow lifecycle",
+    "block and mute transports",
+    "outbox relation events",
+    "PostgreSQL concurrency evidence",
+    "inbox-open and delayed-delivery rechecks"
+  ]
+}
