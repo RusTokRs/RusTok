@@ -107,6 +107,34 @@ let owner_operation = "list_profile_enrichment";
 `;
 }
 
+function canonicalInventory() {
+  return `
+tracing::error!(
+  correlation_id = %context.correlation_id,
+  tenant_id = %context.tenant_id,
+  operation = owner_operation,
+  code = "inventory.database_unavailable",
+);
+tracing::warn!(code = "inventory.context_invalid");
+tracing::warn!(code = "inventory.variant_not_found");
+tracing::warn!(code = "inventory.insufficient_inventory");
+tracing::warn!(code = "inventory.validation");
+tracing::error!(code = "inventory.invariant_violation");
+PortError::validation("inventory.context_invalid", "inventory request context is invalid");
+PortError::unavailable("inventory.database_unavailable", "inventory storage is temporarily unavailable");
+PortError::new(NotFound, "inventory.variant_not_found", "inventory variant was not found", false);
+PortError::new(Conflict, "inventory.insufficient_inventory", "inventory reservation conflicts with available stock", false);
+PortError::validation("inventory.validation", "inventory request is invalid");
+parse_port_tenant_id(&context, owner_operation);
+inventory_error_to_port_error(&context, owner_operation, error);
+let owner_operation = "check_availability";
+let owner_operation = "reserve_inventory";
+let owner_operation = "release_inventory_reservation";
+let owner_operation = "reserve_inventory_by_identity";
+let owner_operation = "release_inventory_by_identity";
+`;
+}
+
 function canonicalOrderCompensation() {
   return `
 tracing::error!(
@@ -203,6 +231,15 @@ function fixture(options = {}) {
     );
   }
   put(root, 'crates/rustok-customer/src/ports.rs', customer);
+
+  let inventory = `${canonicalInventory()}${options.inventoryAppend ?? ''}`;
+  if (options.removeInventoryCorrelation) {
+    inventory = inventory.replace(
+      'correlation_id = %context.correlation_id',
+      'correlation_id = omitted',
+    );
+  }
+  put(root, 'crates/rustok-inventory/src/ports.rs', inventory);
 
   let orderCompensation = `${canonicalOrderCompensation()}${options.orderCompensationAppend ?? ''}`;
   if (options.removeOrderCompensationCorrelation) {
@@ -357,6 +394,41 @@ test('public port error verifier rejects customer email disclosure', () => {
       customerAppend: 'format!("duplicate customer email `{email}`");',
     },
     /customer public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects raw inventory validation cause', () => {
+  expectFailure(
+    {
+      inventoryAppend: 'PortError::validation("inventory.validation", message);',
+    },
+    /inventory public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects inventory stock disclosure', () => {
+  expectFailure(
+    {
+      inventoryAppend:
+        'format!("insufficient inventory: requested {requested}, available {available}");',
+    },
+    /inventory public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier rejects inventory variant id disclosure', () => {
+  expectFailure(
+    {
+      inventoryAppend: 'format!("variant {id} not found");',
+    },
+    /inventory public error mapping: forbidden/,
+  );
+});
+
+test('public port error verifier requires inventory correlation logging', () => {
+  expectFailure(
+    { removeInventoryCorrelation: true },
+    /inventory correlation logging: missing/,
   );
 });
 

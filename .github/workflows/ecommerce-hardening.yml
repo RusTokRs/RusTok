@@ -53,6 +53,7 @@ jobs:
           -p rustok-commerce
           -p rustok-order-storefront
           -p rustok-tax
+          -p rustok-inventory
           --all-features
         env:
           PLAYWRIGHT_SKIP_DRIVER_DOWNLOAD: "1"

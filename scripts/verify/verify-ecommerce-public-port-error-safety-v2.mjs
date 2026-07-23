@@ -25,6 +25,7 @@ const pricing = read('crates/rustok-pricing/src/ports.rs');
 const payment = read('crates/rustok-payment/src/ports.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/ports.rs');
 const customer = read('crates/rustok-customer/src/ports.rs');
+const inventory = read('crates/rustok-inventory/src/ports.rs');
 const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
 const orderPaymentSettlement = read(
   'crates/rustok-order/src/checkout_payment_settlement.rs',
@@ -41,6 +42,7 @@ for (const [source, label] of [
   [payment, 'payment collection port'],
   [fulfillment, 'fulfillment shipping selection port'],
   [customer, 'customer read port'],
+  [inventory, 'inventory reservation port'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -111,6 +113,17 @@ for (const value of [
   '"PortContext.tenant_id must be a UUID for customer ports"',
 ]) {
   forbidText(customer, value, 'customer public error mapping');
+}
+
+for (const value of [
+  'PortError::validation("inventory.validation", message)',
+  'format!("variant {id} not found")',
+  'format!("variant {variant_id} was not found")',
+  'format!("insufficient inventory: requested {requested}, available {available}")',
+  '.map_err(inventory_error_to_port_error)',
+  '"PortContext.tenant_id must be a UUID for inventory ports"',
+]) {
+  forbidText(inventory, value, 'inventory public error mapping');
 }
 
 for (const value of [
@@ -191,6 +204,27 @@ for (const [source, value, label] of [
   [customer, 'let owner_operation = "read_customer_projection_by_user"', 'customer user operation mapping'],
   [customer, 'let owner_operation = "list_customer_projections"', 'customer list operation mapping'],
   [customer, 'let owner_operation = "list_profile_enrichment"', 'customer enrichment operation mapping'],
+  [inventory, 'correlation_id = %context.correlation_id', 'inventory correlation logging'],
+  [inventory, 'tenant_id = %context.tenant_id', 'inventory tenant logging'],
+  [inventory, 'operation = owner_operation', 'inventory owner operation logging'],
+  [inventory, 'code = "inventory.context_invalid"', 'inventory context stable code'],
+  [inventory, 'code = "inventory.database_unavailable"', 'inventory database stable code'],
+  [inventory, 'code = "inventory.variant_not_found"', 'inventory not-found stable code'],
+  [inventory, 'code = "inventory.insufficient_inventory"', 'inventory conflict stable code'],
+  [inventory, 'code = "inventory.validation"', 'inventory validation stable code'],
+  [inventory, 'code = "inventory.invariant_violation"', 'inventory invariant stable code'],
+  [inventory, '"inventory request context is invalid"', 'inventory stable context message'],
+  [inventory, '"inventory storage is temporarily unavailable"', 'inventory stable storage message'],
+  [inventory, '"inventory variant was not found"', 'inventory stable not-found message'],
+  [inventory, '"inventory reservation conflicts with available stock"', 'inventory stable conflict message'],
+  [inventory, '"inventory request is invalid"', 'inventory stable validation message'],
+  [inventory, 'parse_port_tenant_id(&context, owner_operation)', 'inventory context-aware parsing'],
+  [inventory, 'inventory_error_to_port_error(&context, owner_operation, error)', 'inventory context-aware mapping'],
+  [inventory, 'let owner_operation = "check_availability"', 'inventory availability operation mapping'],
+  [inventory, 'let owner_operation = "reserve_inventory"', 'inventory reserve operation mapping'],
+  [inventory, 'let owner_operation = "release_inventory_reservation"', 'inventory release operation mapping'],
+  [inventory, 'let owner_operation = "reserve_inventory_by_identity"', 'inventory identity reserve operation mapping'],
+  [inventory, 'let owner_operation = "release_inventory_by_identity"', 'inventory identity release operation mapping'],
   [orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging'],
   [orderCompensation, 'tenant_id = %context.tenant_id', 'order compensation tenant logging'],
   [orderCompensation, 'operation,', 'order compensation owner operation logging'],
@@ -248,5 +282,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Channel, region, cart, pricing, payment, fulfillment, customer, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
+  '✔ Channel, region, cart, pricing, payment, fulfillment, customer, inventory, and order checkout adapters keep raw owner errors out of public PortError messages and retain correlation-safe technical logs',
 );

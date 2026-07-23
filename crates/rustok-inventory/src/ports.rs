@@ -173,8 +173,13 @@ impl InventoryReservationPort for crate::InventoryService {
         context: PortContext,
         request: InventoryAvailabilityRequest,
     ) -> Result<InventoryAvailabilitySnapshot, PortError> {
+        let owner_operation = "check_availability";
+        let owner_operation = "reserve_inventory";
+        let owner_operation = "release_inventory_reservation";
+        let owner_operation = "reserve_inventory_by_identity";
+        let owner_operation = "release_inventory_by_identity";
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let result = self
             .check_variant_availability_for_channel(
                 tenant_id,
@@ -183,7 +188,7 @@ impl InventoryReservationPort for crate::InventoryService {
                 request.channel_slug.as_deref(),
             )
             .await
-            .map_err(inventory_error_to_port_error)?;
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
 
         Ok(InventoryAvailabilitySnapshot {
             variant_id: request.variant_id,
@@ -200,11 +205,11 @@ impl InventoryReservationPort for crate::InventoryService {
     ) -> Result<InventoryReservationSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let result = self
             .reserve(tenant_id, request.variant_id, request.quantity)
             .await
-            .map_err(inventory_error_to_port_error)?;
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
 
         Ok(InventoryReservationSnapshot {
             variant_id: request.variant_id,
@@ -222,11 +227,11 @@ impl InventoryReservationPort for crate::InventoryService {
     ) -> Result<InventoryReservationReleaseSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let result = self
             .release_reservation_quantity(tenant_id, request.variant_id, request.quantity)
             .await
-            .map_err(inventory_error_to_port_error)?;
+            .map_err(|error| inventory_error_to_port_error(&context, owner_operation, error))?;
 
         Ok(InventoryReservationReleaseSnapshot {
             variant_id: request.variant_id,
@@ -246,7 +251,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
     ) -> Result<InventoryIdentityReservationSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         request.external_id = normalize_external_id(request.external_id)?;
         if request.quantity <= 0 {
             return Err(PortError::validation(
@@ -256,7 +261,14 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         }
 
         let txn = self.db.begin().await.map_err(storage_unavailable)?;
-        let variant = load_tenant_variant(&txn, tenant_id, request.variant_id).await?;
+        let variant = load_tenant_variant(
+            &context,
+            owner_operation,
+            &txn,
+            tenant_id,
+            request.variant_id,
+        )
+        .await?;
         let inventory_item = load_inventory_item_for_update(&txn, request.variant_id)
             .await?
             .ok_or_else(|| {
@@ -425,7 +437,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
     ) -> Result<InventoryIdentityReservationReleaseSnapshot, PortError> {
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         request.external_id = normalize_external_id(request.external_id)?;
 
         let txn = self.db.begin().await.map_err(storage_unavailable)?;
@@ -471,7 +483,9 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 "reservation identity changed while acquiring the owner lock",
             ));
         }
-        let variant = load_tenant_variant(&txn, tenant_id, item.variant_id).await?;
+        let variant =
+            load_tenant_variant(&context, owner_operation, &txn, tenant_id, item.variant_id)
+                .await?;
         let allows_backorder = crate::inventory_policy_allows_backorder(&variant.inventory_policy);
 
         if reservation.deleted_at.is_some() || reservation.quantity == 0 {
@@ -541,6 +555,8 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
 }
 
 async fn load_tenant_variant<C>(
+    context: &PortContext,
+    owner_operation: &'static str,
     conn: &C,
     tenant_id: Uuid,
     variant_id: Uuid,
@@ -552,11 +568,19 @@ where
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .one(conn)
         .await
-        .map_err(storage_unavailable)?
+        .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?
         .ok_or_else(|| {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "inventory.variant_not_found",
+                variant_id = %variant_id,
+                "inventory variant was not found"
+            );
             PortError::not_found(
                 "inventory.variant_not_found",
-                format!("variant {variant_id} was not found"),
+                "inventory variant was not found",
             )
         })
 }
@@ -711,13 +735,40 @@ fn normalize_external_id(value: String) -> Result<String, PortError> {
     Ok(value)
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(context.tenant_id.trim()).map_err(|_| {
+fn parse_port_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.tenant_id.trim()).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "inventory.context_invalid",
+            "inventory port context is invalid"
+        );
         PortError::validation(
-            "inventory.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for inventory ports",
+            "inventory.context_invalid",
+            "inventory request context is invalid",
         )
     })
+}
+
+fn storage_unavailable_with_context(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: sea_orm::DbErr,
+) -> PortError {
+    tracing::error!(
+        error = ?error,
+        correlation_id = %context.correlation_id,
+        tenant_id = %context.tenant_id,
+        operation = owner_operation,
+        code = "inventory.database_unavailable",
+        "inventory storage operation failed"
+    );
+    storage_unavailable(error)
 }
 
 fn storage_unavailable(_error: sea_orm::DbErr) -> PortError {
@@ -728,37 +779,88 @@ fn storage_unavailable(_error: sea_orm::DbErr) -> PortError {
 }
 
 fn inventory_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
     error: rustok_commerce_foundation::error::CommerceError,
 ) -> PortError {
     use rustok_commerce_foundation::error::CommerceError;
 
     match error {
-        CommerceError::Database(_) => PortError::unavailable(
-            "inventory.database_unavailable",
-            "inventory storage is temporarily unavailable",
-        ),
-        CommerceError::VariantNotFound(id) => PortError::new(
-            PortErrorKind::NotFound,
-            "inventory.variant_not_found",
-            format!("variant {id} not found"),
-            false,
-        ),
+        CommerceError::Database(error) => {
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "inventory.database_unavailable",
+                "inventory owner storage operation failed"
+            );
+            PortError::unavailable(
+                "inventory.database_unavailable",
+                "inventory storage is temporarily unavailable",
+            )
+        }
+        CommerceError::VariantNotFound(variant_id) => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "inventory.variant_not_found",
+                variant_id = %variant_id,
+                "inventory variant was not found"
+            );
+            PortError::new(
+                PortErrorKind::NotFound,
+                "inventory.variant_not_found",
+                "inventory variant was not found",
+                false,
+            )
+        }
         CommerceError::InsufficientInventory {
             requested,
             available,
-        } => PortError::new(
-            PortErrorKind::Conflict,
-            "inventory.insufficient_inventory",
-            format!("insufficient inventory: requested {requested}, available {available}"),
-            false,
-        ),
-        CommerceError::InvalidPrice(message) | CommerceError::Validation(message) => {
-            PortError::validation("inventory.validation", message)
+        } => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "inventory.insufficient_inventory",
+                requested,
+                available,
+                "inventory reservation conflicts with available stock"
+            );
+            PortError::new(
+                PortErrorKind::Conflict,
+                "inventory.insufficient_inventory",
+                "inventory reservation conflicts with available stock",
+                false,
+            )
         }
-        _ => PortError::invariant_violation(
-            "inventory.invariant_violation",
-            "inventory operation violated an owner invariant",
-        ),
+        CommerceError::InvalidPrice(message) | CommerceError::Validation(message) => {
+            tracing::warn!(
+                internal_message = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "inventory.validation",
+                "inventory request validation failed"
+            );
+            PortError::validation("inventory.validation", "inventory request is invalid")
+        }
+        other => {
+            tracing::error!(
+                error = ?other,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "inventory.invariant_violation",
+                "inventory owner invariant failed"
+            );
+            PortError::invariant_violation(
+                "inventory.invariant_violation",
+                "inventory operation violated an owner invariant",
+            )
+        }
     }
 }
 
