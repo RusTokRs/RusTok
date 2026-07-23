@@ -53,6 +53,9 @@ if (failures.length === 0) {
 
   requireMarkers(files.applications, [
     "pub struct GroupApplicationService",
+    "require_candidate_surface_visible",
+    "GroupVisibility::Secret",
+    "PortError::not_found",
     "require_effective_manager",
     "require_candidate_not_denied",
     "require_user_not_denied",
@@ -93,6 +96,7 @@ if (failures.length === 0) {
   requireMarkers(files.contract, [
     '"commercial_membership_or_subscription": false',
     '"compatibility_module_paths_preserved": true',
+    '"secret_candidate_surface": "not_found_before_membership_specific_denial"',
     '"existing_receipt_checked_before_effective_precheck": true',
     '"bulk_review": "bounded_partial_result_via_effective_single_review"',
     '"same_transaction_effective_recheck": "open"',
@@ -116,5 +120,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "Groups effective invitation and membership-application facades, sealed compatibility paths, receipt-first replay, bounded bulk review, and remaining transaction gate passed source verification.",
+  "Groups effective invitation and membership-application facades, secret non-disclosure, sealed compatibility paths, receipt-first replay, bounded bulk review, and remaining transaction gate passed source verification.",
 );
