@@ -8,19 +8,25 @@ cross-module roadmap remains `crates/rustok-forum/docs/implementation-plan.md`.
 - PostgreSQL and SQLite migration
   `m20260723_000001_create_social_graph_relations`;
 - one tenant-scoped identity row per source user, target user, and relation kind;
-- current `block` and `mute` state with monotonic revision and semantic replay;
+- current `block` and `mute` state with monotonic revision and semantic state
+  replay;
 - tenant-composite foreign keys for both users and self-relation rejection;
-- owner command port with deadline, idempotency, source-actor, and optional
-  expected-revision gates;
+- owner command port with deadline, required idempotency-key presence,
+  source-actor, and optional expected-revision gates;
 - neutral `SocialGraphPrivacyReadPort` for symmetric block and directional mute
   evaluation;
 - server-owned adapters into Notifications block/mute runtime contracts;
-- notification recipient policy readiness becomes true only after both concrete
-  adapters are registered;
-- candidate worker startup remains deferred.
+- notification recipient relation-policy readiness is true with both concrete
+  owner adapters;
+- candidate worker enablement remains a separate explicit false gate.
+
+Privacy reads remain authoritative when tenant-facing Social Graph surfaces are
+not enabled: disabling management UX must not silently bypass an already stored
+block or mute.
 
 ## Remaining Social Graph scope
 
+- durable command receipts that bind idempotency keys to command identity;
 - friendship request/accept/remove lifecycle;
 - follow/unfollow and follower privacy;
 - custom lists and list membership;
@@ -46,4 +52,4 @@ node scripts/verify/verify-social-graph-notification-policy.mjs
 ```
 
 These commands are maintainer-run and were not executed while publishing this
-slice.
+slice. `Cargo.lock` was not regenerated because Cargo was not run.
