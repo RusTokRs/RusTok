@@ -2,12 +2,14 @@
 
 mod bounded_compat;
 mod category;
+#[allow(clippy::collapsible_if)]
 mod category_command;
 mod category_lifecycle;
 mod category_owner;
 mod category_policy;
 mod category_tree;
 pub mod event;
+#[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation;
 #[cfg(test)]
 mod mention_relation_tests {
@@ -20,6 +22,7 @@ mod rbac;
 pub mod read_model;
 mod relation_quote_input;
 mod relation_read;
+#[allow(clippy::collapsible_if, clippy::items_after_test_module)]
 mod reply {
     include!("reply.rs");
     include!("reply_inline.rs");
@@ -31,6 +34,7 @@ mod reply_owner {
 }
 pub mod revision;
 pub mod subscription;
+#[allow(clippy::collapsible_if)]
 mod topic {
     include!("topic.rs");
     include!("topic_inline.rs");
