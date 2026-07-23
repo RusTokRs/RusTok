@@ -37,7 +37,9 @@ Five module-local PostgreSQL/SQLite migrations create:
 Accepted and rejected intake outcomes are keyed by outbox event ID and mutually
 exclusive. Source inbox and accepted receipt commit in one transaction. Permanent
 invalid envelopes are quarantined; retryable failures retain no terminal intake
-record. The intake consumer neither depends on nor mutates relay status.
+record. Accepted replay re-decodes the current envelope and must match the
+persisted source identity. The intake consumer neither depends on nor mutates
+relay status.
 
 The schema stores no source-private payload, rendered HTML, contact address, phone
 number, or plaintext push endpoint. Global server migration composition remains a
@@ -68,8 +70,13 @@ source descriptor materialization and bounded audience pages.
 `NotificationFanoutWorker` selects tenant-scoped source/job work without acquiring
 leases. The default/hard batch is 32/64; one audience page is capped at 256. Before
 each source or job call, the server resolves
-`EffectiveModulePolicyService::is_enabled(..., "notifications")`. Disabled or
-unresolved policy fails closed before producer provider execution.
+`EffectiveModulePolicyService::is_enabled(..., "notifications")`.
+
+Disabled tenant work is moved to `retryable_error` for 300 seconds; temporary
+policy lookup failure is deferred for 30 seconds. Both owner-side CAS transitions
+increment attempt count, set `next_attempt_at`, clear lease fields, and persist
+stable error metadata before any producer provider call. This prevents disabled
+or unresolved tenant rows from occupying the bounded queue head indefinitely.
 
 The executable loop is default-off behind
 `RUSTOK_NOTIFICATIONS_FANOUT_WORKER_ENABLED`, requires a background-worker host,
@@ -109,7 +116,6 @@ closed. Moderator audience expansion remains deferred.
 
 ## Pending capabilities
 
-- durable backoff for disabled-tenant work;
 - PostgreSQL contention/recovery evidence and operational health/lag metrics;
 - grouping and bounded moderator-directory expansion;
 - channel delivery enqueue and transports;
@@ -128,6 +134,7 @@ cargo test -p rustok-notifications --test candidate_sqlite -- --nocapture
 cargo test -p rustok-notifications --test candidate_worker_sqlite -- --nocapture
 cargo test -p rustok-notifications --test outbox_intake_sqlite -- --nocapture
 cargo test -p rustok-notifications --test fanout_worker_sqlite -- --nocapture
+cargo test -p rustok-notifications --test fanout_policy_deferral_sqlite -- --nocapture
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 node scripts/verify/verify-notifications-source-fanout.mjs
 node scripts/verify/verify-notifications-candidate-policy.mjs
@@ -138,7 +145,7 @@ node scripts/verify/verify-notifications-fanout-worker.mjs
 cargo xtask module validate notifications
 ```
 
-These commands were not run while publishing `NOTIFY-03D/03E`.
+These commands were not run while publishing `NOTIFY-03D/03E/03F`.
 
 ## Related documents
 
