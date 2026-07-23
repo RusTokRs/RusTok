@@ -18,6 +18,7 @@ const cartLib = read('crates/rustok-cart/src/lib.rs');
 const order = read('crates/rustok-order/src/status.rs');
 const orderLib = read('crates/rustok-order/src/lib.rs');
 const payment = read('crates/rustok-payment/src/dto/payment.rs');
+const paymentStage = read('crates/rustok-commerce/src/services/checkout_payment_stages.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/status.rs');
 const fulfillmentLib = read('crates/rustok-fulfillment/src/lib.rs');
 
@@ -38,12 +39,26 @@ for (const [source, value, label] of [
   [payment, 'pub enum RefundStatusKind', 'refund status enum'],
   [payment, 'pub fn status_kind(&self) -> PaymentCollectionStatusKind', 'payment typed accessor'],
   [payment, '_ => Self::Unknown', 'payment unknown mapping'],
+  [paymentStage, 'PaymentCollectionStatusKind', 'mounted payment status import'],
+  [paymentStage, 'authorized.status_kind().is_authorized_or_captured()', 'typed authorization result'],
+  [paymentStage, 'captured.status_kind().is_captured()', 'typed capture result'],
+  [paymentStage, 'collection.status_kind().is_captured()', 'typed captured replay'],
+  [paymentStage, 'order.status_kind()', 'typed order admission'],
   [fulfillment, 'pub enum FulfillmentStatusKind', 'fulfillment status enum'],
   [fulfillment, 'pub fn status_kind(&self) -> FulfillmentStatusKind', 'fulfillment typed accessor'],
   [fulfillment, '_ => Self::Unknown', 'fulfillment unknown mapping'],
   [fulfillmentLib, 'pub mod status;', 'fulfillment status module export'],
 ]) {
   requireText(source, value, label);
+}
+
+for (const value of [
+  'authorized.status.as_str()',
+  'captured.status != "captured"',
+  'collection.status != "captured"',
+  'order.status.as_str()',
+]) {
+  forbidText(paymentStage, value, 'mounted payment stage raw lifecycle status');
 }
 
 forbidText(cartLib, 'pub mod status;', 'duplicate cart status module export');
@@ -58,5 +73,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Cart, order, payment, and fulfillment expose one canonical typed lifecycle view per owner',
+  '✔ Ecommerce owners and mounted payment stage use canonical typed lifecycle views',
 );
