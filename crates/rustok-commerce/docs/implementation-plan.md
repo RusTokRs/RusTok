@@ -141,9 +141,11 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
 - [x] Cut order checkout recovery and mounted order projection validation over to
   `OrderStatusKind`; pending resumes through owner confirmation and unknown states fail
   closed without raw string policy matching.
-- [ ] Cut the remaining cart completion/compensation, payment recovery/provider
-  adaptation, and other audited critical lifecycle paths over to canonical typed owner
-  statuses.
+- [x] Cut atomic cart admission, mounted checkout finalization, and mounted compensation
+  release/result validation over to canonical cart/order/payment lifecycle views;
+  unknown cart states require manual reconciliation or fail closed.
+- [ ] Cut the remaining payment recovery/provider adaptation and other audited critical
+  lifecycle paths over to canonical typed owner statuses.
 - [ ] Execute order identity/completion/compensation/payment/fulfillment Rust tests and
   the full static verifier set against a repository checkout.
 - [ ] Execute order identity clean/upgraded/down/reapply, tenant mismatch, contention,
@@ -254,14 +256,17 @@ payment webhook, marketplace allocation, commission, and ledger source waves.
   manual reconciliation before checkout can continue.
 - [x] Use `OrderStatusKind` in the owner recovery adapter and mounted order projection
   policy; legacy pending resumes through the owner confirm command.
+- [x] Use canonical `CartStatus` in atomic checkout admission, mounted finalization, and
+  mounted compensation release; compensation snapshots expose typed order/payment
+  status views without changing wire fields.
 - [ ] Replace fulfillment metadata identity with owner-owned typed persistence and a
   concurrency-safe uniqueness constraint.
 - [ ] Remove temporary metadata write/adoption bridges and old executor/compensation/
   pipeline source after upgraded/restart evidence proves every recovery path uses typed
   identity.
 - [ ] Retain order completion/adoption, payment execution, fulfillment execution,
-  settlement, and compensation parity, kill-point, restart, and PostgreSQL/MySQL
-  contention evidence.
+  settlement, cart finalization/release, and compensation parity, kill-point, restart,
+  and PostgreSQL/MySQL contention evidence.
 - [ ] Execute complete mounted operator compensation/reconciliation workflows.
 
 ### Return completion
@@ -516,8 +521,8 @@ Source inspection is not execution evidence.
   `OrderService`, provider journal access, and fulfillment SQL in mounted payment,
   fulfillment, and pipeline source.
 - [x] Add static guards for fail-closed public `PortError` transport sanitization and
-  typed order/payment/fulfillment lifecycle use in checkout execution, recovery,
-  settlement, compensation, and mounted order/payment/fulfillment stages.
+  typed order/payment/fulfillment/cart lifecycle use in checkout execution, recovery,
+  finalization, settlement, compensation, and mounted owner stages.
 - [ ] Execute the new public-error and typed-lifecycle static guards against a repository
   checkout and retain their output.
 
@@ -536,6 +541,9 @@ Source inspection is not execution evidence.
 - [ ] `cargo check -p rustok-fulfillment --all-features`
 - [ ] Targeted fulfillment create/adopt/read, cancelled/unknown lifecycle, duplicate
   identity, partial set, and concurrent create tests.
+- [ ] `cargo check -p rustok-cart --all-features`
+- [ ] Targeted atomic cart admission, finalization, release, unknown lifecycle, and
+  compensation snapshot tests.
 - [ ] `cargo check -p rustok-marketplace --lib`
 - [ ] `cargo check -p rustok-marketplace-ledger --all-targets`
 - [ ] `cargo test -p rustok-marketplace-ledger`
@@ -566,6 +574,8 @@ Source inspection is not execution evidence.
 - [ ] Prove fulfillment create/adopt/read returns one exact immutable set and routes
   cancelled/unknown lifecycle states to reconciliation under duplicate, concurrent,
   process-exit, restart, and upgraded metadata scenarios.
+- [ ] Prove atomic cart admission, complete/release replay, unknown lifecycle,
+  process-exit, and restart behavior through the mounted finalization/compensation paths.
 - [ ] Execute receipt/event/outbox/provider-operation/checkpoint contention and restart scenarios.
 - [ ] Execute seller/listing tenant isolation and cross-locale/provenance scenarios.
 - [ ] Execute reversal observer/inbox/adaptation recovery and safe operator scenarios.
@@ -594,9 +604,9 @@ Source inspection is not execution evidence.
     central fail-closed construction/serde sanitization and source guards are complete.
 11. [ ] Finish typed lifecycle cutover; canonical owner views plus payment execution,
     order recovery/settlement/compensation, payment compensation, mounted order/payment
-    stages, and typed fulfillment ensure/read recovery are complete, while payment
-    provider adaptation, cart lifecycle, and remaining critical string matching stay
-    open.
+    stages, typed fulfillment ensure/read recovery, and cart atomic/finalization/
+    compensation paths are complete, while payment recovery/provider adaptation and
+    remaining unreviewed critical string matching stay open.
 12. [ ] Run checkout admission, duplicate request, kill-point, restart, and contention evidence.
 13. [ ] Run checkpoint and order identity clean/upgraded/down/reapply and contention evidence on all supported databases.
 14. [ ] Mount authenticated request-scoped listing native composition.
@@ -641,6 +651,8 @@ Source inspection is not execution evidence.
   closed cancelled or unknown owner lifecycle states.
 - [x] Cut order checkout recovery and mounted order projection validation over to
   `OrderStatusKind`.
+- [x] Cut atomic cart admission, mounted finalization, and mounted compensation
+  release/result validation over to canonical typed lifecycle views.
 
 ## Change rules
 
