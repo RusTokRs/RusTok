@@ -31,9 +31,11 @@ Rules:
 6. Public boundary changes update local docs, the module manifest, central
    registry, verification scripts, and architecture decisions.
 7. A milestone is complete only when its acceptance criteria are satisfied.
+8. Benchmark scaffolding is not production persistence and must not leak into
+   `rustok-index` migrations or runtime composition.
 
-The repository owner performs test execution during this rewrite. Commits still
-record which checks were not run.
+The repository owner performs test and benchmark execution during this rewrite.
+Commits record which checks and evidence runs were not executed.
 
 ## Current status
 
@@ -43,12 +45,13 @@ record which checks were not run.
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- Persistence: intentionally absent until M2 selects a measured storage model
+- M2 benchmark harness: `implemented; evidence runs pending`
+- Production persistence: intentionally absent until the M2 ADR selects a model
 
-The active crate now contains the generic domain and application core,
-`IndexModule` metadata, and an intentionally empty migration source. All legacy
-v1 contracts, source indexers, projections, migrations, scheduler, errors, and
-server composition are deleted.
+The active production crate contains only the generic domain/application core,
+`IndexModule` metadata, and an intentionally empty migration source. Benchmark
+DDL and generated evidence live under `ops/benches`, outside the production
+module.
 
 ## Ownership
 
@@ -80,7 +83,7 @@ source modules
 ```
 
 ```text
-src/
+crates/rustok-index/src/
   domain/
   application/
   infrastructure/
@@ -90,6 +93,11 @@ src/
   api/
     query.rs
     admin.rs
+
+ops/benches/src/index_storage/
+  config.rs
+  sql.rs
+  runner.rs
 ```
 
 ## Library decisions
@@ -189,18 +197,34 @@ ordinary generic schemas and links with no Product-specific engine code.
 Goal: select physical storage from evidence before creating production
 migrations.
 
-- [ ] Define a deterministic benchmark dataset generator.
-- [ ] Prototype JSONB entity rows plus typed expression indexes.
-- [ ] Prototype normalized typed field-value rows.
-- [ ] Prototype a specialized hot-entity projection as the comparison baseline.
-- [ ] Represent links independently from entity payload storage.
-- [ ] Benchmark 100k and 1m multi-tenant/multi-locale entities.
-- [ ] Measure equality/range/multi-value/link filters, two-hop traversal,
-      sorting, keyset pagination, count, ingestion throughput, index size,
-      vacuum impact, and write amplification.
-- [ ] Capture `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` evidence.
+- [x] Define the benchmark contract and decision rules in
+      `docs/storage-benchmark.md`.
+- [x] Keep all candidate DDL outside production migrations in `ops/benches`.
+- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.
+- [x] Canonicalize configured locales through `LocaleKey` before SQL generation.
+- [x] Generate Product, Variant, SalesChannel, tags, prices, timestamps, and links
+      without random or wall-clock inputs.
+- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.
+- [x] Prototype normalized typed field-value rows.
+- [x] Prototype a specialized hot typed projection as the comparison baseline.
+- [x] Represent links independently from entity payload storage in every model.
+- [x] Run the same equality, range, multi-value, two-hop link, keyset, and count
+      workload definitions against every model.
+- [x] Capture prototype load time, schema bytes, PostgreSQL settings, full SQL,
+      and repeated `EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)` output.
+- [x] Add a release-mode executable that writes machine-readable JSON evidence.
+- [ ] Run and archive the `smoke` evidence as a harness sanity check.
+- [ ] Run and archive 100k Product-locale row evidence.
+- [ ] Run and archive 1m Product-locale row evidence.
+- [ ] Add update/delete workloads for write amplification, WAL, bloat, and vacuum
+      impact.
+- [ ] Compare warm/cold buffers, planner stability, execution latency, ingestion
+      throughput, relation size, and operational complexity.
 - [ ] Record the selected model and rejected alternatives in an ADR.
 - [ ] Delete benchmark prototypes that are not selected.
+
+M2 remains open until real PostgreSQL evidence is archived and the storage ADR
+is accepted. Implementing the harness does not select a model.
 
 ### M3 - PostgreSQL storage engine
 
@@ -297,6 +321,17 @@ npm run verify:index:fba
 npm run verify:index:runtime-fallback-smoke
 ```
 
+M2 operational commands:
+
+```bash
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=smoke \
+  cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=100k \
+  cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m \
+  cargo run -p rustok-benchmarks --bin index-storage-benchmark --release
+```
+
 ## Progress log
 
 - 2026-07-23: accepted the destructive rewrite and added the initial generic
@@ -308,3 +343,6 @@ npm run verify:index:runtime-fallback-smoke
   bounded queries, keyset cursors, reference evaluator, and property invariants.
 - 2026-07-23: moved the active milestone to the PostgreSQL storage benchmark;
   no production persistence will be added before the benchmark ADR.
+- 2026-07-23: implemented the M2 deterministic dataset, JSONB/EAV/hot candidates,
+  independent link storage, shared workload suite, PostgreSQL runner, and JSON
+  EXPLAIN evidence format. Real database runs and the storage ADR remain open.
