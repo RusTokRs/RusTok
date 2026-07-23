@@ -112,6 +112,8 @@ for (const marker of [
   "source_inbox::Entity::insert",
   "intake_receipt::Entity::insert",
   "persist_rejection",
+  "decoder.decode(&envelope)",
+  "ensure_receipt_identity(&existing, outbox_event_id, &source_event)",
   "error.is_retryable()",
 ]) {
   requireText(owner, marker, `Notifications outbox intake owner is missing ${marker}`);
@@ -175,6 +177,8 @@ for (const marker of [
   "accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker",
   "assert_eq!(first.accepted, 31)",
   "assert_eq!(first.rejected, 1)",
+  "changed accepted envelope must fail semantic replay",
+  "NOTIFICATION_SOURCE_IDENTITY_CONFLICT",
   "NotificationOutboxIntakeOutcome::Rejected",
   "retryable event remains claimable",
 ]) {
