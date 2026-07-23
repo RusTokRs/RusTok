@@ -9,7 +9,6 @@
  */
 
 use async_trait::async_trait;
-use rustok_api::{Action, Permission, Resource};
 use rustok_core::{
     MigrationSource, ModuleEventListenerContext, ModuleEventListenerRegistry,
     ModuleRuntimeExtensions, RusToKModule,
@@ -205,32 +204,5 @@ impl MigrationSource for CommerceModule {
 
     fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
         migrations::migration_dependencies()
-    }
-}
-
-impl ModuleRuntimeExtensions for CommerceModule {
-    fn configure_runtime_extensions(
-        &self,
-        extensions: &mut rustok_core::RuntimeExtensions,
-    ) -> Result<(), String> {
-        let marketplace_financial_runtime = extensions
-            .get::<MarketplaceFinancialRuntime>()
-            .cloned()
-            .ok_or_else(|| {
-                "commerce module requires MarketplaceFinancialRuntime in runtime extensions"
-                    .to_string()
-            })?;
-        extensions.insert(marketplace_financial_runtime);
-        Ok(())
-    }
-}
-
-impl Resource for CommerceModule {
-    fn resource(&self) -> &'static str {
-        "commerce"
-    }
-
-    fn actions(&self) -> Vec<Action> {
-        vec![Action::Read, Action::Write]
     }
 }

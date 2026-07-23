@@ -71,25 +71,29 @@ string_enum!(GroupMembershipStatus {
     Left => "left",
 });
 
-/// Groups-owned current enforcement state. The first supported state is suspension;
-/// additional states require an explicit contract/version update rather than free-form JSON.
-string_enum!(GroupMembershipEnforcementState {
-    Suspended => "suspended",
-});
+string_enum!(
+    /// Groups-owned current enforcement state. The first supported state is suspension;
+    /// additional states require an explicit contract/version update rather than free-form JSON.
+    GroupMembershipEnforcementState {
+        Suspended => "suspended",
+    }
+);
 
 string_enum!(GroupMembershipEnforcementSourceKind {
     DirectLocal => "direct_local",
     ModerationDecision => "moderation_decision",
 });
 
-/// Owner-clock evaluation of a stored membership plus its current enforcement projection.
-string_enum!(GroupMembershipEffectiveStatus {
-    Missing => "missing",
-    Active => "active",
-    Inactive => "inactive",
-    Suspended => "suspended",
-    LegacyBanned => "legacy_banned",
-});
+string_enum!(
+    /// Owner-clock evaluation of a stored membership plus its current enforcement projection.
+    GroupMembershipEffectiveStatus {
+        Missing => "missing",
+        Active => "active",
+        Inactive => "inactive",
+        Suspended => "suspended",
+        LegacyBanned => "legacy_banned",
+    }
+);
 
 string_enum!(GroupFeatureStatus {
     Enabled => "enabled",
