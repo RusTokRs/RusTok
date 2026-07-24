@@ -242,7 +242,7 @@ impl ForumTopicReadStateService {
             .transpose()?;
         let snapshot_at = cursor
             .as_ref()
-            .map(|cursor| cursor.snapshot_at)
+            .map(|cursor| cursor.snapshot_at.clone())
             .unwrap_or_else(|| Utc::now().into());
 
         let txn = self.db.begin().await?;
@@ -255,17 +255,17 @@ impl ForumTopicReadStateService {
 
         let mut select = forum_topic::Entity::find()
             .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::CreatedAt.lte(snapshot_at));
+            .filter(forum_topic::Column::CreatedAt.lte(snapshot_at.clone()));
         if let Some(category_ids) = category_ids {
             select = select.filter(forum_topic::Column::CategoryId.is_in(category_ids));
         }
         if let Some(cursor) = cursor.as_ref() {
             select = select.filter(
                 Condition::any()
-                    .add(forum_topic::Column::CreatedAt.gt(cursor.created_at))
+                    .add(forum_topic::Column::CreatedAt.gt(cursor.created_at.clone()))
                     .add(
                         Condition::all()
-                            .add(forum_topic::Column::CreatedAt.eq(cursor.created_at))
+                            .add(forum_topic::Column::CreatedAt.eq(cursor.created_at.clone()))
                             .add(forum_topic::Column::Id.gt(cursor.topic_id)),
                     ),
             );
@@ -558,9 +558,10 @@ fn encode_bulk_read_cursor(
 }
 
 fn decode_bulk_read_cursor(value: &str, expected_scope: BulkReadScope) -> ForumResult<BulkReadCursor> {
+    let expected_token = expected_scope.cursor_token();
     let mut parts = value.splitn(5, ':');
     if parts.next() != Some(BULK_READ_CURSOR_VERSION)
-        || parts.next() != Some(expected_scope.cursor_token().as_str())
+        || parts.next() != Some(expected_token.as_str())
     {
         return Err(invalid_bulk_read_cursor());
     }
