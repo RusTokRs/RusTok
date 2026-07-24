@@ -2,6 +2,7 @@ use async_graphql::MergedObject;
 
 use super::marketplace_financial::MarketplaceFinancialMutation;
 
+#[path = "safe_cart.rs"]
 pub mod cart;
 pub mod catalog;
 #[path = "safe_checkout.rs"]
