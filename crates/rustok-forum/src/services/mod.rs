@@ -8,6 +8,7 @@ mod category_lifecycle;
 mod category_owner;
 mod category_policy;
 mod category_tree;
+mod category_visibility;
 pub mod event;
 #[allow(clippy::collapsible_if, clippy::too_many_arguments)]
 mod mention_relation;
@@ -52,6 +53,10 @@ pub mod vote;
 pub mod widget_contract;
 
 pub use category_owner::CategoryService;
+pub use category_visibility::{
+    ForumCategoryVisibilityPolicy, ForumCategoryVisibilityPolicyService,
+    SetForumCategoryVisibilityPolicyInput,
+};
 pub use event::ForumEventService;
 #[allow(unused_imports)]
 pub(crate) use mention_relation::MentionRelationService;

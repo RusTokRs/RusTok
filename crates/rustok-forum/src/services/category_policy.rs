@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveValue::{NotSet, Set},
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
     sea_query::OnConflict,
 };
 use uuid::Uuid;
@@ -61,6 +62,7 @@ impl CategoryTopicPolicyService {
             category_id: Set(category.id),
             tenant_id: Set(tenant_id),
             allows_topics: Set(input.allows_topics),
+            visibility_override: NotSet,
             updated_at: Set(Utc::now().into()),
         })
         .on_conflict(

@@ -2,6 +2,8 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::visibility::ForumCategoryVisibility;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "forum_category_policies")]
 pub struct Model {
@@ -9,6 +11,7 @@ pub struct Model {
     pub category_id: Uuid,
     pub tenant_id: Uuid,
     pub allows_topics: bool,
+    pub visibility_override: Option<ForumCategoryVisibility>,
     pub updated_at: DateTimeWithTimeZone,
 }
 
