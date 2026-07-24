@@ -131,7 +131,7 @@ export const requireTerminalReadOrdering = (sql, workloadName, label) => {
   const marker = readOrderMarkers.get(workloadName);
   const executableSql = executableSqlText(sql, label);
   if (marker !== null && !executableSql.trimEnd().endsWith(marker)) {
-    fail(`${label}.sql must end with executable canonical ordering marker ${marker}`);
+    fail(`${label}.sql must end with canonical ordering marker ${marker} in executable SQL`);
   }
 };
 
