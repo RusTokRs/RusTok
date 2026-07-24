@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
-use rustok_forum::entities::forum_topic_read_state;
+use rustok_forum::entities::{forum_topic_read_state, forum_topic_revision};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
     ForumTopicReadStateService, MarkForumTopicReadInput, ReplyService, TopicService,
@@ -10,7 +10,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter,
+    PaginatorTrait, QueryFilter, QueryOrder,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -126,6 +126,15 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
         reader.clone(),
     )
     .await;
+    let latest_topic_revision = forum_topic_revision::Entity::find()
+        .filter(forum_topic_revision::Column::TenantId.eq(tenant_id))
+        .filter(forum_topic_revision::Column::TopicId.eq(topic_id))
+        .order_by_desc(forum_topic_revision::Column::Id)
+        .one(&db)
+        .await
+        .expect("latest topic revision query should succeed")
+        .expect("topic creation should record a revision")
+        .id;
     let service = ForumTopicReadStateService::new(db.clone());
 
     let anonymous_state = service
@@ -165,14 +174,14 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             reader.clone(),
             MarkForumTopicReadInput {
                 last_read_position: 1,
-                last_read_revision: 0,
+                last_read_revision: latest_topic_revision,
             },
         )
         .await
         .expect("first read state should persist");
     assert!(first.explicit);
     assert_eq!(first.last_read_position, 1);
-    assert_eq!(first.last_read_revision, 0);
+    assert_eq!(first.last_read_revision, latest_topic_revision);
 
     let advanced = service
         .mark_topic_read(
@@ -185,8 +194,9 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             },
         )
         .await
-        .expect("read state should advance");
+        .expect("read position should advance without regressing revision");
     assert_eq!(advanced.last_read_position, 2);
+    assert_eq!(advanced.last_read_revision, latest_topic_revision);
 
     let regressed_input = service
         .mark_topic_read(
@@ -201,6 +211,7 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
         .await
         .expect("stale device progress should become a no-op");
     assert_eq!(regressed_input.last_read_position, 2);
+    assert_eq!(regressed_input.last_read_revision, latest_topic_revision);
 
     let future_position = service
         .mark_topic_read(
@@ -209,7 +220,7 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             reader.clone(),
             MarkForumTopicReadInput {
                 last_read_position: 3,
-                last_read_revision: 0,
+                last_read_revision: latest_topic_revision,
             },
         )
         .await;
