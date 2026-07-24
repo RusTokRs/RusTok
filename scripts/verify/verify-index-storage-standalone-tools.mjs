@@ -25,6 +25,7 @@ const validator = readText(validatorPath);
 const validatorCoreBytes = readBytes(validatorCorePath);
 const comparator = readText(comparatorPath);
 const comparatorCoreBytes = readBytes(comparatorCorePath);
+const sourceOracleGuard = readText('scripts/verify/verify-index-storage-source-oracle.mjs');
 
 for (const [label, actual, expected] of [
   ['validator core', gitBlobSha(validatorCoreBytes), 'dabc18d59360c300352ab3afb2510f0a0ff22796'],
@@ -49,7 +50,6 @@ requireMarkers(validator, 'validator wrapper', [
   "const supportedScales = new Set(['smoke', '100k', '1m'])",
   'validatePacketReadOrdering(evidenceRoot);',
   "await import('./validate-index-storage-evidence-core.mjs')",
-  'migrated to inspect the preserved core directly',
 ]);
 const validatorPreflight = validator.indexOf('validatePacketReadOrdering(evidenceRoot);');
 const validatorCore = validator.indexOf("await import('./validate-index-storage-evidence-core.mjs')");
@@ -64,7 +64,6 @@ requireMarkers(comparator, 'comparator wrapper', [
   "argument === '--output'",
   'for (const input of inputs) validatePacketReadOrdering(input);',
   "await import('./compare-index-storage-evidence-core.mjs')",
-  'migrated to inspect the preserved core directly',
 ]);
 const comparatorPreflight = comparator.indexOf('for (const input of inputs) validatePacketReadOrdering(input);');
 const comparatorCore = comparator.indexOf("await import('./compare-index-storage-evidence-core.mjs')");
@@ -72,7 +71,27 @@ if (comparatorPreflight < 0 || comparatorCore < 0 || comparatorPreflight > compa
   fail('comparator wrapper must preflight every input before importing its core');
 }
 
-forbidMarkers(validator, 'validator wrapper', ['shell: true', 'execSync(', 'spawnSync(']);
-forbidMarkers(comparator, 'comparator wrapper', ['shell: true', 'execSync(', 'spawnSync(']);
+requireMarkers(sourceOracleGuard, 'source-oracle guard', [
+  "read('scripts/verify/validate-index-storage-evidence-core.mjs')",
+  "read('scripts/verify/compare-index-storage-evidence-core.mjs')",
+  'packet validator core missing strict guard',
+  'evidence comparator core missing contract guard',
+  'temporary compatibility marker shim',
+]);
+
+forbidMarkers(validator, 'validator wrapper', [
+  'migrated to inspect the preserved core directly',
+  'const resultDigestContract =',
+  'shell: true',
+  'execSync(',
+  'spawnSync(',
+]);
+forbidMarkers(comparator, 'comparator wrapper', [
+  'migrated to inspect the preserved core directly',
+  'const resultDigestContract =',
+  'shell: true',
+  'execSync(',
+  'spawnSync(',
+]);
 
 console.log('[verify-index-storage-standalone-tools] direct validator and comparator enforce executable SQL ordering before byte-preserved core execution');
