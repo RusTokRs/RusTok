@@ -228,7 +228,9 @@ async fn exact_visibility_scope_is_bounded_ordered_and_non_oracular() {
         .await
         .expect_err("raw candidate input above the owner bound should fail");
     assert!(error.to_string().contains("must not exceed 100"));
-    assert!(ForumTopicVisibilityScope::storefront(Some("not/a/channel")).is_err());
+    let compatible_slug = ForumTopicVisibilityScope::storefront(Some("  Custom/Channel  "))
+        .expect("existing channel slug characters should remain accepted");
+    assert_eq!(compatible_slug.channel_slug(), Some("custom/channel"));
     assert!(ForumTopicVisibilityScope::storefront(Some(&"x".repeat(129))).is_err());
 }
 
