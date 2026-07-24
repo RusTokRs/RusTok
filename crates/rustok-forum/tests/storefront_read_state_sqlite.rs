@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
     CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-    ForumStorefrontReadStateService, ForumModule, ReplyService, TopicService,
+    ForumStorefrontReadStateService, ForumModule, ListTopicsFilter, ReplyService, TopicService,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
@@ -39,6 +39,16 @@ async fn setup() -> (DatabaseConnection, TransactionalEventBus, Uuid) {
     }
     let event_bus = TransactionalEventBus::new(Arc::new(MemoryTransport::new()));
     (db, event_bus, Uuid::new_v4())
+}
+
+fn topic_filter(category_id: Option<Uuid>, per_page: u64) -> ListTopicsFilter {
+    ListTopicsFilter {
+        category_id,
+        status: None,
+        locale: Some("en".into()),
+        page: 1,
+        per_page,
+    }
 }
 
 #[tokio::test]
@@ -85,7 +95,7 @@ async fn visible_topic_summary_and_current_mark_share_owner_policy() {
         )
         .await
         .expect("topic should be created");
-    ReplyService::new(db.clone(), event_bus)
+    ReplyService::new(db.clone(), event_bus.clone())
         .create(
             tenant_id,
             author,
@@ -101,60 +111,93 @@ async fn visible_topic_summary_and_current_mark_share_owner_policy() {
         .await
         .expect("reply should be created");
 
-    let service = ForumStorefrontReadStateService::new(db);
+    let service = ForumStorefrontReadStateService::new(db, event_bus);
     let unseen = service
-        .summarize_topics(
+        .list_topics_with_unread(
             tenant_id,
             reader.clone(),
-            vec![topic.id, topic.id],
+            topic_filter(Some(category.id), 20),
+            Some("en"),
+            None,
         )
         .await
-        .expect("bounded visible topic IDs should summarize");
-    assert_eq!(unseen.len(), 1);
-    assert_eq!(unseen[0].topic_id, topic.id);
-    assert!(unseen[0].is_unread);
-    assert!(unseen[0].unread_count > 0 || unseen[0].has_unread_topic_revision);
+        .expect("visible topic page should summarize");
+    assert_eq!(unseen.items.len(), 1);
+    assert_eq!(unseen.items[0].topic.id, topic.id);
+    assert!(unseen.items[0].is_unread);
+    assert!(
+        unseen.items[0].unread_count > 0
+            || unseen.items[0].has_unread_topic_revision
+    );
 
     let state = service
-        .mark_topic_read_current(tenant_id, topic.id, reader.clone())
+        .mark_topic_read_current_visible(
+            tenant_id,
+            topic.id,
+            reader.clone(),
+            "en",
+            Some("en"),
+            None,
+        )
         .await
         .expect("current visible topic should be marked read");
     assert!(state.explicit);
 
     let read = service
-        .summarize_topics(tenant_id, reader, vec![topic.id])
+        .list_topics_with_unread(
+            tenant_id,
+            reader,
+            topic_filter(Some(category.id), 20),
+            Some("en"),
+            None,
+        )
         .await
         .expect("marked topic should summarize");
-    assert_eq!(read.len(), 1);
-    assert!(!read[0].is_unread);
-    assert_eq!(read[0].unread_count, 0);
-    assert!(!read[0].has_unread_topic_revision);
+    assert_eq!(read.items.len(), 1);
+    assert!(!read.items[0].is_unread);
+    assert_eq!(read.items[0].unread_count, 0);
+    assert!(!read.items[0].has_unread_topic_revision);
 
     assert!(
         service
-            .summarize_topics(tenant_id, anonymous.clone(), vec![topic.id])
+            .list_topics_with_unread(
+                tenant_id,
+                anonymous.clone(),
+                topic_filter(Some(category.id), 20),
+                Some("en"),
+                None,
+            )
             .await
             .is_err()
     );
     assert!(
         service
-            .mark_topic_read_current(tenant_id, topic.id, anonymous)
+            .mark_topic_read_current_visible(
+                tenant_id,
+                topic.id,
+                anonymous,
+                "en",
+                Some("en"),
+                None,
+            )
             .await
             .is_err()
     );
 }
 
 #[tokio::test]
-async fn storefront_summary_rejects_unbounded_id_sets_before_querying() {
-    let (db, _, tenant_id) = setup().await;
+async fn storefront_unread_page_rejects_unbounded_requests_before_querying() {
+    let (db, event_bus, tenant_id) = setup().await;
     let reader = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
-    let error = ForumStorefrontReadStateService::new(db)
-        .summarize_topics(
+    let error = ForumStorefrontReadStateService::new(db, event_bus)
+        .list_topics_with_unread(
             tenant_id,
             reader,
-            (0..101).map(|_| Uuid::new_v4()).collect(),
+            topic_filter(None, 101),
+            Some("en"),
+            None,
         )
         .await
-        .expect_err("unbounded topic ID set should fail");
-    assert!(error.to_string().contains("limited to 100 topic IDs"));
+        .expect_err("unbounded storefront unread page should fail");
+    assert!(error.to_string().contains("between 1 and 100"));
 }
