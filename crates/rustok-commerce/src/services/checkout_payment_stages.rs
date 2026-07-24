@@ -5,9 +5,8 @@ use rustok_order::{OrderResponse, OrderStatusKind};
 use rustok_payment::{
     AuthorizeCheckoutPaymentCollectionRequest, CaptureCheckoutPaymentCollectionRequest,
     CheckoutPaymentExecutionPort, CheckoutPaymentIdentity, InProcessCheckoutPaymentExecutionPort,
-    PaymentCollectionResponse, PaymentProviderRegistry,
-    PrepareCheckoutPaymentCollectionRequest, ReadCheckoutPaymentCollectionRequest,
-    in_process_checkout_payment_execution_port,
+    PaymentCollectionResponse, PaymentProviderRegistry, PrepareCheckoutPaymentCollectionRequest,
+    ReadCheckoutPaymentCollectionRequest, in_process_checkout_payment_execution_port,
 };
 use serde_json::Value;
 use thiserror::Error;

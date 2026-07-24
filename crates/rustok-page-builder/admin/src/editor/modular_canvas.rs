@@ -10,9 +10,7 @@ use crate::editor::{
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
-use crate::{
-    AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
-};
+use crate::{AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade};
 use fly::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
     TraitSchemaRegistry,

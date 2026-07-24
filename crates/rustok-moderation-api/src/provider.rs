@@ -6,9 +6,7 @@ use rustok_api::{HostRuntimeContext, PortContext, PortError};
 use rustok_core::ModuleRuntimeExtensions;
 use thiserror::Error;
 
-use crate::{
-    ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectKind,
-};
+use crate::{ApplyModerationDecisionCommand, ModerationDecisionApplication, ModerationSubjectKind};
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ModerationSubjectAdapterKey {
@@ -25,9 +23,7 @@ impl ModerationSubjectAdapterKey {
         let valid = !module.is_empty()
             && module.len() <= 100
             && module.bytes().all(|byte| {
-                byte.is_ascii_lowercase()
-                    || byte.is_ascii_digit()
-                    || matches!(byte, b'_' | b'-')
+                byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
             })
             && !module.starts_with('_')
             && !module.starts_with('-')
@@ -95,7 +91,9 @@ pub enum ModerationSubjectAdapterRegistryError {
     DuplicateAdapter { module: String, kind: &'static str },
     #[error("moderation subject adapter factory `{module}/{kind}` is already registered")]
     DuplicateFactory { module: String, kind: &'static str },
-    #[error("moderation subject adapter factory declared `{declared_module}/{declared_kind}` but built `{built_module}/{built_kind}`")]
+    #[error(
+        "moderation subject adapter factory declared `{declared_module}/{declared_kind}` but built `{built_module}/{built_kind}`"
+    )]
     FactoryKeyMismatch {
         declared_module: String,
         declared_kind: &'static str,
@@ -201,8 +199,8 @@ pub fn register_moderation_subject_adapter<A>(
 where
     A: ModerationSubjectCommandPort + 'static,
 {
-    let registry = extensions
-        .get_or_insert_with::<Arc<ModerationSubjectAdapterRegistry>, _>(|| {
+    let registry =
+        extensions.get_or_insert_with::<Arc<ModerationSubjectAdapterRegistry>, _>(|| {
             Arc::new(ModerationSubjectAdapterRegistry::default())
         });
     Arc::make_mut(registry).register(adapter)

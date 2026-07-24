@@ -177,10 +177,10 @@ impl CheckoutOrderPaymentSettlementPort for InProcessCheckoutOrderPaymentSettlem
                 .map_err(|error| {
                     order_error_to_port_error(&context, "mark_checkout_order_paid", error)
                 })?,
-            OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => current,
-            OrderStatusKind::Pending
-            | OrderStatusKind::Cancelled
-            | OrderStatusKind::Unknown => {
+            OrderStatusKind::Paid | OrderStatusKind::Shipped | OrderStatusKind::Delivered => {
+                current
+            }
+            OrderStatusKind::Pending | OrderStatusKind::Cancelled | OrderStatusKind::Unknown => {
                 return Err(PortError::conflict(
                     "order.checkout_payment_state_conflict",
                     "checkout order lifecycle does not allow payment settlement",
@@ -279,10 +279,7 @@ fn parse_actor_id(context: &PortContext, operation: &'static str) -> Result<Uuid
             code = "order.actor_id_invalid",
             "order port received invalid request context"
         );
-        PortError::validation(
-            "order.actor_id_invalid",
-            "order request context is invalid",
-        )
+        PortError::validation("order.actor_id_invalid", "order request context is invalid")
     })
 }
 

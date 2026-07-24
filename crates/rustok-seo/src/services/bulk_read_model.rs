@@ -13,7 +13,7 @@ use crate::{SeoError, SeoResult};
 
 use super::robots::first_open_graph_image_url;
 use super::templates::render_generated_record;
-use super::{trimmed_option, LoadedMeta, SeoService, TargetState};
+use super::{LoadedMeta, SeoService, TargetState, trimmed_option};
 
 const MAX_BULK_PAGE_SIZE: i32 = 100;
 const BULK_META_BATCH_SIZE: usize = 256;
@@ -298,19 +298,13 @@ fn resolve_bulk_read_projection(
                 description: translation
                     .as_ref()
                     .and_then(|item| item.description.clone()),
-                keywords: translation
-                    .as_ref()
-                    .and_then(|item| item.keywords.clone()),
+                keywords: translation.as_ref().and_then(|item| item.keywords.clone()),
                 canonical_url: explicit.meta.canonical_url,
-                og_title: translation
-                    .as_ref()
-                    .and_then(|item| item.og_title.clone()),
+                og_title: translation.as_ref().and_then(|item| item.og_title.clone()),
                 og_description: translation
                     .as_ref()
                     .and_then(|item| item.og_description.clone()),
-                og_image: translation
-                    .as_ref()
-                    .and_then(|item| item.og_image.clone()),
+                og_image: translation.as_ref().and_then(|item| item.og_image.clone()),
                 structured_data: explicit.meta.structured_data,
                 noindex: explicit.meta.no_index,
                 nofollow: explicit.meta.no_follow,
@@ -415,6 +409,9 @@ mod tests {
 
         assert_eq!(projection.source, SeoBulkSource::Fallback);
         assert_eq!(projection.title.as_deref(), Some("Fallback title"));
-        assert_eq!(projection.structured_data, Some(json!({"@type": "WebPage"})));
+        assert_eq!(
+            projection.structured_data,
+            Some(json!({"@type": "WebPage"}))
+        );
     }
 }

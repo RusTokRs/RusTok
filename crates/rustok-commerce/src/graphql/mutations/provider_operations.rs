@@ -4,10 +4,10 @@ use rustok_fulfillment::error::FulfillmentError;
 use rustok_payment::error::PaymentError;
 use uuid::Uuid;
 
-use crate::{FulfillmentOrchestrationError, PaymentOrchestrationError};
 use crate::graphql_runtime::{
     fulfillment_orchestration_from_context, payment_orchestration_from_context,
 };
+use crate::{FulfillmentOrchestrationError, PaymentOrchestrationError};
 
 use super::super::{MODULE_SLUG, require_commerce_permission, types::*};
 use super::helpers::*;
@@ -82,8 +82,7 @@ fn fulfillment_error_envelope(error: &FulfillmentError) -> (&'static str, &'stat
             "FULFILLMENT_REQUEST_INVALID",
             false,
         ),
-        FulfillmentError::ShippingOptionNotFound(_)
-        | FulfillmentError::FulfillmentNotFound(_) => (
+        FulfillmentError::ShippingOptionNotFound(_) | FulfillmentError::FulfillmentNotFound(_) => (
             "Fulfillment resource was not found",
             "FULFILLMENT_RESOURCE_NOT_FOUND",
             false,
@@ -115,9 +114,7 @@ fn fulfillment_orchestration_error_envelope(
             "FULFILLMENT_TEMPORARILY_UNAVAILABLE",
             true,
         ),
-        FulfillmentOrchestrationError::Fulfillment(source) => {
-            fulfillment_error_envelope(source)
-        }
+        FulfillmentOrchestrationError::Fulfillment(source) => fulfillment_error_envelope(source),
         FulfillmentOrchestrationError::Validation(_) => (
             "Fulfillment request is invalid",
             "FULFILLMENT_REQUEST_INVALID",
@@ -198,12 +195,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(
-                    tenant_id,
-                    id,
-                    "authorize_payment_collection",
-                    error,
-                )
+                payment_provider_graphql_error(tenant_id, id, "authorize_payment_collection", error)
             })?;
         Ok(collection.into())
     }
@@ -233,12 +225,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(
-                    tenant_id,
-                    id,
-                    "capture_payment_collection",
-                    error,
-                )
+                payment_provider_graphql_error(tenant_id, id, "capture_payment_collection", error)
             })?;
         Ok(collection.into())
     }
@@ -268,12 +255,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                payment_provider_graphql_error(
-                    tenant_id,
-                    id,
-                    "cancel_payment_collection",
-                    error,
-                )
+                payment_provider_graphql_error(tenant_id, id, "cancel_payment_collection", error)
             })?;
         Ok(collection.into())
     }
@@ -416,12 +398,7 @@ impl CommerceProviderMutation {
             )
             .await
             .map_err(|error| {
-                fulfillment_provider_graphql_error(
-                    tenant_id,
-                    order_id,
-                    "create_fulfillment",
-                    error,
-                )
+                fulfillment_provider_graphql_error(tenant_id, order_id, "create_fulfillment", error)
             })?;
         Ok(fulfillment.into())
     }

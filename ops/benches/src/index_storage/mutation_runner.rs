@@ -119,9 +119,11 @@ async fn run_mutation_workload(
         let transaction = db.begin().await?;
         let result = explain_mutation(&transaction, &workload.sql).await;
         transaction.rollback().await?;
-        evidence.push(result.with_context(|| {
-            format!("failed to explain mutation workload {}", workload.name)
-        })?);
+        evidence.push(
+            result.with_context(|| {
+                format!("failed to explain mutation workload {}", workload.name)
+            })?,
+        );
     }
 
     Ok(MutationWorkloadReport {

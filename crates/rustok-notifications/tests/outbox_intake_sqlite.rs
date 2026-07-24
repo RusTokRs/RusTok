@@ -116,11 +116,13 @@ async fn accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker(
     assert_eq!(second.accepted, 2);
     assert_eq!(second.rejected, 0);
     assert!(second.failures.is_empty());
-    assert!(worker
-        .pending_outbox_event_ids()
-        .await
-        .expect("terminal intake outcomes should be excluded")
-        .is_empty());
+    assert!(
+        worker
+            .pending_outbox_event_ids()
+            .await
+            .expect("terminal intake outcomes should be excluded")
+            .is_empty()
+    );
 
     assert_eq!(
         source_inbox::Entity::find()

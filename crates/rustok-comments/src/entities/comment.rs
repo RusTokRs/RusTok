@@ -59,10 +59,14 @@ impl ActiveModelBehavior for ActiveModel {
         }
 
         let tenant_id = self.tenant_id.try_as_ref().copied().ok_or_else(|| {
-            DbErr::Custom("comment insert requires tenant_id before position allocation".to_string())
+            DbErr::Custom(
+                "comment insert requires tenant_id before position allocation".to_string(),
+            )
         })?;
         let thread_id = self.thread_id.try_as_ref().copied().ok_or_else(|| {
-            DbErr::Custom("comment insert requires thread_id before position allocation".to_string())
+            DbErr::Custom(
+                "comment insert requires thread_id before position allocation".to_string(),
+            )
         })?;
 
         // A no-op UPDATE takes the database write/row lock for this thread and keeps it
@@ -90,9 +94,7 @@ impl ActiveModelBehavior for ActiveModel {
             .await?
             .map(|comment| {
                 comment.position.checked_add(1).ok_or_else(|| {
-                    DbErr::Custom(format!(
-                        "comment position overflow for thread {thread_id}"
-                    ))
+                    DbErr::Custom(format!("comment position overflow for thread {thread_id}"))
                 })
             })
             .transpose()?

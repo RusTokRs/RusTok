@@ -69,8 +69,6 @@ impl PagesQuery {
         Ok(Some(page.into()))
     }
 
-
-
     async fn page_by_slug(
         &self,
         ctx: &Context<'_>,
@@ -183,7 +181,6 @@ impl PagesQuery {
         Ok(GqlPageList { items, total })
     }
 }
-
 
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
     ctx.data_opt::<AuthContext>()

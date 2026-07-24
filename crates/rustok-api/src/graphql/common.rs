@@ -340,7 +340,10 @@ mod tests {
                 ..Default::default()
             },
         ] {
-            assert_eq!(input.normalize().expect("large limit should be capped").1, 100);
+            assert_eq!(
+                input.normalize().expect("large limit should be capped").1,
+                100
+            );
         }
     }
 

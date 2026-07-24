@@ -24,10 +24,8 @@ const READ_STOREFRONT_CART_OPERATION: &str = "read_storefront_cart";
 const CREATE_STOREFRONT_CART_OPERATION: &str = "create_storefront_cart";
 const ADD_STOREFRONT_LINE_ITEM_OPERATION: &str = "add_storefront_line_item";
 const UPDATE_STOREFRONT_CONTEXT_OPERATION: &str = "update_storefront_context";
-const UPDATE_STOREFRONT_LINE_ITEM_QUANTITY_OPERATION: &str =
-    "update_storefront_line_item_quantity";
-const UPDATE_STOREFRONT_LINE_ITEM_PRICING_OPERATION: &str =
-    "update_storefront_line_item_pricing";
+const UPDATE_STOREFRONT_LINE_ITEM_QUANTITY_OPERATION: &str = "update_storefront_line_item_quantity";
+const UPDATE_STOREFRONT_LINE_ITEM_PRICING_OPERATION: &str = "update_storefront_line_item_pricing";
 const REMOVE_STOREFRONT_LINE_ITEM_OPERATION: &str = "remove_storefront_line_item";
 const REPRICE_STOREFRONT_LINE_ITEMS_OPERATION: &str = "reprice_storefront_line_items";
 
@@ -285,10 +283,7 @@ fn parse_cart_tenant_id(
             code = "cart.tenant_id_invalid",
             "cart owner tenant context is invalid"
         );
-        PortError::validation(
-            "cart.tenant_id_invalid",
-            "cart request context is invalid",
-        )
+        PortError::validation("cart.tenant_id_invalid", "cart request context is invalid")
     })
 }
 
@@ -317,9 +312,7 @@ fn cart_context_error(
     } = error;
     match kind {
         PortErrorKind::Timeout => PortError::timeout(code, "cart request context is invalid"),
-        PortErrorKind::Validation => {
-            PortError::validation(code, "cart request context is invalid")
-        }
+        PortErrorKind::Validation => PortError::validation(code, "cart request context is invalid"),
         kind => PortError::new(
             kind,
             "cart.context_invalid",
@@ -351,10 +344,9 @@ fn cart_error_to_port_error(
         CartError::CartNotFound(_) => {
             PortError::not_found("cart.cart_not_found", "cart was not found")
         }
-        CartError::CartLineItemNotFound(_) => PortError::not_found(
-            "cart.line_item_not_found",
-            "cart line item was not found",
-        ),
+        CartError::CartLineItemNotFound(_) => {
+            PortError::not_found("cart.line_item_not_found", "cart line item was not found")
+        }
         CartError::InvalidTransition { .. } => PortError::conflict(
             "cart.invalid_transition",
             "cart lifecycle transition conflicts with the current state",
@@ -368,12 +360,7 @@ fn cart_error_to_port_error(
             code,
             retryable,
             ..
-        } => PortError::new(
-            kind,
-            code,
-            "cart tax recalculation failed",
-            retryable,
-        ),
+        } => PortError::new(kind, code, "cart tax recalculation failed", retryable),
     }
 }
 

@@ -58,7 +58,6 @@ pub async fn fetch_storefront_pages(
     })
 }
 
-
 fn graphql_url() -> String {
     if let Some(url) = option_env!("RUSTOK_GRAPHQL_URL") {
         return url.to_string();

@@ -221,14 +221,12 @@ fn cart_promotion_context_error(
     );
 
     match error.kind {
-        rustok_api::PortErrorKind::Timeout => PortError::timeout(
-            error.code,
-            "cart promotion request context is invalid",
-        ),
-        rustok_api::PortErrorKind::Validation => PortError::validation(
-            error.code,
-            "cart promotion request context is invalid",
-        ),
+        rustok_api::PortErrorKind::Timeout => {
+            PortError::timeout(error.code, "cart promotion request context is invalid")
+        }
+        rustok_api::PortErrorKind::Validation => {
+            PortError::validation(error.code, "cart promotion request context is invalid")
+        }
         kind => PortError::new(
             kind,
             "cart.promotion_context_invalid",
@@ -261,10 +259,9 @@ fn cart_promotion_error(
         CartError::CartNotFound(_) => {
             PortError::not_found("cart.cart_not_found", "cart was not found")
         }
-        CartError::CartLineItemNotFound(_) => PortError::not_found(
-            "cart.line_item_not_found",
-            "cart line item was not found",
-        ),
+        CartError::CartLineItemNotFound(_) => {
+            PortError::not_found("cart.line_item_not_found", "cart line item was not found")
+        }
         CartError::InvalidTransition { .. } => PortError::conflict(
             "cart.promotion_state_conflict",
             "cart promotion conflicts with the current cart state",

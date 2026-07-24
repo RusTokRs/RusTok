@@ -51,13 +51,7 @@ pub(crate) fn parse_mutation_explain_metrics(plan: &Value) -> Result<MutationExp
         "shared buffer",
     )?;
     let (maximum_node_wal_records, maximum_node_wal_fpi, maximum_node_wal_bytes) =
-        required_maximum_metric_triple(
-            plan_node,
-            "WAL Records",
-            "WAL FPI",
-            "WAL Bytes",
-            "WAL",
-        )?;
+        required_maximum_metric_triple(plan_node, "WAL Records", "WAL FPI", "WAL Bytes", "WAL")?;
     Ok(MutationExplainMetrics {
         planning_time_ms: required_non_negative_f64(root, "Planning Time")?,
         execution_time_ms: required_non_negative_f64(root, "Execution Time")?,
@@ -145,11 +139,7 @@ fn required_maximum_metric_triple(
         first.is_some() || second.is_some() || third.is_some(),
         "EXPLAIN plan tree is missing the {family} metric family"
     );
-    Ok((
-        first.unwrap_or(0),
-        second.unwrap_or(0),
-        third.unwrap_or(0),
-    ))
+    Ok((first.unwrap_or(0), second.unwrap_or(0), third.unwrap_or(0)))
 }
 
 fn optional_non_negative_u64(value: &Value, key: &str) -> Result<Option<u64>> {

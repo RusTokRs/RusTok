@@ -7,8 +7,7 @@ mod types;
 use async_graphql::{Context, ErrorExtensions, FieldError, MergedObject, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, RequestContext, TenantContext, graphql::GraphQLError,
-    has_any_effective_permission,
+    AuthContext, RequestContext, TenantContext, graphql::GraphQLError, has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
 
@@ -50,9 +49,7 @@ pub(crate) fn map_product_service_error(
             "PRODUCT_TEMPORARILY_UNAVAILABLE",
             true,
         ),
-        CommerceError::ProductNotFound(_) => {
-            ("Product was not found", "PRODUCT_NOT_FOUND", false)
-        }
+        CommerceError::ProductNotFound(_) => ("Product was not found", "PRODUCT_NOT_FOUND", false),
         CommerceError::VariantNotFound(_) => {
             ("Product variant was not found", "VARIANT_NOT_FOUND", false)
         }
@@ -66,9 +63,7 @@ pub(crate) fn map_product_service_error(
             "DUPLICATE_SKU",
             false,
         ),
-        CommerceError::InvalidPrice(_) => {
-            ("Product price is invalid", "INVALID_PRICE", false)
-        }
+        CommerceError::InvalidPrice(_) => ("Product price is invalid", "INVALID_PRICE", false),
         CommerceError::InsufficientInventory { .. } => (
             "Product inventory is insufficient",
             "INSUFFICIENT_INVENTORY",
@@ -79,9 +74,7 @@ pub(crate) fn map_product_service_error(
             "INVALID_OPTIONS",
             false,
         ),
-        CommerceError::Validation(_) => {
-            ("Product request is invalid", "PRODUCT_VALIDATION", false)
-        }
+        CommerceError::Validation(_) => ("Product request is invalid", "PRODUCT_VALIDATION", false),
         CommerceError::ShippingProfileNotFound(_) => (
             "Shipping profile was not found",
             "SHIPPING_PROFILE_NOT_FOUND",
@@ -226,10 +219,10 @@ pub(crate) async fn require_storefront_channel_enabled(ctx: &Context<'_>) -> Res
             operation = "require_storefront_channel_enabled",
             "commerce GraphQL module is disabled for the request channel"
         );
-        return Err(async_graphql::Error::new(
-            "Commerce is not enabled for the current channel",
-        )
-        .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")));
+        return Err(
+            async_graphql::Error::new("Commerce is not enabled for the current channel")
+                .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")),
+        );
     }
 
     Ok(())

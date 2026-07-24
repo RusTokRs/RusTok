@@ -198,18 +198,13 @@ impl CommercePricingMutation {
         let line_item_id = validate_admin_cart_promotion_target(input.scope, input.line_item_id)?;
         let request =
             admin_cart_promotion_request(cart_id, &input, line_item_id, serde_json::Value::Null)?;
-        let port_context =
-            cart_promotion_port_context(tenant_id, cart_id, "preview", false);
+        let port_context = cart_promotion_port_context(tenant_id, cart_id, "preview", false);
         let error_context = port_context.clone();
         let preview = in_process_cart_promotion_port(db.clone())
             .read_cart_promotion_preview(port_context, request)
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "preview_admin_cart_promotion",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "preview_admin_cart_promotion", error)
             })?;
 
         Ok(map_cart_promotion_preview(input.scope, preview))
@@ -239,11 +234,7 @@ impl CommercePricingMutation {
             .apply_cart_promotion(port_context, request)
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "apply_admin_cart_promotion",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "apply_admin_cart_promotion", error)
             })?;
 
         Ok(cart.into())
@@ -295,11 +286,7 @@ impl CommercePricingMutation {
             )
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "upsert_variant_price",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "upsert_variant_price", error)
             })?;
 
         Ok(price.into())
@@ -346,11 +333,7 @@ impl CommercePricingMutation {
             )
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "preview_variant_discount",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "preview_variant_discount", error)
             })?;
 
         Ok(preview.into())
@@ -398,11 +381,7 @@ impl CommercePricingMutation {
             )
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "apply_variant_discount",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "apply_variant_discount", error)
             })?;
 
         Ok(preview.into())
@@ -446,11 +425,7 @@ impl CommercePricingMutation {
             )
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "set_price_list_percentage_rule",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "set_price_list_percentage_rule", error)
             })?;
 
         Ok(option.into())
@@ -491,11 +466,7 @@ impl CommercePricingMutation {
             )
             .await
             .map_err(|error| {
-                pricing_port_graphql_error(
-                    &error_context,
-                    "set_price_list_scope",
-                    error,
-                )
+                pricing_port_graphql_error(&error_context, "set_price_list_scope", error)
             })?;
 
         Ok(option.into())

@@ -5,8 +5,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::dto::{
-    AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput,
-    PaymentCollectionStatusKind,
+    AuthorizePaymentInput, CancelPaymentInput, CapturePaymentInput, PaymentCollectionStatusKind,
 };
 use crate::error::PaymentError;
 use crate::providers::PaymentProviderWebhookResult;
@@ -195,11 +194,11 @@ impl NormalizedPaymentEvent {
         })?;
         let collection_id = Uuid::parse_str(required_string(metadata, "collection_id")?.as_str())
             .map_err(|_| {
-                non_retryable(
-                    "payment.webhook_collection_id_invalid",
-                    "normalized payment webhook collection_id must be a UUID",
-                )
-            })?;
+            non_retryable(
+                "payment.webhook_collection_id_invalid",
+                "normalized payment webhook collection_id must be a UUID",
+            )
+        })?;
         let amount =
             Decimal::from_str(required_string(metadata, "amount")?.as_str()).map_err(|_| {
                 non_retryable(

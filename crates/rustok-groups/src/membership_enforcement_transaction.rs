@@ -48,19 +48,23 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
     }
 
     let membership = match transaction.get_database_backend() {
-        DbBackend::Sqlite => membership_state::Entity::find()
-            .filter(membership_state::Column::TenantId.eq(tenant_id))
-            .filter(membership_state::Column::GroupId.eq(group_id))
-            .filter(membership_state::Column::UserId.eq(user_id))
-            .one(transaction)
-            .await?,
-        DbBackend::Postgres | DbBackend::MySql => membership_state::Entity::find()
-            .filter(membership_state::Column::TenantId.eq(tenant_id))
-            .filter(membership_state::Column::GroupId.eq(group_id))
-            .filter(membership_state::Column::UserId.eq(user_id))
-            .lock_exclusive()
-            .one(transaction)
-            .await?,
+        DbBackend::Sqlite => {
+            membership_state::Entity::find()
+                .filter(membership_state::Column::TenantId.eq(tenant_id))
+                .filter(membership_state::Column::GroupId.eq(group_id))
+                .filter(membership_state::Column::UserId.eq(user_id))
+                .one(transaction)
+                .await?
+        }
+        DbBackend::Postgres | DbBackend::MySql => {
+            membership_state::Entity::find()
+                .filter(membership_state::Column::TenantId.eq(tenant_id))
+                .filter(membership_state::Column::GroupId.eq(group_id))
+                .filter(membership_state::Column::UserId.eq(user_id))
+                .lock_exclusive()
+                .one(transaction)
+                .await?
+        }
     };
 
     if let Some(membership) = membership {
@@ -81,14 +85,8 @@ pub(crate) async fn resolve_group_membership_enforcement_for_update(
         }
     }
 
-    resolve_group_membership_enforcement(
-        transaction,
-        tenant_id,
-        group_id,
-        user_id,
-        evaluated_at,
-    )
-    .await
+    resolve_group_membership_enforcement(transaction, tenant_id, group_id, user_id, evaluated_at)
+        .await
 }
 
 pub(crate) async fn resolve_group_membership_enforcement_now_for_update(

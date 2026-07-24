@@ -4,9 +4,9 @@ use std::sync::Arc;
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::entities::forum_topic_revision;
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-    ForumReadModelService, ForumTopicReadStateService, ForumModule, MarkForumTopicReadInput,
-    ModerationService, ReplyService, TopicService, TopicUnreadCursorQuery, UpdateTopicInput,
+    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
+    ForumReadModelService, ForumTopicReadStateService, MarkForumTopicReadInput, ModerationService,
+    ReplyService, TopicService, TopicUnreadCursorQuery, UpdateTopicInput,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
@@ -248,11 +248,16 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         .map(|item| (item.topic.id, item))
         .collect::<HashMap<_, _>>();
 
-    let unseen = by_id.get(&unseen_topic).expect("unseen topic should project");
+    let unseen = by_id
+        .get(&unseen_topic)
+        .expect("unseen topic should project");
     assert!(!unseen.read_state_explicit);
     assert_eq!(unseen.unread_count, 0);
     assert!(!unseen.has_unread_topic_revision);
-    assert!(unseen.is_unread, "an unseen topic is unread even without replies");
+    assert!(
+        unseen.is_unread,
+        "an unseen topic is unread even without replies"
+    );
 
     let reply_unread = by_id.get(&reply_topic).expect("reply topic should project");
     assert!(reply_unread.read_state_explicit);
@@ -270,12 +275,7 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
     assert!(revision_unread.is_unread);
 
     moderation
-        .hide_reply(
-            tenant_id,
-            second_reply.id,
-            reply_topic,
-            author.clone(),
-        )
+        .hide_reply(tenant_id, second_reply.id, reply_topic, author.clone())
         .await
         .expect("moderator should hide the unread reply");
     let after_hide = projection
@@ -296,7 +296,10 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         .find(|item| item.topic.id == reply_topic)
         .expect("reply topic should remain visible");
     assert_eq!(hidden_summary.unread_count, 0);
-    assert!(!hidden_summary.is_unread, "hidden replies must not inflate unread state");
+    assert!(
+        !hidden_summary.is_unread,
+        "hidden replies must not inflate unread state"
+    );
 
     let first_page = projection
         .list_topics_with_unread(

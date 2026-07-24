@@ -279,7 +279,11 @@ fn ForumTopicFeed(
     let threads_template = t(locale.as_deref(), "forum.feed.threads", "{count} threads");
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
-    let unread_template = t(locale.as_deref(), "forum.topic.unreadCount", "{count} unread");
+    let unread_template = t(
+        locale.as_deref(),
+        "forum.topic.unreadCount",
+        "{count} unread",
+    );
     let updated_unread_label = t(locale.as_deref(), "forum.topic.updatedUnread", "Updated");
     let slug_template = t(locale.as_deref(), "forum.topic.slug", "thread slug: {slug}");
     let replies_label = t(locale.as_deref(), "forum.topic.replies", "Replies");
@@ -409,8 +413,16 @@ fn ForumThreadPanel(
     );
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
-    let mark_read_label = t(locale.as_deref(), "forum.thread.markRead", "Mark topic read");
-    let marking_read_label = t(locale.as_deref(), "forum.thread.markingRead", "Marking read…");
+    let mark_read_label = t(
+        locale.as_deref(),
+        "forum.thread.markRead",
+        "Mark topic read",
+    );
+    let marking_read_label = t(
+        locale.as_deref(),
+        "forum.thread.markingRead",
+        "Marking read…",
+    );
     let slug_template = t(locale.as_deref(), "forum.thread.slug", "slug: {slug}");
     let replies_title = t(locale.as_deref(), "forum.thread.repliesTitle", "Replies");
     let replies_total_template = t(

@@ -13,7 +13,10 @@ fn openapi_exposes_owner_read_state_routes() {
         "/api/forum/categories/{id}/mark-read",
         "/api/forum/topics/mark-all-read",
     ] {
-        assert!(paths.contains_key(path), "missing Forum read-state path {path}");
+        assert!(
+            paths.contains_key(path),
+            "missing Forum read-state path {path}"
+        );
     }
 
     let topic_read_state = paths

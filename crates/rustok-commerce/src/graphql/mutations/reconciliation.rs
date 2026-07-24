@@ -108,12 +108,7 @@ impl CommerceReconciliationMutation {
             .retry_refund_provider(tenant_id, refund_id)
             .await
             .map_err(|error| {
-                reconciliation_graphql_error(
-                    tenant_id,
-                    refund_id,
-                    "retry_refund_provider",
-                    error,
-                )
+                reconciliation_graphql_error(tenant_id, refund_id, "retry_refund_provider", error)
             })?;
 
         Ok(refund.into())

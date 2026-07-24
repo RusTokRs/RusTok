@@ -193,9 +193,11 @@ async fn run_workload(
         .with_context(|| format!("failed to digest workload result {}", workload.name))?;
     let mut evidence = Vec::with_capacity(repetitions as usize);
     for _ in 0..repetitions {
-        evidence.push(explain(db, &workload.sql).await.with_context(|| {
-            format!("failed to execute benchmark workload {}", workload.name)
-        })?);
+        evidence.push(
+            explain(db, &workload.sql).await.with_context(|| {
+                format!("failed to execute benchmark workload {}", workload.name)
+            })?,
+        );
     }
     Ok(WorkloadReport {
         name: workload.name,
@@ -216,7 +218,10 @@ async fn result_digest(
         "SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result ORDER BY {order_by}"
     );
     let rows = db
-        .query_all(Statement::from_string(DbBackend::Postgres, ordered_json_sql))
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            ordered_json_sql,
+        ))
         .await
         .context("ordered workload digest query failed")?;
     let row_count = i64::try_from(rows.len()).context("workload result row count exceeds i64")?;
@@ -341,15 +346,11 @@ async fn cardinality_query(db: &DatabaseConnection, sql: &str) -> Result<Cardina
     })
 }
 
-fn validate_cardinality(
-    label: &str,
-    actual: Cardinality,
-    dataset: &DatasetConfig,
-) -> Result<()> {
+fn validate_cardinality(label: &str, actual: Cardinality, dataset: &DatasetConfig) -> Result<()> {
     let expected_entities = i64::try_from(dataset.total_entity_rows())
         .context("expected entity cardinality exceeds i64")?;
-    let expected_links =
-        i64::try_from(dataset.total_link_rows()).context("expected link cardinality exceeds i64")?;
+    let expected_links = i64::try_from(dataset.total_link_rows())
+        .context("expected link cardinality exceeds i64")?;
     ensure!(
         actual.entity_rows == expected_entities,
         "{label} entity cardinality drift: expected {expected_entities}, got {}",
@@ -371,7 +372,10 @@ fn validate_semantic_parity(
         !source_workloads.is_empty(),
         "benchmark produced no source workload oracle"
     );
-    ensure!(!prototypes.is_empty(), "benchmark produced no prototype reports");
+    ensure!(
+        !prototypes.is_empty(),
+        "benchmark produced no prototype reports"
+    );
 
     for candidate in prototypes {
         ensure!(

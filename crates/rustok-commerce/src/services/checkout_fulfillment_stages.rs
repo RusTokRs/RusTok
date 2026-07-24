@@ -2,13 +2,13 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError};
 use rustok_fulfillment::{
-    in_process_checkout_fulfillment_execution_port, CheckoutFulfillmentCommand,
-    CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
+    CheckoutFulfillmentCommand, CheckoutFulfillmentExecutionPort, CheckoutFulfillmentItemCommand,
     EnsureCheckoutFulfillmentsRequest, FulfillmentResponse, ReadCheckoutFulfillmentsRequest,
+    in_process_checkout_fulfillment_execution_port,
 };
 use rustok_order::{
-    in_process_checkout_order_payment_settlement_port, CheckoutOrderPaymentSettlementPort,
-    OrderLineItemResponse, OrderResponse, SettleCheckoutOrderPaymentRequest,
+    CheckoutOrderPaymentSettlementPort, OrderLineItemResponse, OrderResponse,
+    SettleCheckoutOrderPaymentRequest, in_process_checkout_order_payment_settlement_port,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_payment::{PaymentCollectionResponse, PaymentCollectionStatusKind};

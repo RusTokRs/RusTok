@@ -141,9 +141,7 @@ impl ForumReadModelService {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = normalized_locale(query.locale.as_deref())?;
         let fallback_locale = normalized_optional_locale(query.fallback_locale.as_deref())?;
-        let (topics, next_cursor, has_more) = self
-            .load_topic_rows(tenant_id, &query, None)
-            .await?;
+        let (topics, next_cursor, has_more) = self.load_topic_rows(tenant_id, &query, None).await?;
         let items = self
             .materialize_topic_read_models(
                 tenant_id,
@@ -697,9 +695,7 @@ GROUP BY
     let mut summaries = HashMap::with_capacity(rows.len());
     for row in rows {
         let topic_id = row.try_get::<Uuid>("", "topic_id")?;
-        let read_state_explicit = row
-            .try_get::<Option<Uuid>>("", "state_user_id")?
-            .is_some();
+        let read_state_explicit = row.try_get::<Option<Uuid>>("", "state_user_id")?.is_some();
         let last_read_position = row.try_get::<i64>("", "last_read_position")?;
         let last_read_revision = row.try_get::<i64>("", "last_read_revision")?;
         let unread_count = row.try_get::<i64>("", "unread_count")?;
@@ -714,9 +710,7 @@ GROUP BY
                 last_read_revision,
                 unread_count,
                 has_unread_topic_revision,
-                is_unread: !read_state_explicit
-                    || unread_count > 0
-                    || has_unread_topic_revision,
+                is_unread: !read_state_explicit || unread_count > 0 || has_unread_topic_revision,
             },
         );
     }

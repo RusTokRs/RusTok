@@ -55,9 +55,7 @@ impl StorefrontStagedCheckoutRuntimeError {
             Self::AuthenticationRequired => "Authentication is required for customer-owned carts",
             Self::TemporarilyUnavailable => "Checkout is temporarily unavailable",
             Self::CheckoutFailed => "Checkout could not be completed",
-            Self::CompensationPending => {
-                "Checkout failed and compensation will be retried"
-            }
+            Self::CompensationPending => "Checkout failed and compensation will be retried",
             Self::ReconciliationRequired => {
                 "Checkout requires reconciliation before it can continue"
             }
@@ -65,7 +63,10 @@ impl StorefrontStagedCheckoutRuntimeError {
     }
 
     pub const fn retryable(&self) -> bool {
-        matches!(self, Self::TemporarilyUnavailable | Self::CompensationPending)
+        matches!(
+            self,
+            Self::TemporarilyUnavailable | Self::CompensationPending
+        )
     }
 }
 
@@ -137,7 +138,13 @@ pub async fn complete_storefront_checkout_input(
 
     let cart_id = checkout_input.cart_id;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
-    let cart_port_context = cart_context(tenant_id, cart_id, request_context, auth.as_ref(), &idempotency_key);
+    let cart_port_context = cart_context(
+        tenant_id,
+        cart_id,
+        request_context,
+        auth.as_ref(),
+        &idempotency_key,
+    );
     let cart = cart_storefront_port
         .read_storefront_cart(
             cart_port_context.clone(),

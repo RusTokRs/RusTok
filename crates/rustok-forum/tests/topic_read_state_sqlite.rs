@@ -177,7 +177,10 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             },
         )
         .await;
-    assert!(anonymous_write.is_err(), "anonymous views must not create read rows");
+    assert!(
+        anonymous_write.is_err(),
+        "anonymous views must not create read rows"
+    );
     assert_eq!(
         forum_topic_read_state::Entity::find()
             .filter(forum_topic_read_state::Column::TenantId.eq(tenant_id))
@@ -245,7 +248,10 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             },
         )
         .await;
-    assert!(future_position.is_err(), "future public positions must be rejected");
+    assert!(
+        future_position.is_err(),
+        "future public positions must be rejected"
+    );
 
     let future_revision = service
         .mark_topic_read(
@@ -258,7 +264,10 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             },
         )
         .await;
-    assert!(future_revision.is_err(), "future topic revisions must be rejected");
+    assert!(
+        future_revision.is_err(),
+        "future topic revisions must be rejected"
+    );
 
     let direct_regression = forum_topic_read_state::Entity::update_many()
         .filter(forum_topic_read_state::Column::TenantId.eq(tenant_id))

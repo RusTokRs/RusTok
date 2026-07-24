@@ -471,13 +471,8 @@ impl CheckoutPaymentCompensationPort for InProcessCheckoutPaymentCompensationPor
             .get_collection(tenant_id, collection_id)
             .await
             .map_err(|error| payment_error_to_port_error(&context, owner_operation, error))?;
-        self.reject_unsafe_provider_operations(
-            &context,
-            owner_operation,
-            tenant_id,
-            collection_id,
-        )
-        .await?;
+        self.reject_unsafe_provider_operations(&context, owner_operation, tenant_id, collection_id)
+            .await?;
         match collection.status_kind() {
             PaymentCollectionStatusKind::Cancelled => {
                 self.commit_completed_cancel_if_needed(

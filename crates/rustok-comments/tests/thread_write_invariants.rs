@@ -3,9 +3,9 @@ use rustok_comments::entities::{comment, comment_thread};
 use rustok_comments::migrations;
 use rustok_comments::{CommentStatus, CommentThreadStatus};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DatabaseTransaction, DbErr, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Set,
+    TransactionTrait,
 };
 use sea_orm_migration::SchemaManager;
 use std::{collections::HashSet, error::Error};
@@ -37,11 +37,7 @@ async fn apply_comments_migrations(db: &DatabaseConnection) -> Result<(), DbErr>
     Ok(())
 }
 
-fn new_thread(
-    tenant_id: Uuid,
-    thread_id: Uuid,
-    target_id: Uuid,
-) -> comment_thread::ActiveModel {
+fn new_thread(tenant_id: Uuid, thread_id: Uuid, target_id: Uuid) -> comment_thread::ActiveModel {
     let now = Utc::now();
     comment_thread::ActiveModel {
         id: Set(thread_id),
@@ -100,14 +96,9 @@ async fn insert_comment_and_refresh_count(
     supplied_position: i64,
 ) -> Result<comment::Model, DbErr> {
     let txn = db.begin().await?;
-    let inserted = new_comment(
-        tenant_id,
-        thread_id,
-        Uuid::new_v4(),
-        supplied_position,
-    )
-    .insert(&txn)
-    .await?;
+    let inserted = new_comment(tenant_id, thread_id, Uuid::new_v4(), supplied_position)
+        .insert(&txn)
+        .await?;
     refresh_thread_count_in_tx(&txn, tenant_id, thread_id).await?;
     txn.commit().await?;
     Ok(inserted)
@@ -227,25 +218,18 @@ async fn unique_position_index_rejects_active_model_bypass() {
         .await
         .expect("thread should insert");
 
-    comment::Entity::insert(new_comment(
-        tenant_id,
-        thread_id,
-        Uuid::new_v4(),
-        1,
-    ))
-    .exec(&db)
-    .await
-    .expect("first direct insert should succeed");
-    let duplicate = comment::Entity::insert(new_comment(
-        tenant_id,
-        thread_id,
-        Uuid::new_v4(),
-        1,
-    ))
-    .exec(&db)
-    .await;
+    comment::Entity::insert(new_comment(tenant_id, thread_id, Uuid::new_v4(), 1))
+        .exec(&db)
+        .await
+        .expect("first direct insert should succeed");
+    let duplicate = comment::Entity::insert(new_comment(tenant_id, thread_id, Uuid::new_v4(), 1))
+        .exec(&db)
+        .await;
 
-    assert!(duplicate.is_err(), "unique thread position must reject bypass");
+    assert!(
+        duplicate.is_err(),
+        "unique thread position must reject bypass"
+    );
 }
 
 struct PostgresCommentsTestDb {
@@ -336,12 +320,7 @@ async fn postgres_concurrent_creates_and_delete_preserve_thread_invariants() -> 
 
     let (third, deleted) = tokio::join!(
         insert_comment_and_refresh_count(&test_db.db_a, tenant_id, thread_id, 777),
-        soft_delete_comment_and_refresh_count(
-            &test_db.db_b,
-            tenant_id,
-            thread_id,
-            first.id,
-        ),
+        soft_delete_comment_and_refresh_count(&test_db.db_b, tenant_id, thread_id, first.id,),
     );
     let third = third?;
     deleted?;

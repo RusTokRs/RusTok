@@ -47,10 +47,7 @@ async fn tenant_policy_deferral_removes_disabled_work_from_bounded_head() {
     let deferred = first_page[0];
 
     worker
-        .defer_source_inbox(
-            deferred,
-            NotificationFanoutPolicyDeferral::TenantDisabled,
-        )
+        .defer_source_inbox(deferred, NotificationFanoutPolicyDeferral::TenantDisabled)
         .await
         .expect("disabled tenant work should enter durable retry backoff");
 

@@ -9,8 +9,8 @@ use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::{
-    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
-    ForumTopicReadState, ListTopicsFilter,
+    ForumError, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic, ForumTopicReadState,
+    ListTopicsFilter,
 };
 
 const MODULE_SLUG: &str = "forum";

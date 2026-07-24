@@ -10,10 +10,7 @@ pub enum DomainError {
     IdentifierTooLong { kind: &'static str, max: usize },
 
     #[error("{kind} identifier must match [a-z][a-z0-9_.-]*: {value}")]
-    InvalidIdentifier {
-        kind: &'static str,
-        value: String,
-    },
+    InvalidIdentifier { kind: &'static str, value: String },
 
     #[error("invalid locale identifier: {value}")]
     InvalidLocale { value: String },

@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use rustok_events::{
@@ -267,8 +267,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::{
-        FORUM_TOPIC_CREATED, FORUM_USER_MENTION_ADDED,
-        ServerNotificationOutboxEnvelopeDecoder,
+        FORUM_TOPIC_CREATED, FORUM_USER_MENTION_ADDED, ServerNotificationOutboxEnvelopeDecoder,
     };
 
     #[test]

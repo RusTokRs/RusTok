@@ -65,9 +65,8 @@ pub use cache_invalidation::{
 };
 pub use dto::*;
 pub use entities::{
-    Page, PageBuilderScenarioBaseline, PagePublishOperation,
-    PagePublishOperationArtifact, PagePublishedLandingArtifact, PageRollbackOperation,
-    PageStaticLandingArtifact,
+    Page, PageBuilderScenarioBaseline, PagePublishOperation, PagePublishOperationArtifact,
+    PagePublishedLandingArtifact, PageRollbackOperation, PageStaticLandingArtifact,
 };
 pub use error::{CANNOT_DELETE_PUBLISHED_ERROR_CODE, PagesError, PagesResult};
 pub use graphql::{PagesMutation, PagesQuery};

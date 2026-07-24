@@ -8,11 +8,11 @@ use rustok_order::{OrderError, OrderService};
 use rustok_payment::error::PaymentError;
 use uuid::Uuid;
 
-use crate::{PaymentOrchestrationError, PostOrderOrchestrationError};
 use crate::graphql_runtime::{
     order_change_orchestration_from_context, post_order_orchestration_from_context,
     return_completion_orchestration_from_context,
 };
+use crate::{PaymentOrchestrationError, PostOrderOrchestrationError};
 
 use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
@@ -466,12 +466,7 @@ impl CommerceFulfillmentMutation {
             )
             .await
             .map_err(|error| {
-                post_order_graphql_error(
-                    tenant_id,
-                    order_id,
-                    "create_order_return_decision",
-                    error,
-                )
+                post_order_graphql_error(tenant_id, order_id, "create_order_return_decision", error)
             })?;
 
         Ok(decision.into())

@@ -220,15 +220,7 @@ async fn category_and_all_read_are_bounded_resumable_and_scope_safe() {
     let reader = SecurityContext::new(UserRole::Customer, Some(reader_id));
     let anonymous = SecurityContext::new(UserRole::Customer, None);
 
-    let root = create_category(
-        &db,
-        tenant_id,
-        author.clone(),
-        "Root category",
-        None,
-        false,
-    )
-    .await;
+    let root = create_category(&db, tenant_id, author.clone(), "Root category", None, false).await;
     let child = create_category(
         &db,
         tenant_id,
@@ -249,38 +241,12 @@ async fn category_and_all_read_are_bounded_resumable_and_scope_safe() {
     .await;
 
     let topics = TopicService::new(db.clone(), event_bus.clone());
-    let root_topic = create_topic(
-        &topics,
-        tenant_id,
-        root,
-        author.clone(),
-        "Root topic",
-    )
-    .await;
-    let child_topic_one = create_topic(
-        &topics,
-        tenant_id,
-        child,
-        author.clone(),
-        "Child topic one",
-    )
-    .await;
-    let child_topic_two = create_topic(
-        &topics,
-        tenant_id,
-        child,
-        author.clone(),
-        "Child topic two",
-    )
-    .await;
-    let other_topic = create_topic(
-        &topics,
-        tenant_id,
-        other,
-        author.clone(),
-        "Other topic",
-    )
-    .await;
+    let root_topic = create_topic(&topics, tenant_id, root, author.clone(), "Root topic").await;
+    let child_topic_one =
+        create_topic(&topics, tenant_id, child, author.clone(), "Child topic one").await;
+    let child_topic_two =
+        create_topic(&topics, tenant_id, child, author.clone(), "Child topic two").await;
+    let other_topic = create_topic(&topics, tenant_id, other, author.clone(), "Other topic").await;
     for topic_id in [root_topic, child_topic_one, child_topic_two, other_topic] {
         add_two_public_replies_and_revision(
             &db,

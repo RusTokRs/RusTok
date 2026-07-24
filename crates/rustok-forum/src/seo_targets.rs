@@ -811,7 +811,11 @@ mod tests {
     fn forum_route_contract_remains_id_based() {
         let topic_id = Uuid::new_v4();
         let category_id = Uuid::new_v4();
-        assert!(parse_forum_route("/modules/forum?topic=welcome").unwrap().is_none());
+        assert!(
+            parse_forum_route("/modules/forum?topic=welcome")
+                .unwrap()
+                .is_none()
+        );
         assert!(parse_forum_route("/forum/welcome").unwrap().is_none());
         assert!(matches!(
             parse_forum_route(format!("/modules/forum?topic={topic_id}").as_str()).unwrap(),

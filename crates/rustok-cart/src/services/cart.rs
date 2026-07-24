@@ -205,6 +205,50 @@ impl CartService {
         }
         .insert(&txn)
         .await?;
+
+        if let (Some(product_id), Some(variant_id)) = (input.product_id, input.variant_id) {
+            let seller_id = metadata
+                .get("seller_id")
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    metadata
+                        .get("seller")
+                        .and_then(|v| v.get("id"))
+                        .and_then(|v| v.as_str())
+                })
+                .and_then(|s| Uuid::parse_str(s).ok());
+            if let Some(seller_id) = seller_id {
+                use rust_decimal::prelude::ToPrimitive;
+                let unit_amount = (input.unit_price * Decimal::from(100))
+                    .to_i64()
+                    .unwrap_or_default();
+                let subtotal_amount = unit_amount * i64::from(input.quantity);
+                entities::cart_line_item_marketplace_snapshot::ActiveModel {
+                    cart_line_item_id: Set(line_item_id),
+                    seller_id: Set(seller_id),
+                    listing_id: Set(variant_id),
+                    master_product_id: Set(product_id),
+                    master_variant_id: Set(variant_id),
+                    listing_terms_version: Set(1),
+                    currency_code: Set(cart.currency_code.clone().to_uppercase()),
+                    currency_exponent: Set(2),
+                    unit_amount: Set(unit_amount),
+                    subtotal_amount: Set(subtotal_amount),
+                    discount_amount: Set(0),
+                    tax_amount: Set(0),
+                    total_amount: Set(subtotal_amount),
+                    pricing_reference: Set(None),
+                    inventory_reference: Set(None),
+                    fulfillment_profile_slug: Set(Some(normalize_shipping_profile_slug(
+                        input.shipping_profile_slug.as_deref(),
+                    ))),
+                    created_at: Set(now.into()),
+                    updated_at: Set(now.into()),
+                }
+                .insert(&txn)
+                .await?;
+            }
+        }
         replace_pricing_adjustments(
             &txn,
             cart_id,

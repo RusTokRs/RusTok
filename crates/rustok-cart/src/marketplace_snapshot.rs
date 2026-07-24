@@ -77,11 +77,7 @@ impl MarketplaceCartSnapshotReadPort for CartMarketplaceSnapshotService {
         request: ListMarketplaceCartLineSnapshotsRequest,
     ) -> Result<Vec<CartMarketplaceLineSnapshot>, PortError> {
         let owner_operation = LIST_MARKETPLACE_LINE_SNAPSHOTS_OPERATION;
-        require_marketplace_snapshot_policy(
-            &context,
-            owner_operation,
-            PortCallPolicy::read(),
-        )?;
+        require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::read())?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         self.list_cart_snapshots(tenant_id, request.cart_id)
             .await
@@ -97,11 +93,7 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         request: AddMarketplaceCartLineRequest,
     ) -> Result<AddMarketplaceCartLineItemResponse, PortError> {
         let owner_operation = ADD_MARKETPLACE_LINE_ITEM_OPERATION;
-        require_marketplace_snapshot_policy(
-            &context,
-            owner_operation,
-            PortCallPolicy::write(),
-        )?;
+        require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         self.add_marketplace_line_item(tenant_id, request.cart_id, request.input)
             .await
@@ -114,11 +106,7 @@ impl MarketplaceCartSnapshotCommandPort for CartMarketplaceSnapshotService {
         request: BindMarketplaceCartLineSnapshotRequest,
     ) -> Result<CartMarketplaceLineSnapshot, PortError> {
         let owner_operation = BIND_MARKETPLACE_LINE_SNAPSHOT_OPERATION;
-        require_marketplace_snapshot_policy(
-            &context,
-            owner_operation,
-            PortCallPolicy::write(),
-        )?;
+        require_marketplace_snapshot_policy(&context, owner_operation, PortCallPolicy::write())?;
         let tenant_id = parse_tenant_id(&context, owner_operation)?;
         self.bind_line_snapshot(
             tenant_id,
@@ -186,14 +174,12 @@ fn map_context_error(
         ..
     } = error;
     match kind {
-        PortErrorKind::Timeout => PortError::timeout(
-            code,
-            "marketplace cart snapshot request context is invalid",
-        ),
-        PortErrorKind::Validation => PortError::validation(
-            code,
-            "marketplace cart snapshot request context is invalid",
-        ),
+        PortErrorKind::Timeout => {
+            PortError::timeout(code, "marketplace cart snapshot request context is invalid")
+        }
+        PortErrorKind::Validation => {
+            PortError::validation(code, "marketplace cart snapshot request context is invalid")
+        }
         kind => PortError::new(
             kind,
             "cart.marketplace_snapshot_context_invalid",
@@ -226,13 +212,10 @@ fn map_cart_error(
             "marketplace cart snapshot conflicts with the current cart state",
             false,
         ),
-        CartError::CartNotFound(_) => {
-            PortError::not_found("cart.not_found", "cart was not found")
+        CartError::CartNotFound(_) => PortError::not_found("cart.not_found", "cart was not found"),
+        CartError::CartLineItemNotFound(_) => {
+            PortError::not_found("cart.line_item_not_found", "cart line item was not found")
         }
-        CartError::CartLineItemNotFound(_) => PortError::not_found(
-            "cart.line_item_not_found",
-            "cart line item was not found",
-        ),
         CartError::InvalidTransition { .. } => PortError::conflict(
             "cart.invalid_transition",
             "cart lifecycle transition conflicts with the current state",

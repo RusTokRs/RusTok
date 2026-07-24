@@ -48,10 +48,7 @@ impl<'a> ReferenceIndex<'a> {
         }
     }
 
-    fn apply(
-        &mut self,
-        mutation: IndexMutation,
-    ) -> Result<ApplyOutcome, RecordValidationError> {
+    fn apply(&mut self, mutation: IndexMutation) -> Result<ApplyOutcome, RecordValidationError> {
         if self.events.contains(&mutation.event_id()) {
             return Ok(ApplyOutcome::DuplicateEvent);
         }
@@ -138,9 +135,7 @@ impl<'a> ReferenceIndex<'a> {
         }
 
         records = match &query.pagination {
-            Pagination::Cursor { first, .. } => {
-                records.into_iter().take(*first as usize).collect()
-            }
+            Pagination::Cursor { first, .. } => records.into_iter().take(*first as usize).collect(),
             Pagination::Offset { limit, offset } => records
                 .into_iter()
                 .skip(*offset as usize)
@@ -277,21 +272,19 @@ impl<'a> ReferenceIndex<'a> {
             FilterExpr::Gt(path, expected) => {
                 self.matches_ordered(record, path, expected, Ordering::is_gt)
             }
-            FilterExpr::Gte(path, expected) => self.matches_ordered(
-                record,
-                path,
-                expected,
-                |ordering| ordering.is_gt() || ordering.is_eq(),
-            ),
+            FilterExpr::Gte(path, expected) => {
+                self.matches_ordered(record, path, expected, |ordering| {
+                    ordering.is_gt() || ordering.is_eq()
+                })
+            }
             FilterExpr::Lt(path, expected) => {
                 self.matches_ordered(record, path, expected, Ordering::is_lt)
             }
-            FilterExpr::Lte(path, expected) => self.matches_ordered(
-                record,
-                path,
-                expected,
-                |ordering| ordering.is_lt() || ordering.is_eq(),
-            ),
+            FilterExpr::Lte(path, expected) => {
+                self.matches_ordered(record, path, expected, |ordering| {
+                    ordering.is_lt() || ordering.is_eq()
+                })
+            }
             FilterExpr::Contains(path, expected) => self
                 .values_for_path(record, path)
                 .into_iter()

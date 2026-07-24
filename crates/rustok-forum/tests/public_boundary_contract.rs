@@ -20,7 +20,10 @@ fn category_owner_does_not_expose_raw_persistence_service() {
         "pub async fn move_category(",
         "pub async fn archive_subtree(",
     ] {
-        assert!(source.contains(method), "missing explicit owner method: {method}");
+        assert!(
+            source.contains(method),
+            "missing explicit owner method: {method}"
+        );
     }
     assert!(
         source.contains("archive_subtree_for_delete"),
@@ -55,9 +58,7 @@ fn http_controllers_use_stable_forum_error_mapping() {
             "controller exposes an internal Forum error message"
         );
         assert!(
-            !source.contains(
-                "HttpError::unauthorized(\n            \"forum_permission_denied\""
-            ),
+            !source.contains("HttpError::unauthorized(\n            \"forum_permission_denied\""),
             "authenticated permission failures must be HTTP 403"
         );
     }
@@ -88,9 +89,8 @@ fn page_builder_is_an_optional_forum_capability() {
 #[test]
 fn sensitive_forum_error_display_is_redacted() {
     let secret_database_detail = "password=secret database host=private";
-    let database_error = ForumError::Database(sea_orm::DbErr::Custom(
-        secret_database_detail.to_string(),
-    ));
+    let database_error =
+        ForumError::Database(sea_orm::DbErr::Custom(secret_database_detail.to_string()));
     assert_eq!(
         database_error.to_string(),
         "Forum persistence operation failed"
@@ -109,12 +109,17 @@ fn sensitive_forum_error_display_is_redacted() {
         capability_error.to_string(),
         "Forum capability operation failed"
     );
-    assert!(!capability_error.to_string().contains("PRIVATE_PROVIDER_CODE"));
-    assert!(!capability_error.to_string().contains("private upstream response"));
-    assert_eq!(
-        capability_error.stable_code(),
-        "FORUM_CAPABILITY_FAILURE"
+    assert!(
+        !capability_error
+            .to_string()
+            .contains("PRIVATE_PROVIDER_CODE")
     );
+    assert!(
+        !capability_error
+            .to_string()
+            .contains("private upstream response")
+    );
+    assert_eq!(capability_error.stable_code(), "FORUM_CAPABILITY_FAILURE");
     assert!(capability_error.is_retryable());
 }
 

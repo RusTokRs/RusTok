@@ -226,9 +226,11 @@ impl SchemaRegistry {
                         .fields
                         .iter()
                         .find(|field| field.name == *source_field_name)
-                        .ok_or_else(|| SchemaRegistryError::InvalidSchema(
-                            DomainError::UnknownLinkSourceField(source_field_name.to_string()),
-                        ))?;
+                        .ok_or_else(|| {
+                            SchemaRegistryError::InvalidSchema(DomainError::UnknownLinkSourceField(
+                                source_field_name.to_string(),
+                            ))
+                        })?;
                     let target_field = target
                         .fields
                         .iter()
@@ -320,11 +322,7 @@ impl SchemaRegistry {
                     )
                 })
                 .collect::<Vec<_>>();
-            edges.sort_by(|left, right| {
-                left.0
-                    .cmp(&right.0)
-                    .then_with(|| left.1.cmp(&right.1))
-            });
+            edges.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
 
             for (link, _, target) in edges {
                 if !visited.insert(target) {
@@ -375,8 +373,7 @@ impl SchemaRegistry {
         }
 
         for (source, link, target) in edges {
-            if let (Some(source), Some(target)) =
-                (self.nodes.get(&source), self.nodes.get(&target))
+            if let (Some(source), Some(target)) = (self.nodes.get(&source), self.nodes.get(&target))
             {
                 self.graph.add_edge(*source, *target, link);
             }
@@ -493,7 +490,9 @@ mod tests {
     fn batch_supports_forward_link_references() {
         let channel = schema("sales_channel", 1);
         let mut product = schema("product", 1);
-        product.links.push(link("sales_channel", channel.reference.clone()));
+        product
+            .links
+            .push(link("sales_channel", channel.reference.clone()));
 
         let mut registry = SchemaRegistry::new();
         registry.register_batch([product, channel]).unwrap();
@@ -521,12 +520,20 @@ mod tests {
     fn path_resolution_is_shortest_and_deterministic() {
         let channel = schema("channel", 1);
         let mut category = schema("category", 1);
-        category.links.push(link("channel", channel.reference.clone()));
+        category
+            .links
+            .push(link("channel", channel.reference.clone()));
         let mut collection = schema("collection", 1);
-        collection.links.push(link("channel", channel.reference.clone()));
+        collection
+            .links
+            .push(link("channel", channel.reference.clone()));
         let mut product = schema("product", 1);
-        product.links.push(link("collection", collection.reference.clone()));
-        product.links.push(link("category", category.reference.clone()));
+        product
+            .links
+            .push(link("collection", collection.reference.clone()));
+        product
+            .links
+            .push(link("category", category.reference.clone()));
 
         let mut registry = SchemaRegistry::new();
         registry

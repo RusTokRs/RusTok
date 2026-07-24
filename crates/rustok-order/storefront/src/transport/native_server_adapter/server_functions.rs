@@ -104,10 +104,7 @@ async fn storefront_order_complete_checkout_native(
 }
 
 #[cfg(feature = "ssr")]
-fn native_context_error(
-    operation: &'static str,
-    error: impl std::fmt::Display,
-) -> ServerFnError {
+fn native_context_error(operation: &'static str, error: impl std::fmt::Display) -> ServerFnError {
     tracing::error!(
         error = %error,
         operation,

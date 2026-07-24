@@ -168,10 +168,7 @@ pub trait NotificationTenantCapabilityCommitGuard: Send + Sync {
         &self,
         transaction: &DatabaseTransaction,
         request: NotificationTenantCapabilityCommitRequest,
-    ) -> Result<
-        NotificationTenantCapabilityCommitDecision,
-        NotificationTenantCapabilityCommitError,
-    >;
+    ) -> Result<NotificationTenantCapabilityCommitDecision, NotificationTenantCapabilityCommitError>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -552,7 +549,7 @@ impl NotificationCandidateService {
                 notification_id: Set(None),
                 attempt_count: Set(item.attempt_count.saturating_add(1)),
                 next_attempt_at: Set(
-                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS)),
+                    retryable.then_some(timestamp + Duration::seconds(RETRY_DELAY_SECONDS))
                 ),
                 lease_owner: Set(None),
                 lease_expires_at: Set(None),

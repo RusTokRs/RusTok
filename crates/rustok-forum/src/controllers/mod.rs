@@ -1,6 +1,6 @@
 use anyhow::Context;
-use axum::{Router, http::StatusCode};
 use axum::routing::get;
+use axum::{Router, http::StatusCode};
 use rustok_api::HostRuntimeContext;
 use rustok_outbox::TransactionalEventBus;
 use rustok_web::HttpError;
@@ -58,10 +58,9 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
         ForumError::CategoryNotFound(_)
         | ForumError::TopicNotFound(_)
         | ForumError::ReplyNotFound(_)
-        | ForumError::SolutionNotFound(_) => HttpError::not_found(
-            code,
-            "The requested forum resource was not found",
-        ),
+        | ForumError::SolutionNotFound(_) => {
+            HttpError::not_found(code, "The requested forum resource was not found")
+        }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
         ForumError::RelationRevisionConflict => HttpError::new(
             StatusCode::CONFLICT,

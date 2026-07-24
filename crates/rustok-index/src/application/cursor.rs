@@ -138,8 +138,8 @@ mod tests {
     use super::*;
     use crate::domain::{
         EntityName, FieldCardinality, FieldName, FieldPath, IndexField, IndexQueryScope,
-        IndexSchema, IndexValueType, LocaleMode, ModuleName, OrderDirection, OrderExpr,
-        Pagination, SchemaVersion,
+        IndexSchema, IndexValueType, LocaleMode, ModuleName, OrderDirection, OrderExpr, Pagination,
+        SchemaVersion,
     };
 
     fn schema() -> IndexSchema {

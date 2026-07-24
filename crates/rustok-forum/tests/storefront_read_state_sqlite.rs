@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_forum::{
-    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput,
-    ForumStorefrontReadStateService, ForumModule, ListTopicsFilter, ReplyService, TopicService,
+    CategoryService, CreateCategoryInput, CreateReplyInput, CreateTopicInput, ForumModule,
+    ForumStorefrontReadStateService, ListTopicsFilter, ReplyService, TopicService,
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
@@ -84,13 +84,7 @@ async fn visible_topic_summary_and_current_mark_share_owner_policy() {
     let reader = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let anonymous = SecurityContext::new(UserRole::Customer, None);
 
-    let category = create_category(
-        &db,
-        tenant_id,
-        author.clone(),
-        "storefront-read-state",
-    )
-    .await;
+    let category = create_category(&db, tenant_id, author.clone(), "storefront-read-state").await;
     let topic = TopicService::new(db.clone(), event_bus.clone())
         .create(
             tenant_id,
@@ -140,10 +134,7 @@ async fn visible_topic_summary_and_current_mark_share_owner_policy() {
     assert_eq!(unseen.items.len(), 1);
     assert_eq!(unseen.items[0].topic.id, topic.id);
     assert!(unseen.items[0].is_unread);
-    assert!(
-        unseen.items[0].unread_count > 0
-            || unseen.items[0].has_unread_topic_revision
-    );
+    assert!(unseen.items[0].unread_count > 0 || unseen.items[0].has_unread_topic_revision);
 
     let state = service
         .mark_topic_read_current_visible(
@@ -282,13 +273,7 @@ async fn storefront_unread_page_rejects_unbounded_requests_before_querying() {
     let (db, event_bus, tenant_id) = setup().await;
     let reader = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
     let error = ForumStorefrontReadStateService::new(db, event_bus)
-        .list_topics_with_unread(
-            tenant_id,
-            reader,
-            topic_filter(None, 101),
-            Some("en"),
-            None,
-        )
+        .list_topics_with_unread(tenant_id, reader, topic_filter(None, 101), Some("en"), None)
         .await
         .expect_err("unbounded storefront unread page should fail");
     assert!(error.to_string().contains("between 1 and 100"));

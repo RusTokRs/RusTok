@@ -32,10 +32,11 @@ fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
     let helper_start = SOURCE
         .find("fn archived_category_ids_subquery")
         .expect("missing lifecycle subquery helper");
-    let helper = &SOURCE[helper_start..SOURCE[helper_start..]
-        .find("\nasync fn lock_category_tree_in_tx")
-        .map(|offset| helper_start + offset)
-        .expect("missing helper boundary")];
+    let helper = &SOURCE[helper_start
+        ..SOURCE[helper_start..]
+            .find("\nasync fn lock_category_tree_in_tx")
+            .map(|offset| helper_start + offset)
+            .expect("missing helper boundary")];
     assert!(helper.contains("forum_category_lifecycle::Column::CategoryId"));
     assert!(helper.contains("forum_category_lifecycle::Column::TenantId"));
     assert!(helper.contains(".eq(tenant_id)"));

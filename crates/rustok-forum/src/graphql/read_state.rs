@@ -316,7 +316,9 @@ fn graphql_limit(limit: Option<i32>) -> Result<Option<u64>> {
         .transpose()
 }
 
-fn batch_input(input: MarkForumTopicsReadBatchGraphqlInput) -> Result<MarkForumTopicsReadBatchInput> {
+fn batch_input(
+    input: MarkForumTopicsReadBatchGraphqlInput,
+) -> Result<MarkForumTopicsReadBatchInput> {
     Ok(MarkForumTopicsReadBatchInput {
         cursor: input.cursor,
         limit: graphql_limit(input.limit)?,

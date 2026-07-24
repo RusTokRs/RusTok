@@ -58,7 +58,10 @@ impl TopicService {
         topic_id: Uuid,
         locale: &str,
     ) -> ForumResult<TopicResponse> {
-        let response = self.inner.get(tenant_id, security, topic_id, locale).await?;
+        let response = self
+            .inner
+            .get(tenant_id, security, topic_id, locale)
+            .await?;
         require_localized_topic_response(response)
     }
 

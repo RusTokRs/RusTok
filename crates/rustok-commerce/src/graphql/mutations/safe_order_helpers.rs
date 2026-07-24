@@ -3,11 +3,9 @@ use rustok_api::{AuthContext, graphql::GraphQLError};
 use rustok_order::{OrderError, OrderService};
 use uuid::Uuid;
 
-use crate::{CommerceError, ShippingProfileService};
-use crate::storefront_shipping::normalize_shipping_profile_slug;
 pub(crate) use super::cart_safe_helpers::*;
-
-
+use crate::storefront_shipping::normalize_shipping_profile_slug;
+use crate::{CommerceError, ShippingProfileService};
 
 fn public_graphql_error(
     message: &'static str,
@@ -35,11 +33,7 @@ fn order_graphql_error(
     );
 
     let (message, code, retryable) = match &error {
-        OrderError::Validation(_) => (
-            "Order request is invalid",
-            "ORDER_REQUEST_INVALID",
-            false,
-        ),
+        OrderError::Validation(_) => ("Order request is invalid", "ORDER_REQUEST_INVALID", false),
         OrderError::OrderNotFound(_)
         | OrderError::OrderReturnNotFound(_)
         | OrderError::OrderChangeNotFound(_) => (
@@ -142,12 +136,7 @@ pub(crate) async fn ensure_storefront_order_access(
         .get_order(tenant_id, order_id)
         .await
         .map_err(|error| {
-            order_graphql_error(
-                tenant_id,
-                order_id,
-                "ensure_storefront_order_access",
-                error,
-            )
+            order_graphql_error(tenant_id, order_id, "ensure_storefront_order_access", error)
         })?;
 
     if order.customer_id != Some(customer_id) {

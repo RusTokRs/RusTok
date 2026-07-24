@@ -56,10 +56,8 @@ impl NotificationTenantCapabilityCommitGuard for RevisionChangedCommitGuard {
         &self,
         _transaction: &DatabaseTransaction,
         _request: NotificationTenantCapabilityCommitRequest,
-    ) -> Result<
-        NotificationTenantCapabilityCommitDecision,
-        NotificationTenantCapabilityCommitError,
-    > {
+    ) -> Result<NotificationTenantCapabilityCommitDecision, NotificationTenantCapabilityCommitError>
+    {
         Ok(NotificationTenantCapabilityCommitDecision::RevisionChanged)
     }
 }
@@ -358,11 +356,7 @@ async fn commit_policy_revision_change_rolls_back_notification_and_retries_candi
     );
 }
 
-async fn seed_candidate(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    recipient_id: Uuid,
-) -> Uuid {
+async fn seed_candidate(db: &DatabaseConnection, tenant_id: Uuid, recipient_id: Uuid) -> Uuid {
     let now = Utc::now().fixed_offset();
     let target_id = Uuid::new_v4();
     let job_id = Uuid::new_v4();
@@ -433,8 +427,7 @@ fn source_slug() -> NotificationSourceSlug {
 }
 
 fn notification_type() -> NotificationTypeKey {
-    NotificationTypeKey::new(NOTIFICATION_TYPE)
-        .expect("worker notification type must stay valid")
+    NotificationTypeKey::new(NOTIFICATION_TYPE).expect("worker notification type must stay valid")
 }
 
 async fn setup() -> DatabaseConnection {

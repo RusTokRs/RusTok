@@ -375,9 +375,8 @@ pub(crate) fn map_decision(
     model: moderation_decision::Model,
     effect: Option<(ModerationDecisionKind, ModerationDecisionEffect)>,
 ) -> ModerationResult<ModerationDecisionRecord> {
-    let decision_kind = ModerationDecisionKind::parse(model.decision_kind.as_str()).ok_or_else(
-        || ModerationError::Invariant("unknown stored decision kind".to_string()),
-    )?;
+    let decision_kind = ModerationDecisionKind::parse(model.decision_kind.as_str())
+        .ok_or_else(|| ModerationError::Invariant("unknown stored decision kind".to_string()))?;
     let effect = effect
         .map(|(effect_kind, effect)| {
             if effect_kind != decision_kind {
@@ -412,12 +411,14 @@ pub(crate) fn map_decision(
 fn parse_stored_effect(
     model: moderation_decision_effect::Model,
 ) -> ModerationResult<(ModerationDecisionKind, ModerationDecisionEffect)> {
-    let effect_kind = ModerationDecisionKind::parse(model.effect_kind.as_str()).ok_or_else(|| {
-        ModerationError::Invariant("unknown stored moderation decision effect kind".to_string())
-    })?;
-    let effect = serde_json::from_value::<ModerationDecisionEffect>(model.effect_payload).map_err(
-        |_| ModerationError::Invariant("stored moderation decision effect is invalid".to_string()),
-    )?;
+    let effect_kind =
+        ModerationDecisionKind::parse(model.effect_kind.as_str()).ok_or_else(|| {
+            ModerationError::Invariant("unknown stored moderation decision effect kind".to_string())
+        })?;
+    let effect =
+        serde_json::from_value::<ModerationDecisionEffect>(model.effect_payload).map_err(|_| {
+            ModerationError::Invariant("stored moderation decision effect is invalid".to_string())
+        })?;
     if i32::from(effect.schema_version) != model.schema_version {
         return Err(ModerationError::Invariant(
             "stored moderation decision effect version does not match its envelope".to_string(),

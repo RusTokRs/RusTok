@@ -225,9 +225,7 @@ fn product_context_error(
         ..
     } = error;
     match kind {
-        PortErrorKind::Timeout => {
-            PortError::timeout(code, "product request context is invalid")
-        }
+        PortErrorKind::Timeout => PortError::timeout(code, "product request context is invalid"),
         PortErrorKind::Validation => {
             PortError::validation(code, "product request context is invalid")
         }
@@ -314,9 +312,7 @@ fn product_error_to_port_error(
     }
 }
 
-fn product_error_code(
-    error: &rustok_commerce_foundation::error::CommerceError,
-) -> &'static str {
+fn product_error_code(error: &rustok_commerce_foundation::error::CommerceError) -> &'static str {
     use rustok_commerce_foundation::error::CommerceError;
 
     match error {

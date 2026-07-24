@@ -19,11 +19,7 @@ mod cart_context_boundary {
         }
     }
 
-    fn public_graphql_error(
-        message: &'static str,
-        code: &'static str,
-        retryable: bool,
-    ) -> Error {
+    fn public_graphql_error(message: &'static str, code: &'static str, retryable: bool) -> Error {
         Error::new(message).extend_with(|_, extensions| {
             extensions.set("code", code);
             extensions.set("retryable", retryable);
@@ -40,13 +36,14 @@ mod cart_context_boundary {
                 false,
                 "tenant_not_found",
             ),
-            StoreContextError::Validation(_)
-            | StoreContextError::CurrencyRegionMismatch { .. } => (
-                "Store context request is invalid",
-                "STORE_CONTEXT_REQUEST_INVALID",
-                false,
-                "validation",
-            ),
+            StoreContextError::Validation(_) | StoreContextError::CurrencyRegionMismatch { .. } => {
+                (
+                    "Store context request is invalid",
+                    "STORE_CONTEXT_REQUEST_INVALID",
+                    false,
+                    "validation",
+                )
+            }
             StoreContextError::RegionBoundary { .. } => (
                 "Store context could not be resolved safely",
                 "STORE_CONTEXT_RESOLUTION_FAILED",

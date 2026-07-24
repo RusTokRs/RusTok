@@ -286,9 +286,7 @@ impl PricingReadPort for crate::PricingService {
                 },
             )
             .await
-            .map_err(|error| {
-                pricing_error_to_port_error(&context, "resolve_product_price", error)
-            })?
+            .map_err(|error| pricing_error_to_port_error(&context, "resolve_product_price", error))?
             .ok_or_else(|| {
                 PortError::new(
                     rustok_api::PortErrorKind::NotFound,
@@ -367,11 +365,7 @@ impl PricingReadPort for crate::PricingService {
             )
             .await
             .map_err(|error| {
-                pricing_error_to_port_error(
-                    &context,
-                    "list_active_price_list_projections",
-                    error,
-                )
+                pricing_error_to_port_error(&context, "list_active_price_list_projections", error)
             })?;
 
         Ok(lists
@@ -404,11 +398,7 @@ impl PricingReadPort for crate::PricingService {
         )
         .await
         .map_err(|error| {
-            pricing_error_to_port_error(
-                &context,
-                "read_admin_product_pricing_projection",
-                error,
-            )
+            pricing_error_to_port_error(&context, "read_admin_product_pricing_projection", error)
         })
     }
 
@@ -495,9 +485,7 @@ impl PricingWritePort for crate::PricingService {
             request.max_quantity,
         )
         .await
-        .map_err(|error| {
-            pricing_error_to_port_error(&context, "upsert_variant_price", error)
-        })
+        .map_err(|error| pricing_error_to_port_error(&context, "upsert_variant_price", error))
     }
 
     async fn set_price_list_scope(
@@ -517,9 +505,7 @@ impl PricingWritePort for crate::PricingService {
             request.channel_slug,
         )
         .await
-        .map_err(|error| {
-            pricing_error_to_port_error(&context, "set_price_list_scope", error)
-        })
+        .map_err(|error| pricing_error_to_port_error(&context, "set_price_list_scope", error))
     }
 
     async fn apply_variant_discount(
@@ -555,9 +541,8 @@ impl PricingWritePort for crate::PricingService {
             )
             .await
         };
-        result.map_err(|error| {
-            pricing_error_to_port_error(&context, "apply_variant_discount", error)
-        })
+        result
+            .map_err(|error| pricing_error_to_port_error(&context, "apply_variant_discount", error))
     }
 
     async fn set_price_list_percentage_rule(

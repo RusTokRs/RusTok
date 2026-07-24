@@ -123,8 +123,8 @@ impl CartService {
             apply_checkout_pricing_plan(&txn, &cart, &line_items, &request, pricing_plan).await?;
         }
 
-        let shipping_patch_requested =
-            request.input.shipping_selections.is_some() || request.input.selected_shipping_option_id.is_some();
+        let shipping_patch_requested = request.input.shipping_selections.is_some()
+            || request.input.selected_shipping_option_id.is_some();
         let country_code = match cart.country_code.clone() {
             Some(country_code) => Some(country_code),
             None => request

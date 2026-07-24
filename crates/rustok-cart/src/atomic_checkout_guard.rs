@@ -1,25 +1,19 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use rustok_api::{
-    PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind,
-};
+use rustok_api::{PLATFORM_FALLBACK_LOCALE, PortActor, PortContext, PortError, PortErrorKind};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::atomic_checkout_port::{self as legacy, AtomicCartCheckoutPricingResolver};
-use crate::checkout_snapshot::{
-    PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot,
-};
+use crate::checkout_snapshot::{PrepareCartCheckoutSnapshotRequest, PreparedCartCheckoutSnapshot};
 use crate::{
     CartCheckoutContextUpdateRequest, CartCheckoutLifecycleRequest, CartCheckoutPort,
     CartCheckoutSnapshotRequest, CartResponse,
 };
 
-const READ_ATOMIC_CART_CHECKOUT_SNAPSHOT_OPERATION: &str =
-    "read_atomic_cart_checkout_snapshot";
-const UPDATE_ATOMIC_CART_CHECKOUT_CONTEXT_OPERATION: &str =
-    "update_atomic_cart_checkout_context";
+const READ_ATOMIC_CART_CHECKOUT_SNAPSHOT_OPERATION: &str = "read_atomic_cart_checkout_snapshot";
+const UPDATE_ATOMIC_CART_CHECKOUT_CONTEXT_OPERATION: &str = "update_atomic_cart_checkout_context";
 const BEGIN_ATOMIC_CART_CHECKOUT_OPERATION: &str = "begin_atomic_cart_checkout";
 const RELEASE_ATOMIC_CART_CHECKOUT_OPERATION: &str = "release_atomic_cart_checkout";
 const COMPLETE_ATOMIC_CART_CHECKOUT_OPERATION: &str = "complete_atomic_cart_checkout";
@@ -54,11 +48,7 @@ impl AtomicCartCheckoutHandle {
             .prepare(tenant_id, allow_existing_lock)
             .await
             .map_err(|error| {
-                map_atomic_checkout_error(
-                    &context,
-                    PREPARE_ATOMIC_CART_CHECKOUT_OPERATION,
-                    error,
-                )
+                map_atomic_checkout_error(&context, PREPARE_ATOMIC_CART_CHECKOUT_OPERATION, error)
             })
     }
 }
@@ -239,21 +229,13 @@ fn map_atomic_checkout_error(
             "cart checkout adapter does not match the requested cart"
         }
         "cart.invalid_tenant_id" => "cart checkout request context is invalid",
-        "cart.checkout_not_locked" => {
-            "cart checkout could not acquire the required cart lock"
-        }
-        "cart.checkout_prepared_state_poisoned" => {
-            "cart checkout prepared state is unavailable"
-        }
+        "cart.checkout_not_locked" => "cart checkout could not acquire the required cart lock",
+        "cart.checkout_prepared_state_poisoned" => "cart checkout prepared state is unavailable",
         "cart.checkout_validation" => "cart checkout request is invalid",
         "cart.not_found" => "cart was not found",
         "cart.line_item_not_found" => "cart line item was not found",
-        "cart.invalid_transition" => {
-            "cart lifecycle transition conflicts with the current state"
-        }
-        "cart.checkout_storage_unavailable" => {
-            "cart checkout storage is temporarily unavailable"
-        }
+        "cart.invalid_transition" => "cart lifecycle transition conflicts with the current state",
+        "cart.checkout_storage_unavailable" => "cart checkout storage is temporarily unavailable",
         _ => match &kind {
             PortErrorKind::Validation => "cart checkout request is invalid",
             PortErrorKind::NotFound => "cart checkout resource was not found",

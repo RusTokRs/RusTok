@@ -1,6 +1,4 @@
-use rustok_graphql::{
-    GraphqlHttpError, GraphqlRequest, execute as execute_graphql,
-};
+use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphql};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -288,12 +286,8 @@ pub async fn fetch_storefront_forum_graphql(
         Err(error) => return Err(ApiError::Graphql(error.to_string())),
     };
 
-    let resolved_topic_id = selected_topic_id.or_else(|| {
-        topics
-            .items
-            .first()
-            .map(|item| item.id.clone())
-    });
+    let resolved_topic_id =
+        selected_topic_id.or_else(|| topics.items.first().map(|item| item.id.clone()));
 
     if selected_topic.is_none() {
         if let Some(topic_id) = resolved_topic_id.clone() {

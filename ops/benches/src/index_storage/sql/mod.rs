@@ -61,12 +61,10 @@ pub(crate) struct ReadWorkloadContract {
 
 pub(crate) fn read_workload_contract(name: &str) -> ReadWorkloadContract {
     match name {
-        "status_equality" | "multi_value_tag" | "two_hop_channel_filter" => {
-            ReadWorkloadContract {
-                digest_order_by: "entity_id",
-                sql_order_marker: Some("ORDER BY entity_id LIMIT 100"),
-            }
-        }
+        "status_equality" | "multi_value_tag" | "two_hop_channel_filter" => ReadWorkloadContract {
+            digest_order_by: "entity_id",
+            sql_order_marker: Some("ORDER BY entity_id LIMIT 100"),
+        },
         "price_range_sort" | "keyset_page" => ReadWorkloadContract {
             digest_order_by: "price_minor, entity_id",
             sql_order_marker: Some("ORDER BY price_minor, entity_id LIMIT 100"),
@@ -133,10 +131,7 @@ fn assert_read_workload_contract(workload: Workload) -> Workload {
     workload
 }
 
-pub fn mutation_workloads(
-    prototype: Prototype,
-    config: &DatasetConfig,
-) -> Vec<MutationWorkload> {
+pub fn mutation_workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<MutationWorkload> {
     let context = WorkloadContext::new(config);
     let workloads = match prototype {
         Prototype::Jsonb => jsonb::mutation_workloads(&context),

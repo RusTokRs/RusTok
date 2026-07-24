@@ -205,9 +205,7 @@ async fn ensure_customer_owns_order(
     let order = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .get_order(tenant_id, order_id)
         .await
-        .map_err(|error| {
-            map_storefront_order_error(error, operation, tenant_id, order_id)
-        })?;
+        .map_err(|error| map_storefront_order_error(error, operation, tenant_id, order_id))?;
 
     if order.customer_id != Some(customer_id) {
         return Err(HttpError::unauthorized(
@@ -245,9 +243,7 @@ pub async fn get_me(
             },
         )
         .await
-        .map_err(|error| {
-            map_storefront_customer_port_error(error, "get_me", tenant.id)
-        })?;
+        .map_err(|error| map_storefront_customer_port_error(error, "get_me", tenant.id))?;
     Ok(Json(customer))
 }
 
@@ -324,21 +320,13 @@ pub async fn create_order_return(
 ) -> HttpResult<(StatusCode, Json<OrderReturnResponse>)> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
-        &runtime,
-        tenant.id,
-        &auth,
-        id,
-        "create_order_return_access",
-    )
-    .await?;
+    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "create_order_return_access")
+        .await?;
 
     let created = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .create_return(tenant.id, id, input)
         .await
-        .map_err(|error| {
-            map_storefront_order_error(error, "create_order_return", tenant.id, id)
-        })?;
+        .map_err(|error| map_storefront_order_error(error, "create_order_return", tenant.id, id))?;
 
     Ok((StatusCode::CREATED, Json(created)))
 }
@@ -369,14 +357,7 @@ pub async fn list_order_returns(
 ) -> HttpResult<Json<PaginatedResponse<OrderReturnResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
-        &runtime,
-        tenant.id,
-        &auth,
-        id,
-        "list_order_returns_access",
-    )
-    .await?;
+    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_returns_access").await?;
 
     let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .list_returns(
@@ -389,9 +370,7 @@ pub async fn list_order_returns(
             },
         )
         .await
-        .map_err(|error| {
-            map_storefront_order_error(error, "list_order_returns", tenant.id, id)
-        })?;
+        .map_err(|error| map_storefront_order_error(error, "list_order_returns", tenant.id, id))?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -425,14 +404,7 @@ pub async fn list_order_refunds(
 ) -> HttpResult<Json<PaginatedResponse<RefundResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
-        &runtime,
-        tenant.id,
-        &auth,
-        id,
-        "list_order_refunds_access",
-    )
-    .await?;
+    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_refunds_access").await?;
 
     let payment_service = PaymentService::new(runtime.db_clone());
     let (items, total) = payment_service
@@ -484,14 +456,7 @@ pub async fn list_order_changes(
 ) -> HttpResult<Json<PaginatedResponse<OrderChangeResponse>>> {
     super::ensure_storefront_channel_enabled_for_db(runtime.db(), &request_context).await?;
 
-    ensure_customer_owns_order(
-        &runtime,
-        tenant.id,
-        &auth,
-        id,
-        "list_order_changes_access",
-    )
-    .await?;
+    ensure_customer_owns_order(&runtime, tenant.id, &auth, id, "list_order_changes_access").await?;
 
     let (items, total) = OrderService::new(runtime.db_clone(), runtime.event_bus())
         .list_order_changes(
@@ -505,9 +470,7 @@ pub async fn list_order_changes(
             },
         )
         .await
-        .map_err(|error| {
-            map_storefront_order_error(error, "list_order_changes", tenant.id, id)
-        })?;
+        .map_err(|error| map_storefront_order_error(error, "list_order_changes", tenant.id, id))?;
 
     Ok(Json(PaginatedResponse {
         data: items,

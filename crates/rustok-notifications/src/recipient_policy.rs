@@ -76,10 +76,7 @@ pub struct NotificationRecipientPolicyRuntime {
 }
 
 impl NotificationRecipientPolicyRuntime {
-    pub fn new(
-        policy: Arc<dyn NotificationRecipientPolicy>,
-        relation_ports_ready: bool,
-    ) -> Self {
+    pub fn new(policy: Arc<dyn NotificationRecipientPolicy>, relation_ports_ready: bool) -> Self {
         Self {
             policy,
             relation_ports_ready,

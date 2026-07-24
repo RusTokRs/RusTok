@@ -427,9 +427,7 @@ fn validate_record_locale(
     has_locale: bool,
 ) -> Result<(), RecordValidationError> {
     match (mode, has_locale) {
-        (LocaleMode::Required, false) => {
-            Err(RecordValidationError::LocaleRequired(schema.clone()))
-        }
+        (LocaleMode::Required, false) => Err(RecordValidationError::LocaleRequired(schema.clone())),
         (LocaleMode::None, true) => Err(RecordValidationError::LocaleForbidden(schema.clone())),
         _ => Ok(()),
     }
@@ -441,9 +439,7 @@ fn validate_query_locale(
     has_locale: bool,
 ) -> Result<(), QueryValidationError> {
     match (mode, has_locale) {
-        (LocaleMode::Required, false) => {
-            Err(QueryValidationError::LocaleRequired(schema.clone()))
-        }
+        (LocaleMode::Required, false) => Err(QueryValidationError::LocaleRequired(schema.clone())),
         (LocaleMode::None, true) => Err(QueryValidationError::LocaleForbidden(schema.clone())),
         _ => Ok(()),
     }

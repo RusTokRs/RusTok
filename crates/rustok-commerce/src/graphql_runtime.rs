@@ -49,9 +49,7 @@ pub fn attach_schema_data(
     })
 }
 
-pub(crate) fn payment_provider_registry_from_context(
-    ctx: &Context<'_>,
-) -> PaymentProviderRegistry {
+pub(crate) fn payment_provider_registry_from_context(ctx: &Context<'_>) -> PaymentProviderRegistry {
     ctx.data_opt::<CommerceGraphqlRuntimeData>()
         .map(CommerceGraphqlRuntimeData::payment_provider_registry)
         .unwrap_or_else(PaymentProviderRegistry::with_manual_provider)

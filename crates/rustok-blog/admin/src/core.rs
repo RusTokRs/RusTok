@@ -332,7 +332,9 @@ pub fn has_required_draft_fields(title: &str, content: &RichTextDocument) -> boo
 
 fn document_has_text(document: &RichTextDocument) -> bool {
     fn node_has_text(node: &RichTextNode) -> bool {
-        node.text.as_deref().is_some_and(|text| !text.trim().is_empty())
+        node.text
+            .as_deref()
+            .is_some_and(|text| !text.trim().is_empty())
             || node.content.iter().any(node_has_text)
     }
 

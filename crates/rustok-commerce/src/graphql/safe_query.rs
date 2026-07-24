@@ -26,11 +26,7 @@ mod query_error_boundary {
             message.into_query_boundary()
         }
 
-        fn public(
-            message: &'static str,
-            code: &'static str,
-            retryable: bool,
-        ) -> Self {
+        fn public(message: &'static str, code: &'static str, retryable: bool) -> Self {
             Self::Public {
                 message,
                 code,
@@ -216,8 +212,7 @@ mod query_error_boundary {
                     false,
                     "not_found",
                 ),
-                PaymentError::InvalidTransition { .. }
-                | PaymentError::ProviderRejected { .. } => (
+                PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
                     "Payment state conflicts with this query",
                     "PAYMENT_STATE_CONFLICT",
                     false,

@@ -42,8 +42,8 @@ async fn storefront_forum_native(
         };
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ForumStorefrontReadStateService, ListRepliesFilter,
-            ListTopicsFilter, ReplyService, ReplyStatus, TopicService,
+            CategoryService, ForumStorefrontReadStateService, ListRepliesFilter, ListTopicsFilter,
+            ReplyService, ReplyStatus, TopicService,
         };
         use rustok_outbox::TransactionalEventBus;
 
@@ -118,53 +118,48 @@ async fn storefront_forum_native(
             per_page: 20,
         };
 
-        let (topic_items, topics_total, first_topic_id, read_state_available) =
-            if let Some(auth) = auth.0.filter(|auth| {
-                has_any_effective_permission(
-                    &auth.permissions,
-                    &[Permission::FORUM_TOPICS_LIST],
-                )
+        let (topic_items, topics_total, first_topic_id, read_state_available) = if let Some(auth) =
+            auth.0.filter(|auth| {
+                has_any_effective_permission(&auth.permissions, &[Permission::FORUM_TOPICS_LIST])
             }) {
-                let security = SecurityContext::from_permission_snapshot(
-                    Some(auth.user_id),
-                    &auth.permissions,
-                );
-                let page = ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
-                    .list_topics_with_unread(
-                        tenant.id,
-                        security,
-                        topic_filter,
-                        Some(tenant.default_locale.as_str()),
-                        channel_slug,
-                    )
-                    .await
-                    .map_err(server_error)?;
-                let first_topic_id = page.items.first().map(|item| item.topic.id);
-                (
-                    page.items.into_iter().map(map_unread_topic).collect(),
-                    page.total,
-                    first_topic_id,
-                    true,
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let page = ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
+                .list_topics_with_unread(
+                    tenant.id,
+                    security,
+                    topic_filter,
+                    Some(tenant.default_locale.as_str()),
+                    channel_slug,
                 )
-            } else {
-                let (topics, total) = topic_service
-                    .list_storefront_visible_with_locale_fallback(
-                        tenant.id,
-                        public_security.clone(),
-                        topic_filter,
-                        Some(tenant.default_locale.as_str()),
-                        channel_slug,
-                    )
-                    .await
-                    .map_err(server_error)?;
-                let first_topic_id = topics.first().map(|topic| topic.id);
-                (
-                    topics.into_iter().map(map_topic_list_item).collect(),
-                    total,
-                    first_topic_id,
-                    false,
+                .await
+                .map_err(server_error)?;
+            let first_topic_id = page.items.first().map(|item| item.topic.id);
+            (
+                page.items.into_iter().map(map_unread_topic).collect(),
+                page.total,
+                first_topic_id,
+                true,
+            )
+        } else {
+            let (topics, total) = topic_service
+                .list_storefront_visible_with_locale_fallback(
+                    tenant.id,
+                    public_security.clone(),
+                    topic_filter,
+                    Some(tenant.default_locale.as_str()),
+                    channel_slug,
                 )
-            };
+                .await
+                .map_err(server_error)?;
+            let first_topic_id = topics.first().map(|topic| topic.id);
+            (
+                topics.into_iter().map(map_topic_list_item).collect(),
+                total,
+                first_topic_id,
+                false,
+            )
+        };
 
         let resolved_topic_id = requested_topic_id.or(first_topic_id);
         if selected_topic.is_none() {
@@ -274,10 +269,8 @@ async fn storefront_topic_mark_read_native(
                 .or(Some(request.locale.as_str()))
                 .or(Some(tenant.default_locale.as_str())),
         );
-        let security = SecurityContext::from_permission_snapshot(
-            Some(auth.user_id),
-            &auth.permissions,
-        );
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
         let db = runtime_ctx.db_clone();
         match ForumStorefrontReadStateService::new(db, event_bus)
             .mark_topic_read_current_visible(

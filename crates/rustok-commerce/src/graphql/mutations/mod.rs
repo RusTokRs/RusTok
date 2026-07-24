@@ -4,16 +4,16 @@ use super::marketplace_financial::MarketplaceFinancialMutation;
 
 #[path = "safe_cart.rs"]
 pub mod cart;
+#[path = "safe_helpers.rs"]
+mod cart_safe_helpers;
 pub mod catalog;
 #[path = "safe_checkout.rs"]
 pub mod checkout;
 pub mod fulfillment;
-#[path = "helpers.rs"]
-mod legacy_helpers;
-#[path = "safe_helpers.rs"]
-mod cart_safe_helpers;
 #[path = "safe_order_helpers.rs"]
 pub mod helpers;
+#[path = "helpers.rs"]
+mod legacy_helpers;
 pub mod pricing;
 pub mod provider_operations;
 pub mod reconciliation;

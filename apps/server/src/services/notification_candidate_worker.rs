@@ -50,10 +50,8 @@ impl NotificationTenantCapabilityCommitGuard for ServerNotificationTenantCapabil
         &self,
         transaction: &DatabaseTransaction,
         request: NotificationTenantCapabilityCommitRequest,
-    ) -> Result<
-        NotificationTenantCapabilityCommitDecision,
-        NotificationTenantCapabilityCommitError,
-    > {
+    ) -> Result<NotificationTenantCapabilityCommitDecision, NotificationTenantCapabilityCommitError>
+    {
         if request.tenant_id.is_nil() || request.module_slug != NOTIFICATIONS_MODULE_SLUG {
             return Err(NotificationTenantCapabilityCommitError::permanent());
         }
@@ -112,7 +110,9 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         .get::<NotificationRecipientPolicyRuntime>()
         .cloned()
     else {
-        tracing::info!("Notification candidate worker disabled: recipient policy runtime is absent");
+        tracing::info!(
+            "Notification candidate worker disabled: recipient policy runtime is absent"
+        );
         return Ok(());
     };
 
@@ -134,7 +134,9 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         extensions.as_ref(),
     )
     .ok_or_else(|| {
-        Error::Message("notification source registry is unavailable for candidate worker".to_string())
+        Error::Message(
+            "notification source registry is unavailable for candidate worker".to_string(),
+        )
     })?;
     let module_registry = ctx
         .shared_get::<ModuleRegistry>()
@@ -163,7 +165,9 @@ pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) 
         worker_id,
         DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE,
     )
-    .map_err(|error| Error::Message(format!("notification candidate worker is invalid: {error}")))?;
+    .map_err(|error| {
+        Error::Message(format!("notification candidate worker is invalid: {error}"))
+    })?;
 
     tracing::info!(
         instance_id,
@@ -190,7 +194,10 @@ async fn notification_candidate_worker_loop(
 ) {
     loop {
         if *stop_rx.borrow() {
-            tracing::info!(worker_id = worker.worker_id(), "Notification candidate worker stopped");
+            tracing::info!(
+                worker_id = worker.worker_id(),
+                "Notification candidate worker stopped"
+            );
             return;
         }
 
@@ -210,7 +217,10 @@ async fn notification_candidate_worker_loop(
 
         for work in work_items {
             if *stop_rx.borrow() {
-                tracing::info!(worker_id = worker.worker_id(), "Notification candidate worker stopped before next claim");
+                tracing::info!(
+                    worker_id = worker.worker_id(),
+                    "Notification candidate worker stopped before next claim"
+                );
                 return;
             }
 

@@ -2,10 +2,8 @@ use async_graphql::{EmptySubscription, Schema};
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_forum::{ForumMutation, ForumQuery};
 
-const GRAPHQL_ADAPTER: &str =
-    include_str!("../storefront/src/transport/graphql_adapter.rs");
-const NATIVE_ADAPTER: &str =
-    include_str!("../storefront/src/transport/native_server_adapter.rs");
+const GRAPHQL_ADAPTER: &str = include_str!("../storefront/src/transport/graphql_adapter.rs");
+const NATIVE_ADAPTER: &str = include_str!("../storefront/src/transport/native_server_adapter.rs");
 
 #[test]
 fn graphql_schema_exposes_storefront_visible_unread_contract() {

@@ -211,7 +211,9 @@ FROM forum_domain_events_next
             .execute_unprepared("DROP TABLE forum_domain_events")
             .await?;
         connection
-            .execute_unprepared("ALTER TABLE forum_domain_events_next RENAME TO forum_domain_events")
+            .execute_unprepared(
+                "ALTER TABLE forum_domain_events_next RENAME TO forum_domain_events",
+            )
             .await?;
     }
 

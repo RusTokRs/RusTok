@@ -1,7 +1,5 @@
 use async_graphql::{ErrorExtensions, Result};
-use rustok_api::{
-    AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext,
-};
+use rustok_api::{AuthContext, PortActor, PortContext, PortError, PortErrorKind, RequestContext};
 use rustok_cart::CartStorefrontPort;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 use rustok_pricing::{PriceResolutionContext, PricingReadPort};
@@ -90,7 +88,11 @@ pub(crate) fn cart_port_error(error: PortError) -> async_graphql::Error {
 
     let (message, code, retryable) = match &error.kind {
         PortErrorKind::Validation => ("Cart request is invalid", "CART_REQUEST_INVALID", false),
-        PortErrorKind::NotFound => ("Cart resource was not found", "CART_RESOURCE_NOT_FOUND", false),
+        PortErrorKind::NotFound => (
+            "Cart resource was not found",
+            "CART_RESOURCE_NOT_FOUND",
+            false,
+        ),
         PortErrorKind::Conflict => (
             "Cart operation conflicts with the current state",
             "CART_STATE_CONFLICT",
@@ -257,25 +259,32 @@ pub(crate) async fn resolve_storefront_line_item_input(
     .await
     .map_err(|error| {
         let detail = format!("{error:?}");
-        let (message, code, retryable) = if detail.contains("Variant not found")
-            || detail.contains("Product not found")
-        {
-            ("Product is not available", "CART_PRODUCT_UNAVAILABLE", false)
-        } else if detail.contains("does not have enough available inventory") {
-            (
-                "Requested quantity is not available",
-                "CART_INVENTORY_INSUFFICIENT",
-                false,
-            )
-        } else if detail.contains("Invalid JSON metadata payload") {
-            ("Cart line item input is invalid", "CART_LINE_ITEM_INVALID", false)
-        } else {
-            (
-                "Cart line item could not be resolved",
-                "CART_LINE_ITEM_RESOLUTION_FAILED",
-                true,
-            )
-        };
+        let (message, code, retryable) =
+            if detail.contains("Variant not found") || detail.contains("Product not found") {
+                (
+                    "Product is not available",
+                    "CART_PRODUCT_UNAVAILABLE",
+                    false,
+                )
+            } else if detail.contains("does not have enough available inventory") {
+                (
+                    "Requested quantity is not available",
+                    "CART_INVENTORY_INSUFFICIENT",
+                    false,
+                )
+            } else if detail.contains("Invalid JSON metadata payload") {
+                (
+                    "Cart line item input is invalid",
+                    "CART_LINE_ITEM_INVALID",
+                    false,
+                )
+            } else {
+                (
+                    "Cart line item could not be resolved",
+                    "CART_LINE_ITEM_RESOLUTION_FAILED",
+                    true,
+                )
+            };
         legacy_graphql_error(
             error,
             tenant_id,
@@ -337,7 +346,11 @@ pub(crate) async fn validate_storefront_line_item_quantity(
     .map_err(|error| {
         let detail = format!("{error:?}");
         let (message, code, retryable) = if detail.contains("Variant not found") {
-            ("Product is not available", "CART_PRODUCT_UNAVAILABLE", false)
+            (
+                "Product is not available",
+                "CART_PRODUCT_UNAVAILABLE",
+                false,
+            )
         } else if detail.contains("does not have enough available inventory") {
             (
                 "Requested quantity is not available",

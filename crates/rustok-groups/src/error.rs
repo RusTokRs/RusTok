@@ -50,10 +50,9 @@ impl From<GroupsError> for PortError {
                 "groups.membership_suspended",
                 "group membership is suspended",
             ),
-            GroupsError::MembershipBanned => PortError::forbidden(
-                "groups.membership_banned",
-                "group membership is banned",
-            ),
+            GroupsError::MembershipBanned => {
+                PortError::forbidden("groups.membership_banned", "group membership is banned")
+            }
             GroupsError::ManagerRequired(message) => {
                 PortError::forbidden("groups.manager_required", message)
             }

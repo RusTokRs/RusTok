@@ -51,8 +51,7 @@ pub use service::NotificationsService;
 pub use worker::{
     DEFAULT_NOTIFICATION_CANDIDATE_BATCH_SIZE, MAX_NOTIFICATION_CANDIDATE_BATCH_SIZE,
     NotificationCandidateBatchResult, NotificationCandidatePolicyDeferral,
-    NotificationCandidateWorkItem, NotificationCandidateWorker,
-    NotificationCandidateWorkerFailure,
+    NotificationCandidateWorkItem, NotificationCandidateWorker, NotificationCandidateWorkerFailure,
 };
 
 pub struct NotificationsModule;

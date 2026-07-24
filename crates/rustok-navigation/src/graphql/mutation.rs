@@ -1,7 +1,7 @@
 use super::types::*;
 use crate::{
-    CreateMenuInput, MenuBindingService, MenuItemInput, MenuItemTranslationInput,
-    MenuService, MenuTranslationInput, NavigationError,
+    CreateMenuInput, MenuBindingService, MenuItemInput, MenuItemTranslationInput, MenuService,
+    MenuTranslationInput, NavigationError,
 };
 use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::{

@@ -353,9 +353,7 @@ fn claimable_source_condition(timestamp: DateTime<FixedOffset>) -> Condition {
         .add(source_inbox::Column::Status.eq(NotificationSourceInboxStatus::Pending))
         .add(
             Condition::all()
-                .add(
-                    source_inbox::Column::Status.eq(NotificationSourceInboxStatus::RetryableError),
-                )
+                .add(source_inbox::Column::Status.eq(NotificationSourceInboxStatus::RetryableError))
                 .add(
                     Condition::any()
                         .add(source_inbox::Column::NextAttemptAt.is_null())

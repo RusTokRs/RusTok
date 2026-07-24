@@ -39,9 +39,10 @@ impl TaxCalculationPort for crate::TaxService {
             .map(|amount| (amount.line_item_id, amount.shipping_option_id))
             .collect::<HashSet<_>>();
 
-        let result = self.calculate(request).await.map_err(|error| {
-            tax_error_to_port_error(&context, owner_operation, error)
-        })?;
+        let result = self
+            .calculate(request)
+            .await
+            .map_err(|error| tax_error_to_port_error(&context, owner_operation, error))?;
         validate_tax_result(
             &context,
             owner_operation,
@@ -192,7 +193,10 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.provider_id_invalid",
-            format!("tax provider returned invalid provider_id {:?}", line.provider_id),
+            format!(
+                "tax provider returned invalid provider_id {:?}",
+                line.provider_id
+            ),
         ));
     }
     if line.rate < Decimal::ZERO || line.amount < Decimal::ZERO {
@@ -222,9 +226,7 @@ fn validate_tax_line(
             context,
             owner_operation,
             "tax.currency_mismatch",
-            format!(
-                "tax provider returned currency {line_currency}, expected {expected_currency}"
-            ),
+            format!("tax provider returned currency {line_currency}, expected {expected_currency}"),
         ));
     }
     if !taxable_targets.contains(&(line.line_item_id, line.shipping_option_id)) {
@@ -361,8 +363,7 @@ mod tests {
             }],
         };
         assert!(
-            validate_tax_result(&test_context(), "test", "USD", false, &targets, &result)
-                .is_err()
+            validate_tax_result(&test_context(), "test", "USD", false, &targets, &result).is_err()
         );
     }
 
@@ -385,8 +386,7 @@ mod tests {
             }],
         };
         assert!(
-            validate_tax_result(&test_context(), "test", "USD", false, &targets, &result)
-                .is_ok()
+            validate_tax_result(&test_context(), "test", "USD", false, &targets, &result).is_ok()
         );
     }
 }

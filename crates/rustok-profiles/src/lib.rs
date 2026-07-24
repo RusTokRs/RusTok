@@ -18,7 +18,8 @@ pub use entities::ProfileRecord;
 pub use error::{ProfileError, ProfileResult};
 pub use loader::{ProfileSummaryLoader, ProfileSummaryLoaderKey};
 pub use privacy::{
-    ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest, ProfilePrivacyRuntime,
+    ProfilePrivacyDecision, ProfilePrivacyReadPort, ProfilePrivacyReadRequest,
+    ProfilePrivacyRuntime,
 };
 pub use reader::ProfilesReader;
 pub use services::{ProfileBackfillResult, ProfileService};

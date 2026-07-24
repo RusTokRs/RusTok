@@ -291,10 +291,7 @@ impl ForumTopicReadStateService {
                 user_id,
                 TopicReadHighWater {
                     topic_id: topic.id,
-                    last_read_position: public_positions
-                        .get(&topic.id)
-                        .copied()
-                        .unwrap_or(0),
+                    last_read_position: public_positions.get(&topic.id).copied().unwrap_or(0),
                     last_read_revision: topic_revisions.get(&topic.id).copied().unwrap_or(0),
                 },
                 &now,
@@ -305,13 +302,7 @@ impl ForumTopicReadStateService {
         let next_cursor = has_more
             .then(|| {
                 topics.last().map(|topic| {
-                    encode_bulk_read_cursor(
-                        tenant_id,
-                        user_id,
-                        scope,
-                        &snapshot_at,
-                        topic,
-                    )
+                    encode_bulk_read_cursor(tenant_id, user_id, scope, &snapshot_at, topic)
                 })
             })
             .flatten();
@@ -486,9 +477,7 @@ async fn upsert_topic_read_high_water_in_tx(
         .filter(forum_topic_read_state::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_read_state::Column::TopicId.eq(high_water.topic_id))
         .filter(forum_topic_read_state::Column::UserId.eq(user_id))
-        .filter(
-            forum_topic_read_state::Column::LastReadPosition.lt(high_water.last_read_position),
-        )
+        .filter(forum_topic_read_state::Column::LastReadPosition.lt(high_water.last_read_position))
         .set(forum_topic_read_state::ActiveModel {
             last_read_position: Set(high_water.last_read_position),
             ..Default::default()
@@ -500,9 +489,7 @@ async fn upsert_topic_read_high_water_in_tx(
         .filter(forum_topic_read_state::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_read_state::Column::TopicId.eq(high_water.topic_id))
         .filter(forum_topic_read_state::Column::UserId.eq(user_id))
-        .filter(
-            forum_topic_read_state::Column::LastReadRevision.lt(high_water.last_read_revision),
-        )
+        .filter(forum_topic_read_state::Column::LastReadRevision.lt(high_water.last_read_revision))
         .set(forum_topic_read_state::ActiveModel {
             last_read_revision: Set(high_water.last_read_revision),
             ..Default::default()
@@ -514,12 +501,8 @@ async fn upsert_topic_read_high_water_in_tx(
         .filter(forum_topic_read_state::Column::TenantId.eq(tenant_id))
         .filter(forum_topic_read_state::Column::TopicId.eq(high_water.topic_id))
         .filter(forum_topic_read_state::Column::UserId.eq(user_id))
-        .filter(
-            forum_topic_read_state::Column::LastReadPosition.lte(high_water.last_read_position),
-        )
-        .filter(
-            forum_topic_read_state::Column::LastReadRevision.lte(high_water.last_read_revision),
-        )
+        .filter(forum_topic_read_state::Column::LastReadPosition.lte(high_water.last_read_position))
+        .filter(forum_topic_read_state::Column::LastReadRevision.lte(high_water.last_read_revision))
         .set(forum_topic_read_state::ActiveModel {
             updated_at: Set(observed_at.clone()),
             ..Default::default()
@@ -560,9 +543,7 @@ fn encode_bulk_read_cursor(
         "{BULK_READ_CURSOR_VERSION}|{tenant_id}|{user_id}|{}|{}|{}|{}",
         scope.cursor_token(),
         snapshot_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
-        topic
-            .created_at
-            .to_rfc3339_opts(SecondsFormat::Nanos, true),
+        topic.created_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
         topic.id
     )
 }
@@ -634,11 +615,7 @@ fn explicit_state(model: forum_topic_read_state::Model) -> ForumTopicReadState {
     }
 }
 
-fn implicit_state(
-    tenant_id: Uuid,
-    topic_id: Uuid,
-    user_id: Option<Uuid>,
-) -> ForumTopicReadState {
+fn implicit_state(tenant_id: Uuid, topic_id: Uuid, user_id: Option<Uuid>) -> ForumTopicReadState {
     ForumTopicReadState {
         tenant_id,
         topic_id,
