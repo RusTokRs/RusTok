@@ -73,13 +73,16 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
         context: PortContext,
         request: ReadCheckoutOrderIdentityByOperationRequest,
     ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
+        let owner_operation = "read_checkout_identity_by_operation";
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.journal
             .get_by_operation(tenant_id, request.checkout_operation_id)
             .await
             .map(|value| value.map(Into::into))
-            .map_err(order_checkout_identity_error_to_port_error)
+            .map_err(|error| {
+                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
+            })
     }
 
     async fn read_by_cart(
@@ -87,13 +90,16 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
         context: PortContext,
         request: ReadCheckoutOrderIdentityByCartRequest,
     ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
+        let owner_operation = "read_checkout_identity_by_cart";
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.journal
             .get_by_cart(tenant_id, request.cart_id)
             .await
             .map(|value| value.map(Into::into))
-            .map_err(order_checkout_identity_error_to_port_error)
+            .map_err(|error| {
+                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
+            })
     }
 
     async fn bind(
@@ -101,9 +107,10 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
         context: PortContext,
         request: BindCheckoutOrderIdentityRequest,
     ) -> Result<CheckoutOrderIdentitySnapshot, PortError> {
+        let owner_operation = "bind_checkout_identity";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         self.journal
             .record(RecordOrderCheckoutIdentity {
                 tenant_id,
@@ -117,7 +124,9 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
             })
             .await
             .map(Into::into)
-            .map_err(order_checkout_identity_error_to_port_error)
+            .map_err(|error| {
+                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
+            })
     }
 
     async fn adopt_legacy(
@@ -125,14 +134,17 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
         context: PortContext,
         request: AdoptLegacyCheckoutOrderIdentityRequest,
     ) -> Result<Option<CheckoutOrderIdentitySnapshot>, PortError> {
+        let owner_operation = "adopt_legacy_checkout_identity";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         if let Some(existing) = self
             .journal
             .get_by_operation(tenant_id, request.checkout_operation_id)
             .await
-            .map_err(order_checkout_identity_error_to_port_error)?
+            .map_err(|error| {
+                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
+            })?
         {
             if existing.source_cart_id.is_some() && existing.source_cart_id != Some(request.cart_id)
             {
@@ -152,8 +164,11 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
         .await
         .map_err(|error| {
             tracing::error!(
-                correlation_id = %context.correlation_id,
                 error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.checkout_identity_storage_unavailable",
                 "failed to read legacy order checkout identity"
             );
             PortError::unavailable(
@@ -190,7 +205,9 @@ impl CheckoutOrderIdentityPort for InProcessCheckoutOrderIdentityPort {
             .await
             .map(Into::into)
             .map(Some)
-            .map_err(order_checkout_identity_error_to_port_error)
+            .map_err(|error| {
+                order_checkout_identity_error_to_port_error(&context, owner_operation, error)
+            })
     }
 }
 
@@ -311,23 +328,65 @@ fn parse_optional_uuid(value: Option<String>) -> Option<Uuid> {
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-fn order_checkout_identity_error_to_port_error(error: OrderCheckoutIdentityError) -> PortError {
+fn order_checkout_identity_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: OrderCheckoutIdentityError,
+) -> PortError {
     match error {
         OrderCheckoutIdentityError::Validation(message) => {
-            PortError::validation("order.checkout_identity_validation", message)
+            tracing::warn!(
+                internal_message = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.checkout_identity_validation",
+                "checkout order identity validation failed"
+            );
+            PortError::validation(
+                "order.checkout_identity_validation",
+                "checkout order identity request is invalid",
+            )
         }
-        OrderCheckoutIdentityError::Conflict(_) => PortError::conflict(
-            "order.checkout_identity_conflict",
-            "checkout order identity conflicts with an existing order binding",
-        ),
-        OrderCheckoutIdentityError::OrderNotFound(_) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "order.checkout_identity_order_not_found",
-            "order for checkout identity was not found",
-            false,
-        ),
+        OrderCheckoutIdentityError::Conflict(message) => {
+            tracing::warn!(
+                internal_message = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.checkout_identity_conflict",
+                "checkout order identity conflicts with an existing binding"
+            );
+            PortError::conflict(
+                "order.checkout_identity_conflict",
+                "checkout order identity conflicts with an existing order binding",
+            )
+        }
+        OrderCheckoutIdentityError::OrderNotFound(order_id) => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.checkout_identity_order_not_found",
+                order_id = %order_id,
+                "order for checkout identity was not found"
+            );
+            PortError::new(
+                rustok_api::PortErrorKind::NotFound,
+                "order.checkout_identity_order_not_found",
+                "order for checkout identity was not found",
+                false,
+            )
+        }
         OrderCheckoutIdentityError::Database(error) => {
-            tracing::error!(error = ?error, "order checkout identity storage failed");
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.checkout_identity_storage_unavailable",
+                "order checkout identity storage failed"
+            );
             PortError::unavailable(
                 "order.checkout_identity_storage_unavailable",
                 "order checkout identity storage is temporarily unavailable",
@@ -414,6 +473,8 @@ impl InProcessCheckoutCompletionPort {
 
     async fn resolve_existing_completion(
         &self,
+        context: &PortContext,
+        owner_operation: &'static str,
         tenant_id: Uuid,
         actor_id: Uuid,
         identity: &CheckoutOrderIdentitySnapshot,
@@ -421,7 +482,14 @@ impl InProcessCheckoutCompletionPort {
         fallback_locale: Option<&str>,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
         let mut order = self
-            .load_order(tenant_id, identity.order_id, locale, fallback_locale)
+            .load_order(
+                context,
+                owner_operation,
+                tenant_id,
+                identity.order_id,
+                locale,
+                fallback_locale,
+            )
             .await?;
         match order.status_kind() {
             OrderStatusKind::Pending => {
@@ -429,7 +497,7 @@ impl InProcessCheckoutCompletionPort {
                     .order_service
                     .confirm_order(tenant_id, actor_id, order.id)
                     .await
-                    .map_err(order_error_to_port_error)?;
+                    .map_err(|error| order_error_to_port_error(context, owner_operation, error))?;
                 if let Some(locale) = locale {
                     order = self
                         .order_service
@@ -440,7 +508,9 @@ impl InProcessCheckoutCompletionPort {
                             fallback_locale,
                         )
                         .await
-                        .map_err(order_error_to_port_error)?;
+                        .map_err(|error| {
+                            order_error_to_port_error(context, owner_operation, error)
+                        })?;
                 }
             }
             OrderStatusKind::Confirmed
@@ -468,6 +538,8 @@ impl InProcessCheckoutCompletionPort {
 
     async fn load_order(
         &self,
+        context: &PortContext,
+        owner_operation: &'static str,
         tenant_id: Uuid,
         order_id: Uuid,
         locale: Option<&str>,
@@ -481,7 +553,7 @@ impl InProcessCheckoutCompletionPort {
             }
             None => self.order_service.get_order(tenant_id, order_id).await,
         }
-        .map_err(order_error_to_port_error)
+        .map_err(|error| order_error_to_port_error(context, owner_operation, error))
     }
 }
 
@@ -499,12 +571,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
         context: PortContext,
         mut request: CompleteCheckoutPortRequest,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
+        let owner_operation = "complete_checkout";
         context.require_policy(PortCallPolicy::write())?;
         context.require_write_semantics()?;
-        let tenant_id = parse_port_tenant_id(&context)?;
-        let actor_id = parse_port_actor_id(&context)?;
-        let checkout_operation_id = parse_checkout_operation_id(&context)?;
-        let (snapshot_hash, request_hash) = checkout_request_hashes(&request)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
+        let actor_id = parse_port_actor_id(&context, owner_operation)?;
+        let checkout_operation_id = parse_checkout_operation_id(&context, owner_operation)?;
+        let (snapshot_hash, request_hash) =
+            checkout_request_hashes(&context, owner_operation, &request)?;
 
         if let Some(identity) = self
             .read_identity_by_operation(&context, checkout_operation_id)
@@ -520,6 +594,8 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
             )?;
             return self
                 .resolve_existing_completion(
+                    &context,
+                    owner_operation,
                     tenant_id,
                     actor_id,
                     &identity,
@@ -543,6 +619,8 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
             )?;
             return self
                 .resolve_existing_completion(
+                    &context,
+                    owner_operation,
                     tenant_id,
                     actor_id,
                     &identity,
@@ -638,7 +716,11 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                     .adopt_legacy_identity(&context, checkout_operation_id, request.cart_id)
                     .await?
                 else {
-                    return Err(order_error_to_port_error(create_error));
+                    return Err(order_error_to_port_error(
+                        &context,
+                        owner_operation,
+                        create_error,
+                    ));
                 };
                 validate_completion_identity(
                     &identity,
@@ -650,6 +732,8 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                 )?;
                 let order = self
                     .load_order(
+                        &context,
+                        owner_operation,
                         tenant_id,
                         identity.order_id,
                         request.locale.as_deref(),
@@ -667,6 +751,8 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
             ));
         }
         self.resolve_existing_completion(
+            &context,
+            owner_operation,
             tenant_id,
             actor_id,
             &identity,
@@ -681,12 +767,13 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
         context: PortContext,
         request: CheckoutResultRequest,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
+        let owner_operation = "read_checkout_result";
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let identity = self
             .identity_port
             .read_by_cart(
-                context,
+                context.clone(),
                 ReadCheckoutOrderIdentityByCartRequest {
                     cart_id: request.cart_id,
                 },
@@ -701,7 +788,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                 )
             })?;
         let order = self
-            .load_order(tenant_id, identity.order_id, None, None)
+            .load_order(
+                &context,
+                owner_operation,
+                tenant_id,
+                identity.order_id,
+                None,
+                None,
+            )
             .await?;
         Ok(CheckoutCompletionSnapshot::from_response(
             &order,
@@ -714,12 +808,13 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
         context: PortContext,
         request: CheckoutResultByOperationRequest,
     ) -> Result<CheckoutCompletionSnapshot, PortError> {
+        let owner_operation = "read_checkout_result_by_operation";
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let identity = self
             .identity_port
             .read_by_operation(
-                context,
+                context.clone(),
                 ReadCheckoutOrderIdentityByOperationRequest {
                     checkout_operation_id: request.checkout_operation_id,
                 },
@@ -734,7 +829,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
                 )
             })?;
         let order = self
-            .load_order(tenant_id, identity.order_id, None, None)
+            .load_order(
+                &context,
+                owner_operation,
+                tenant_id,
+                identity.order_id,
+                None,
+                None,
+            )
             .await?;
         Ok(CheckoutCompletionSnapshot::from_response(
             &order,
@@ -747,13 +849,14 @@ impl CheckoutCompletionPort for InProcessCheckoutCompletionPort {
         context: PortContext,
         request: OrderStatusRequest,
     ) -> Result<OrderStatusSnapshot, PortError> {
+        let owner_operation = "read_order_status";
         context.require_policy(PortCallPolicy::read())?;
-        let tenant_id = parse_port_tenant_id(&context)?;
+        let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let response = self
             .order_service
             .get_order(tenant_id, request.order_id)
             .await
-            .map_err(order_error_to_port_error)?;
+            .map_err(|error| order_error_to_port_error(&context, owner_operation, error))?;
         Ok(OrderStatusSnapshot::from_response(&response))
     }
 }
@@ -835,45 +938,79 @@ impl CheckoutCompletionSnapshot {
     }
 }
 
-fn parse_port_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+fn parse_port_tenant_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.tenant_id.trim()).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "order.tenant_id_invalid",
+            "order tenant context is invalid"
+        );
         PortError::validation(
             "order.tenant_id_invalid",
-            "PortContext.tenant_id must be a UUID for order ports",
+            "order request context is invalid",
         )
     })
 }
 
-fn parse_port_actor_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.actor.id).map_err(|_| {
+fn parse_port_actor_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    Uuid::parse_str(context.actor.id.trim()).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "order.actor_id_invalid",
+            "order actor context is invalid"
+        );
+        PortError::validation("order.actor_id_invalid", "order request context is invalid")
+    })
+}
+
+fn parse_checkout_operation_id(
+    context: &PortContext,
+    owner_operation: &'static str,
+) -> Result<Uuid, PortError> {
+    let value = context.causation_id.as_deref().ok_or_else(|| {
+        tracing::warn!(
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "order.checkout_operation_id_required",
+            "checkout operation context is missing"
+        );
         PortError::validation(
-            "order.actor_id_invalid",
-            "PortContext.actor.id must be a UUID for order write ports",
+            "order.checkout_operation_id_required",
+            "order request context is invalid",
+        )
+    })?;
+    Uuid::parse_str(value).map_err(|error| {
+        tracing::warn!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "order.checkout_operation_id_invalid",
+            "checkout operation context is invalid"
+        );
+        PortError::validation(
+            "order.checkout_operation_id_invalid",
+            "order request context is invalid",
         )
     })
-}
-
-fn parse_checkout_operation_id(context: &PortContext) -> Result<Uuid, PortError> {
-    context
-        .causation_id
-        .as_deref()
-        .ok_or_else(|| {
-            PortError::validation(
-                "order.checkout_operation_id_required",
-                "checkout completion requires a UUID causation_id",
-            )
-        })
-        .and_then(|value| {
-            Uuid::parse_str(value).map_err(|_| {
-                PortError::validation(
-                    "order.checkout_operation_id_invalid",
-                    "checkout completion causation_id must be a UUID",
-                )
-            })
-        })
 }
 
 fn checkout_request_hashes(
+    context: &PortContext,
+    owner_operation: &'static str,
     request: &CompleteCheckoutPortRequest,
 ) -> Result<(String, String), PortError> {
     let snapshot = serde_json::json!({
@@ -889,7 +1026,14 @@ fn checkout_request_hashes(
         "tax_lines": request.tax_lines,
     });
     let full_request = serde_json::to_value(request).map_err(|error| {
-        tracing::error!(error = ?error, "failed to encode checkout completion request");
+        tracing::error!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "order.checkout_request_encoding_failed",
+            "failed to encode checkout completion request"
+        );
         PortError::new(
             rustok_api::PortErrorKind::InvariantViolation,
             "order.checkout_request_encoding_failed",
@@ -897,13 +1041,27 @@ fn checkout_request_hashes(
             false,
         )
     })?;
-    Ok((hash_json(snapshot)?, hash_json(full_request)?))
+    Ok((
+        hash_json(context, owner_operation, snapshot)?,
+        hash_json(context, owner_operation, full_request)?,
+    ))
 }
 
-fn hash_json(value: Value) -> Result<String, PortError> {
+fn hash_json(
+    context: &PortContext,
+    owner_operation: &'static str,
+    value: Value,
+) -> Result<String, PortError> {
     let canonical = canonicalize_json(value);
     let bytes = serde_json::to_vec(&canonical).map_err(|error| {
-        tracing::error!(error = ?error, "failed to encode canonical checkout request");
+        tracing::error!(
+            error = ?error,
+            correlation_id = %context.correlation_id,
+            tenant_id = %context.tenant_id,
+            operation = owner_operation,
+            code = "order.checkout_request_encoding_failed",
+            "failed to encode canonical checkout request"
+        );
         PortError::new(
             rustok_api::PortErrorKind::InvariantViolation,
             "order.checkout_request_encoding_failed",
@@ -1022,34 +1180,94 @@ fn validate_completion_identity(
     Ok(())
 }
 
-fn order_error_to_port_error(error: OrderError) -> PortError {
+fn order_error_to_port_error(
+    context: &PortContext,
+    owner_operation: &'static str,
+    error: OrderError,
+) -> PortError {
     match error {
         OrderError::Database(error) => {
-            tracing::error!(error = ?error, "order storage operation failed");
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.database_unavailable",
+                "order storage operation failed"
+            );
             PortError::unavailable(
                 "order.database_unavailable",
                 "order storage is temporarily unavailable",
             )
         }
-        OrderError::OrderNotFound(_) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "order.order_not_found",
-            "order was not found",
-            false,
-        ),
-        OrderError::Validation(message) => PortError::validation("order.validation", message),
-        OrderError::InvalidTransition { .. } => PortError::conflict(
-            "order.invalid_transition",
-            "order lifecycle transition conflicts with the current state",
-        ),
-        OrderError::OrderReturnNotFound(_) | OrderError::OrderChangeNotFound(_) => PortError::new(
-            rustok_api::PortErrorKind::NotFound,
-            "order.related_resource_not_found",
-            "related order resource was not found",
-            false,
-        ),
+        OrderError::OrderNotFound(order_id) => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.order_not_found",
+                order_id = %order_id,
+                "order was not found"
+            );
+            PortError::new(
+                rustok_api::PortErrorKind::NotFound,
+                "order.order_not_found",
+                "order was not found",
+                false,
+            )
+        }
+        OrderError::Validation(message) => {
+            tracing::warn!(
+                internal_message = %message,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.validation",
+                "order request validation failed"
+            );
+            PortError::validation("order.validation", "order request is invalid")
+        }
+        OrderError::InvalidTransition { from, to } => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.invalid_transition",
+                from = %from,
+                to = %to,
+                "order lifecycle transition conflicts with the current state"
+            );
+            PortError::conflict(
+                "order.invalid_transition",
+                "order lifecycle transition conflicts with the current state",
+            )
+        }
+        OrderError::OrderReturnNotFound(resource_id)
+        | OrderError::OrderChangeNotFound(resource_id) => {
+            tracing::warn!(
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.related_resource_not_found",
+                resource_id = %resource_id,
+                "related order resource was not found"
+            );
+            PortError::new(
+                rustok_api::PortErrorKind::NotFound,
+                "order.related_resource_not_found",
+                "related order resource was not found",
+                false,
+            )
+        }
         OrderError::Core(error) => {
-            tracing::error!(error = ?error, "order core operation failed");
+            tracing::error!(
+                error = ?error,
+                correlation_id = %context.correlation_id,
+                tenant_id = %context.tenant_id,
+                operation = owner_operation,
+                code = "order.invariant_violation",
+                "order core operation failed"
+            );
             PortError::new(
                 rustok_api::PortErrorKind::InvariantViolation,
                 "order.invariant_violation",

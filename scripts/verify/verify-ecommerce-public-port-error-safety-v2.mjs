@@ -26,6 +26,7 @@ const payment = read('crates/rustok-payment/src/ports.rs');
 const fulfillment = read('crates/rustok-fulfillment/src/ports.rs');
 const customer = read('crates/rustok-customer/src/ports.rs');
 const inventory = read('crates/rustok-inventory/src/ports.rs');
+const order = read('crates/rustok-order/src/ports.rs');
 const orderCompensation = read('crates/rustok-order/src/checkout_compensation.rs');
 const orderPaymentSettlement = read(
   'crates/rustok-order/src/checkout_payment_settlement.rs',
@@ -43,6 +44,7 @@ for (const [source, label] of [
   [fulfillment, 'fulfillment shipping selection port'],
   [customer, 'customer read port'],
   [inventory, 'inventory reservation port'],
+  [order, 'order generic checkout port'],
   [orderCompensation, 'order checkout compensation port'],
   [orderPaymentSettlement, 'order checkout payment settlement port'],
   [orderRecovery, 'order checkout recovery adapter'],
@@ -127,6 +129,20 @@ for (const value of [
   '"PortContext.tenant_id must be a UUID for inventory ports"',
 ]) {
   forbidText(inventory, value, 'inventory public error mapping');
+}
+
+
+for (const value of [
+  'PortError::validation("order.checkout_identity_validation", message)',
+  'PortError::validation("order.validation", message)',
+  '.map_err(order_checkout_identity_error_to_port_error)',
+  '.map_err(order_error_to_port_error)',
+  'fn order_checkout_identity_error_to_port_error(error: OrderCheckoutIdentityError)',
+  'fn order_error_to_port_error(error: OrderError)',
+  '"PortContext.tenant_id must be a UUID for order ports"',
+  '"PortContext.actor.id must be a UUID for order write ports"',
+]) {
+  forbidText(order, value, 'order generic port public error mapping');
 }
 
 for (const value of [
@@ -235,6 +251,29 @@ for (const [source, value, label] of [
   [inventory, 'async fn find_reservation_by_external_id<C>(\n    context: &PortContext,', 'inventory reservation lookup helper context'],
   [inventory, 'async fn existing_reservation_snapshot<C>(\n    context: &PortContext,', 'inventory reservation snapshot helper context'],
   [inventory, 'async fn available_quantity<C>(\n    context: &PortContext,', 'inventory available quantity helper context'],
+  [order, 'correlation_id = %context.correlation_id', 'order generic correlation logging'],
+  [order, 'tenant_id = %context.tenant_id', 'order generic tenant logging'],
+  [order, 'operation = owner_operation', 'order generic owner operation logging'],
+  [order, 'code = "order.checkout_identity_validation"', 'order identity validation stable code'],
+  [order, 'code = "order.checkout_identity_storage_unavailable"', 'order identity storage stable code'],
+  [order, 'code = "order.database_unavailable"', 'order database stable code'],
+  [order, 'code = "order.validation"', 'order validation stable code'],
+  [order, 'code = "order.invalid_transition"', 'order transition stable code'],
+  [order, 'code = "order.invariant_violation"', 'order invariant stable code'],
+  [order, '"checkout order identity request is invalid"', 'order identity stable validation message'],
+  [order, '"order request is invalid"', 'order stable validation message'],
+  [order, '"order request context is invalid"', 'order stable context message'],
+  [order, 'order_checkout_identity_error_to_port_error(', 'order identity context-aware mapping'],
+  [order, 'order_error_to_port_error(context, owner_operation, error)', 'order helper context-aware mapping'],
+  [order, 'order_error_to_port_error(&context, owner_operation, error)', 'order public context-aware mapping'],
+  [order, 'let owner_operation = "read_checkout_identity_by_operation"', 'order identity operation read mapping'],
+  [order, 'let owner_operation = "read_checkout_identity_by_cart"', 'order identity cart read mapping'],
+  [order, 'let owner_operation = "bind_checkout_identity"', 'order identity bind mapping'],
+  [order, 'let owner_operation = "adopt_legacy_checkout_identity"', 'order identity adoption mapping'],
+  [order, 'let owner_operation = "complete_checkout"', 'order completion operation mapping'],
+  [order, 'let owner_operation = "read_checkout_result"', 'order result read mapping'],
+  [order, 'let owner_operation = "read_checkout_result_by_operation"', 'order operation result read mapping'],
+  [order, 'let owner_operation = "read_order_status"', 'order status read mapping'],
   [orderCompensation, 'correlation_id = %context.correlation_id', 'order compensation correlation logging'],
   [orderCompensation, 'tenant_id = %context.tenant_id', 'order compensation tenant logging'],
   [orderCompensation, 'operation,', 'order compensation owner operation logging'],
