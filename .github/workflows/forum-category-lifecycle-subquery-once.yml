@@ -1,27 +1,34 @@
 name: Forum category lifecycle subquery once
 
 on:
-  push:
-    branches:
-      - "agent/forum-category-lifecycle-subquery"
+  pull_request_target:
+    types: [opened, reopened, synchronize]
     paths:
       - ".github/workflows/forum-category-lifecycle-subquery-once.yml"
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: forum-category-lifecycle-subquery-once
+  group: forum-category-lifecycle-subquery-once-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   apply:
-    if: ${{ github.actor != 'github-actions[bot]' }}
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/forum-category-lifecycle-subquery'
     runs-on: ubuntu-slim
     timeout-minutes: 5
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - name: Apply guarded Forum category query patch
         shell: bash
@@ -156,4 +163,4 @@ fn category_pagination_filters_archived_rows_in_sql_without_preloading_ids() {
             crates/rustok-forum/tests/category_lifecycle_query_contract.rs \
             .github/workflows/forum-category-lifecycle-subquery-once.yml
           git commit -m "fix(forum): filter archived categories in SQL"
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin HEAD:"${HEAD_REF}"
