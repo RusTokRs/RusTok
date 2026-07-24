@@ -56,4 +56,19 @@ fn graphql_schema_exposes_owner_read_state_fields() {
             "missing Forum GraphQL contract type {contract_type}"
         );
     }
+
+    for contract_field in [
+        "lastReadPosition",
+        "lastReadRevision",
+        "unreadCount",
+        "readStateExplicit",
+        "nextCursor",
+        "hasMore",
+        "snapshotAt",
+    ] {
+        assert!(
+            sdl.contains(contract_field),
+            "missing Forum GraphQL contract field {contract_field}"
+        );
+    }
 }
