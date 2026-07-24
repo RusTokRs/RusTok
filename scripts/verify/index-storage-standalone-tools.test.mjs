@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -103,7 +103,8 @@ test('direct validator reaches the byte-preserved core after a valid preflight',
   withPacket(null, (root) => {
     const result = runValidator(root);
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, missingMutation);
+    assert.match(result.stderr, /read\.generated_at must be a non-empty string/u);
+    assert.doesNotMatch(result.stderr, /must end with canonical ordering marker/u);
   });
 });
 
