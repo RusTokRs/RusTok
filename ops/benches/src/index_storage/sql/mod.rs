@@ -81,7 +81,7 @@ pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> 
     workloads
         .into_iter()
         .map(|mut workload| {
-            workload.sql = common::qualify_link_identity_sql(workload.sql);
+            workload.sql = common::assert_full_link_identity_sql(workload.sql);
             workload
         })
         .collect()
@@ -100,14 +100,14 @@ pub fn mutation_workloads(
     workloads
         .into_iter()
         .map(|mut workload| {
-            workload.sql = common::qualify_link_identity_sql(workload.sql);
+            workload.sql = common::assert_full_link_identity_sql(workload.sql);
             workload
         })
         .collect()
 }
 
 pub fn churn_cycle_sql(prototype: Prototype, config: &DatasetConfig) -> String {
-    common::qualify_link_identity_sql(maintenance::churn_cycle_sql(
+    common::assert_full_link_identity_sql(maintenance::churn_cycle_sql(
         prototype,
         &WorkloadContext::new(config),
     ))
