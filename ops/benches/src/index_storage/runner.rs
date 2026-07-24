@@ -8,7 +8,8 @@ use serde_json::Value;
 
 use super::{
     BenchmarkConfig, DatasetConfig, Prototype, Workload, connect_benchmark_database,
-    full_prototype_sql, source_dataset_sql, source_workloads, workloads,
+    explain::parse_read_explain_metrics, full_prototype_sql, source_dataset_sql,
+    source_workloads, workloads,
 };
 
 #[derive(Debug, Serialize)]
@@ -64,10 +65,10 @@ pub struct WorkloadReport {
 
 #[derive(Debug, Serialize)]
 pub struct ExplainEvidence {
-    pub planning_time_ms: Option<f64>,
-    pub execution_time_ms: Option<f64>,
-    pub shared_hit_blocks: Option<u64>,
-    pub shared_read_blocks: Option<u64>,
+    pub planning_time_ms: f64,
+    pub execution_time_ms: f64,
+    pub shared_hit_blocks: u64,
+    pub shared_read_blocks: u64,
     pub temporary_read_blocks: Option<u64>,
     pub temporary_written_blocks: Option<u64>,
     pub plan: Value,
@@ -230,16 +231,16 @@ async fn explain(db: &DatabaseConnection, sql: &str) -> Result<ExplainEvidence> 
     let plan: Value = row
         .try_get("", "QUERY PLAN")
         .context("EXPLAIN result did not contain QUERY PLAN JSON")?;
-    let root = plan.get(0).unwrap_or(&Value::Null);
-    let plan_node = root.get("Plan").unwrap_or(&Value::Null);
+    let metrics = parse_read_explain_metrics(&plan)
+        .context("EXPLAIN result did not satisfy the read evidence contract")?;
 
     Ok(ExplainEvidence {
-        planning_time_ms: root.get("Planning Time").and_then(Value::as_f64),
-        execution_time_ms: root.get("Execution Time").and_then(Value::as_f64),
-        shared_hit_blocks: plan_node.get("Shared Hit Blocks").and_then(Value::as_u64),
-        shared_read_blocks: plan_node.get("Shared Read Blocks").and_then(Value::as_u64),
-        temporary_read_blocks: plan_node.get("Temp Read Blocks").and_then(Value::as_u64),
-        temporary_written_blocks: plan_node.get("Temp Written Blocks").and_then(Value::as_u64),
+        planning_time_ms: metrics.planning_time_ms,
+        execution_time_ms: metrics.execution_time_ms,
+        shared_hit_blocks: metrics.shared_hit_blocks,
+        shared_read_blocks: metrics.shared_read_blocks,
+        temporary_read_blocks: metrics.temporary_read_blocks,
+        temporary_written_blocks: metrics.temporary_written_blocks,
         plan,
     })
 }
