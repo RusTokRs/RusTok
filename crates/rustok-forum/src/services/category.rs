@@ -3,6 +3,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
     DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     Statement, TransactionTrait,
+    sea_query::{Expr, Query, SelectStatement},
 };
 use std::collections::HashMap;
 use tracing::instrument;
@@ -307,20 +308,12 @@ impl CategoryService {
         enforce_scope(&security, Resource::ForumCategories, Action::List)?;
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
-        let archived_category_ids = forum_category_lifecycle::Entity::find()
-            .filter(forum_category_lifecycle::Column::TenantId.eq(tenant_id))
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|lifecycle| lifecycle.category_id)
-            .collect::<Vec<_>>();
         let query = forum_category::Entity::find()
-            .filter(forum_category::Column::TenantId.eq(tenant_id));
-        let query = if archived_category_ids.is_empty() {
-            query
-        } else {
-            query.filter(forum_category::Column::Id.is_not_in(archived_category_ids))
-        };
+            .filter(forum_category::Column::TenantId.eq(tenant_id))
+            .filter(
+                Expr::col((forum_category::Entity, forum_category::Column::Id))
+                    .not_in_subquery(archived_category_ids_subquery(tenant_id)),
+            );
         let paginator = query
             .order_by_asc(forum_category::Column::Position)
             .paginate(&self.db, per_page.max(1));
@@ -463,6 +456,20 @@ impl CategoryService {
         }
         Ok(map)
     }
+}
+
+fn archived_category_ids_subquery(tenant_id: Uuid) -> SelectStatement {
+    Query::select()
+        .column(forum_category_lifecycle::Column::CategoryId)
+        .from(forum_category_lifecycle::Entity)
+        .and_where(
+            Expr::col((
+                forum_category_lifecycle::Entity,
+                forum_category_lifecycle::Column::TenantId,
+            ))
+            .eq(tenant_id),
+        )
+        .to_owned()
 }
 
 async fn lock_category_tree_in_tx(
