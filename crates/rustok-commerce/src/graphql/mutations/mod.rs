@@ -9,6 +9,8 @@ pub mod fulfillment;
 #[path = "helpers.rs"]
 mod legacy_helpers;
 #[path = "safe_helpers.rs"]
+mod cart_safe_helpers;
+#[path = "safe_order_helpers.rs"]
 pub mod helpers;
 pub mod pricing;
 pub mod provider_operations;
