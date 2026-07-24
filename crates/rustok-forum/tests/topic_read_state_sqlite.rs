@@ -10,7 +10,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
-    QueryFilter,
+    PaginatorTrait, QueryFilter,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -222,7 +222,7 @@ async fn topic_read_state_is_bounded_authenticated_and_monotonic() {
             reader,
             MarkForumTopicReadInput {
                 last_read_position: 2,
-                last_read_revision: 1,
+                last_read_revision: i64::MAX,
             },
         )
         .await;
