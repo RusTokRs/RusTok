@@ -328,7 +328,7 @@ impl SeoService {
         now: chrono::DateTime<chrono::FixedOffset>,
     ) -> SeoResult<()> {
         let mut files = Vec::new();
-        for (index, chunk) in urls.chunks(super::SITEMAP_CHUNK_SIZE).enumerate() {
+        for (index, chunk) in urls.chunks(crate::services::SITEMAP_CHUNK_SIZE).enumerate() {
             files.push(
                 crate::entities::seo_sitemap_file::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -573,7 +573,7 @@ fn background_sitemap_file_count(url_count: usize) -> usize {
     if url_count == 0 {
         1
     } else {
-        ((url_count - 1) / super::SITEMAP_CHUNK_SIZE) + 2
+        ((url_count - 1) / crate::services::SITEMAP_CHUNK_SIZE) + 2
     }
 }
 
@@ -609,13 +609,14 @@ fn background_disabled_sitemap_status() -> crate::dto::SeoSitemapStatusRecord {
 #[cfg(test)]
 mod sitemap_background_tests {
     use super::*;
+    use crate::services::SITEMAP_CHUNK_SIZE;
 
     #[test]
     fn background_file_count_keeps_the_index_and_chunks() {
         assert_eq!(background_sitemap_file_count(0), 1);
         assert_eq!(background_sitemap_file_count(1), 2);
         assert_eq!(
-            background_sitemap_file_count(super::SITEMAP_CHUNK_SIZE + 1),
+            background_sitemap_file_count(SITEMAP_CHUNK_SIZE + 1),
             3
         );
     }

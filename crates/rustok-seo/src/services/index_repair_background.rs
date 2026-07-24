@@ -45,7 +45,7 @@ mod index_repair_background_impl {
     }
 
     impl SeoService {
-        pub(super) async fn queue_index_repair_replay_background(
+        pub(crate) async fn queue_index_repair_replay_background(
             &self,
             tenant_id: Uuid,
             target_type: Option<&str>,
@@ -92,7 +92,7 @@ mod index_repair_background_impl {
             Ok(map_background_index_repair_job(&job))
         }
 
-        pub(super) async fn execute_next_index_repair_replay_job_background(
+        pub(crate) async fn execute_next_index_repair_replay_job_background(
             &self,
         ) -> SeoResult<Option<crate::dto::SeoIndexRepairReplayResultRecord>> {
             let running = job_entity::Entity::find()

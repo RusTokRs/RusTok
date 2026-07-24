@@ -1,6 +1,4 @@
 use rustok_content::resolve_by_locale_with_fallback;
-use sea_orm::QuerySelect;
-
 use crate::dto::SeoModuleSettings;
 use crate::entities::{self as seo_meta, meta_translation};
 

@@ -39,7 +39,9 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     }
 
     use sea_orm_migration::MigrationTrait;
-    let manager = sea_orm_migration::SchemaManager::new(db);
+    use sea_orm_migration::prelude::SchemaManager;
+
+    let manager = SchemaManager::new(db);
     let _ = rustok_outbox::SysEventsMigration.up(&manager).await;
 
     let builder = db.get_database_backend();

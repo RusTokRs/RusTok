@@ -192,10 +192,10 @@ impl TopicService {
             .filter_visible_topic_ids(tenant_id, &candidate_ids, &scope)
             .await?;
         if visible_ids != candidate_ids {
-            return Err(ForumError::Internal(
+            return Err(ForumError::Internal(rustok_core::Error::External(
                 "Forum storefront topic selection diverged from the owner visibility scope"
                     .to_string(),
-            ));
+            )));
         }
         require_localized_topic_page(page)
     }

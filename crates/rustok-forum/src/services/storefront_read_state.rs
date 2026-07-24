@@ -91,9 +91,9 @@ impl ForumStorefrontReadStateService {
             .into_iter()
             .map(|topic| {
                 let summary = summaries.get(&topic.id).copied().ok_or_else(|| {
-                    ForumError::Internal(
+                    ForumError::Internal(rustok_core::Error::External(
                         "Forum storefront unread summary is unavailable".to_string(),
-                    )
+                    ))
                 })?;
                 Ok(ForumStorefrontUnreadTopic {
                     topic,

@@ -25,7 +25,6 @@ mod product_field_definitions_storage {
 
 mod attached_values_storage {
     use sea_orm::entity::prelude::*;
-    use std::iter::FusedIterator;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
     #[sea_orm(table_name = "flex_attached_localized_values")]
