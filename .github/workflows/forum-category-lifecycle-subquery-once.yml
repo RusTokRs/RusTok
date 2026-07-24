@@ -1,38 +1,57 @@
 name: Forum category lifecycle subquery once
 
 on:
-  pull_request_target:
-    types: [opened, reopened, synchronize]
-    paths:
-      - ".github/workflows/forum-category-lifecycle-subquery-once.yml"
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
   pull-requests: read
 
 concurrency:
-  group: forum-category-lifecycle-subquery-once-${{ github.event.pull_request.number }}
+  group: forum-category-lifecycle-subquery-once-${{ github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   apply:
     if: >-
-      github.actor != 'github-actions[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'agent/forum-category-lifecycle-subquery'
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/apply-forum-category-lifecycle-subquery' &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR')
     runs-on: ubuntu-slim
     timeout-minutes: 5
-    env:
-      HEAD_REF: ${{ github.event.pull_request.head.ref }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-      - name: Apply guarded Forum category query patch
+      - name: Resolve and validate PR head
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
+          set -euo pipefail
+          head_repo="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name')"
+          head_ref="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.ref')"
+          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          test "${head_repo}" = "${GITHUB_REPOSITORY}"
+          test "${head_ref}" = "agent/forum-category-lifecycle-subquery"
+          echo "repo=${head_repo}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${head_ref}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${head_sha}" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.meta.outputs.repo }}
+          ref: ${{ steps.meta.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Apply guarded Forum category query patch
+        env:
+          HEAD_REF: ${{ steps.meta.outputs.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
