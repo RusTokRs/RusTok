@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use rustok_core::{MigrationDependencyDescriptor, MigrationSource, RusToKModule};
 use sea_orm_migration::MigrationTrait;
 
+mod atomic_checkout_guard;
 pub mod atomic_checkout_port;
 pub mod checkout_snapshot;
 pub mod dto;
@@ -17,7 +18,14 @@ pub mod ports;
 mod promotion_guard;
 pub mod services;
 
-pub use atomic_checkout_port::*;
+pub use atomic_checkout_guard::{
+    AtomicCartCheckoutBinding, AtomicCartCheckoutHandle, bind_in_process_atomic_cart_checkout,
+    bind_in_process_atomic_cart_checkout_with_pricing, in_process_atomic_cart_checkout_port,
+};
+pub use atomic_checkout_port::{
+    AtomicCartCheckoutPort, AtomicCartCheckoutPricingResolver, CartCheckoutLineItemPricingUpdate,
+    CartCheckoutPricingPlan,
+};
 pub use checkout_snapshot::*;
 pub use dto::*;
 pub use entities::*;
