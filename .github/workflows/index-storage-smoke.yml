@@ -12,6 +12,8 @@ on:
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/index-storage-tooling.mjs"
+      - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
   push:
@@ -27,6 +29,8 @@ on:
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/index-storage-tooling.mjs"
+      - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
 
@@ -57,19 +61,16 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - name: Verify Index boundary and benchmark contract
+      - name: Verify Index storage command and repository contracts
         shell: bash
         run: |
           mkdir -p evidence/index-storage/contract
           set -o pipefail
           {
-            node scripts/verify/verify-index-fba.mjs
-            node scripts/verify/verify-index-storage-source-oracle.mjs
-            node scripts/verify/verify-index-storage-adr-tooling.mjs
-            node --check scripts/verify/hash-index-storage-comparison.mjs
-            node --check scripts/verify/render-index-storage-adr.mjs
-            node --check scripts/verify/render-index-storage-adr.test.mjs
-            node --test scripts/verify/render-index-storage-adr.test.mjs
+            node --check scripts/verify/index-storage-tooling.mjs
+            node --check scripts/verify/index-storage-tooling.test.mjs
+            node scripts/verify/index-storage-tooling.mjs contract
+            node --test scripts/verify/index-storage-tooling.test.mjs
           } 2>&1 | tee evidence/index-storage/contract/verify.log
       - name: Archive contract diagnostic
         if: always()
@@ -135,8 +136,11 @@ jobs:
       - name: Run persistent churn/VACUUM smoke evidence
         run: target/release/index-storage-maintenance-benchmark
 
-      - name: Validate evidence packet
-        run: node scripts/verify/validate-index-storage-evidence.mjs
+      - name: Validate evidence packet through storage tooling
+        run: >-
+          node scripts/verify/index-storage-tooling.mjs packet
+          --scale smoke
+          --root evidence/index-storage/smoke
 
       - name: Archive smoke evidence
         uses: actions/upload-artifact@v7
