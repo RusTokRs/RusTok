@@ -54,6 +54,8 @@ forbidMarkers(router, 'storage tooling router', [
 ]);
 
 requireMarkers(routerFixture, 'storage tooling router fixture', [
+  "test('packet runs terminal ordering preflight before the canonical validator'",
+  "test('compare runs terminal ordering preflight before the canonical comparator'",
   "test('forwards decision preparation help without rewriting its arguments'",
   "test('forwards ADR finalization help without rewriting its arguments'",
   "test('forwards ADR verification help without rewriting its arguments'",
@@ -61,20 +63,37 @@ requireMarkers(routerFixture, 'storage tooling router fixture', [
 ]);
 
 requireMarkers(orderingPreflight, 'terminal ordering preflight', [
-  'sql.trimEnd().endsWith(marker)',
+  'const maskSqlText = (text) =>',
+  'const executableSqlText = (sql, label) =>',
+  "sql.startsWith('--', index)",
+  "sql.startsWith('/*', index)",
+  'unterminated block comment',
+  'contains an unterminated ${kind}',
+  'unterminated dollar-quoted string',
+  'executableSql.trimEnd().endsWith(marker)',
   'must end with canonical ordering marker',
+  'in executable SQL',
   'validatePacketReadOrdering',
 ]);
-if (orderingPreflight.includes('sql.includes(marker)')) {
-  fail('terminal ordering preflight restored substring-only validation');
+for (const forbidden of ['sql.includes(marker)', 'sql.trimEnd().endsWith(marker)']) {
+  if (orderingPreflight.includes(forbidden)) {
+    fail(`terminal ordering preflight restored unsafe raw-SQL validation: ${forbidden}`);
+  }
 }
 requireMarkers(orderingFixture, 'terminal ordering fixture', [
+  "test('accepts comment tokens inside strings and comments after executable ordering'",
   "test('rejects a source ordering marker that exists only in a nested query'",
-  "test('rejects a candidate ordering marker that exists only in a comment'",
+  "test('rejects a candidate ordering marker that exists only in a block comment'",
+  "test('rejects a terminal ordering marker hidden in a line comment'",
+  "test('rejects an ordering marker hidden in a dollar-quoted string'",
+  "test('rejects unterminated SQL comments before ordering validation'",
 ]);
 requireMarkers(orderingGuard, 'terminal ordering guard', [
   "const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs')",
   "const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs')",
+  'executableSql.trimEnd().endsWith(marker)',
+  "test('packet runs terminal ordering preflight before the canonical validator'",
+  "test('compare runs terminal ordering preflight before the canonical comparator'",
   'packet terminal ordering preflight must run before the canonical validator',
   'comparison terminal ordering preflight must run before the canonical comparator',
   'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
@@ -174,4 +193,4 @@ for (const [label, workflow] of [
   ]);
 }
 
-console.log('[verify-index-storage-adr-integrity] terminal ordering, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
+console.log('[verify-index-storage-adr-integrity] executable SQL ordering, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
