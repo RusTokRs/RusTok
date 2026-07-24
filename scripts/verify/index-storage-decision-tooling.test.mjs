@@ -15,6 +15,7 @@ const commit = '0123456789abcdef0123456789abcdef01234567';
 const prototypes = ['jsonb', 'typed_eav', 'hot_projection'];
 const readWorkloads = ['status_equality', 'price_range_sort'];
 const mutationWorkloads = ['update_product_batch', 'delete_product_batch'];
+const markdownCode = String.fromCharCode(96);
 const decisionFlags = {
   required_scales_present: true,
   same_packet_contract_version: true,
@@ -237,8 +238,8 @@ test('finalizes an ADR bound to exact comparison and decision bytes', () => {
     const finalized = finalize(fixture, outputPath);
     assert.equal(finalized.result.status, 0, finalized.result.stderr || finalized.result.stdout);
     const markdown = readFileSync(outputPath, 'utf8');
-    assert.match(markdown, new RegExp(`Comparison SHA-256: \\`${sha256(fixture.comparisonBytes)}\\``, 'u'));
-    assert.match(markdown, new RegExp(`Decision SHA-256: \\`${sha256(finalized.decisionBytes)}\\``, 'u'));
+    assert.ok(markdown.includes(`Comparison SHA-256: ${markdownCode}${sha256(fixture.comparisonBytes)}${markdownCode}`));
+    assert.ok(markdown.includes(`Decision SHA-256: ${markdownCode}${sha256(finalized.decisionBytes)}${markdownCode}`));
     assert.match(markdown, /Use \*\*typed_eav\*\*/u);
     const verified = verify(fixture, outputPath);
     assert.equal(verified.status, 0, verified.stderr || verified.stdout);
