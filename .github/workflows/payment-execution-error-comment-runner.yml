@@ -1,0 +1,848 @@
+name: Payment execution error comment runner
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: payment-execution-error-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/apply-payment-execution-hardening' &&
+      github.event.comment.user.login == 'loid345'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Resolve and validate PR head
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_repo="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name')"
+          head_ref="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.ref')"
+          head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          test "${head_repo}" = "${GITHUB_REPOSITORY}"
+          test "${head_ref}" = "agent/payment-execution-error-context"
+          echo "repo=${head_repo}" >> "${GITHUB_OUTPUT}"
+          echo "ref=${head_ref}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${head_sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out exact PR head
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.meta.outputs.repo }}
+          ref: ${{ steps.meta.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Apply guarded payment execution hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {label}, found {count}")
+              return source.replace(old, new, 1)
+
+          def replace_all(source: str, old: str, new: str, minimum: int, label: str) -> str:
+              count = source.count(old)
+              if count < minimum:
+                  raise SystemExit(f"expected at least {minimum} {label}, found {count}")
+              return source.replace(old, new)
+
+          def sub_once(source: str, pattern: str, replacement: str, label: str) -> str:
+              updated, count = re.subn(pattern, replacement, source, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {label}, found {count}")
+              return updated
+
+          execution_path = Path('crates/rustok-payment/src/checkout_execution.rs')
+          source = execution_path.read_text()
+
+          source = replace_once(
+              source,
+              'const UNKNOWN_PROVIDER_ID: &str = "payment-provider";\n',
+              '''const UNKNOWN_PROVIDER_ID: &str = "payment-provider";
+          const PREPARE_CHECKOUT_COLLECTION_OPERATION: &str = "prepare_checkout_collection";
+          const AUTHORIZE_CHECKOUT_COLLECTION_OPERATION: &str = "authorize_checkout_collection";
+          const CAPTURE_CHECKOUT_COLLECTION_OPERATION: &str = "capture_checkout_collection";
+          const READ_CHECKOUT_COLLECTION_OPERATION: &str = "read_checkout_collection";
+          ''',
+              'payment execution operation constants',
+          )
+
+          for name in ('prepare', 'authorize', 'capture'):
+              source = replace_once(
+                  source,
+                  f'''    async fn {name}(
+                  &self,
+                  tenant_id: Uuid,
+          ''',
+                  f'''    async fn {name}(
+                  &self,
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  tenant_id: Uuid,
+          ''',
+                  f'{name} helper context signature',
+              )
+
+          source = replace_once(
+              source,
+              '''    async fn execute_journaled_provider_operation(
+                  &self,
+                  operation: &'static str,
+          ''',
+              '''    async fn execute_journaled_provider_operation(
+                  &self,
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  operation: &'static str,
+          ''',
+              'journaled provider operation context signature',
+          )
+          source = replace_once(
+              source,
+              '''    async fn enrich_provider_request(
+                  &self,
+                  operation: &str,
+          ''',
+              '''    async fn enrich_provider_request(
+                  &self,
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  operation: &str,
+          ''',
+              'provider request enrichment context signature',
+          )
+          source = replace_once(
+              source,
+              '''    async fn commit_existing_provider_operation(
+                  &self,
+                  tenant_id: Uuid,
+          ''',
+              '''    async fn commit_existing_provider_operation(
+                  &self,
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  tenant_id: Uuid,
+          ''',
+              'existing provider commit context signature',
+          )
+
+          source = replace_once(
+              source,
+              '''    async fn mark_journal_committed(
+                  &self,
+                  operation_id: Uuid,
+                  operation: &'static str,
+              ) -> Result<(), PortError> {
+                  if let Err(error) = self.operation_journal.mark_committed(operation_id).await {
+                      tracing::error!(
+                          operation_id = %operation_id,
+                          error = ?error,
+                          "payment local commit checkpoint failed"
+                      );
+                      let _ = self
+                          .operation_journal
+                          .mark_reconciliation_required(
+                              operation_id,
+                              format!("payment.local_{operation}_commit_checkpoint_failed"),
+                          )
+                          .await;
+                      return Err(manual_reconciliation(
+                          "payment provider result was applied but its commit checkpoint failed",
+                      ));
+                  }
+                  Ok(())
+              }
+
+              async fn mark_local_persistence_failed(&self, operation_id: Uuid, operation: &'static str) {
+                  let _ = self
+                      .operation_journal
+                      .mark_reconciliation_required(
+                          operation_id,
+                          format!("payment.local_{operation}_persistence_failed"),
+                      )
+                      .await;
+              }
+          ''',
+              '''    async fn mark_journal_committed(
+                  &self,
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  operation_id: Uuid,
+                  provider_operation: &'static str,
+              ) -> Result<(), PortError> {
+                  if let Err(error) = self.operation_journal.mark_committed(operation_id).await {
+                      tracing::error!(
+                          operation_id = %operation_id,
+                          error = ?error,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.checkout_execution_commit_checkpoint_failed",
+                          "payment local commit checkpoint failed"
+                      );
+                      let _ = self
+                          .operation_journal
+                          .mark_reconciliation_required(
+                              operation_id,
+                              format!("payment.local_{provider_operation}_commit_checkpoint_failed"),
+                          )
+                          .await;
+                      return Err(manual_reconciliation(
+                          context,
+                          owner_operation,
+                          "payment provider result was applied but its commit checkpoint failed",
+                      ));
+                  }
+                  Ok(())
+              }
+
+              async fn mark_local_persistence_failed(
+                  &self,
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  operation_id: Uuid,
+                  provider_operation: &'static str,
+              ) {
+                  if let Err(error) = self
+                      .operation_journal
+                      .mark_reconciliation_required(
+                          operation_id,
+                          format!("payment.local_{provider_operation}_persistence_failed"),
+                      )
+                      .await
+                  {
+                      tracing::error!(
+                          operation_id = %operation_id,
+                          error = ?error,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.checkout_execution_reconciliation_checkpoint_failed",
+                          "payment local persistence failure checkpoint failed"
+                      );
+                  }
+              }
+          ''',
+              'journal checkpoint helper context',
+          )
+
+          method_constants = {
+              'prepare_checkout_collection': 'PREPARE_CHECKOUT_COLLECTION_OPERATION',
+              'authorize_checkout_collection': 'AUTHORIZE_CHECKOUT_COLLECTION_OPERATION',
+              'capture_checkout_collection': 'CAPTURE_CHECKOUT_COLLECTION_OPERATION',
+              'read_checkout_collection': 'READ_CHECKOUT_COLLECTION_OPERATION',
+          }
+          request_types = {
+              'prepare_checkout_collection': 'PrepareCheckoutPaymentCollectionRequest',
+              'authorize_checkout_collection': 'AuthorizeCheckoutPaymentCollectionRequest',
+              'capture_checkout_collection': 'CaptureCheckoutPaymentCollectionRequest',
+              'read_checkout_collection': 'ReadCheckoutPaymentCollectionRequest',
+          }
+          for method, constant in method_constants.items():
+              request_type = request_types[method]
+              old = f'''    async fn {method}(
+                  &self,
+                  context: PortContext,
+                  request: {request_type},
+              ) -> Result<PaymentCollectionResponse, PortError> {{
+                  context.require_policy'''
+              new = f'''    async fn {method}(
+                  &self,
+                  context: PortContext,
+                  request: {request_type},
+              ) -> Result<PaymentCollectionResponse, PortError> {{
+                  let owner_operation = {constant};
+                  context.require_policy'''
+              source = replace_once(source, old, new, f'{method} owner operation')
+
+          source = replace_all(
+              source,
+              'parse_tenant_id(&context)?',
+              'parse_tenant_id(&context, owner_operation)?',
+              4,
+              'context-aware tenant parsing calls',
+          )
+          source = replace_all(
+              source,
+              'require_operation_context(&context, request.identity.checkout_operation_id)?',
+              'require_operation_context(&context, owner_operation, request.identity.checkout_operation_id)?',
+              4,
+              'context-aware causation calls',
+          )
+          source = replace_once(
+              source,
+              'self.prepare(tenant_id, request).await',
+              'self.prepare(&context, owner_operation, tenant_id, request).await',
+              'prepare helper call',
+          )
+          source = replace_once(
+              source,
+              'self.authorize(tenant_id, request).await',
+              'self.authorize(&context, owner_operation, tenant_id, request).await',
+              'authorize helper call',
+          )
+          source = replace_once(
+              source,
+              'self.capture(tenant_id, request).await',
+              'self.capture(&context, owner_operation, tenant_id, request).await',
+              'capture helper call',
+          )
+
+          source = replace_all(
+              source,
+              '''self.commit_existing_provider_operation(
+                              tenant_id,
+          ''',
+              '''self.commit_existing_provider_operation(
+                              context,
+                              owner_operation,
+                              tenant_id,
+          ''',
+              2,
+              'provider replay commit calls',
+          )
+          source = replace_once(
+              source,
+              '''.execute_journaled_provider_operation(
+                          "authorize",
+          ''',
+              '''.execute_journaled_provider_operation(
+                          context,
+                          owner_operation,
+                          "authorize",
+          ''',
+              'authorize provider execution call',
+          )
+          source = replace_once(
+              source,
+              '.execute_journaled_provider_operation("capture", provider_id.as_str(), provider_request)',
+              '''.execute_journaled_provider_operation(
+                          context,
+                          owner_operation,
+                          "capture",
+                          provider_id.as_str(),
+                          provider_request,
+                      )''',
+              'capture provider execution call',
+          )
+          source = replace_once(
+              source,
+              '.enrich_provider_request(operation, provider_id, request)',
+              '.enrich_provider_request(context, owner_operation, operation, provider_id, request)',
+              'provider enrichment call',
+          )
+          source = replace_all(
+              source,
+              'self.mark_journal_committed(journaled.operation_id, ',
+              'self.mark_journal_committed(context, owner_operation, journaled.operation_id, ',
+              2,
+              'journal commit calls',
+          )
+          source = replace_all(
+              source,
+              'self.mark_local_persistence_failed(journaled.operation_id, ',
+              'self.mark_local_persistence_failed(context, owner_operation, journaled.operation_id, ',
+              2,
+              'local persistence checkpoint calls',
+          )
+          source = replace_once(
+              source,
+              'self.mark_journal_committed(existing.id, operation).await?',
+              'self.mark_journal_committed(context, owner_operation, existing.id, operation).await?',
+              'existing journal commit call',
+          )
+
+          source = replace_all(
+              source,
+              '.map_err(payment_error_to_port_error)?',
+              '.map_err(|error| payment_error_to_port_error(&context, owner_operation, error))?',
+              10,
+              'contextless payment mapper calls',
+          )
+          source = source.replace(
+              'payment_error_to_port_error(error)',
+              'payment_error_to_port_error(&context, owner_operation, error)',
+          )
+
+          source = replace_once(
+              source,
+              'persisted_provider_result(&journal_operation)?',
+              'persisted_provider_result(context, owner_operation, &journal_operation)?',
+              'provider result replay call',
+          )
+          source = replace_once(
+              source,
+              'persisted_provider_result(&current)?',
+              'persisted_provider_result(context, owner_operation, &current)?',
+              'current provider result replay call',
+          )
+          source = replace_once(
+              source,
+              '''fn persisted_provider_result(
+                  operation: &crate::entities::provider_operation::Model,
+              ) -> Result<Option<PaymentProviderOperationResult>, PortError> {
+          ''',
+              '''fn persisted_provider_result(
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  operation: &crate::entities::provider_operation::Model,
+              ) -> Result<Option<PaymentProviderOperationResult>, PortError> {
+          ''',
+              'persisted provider result context signature',
+          )
+
+          source, manual_count = re.subn(
+              r'(?<!fn )manual_reconciliation\(',
+              'manual_reconciliation(&context, owner_operation, ',
+              source,
+          )
+          if manual_count < 12:
+              raise SystemExit(f'expected at least 12 manual reconciliation calls, found {manual_count}')
+
+          source = replace_once(
+              source,
+              '''tracing::error!(
+                              operation_id = %journaled.operation_id,
+                              error = ?error,
+                              "payment provider authorization succeeded but local persistence failed"
+                          );''',
+              '''tracing::error!(
+                              operation_id = %journaled.operation_id,
+                              error = ?error,
+                              correlation_id = %context.correlation_id,
+                              tenant_id = %context.tenant_id,
+                              operation = owner_operation,
+                              code = "payment.checkout_execution_local_persistence_failed",
+                              "payment provider authorization succeeded but local persistence failed"
+                          );''',
+              'authorization persistence logging',
+          )
+          source = replace_once(
+              source,
+              '''tracing::error!(
+                              operation_id = %journaled.operation_id,
+                              error = ?error,
+                              "payment provider capture succeeded but local persistence failed"
+                          );''',
+              '''tracing::error!(
+                              operation_id = %journaled.operation_id,
+                              error = ?error,
+                              correlation_id = %context.correlation_id,
+                              tenant_id = %context.tenant_id,
+                              operation = owner_operation,
+                              code = "payment.checkout_execution_local_persistence_failed",
+                              "payment provider capture succeeded but local persistence failed"
+                          );''',
+              'capture persistence logging',
+          )
+          source = replace_once(
+              source,
+              'tracing::error!(error = ?error, operation, "payment provider request encoding failed");',
+              '''tracing::error!(
+                          error = ?error,
+                          provider_operation = operation,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.provider_request_encoding_failed",
+                          "payment provider request encoding failed"
+                      );''',
+              'provider request encoding logging',
+          )
+          source = replace_once(
+              source,
+              '''tracing::error!(
+                                  operation_id = %journal_operation.id,
+                                  error = ?checkpoint_error,
+                                  "payment provider failure checkpoint failed"
+                              );''',
+              '''tracing::error!(
+                                  operation_id = %journal_operation.id,
+                                  error = ?checkpoint_error,
+                                  correlation_id = %context.correlation_id,
+                                  tenant_id = %context.tenant_id,
+                                  operation = owner_operation,
+                                  code = "payment.checkout_execution_provider_failure_checkpoint_failed",
+                                  "payment provider failure checkpoint failed"
+                              );''',
+              'provider failure checkpoint logging',
+          )
+          source = replace_once(
+              source,
+              '''tracing::error!(
+                          operation_id = %journal_operation.id,
+                          error = ?error,
+                          "payment provider result encoding failed"
+                      );''',
+              '''tracing::error!(
+                          operation_id = %journal_operation.id,
+                          error = ?error,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.provider_result_encoding_failed",
+                          "payment provider result encoding failed"
+                      );''',
+              'provider result encoding logging',
+          )
+          source = replace_once(
+              source,
+              '''tracing::error!(
+                              operation_id = %journal_operation.id,
+                              error = ?error,
+                              "payment provider success checkpoint failed"
+                          );''',
+              '''tracing::error!(
+                              operation_id = %journal_operation.id,
+                              error = ?error,
+                              correlation_id = %context.correlation_id,
+                              tenant_id = %context.tenant_id,
+                              operation = owner_operation,
+                              code = "payment.checkout_execution_provider_checkpoint_failed",
+                              "payment provider success checkpoint failed"
+                          );''',
+              'provider success checkpoint logging',
+          )
+          source = replace_once(
+              source,
+              '''tracing::error!(
+                          operation_id = %operation.id,
+                          error = ?error,
+                          "payment provider operation result is malformed"
+                      );''',
+              '''tracing::error!(
+                          operation_id = %operation.id,
+                          error = ?error,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.provider_invalid_response",
+                          "payment provider operation result is malformed"
+                      );''',
+              'persisted provider result logging',
+          )
+
+          source = replace_once(
+              source,
+              '''fn require_operation_context(
+                  context: &PortContext,
+                  checkout_operation_id: Uuid,
+              ) -> Result<(), PortError> {
+                  let context_operation = context
+                      .causation_id
+                      .as_deref()
+                      .and_then(|value| Uuid::parse_str(value).ok());
+                  if context_operation != Some(checkout_operation_id) {
+                      return Err(PortError::validation(
+                          "payment.checkout_operation_id_invalid",
+                          "checkout payment causation_id must match the checkout operation",
+                      ));
+                  }
+                  Ok(())
+              }
+
+              fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
+                  Uuid::parse_str(&context.tenant_id).map_err(|_| {
+                      PortError::validation(
+                          "payment.tenant_id_invalid",
+                          "PortContext.tenant_id must be a UUID for payment ports",
+                      )
+                  })
+              }
+          ''',
+              '''fn require_operation_context(
+                  context: &PortContext,
+                  owner_operation: &'static str,
+                  checkout_operation_id: Uuid,
+              ) -> Result<(), PortError> {
+                  let context_operation = context
+                      .causation_id
+                      .as_deref()
+                      .and_then(|value| Uuid::parse_str(value).ok());
+                  if context_operation != Some(checkout_operation_id) {
+                      tracing::warn!(
+                          causation_id = ?context.causation_id,
+                          checkout_operation_id = %checkout_operation_id,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.checkout_operation_id_invalid",
+                          "payment checkout execution causation context is invalid"
+                      );
+                      return Err(PortError::validation(
+                          "payment.checkout_operation_id_invalid",
+                          "payment request context is invalid",
+                      ));
+                  }
+                  Ok(())
+              }
+
+              fn parse_tenant_id(
+                  context: &PortContext,
+                  owner_operation: &'static str,
+              ) -> Result<Uuid, PortError> {
+                  Uuid::parse_str(&context.tenant_id).map_err(|error| {
+                      tracing::warn!(
+                          error = ?error,
+                          internal_tenant_id = %context.tenant_id,
+                          correlation_id = %context.correlation_id,
+                          tenant_id = %context.tenant_id,
+                          operation = owner_operation,
+                          code = "payment.tenant_id_invalid",
+                          "payment checkout execution tenant context is invalid"
+                      );
+                      PortError::validation(
+                          "payment.tenant_id_invalid",
+                          "payment request context is invalid",
+                      )
+                  })
+              }
+          ''',
+              'payment execution context validation helpers',
+          )
+
+          tail_pattern = r'''fn manual_reconciliation\([\s\S]*\Z'''
+          tail_replacement = '''fn manual_reconciliation(
+              context: &PortContext,
+              owner_operation: &'static str,
+              internal_message: &'static str,
+          ) -> PortError {
+              tracing::error!(
+                  internal_message,
+                  correlation_id = %context.correlation_id,
+                  tenant_id = %context.tenant_id,
+                  operation = owner_operation,
+                  code = "payment.checkout_execution_manual_reconciliation",
+                  "payment checkout execution requires manual reconciliation"
+              );
+              PortError::new(
+                  PortErrorKind::Conflict,
+                  "payment.checkout_execution_manual_reconciliation",
+                  "payment checkout execution requires manual reconciliation",
+                  false,
+              )
+          }
+
+          fn stable_payment_error_code(error: &PaymentError) -> &'static str {
+              match error {
+                  PaymentError::Database(_) => "payment.database_unavailable",
+                  PaymentError::Validation(_) => "payment.validation",
+                  PaymentError::PaymentCollectionNotFound(_) => "payment.collection_not_found",
+                  PaymentError::PaymentNotFound(_) => "payment.payment_not_found",
+                  PaymentError::RefundNotFound(_) => "payment.refund_not_found",
+                  PaymentError::InvalidTransition { .. } => "payment.invalid_transition",
+                  PaymentError::ProviderUnavailable { .. } => "payment.provider_unavailable",
+                  PaymentError::ProviderRejected { .. } => "payment.provider_rejected",
+                  PaymentError::ProviderInvalidResponse { .. } => "payment.provider_invalid_response",
+                  PaymentError::ProviderOutcomeUnknown { .. } => "payment.provider_outcome_unknown",
+                  PaymentError::ProviderConfiguration { .. } => "payment.provider_not_configured",
+              }
+          }
+
+          fn payment_error_to_port_error(
+              context: &PortContext,
+              owner_operation: &'static str,
+              error: PaymentError,
+          ) -> PortError {
+              let code = stable_payment_error_code(&error);
+              tracing::error!(
+                  error = ?error,
+                  correlation_id = %context.correlation_id,
+                  tenant_id = %context.tenant_id,
+                  operation = owner_operation,
+                  code,
+                  "payment checkout execution owner operation failed"
+              );
+              match error {
+                  PaymentError::Database(_) => PortError::unavailable(
+                      "payment.database_unavailable",
+                      "payment storage is temporarily unavailable",
+                  ),
+                  PaymentError::Validation(_) => PortError::validation(
+                      "payment.checkout_execution_validation",
+                      "checkout payment request is invalid",
+                  ),
+                  PaymentError::PaymentCollectionNotFound(_) => PortError::not_found(
+                      "payment.collection_not_found",
+                      "payment collection was not found",
+                  ),
+                  PaymentError::PaymentNotFound(_) => {
+                      PortError::not_found("payment.payment_not_found", "payment was not found")
+                  }
+                  PaymentError::RefundNotFound(_) => {
+                      PortError::not_found("payment.refund_not_found", "refund was not found")
+                  }
+                  PaymentError::InvalidTransition { .. } => PortError::conflict(
+                      "payment.checkout_execution_state_conflict",
+                      "payment lifecycle conflicts with checkout execution",
+                  ),
+                  PaymentError::ProviderUnavailable { .. } => PortError::unavailable(
+                      "payment.provider_unavailable",
+                      "payment provider is temporarily unavailable",
+                  ),
+                  PaymentError::ProviderRejected { .. } => PortError::conflict(
+                      "payment.provider_rejected",
+                      "payment provider rejected the requested operation",
+                  ),
+                  PaymentError::ProviderInvalidResponse { .. } => manual_reconciliation(
+                      context,
+                      owner_operation,
+                      "payment provider returned an invalid successful response",
+                  ),
+                  PaymentError::ProviderOutcomeUnknown { .. } => manual_reconciliation(
+                      context,
+                      owner_operation,
+                      "payment provider operation outcome is unknown",
+                  ),
+                  PaymentError::ProviderConfiguration { .. } => PortError::invariant_violation(
+                      "payment.provider_not_configured",
+                      "payment provider is not configured",
+                  ),
+              }
+          }
+          '''
+          source, tail_count = re.subn(tail_pattern, tail_replacement, source, count=1)
+          if tail_count != 1:
+              raise SystemExit(f'expected one payment execution mapper tail, found {tail_count}')
+
+          forbidden = [
+              '.map_err(payment_error_to_port_error)',
+              'fn payment_error_to_port_error(error: PaymentError)',
+              'fn manual_reconciliation(message: impl Into<String>)',
+              '"PortContext.tenant_id must be a UUID for payment ports"',
+          ]
+          for value in forbidden:
+              if value in source:
+                  raise SystemExit(f'payment execution hardening left forbidden source: {value}')
+          required = [
+              'let owner_operation = PREPARE_CHECKOUT_COLLECTION_OPERATION;',
+              'let owner_operation = AUTHORIZE_CHECKOUT_COLLECTION_OPERATION;',
+              'let owner_operation = CAPTURE_CHECKOUT_COLLECTION_OPERATION;',
+              'let owner_operation = READ_CHECKOUT_COLLECTION_OPERATION;',
+              'payment_error_to_port_error(&context, owner_operation, error)',
+              '"payment request context is invalid"',
+              '"payment checkout execution requires manual reconciliation"',
+              'correlation_id = %context.correlation_id',
+              'tenant_id = %context.tenant_id',
+              'operation = owner_operation',
+          ]
+          for value in required:
+              if value not in source:
+                  raise SystemExit(f'payment execution hardening missing source: {value}')
+          execution_path.write_text(source)
+
+          verifier_path = Path('scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs')
+          verifier = verifier_path.read_text()
+          verifier = replace_once(
+              verifier,
+              "const payment = read('crates/rustok-payment/src/ports.rs');\n",
+              "const payment = read('crates/rustok-payment/src/ports.rs');\nconst paymentExecution = read(\n  'crates/rustok-payment/src/checkout_execution.rs',\n);\n",
+              'payment execution verifier source',
+          )
+          verifier = replace_once(
+              verifier,
+              "  [payment, 'payment collection port'],\n",
+              "  [payment, 'payment collection port'],\n  [paymentExecution, 'payment checkout execution port'],\n",
+              'payment execution verifier log requirement',
+          )
+          verifier = replace_once(
+              verifier,
+              '''for (const value of [
+            'fn manual_reconciliation(message: impl Into<String>)',
+            '.map_err(payment_error_to_port_error)',
+            'fn payment_error_to_port_error(error: PaymentError)',
+            '"PortContext.tenant_id must be a UUID for payment ports"',
+          ]) {
+            forbidText(
+              paymentCompensation,
+          ''',
+              '''for (const value of [
+            'fn manual_reconciliation(message: impl Into<String>)',
+            '.map_err(payment_error_to_port_error)',
+            'fn payment_error_to_port_error(error: PaymentError)',
+            '"PortContext.tenant_id must be a UUID for payment ports"',
+          ]) {
+            forbidText(
+              paymentExecution,
+              value,
+              'payment checkout execution public error mapping',
+            );
+          }
+
+          for (const value of [
+            'fn manual_reconciliation(message: impl Into<String>)',
+            '.map_err(payment_error_to_port_error)',
+            'fn payment_error_to_port_error(error: PaymentError)',
+            '"PortContext.tenant_id must be a UUID for payment ports"',
+          ]) {
+            forbidText(
+              paymentCompensation,
+          ''',
+              'payment execution verifier forbidden patterns',
+          )
+          verifier = replace_once(
+              verifier,
+              "  [paymentCompensation, 'correlation_id = %context.correlation_id', 'payment compensation correlation logging'],\n",
+              '''  [paymentExecution, 'correlation_id = %context.correlation_id', 'payment execution correlation logging'],
+            [paymentExecution, 'tenant_id = %context.tenant_id', 'payment execution tenant logging'],
+            [paymentExecution, 'operation = owner_operation', 'payment execution owner operation logging'],
+            [paymentExecution, 'code = "payment.checkout_execution_manual_reconciliation"', 'payment execution reconciliation stable code'],
+            [paymentExecution, 'code = "payment.provider_request_encoding_failed"', 'payment execution request encoding stable code'],
+            [paymentExecution, '"payment storage is temporarily unavailable"', 'payment execution stable storage message'],
+            [paymentExecution, '"payment provider rejected the requested operation"', 'payment execution stable rejection message'],
+            [paymentExecution, '"payment request context is invalid"', 'payment execution stable context message'],
+            [paymentExecution, '"payment checkout execution requires manual reconciliation"', 'payment execution stable reconciliation message'],
+            [paymentExecution, 'let owner_operation = PREPARE_CHECKOUT_COLLECTION_OPERATION;', 'payment execution prepare operation mapping'],
+            [paymentExecution, 'let owner_operation = AUTHORIZE_CHECKOUT_COLLECTION_OPERATION;', 'payment execution authorize operation mapping'],
+            [paymentExecution, 'let owner_operation = CAPTURE_CHECKOUT_COLLECTION_OPERATION;', 'payment execution capture operation mapping'],
+            [paymentExecution, 'let owner_operation = READ_CHECKOUT_COLLECTION_OPERATION;', 'payment execution read operation mapping'],
+            [paymentExecution, 'parse_tenant_id(&context, owner_operation)', 'payment execution context-aware tenant parsing'],
+            [paymentExecution, 'require_operation_context(&context, owner_operation', 'payment execution context-aware causation parsing'],
+            [paymentExecution, 'payment_error_to_port_error(&context, owner_operation, error)', 'payment execution context-aware mapping'],
+            [paymentExecution, 'persisted_provider_result(context, owner_operation', 'payment execution checkpoint context mapping'],
+            [paymentExecution, 'fn manual_reconciliation(\n    context: &PortContext,', 'payment execution reconciliation context'],
+            [paymentCompensation, 'correlation_id = %context.correlation_id', 'payment compensation correlation logging'],
+          ''',
+              'payment execution verifier required evidence',
+          )
+          verifier = replace_once(
+              verifier,
+              'payment collection/compensation, fulfillment',
+              'payment collection/execution/compensation, fulfillment',
+              'payment verifier success message',
+          )
+          verifier_path.write_text(verifier)
+
+          bootstrap = Path('.github/workflows/apply-payment-execution-hardening-once.yml')
+          if not bootstrap.exists():
+              raise SystemExit('missing payment execution branch bootstrap')
+          bootstrap.unlink()
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/rustok-payment/src/checkout_execution.rs \
+            scripts/verify/verify-ecommerce-public-port-error-safety-v2.mjs \
+            .github/workflows/apply-payment-execution-hardening-once.yml
+          git commit -m "Harden payment execution port errors"
+          git push origin HEAD:"${{ steps.meta.outputs.ref }}"
