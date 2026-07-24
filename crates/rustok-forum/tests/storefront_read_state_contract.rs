@@ -2,6 +2,11 @@ use async_graphql::{EmptySubscription, Schema};
 use rustok_forum::graphql::ForumGraphqlErrorExtension;
 use rustok_forum::{ForumMutation, ForumQuery};
 
+const GRAPHQL_ADAPTER: &str =
+    include_str!("../storefront/src/transport/graphql_adapter.rs");
+const NATIVE_ADAPTER: &str =
+    include_str!("../storefront/src/transport/native_server_adapter.rs");
+
 #[test]
 fn graphql_schema_exposes_storefront_visible_unread_contract() {
     let schema = Schema::build(
@@ -61,4 +66,19 @@ fn storefront_bulk_read_mutations_remain_closed() {
 
     assert!(!sdl.contains("markForumStorefrontCategoryRead"));
     assert!(!sdl.contains("markAllForumStorefrontTopicsRead"));
+}
+
+#[test]
+fn storefront_adapters_use_only_visibility_safe_composition() {
+    assert!(GRAPHQL_ADAPTER.contains("forumStorefrontUnreadTopics"));
+    assert!(GRAPHQL_ADAPTER.contains("markForumStorefrontTopicRead"));
+    assert!(NATIVE_ADAPTER.contains("list_topics_with_unread"));
+    assert!(NATIVE_ADAPTER.contains("mark_topic_read_current_visible"));
+
+    for source in [GRAPHQL_ADAPTER, NATIVE_ADAPTER] {
+        assert!(!source.contains("summarize_topic_ids"));
+        assert!(!source.contains("forum_topic_read_states"));
+        assert!(!source.contains("forum_replies::"));
+        assert!(!source.contains("forum_topic_revisions::"));
+    }
 }
