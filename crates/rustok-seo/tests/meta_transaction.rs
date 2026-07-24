@@ -1,0 +1,300 @@
+use std::any::Any;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use anyhow::Result as AnyResult;
+use async_trait::async_trait;
+use rustok_api::TenantContext;
+use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
+use rustok_outbox::TransactionalEventBus;
+use rustok_seo::entities::{
+    self as seo_meta, meta_translation, seo_event_delivery, seo_index_cursor,
+    seo_index_delivery,
+};
+use rustok_seo::{
+    SeoMetaInput, SeoMetaTranslationInput, SeoService, SeoTargetRegistry, SeoTargetSlug,
+    seo_builtin_slug,
+};
+use rustok_seo_targets::{
+    SeoLoadedTargetRecord, SeoTargetAlternateRoute, SeoTargetCapabilities, SeoTargetLoadRequest,
+    SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRuntimeContext, SeoTemplateFieldMap,
+};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
+    PaginatorTrait, Statement,
+};
+use serde_json::json;
+use uuid::Uuid;
+
+struct FailOnSecondTransport {
+    calls: AtomicUsize,
+}
+
+impl FailOnSecondTransport {
+    fn new() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[async_trait]
+impl EventTransport for FailOnSecondTransport {
+    async fn publish(&self, _envelope: EventEnvelope) -> rustok_core::Result<()> {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if call == 2 {
+            return Err(Error::Validation(
+                "forced SEO metadata reindex failure".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn reliability_level(&self) -> ReliabilityLevel {
+        ReliabilityLevel::InMemory
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+struct TestPageProvider;
+
+#[async_trait]
+impl SeoTargetProvider for TestPageProvider {
+    fn slug(&self) -> SeoTargetSlug {
+        page_slug()
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Test page"
+    }
+
+    fn owner_module_slug(&self) -> &'static str {
+        "test-pages"
+    }
+
+    fn capabilities(&self) -> SeoTargetCapabilities {
+        SeoTargetCapabilities::new(true, true, false, false)
+    }
+
+    async fn load_target(
+        &self,
+        _runtime: &SeoTargetRuntimeContext,
+        request: SeoTargetLoadRequest<'_>,
+    ) -> AnyResult<Option<SeoLoadedTargetRecord>> {
+        Ok(Some(SeoLoadedTargetRecord {
+            target_kind: page_slug(),
+            target_id: request.target_id,
+            requested_locale: Some(request.locale.to_string()),
+            effective_locale: request.locale.to_string(),
+            title: "Transactional page".to_string(),
+            description: Some("Transactional SEO metadata".to_string()),
+            canonical_route: "/transactional-page".to_string(),
+            alternates: vec![SeoTargetAlternateRoute {
+                locale: request.locale.to_string(),
+                route: "/transactional-page".to_string(),
+            }],
+            open_graph: SeoTargetOpenGraphRecord::default(),
+            structured_data: json!({"@type": "WebPage"}),
+            fallback_source: "test".to_string(),
+            template_fields: SeoTemplateFieldMap::default(),
+        }))
+    }
+}
+
+#[tokio::test]
+async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
+    let db = test_db().await;
+    create_tables(&db).await;
+
+    let tenant = TenantContext {
+        id: Uuid::new_v4(),
+        name: "SEO transaction tenant".to_string(),
+        slug: "seo-transaction".to_string(),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
+    };
+    let target_id = Uuid::new_v4();
+    let mut registry = SeoTargetRegistry::default();
+    registry
+        .register(TestPageProvider)
+        .expect("test page provider should register");
+    let service = SeoService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(FailOnSecondTransport::new())),
+        Arc::new(registry),
+    );
+
+    let error = service
+        .upsert_meta(
+            &tenant,
+            SeoMetaInput {
+                target_kind: page_slug(),
+                target_id,
+                noindex: false,
+                nofollow: false,
+                canonical_url: None,
+                structured_data: None,
+                translations: vec![SeoMetaTranslationInput {
+                    locale: "en".to_string(),
+                    title: Some("Atomic title".to_string()),
+                    description: Some("Atomic description".to_string()),
+                    keywords: None,
+                    og_title: None,
+                    og_description: None,
+                    og_image: None,
+                }],
+            },
+        )
+        .await
+        .expect_err("reindex failure must abort the metadata transaction");
+    assert!(
+        error
+            .to_string()
+            .contains("failed to enqueue SEO metadata reindex event transactionally")
+    );
+
+    assert_eq!(
+        seo_meta::Entity::find()
+            .count(&db)
+            .await
+            .expect("metadata count should load"),
+        0
+    );
+    assert_eq!(
+        meta_translation::Entity::find()
+            .count(&db)
+            .await
+            .expect("translation count should load"),
+        0
+    );
+    assert_eq!(
+        seo_event_delivery::Entity::find()
+            .count(&db)
+            .await
+            .expect("event delivery count should load"),
+        0
+    );
+    assert_eq!(
+        seo_index_delivery::Entity::find()
+            .count(&db)
+            .await
+            .expect("index delivery count should load"),
+        0
+    );
+    assert_eq!(
+        seo_index_cursor::Entity::find()
+            .count(&db)
+            .await
+            .expect("index cursor count should load"),
+        0
+    );
+}
+
+fn page_slug() -> SeoTargetSlug {
+    SeoTargetSlug::new(seo_builtin_slug::PAGE).expect("page SEO target slug must stay valid")
+}
+
+async fn test_db() -> DatabaseConnection {
+    let mut options = ConnectOptions::new("sqlite::memory:");
+    options
+        .max_connections(1)
+        .min_connections(1)
+        .sqlx_logging(false);
+    Database::connect(options)
+        .await
+        .expect("failed to connect SEO metadata test database")
+}
+
+async fn create_tables(db: &DatabaseConnection) {
+    for sql in [
+        "CREATE TABLE tenant_modules (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            module_slug TEXT NOT NULL,
+            enabled INTEGER NOT NULL,
+            settings TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+        "CREATE TABLE meta (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            no_index INTEGER NOT NULL,
+            no_follow INTEGER NOT NULL,
+            canonical_url TEXT NULL,
+            structured_data TEXT NULL
+        )",
+        "CREATE TABLE meta_translations (
+            id TEXT PRIMARY KEY,
+            meta_id TEXT NOT NULL,
+            locale TEXT NOT NULL,
+            title TEXT NULL,
+            description TEXT NULL,
+            keywords TEXT NULL,
+            og_title TEXT NULL,
+            og_description TEXT NULL,
+            og_image TEXT NULL
+        )",
+        "CREATE UNIQUE INDEX idx_meta_translations_locale
+            ON meta_translations (meta_id, locale)",
+        "CREATE TABLE seo_event_deliveries (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            source_kind TEXT NULL,
+            source_id TEXT NULL,
+            status TEXT NOT NULL,
+            outbox_event_id TEXT NULL,
+            last_error TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            dispatched_at TEXT NULL
+        )",
+        "CREATE UNIQUE INDEX idx_seo_event_deliveries_idempotency
+            ON seo_event_deliveries (tenant_id, idempotency_key)",
+        "CREATE TABLE seo_index_deliveries (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            seo_event_type TEXT NOT NULL,
+            idempotency_key TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_id TEXT NULL,
+            target_scope TEXT NOT NULL,
+            target_scope_key TEXT NOT NULL,
+            status TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            outbox_event_id TEXT NULL,
+            next_attempt_at TEXT NULL,
+            last_error TEXT NULL,
+            dead_lettered_at TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            dispatched_at TEXT NULL
+        )",
+        "CREATE TABLE seo_index_cursors (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            initial_cursor_at TEXT NOT NULL,
+            high_water_mark_at TEXT NOT NULL,
+            last_repair_cursor_at TEXT NULL,
+            replay_mode TEXT NOT NULL,
+            replay_requested_at TEXT NULL,
+            replay_completed_at TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    ] {
+        db.execute(Statement::from_string(DbBackend::Sqlite, sql.to_string()))
+            .await
+            .expect("failed to create SEO metadata transaction test table");
+    }
+}
