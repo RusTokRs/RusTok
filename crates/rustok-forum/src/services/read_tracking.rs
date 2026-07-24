@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, TransactionTrait, sea_query::OnConflict,
@@ -316,7 +316,7 @@ impl ForumTopicReadStateService {
             processed,
             next_cursor,
             has_more,
-            snapshot_at: snapshot_at.to_rfc3339(),
+            snapshot_at: snapshot_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
         })
     }
 }
@@ -549,40 +549,36 @@ fn encode_bulk_read_cursor(
     topic: &forum_topic::Model,
 ) -> String {
     format!(
-        "{BULK_READ_CURSOR_VERSION}:{}:{}:{}:{}",
+        "{BULK_READ_CURSOR_VERSION}|{}|{}|{}|{}",
         scope.cursor_token(),
-        snapshot_at.timestamp_millis(),
-        topic.created_at.timestamp_millis(),
+        snapshot_at.to_rfc3339_opts(SecondsFormat::Nanos, true),
+        topic
+            .created_at
+            .to_rfc3339_opts(SecondsFormat::Nanos, true),
         topic.id
     )
 }
 
 fn decode_bulk_read_cursor(value: &str, expected_scope: BulkReadScope) -> ForumResult<BulkReadCursor> {
     let expected_token = expected_scope.cursor_token();
-    let mut parts = value.splitn(5, ':');
+    let mut parts = value.splitn(5, '|');
     if parts.next() != Some(BULK_READ_CURSOR_VERSION)
         || parts.next() != Some(expected_token.as_str())
     {
         return Err(invalid_bulk_read_cursor());
     }
-    let snapshot_millis = parts
+    let snapshot_at = parts
         .next()
-        .and_then(|value| value.parse::<i64>().ok())
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .ok_or_else(invalid_bulk_read_cursor)?;
-    let created_millis = parts
+    let created_at = parts
         .next()
-        .and_then(|value| value.parse::<i64>().ok())
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .ok_or_else(invalid_bulk_read_cursor)?;
     let topic_id = parts
         .next()
         .and_then(|value| Uuid::parse_str(value).ok())
         .ok_or_else(invalid_bulk_read_cursor)?;
-    let snapshot_at = DateTime::<Utc>::from_timestamp_millis(snapshot_millis)
-        .ok_or_else(invalid_bulk_read_cursor)?
-        .fixed_offset();
-    let created_at = DateTime::<Utc>::from_timestamp_millis(created_millis)
-        .ok_or_else(invalid_bulk_read_cursor)?
-        .fixed_offset();
     if created_at > snapshot_at {
         return Err(invalid_bulk_read_cursor());
     }
