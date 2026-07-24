@@ -9,9 +9,12 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
+const explainParser = read('ops/benches/src/index_storage/explain.rs');
 const sourceSql = read('ops/benches/src/index_storage/sql/source.rs');
 const sqlModule = read('ops/benches/src/index_storage/sql/mod.rs');
 const runner = read('ops/benches/src/index_storage/runner.rs');
+const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
 const validator = read('scripts/verify/validate-index-storage-evidence.mjs');
 const comparator = read('scripts/verify/compare-index-storage-evidence.mjs');
 const comparatorFixture = read('scripts/verify/compare-index-storage-evidence.test.mjs');
@@ -24,6 +27,21 @@ const readWorkloads = [
   'keyset_page',
   'exact_count',
 ];
+
+for (const marker of ['mod explain;', 'source_workloads']) {
+  if (!benchmarkModule.includes(marker)) fail(`benchmark module missing ${marker}`);
+}
+for (const marker of [
+  'parse_read_explain_metrics',
+  'parse_mutation_explain_metrics',
+  'root_and_plan_node',
+  'required_non_negative_f64',
+  'required_non_negative_u64',
+  'required_maximum_metric',
+  'EXPLAIN result must contain exactly one root entry',
+]) {
+  if (!explainParser.includes(marker)) fail(`Rust EXPLAIN parser missing ${marker}`);
+}
 
 for (const marker of [
   'pub fn workloads(context: &WorkloadContext) -> Vec<Workload>',
@@ -51,9 +69,39 @@ for (const marker of [
   'pub source_workloads: Vec<SourceWorkloadReport>',
   'run_source_workloads(&db, &config.dataset)',
   'validate_semantic_parity(&source_workload_reports, &prototypes)',
+  'parse_read_explain_metrics(&plan)',
+  'pub planning_time_ms: f64',
+  'pub execution_time_ms: f64',
+  'pub shared_hit_blocks: u64',
+  'pub shared_read_blocks: u64',
   'differs from source oracle',
 ]) {
-  if (!runner.includes(marker)) fail(`read runner missing source oracle contract ${marker}`);
+  if (!runner.includes(marker)) fail(`read runner missing evidence contract ${marker}`);
+}
+for (const marker of [
+  'parse_mutation_explain_metrics(&plan)',
+  'pub planning_time_ms: f64',
+  'pub execution_time_ms: f64',
+  'pub shared_hit_blocks: u64',
+  'pub shared_read_blocks: u64',
+  'pub maximum_node_wal_records: u64',
+  'pub maximum_node_wal_fpi: u64',
+  'pub maximum_node_wal_bytes: u64',
+]) {
+  if (!mutationRunner.includes(marker)) fail(`mutation runner missing evidence contract ${marker}`);
+}
+for (const legacy of [
+  'pub planning_time_ms: Option<f64>',
+  'pub execution_time_ms: Option<f64>',
+  'pub shared_hit_blocks: Option<u64>',
+  'pub shared_read_blocks: Option<u64>',
+  'pub maximum_node_wal_records: Option<u64>',
+  'pub maximum_node_wal_fpi: Option<u64>',
+  'pub maximum_node_wal_bytes: Option<u64>',
+]) {
+  if (runner.includes(legacy) || mutationRunner.includes(legacy)) {
+    fail(`Rust runner restored nullable required EXPLAIN metric: ${legacy}`);
+  }
 }
 
 for (const marker of [
