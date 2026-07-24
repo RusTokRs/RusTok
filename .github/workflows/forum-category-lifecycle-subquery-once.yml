@@ -17,10 +17,8 @@ jobs:
     if: >-
       github.event.issue.pull_request &&
       github.event.comment.body == '/apply-forum-category-lifecycle-subquery' &&
-      (github.event.comment.author_association == 'OWNER' ||
-       github.event.comment.author_association == 'MEMBER' ||
-       github.event.comment.author_association == 'COLLABORATOR')
-    runs-on: ubuntu-slim
+      github.event.comment.user.login == 'loid345'
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Resolve and validate PR head
