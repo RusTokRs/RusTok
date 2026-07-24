@@ -1,0 +1,35 @@
+name: SEO owner dependency cleanup patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.head_ref == 'agent/seo-owner-dependencies' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply SEO owner dependency cleanup
+        run: python scripts/seo/apply_owner_dependency_cleanup.py
+
+      - name: Commit clean SEO dependency slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/seo-owner-dependency-cleanup.yml
+          rm -f scripts/seo/apply_owner_dependency_cleanup.py
+          git config user.name "RusTok Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "refactor(seo): remove owner dependencies"
+          git push origin HEAD:${{ github.head_ref }}
