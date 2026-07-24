@@ -73,11 +73,18 @@ pub fn full_prototype_sql(prototype: Prototype) -> String {
 
 pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> {
     let context = WorkloadContext::new(config);
-    match prototype {
+    let workloads = match prototype {
         Prototype::Jsonb => jsonb::workloads(&context),
         Prototype::TypedEav => eav::workloads(&context),
         Prototype::HotProjection => hot::workloads(&context),
-    }
+    };
+    workloads
+        .into_iter()
+        .map(|mut workload| {
+            workload.sql = common::qualify_link_identity_sql(workload.sql);
+            workload
+        })
+        .collect()
 }
 
 pub fn mutation_workloads(
@@ -85,15 +92,25 @@ pub fn mutation_workloads(
     config: &DatasetConfig,
 ) -> Vec<MutationWorkload> {
     let context = WorkloadContext::new(config);
-    match prototype {
+    let workloads = match prototype {
         Prototype::Jsonb => jsonb::mutation_workloads(&context),
         Prototype::TypedEav => eav::mutation_workloads(&context),
         Prototype::HotProjection => hot::mutation_workloads(&context),
-    }
+    };
+    workloads
+        .into_iter()
+        .map(|mut workload| {
+            workload.sql = common::qualify_link_identity_sql(workload.sql);
+            workload
+        })
+        .collect()
 }
 
 pub fn churn_cycle_sql(prototype: Prototype, config: &DatasetConfig) -> String {
-    maintenance::churn_cycle_sql(prototype, &WorkloadContext::new(config))
+    common::qualify_link_identity_sql(maintenance::churn_cycle_sql(
+        prototype,
+        &WorkloadContext::new(config),
+    ))
 }
 
 pub fn analyze_sql(prototype: Prototype) -> String {
