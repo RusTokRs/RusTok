@@ -11,6 +11,9 @@ const fail = (message) => {
 
 const router = read('scripts/verify/index-storage-tooling.mjs');
 const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
+const orderingPreflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
+const orderingFixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
+const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs');
 const preparer = read('scripts/verify/prepare-index-storage-decision.mjs');
 const finalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
 const verifier = read('scripts/verify/verify-index-storage-adr.mjs');
@@ -31,7 +34,11 @@ const forbidMarkers = (content, label, markers) => {
 };
 
 requireMarkers(router, 'storage tooling router', [
+  "'verify-index-storage-read-ordering-contract.mjs'",
   "'verify-index-storage-adr-integrity.mjs'",
+  "scriptPath('check-index-storage-read-ordering.test.mjs')",
+  "runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot])",
+  "runScript('check-index-storage-read-ordering.mjs', orderingArgs)",
   "case 'prepare':",
   "runScript('prepare-index-storage-decision.mjs', args)",
   "case 'render':",
@@ -51,6 +58,26 @@ requireMarkers(routerFixture, 'storage tooling router fixture', [
   "test('forwards ADR finalization help without rewriting its arguments'",
   "test('forwards ADR verification help without rewriting its arguments'",
   "'verify-adr'",
+]);
+
+requireMarkers(orderingPreflight, 'terminal ordering preflight', [
+  'sql.trimEnd().endsWith(marker)',
+  'must end with canonical ordering marker',
+  'validatePacketReadOrdering',
+]);
+if (orderingPreflight.includes('sql.includes(marker)')) {
+  fail('terminal ordering preflight restored substring-only validation');
+}
+requireMarkers(orderingFixture, 'terminal ordering fixture', [
+  "test('rejects a source ordering marker that exists only in a nested query'",
+  "test('rejects a candidate ordering marker that exists only in a comment'",
+]);
+requireMarkers(orderingGuard, 'terminal ordering guard', [
+  "const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs')",
+  "const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs')",
+  'packet terminal ordering preflight must run before the canonical validator',
+  'comparison terminal ordering preflight must run before the canonical comparator',
+  'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
 ]);
 
 requireMarkers(preparer, 'decision preparer', [
@@ -134,6 +161,12 @@ for (const [label, workflow] of [
   ['scale workflow', scaleWorkflow],
 ]) {
   requireMarkers(workflow, label, [
+    'scripts/verify/check-index-storage-read-ordering.mjs',
+    'scripts/verify/check-index-storage-read-ordering.test.mjs',
+    'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'node --check scripts/verify/check-index-storage-read-ordering.mjs',
+    'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
+    'node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs',
     'scripts/verify/verify-index-storage-adr.mjs',
     'node --check scripts/verify/verify-index-storage-adr.mjs',
     'scripts/verify/verify-index-storage-adr-integrity.mjs',
@@ -141,4 +174,4 @@ for (const [label, workflow] of [
   ]);
 }
 
-console.log('[verify-index-storage-adr-integrity] atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are consistent');
+console.log('[verify-index-storage-adr-integrity] terminal ordering, atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are cross-guarded');
