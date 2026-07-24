@@ -6,7 +6,7 @@ use axum::{
 use rustok_api::Permission;
 use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpResult;
 use uuid::Uuid;
 
 use super::{
@@ -59,7 +59,7 @@ pub async fn list_fulfillments(
             },
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok(Json(PaginatedResponse {
         data: fulfillments,
