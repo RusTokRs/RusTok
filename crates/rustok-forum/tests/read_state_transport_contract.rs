@@ -1,5 +1,6 @@
 use async_graphql::{EmptySubscription, Schema};
-use rustok_forum::{ForumGraphqlErrorExtension, ForumMutation, ForumQuery};
+use rustok_forum::graphql::ForumGraphqlErrorExtension;
+use rustok_forum::{ForumMutation, ForumQuery};
 
 #[test]
 fn openapi_exposes_owner_read_state_routes() {
