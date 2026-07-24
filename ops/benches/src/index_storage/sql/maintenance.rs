@@ -34,7 +34,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no <= {update_end}
   AND entity.tenant_id = {tenant}
+  AND entity.module_name = 'product'
   AND entity.entity_name = 'product'
+  AND entity.schema_version = 1
   AND entity.locale = source.locale
   AND entity.entity_id = source.product_id;
 
@@ -54,7 +56,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no >= {churn_start}
   AND entity.tenant_id = {tenant}
+  AND entity.module_name = 'product'
   AND entity.entity_name = 'product'
+  AND entity.schema_version = 1
   AND entity.locale = source.locale
   AND entity.entity_id = source.product_id;
 
@@ -120,7 +124,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no <= {update_end}
   AND entity.tenant_id = {tenant}
+  AND entity.module_name = 'product'
   AND entity.entity_name = 'product'
+  AND entity.schema_version = 1
   AND entity.locale = source.locale
   AND entity.entity_id = source.product_id;
 
@@ -132,7 +138,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no <= {update_end}
   AND field.tenant_id = {tenant}
+  AND field.module_name = 'product'
   AND field.entity_name = 'product'
+  AND field.schema_version = 1
   AND field.locale = source.locale
   AND field.entity_id = source.product_id
   AND field.field_name IN ('price_minor', 'rating_milli');
@@ -143,7 +151,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no >= {churn_start}
   AND field.tenant_id = {tenant}
+  AND field.module_name = 'product'
   AND field.entity_name = 'product'
+  AND field.schema_version = 1
   AND field.locale = source.locale
   AND field.entity_id = source.product_id;
 
@@ -163,7 +173,9 @@ WHERE source.tenant_no = 1
   AND source.locale = {locale}
   AND source.product_no >= {churn_start}
   AND entity.tenant_id = {tenant}
+  AND entity.module_name = 'product'
   AND entity.entity_name = 'product'
+  AND entity.schema_version = 1
   AND entity.locale = source.locale
   AND entity.entity_id = source.product_id;
 
@@ -178,40 +190,46 @@ WHERE tenant_no = 1
   AND product_no >= {churn_start};
 
 INSERT INTO idx_bench_eav.field_value (
-    tenant_id, entity_name, entity_id, locale, field_name, ordinal, value_text
+    tenant_id, module_name, entity_name, schema_version, entity_id, locale,
+    field_name, ordinal, value_text
 )
-SELECT tenant_id, 'product', product_id, locale, 'status', 0, status
+SELECT tenant_id, 'product', 'product', 1, product_id, locale, 'status', 0, status
 FROM idx_bench_source.product
 WHERE tenant_no = 1 AND locale = {locale} AND product_no >= {churn_start}
 UNION ALL
-SELECT tenant_id, 'product', product_id, locale, 'title', 0, title
+SELECT tenant_id, 'product', 'product', 1, product_id, locale, 'title', 0, title
 FROM idx_bench_source.product
 WHERE tenant_no = 1 AND locale = {locale} AND product_no >= {churn_start};
 
 INSERT INTO idx_bench_eav.field_value (
-    tenant_id, entity_name, entity_id, locale, field_name, ordinal, value_int
+    tenant_id, module_name, entity_name, schema_version, entity_id, locale,
+    field_name, ordinal, value_int
 )
-SELECT tenant_id, 'product', product_id, locale, 'price_minor', 0, price_minor
+SELECT tenant_id, 'product', 'product', 1, product_id, locale, 'price_minor', 0, price_minor
 FROM idx_bench_source.product
 WHERE tenant_no = 1 AND locale = {locale} AND product_no >= {churn_start}
 UNION ALL
-SELECT tenant_id, 'product', product_id, locale, 'rating_milli', 0, rating_milli
+SELECT tenant_id, 'product', 'product', 1, product_id, locale, 'rating_milli', 0, rating_milli
 FROM idx_bench_source.product
 WHERE tenant_no = 1 AND locale = {locale} AND product_no >= {churn_start};
 
 INSERT INTO idx_bench_eav.field_value (
-    tenant_id, entity_name, entity_id, locale, field_name, ordinal, value_ts
+    tenant_id, module_name, entity_name, schema_version, entity_id, locale,
+    field_name, ordinal, value_ts
 )
-SELECT tenant_id, 'product', product_id, locale, 'updated_at', 0, updated_at
+SELECT tenant_id, 'product', 'product', 1, product_id, locale, 'updated_at', 0, updated_at
 FROM idx_bench_source.product
 WHERE tenant_no = 1 AND locale = {locale} AND product_no >= {churn_start};
 
 INSERT INTO idx_bench_eav.field_value (
-    tenant_id, entity_name, entity_id, locale, field_name, ordinal, value_text
+    tenant_id, module_name, entity_name, schema_version, entity_id, locale,
+    field_name, ordinal, value_text
 )
 SELECT
     product.tenant_id,
     'product',
+    'product',
+    1,
     product.product_id,
     product.locale,
     'tags',

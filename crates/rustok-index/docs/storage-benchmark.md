@@ -8,10 +8,11 @@
 - Persistent churn/VACUUM harness: implemented with committed cycles
 - Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
 - Production migrations: intentionally absent
-- Smoke evidence: archived from Actions run `30041091121`
-- 100k evidence: archived and inspected from Actions run `30051321255`
+- Smoke evidence: historical harness-sanity packet from Actions run `30041091121`
+- 100k evidence: historical diagnostic packet from Actions run `30051321255`
+- Replacement evidence: same-commit 100k and 1m packets pending after full-identity corrections
 - 1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check
-- Storage decision ADR: Proposed; 100k evidence is populated, acceptance still waits on 1m and the cross-scale comparison
+- Storage decision ADR: Proposed; acceptance waits on replacement 100k/1m evidence and the generated comparison
 
 ## Goal
 
@@ -31,14 +32,17 @@ statistics, and VACUUM sequencing on one reproducible session per report.
 
 One row per tenant/schema/entity/locale with a JSONB payload. Candidate indexes
 include a general `jsonb_path_ops` GIN index and typed expression indexes for hot
-fields. Links are stored in a separate relational table.
+fields. Links are stored in a separate relational table. Reads, mutations, and
+maintenance constrain module, entity, and schema version.
 
 ### Typed EAV rows
 
 One identity row per entity and normalized field rows with separate boolean,
 integer, numeric, text, UUID, and timestamp columns. Multi-value fields use an
-ordinal. Links are stored in the same independent relational shape used by the
-other candidates.
+ordinal. Every field row carries the complete module/entity/schema-version
+identity, includes it in primary and lookup keys, and references the matching
+entity envelope. Links are stored in the same independent relational shape used
+by the other candidates.
 
 ### Hot typed projection
 
@@ -74,6 +78,10 @@ Before timings are accepted, the runners verify:
   workload across all candidates;
 - identical affected entity/link counts for mutation workloads;
 - unchanged entity/link cardinality after every committed churn phase.
+
+Static verification additionally locks complete module/entity/schema-version
+identity in JSONB/EAV entity maintenance and in typed EAV field keys, joins,
+mutations, and maintenance paths.
 
 ## Read workloads
 
@@ -177,8 +185,8 @@ INDEX_BENCH_CHURN_CYCLES=5 \
 cargo run -p rustok-benchmarks --bin index-storage-maintenance-benchmark --release
 ```
 
-All three executables must be run at `smoke`, `100k`, and `1m` before the storage
-ADR is accepted.
+All three executables must be run at replacement `100k` and `1m` from the same
+commit before the storage ADR is accepted.
 
 ### CI smoke evidence
 
@@ -189,7 +197,7 @@ the commit and workflow run, and uploads the evidence packet for 90 days.
 
 The workflow is path-scoped to Index, benchmark, verifier, and workflow changes
 and can also be started manually. A successful artifact is inspected before the
-canonical plan marks smoke evidence complete.
+canonical plan marks evidence complete.
 
 The first inspected packet is Actions run `30041091121`, artifact
 `index-storage-smoke-8efd318091098bb5bce0d5f83b8b51653dc4934c`. It contains
@@ -199,12 +207,12 @@ All candidates preserved 1,216 entities and 2,400 links, produced identical read
 result digests, validated equal mutation effects, and preserved exact
 cardinality after churn and VACUUM.
 
-This smoke packet proves harness sanity only. Its small-scale latency, size, WAL,
-and VACUUM values must not select a production candidate. The inspected 100k
-packet establishes the first scale baseline; the 1m packet and cross-scale
-comparison remain required before a production model is selected.
+This smoke packet proved the original harness could execute coherently. It is now
+historical harness-sanity evidence because later query and identity corrections
+changed the SQL. Its latency, size, WAL, and VACUUM values must not select a
+production candidate.
 
-### Inspected 100k scale evidence
+### Historical inspected 100k evidence
 
 Actions run `30051321255` archived artifact
 `index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4` for
@@ -241,8 +249,13 @@ even though no shared-read or temporary blocks were recorded. EXPLAIN showed tha
 the query omitted the known `target_entity = 'variant'` and
 `target_entity = 'sales_channel'` discriminators, preventing full use of
 `link_target_lookup`. Those predicates are now part of all three candidate SQL
-queries and are verifier-locked. The values above remain pre-fix diagnostics; a
-same-commit 100k/1m rerun supplies the canonical cross-scale two-hop evidence.
+queries and are verifier-locked.
+
+A later audit also found that typed EAV field rows omitted module and schema
+version and that JSONB/EAV maintenance entity mutations relied on `entity_name`
+alone. Those paths now use the complete identity and are verifier-locked. The
+values above therefore remain pre-fix diagnostics; replacement same-commit
+100k/1m packets supply the canonical comparison.
 
 Median mutation execution and maximum-node WAL bytes:
 
@@ -261,8 +274,7 @@ The inspected run failed closed before `1m` because repository variable
 93,030,404,096 free root-filesystem bytes before evidence and 88,893,792,256 after.
 The scale workflow now prefers the configured runner when present and otherwise
 uses `ubuntu-latest`; the reusable job still rejects any runner with less than
-35,000,000,000 free bytes before the build. The 1m result remains pending, so the
-storage ADR remains Proposed and M3 remains blocked.
+35,000,000,000 free bytes before the build.
 
 Optional settings:
 
@@ -278,14 +290,15 @@ Optional settings:
 No candidate is selected from one latency number. The ADR must compare:
 
 - p50/median execution across repeated plans;
-- cold versus warm buffer behavior;
+- first-run versus warm buffer behavior;
 - ingestion duration and relation size;
 - equality, range, multi-value, link, two-hop, sort, keyset, and count behavior;
-- planner stability at both 100k and 1m Product-locale rows;
+- planner stability at both replacement 100k and 1m Product-locale rows;
 - update/delete latency, buffers, WAL records/FPI/bytes, and changed row count;
 - committed churn, dead-tuple estimates, HOT updates, vacuum duration, and
   pre/post-VACUUM size behavior;
 - operational complexity for schema evolution and dynamic fields;
-- compatibility with tenant, locale, source-version, and atomic link invariants.
+- compatibility with tenant, locale, complete schema identity, source-version,
+  and atomic link invariants.
 
 After the ADR is accepted, rejected prototype code and schemas must be deleted.

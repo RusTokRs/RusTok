@@ -45,9 +45,9 @@ Commits record which checks and evidence runs were not executed.
 - FBA status: `in_progress`
 - M0 code reset: `complete`
 - M1 domain/application core: `complete`
-- M2 read/query harness: `smoke evidence archived; 100k/1m pending`
-- M2 transactional mutation/WAL harness: `smoke evidence archived; 100k/1m pending`
-- M2 persistent churn/VACUUM harness: `smoke evidence archived; 100k/1m pending`
+- M2 read/query harness: `historical smoke/100k archived; replacement 100k/1m pending`
+- M2 transactional mutation/WAL harness: `historical smoke/100k archived; replacement 100k/1m pending`
+- M2 persistent churn/VACUUM harness: `historical smoke/100k archived; replacement 100k/1m pending`
 - Production persistence: intentionally absent until the M2 ADR selects a model
 
 The active production crate contains only the generic domain/application core,
@@ -218,6 +218,11 @@ migrations.
       without random or wall-clock inputs.
 - [x] Prototype JSONB entity rows plus typed expression/GIN indexes.
 - [x] Prototype normalized typed field-value rows.
+- [x] Preserve complete module/entity/schema-version identity in typed EAV field
+      keys, joins, mutations, and maintenance, with an entity-envelope foreign key.
+- [x] Scope JSONB and typed EAV maintenance entity mutations by the complete schema
+      identity.
+- [x] Add static guards for full-identity EAV and maintenance SQL.
 - [x] Prototype a specialized hot typed projection as the comparison baseline.
 - [x] Represent links independently from entity payload storage in every model.
 - [x] Split source, common-link, JSONB, EAV, hot, and maintenance SQL into
@@ -243,19 +248,21 @@ migrations.
 - [x] Add a separate release-mode maintenance evidence executable/report with
       configurable churn-cycle count.
 - [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a
-      harness sanity check.
-- [x] Run and archive 100k Product-locale row read, mutation, and maintenance
-      evidence.
-- [ ] Run and archive 1m Product-locale row read, mutation, and maintenance
-      evidence.
+      harness sanity check; retain it as historical evidence after later SQL fixes.
+- [x] Record the candidate operational review and ADR completion checklist.
+- [ ] Run and archive replacement 100k Product-locale row read, mutation, and
+      maintenance evidence after the full-identity corrections.
+- [ ] Run and archive replacement 1m Product-locale row read, mutation, and
+      maintenance evidence from the same commit as replacement 100k.
 - [ ] Compare warm/cold buffers, planner stability, execution latency, ingestion
       throughput, relation size, WAL, dead tuples, vacuum behavior, and operational
       complexity.
 - [ ] Record the selected model and rejected alternatives in an ADR.
 - [ ] Delete benchmark prototypes that are not selected.
 
-M2 remains open until real PostgreSQL evidence is archived and the storage ADR
-is accepted. Implementing the harness does not select a model.
+M2 remains open until replacement same-commit PostgreSQL evidence is archived and
+the storage ADR is accepted. Implementing or correcting the harness does not
+select a model.
 
 ### M3 - PostgreSQL storage engine
 
@@ -403,8 +410,8 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   as artifact `index-storage-smoke-8efd318091098bb5bce0d5f83b8b51653dc4934c`.
   All candidates preserved 1,216 entities and 2,400 links, produced identical
   read-workload digests, validated equal mutation effects, and preserved exact
-  cardinality through five committed churn cycles and VACUUM. The 100k/1m runs,
-  cross-scale comparison, storage ADR, and prototype cleanup remain open.
+  cardinality through five committed churn cycles and VACUUM. This packet remains
+  historical harness-sanity evidence after later SQL corrections.
 - 2026-07-24: synchronized the central module registry and FBA overview with
   complete Index v1 removal, removed references to deleted registry/evidence
   and read-model contracts, and reset central FBA readiness to `in_progress`.
@@ -426,3 +433,10 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   discriminators. Added `variant` and `sales_channel` target predicates to all
   three candidate queries and locked them in `verify-index-fba.mjs`; the prior
   two-hop latency is retained only as pre-fix diagnostic evidence.
+- 2026-07-24: re-audited the M2 physical identity contract. Typed EAV field rows
+  omitted module and schema version, and JSONB/EAV maintenance entity mutations
+  still relied on `entity_name` alone. Added complete field identity, an entity
+  foreign key, full-identity query/mutation/maintenance predicates, static guards,
+  and the canonical operational review. The original 100k packet is now historical
+  diagnostic evidence; replacement same-commit 100k/1m evidence remains the next
+  open M2 action.
