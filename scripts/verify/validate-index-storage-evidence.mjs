@@ -6,6 +6,7 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const resultDigestContract = 'ordered_length_prefixed_json_v1';
 const canonicalLocales = ['en-US', 'ru-RU'];
 const canonicalPrototypes = [
   { prototype: 'jsonb', schema: 'idx_bench_jsonb', relations: ['entity', 'link'] },
@@ -25,6 +26,14 @@ const canonicalReadWorkloads = [
   'exact_count',
 ];
 const canonicalMutationWorkloads = ['update_product_batch', 'delete_product_batch'];
+const readOrderMarkers = new Map([
+  ['status_equality', 'ORDER BY entity_id LIMIT 100'],
+  ['price_range_sort', 'ORDER BY price_minor, entity_id LIMIT 100'],
+  ['multi_value_tag', 'ORDER BY entity_id LIMIT 100'],
+  ['two_hop_channel_filter', 'ORDER BY entity_id LIMIT 100'],
+  ['keyset_page', 'ORDER BY price_minor, entity_id LIMIT 100'],
+  ['exact_count', null],
+]);
 
 const contracts = {
   smoke: {
@@ -136,6 +145,14 @@ const requireExactOrder = (items, expected, label) => {
   }
 };
 
+const requireReadOrdering = (sql, workloadName, label) => {
+  if (!readOrderMarkers.has(workloadName)) fail(`${label} has no canonical ordering contract`);
+  const marker = readOrderMarkers.get(workloadName);
+  if (marker !== null && !sql.includes(marker)) {
+    fail(`${label}.sql is missing canonical ordering marker ${marker}`);
+  }
+};
+
 const requirePrototypeContract = (report, label) => {
   if (!Array.isArray(report.prototypes)) fail(`${label}.prototypes must be an array`);
   requireExactOrder(
@@ -208,6 +225,9 @@ const requireDatabaseContract = (database) => {
 const read = readJson('read-report.json');
 requireObject(read, 'read report');
 requireTimestamp(read.generated_at, 'read.generated_at');
+if (read.result_digest_contract !== resultDigestContract) {
+  fail(`read.result_digest_contract must be ${resultDigestContract}; got ${read.result_digest_contract}`);
+}
 requireDatabaseContract(read.database);
 const dataset = requireObject(read.dataset, 'read.dataset');
 if (dataset.scale !== contract.serializedScale) {
@@ -245,6 +265,7 @@ for (const sourceWorkload of read.source_workloads) {
   if (!sourceWorkload.sql.includes('idx_bench_source.')) {
     fail(`source/${sourceWorkload.name}.sql must read from idx_bench_source`);
   }
+  requireReadOrdering(sourceWorkload.sql, sourceWorkload.name, `source/${sourceWorkload.name}`);
   requireNonNegativeInteger(sourceWorkload.result_rows, `source/${sourceWorkload.name}.result_rows`);
   requireDigest(sourceWorkload.result_digest, `source/${sourceWorkload.name}.result_digest`);
   sourceOracle.set(sourceWorkload.name, {
@@ -271,6 +292,7 @@ for (const [prototypeIndex, prototype] of read.prototypes.entries()) {
     if (workload.sql.includes('idx_bench_source.')) {
       fail(`${prototype.prototype}/${workload.name}.sql must not read from source oracle tables`);
     }
+    requireReadOrdering(workload.sql, workload.name, `${prototype.prototype}/${workload.name}`);
     requireNonNegativeInteger(workload.result_rows, `${prototype.prototype}/${workload.name}.result_rows`);
     requireDigest(workload.result_digest, `${prototype.prototype}/${workload.name}.result_digest`);
     if (!Array.isArray(workload.repetitions) || workload.repetitions.length !== 3) {
@@ -423,6 +445,7 @@ writeFileSync(
     scale,
     repetitions: 3,
     churn_cycles: 5,
+    result_digest_contract: resultDigestContract,
     source_workload_names: canonicalReadWorkloads,
     expected_product_rows: contract.productRows,
     expected_entity_rows: contract.entityRows,
