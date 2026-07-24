@@ -20,7 +20,7 @@ use crate::dto::{
 };
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply, forum_reply_body, forum_solution,
-    forum_topic, forum_topic_read_state, forum_topic_revision, forum_topic_translation,
+    forum_topic, forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
@@ -542,6 +542,7 @@ fn normalized_optional_locale(locale: Option<&str>) -> ForumResult<Option<String
 fn unread_topic_condition(user_id: Uuid) -> Condition {
     Condition::all().add(Expr::cust_with_values(
         r#"
+(
 NOT EXISTS (
     SELECT 1
     FROM forum_topic_read_states state
@@ -575,6 +576,7 @@ OR EXISTS (
             AND state.topic_id = forum_topics.id
             AND state.user_id = ?
       ), 0)
+)
 )
 "#,
         vec![user_id.into(), user_id.into(), user_id.into()],
@@ -630,7 +632,9 @@ GROUP BY
     let mut values = Vec::<Value>::with_capacity(topic_ids.len() + 2);
     values.push(user_id.into());
     values.push(tenant_id.into());
-    values.extend(topic_ids.iter().copied().map(Value::from));
+    for topic_id in topic_ids {
+        values.push((*topic_id).into());
+    }
 
     let rows = db
         .query_all(Statement::from_sql_and_values(
