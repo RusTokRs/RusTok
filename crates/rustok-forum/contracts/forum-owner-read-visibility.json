@@ -8,6 +8,7 @@
   "reply_facade_file": "crates/rustok-forum/src/services/reply_facade.rs",
   "test_file": "crates/rustok-forum/tests/topic_reply_owner_visibility_sqlite.rs",
   "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "canonical_plan_sync": "pending_conflict_safe_full_file_update",
   "category_tree_bound": 512,
   "category_depth_bound": 16,
   "policy": {
