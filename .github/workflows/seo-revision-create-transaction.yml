@@ -11,7 +11,7 @@ permissions:
 jobs:
   apply-patch:
     if: github.head_ref == 'agent/seo-revision-create-transaction' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
