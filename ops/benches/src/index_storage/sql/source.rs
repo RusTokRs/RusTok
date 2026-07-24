@@ -1,4 +1,4 @@
-use super::{DatasetConfig, SOURCE_SCHEMA, sql_literal};
+use super::{DatasetConfig, SOURCE_SCHEMA, Workload, WorkloadContext, sql_literal};
 
 pub fn dataset_sql(config: &DatasetConfig) -> String {
     let locales = config
@@ -183,4 +183,49 @@ ANALYZE {SOURCE_SCHEMA}.variant_channel;
         products_per_tenant = config.products_per_tenant,
         variants_per_product = config.variants_per_product,
     )
+}
+
+pub fn workloads(context: &WorkloadContext) -> Vec<Workload> {
+    let locale = &context.locale;
+    let anchor_price = context.anchor_price;
+    let anchor_id = &context.anchor_id;
+
+    vec![
+        Workload {
+            name: "status_equality",
+            sql: format!(
+                "SELECT product_id AS entity_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND status = 'published' ORDER BY entity_id LIMIT 100"
+            ),
+        },
+        Workload {
+            name: "price_range_sort",
+            sql: format!(
+                "SELECT product_id AS entity_id, price_minor FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND price_minor BETWEEN 20000 AND 80000 ORDER BY price_minor, entity_id LIMIT 100"
+            ),
+        },
+        Workload {
+            name: "multi_value_tag",
+            sql: format!(
+                "SELECT product_id AS entity_id FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND tags @> ARRAY['tag-3']::text[] ORDER BY entity_id LIMIT 100"
+            ),
+        },
+        Workload {
+            name: "two_hop_channel_filter",
+            sql: format!(
+                "SELECT DISTINCT product.product_id AS entity_id FROM idx_bench_source.product AS product JOIN idx_bench_source.variant AS variant ON variant.tenant_id = product.tenant_id AND variant.product_id = product.product_id AND variant.locale = product.locale JOIN idx_bench_source.variant_channel AS variant_channel ON variant_channel.tenant_id = variant.tenant_id AND variant_channel.variant_id = variant.variant_id AND variant_channel.locale = variant.locale JOIN idx_bench_source.channel AS channel ON channel.tenant_id = variant_channel.tenant_id AND channel.channel_id = variant_channel.channel_id WHERE product.tenant_no = 1 AND product.locale = {locale} AND channel.code = 'channel-1' ORDER BY entity_id LIMIT 100"
+            ),
+        },
+        Workload {
+            name: "keyset_page",
+            sql: format!(
+                "SELECT product_id AS entity_id, price_minor FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND (price_minor, product_id) > ({anchor_price}, {anchor_id}) ORDER BY price_minor, entity_id LIMIT 100"
+            ),
+        },
+        Workload {
+            name: "exact_count",
+            sql: format!(
+                "SELECT count(*)::bigint AS result_count FROM idx_bench_source.product WHERE tenant_no = 1 AND locale = {locale} AND status = 'published'"
+            ),
+        },
+    ]
 }
