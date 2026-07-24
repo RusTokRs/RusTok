@@ -122,4 +122,11 @@ impl MigrationSource for ForumModule {
     fn migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
         migrations::migrations()
     }
+
+    fn migration_dependencies(&self) -> Vec<rustok_core::MigrationDependencyDescriptor> {
+        migrations::migration_dependencies()
+    }
 }
+
+#[cfg(test)]
+mod contract_tests;
