@@ -1,10 +1,15 @@
+use std::collections::HashMap;
+
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
+use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::TopicUnreadSummaryReadModel;
+use crate::dto::{ListTopicsFilter, TopicListItem, TopicUnreadSummaryReadModel};
 use crate::entities::{forum_reply, forum_topic, forum_topic_revision};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
@@ -12,39 +17,121 @@ use crate::services::read_model::ForumReadModelService;
 use crate::services::read_tracking::{
     ForumTopicReadState, ForumTopicReadStateService, MarkForumTopicReadInput,
 };
+use crate::services::topic_facade::TopicService;
 use crate::state_machine::ReplyStatus;
 
 pub type ForumTopicUnreadSummary = TopicUnreadSummaryReadModel;
 
-/// Storefront composition facade over canonical Forum read-model and read-state owners.
-///
-/// This service never decides storefront visibility. Callers first obtain a
-/// bounded topic page through the owner storefront-visible topic contract, then
-/// pass only those topic IDs here for canonical unread enrichment.
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct ForumStorefrontUnreadTopic {
+    pub topic: TopicListItem,
+    pub read_state_explicit: bool,
+    pub last_read_position: i64,
+    pub last_read_revision: i64,
+    pub unread_count: i64,
+    pub has_unread_topic_revision: bool,
+    pub is_unread: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+pub struct ForumStorefrontUnreadTopicPage {
+    pub items: Vec<ForumStorefrontUnreadTopic>,
+    pub total: u64,
+}
+
+/// Visibility-safe storefront composition over canonical Forum owner services.
 pub struct ForumStorefrontReadStateService {
     db: DatabaseConnection,
+    event_bus: TransactionalEventBus,
 }
 
 impl ForumStorefrontReadStateService {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        Self { db, event_bus }
     }
 
-    pub async fn summarize_topics(
+    /// Selects the storefront-visible topic page before enriching those exact IDs
+    /// through the canonical unread aggregate. Raw arbitrary-ID enrichment is not
+    /// exposed outside the Forum owner crate.
+    pub async fn list_topics_with_unread(
         &self,
         tenant_id: Uuid,
         security: SecurityContext,
-        topic_ids: Vec<Uuid>,
-    ) -> ForumResult<Vec<ForumTopicUnreadSummary>> {
-        ForumReadModelService::new(self.db.clone())
-            .summarize_topic_ids(tenant_id, security, topic_ids)
+        filter: ListTopicsFilter,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
+        let (topics, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .list_storefront_visible_with_locale_fallback(
+                tenant_id,
+                security.clone(),
+                filter,
+                fallback_locale,
+                channel_slug,
+            )
+            .await?;
+        let summaries = ForumReadModelService::new(self.db.clone())
+            .summarize_topic_ids(
+                tenant_id,
+                security,
+                topics.iter().map(|topic| topic.id).collect(),
+            )
+            .await?
+            .into_iter()
+            .map(|summary| (summary.topic_id, summary))
+            .collect::<HashMap<_, _>>();
+        let items = topics
+            .into_iter()
+            .map(|topic| {
+                let summary = summaries.get(&topic.id).copied().ok_or_else(|| {
+                    ForumError::Internal(
+                        "Forum storefront unread summary is unavailable".to_string(),
+                    )
+                })?;
+                Ok(ForumStorefrontUnreadTopic {
+                    topic,
+                    read_state_explicit: summary.read_state_explicit,
+                    last_read_position: summary.last_read_position,
+                    last_read_revision: summary.last_read_revision,
+                    unread_count: summary.unread_count,
+                    has_unread_topic_revision: summary.has_unread_topic_revision,
+                    is_unread: summary.is_unread,
+                })
+            })
+            .collect::<ForumResult<Vec<_>>>()?;
+
+        Ok(ForumStorefrontUnreadTopicPage { items, total })
+    }
+
+    /// Rechecks storefront visibility before marking the latest approved reply
+    /// position and immutable topic revision observed by the owner service.
+    pub async fn mark_topic_read_current_visible(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> ForumResult<ForumTopicReadState> {
+        let visible = TopicService::new(self.db.clone(), self.event_bus.clone())
+            .get_storefront_visible_with_locale_fallback(
+                tenant_id,
+                security.clone(),
+                topic_id,
+                locale,
+                fallback_locale,
+                channel_slug,
+            )
+            .await?;
+        if visible.is_none() {
+            return Err(ForumError::TopicNotFound(topic_id));
+        }
+        self.mark_topic_read_current(tenant_id, topic_id, security)
             .await
     }
 
-    /// Marks the latest approved reply position and immutable topic revision
-    /// observed by the owner service. Content published after this snapshot
-    /// remains unread instead of being accidentally acknowledged.
-    pub async fn mark_topic_read_current(
+    async fn mark_topic_read_current(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
