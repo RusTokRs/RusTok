@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rustok.dev/schemas/index-storage-decision-v1.json",
+  "title": "RusToK Index PostgreSQL storage decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "decision_date",
+    "owner",
+    "comparison_commit",
+    "selected_prototype",
+    "selection_rationale",
+    "rejection_rationales",
+    "operational_tradeoffs",
+    "migration_strategy",
+    "rollback_strategy"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["proposed", "accepted"]
+    },
+    "decision_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "comparison_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "selected_prototype": {
+      "type": "string",
+      "enum": ["jsonb", "typed_eav", "hot_projection"]
+    },
+    "selection_rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rejection_rationales": {
+      "type": "object"
+    },
+    "operational_tradeoffs": {
+      "type": "string",
+      "minLength": 1
+    },
+    "migration_strategy": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rollback_strategy": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "selected_prototype": { "const": "jsonb" }
+        },
+        "required": ["selected_prototype"]
+      },
+      "then": {
+        "properties": {
+          "rejection_rationales": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["typed_eav", "hot_projection"],
+            "properties": {
+              "typed_eav": { "type": "string", "minLength": 1 },
+              "hot_projection": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "selected_prototype": { "const": "typed_eav" }
+        },
+        "required": ["selected_prototype"]
+      },
+      "then": {
+        "properties": {
+          "rejection_rationales": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["jsonb", "hot_projection"],
+            "properties": {
+              "jsonb": { "type": "string", "minLength": 1 },
+              "hot_projection": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "selected_prototype": { "const": "hot_projection" }
+        },
+        "required": ["selected_prototype"]
+      },
+      "then": {
+        "properties": {
+          "rejection_rationales": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["jsonb", "typed_eav"],
+            "properties": {
+              "jsonb": { "type": "string", "minLength": 1 },
+              "typed_eav": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
