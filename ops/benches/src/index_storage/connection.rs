@@ -27,7 +27,9 @@ pub async fn connect(database_url: &str) -> Result<DatabaseConnection> {
         .context("failed to connect to PostgreSQL with a single benchmark session")?;
     db.execute_unprepared(BENCHMARK_SESSION_SQL)
         .await
-        .context("failed to pin deterministic PostgreSQL benchmark session")?;
+        .context(
+            "failed to pin deterministic PostgreSQL benchmark session (failed to pin PostgreSQL standard-conforming string semantics)",
+        )?;
     Ok(db)
 }
 
