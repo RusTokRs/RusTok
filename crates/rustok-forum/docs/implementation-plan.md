@@ -216,7 +216,7 @@ at the end of this file remain authoritative.
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
-| `FORUM-20` | `planned` | Category/topic ACL and group/channel inheritance. |
+| `FORUM-20` | `in_progress` | FORUM-20A centralizes the existing open/public-or-exact-channel topic policy in a bounded exact owner scope and guards storefront topic facades; inherited category ACL, authenticated/role/trust/group rules, explicit allow/deny and cross-consumer composition remain. |
 | `FORUM-21` | `planned` | Move, merge, split and fork topic workflows. |
 | `FORUM-22` | `planned` | Topic kinds, wiki/announcement/Q&A policies and scheduled lifecycle. |
 | `FORUM-23` | `planned` | Visibility-aware index/search projections. |
@@ -1066,7 +1066,7 @@ reconcile automatically.
 
 ## `FORUM-20` — ACL and visibility inheritance
 
-**Status:** `planned`  
+**Status:** `in_progress`  
 **Priority:** P0  
 **Dependencies:** RBAC, channel/group capability contracts
 
@@ -1081,11 +1081,69 @@ command.
 Forum reads, notifications, search, SEO and deep links must call the same
 visibility policy. Do not place ACL policy in arbitrary JSON.
 
+### Delivered in `FORUM-20A`
+
+- `ForumTopicVisibilityScope` and `ForumTopicVisibilityService` centralize the
+  current storefront topic rule: an open topic is visible when it has no channel
+  restriction or when the exact normalized request channel is present;
+- exact caller-selected topic IDs are bounded to 100 before deduplication,
+  filtered in one tenant-scoped owner query and returned in first-occurrence
+  order without discovering additional topics;
+- missing, foreign-tenant, closed and nonmatching-channel targets all resolve as
+  absent, so the exact evaluator does not expose an existence oracle;
+- the single-topic storefront facade preserves its existing owner read/RBAC
+  check before visibility evaluation, while the storefront list rechecks the
+  exact selected page and fails closed if the compatibility SQL prefilter drifts
+  from the owner scope;
+- storefront unread composition continues through the guarded topic facade, so
+  it cannot enrich or mark a topic outside the exact current scope;
+- `forum-topic-visibility-scope.json`, `topic_visibility_sqlite` and
+  `verify-forum-topic-visibility-scope.mjs` lock bounds, tenant isolation,
+  order-preserving deduplication, public/exact-channel behavior and the residual
+  full-ACL scope;
+- this slice adds no migration, transport field, endpoint or UI and does not
+  claim category inheritance, roles, groups, trust or explicit allow/deny.
+
+### Compatibility and degraded mode
+
+No migration or backfill is required. Existing public and exact-channel
+storefront results remain unchanged, and channel slugs retain the existing
+trim/lowercase behavior and schema-compatible 128-character limit without a new
+alphabet restriction. The existing SQL list selector remains a compatibility
+prefilter while the public facade performs the authoritative exact-page recheck.
+Missing optional future channel/group capability providers do not broaden the
+current public/exact-channel result; their membership semantics remain closed
+until explicit owner ports are composed.
+
+### Remaining scope
+
+- add typed category policy rows with inheritance and topic narrowing rules;
+- add authenticated-only, role, trust-level, group and explicit allow/deny
+  evaluation through owner capability ports;
+- migrate all Forum reads, notifications, search/index, SEO and deep-link open
+  authorization to the same owner policy;
+- add visibility-scoped category and all-read commands only after the owner can
+  page an exact category/tenant scope under the complete policy;
+- add PostgreSQL concurrency, inheritance and cross-consumer runtime evidence.
+
 ### Definition of done
 
 Cross-tenant, blocked, private and channel-restricted content is consistently
 absent from reads, search, SEO and notifications, including replay and cache
 profiles.
+
+### Verification
+
+```bash
+cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
+node scripts/verify/verify-forum-topic-visibility-scope.mjs
+cargo xtask module validate forum
+npm run verify:forum:storefront-boundary
+```
+
+Tests, Cargo, verifiers and CI were not run while publishing this source-ready
+owner-scope slice. `FORUM-20` remains `in_progress` until inherited ACL and all
+consumer paths use the complete policy.
 
 ## `FORUM-21` — move, merge, split and fork topics
 
@@ -1787,6 +1845,7 @@ cargo test -p rustok-forum --test read_state_transport_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_contract -- --nocapture
 cargo test -p rustok-forum --test storefront_read_state_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1
+cargo test -p rustok-forum --test topic_visibility_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1805,6 +1864,7 @@ node scripts/verify/verify-forum-mention-events.mjs
 node scripts/verify/verify-forum-quote-commands.mjs
 node scripts/verify/verify-forum-mention-runtime-proof.mjs
 node scripts/verify/verify-forum-read-state-runtime-proof.mjs
+node scripts/verify/verify-forum-topic-visibility-scope.mjs
 cargo test -p rustok-profiles
 npm run verify:media:fba
 npm run verify:outbox:fba
@@ -1853,9 +1913,11 @@ Recommended next slices:
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
 10. record `FORUM-16` maintainer PostgreSQL proof and finish visibility-scoped
-    storefront bulk composition after `FORUM-20`;
+    storefront bulk composition after the complete `FORUM-20` policy can page an
+    exact category or tenant scope;
 11. `FORUM-19`: reports/moderation/restrictions;
-12. `FORUM-20`: ACL and visibility policy;
+12. continue `FORUM-20` with inherited typed category ACL, owner capability ports
+    and migration of reads, notifications, search, SEO and deep-link checks;
 13. `FORUM-23`: index projections;
 14. `LINK-FORUM-01` and `LINK-FORUM-03` only after their owner contracts are
     stable.
