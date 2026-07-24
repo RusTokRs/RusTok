@@ -231,27 +231,14 @@ pub async fn sitemap_index(
         return Err(SeoHttpError::not_found("SEO sitemap index is disabled"));
     }
 
-    let file = match service
+    // Public sitemap delivery is read-only. Generation is an operator action and must be queued
+    // through the explicitly authorized GraphQL or native admin entry point.
+    let file = service
         .sitemaps()
         .latest_sitemap_index(tenant.id)
         .await
         .map_err(map_seo_http_error)?
-    {
-        Some(file) => file,
-        None => {
-            service
-                .sitemaps()
-                .generate_sitemaps(&tenant)
-                .await
-                .map_err(map_seo_http_error)?;
-            service
-                .sitemaps()
-                .latest_sitemap_index(tenant.id)
-                .await
-                .map_err(map_seo_http_error)?
-                .ok_or_else(|| SeoHttpError::not_found("SEO sitemap index not found"))?
-        }
-    };
+        .ok_or_else(|| SeoHttpError::not_found("SEO sitemap index not found"))?;
 
     Ok((
         [(CONTENT_TYPE, "application/xml; charset=utf-8")],

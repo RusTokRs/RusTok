@@ -47,6 +47,11 @@ requireText(
 );
 requireText(
   applications,
+  '_authorization: &SeoWorkerAuthorization',
+  'worker authorization grant',
+);
+requireText(
+  applications,
   '.execute_next_index_repair_replay_job_background()',
   'worker runtime routing',
 );
@@ -73,11 +78,14 @@ for (const [value, label] of [
 ]) {
   requireText(compatibilityPoller, value, label);
 }
-requireText(
-  hostLifecycle,
-  'service.bulk().execute_next_bulk_job().await',
-  'server SEO poller lifecycle',
-);
+for (const [value, label] of [
+  ['SeoWorkerAuthorization::from_runtime_config(', 'host worker authorization'],
+  ['settings.runtime.runs_background_workers()', 'host-mode authorization input'],
+  ['seo_bulk_worker_enabled', 'SEO worker switch authorization input'],
+  ['.execute_next_bulk_job(&authorization)', 'authorized server SEO poller lifecycle'],
+]) {
+  requireText(hostLifecycle, value, label);
+}
 requireText(
   migrations,
   'mod m20260724_000008_create_seo_index_repair_jobs;',
@@ -103,6 +111,11 @@ forbidText(
   'execute_next_index_repair_replay_job',
   'worker execution from GraphQL request path',
 );
+forbidText(
+  hostLifecycle,
+  'service.bulk().execute_next_bulk_job().await',
+  'unauthorized server worker execution',
+);
 
 const queueStart = worker.indexOf('pub(super) async fn queue_index_repair_replay_background(');
 const workerStart = worker.indexOf(
@@ -122,5 +135,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ index repair/replay requests enqueue durable jobs and the configured server SEO poller advances bulk, sitemap, and index queues',
+  '✔ index repair/replay requests enqueue durable jobs and the explicitly authorized server SEO poller advances all durable queues',
 );

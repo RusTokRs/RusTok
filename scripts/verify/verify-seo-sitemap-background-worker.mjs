@@ -34,8 +34,13 @@ requireText(
 );
 requireText(
   applications,
-  'pub async fn execute_next_sitemap_job(&self)',
+  'pub async fn execute_next_sitemap_job(',
   'worker application boundary',
+);
+requireText(
+  applications,
+  '_authorization: &SeoWorkerAuthorization',
+  'worker authorization grant',
 );
 requireText(
   applications,
@@ -96,5 +101,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ sitemap mutations only enqueue and one worker invocation executes one durable generation or submission phase',
+  '✔ sitemap mutations only enqueue and authorized worker invocations execute one durable generation or submission phase',
 );

@@ -1,4 +1,6 @@
 #[cfg(feature = "server")]
+mod authorization;
+#[cfg(feature = "server")]
 pub mod controllers;
 pub mod dto;
 #[cfg(feature = "server")]
@@ -21,6 +23,8 @@ use rustok_core::{MigrationSource, RusToKModule};
 #[cfg(feature = "server")]
 use sea_orm_migration::MigrationTrait;
 
+#[cfg(feature = "server")]
+pub use authorization::SeoWorkerAuthorization;
 pub use dto::{
     SeoAlternateLink, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkArtifactRecord,
     SeoBulkBoolFieldPatch, SeoBulkExportInput, SeoBulkFieldPatchMode, SeoBulkImportInput,

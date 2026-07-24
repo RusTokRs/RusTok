@@ -13,9 +13,9 @@ use crate::services::event_transport_factory::{
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
-use rustok_seo::SeoApplicationServices;
+use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};
 
-// в”Ђв”Ђ Graceful-shutdown handle в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ── Graceful-shutdown handle ─────────────────────────────────────────────────
 
 /// Stored in `ServerRuntimeContext`; `on_shutdown` calls `stop()` to abort workers.
 #[derive(Clone)]
@@ -32,7 +32,7 @@ impl StopHandle {
     /// Create a new `Receiver` subscribed to the shutdown signal.
     ///
     /// The returned receiver immediately sees the current value and will be
-    /// notified when [`StopHandle::stop`] is called.  Clone it once per background worker
+    /// notified when [`StopHandle::stop`] is called. Clone it once per background worker
     /// so each worker gets its own independent view of the channel.
     pub fn subscribe(&self) -> tokio::sync::watch::Receiver<bool> {
         self.stop_tx.subscribe()
@@ -181,8 +181,8 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
 
     // Obtain a stop receiver from the stored handle so workers can observe
-    // the shutdown signal.  `subscribe()` creates a new independent receiver
-    // from the existing sender вЂ” safe to call multiple times.
+    // the shutdown signal. `subscribe()` creates a new independent receiver
+    // from the existing sender — safe to call multiple times.
     let stop_handle = runtime_ctx
         .shared_get::<StopHandle>()
         .expect("StopHandle must be registered before spawning workers");
@@ -210,9 +210,20 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
 
     #[cfg(feature = "mod-seo")]
     if seo_bulk_worker_enabled && !runtime_ctx.shared_contains::<SeoBulkWorkerHandle>() {
+        let authorization = SeoWorkerAuthorization::from_runtime_config(
+            settings.runtime.runs_background_workers(),
+            seo_bulk_worker_enabled,
+        )
+        .map_err(|_| {
+            Error::Message(
+                "SEO worker execution is not authorized by runtime background-worker settings"
+                    .to_string(),
+            )
+        })?;
         runtime_ctx.shared_insert(spawn_seo_bulk_worker_handle(
             runtime_ctx.clone(),
             stop_rx.clone(),
+            authorization,
         ));
     } else if !seo_bulk_worker_enabled {
         tracing::info!("SEO bulk worker disabled by runtime.background_workers config");
@@ -270,12 +281,17 @@ fn spawn_remote_executor_reaper_handle(
 fn spawn_seo_bulk_worker_handle(
     runtime_ctx: ServerRuntimeContext,
     stop_rx: tokio::sync::watch::Receiver<bool>,
+    authorization: SeoWorkerAuthorization,
 ) -> SeoBulkWorkerHandle {
     let instance_id = SEO_BULK_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     tracing::info!(worker = "seo_bulk", instance_id, "Starting runtime worker");
     SeoBulkWorkerHandle {
         instance_id,
-        _handle: tokio::spawn(seo_bulk_worker_loop(runtime_ctx, stop_rx)),
+        _handle: tokio::spawn(seo_bulk_worker_loop(
+            runtime_ctx,
+            stop_rx,
+            authorization,
+        )),
     }
 }
 
@@ -319,6 +335,7 @@ async fn remote_executor_reaper_loop(
 async fn seo_bulk_worker_loop(
     runtime_ctx: ServerRuntimeContext,
     mut stop_rx: tokio::sync::watch::Receiver<bool>,
+    authorization: SeoWorkerAuthorization,
 ) {
     let event_bus = transactional_event_bus_from_context(&runtime_ctx);
     let runtime_extensions = module_runtime_extensions_from_ctx(&runtime_ctx);
@@ -341,7 +358,11 @@ async fn seo_bulk_worker_loop(
             return;
         }
 
-        match service.bulk().execute_next_bulk_job().await {
+        match service
+            .bulk()
+            .execute_next_bulk_job(&authorization)
+            .await
+        {
             Ok(Some(job)) => tracing::info!(
                 job_id = %job.id,
                 operation = %job.operation_kind.as_str(),
