@@ -7,6 +7,7 @@ on:
       - "crates/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/verify-index-storage-source-oracle.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - ".github/workflows/index-storage-smoke.yml"
   push:
@@ -17,6 +18,7 @@ on:
       - "crates/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/verify-index-storage-source-oracle.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - ".github/workflows/index-storage-smoke.yml"
 
@@ -52,7 +54,10 @@ jobs:
         run: |
           mkdir -p evidence/index-storage/contract
           set -o pipefail
-          node scripts/verify/verify-index-fba.mjs 2>&1 | tee evidence/index-storage/contract/verify.log
+          {
+            node scripts/verify/verify-index-fba.mjs
+            node scripts/verify/verify-index-storage-source-oracle.mjs
+          } 2>&1 | tee evidence/index-storage/contract/verify.log
       - name: Archive contract diagnostic
         if: always()
         uses: actions/upload-artifact@v7
