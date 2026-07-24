@@ -8,6 +8,7 @@ description.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-graphql = { workspace = true, features = ["dataloader"] }
+async-graphql-value.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true

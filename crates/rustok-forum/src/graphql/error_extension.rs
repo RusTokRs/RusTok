@@ -1,13 +1,33 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_graphql::{
-    ErrorExtensionValues, PathSegment, Response, ServerError,
-    extensions::{Extension, ExtensionContext, ExtensionFactory, NextExecute},
+    ErrorExtensionValues, FieldError, Name, PathSegment, Pos, Request, Response, ServerError,
+    ServerResult, Variables,
+    extensions::{
+        Extension, ExtensionContext, ExtensionFactory, NextExecute, NextPrepareRequest,
+    },
+    parser::types::{ExecutableDocument, OperationDefinition, OperationType, Selection, SelectionSet},
 };
+use async_graphql_value::{ConstValue, Value, from_value};
+use rustok_api::graphql::{GraphQLError, PaginationInput};
+use serde::Deserialize;
 
 use crate::error::ForumError;
 
-/// Adds the stable Forum domain error contract to GraphQL resolver failures.
+const PAGE_BACKED_FORUM_QUERY_FIELDS: [&str; 6] = [
+    "forumCategories",
+    "forumTopics",
+    "forumReplies",
+    "forumStorefrontCategories",
+    "forumStorefrontTopics",
+    "forumStorefrontReplies",
+];
+const PAGE_BOUNDARY_ERROR: &str = "Forum pagination window must start on a page boundary";
+
+/// Adds the stable Forum domain error contract to GraphQL resolver failures and
+/// rejects pagination windows that cannot be represented by the current
+/// page-backed Forum services.
 ///
 /// `async-graphql` preserves errors converted through `?` in
 /// `ServerError::source`. This extension uses that source to recover the exact
@@ -15,6 +35,14 @@ use crate::error::ForumError;
 /// resolver to repeat transport mapping logic. A path-scoped message fallback
 /// covers older Forum resolvers that manually constructed
 /// `async_graphql::Error` from the already redacted `ForumError::Display` text.
+///
+/// Forum list services currently accept `(page, per_page)`, while the GraphQL
+/// contract accepts arbitrary offsets and cursors. An offset that is not a
+/// multiple of the normalized limit would otherwise be rounded down by integer
+/// division and return rows from the wrong window. The request policy resolves
+/// literal, variable and defaulted pagination inputs, delegates normalization
+/// to the shared `PaginationInput`, and fails closed before any resolver or
+/// database read runs.
 #[derive(Default)]
 pub struct ForumGraphqlErrorExtension;
 
@@ -28,6 +56,17 @@ struct ForumGraphqlErrorExtensionInstance;
 
 #[async_trait::async_trait]
 impl Extension for ForumGraphqlErrorExtensionInstance {
+    async fn prepare_request(
+        &self,
+        ctx: &ExtensionContext<'_>,
+        request: Request,
+        next: NextPrepareRequest<'_>,
+    ) -> ServerResult<Request> {
+        let mut request = next.run(ctx, request).await?;
+        validate_forum_pagination_request(&mut request)?;
+        Ok(request)
+    }
+
     async fn execute(
         &self,
         ctx: &ExtensionContext<'_>,
@@ -40,6 +79,211 @@ impl Extension for ForumGraphqlErrorExtensionInstance {
         }
         response
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct ForumPaginationArguments {
+    offset: i64,
+    limit: i64,
+    first: Option<i64>,
+    last: Option<i64>,
+    after: Option<String>,
+    before: Option<String>,
+}
+
+impl Default for ForumPaginationArguments {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            limit: 20,
+            first: None,
+            last: None,
+            after: None,
+            before: None,
+        }
+    }
+}
+
+impl From<ForumPaginationArguments> for PaginationInput {
+    fn from(value: ForumPaginationArguments) -> Self {
+        Self {
+            offset: value.offset,
+            limit: value.limit,
+            first: value.first,
+            last: value.last,
+            after: value.after,
+            before: value.before,
+        }
+    }
+}
+
+fn validate_forum_pagination_request(request: &mut Request) -> ServerResult<()> {
+    if request.query.trim().is_empty() {
+        return Ok(());
+    }
+
+    // Clone variables before borrowing the parsed document from Request.
+    let variables = request.variables.clone();
+    let error = {
+        let document = request.parsed_query()?;
+        forum_pagination_error(document, &variables)
+    };
+
+    match error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+fn forum_pagination_error(
+    document: &ExecutableDocument,
+    variables: &Variables,
+) -> Option<ServerError> {
+    for (_, operation) in document.operations.iter() {
+        if operation.node.ty != OperationType::Query {
+            continue;
+        }
+
+        let defaults = operation_variable_defaults(&operation.node);
+        let mut visited_fragments = HashSet::new();
+        if let Some(error) = selection_set_pagination_error(
+            &operation.node.selection_set.node,
+            document,
+            variables,
+            &defaults,
+            &mut visited_fragments,
+        ) {
+            return Some(error);
+        }
+    }
+
+    None
+}
+
+fn operation_variable_defaults(operation: &OperationDefinition) -> HashMap<Name, ConstValue> {
+    operation
+        .variable_definitions
+        .iter()
+        .filter_map(|definition| {
+            definition
+                .node
+                .default_value()
+                .cloned()
+                .map(|value| (definition.node.name.node.clone(), value))
+        })
+        .collect()
+}
+
+fn pagination_value_error(
+    value: &Value,
+    position: Pos,
+    variables: &Variables,
+    defaults: &HashMap<Name, ConstValue>,
+) -> Option<ServerError> {
+    let resolved = value.clone().into_const_with(|name| {
+        resolve_variable(&name, variables, defaults).cloned().ok_or(())
+    });
+    let Ok(resolved) = resolved else {
+        // GraphQL validation owns missing or incompatible variables.
+        return None;
+    };
+    if resolved == ConstValue::Null {
+        return None;
+    }
+
+    let Ok(arguments) = from_value::<ForumPaginationArguments>(resolved) else {
+        // Schema validation owns malformed input objects and scalar types.
+        return None;
+    };
+    let pagination_input: PaginationInput = arguments.into();
+    let (offset, limit) = match pagination_input.normalize() {
+        Ok(window) => window,
+        Err(error) => return Some(error.into_server_error(position)),
+    };
+
+    (offset % limit != 0).then(|| {
+        <FieldError as GraphQLError>::bad_user_input(PAGE_BOUNDARY_ERROR)
+            .into_server_error(position)
+    })
+}
+
+fn selection_set_pagination_error(
+    selection_set: &SelectionSet,
+    document: &ExecutableDocument,
+    variables: &Variables,
+    defaults: &HashMap<Name, ConstValue>,
+    visited_fragments: &mut HashSet<Name>,
+) -> Option<ServerError> {
+    for selection in &selection_set.items {
+        match &selection.node {
+            Selection::Field(field) => {
+                if !is_page_backed_forum_query(field.node.name.node.as_str()) {
+                    continue;
+                }
+
+                let pagination = field
+                    .node
+                    .arguments
+                    .iter()
+                    .find(|(name, _)| name.node.as_str() == "pagination")
+                    .map(|(_, value)| value);
+                let Some(pagination) = pagination else {
+                    continue;
+                };
+
+                if let Some(error) = pagination_value_error(
+                    &pagination.node,
+                    pagination.pos,
+                    variables,
+                    defaults,
+                ) {
+                    return Some(error);
+                }
+            }
+            Selection::FragmentSpread(fragment) => {
+                let fragment_name = fragment.node.fragment_name.node.clone();
+                if visited_fragments.insert(fragment_name.clone()) {
+                    if let Some(definition) = document.fragments.get(&fragment_name) {
+                        if let Some(error) = selection_set_pagination_error(
+                            &definition.node.selection_set.node,
+                            document,
+                            variables,
+                            defaults,
+                            visited_fragments,
+                        ) {
+                            return Some(error);
+                        }
+                    }
+                }
+            }
+            Selection::InlineFragment(fragment) => {
+                if let Some(error) = selection_set_pagination_error(
+                    &fragment.node.selection_set.node,
+                    document,
+                    variables,
+                    defaults,
+                    visited_fragments,
+                ) {
+                    return Some(error);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn resolve_variable<'a>(
+    name: &Name,
+    variables: &'a Variables,
+    defaults: &'a HashMap<Name, ConstValue>,
+) -> Option<&'a ConstValue> {
+    variables.get(name).or_else(|| defaults.get(name))
+}
+
+fn is_page_backed_forum_query(field_name: &str) -> bool {
+    PAGE_BACKED_FORUM_QUERY_FIELDS.contains(&field_name)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -151,10 +395,40 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
 
 #[cfg(test)]
 mod tests {
-    use async_graphql::{Error, ErrorExtensionValues, PathSegment, Pos, ServerError, Value};
+    use async_graphql::{
+        EmptyMutation, EmptySubscription, Error, ErrorExtensionValues, Object, PathSegment, Pos,
+        Request, Schema, ServerError, Value, Variables,
+    };
+    use rustok_api::graphql::{PaginationInput, encode_cursor};
+    use serde_json::json;
 
-    use super::annotate_forum_error;
+    use super::{ForumGraphqlErrorExtension, PAGE_BOUNDARY_ERROR, annotate_forum_error};
     use crate::error::ForumError;
+
+    struct Query;
+
+    #[Object]
+    impl Query {
+        async fn forum_categories(
+            &self,
+            #[graphql(default)] pagination: PaginationInput,
+        ) -> i64 {
+            pagination.offset
+        }
+
+        async fn other_items(
+            &self,
+            #[graphql(default)] pagination: PaginationInput,
+        ) -> i64 {
+            pagination.offset
+        }
+    }
+
+    fn schema() -> Schema<Query, EmptyMutation, EmptySubscription> {
+        Schema::build(Query, EmptyMutation, EmptySubscription)
+            .extension(ForumGraphqlErrorExtension)
+            .finish()
+    }
 
     fn extension_value<'a>(error: &'a ServerError, name: &str) -> Option<&'a Value> {
         error
@@ -165,6 +439,93 @@ mod tests {
 
     fn forum_path(error: ServerError) -> ServerError {
         error.with_path(vec![PathSegment::Field("forumTopic".to_string())])
+    }
+
+    #[tokio::test]
+    async fn rejects_unaligned_literal_forum_pagination_before_resolver_execution() {
+        let response = schema()
+            .execute("{ forumCategories(pagination: { offset: 5, limit: 25 }) }")
+            .await;
+
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(response.errors[0].message, PAGE_BOUNDARY_ERROR);
+        assert_eq!(
+            extension_value(&response.errors[0], "code"),
+            Some(&Value::from("BAD_USER_INPUT"))
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_unaligned_cursor_pagination_from_variables() {
+        let response = schema()
+            .execute(
+                Request::new(
+                    "query Forum($pagination: PaginationInput) { forumCategories(pagination: $pagination) }",
+                )
+                .variables(Variables::from_json(json!({
+                    "pagination": {
+                        "first": 25,
+                        "after": encode_cursor(4)
+                    }
+                }))),
+            )
+            .await;
+
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(response.errors[0].message, PAGE_BOUNDARY_ERROR);
+        assert_eq!(
+            extension_value(&response.errors[0], "code"),
+            Some(&Value::from("BAD_USER_INPUT"))
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_unaligned_pagination_inside_root_fragment() {
+        let response = schema()
+            .execute(
+                "query Forum { ...ForumPage } fragment ForumPage on Query { forumCategories(pagination: { offset: 3, limit: 20 }) }",
+            )
+            .await;
+
+        assert_eq!(response.errors.len(), 1);
+        assert_eq!(response.errors[0].message, PAGE_BOUNDARY_ERROR);
+    }
+
+    #[tokio::test]
+    async fn accepts_aligned_forum_pagination_and_ignores_unrelated_fields() {
+        let aligned = schema()
+            .execute("{ forumCategories(pagination: { offset: 25, limit: 25 }) }")
+            .await;
+        assert!(aligned.errors.is_empty());
+        assert_eq!(
+            aligned.data.into_json().expect("data should serialize")["forumCategories"],
+            25
+        );
+
+        let unrelated = schema()
+            .execute("{ otherItems(pagination: { offset: 5, limit: 25 }) }")
+            .await;
+        assert!(unrelated.errors.is_empty());
+        assert_eq!(
+            unrelated.data.into_json().expect("data should serialize")["otherItems"],
+            5
+        );
+    }
+
+    #[tokio::test]
+    async fn honors_defaulted_pagination_variables() {
+        let response = schema()
+            .execute(Request::new(format!(
+                "query Forum($pagination: PaginationInput = {{ first: 25, after: \"{}\" }}) {{ forumCategories(pagination: $pagination) }}",
+                encode_cursor(24)
+            )))
+            .await;
+
+        assert!(response.errors.is_empty());
+        assert_eq!(
+            response.data.into_json().expect("data should serialize")["forumCategories"],
+            0
+        );
     }
 
     #[test]
