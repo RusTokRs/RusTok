@@ -232,6 +232,44 @@ impl SeoService {
         Ok(())
     }
 
+    pub(super) async fn publish_seo_meta_upserted_event(
+        &self,
+        tenant_id: Uuid,
+        target_kind: &str,
+        target_id: Uuid,
+        locale: &str,
+        source: &str,
+        transition_ref: Option<&str>,
+    ) {
+        let txn = match self.db.begin().await {
+            Ok(txn) => txn,
+            Err(error) => {
+                tracing::error!("failed to begin transaction for publishing SEO meta event: {error}");
+                return;
+            }
+        };
+
+        if let Err(error) = self
+            .publish_seo_meta_upserted_event_in_tx(
+                &txn,
+                tenant_id,
+                target_kind,
+                target_id,
+                locale,
+                source,
+                transition_ref,
+            )
+            .await
+        {
+            tracing::error!("failed to publish SEO meta event in transaction: {error}");
+            return;
+        }
+
+        if let Err(error) = txn.commit().await {
+            tracing::error!("failed to commit transaction for publishing SEO meta event: {error}");
+        }
+    }
+
     async fn publish_entity_reindex_in_tx(
         &self,
         txn: &DatabaseTransaction,
