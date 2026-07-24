@@ -7,6 +7,7 @@ mod runner;
 mod sql;
 
 pub(crate) use connection::connect as connect_benchmark_database;
+pub(crate) use sql::read_workload_contract;
 pub use config::{BenchmarkConfig, DatasetConfig, DatasetScale};
 pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
