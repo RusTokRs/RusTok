@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium",
-    "verify:seo-runtime-fixtures": "node scripts/verify-seo-runtime-fixtures.mjs"
+    "verify:seo-runtime-fixtures": "node scripts/verify-seo-runtime-fixtures.mjs && node scripts/verify-forum-route-fixture.mjs"
   },
   "dependencies": {
     "@apollo/client": "^4.2.6",
