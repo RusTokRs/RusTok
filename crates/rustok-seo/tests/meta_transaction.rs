@@ -9,7 +9,7 @@ use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{
     self as seo_meta, meta_translation, seo_event_delivery, seo_index_cursor,
-    seo_index_delivery,
+    seo_index_delivery, seo_revision,
 };
 use rustok_seo::{
     SeoMetaInput, SeoMetaTranslationInput, SeoService, SeoTargetRegistry, SeoTargetSlug,
@@ -19,9 +19,10 @@ use rustok_seo_targets::{
     SeoLoadedTargetRecord, SeoTargetAlternateRoute, SeoTargetCapabilities, SeoTargetLoadRequest,
     SeoTargetOpenGraphRecord, SeoTargetProvider, SeoTargetRuntimeContext, SeoTemplateFieldMap,
 };
+use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
-    PaginatorTrait, Statement,
+    ActiveModelTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    EntityTrait, PaginatorTrait, Statement,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -155,7 +156,7 @@ async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
     assert!(
         error
             .to_string()
-            .contains("failed to enqueue SEO metadata reindex event transactionally")
+            .contains("failed to enqueue SEO entity reindex event transactionally")
     );
 
     assert_eq!(
@@ -170,6 +171,114 @@ async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
             .count(&db)
             .await
             .expect("translation count should load"),
+        0
+    );
+    assert_eq!(
+        seo_event_delivery::Entity::find()
+            .count(&db)
+            .await
+            .expect("event delivery count should load"),
+        0
+    );
+    assert_eq!(
+        seo_index_delivery::Entity::find()
+            .count(&db)
+            .await
+            .expect("index delivery count should load"),
+        0
+    );
+    assert_eq!(
+        seo_index_cursor::Entity::find()
+            .count(&db)
+            .await
+            .expect("index cursor count should load"),
+        0
+    );
+}
+
+#[tokio::test]
+async fn revision_creation_rolls_back_when_reindex_event_fails() {
+    let db = test_db().await;
+    create_tables(&db).await;
+
+    let tenant = TenantContext {
+        id: Uuid::new_v4(),
+        name: "SEO revision tenant".to_string(),
+        slug: "seo-revision".to_string(),
+        domain: None,
+        settings: json!({}),
+        default_locale: "en".to_string(),
+        is_active: true,
+    };
+    let target_id = Uuid::new_v4();
+    let meta_id = Uuid::new_v4();
+    seo_meta::ActiveModel {
+        id: Set(meta_id),
+        tenant_id: Set(tenant.id),
+        target_type: Set(page_slug().into_string()),
+        target_id: Set(target_id),
+        no_index: Set(false),
+        no_follow: Set(false),
+        canonical_url: Set(None),
+        structured_data: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("explicit metadata should be seeded");
+    meta_translation::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        meta_id: Set(meta_id),
+        locale: Set("en".to_string()),
+        title: Set(Some("Revision title".to_string())),
+        description: Set(Some("Revision description".to_string())),
+        keywords: Set(None),
+        og_title: Set(None),
+        og_description: Set(None),
+        og_image: Set(None),
+    }
+    .insert(&db)
+    .await
+    .expect("explicit metadata translation should be seeded");
+
+    let service = SeoService::new(
+        db.clone(),
+        TransactionalEventBus::new(Arc::new(FailOnSecondTransport::new())),
+        Arc::new(SeoTargetRegistry::default()),
+    );
+    let error = service
+        .publish_revision(
+            &tenant,
+            page_slug(),
+            target_id,
+            Some("Atomic revision".to_string()),
+        )
+        .await
+        .expect_err("reindex failure must abort revision creation");
+    assert!(
+        error
+            .to_string()
+            .contains("failed to enqueue SEO entity reindex event transactionally")
+    );
+
+    assert_eq!(
+        seo_meta::Entity::find()
+            .count(&db)
+            .await
+            .expect("metadata count should load"),
+        1
+    );
+    assert_eq!(
+        meta_translation::Entity::find()
+            .count(&db)
+            .await
+            .expect("translation count should load"),
+        1
+    );
+    assert_eq!(
+        seo_revision::Entity::find()
+            .count(&db)
+            .await
+            .expect("revision count should load"),
         0
     );
     assert_eq!(
@@ -244,6 +353,18 @@ async fn create_tables(db: &DatabaseConnection) {
         )",
         "CREATE UNIQUE INDEX idx_meta_translations_locale
             ON meta_translations (meta_id, locale)",
+        "CREATE TABLE seo_revisions (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            target_kind TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            note TEXT NULL,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )",
+        "CREATE UNIQUE INDEX idx_seo_revisions_target_revision
+            ON seo_revisions (tenant_id, target_kind, target_id, revision)",
         "CREATE TABLE seo_event_deliveries (
             id TEXT PRIMARY KEY,
             tenant_id TEXT NOT NULL,

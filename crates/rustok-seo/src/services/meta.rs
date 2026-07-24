@@ -1,6 +1,7 @@
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
+    TransactionTrait,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -216,8 +217,9 @@ impl SeoService {
         target_id: Uuid,
         note: Option<String>,
     ) -> SeoResult<SeoRevisionRecord> {
+        let txn = self.db.begin().await?;
         let Some(explicit) = self
-            .load_explicit_meta(tenant.id, target_kind.clone(), target_id)
+            .load_explicit_meta_in_tx(&txn, tenant.id, target_kind.clone(), target_id)
             .await?
         else {
             return Err(SeoError::NotFound);
@@ -227,7 +229,7 @@ impl SeoService {
             .filter(seo_revision::Column::TargetKind.eq(target_kind.as_str()))
             .filter(seo_revision::Column::TargetId.eq(target_id))
             .order_by_desc(seo_revision::Column::Revision)
-            .one(&self.db)
+            .one(&txn)
             .await?;
         let next_revision = latest_revision.map(|item| item.revision + 1).unwrap_or(1);
         let now = chrono::Utc::now().fixed_offset();
@@ -242,7 +244,7 @@ impl SeoService {
             payload: Set(snapshot_payload(explicit)),
             created_at: Set(now),
         }
-        .insert(&self.db)
+        .insert(&txn)
         .await?;
 
         let record = SeoRevisionRecord {
@@ -254,13 +256,15 @@ impl SeoService {
             created_at: revision.created_at.into(),
         };
 
-        self.publish_seo_revision_published_event(
+        self.publish_seo_revision_published_event_in_tx(
+            &txn,
             tenant.id,
             record.target_kind.as_str(),
             record.target_id,
             record.revision,
         )
-        .await;
+        .await?;
+        txn.commit().await?;
 
         Ok(record)
     }
@@ -294,6 +298,30 @@ impl SeoService {
             .await;
 
         Ok(record)
+    }
+
+    async fn load_explicit_meta_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        target_kind: SeoTargetSlug,
+        target_id: Uuid,
+    ) -> SeoResult<Option<LoadedMeta>> {
+        let Some(meta) = seo_meta::Entity::find()
+            .filter(seo_meta::Column::TenantId.eq(tenant_id))
+            .filter(seo_meta::Column::TargetType.eq(target_kind.as_str()))
+            .filter(seo_meta::Column::TargetId.eq(target_id))
+            .one(txn)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let translations = meta_translation::Entity::find()
+            .filter(meta_translation::Column::MetaId.eq(meta.id))
+            .order_by_asc(meta_translation::Column::Locale)
+            .all(txn)
+            .await?;
+        Ok(Some(LoadedMeta { meta, translations }))
     }
 
     pub(super) async fn load_explicit_meta(
