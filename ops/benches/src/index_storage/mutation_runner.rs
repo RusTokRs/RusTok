@@ -34,6 +34,7 @@ pub struct MutationWorkloadReport {
     pub name: &'static str,
     pub sql: String,
     pub affected_entities: i64,
+    pub affected_fields: Option<i64>,
     pub affected_links: Option<i64>,
     pub repetitions: Vec<MutationExplainEvidence>,
 }
@@ -55,6 +56,7 @@ pub struct MutationExplainEvidence {
 #[derive(Debug)]
 struct MutationValidation {
     affected_entities: i64,
+    affected_fields: Option<i64>,
     affected_links: Option<i64>,
 }
 
@@ -125,6 +127,7 @@ async fn run_mutation_workload(
         name: workload.name,
         sql: workload.sql,
         affected_entities: validation.affected_entities,
+        affected_fields: validation.affected_fields,
         affected_links: validation.affected_links,
         repetitions: evidence,
     })
@@ -160,25 +163,45 @@ async fn validate_mutation_in_transaction(
         workload.expected_affected_entities
     );
 
-    let affected_links = if workload.name == "delete_product_batch" {
-        let actual: i64 = row.try_get("", "affected_links")?;
-        let expected: i64 = row.try_get("", "expected_links")?;
-        ensure!(
-            actual == expected,
-            "mutation {} affected {} links, expected {}",
-            workload.name,
-            actual,
-            expected
-        );
-        Some(actual)
-    } else {
-        None
-    };
+    let affected_fields = validate_optional_effect(
+        workload.name,
+        "fields",
+        row.try_get("", "affected_fields")?,
+        row.try_get("", "expected_fields")?,
+    )?;
+    let affected_links = validate_optional_effect(
+        workload.name,
+        "links",
+        row.try_get("", "affected_links")?,
+        row.try_get("", "expected_links")?,
+    )?;
 
     Ok(MutationValidation {
         affected_entities,
+        affected_fields,
         affected_links,
     })
+}
+
+fn validate_optional_effect(
+    workload: &str,
+    effect: &str,
+    actual: Option<i64>,
+    expected: Option<i64>,
+) -> Result<Option<i64>> {
+    ensure!(
+        actual.is_some() == expected.is_some(),
+        "mutation {workload} returned inconsistent optional {effect} effect columns"
+    );
+    if let (Some(actual), Some(expected)) = (actual, expected) {
+        ensure!(
+            actual == expected,
+            "mutation {workload} affected {actual} {effect}, expected {expected}"
+        );
+        Ok(Some(actual))
+    } else {
+        Ok(None)
+    }
 }
 
 async fn explain_mutation(
