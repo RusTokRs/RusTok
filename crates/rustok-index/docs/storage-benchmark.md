@@ -24,7 +24,10 @@ constant.
 
 Every executable uses a pool constrained to exactly one physical PostgreSQL
 connection. This keeps session settings, temporary execution state, maintenance
-statistics, and VACUUM sequencing on one reproducible session per report.
+statistics, and VACUUM sequencing on one reproducible session per report. The
+shared connection setup pins `standard_conforming_strings = on` before generated
+SQL executes, so string and escape semantics cannot vary with server, database,
+or role defaults.
 
 ## Candidates
 
