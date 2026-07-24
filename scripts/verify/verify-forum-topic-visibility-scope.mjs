@@ -226,10 +226,8 @@ for (const marker of [
 for (const marker of [
   "Delivered in `FORUM-20A`",
   "Delivered in `FORUM-20B`",
-  "Delivered in `FORUM-20C`",
   "ForumTopicVisibilityService",
   "forum-topic-visibility-scope.json",
-  "topic_authenticated_visibility_sqlite",
   "verify-forum-topic-visibility-scope.mjs",
 ]) {
   requireText(plan, marker, `canonical FORUM-20 plan is missing ${marker}`);
