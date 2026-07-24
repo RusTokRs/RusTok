@@ -18,6 +18,10 @@ const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
 const validator = read('scripts/verify/validate-index-storage-evidence.mjs');
 const comparator = read('scripts/verify/compare-index-storage-evidence.mjs');
 const comparatorFixture = read('scripts/verify/compare-index-storage-evidence.test.mjs');
+const toolingRouter = read('scripts/verify/index-storage-tooling.mjs');
+const adrIntegrityGuard = read('scripts/verify/verify-index-storage-adr-integrity.mjs');
+const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
+const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
 
 const readWorkloads = [
   'status_equality',
@@ -206,4 +210,32 @@ for (const marker of [
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, and complete evidence metrics are statically guarded');
+for (const marker of [
+  "'verify-index-storage-adr-integrity.mjs'",
+  "case 'verify-adr':",
+  "runScript('verify-index-storage-adr.mjs', args)",
+]) {
+  if (!toolingRouter.includes(marker)) fail(`storage tooling router missing independent ADR integrity wiring ${marker}`);
+}
+for (const marker of [
+  "const prefix = '[verify-index-storage-adr-integrity]'",
+  "runScript('finalize-index-storage-adr.mjs', args)",
+  "runScript('verify-index-storage-adr.mjs', args)",
+  'ADR bytes differ from deterministic finalization',
+  'scripts/verify/verify-index-storage-adr-integrity.mjs',
+]) {
+  if (!adrIntegrityGuard.includes(marker)) fail(`ADR integrity guard missing self-protection marker ${marker}`);
+}
+for (const [label, workflow] of [
+  ['smoke', smokeWorkflow],
+  ['scale', scaleWorkflow],
+]) {
+  for (const marker of [
+    'scripts/verify/verify-index-storage-adr-integrity.mjs',
+    'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
+  ]) {
+    if (!workflow.includes(marker)) fail(`${label} workflow missing ADR integrity wiring ${marker}`);
+  }
+}
+
+console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, complete evidence metrics, and ADR integrity wiring are statically guarded');
