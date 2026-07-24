@@ -36,6 +36,9 @@ concurrency:
 jobs:
   contract:
     name: Index scale evidence contract
+    # Pull-request runs exist only to cancel an older PR-ref execution through
+    # concurrency. Heavy scale evidence is emitted once from push/dispatch.
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
