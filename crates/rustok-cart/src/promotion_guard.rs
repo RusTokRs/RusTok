@@ -153,7 +153,7 @@ fn validate_cart_promotion_request(
     owner_operation: &'static str,
     request: &CartPromotionRequest,
 ) -> Result<(), PortError> {
-    let code = match request.scope {
+    let code = match &request.scope {
         CartPromotionScopeRequest::LineItem if request.line_item_id.is_none() => {
             Some("cart.promotion_line_item_required")
         }
