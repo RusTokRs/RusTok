@@ -229,7 +229,7 @@ test('rejects unsupported fields in the decision envelope', () => {
   });
 });
 
-test('finalizes and verifies an ADR bound to exact comparison and decision bytes', () => {
+test('finalizes an ADR bound to exact comparison and decision bytes', () => {
   withFixture((root) => {
     const fixture = prepare(root);
     assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
