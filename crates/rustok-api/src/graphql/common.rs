@@ -62,6 +62,15 @@ impl PaginationInput {
             ));
         }
 
+        validate_non_negative_pagination_value("offset", self.offset)?;
+        validate_positive_pagination_value("limit", self.limit)?;
+        if let Some(first) = self.first {
+            validate_positive_pagination_value("first", first)?;
+        }
+        if let Some(last) = self.last {
+            validate_positive_pagination_value("last", last)?;
+        }
+
         let after = self
             .after
             .as_deref()
@@ -74,7 +83,7 @@ impl PaginationInput {
             .transpose()?;
 
         const MAX_LIMIT: i64 = 100;
-        let mut offset = self.offset.max(0);
+        let mut offset = self.offset;
         if let Some(after) = after {
             offset = after
                 .checked_add(1)
@@ -85,20 +94,19 @@ impl PaginationInput {
             offset = offset.min(before);
         }
 
-        let mut limit = self.limit.clamp(1, MAX_LIMIT);
+        let mut limit = self.limit.min(MAX_LIMIT);
         if let Some(first) = self.first {
-            limit = first.clamp(1, MAX_LIMIT);
+            limit = first.min(MAX_LIMIT);
         }
 
         if let Some(last) = self.last {
-            let last = last.clamp(1, MAX_LIMIT);
+            let last = last.min(MAX_LIMIT);
             if let Some(before) = before {
                 offset = (before - last).max(0);
                 limit = last;
             }
         }
 
-        let offset = offset.max(0);
         offset.checked_add(limit).ok_or_else(|| {
             pagination_input_error("Pagination offset and limit exceed supported range")
         })?;
@@ -129,6 +137,24 @@ fn decode_pagination_cursor(cursor: &str, argument: &'static str) -> Result<i64>
 
 fn pagination_cursor_error(argument: &'static str) -> Error {
     pagination_input_error(format!("Invalid `{argument}` pagination cursor"))
+}
+
+fn validate_non_negative_pagination_value(argument: &'static str, value: i64) -> Result<()> {
+    if value < 0 {
+        return Err(pagination_input_error(format!(
+            "Pagination `{argument}` must be non-negative"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_positive_pagination_value(argument: &'static str, value: i64) -> Result<()> {
+    if value <= 0 {
+        return Err(pagination_input_error(format!(
+            "Pagination `{argument}` must be greater than zero"
+        )));
+    }
+    Ok(())
 }
 
 fn pagination_input_error(message: impl Into<String>) -> Error {
@@ -295,6 +321,69 @@ mod tests {
             backward.normalize().expect("valid backward cursor"),
             (15, 5)
         );
+    }
+
+    #[test]
+    fn pagination_caps_large_page_sizes() {
+        for input in [
+            PaginationInput {
+                limit: 500,
+                ..Default::default()
+            },
+            PaginationInput {
+                first: Some(500),
+                ..Default::default()
+            },
+            PaginationInput {
+                last: Some(500),
+                before: Some(encode_cursor(500)),
+                ..Default::default()
+            },
+        ] {
+            assert_eq!(input.normalize().expect("large limit should be capped").1, 100);
+        }
+    }
+
+    #[test]
+    fn pagination_rejects_invalid_numeric_arguments_as_bad_user_input() {
+        let cases = [
+            (
+                "Pagination `offset` must be non-negative",
+                PaginationInput {
+                    offset: -1,
+                    ..Default::default()
+                },
+            ),
+            (
+                "Pagination `limit` must be greater than zero",
+                PaginationInput {
+                    limit: 0,
+                    ..Default::default()
+                },
+            ),
+            (
+                "Pagination `first` must be greater than zero",
+                PaginationInput {
+                    first: Some(0),
+                    ..Default::default()
+                },
+            ),
+            (
+                "Pagination `last` must be greater than zero",
+                PaginationInput {
+                    last: Some(-1),
+                    ..Default::default()
+                },
+            ),
+        ];
+
+        for (expected_message, input) in cases {
+            let error = input
+                .normalize()
+                .expect_err("invalid numeric pagination input must fail");
+            assert_eq!(error.message, expected_message);
+            assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
+        }
     }
 
     #[test]
