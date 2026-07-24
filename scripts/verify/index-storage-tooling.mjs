@@ -30,15 +30,19 @@ Commands:
   render   Render the manual storage ADR after commit and SHA-256 binding checks.`);
 };
 
-const runScript = (filename, args = [], environment = process.env) => {
-  const script = path.join(scriptDirectory, filename);
-  const result = spawnSync(process.execPath, [script, ...args], {
+const runNode = (args, label, environment = process.env) => {
+  const result = spawnSync(process.execPath, args, {
     stdio: 'inherit',
     env: environment,
   });
-  if (result.error) fail(`failed to start ${filename}: ${result.error.message}`);
-  if (result.signal) fail(`${filename} terminated by signal ${result.signal}`);
+  if (result.error) fail(`failed to start ${label}: ${result.error.message}`);
+  if (result.signal) fail(`${label} terminated by signal ${result.signal}`);
   if (result.status !== 0) process.exit(result.status ?? 1);
+};
+
+const scriptPath = (filename) => path.join(scriptDirectory, filename);
+const runScript = (filename, args = [], environment = process.env) => {
+  runNode([scriptPath(filename), ...args], filename, environment);
 };
 
 const runContract = (args) => {
@@ -54,14 +58,11 @@ const runContract = (args) => {
 
 const runFixtures = (args) => {
   if (args.length !== 0) fail('fixtures does not accept arguments');
-  runScript('compare-index-storage-evidence.test.mjs', [], {
-    ...process.env,
-    NODE_OPTIONS: process.env.NODE_OPTIONS ?? '',
-  });
-  runScript('render-index-storage-adr.test.mjs', [], {
-    ...process.env,
-    NODE_OPTIONS: process.env.NODE_OPTIONS ?? '',
-  });
+  runNode([
+    '--test',
+    scriptPath('compare-index-storage-evidence.test.mjs'),
+    scriptPath('render-index-storage-adr.test.mjs'),
+  ], 'Index storage fixture suites');
 };
 
 const parsePacketArgs = (args) => {
