@@ -631,7 +631,12 @@ mod tests {
     }
 
     async fn run_forum_migrations(db: &DatabaseConnection) {
+        use sea_orm_migration::MigrationTrait as _;
         let manager = SchemaManager::new(db);
+        rustok_outbox::SysEventsMigration
+            .up(&manager)
+            .await
+            .expect("outbox migration should apply");
         for migration in forum_migrations::migrations() {
             migration
                 .up(&manager)

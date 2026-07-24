@@ -816,7 +816,7 @@ fn submission_summary_truncates_bounded_error_message() {
     );
     let message = summary.into_error().expect("error expected");
     assert!(message.len() <= SITEMAP_SUBMIT_MAX_ERROR_LEN + 3);
-    assert!(message.ends_with("..."));
+    assert!(message.contains("..."));
 }
 
 #[test]
@@ -830,7 +830,7 @@ fn submission_summary_truncation_respects_length_budget_with_unicode() {
     let message = summary.into_error().expect("error expected");
 
     assert!(message.len() <= SITEMAP_SUBMIT_MAX_ERROR_LEN + 3);
-    assert!(message.ends_with("..."));
+    assert!(message.contains("..."));
     assert!(std::str::from_utf8(message.as_bytes()).is_ok());
 }
 

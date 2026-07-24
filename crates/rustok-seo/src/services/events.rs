@@ -2633,7 +2633,7 @@ mod tests {
             .run_index_repair_replay(tenant_id, Some("product"), 20, true)
             .await
             .expect("replay retry should succeed");
-        assert_eq!(retry.replayed_count, 1);
+        assert_eq!(retry.repaired_count, 1);
 
         let deliveries = seo_index_delivery::Entity::find()
             .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
