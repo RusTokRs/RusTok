@@ -56,6 +56,10 @@ pub fn source_dataset_sql(config: &DatasetConfig) -> String {
     source::dataset_sql(config)
 }
 
+pub fn source_workloads(config: &DatasetConfig) -> Vec<Workload> {
+    source::workloads(&WorkloadContext::new(config))
+}
+
 pub fn prototype_sql(prototype: Prototype) -> String {
     match prototype {
         Prototype::Jsonb => jsonb::prototype_sql(),
@@ -196,9 +200,9 @@ mod tests {
     }
 
     #[test]
-    fn every_candidate_exposes_the_same_read_and_mutation_names() {
+    fn source_and_candidates_expose_the_same_read_and_mutation_names() {
         let config = smoke_config();
-        let expected_reads = workloads(Prototype::Jsonb, &config)
+        let expected_reads = source_workloads(&config)
             .into_iter()
             .map(|workload| workload.name)
             .collect::<Vec<_>>();
@@ -206,7 +210,7 @@ mod tests {
             .into_iter()
             .map(|workload| workload.name)
             .collect::<Vec<_>>();
-        for prototype in [Prototype::TypedEav, Prototype::HotProjection] {
+        for prototype in Prototype::ALL {
             assert_eq!(
                 workloads(prototype, &config)
                     .into_iter()
@@ -214,6 +218,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 expected_reads
             );
+        }
+        for prototype in [Prototype::TypedEav, Prototype::HotProjection] {
             assert_eq!(
                 mutation_workloads(prototype, &config)
                     .into_iter()
