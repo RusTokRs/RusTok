@@ -6,6 +6,9 @@ pub mod cart;
 pub mod catalog;
 pub mod checkout;
 pub mod fulfillment;
+#[path = "helpers.rs"]
+mod legacy_helpers;
+#[path = "safe_helpers.rs"]
 pub mod helpers;
 pub mod pricing;
 pub mod provider_operations;
