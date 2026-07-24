@@ -2,6 +2,31 @@
 
 The storage benchmark comparison is evidence, not an automatic model selector. After replacement `100k` and `1m` packets have been generated from the same commit and the comparator reports `decision_ready: true`, maintainers record the decision in a separate JSON file and render the ADR.
 
+## Tooling entrypoint
+
+Use the stable command router instead of remembering individual script names:
+
+```bash
+# Static repository contracts; does not execute PostgreSQL benchmarks.
+node scripts/verify/index-storage-tooling.mjs contract
+
+# Comparator and ADR fixture suites.
+node scripts/verify/index-storage-tooling.mjs fixtures
+
+# Validate an already generated packet.
+node scripts/verify/index-storage-tooling.mjs packet \
+  --scale 100k \
+  --root evidence/index-storage/100k
+
+# Generate a same-commit cross-scale comparison.
+node scripts/verify/index-storage-tooling.mjs compare \
+  --input evidence/index-storage/100k \
+  --input evidence/index-storage/1m \
+  --output evidence/index-storage/comparison
+```
+
+The router invokes `verify-index-storage-source-oracle.mjs`, `validate-index-storage-evidence.mjs`, `compare-index-storage-evidence.mjs`, `hash-index-storage-comparison.mjs`, and `render-index-storage-adr.mjs` without shell evaluation. It forwards comparator and renderer arguments unchanged and supplies packet scale/root values through the validator's existing environment contract.
+
 ## Decision input
 
 Start from [`storage-decision.example.json`](storage-decision.example.json). It references [`storage-decision.schema.json`](storage-decision.schema.json), so editors and external validation environments can check the same structural contract used by the renderer.
@@ -9,7 +34,7 @@ Start from [`storage-decision.example.json`](storage-decision.example.json). It 
 Calculate the digest of the exact comparison file that will be reviewed:
 
 ```bash
-node scripts/verify/hash-index-storage-comparison.mjs \
+node scripts/verify/index-storage-tooling.mjs hash \
   evidence/index-storage/comparison/comparison.json
 ```
 
@@ -46,7 +71,7 @@ Copy the printed 64-character digest into `comparison_sha256`. Recalculate it wh
 ## Render the ADR
 
 ```bash
-node scripts/verify/render-index-storage-adr.mjs \
+node scripts/verify/index-storage-tooling.mjs render \
   --comparison evidence/index-storage/comparison/comparison.json \
   --decision evidence/index-storage/comparison/decision.json \
   --output crates/rustok-index/docs/adr-postgresql-storage.md
@@ -67,4 +92,4 @@ The generated ADR includes storage size, read latency, mutation latency, WAL, ch
 
 ## Validation boundary
 
-The ADR renderer does not replace benchmark execution, evidence-packet validation, production migration rehearsal or production observability. It only turns an already validated comparison plus an explicit human decision into a reviewable document.
+The tooling router and ADR renderer do not replace benchmark execution, evidence-packet validation, production migration rehearsal or production observability. They only expose the existing contracts consistently and turn an already validated comparison plus an explicit human decision into a reviewable document.
