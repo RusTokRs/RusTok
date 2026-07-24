@@ -9,7 +9,9 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 
-use crate::dto::{ListTopicsFilter, TopicListItem, TopicUnreadSummaryReadModel};
+use crate::dto::{
+    ListTopicsFilter, MAX_FORUM_READ_LIMIT, TopicListItem, TopicUnreadSummaryReadModel,
+};
 use crate::entities::{forum_reply, forum_topic, forum_topic_revision};
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
@@ -61,6 +63,11 @@ impl ForumStorefrontReadStateService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> ForumResult<ForumStorefrontUnreadTopicPage> {
+        if !(1..=MAX_FORUM_READ_LIMIT).contains(&filter.per_page) {
+            return Err(ForumError::Validation(format!(
+                "Forum storefront unread page size must be between 1 and {MAX_FORUM_READ_LIMIT}"
+            )));
+        }
         let (topics, total) = TopicService::new(self.db.clone(), self.event_bus.clone())
             .list_storefront_visible_with_locale_fallback(
                 tenant_id,
