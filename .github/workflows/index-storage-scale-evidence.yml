@@ -57,7 +57,8 @@ jobs:
     with:
       scale: 1m
       timeout_minutes: 300
-      # Prefer an explicitly configured larger runner, but current ubuntu-latest
-      # images are allowed when the reusable job confirms at least 35 GB free.
+      # Prefer an explicitly configured larger runner. Otherwise the hosted image
+      # may proceed only after the reusable job verifies at least 35 GB free;
+      # the inspected 100k runner reported about 93 GB free before evidence.
       runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER || 'ubuntu-latest' }}
       minimum_free_bytes: 35000000000
