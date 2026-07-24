@@ -68,6 +68,8 @@ jobs:
   evidence-1m:
     # The 100k packet is already archived and inspected. Start the same-commit
     # rerun and the 1m extension independently after the shared contract gate.
+    # Typed target_entity predicates on both link hops are verifier-locked so the
+    # scale packet measures the intended reverse link indexes, not a prefix miss.
     needs: contract
     uses: ./.github/workflows/index-storage-scale-run.yml
     with:
