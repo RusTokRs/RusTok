@@ -1,0 +1,98 @@
+name: Index 1m Maintenance Diagnostic
+
+on:
+  push:
+    branches:
+      - "agent/index-m2-1m-maintenance-diagnostic"
+    paths:
+      - ".github/workflows/index-storage-1m-maintenance-diagnostic.yml"
+      - "ops/benches/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: full
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_bench
+  INDEX_BENCH_SCALE: 1m
+  INDEX_BENCH_CHURN_CYCLES: "5"
+  INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/1m/maintenance-report.json
+  INDEX_BENCH_EVIDENCE_ROOT: evidence/index-storage/1m
+
+jobs:
+  maintenance:
+    name: PostgreSQL 1m maintenance diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rustok_index_bench
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rustok_index_bench"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: index-storage-scale
+
+      - name: Capture runner resources before diagnostic
+        shell: bash
+        run: |
+          mkdir -p "$INDEX_BENCH_EVIDENCE_ROOT"
+          {
+            echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "phase=before"
+            uname -a
+            echo "nproc=$(nproc)"
+            free -b
+            df -B1
+          } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-before.txt"
+
+      - name: Build maintenance executable
+        run: cargo build -p rustok-benchmarks --release --bin index-storage-maintenance-benchmark
+
+      - name: Run 1m maintenance with full diagnostic
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-maintenance-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/maintenance-run.log"
+
+      - name: Capture runner resources after diagnostic
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "phase=after"
+            uname -a
+            echo "nproc=$(nproc)"
+            free -b
+            df -B1
+          } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-after.txt"
+
+      - name: Archive maintenance diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-1m-maintenance-diagnostic-${{ github.sha }}
+          path: evidence/index-storage/1m
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 9
