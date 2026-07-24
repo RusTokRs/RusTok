@@ -10,7 +10,7 @@
 - Production migrations: intentionally absent
 - Smoke evidence: archived from Actions run `30041091121`
 - 100k evidence: archived and inspected from Actions run `30051321255`
-- 1m evidence: blocked until `INDEX_BENCH_LARGE_RUNNER` names a Linux larger runner with at least 35 GB free disk
+- 1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check
 - Storage decision ADR: Proposed; 100k evidence is populated, acceptance still waits on 1m and the cross-scale comparison
 
 ## Goal
@@ -235,11 +235,14 @@ Warm-median read execution in milliseconds:
 | Typed EAV | 7.074 | 6.102 | 4.742 | 14,989.380 | 20.814 | 4.074 |
 | Hot typed projection | 0.073 | 0.071 | 1.394 | 10,305.135 | 0.032 | 0.456 |
 
-The two-hop workload is pathological for every candidate at this scale: it uses
-roughly 1.65-2.66 million shared-hit blocks and takes 10-15 seconds even though
-no shared-read or temporary blocks are recorded. This is a query/index design
-problem that must be addressed before production regardless of the selected
-entity representation.
+The original two-hop workload was pathological for every candidate at this
+scale: it used roughly 1.65-2.66 million shared-hit blocks and took 10-15 seconds
+even though no shared-read or temporary blocks were recorded. EXPLAIN showed that
+the query omitted the known `target_entity = 'variant'` and
+`target_entity = 'sales_channel'` discriminators, preventing full use of
+`link_target_lookup`. Those predicates are now part of all three candidate SQL
+queries and are verifier-locked. The values above remain pre-fix diagnostics; a
+same-commit 100k/1m rerun supplies the canonical cross-scale two-hop evidence.
 
 Median mutation execution and maximum-node WAL bytes:
 
@@ -253,10 +256,13 @@ Ordinary VACUUM reduced estimated dead tuples to zero for every candidate but di
 not shrink relation files; after-VACUUM size deltas were small positive values,
 which is valid under the benchmark's neutral size-delta rule.
 
-The workflow then failed closed before `1m` because repository variable
-`INDEX_BENCH_LARGE_RUNNER` is not configured. It must name a Linux runner label
-with at least 35 GB free disk. The 100k result is therefore archived and accepted
-as evidence, while the storage ADR remains Proposed and M3 remains blocked.
+The inspected run failed closed before `1m` because repository variable
+`INDEX_BENCH_LARGE_RUNNER` was not configured. Its 100k resource snapshots showed
+93,030,404,096 free root-filesystem bytes before evidence and 88,893,792,256 after.
+The scale workflow now prefers the configured runner when present and otherwise
+uses `ubuntu-latest`; the reusable job still rejects any runner with less than
+35,000,000,000 free bytes before the build. The 1m result remains pending, so the
+storage ADR remains Proposed and M3 remains blocked.
 
 Optional settings:
 
