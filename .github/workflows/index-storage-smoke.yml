@@ -9,6 +9,10 @@ on:
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/verify-index-storage-source-oracle.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/hash-index-storage-comparison.mjs"
+      - "scripts/verify/render-index-storage-adr.mjs"
+      - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
   push:
     branches:
@@ -20,6 +24,10 @@ on:
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/verify-index-storage-source-oracle.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/hash-index-storage-comparison.mjs"
+      - "scripts/verify/render-index-storage-adr.mjs"
+      - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
 
 permissions:
@@ -57,6 +65,11 @@ jobs:
           {
             node scripts/verify/verify-index-fba.mjs
             node scripts/verify/verify-index-storage-source-oracle.mjs
+            node scripts/verify/verify-index-storage-adr-tooling.mjs
+            node --check scripts/verify/hash-index-storage-comparison.mjs
+            node --check scripts/verify/render-index-storage-adr.mjs
+            node --check scripts/verify/render-index-storage-adr.test.mjs
+            node --test scripts/verify/render-index-storage-adr.test.mjs
           } 2>&1 | tee evidence/index-storage/contract/verify.log
       - name: Archive contract diagnostic
         if: always()
