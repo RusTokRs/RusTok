@@ -4,8 +4,11 @@ The storage benchmark comparison is evidence, not an automatic model selector. A
 
 ## Decision input
 
+Start from [`storage-decision.example.json`](storage-decision.example.json). It references [`storage-decision.schema.json`](storage-decision.schema.json), so editors and external validation environments can check the same structural contract used by the renderer.
+
 ```json
 {
+  "$schema": "./storage-decision.schema.json",
   "status": "proposed",
   "decision_date": "2026-07-24",
   "owner": "Index maintainers",
@@ -45,10 +48,11 @@ The renderer fails closed unless:
 - every decision-contract flag is true;
 - `100k` and `1m` evidence are present and share the same full commit;
 - automatic winner selection is explicitly disabled;
+- every displayed metric and cross-scale ratio is present and numeric;
 - the decision identifies the same comparison commit;
 - selection, rejection, operations, migration and rollback rationales are all present.
 
-The generated ADR includes storage size, read latency, mutation latency, WAL, churn and VACUUM evidence for all candidates. It never infers or ranks a winner.
+The generated ADR includes storage size, read latency, mutation latency, WAL, churn and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem path used to invoke the renderer.
 
 ## Validation boundary
 
