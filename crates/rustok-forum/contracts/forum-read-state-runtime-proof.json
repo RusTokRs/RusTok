@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "scope": "FORUM-16 PostgreSQL read-state runtime proof",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "record": "crates/rustok-forum/docs/forum-16-postgres-runtime-proof.md",
+  "test_file": "crates/rustok-forum/tests/topic_read_state_postgres.rs",
+  "test_environment": {
+    "database": "PostgreSQL",
+    "url_env": "RUSTOK_FORUM_TEST_DATABASE_URL",
+    "isolated_schema": true,
+    "required_modules": [
+      "rustok-outbox",
+      "rustok-taxonomy",
+      "rustok-forum"
+    ]
+  },
+  "fixture": {
+    "topics": 128,
+    "approved_replies_per_topic": 64,
+    "approved_replies_total": 8192,
+    "topic_revisions_per_topic": 4,
+    "topic_revisions_total": 512,
+    "bounded_projection_topics": 100
+  },
+  "scenarios": {
+    "concurrent_devices": {
+      "connections": 2,
+      "same_tenant_user_topic": true,
+      "independent_position_and_revision_advances": true,
+      "expected_merge": "component-wise maximum",
+      "database_regression_guard": true
+    },
+    "aggregate_correctness": {
+      "reply_unread_topics": 32,
+      "revision_unread_topics": 32,
+      "fully_read_topics": 32,
+      "unseen_topics": 4,
+      "hidden_or_rejected_replies_counted": false,
+      "single_bounded_summary_query": true
+    },
+    "query_plan": {
+      "format": "EXPLAIN JSON",
+      "natural_plan_analyze": true,
+      "expected_root_rows": 100,
+      "per_topic_subplans_forbidden": true,
+      "actual_loops_capped_by_topic_page": true,
+      "index_capability_plan": true,
+      "required_index_capabilities": [
+        "forum_topic_read_states_pkey",
+        "forum reply tenant/topic/position index",
+        "idx_forum_topic_revisions_tenant_topic_created"
+      ],
+      "latency_threshold_claimed": false
+    }
+  },
+  "execution": {
+    "command": "cargo test -p rustok-forum --test topic_read_state_postgres -- --nocapture --test-threads=1",
+    "status": "not_run_by_implementation_agent",
+    "maintainer_execution_required": true
+  },
+  "still_open": [
+    "successful maintainer PostgreSQL execution evidence",
+    "captured natural and index-capability EXPLAIN JSON output",
+    "visibility-scoped storefront category and all-read commands after FORUM-20"
+  ]
+}
