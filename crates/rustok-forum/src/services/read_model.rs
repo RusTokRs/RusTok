@@ -590,10 +590,10 @@ OR EXISTS (
 )
 "#,
         vec![
-            user_id.into(),
-            user_id.into(),
-            user_id.into(),
-            user_id.into(),
+            sea_orm::Value::from(user_id),
+            sea_orm::Value::from(user_id),
+            sea_orm::Value::from(user_id),
+            sea_orm::Value::from(user_id),
         ],
     ))
 }

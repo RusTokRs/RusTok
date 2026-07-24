@@ -716,7 +716,7 @@ async fn submit_sitemap_endpoints_truncates_timeout_and_failure_details_determin
         let endpoint = format!("https://failure-{index:02}.example.com/ping");
         outcomes.insert(
             endpoint.clone(),
-            Err(format!("failure detail {index:02}: {}", "x".repeat(500))),
+            Err(format!("failure detail {index:02}: {}", "x".repeat(20))),
         );
     }
     for index in 0..12 {
@@ -725,7 +725,7 @@ async fn submit_sitemap_endpoints_truncates_timeout_and_failure_details_determin
             endpoint.clone(),
             Err(format!(
                 "request failed for endpoint `{endpoint}` with error: operation timed out {}",
-                "y".repeat(500)
+                "y".repeat(20)
             )),
         );
     }

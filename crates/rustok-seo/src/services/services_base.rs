@@ -329,7 +329,6 @@ fn validate_sitemap_submission_endpoint(value: &str) -> SeoResult<()> {
         || !parsed.username().is_empty()
         || parsed.password().is_some()
         || parsed.host_str().is_none()
-        || parsed.fragment().is_some()
     {
         return Err(SeoError::configuration(format!(
             "invalid persisted SEO sitemap submission endpoint `{value}`"

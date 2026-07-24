@@ -246,6 +246,8 @@ impl SeoService {
         source: &str,
         transition_ref: Option<&str>,
     ) {
+        use sea_orm::TransactionTrait;
+
         let txn = match self.db.begin().await {
             Ok(txn) => txn,
             Err(error) => {

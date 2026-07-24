@@ -688,10 +688,12 @@ mod tests {
     async fn run_taxonomy_migrations(db: &DatabaseConnection) {
         let manager = SchemaManager::new(db);
         for migration in taxonomy_migrations::migrations() {
-            migration
-                .up(&manager)
-                .await
-                .expect("taxonomy migration should apply");
+            if let Err(err) = migration.up(&manager).await {
+                if db.get_database_backend() != DbBackend::Postgres && err.to_string().contains("require PostgreSQL") {
+                    continue;
+                }
+                panic!("taxonomy migration should apply: {err:?}");
+            }
         }
     }
 
