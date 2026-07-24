@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::entities::{forum_topic, forum_topic_channel_access};
 use crate::error::{ForumError, ForumResult};
+use crate::services::category_visibility::ForumCategoryVisibilityPolicyService;
 use crate::state_machine::TopicStatus;
 
 pub const MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES: usize = 100;
@@ -15,29 +16,45 @@ const MAX_FORUM_CHANNEL_SLUG_LEN: usize = 128;
 
 /// Exact current storefront visibility scope owned by Forum.
 ///
-/// FORUM-20 will extend this value with inherited ACL, role, trust, group and
-/// explicit allow/deny inputs. Until those owner contracts exist, this scope is
-/// deliberately limited to the already-supported public/exact-channel policy.
+/// The scope combines the existing public/exact-channel rule with the
+/// public/authenticated category audience floor. Later FORUM-20 slices will add
+/// roles, trust, groups and explicit allow/deny inputs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ForumTopicVisibilityScope {
     channel_slug: Option<String>,
+    is_authenticated: bool,
 }
 
 impl ForumTopicVisibilityScope {
     pub fn storefront(channel_slug: Option<&str>) -> ForumResult<Self> {
+        Self::storefront_for_viewer(channel_slug, false)
+    }
+
+    pub fn storefront_for_viewer(
+        channel_slug: Option<&str>,
+        is_authenticated: bool,
+    ) -> ForumResult<Self> {
         let channel_slug = normalize_channel_slug(channel_slug)?;
-        Ok(Self { channel_slug })
+        Ok(Self {
+            channel_slug,
+            is_authenticated,
+        })
     }
 
     pub fn channel_slug(&self) -> Option<&str> {
         self.channel_slug.as_deref()
     }
+
+    pub const fn is_authenticated(&self) -> bool {
+        self.is_authenticated
+    }
 }
 
 /// Forum-owned exact topic visibility evaluation.
 ///
-/// Missing, foreign-tenant, inactive and nonmatching channel targets all resolve
-/// to absent values so callers cannot turn the policy into an existence oracle.
+/// Missing, foreign-tenant, inactive, category-denied and nonmatching channel
+/// targets all resolve to absent values so callers cannot turn the policy into
+/// an existence oracle.
 pub struct ForumTopicVisibilityService {
     db: DatabaseConnection,
 }
@@ -47,18 +64,32 @@ impl ForumTopicVisibilityService {
         Self { db }
     }
 
+    pub(crate) async fn hidden_category_ids_for_scope(
+        &self,
+        tenant_id: Uuid,
+        scope: &ForumTopicVisibilityScope,
+    ) -> ForumResult<Vec<Uuid>> {
+        ForumCategoryVisibilityPolicyService::new(self.db.clone())
+            .hidden_category_ids_for_viewer(tenant_id, scope.is_authenticated())
+            .await
+    }
+
     pub async fn is_topic_visible(
         &self,
         tenant_id: Uuid,
         topic_id: Uuid,
         scope: &ForumTopicVisibilityScope,
     ) -> ForumResult<bool> {
+        let hidden_category_ids = self
+            .hidden_category_ids_for_scope(tenant_id, scope)
+            .await?;
         Ok(apply_storefront_visibility(
             forum_topic::Entity::find()
                 .filter(forum_topic::Column::TenantId.eq(tenant_id))
                 .filter(forum_topic::Column::Id.eq(topic_id)),
             tenant_id,
             scope,
+            &hidden_category_ids,
         )
         .one(&self.db)
         .await?
@@ -91,12 +122,16 @@ impl ForumTopicVisibilityService {
             }
         }
 
+        let hidden_category_ids = self
+            .hidden_category_ids_for_scope(tenant_id, scope)
+            .await?;
         let visible = apply_storefront_visibility(
             forum_topic::Entity::find()
                 .filter(forum_topic::Column::TenantId.eq(tenant_id))
                 .filter(forum_topic::Column::Id.is_in(unique_ids.clone())),
             tenant_id,
             scope,
+            &hidden_category_ids,
         )
         .all(&self.db)
         .await?
@@ -115,6 +150,7 @@ pub(crate) fn apply_storefront_visibility(
     select: Select<forum_topic::Entity>,
     tenant_id: Uuid,
     scope: &ForumTopicVisibilityScope,
+    hidden_category_ids: &[Uuid],
 ) -> Select<forum_topic::Entity> {
     let unrestricted = Expr::col((forum_topic::Entity, forum_topic::Column::Id))
         .not_in_subquery(all_topic_channel_access_subquery(tenant_id));
@@ -127,9 +163,15 @@ pub(crate) fn apply_storefront_visibility(
         None => Condition::all().add(unrestricted),
     };
 
-    select
+    let mut select = select
         .filter(forum_topic::Column::Status.eq(TopicStatus::Open))
-        .filter(channel_condition)
+        .filter(channel_condition);
+    if !hidden_category_ids.is_empty() {
+        select = select.filter(
+            forum_topic::Column::CategoryId.is_not_in(hidden_category_ids.to_vec()),
+        );
+    }
+    select
 }
 
 fn all_topic_channel_access_subquery(tenant_id: Uuid) -> SelectStatement {
