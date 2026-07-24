@@ -1,4 +1,4 @@
-use std::{fs, path::Path, time::Instant};
+use std::{fmt::Write as _, fs, path::Path, time::Instant};
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
@@ -8,8 +8,8 @@ use serde_json::Value;
 
 use super::{
     BenchmarkConfig, DatasetConfig, Prototype, Workload, connect_benchmark_database,
-    explain::parse_read_explain_metrics, full_prototype_sql, source_dataset_sql,
-    source_workloads, workloads,
+    explain::parse_read_explain_metrics, full_prototype_sql, read_workload_contract,
+    source_dataset_sql, source_workloads, workloads,
 };
 
 #[derive(Debug, Serialize)]
@@ -138,7 +138,7 @@ async fn run_source_workloads(
 ) -> Result<Vec<SourceWorkloadReport>> {
     let mut reports = Vec::new();
     for workload in source_workloads(dataset) {
-        let digest = result_digest(db, &workload.sql)
+        let digest = result_digest(db, workload.name, &workload.sql)
             .await
             .with_context(|| format!("failed to digest source workload {}", workload.name))?;
         reports.push(SourceWorkloadReport {
@@ -186,7 +186,7 @@ async fn run_workload(
     workload: Workload,
     repetitions: u32,
 ) -> Result<WorkloadReport> {
-    let digest = result_digest(db, &workload.sql)
+    let digest = result_digest(db, workload.name, &workload.sql)
         .await
         .with_context(|| format!("failed to digest workload result {}", workload.name))?;
     let mut evidence = Vec::with_capacity(repetitions as usize);
@@ -204,17 +204,40 @@ async fn run_workload(
     })
 }
 
-async fn result_digest(db: &DatabaseConnection, sql: &str) -> Result<ResultDigest> {
-    let digest_sql = format!(
-        "SELECT count(*)::bigint AS result_rows, md5(COALESCE(string_agg(row_to_json(result)::text, '|' ORDER BY row_to_json(result)::text), '')) AS result_digest FROM ({sql}) AS result"
+async fn result_digest(
+    db: &DatabaseConnection,
+    workload_name: &str,
+    sql: &str,
+) -> Result<ResultDigest> {
+    let order_by = read_workload_contract(workload_name).digest_order_by;
+    let ordered_json_sql = format!(
+        "SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result ORDER BY {order_by}"
     );
-    let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, digest_sql))
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, ordered_json_sql))
+        .await
+        .context("ordered workload digest query failed")?;
+    let row_count = i64::try_from(rows.len()).context("workload result row count exceeds i64")?;
+    let mut payload = String::new();
+    for row in rows {
+        let result_json: String = row
+            .try_get("", "result_json")
+            .context("ordered workload digest row did not contain result_json")?;
+        write!(&mut payload, "{}:", result_json.len())?;
+        payload.push_str(&result_json);
+    }
+
+    let digest_row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT md5($1::text) AS result_digest",
+            vec![payload.into()],
+        ))
         .await?
-        .context("result digest query returned no row")?;
+        .context("workload digest hash query returned no row")?;
     Ok(ResultDigest {
-        rows: row.try_get("", "result_rows")?,
-        digest: row.try_get("", "result_digest")?,
+        rows: row_count,
+        digest: digest_row.try_get("", "result_digest")?,
     })
 }
 
