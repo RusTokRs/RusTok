@@ -86,6 +86,16 @@ impl DatasetConfig {
             self.variant_rows() * u64::from(self.sales_channels_per_variant);
         product_variant_links + variant_channel_links
     }
+
+    pub fn total_eav_field_rows(&self) -> u64 {
+        const PRODUCT_FIELD_ROWS: u64 = 8;
+        const VARIANT_FIELD_ROWS: u64 = 3;
+        const CHANNEL_FIELD_ROWS: u64 = 2;
+
+        self.product_rows() * PRODUCT_FIELD_ROWS
+            + self.variant_rows() * VARIANT_FIELD_ROWS
+            + self.channel_rows() * CHANNEL_FIELD_ROWS
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -153,10 +163,12 @@ mod tests {
         assert_eq!(rows_100k.product_rows(), 100_000);
         assert_eq!(rows_100k.total_entity_rows(), 300_080);
         assert_eq!(rows_100k.total_link_rows(), 600_000);
+        assert_eq!(rows_100k.total_eav_field_rows(), 1_400_160);
 
         let rows_1m = DatasetConfig::for_scale(DatasetScale::Rows1m, locales).unwrap();
         assert_eq!(rows_1m.product_rows(), 1_000_000);
         assert_eq!(rows_1m.total_entity_rows(), 3_000_160);
         assert_eq!(rows_1m.total_link_rows(), 6_000_000);
+        assert_eq!(rows_1m.total_eav_field_rows(), 14_000_320);
     }
 }

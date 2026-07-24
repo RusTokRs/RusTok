@@ -7,6 +7,7 @@ on:
       - "crates/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/verify-index-storage-source-oracle.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
@@ -21,6 +22,7 @@ on:
       - "crates/rustok-index/**"
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
+      - "scripts/verify/verify-index-storage-source-oracle.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
@@ -59,7 +61,9 @@ jobs:
             });
       - uses: actions/checkout@v7
       - name: Verify Index boundary and benchmark contract
-        run: node scripts/verify/verify-index-fba.mjs
+        run: |
+          node scripts/verify/verify-index-fba.mjs
+          node scripts/verify/verify-index-storage-source-oracle.mjs
       - name: Verify scale evidence validator syntax
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
       - name: Verify cross-scale comparator syntax

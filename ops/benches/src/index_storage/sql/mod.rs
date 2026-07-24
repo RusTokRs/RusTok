@@ -10,6 +10,7 @@ use serde::Serialize;
 use super::DatasetConfig;
 
 pub const SOURCE_SCHEMA: &str = "idx_bench_source";
+pub const RESULT_DIGEST_CONTRACT: &str = "ordered_length_prefixed_json_v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -52,8 +53,41 @@ pub struct MutationWorkload {
     pub expected_affected_entities: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ReadWorkloadContract {
+    pub digest_order_by: &'static str,
+    sql_order_marker: Option<&'static str>,
+}
+
+pub(crate) fn read_workload_contract(name: &str) -> ReadWorkloadContract {
+    match name {
+        "status_equality" | "multi_value_tag" | "two_hop_channel_filter" => {
+            ReadWorkloadContract {
+                digest_order_by: "entity_id",
+                sql_order_marker: Some("ORDER BY entity_id LIMIT 100"),
+            }
+        }
+        "price_range_sort" | "keyset_page" => ReadWorkloadContract {
+            digest_order_by: "price_minor, entity_id",
+            sql_order_marker: Some("ORDER BY price_minor, entity_id LIMIT 100"),
+        },
+        "exact_count" => ReadWorkloadContract {
+            digest_order_by: "result_count",
+            sql_order_marker: None,
+        },
+        other => panic!("unknown index storage read workload contract: {other}"),
+    }
+}
+
 pub fn source_dataset_sql(config: &DatasetConfig) -> String {
     source::dataset_sql(config)
+}
+
+pub fn source_workloads(config: &DatasetConfig) -> Vec<Workload> {
+    source::workloads(&WorkloadContext::new(config))
+        .into_iter()
+        .map(assert_read_workload_contract)
+        .collect()
 }
 
 pub fn prototype_sql(prototype: Prototype) -> String {
@@ -73,11 +107,30 @@ pub fn full_prototype_sql(prototype: Prototype) -> String {
 
 pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> {
     let context = WorkloadContext::new(config);
-    match prototype {
+    let workloads = match prototype {
         Prototype::Jsonb => jsonb::workloads(&context),
         Prototype::TypedEav => eav::workloads(&context),
         Prototype::HotProjection => hot::workloads(&context),
+    };
+    workloads
+        .into_iter()
+        .map(|mut workload| {
+            workload.sql = common::assert_full_link_identity_sql(workload.sql);
+            assert_read_workload_contract(workload)
+        })
+        .collect()
+}
+
+fn assert_read_workload_contract(workload: Workload) -> Workload {
+    let contract = read_workload_contract(workload.name);
+    if let Some(marker) = contract.sql_order_marker {
+        assert!(
+            workload.sql.trim_end().ends_with(marker),
+            "read workload {} must end with canonical ordering marker {marker}",
+            workload.name
+        );
     }
+    workload
 }
 
 pub fn mutation_workloads(
@@ -85,15 +138,25 @@ pub fn mutation_workloads(
     config: &DatasetConfig,
 ) -> Vec<MutationWorkload> {
     let context = WorkloadContext::new(config);
-    match prototype {
+    let workloads = match prototype {
         Prototype::Jsonb => jsonb::mutation_workloads(&context),
         Prototype::TypedEav => eav::mutation_workloads(&context),
         Prototype::HotProjection => hot::mutation_workloads(&context),
-    }
+    };
+    workloads
+        .into_iter()
+        .map(|mut workload| {
+            workload.sql = common::assert_full_link_identity_sql(workload.sql);
+            workload
+        })
+        .collect()
 }
 
 pub fn churn_cycle_sql(prototype: Prototype, config: &DatasetConfig) -> String {
-    maintenance::churn_cycle_sql(prototype, &WorkloadContext::new(config))
+    common::assert_full_link_identity_sql(maintenance::churn_cycle_sql(
+        prototype,
+        &WorkloadContext::new(config),
+    ))
 }
 
 pub fn analyze_sql(prototype: Prototype) -> String {
@@ -179,9 +242,9 @@ mod tests {
     }
 
     #[test]
-    fn every_candidate_exposes_the_same_read_and_mutation_names() {
+    fn source_and_candidates_expose_the_same_read_and_mutation_names() {
         let config = smoke_config();
-        let expected_reads = workloads(Prototype::Jsonb, &config)
+        let expected_reads = source_workloads(&config)
             .into_iter()
             .map(|workload| workload.name)
             .collect::<Vec<_>>();
@@ -189,7 +252,7 @@ mod tests {
             .into_iter()
             .map(|workload| workload.name)
             .collect::<Vec<_>>();
-        for prototype in [Prototype::TypedEav, Prototype::HotProjection] {
+        for prototype in Prototype::ALL {
             assert_eq!(
                 workloads(prototype, &config)
                     .into_iter()
@@ -197,6 +260,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 expected_reads
             );
+        }
+        for prototype in [Prototype::TypedEav, Prototype::HotProjection] {
             assert_eq!(
                 mutation_workloads(prototype, &config)
                     .into_iter()
@@ -204,6 +269,26 @@ mod tests {
                     .collect::<Vec<_>>(),
                 expected_mutations
             );
+        }
+    }
+
+    #[test]
+    fn read_workloads_keep_canonical_ordering_contracts() {
+        let config = smoke_config();
+        assert_eq!(RESULT_DIGEST_CONTRACT, "ordered_length_prefixed_json_v1");
+        for workload in source_workloads(&config) {
+            let contract = read_workload_contract(workload.name);
+            if let Some(marker) = contract.sql_order_marker {
+                assert!(workload.sql.trim_end().ends_with(marker));
+            }
+        }
+        for prototype in Prototype::ALL {
+            for workload in workloads(prototype, &config) {
+                let contract = read_workload_contract(workload.name);
+                if let Some(marker) = contract.sql_order_marker {
+                    assert!(workload.sql.trim_end().ends_with(marker));
+                }
+            }
         }
     }
 

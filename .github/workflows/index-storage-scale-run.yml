@@ -36,6 +36,7 @@ env:
   INDEX_BENCH_MAINTENANCE_OUTPUT: evidence/index-storage/${{ inputs.scale }}/maintenance-report.json
   INDEX_BENCH_EVIDENCE_ROOT: evidence/index-storage/${{ inputs.scale }}
   INDEX_BENCH_REQUIRE_RUNNER_RESOURCES: "1"
+  INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE: "1"
 
 jobs:
   evidence:

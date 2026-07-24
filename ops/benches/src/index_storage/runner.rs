@@ -1,4 +1,4 @@
-use std::{fs, path::Path, time::Instant};
+use std::{fmt::Write as _, fs, path::Path, time::Instant};
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Utc};
@@ -7,18 +7,21 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    BenchmarkConfig, DatasetConfig, Prototype, Workload, connect_benchmark_database,
-    full_prototype_sql, source_dataset_sql, workloads,
+    BenchmarkConfig, DatasetConfig, Prototype, RESULT_DIGEST_CONTRACT, Workload,
+    connect_benchmark_database, explain::parse_read_explain_metrics, full_prototype_sql,
+    read_workload_contract, source_dataset_sql, source_workloads, workloads,
 };
 
 #[derive(Debug, Serialize)]
 pub struct BenchmarkReport {
     pub generated_at: DateTime<Utc>,
+    pub result_digest_contract: &'static str,
     pub database: DatabaseMetadata,
     pub dataset: DatasetConfig,
     pub source_load_ms: u128,
     pub source_entity_rows: i64,
     pub source_link_rows: i64,
+    pub source_workloads: Vec<SourceWorkloadReport>,
     pub prototypes: Vec<PrototypeReport>,
 }
 
@@ -31,6 +34,14 @@ pub struct DatabaseMetadata {
     pub work_mem: String,
     pub random_page_cost: String,
     pub jit: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceWorkloadReport {
+    pub name: &'static str,
+    pub sql: String,
+    pub result_rows: i64,
+    pub result_digest: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,10 +66,10 @@ pub struct WorkloadReport {
 
 #[derive(Debug, Serialize)]
 pub struct ExplainEvidence {
-    pub planning_time_ms: Option<f64>,
-    pub execution_time_ms: Option<f64>,
-    pub shared_hit_blocks: Option<u64>,
-    pub shared_read_blocks: Option<u64>,
+    pub planning_time_ms: f64,
+    pub execution_time_ms: f64,
+    pub shared_hit_blocks: u64,
+    pub shared_read_blocks: u64,
     pub temporary_read_blocks: Option<u64>,
     pub temporary_written_blocks: Option<u64>,
     pub plan: Value,
@@ -88,20 +99,23 @@ pub async fn run(config: &BenchmarkConfig) -> Result<BenchmarkReport> {
     let source_load_ms = source_started.elapsed().as_millis();
     let source = source_cardinality(&db).await?;
     validate_cardinality("source dataset", source, &config.dataset)?;
+    let source_workload_reports = run_source_workloads(&db, &config.dataset).await?;
 
     let mut prototypes = Vec::with_capacity(Prototype::ALL.len());
     for prototype in Prototype::ALL {
         prototypes.push(run_prototype(&db, prototype, config).await?);
     }
-    validate_semantic_parity(&prototypes)?;
+    validate_semantic_parity(&source_workload_reports, &prototypes)?;
 
     Ok(BenchmarkReport {
         generated_at: Utc::now(),
+        result_digest_contract: RESULT_DIGEST_CONTRACT,
         database,
         dataset: config.dataset.clone(),
         source_load_ms,
         source_entity_rows: source.entity_rows,
         source_link_rows: source.link_rows,
+        source_workloads: source_workload_reports,
         prototypes,
     })
 }
@@ -118,6 +132,25 @@ pub fn write_report(path: &Path, report: &BenchmarkReport) -> Result<()> {
     fs::write(path, json)
         .with_context(|| format!("failed to write benchmark report to {path:?}"))?;
     Ok(())
+}
+
+async fn run_source_workloads(
+    db: &DatabaseConnection,
+    dataset: &DatasetConfig,
+) -> Result<Vec<SourceWorkloadReport>> {
+    let mut reports = Vec::new();
+    for workload in source_workloads(dataset) {
+        let digest = result_digest(db, workload.name, &workload.sql)
+            .await
+            .with_context(|| format!("failed to digest source workload {}", workload.name))?;
+        reports.push(SourceWorkloadReport {
+            name: workload.name,
+            sql: workload.sql,
+            result_rows: digest.rows,
+            result_digest: digest.digest,
+        });
+    }
+    Ok(reports)
 }
 
 async fn run_prototype(
@@ -155,7 +188,7 @@ async fn run_workload(
     workload: Workload,
     repetitions: u32,
 ) -> Result<WorkloadReport> {
-    let digest = result_digest(db, &workload.sql)
+    let digest = result_digest(db, workload.name, &workload.sql)
         .await
         .with_context(|| format!("failed to digest workload result {}", workload.name))?;
     let mut evidence = Vec::with_capacity(repetitions as usize);
@@ -173,17 +206,40 @@ async fn run_workload(
     })
 }
 
-async fn result_digest(db: &DatabaseConnection, sql: &str) -> Result<ResultDigest> {
-    let digest_sql = format!(
-        "SELECT count(*)::bigint AS result_rows, md5(COALESCE(string_agg(row_to_json(result)::text, '|' ORDER BY row_to_json(result)::text), '')) AS result_digest FROM ({sql}) AS result"
+async fn result_digest(
+    db: &DatabaseConnection,
+    workload_name: &str,
+    sql: &str,
+) -> Result<ResultDigest> {
+    let order_by = read_workload_contract(workload_name).digest_order_by;
+    let ordered_json_sql = format!(
+        "SELECT row_to_json(result)::text AS result_json FROM ({sql}) AS result ORDER BY {order_by}"
     );
-    let row = db
-        .query_one(Statement::from_string(DbBackend::Postgres, digest_sql))
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, ordered_json_sql))
+        .await
+        .context("ordered workload digest query failed")?;
+    let row_count = i64::try_from(rows.len()).context("workload result row count exceeds i64")?;
+    let mut payload = String::new();
+    for row in rows {
+        let result_json: String = row
+            .try_get("", "result_json")
+            .context("ordered workload digest row did not contain result_json")?;
+        write!(&mut payload, "{}:", result_json.len())?;
+        payload.push_str(&result_json);
+    }
+
+    let digest_row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT md5($1::text) AS result_digest",
+            vec![payload.into()],
+        ))
         .await?
-        .context("result digest query returned no row")?;
+        .context("workload digest hash query returned no row")?;
     Ok(ResultDigest {
-        rows: row.try_get("", "result_rows")?,
-        digest: row.try_get("", "result_digest")?,
+        rows: row_count,
+        digest: digest_row.try_get("", "result_digest")?,
     })
 }
 
@@ -200,16 +256,16 @@ async fn explain(db: &DatabaseConnection, sql: &str) -> Result<ExplainEvidence> 
     let plan: Value = row
         .try_get("", "QUERY PLAN")
         .context("EXPLAIN result did not contain QUERY PLAN JSON")?;
-    let root = plan.get(0).unwrap_or(&Value::Null);
-    let plan_node = root.get("Plan").unwrap_or(&Value::Null);
+    let metrics = parse_read_explain_metrics(&plan)
+        .context("EXPLAIN result did not satisfy the read evidence contract")?;
 
     Ok(ExplainEvidence {
-        planning_time_ms: root.get("Planning Time").and_then(Value::as_f64),
-        execution_time_ms: root.get("Execution Time").and_then(Value::as_f64),
-        shared_hit_blocks: plan_node.get("Shared Hit Blocks").and_then(Value::as_u64),
-        shared_read_blocks: plan_node.get("Shared Read Blocks").and_then(Value::as_u64),
-        temporary_read_blocks: plan_node.get("Temp Read Blocks").and_then(Value::as_u64),
-        temporary_written_blocks: plan_node.get("Temp Written Blocks").and_then(Value::as_u64),
+        planning_time_ms: metrics.planning_time_ms,
+        execution_time_ms: metrics.execution_time_ms,
+        shared_hit_blocks: metrics.shared_hit_blocks,
+        shared_read_blocks: metrics.shared_read_blocks,
+        temporary_read_blocks: metrics.temporary_read_blocks,
+        temporary_written_blocks: metrics.temporary_written_blocks,
         plan,
     })
 }
@@ -307,18 +363,23 @@ fn validate_cardinality(
     Ok(())
 }
 
-fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
-    let baseline = prototypes
-        .first()
-        .context("benchmark produced no prototype reports")?;
-    for candidate in &prototypes[1..] {
+fn validate_semantic_parity(
+    source_workloads: &[SourceWorkloadReport],
+    prototypes: &[PrototypeReport],
+) -> Result<()> {
+    ensure!(
+        !source_workloads.is_empty(),
+        "benchmark produced no source workload oracle"
+    );
+    ensure!(!prototypes.is_empty(), "benchmark produced no prototype reports");
+
+    for candidate in prototypes {
         ensure!(
-            candidate.workloads.len() == baseline.workloads.len(),
-            "{} workload count differs from {}",
-            candidate.schema,
-            baseline.schema
+            candidate.workloads.len() == source_workloads.len(),
+            "{} workload count differs from source oracle",
+            candidate.schema
         );
-        for expected in &baseline.workloads {
+        for expected in source_workloads {
             let actual = candidate
                 .workloads
                 .iter()
@@ -328,7 +389,7 @@ fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
                 })?;
             ensure!(
                 actual.result_rows == expected.result_rows,
-                "{} workload {} row-count mismatch: expected {}, got {}",
+                "{} workload {} row-count mismatch: source expected {}, got {}",
                 candidate.schema,
                 expected.name,
                 expected.result_rows,
@@ -336,10 +397,9 @@ fn validate_semantic_parity(prototypes: &[PrototypeReport]) -> Result<()> {
             );
             ensure!(
                 actual.result_digest == expected.result_digest,
-                "{} workload {} result digest differs from {}",
+                "{} workload {} result digest differs from source oracle",
                 candidate.schema,
-                expected.name,
-                baseline.schema
+                expected.name
             );
         }
     }
@@ -359,6 +419,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(dataset.total_entity_rows(), 1_216);
+        assert_eq!(dataset.total_eav_field_rows(), 5_632);
         assert_eq!(dataset.total_link_rows(), 2_400);
     }
 }
