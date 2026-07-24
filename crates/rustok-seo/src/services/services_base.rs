@@ -36,10 +36,6 @@ use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
 use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
 use crate::{SeoError, SeoResult};
 
-pub use rustok_blog::PostService;
-pub use rustok_pages::PageService;
-pub use rustok_product::CatalogService;
-
 const MODULE_SLUG: &str = "seo";
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
 const REDIRECT_CACHE_MAX_WEIGHT_BYTES: u64 = 8 * 1024 * 1024;

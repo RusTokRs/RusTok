@@ -30,7 +30,7 @@ Automated verification is recorded separately because direct pushes currently do
 
 ## P1 — performance and maintainability
 
-- [ ] Remove avoidable direct owner dependencies from the SEO crate.
+- [x] Remove avoidable direct owner dependencies from the SEO crate. (owner dependency PR)
 - [ ] Split the broad `SeoService` facade into focused application services.
 - [ ] Replace the linear redirect cache scan with indexed exact and wildcard lookup structures.
 - [ ] Remove N+1 query patterns from bulk operations and diagnostics.
