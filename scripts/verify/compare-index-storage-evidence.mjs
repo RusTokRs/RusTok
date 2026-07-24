@@ -6,6 +6,15 @@ const die = (message) => {
   process.exit(1);
 };
 
+const canonicalReadWorkloads = [
+  'status_equality',
+  'price_range_sort',
+  'multi_value_tag',
+  'two_hop_channel_filter',
+  'keyset_page',
+  'exact_count',
+];
+
 const parseArgs = () => {
   const inputs = [];
   let output = 'evidence/index-storage/comparison';
@@ -31,6 +40,8 @@ const json = (directory, filename) => {
     die(`invalid JSON in ${file}: ${error.message}`);
   }
 };
+
+const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const numbers = (values) => values.filter(Number.isFinite);
 const median = (values) => {
   const sorted = numbers(values).sort((a, b) => a - b);
@@ -53,6 +64,31 @@ const scaleName = (value) => ({
   rows1m: '1m', Rows1m: '1m', '1m': '1m',
 }[value]);
 
+const requireObject = (value, label) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) die(`${label} must be an object`);
+  return value;
+};
+const requireArray = (value, label) => {
+  if (!Array.isArray(value)) die(`${label} must be an array`);
+  return value;
+};
+const requireNonEmptyString = (value, label) => {
+  if (typeof value !== 'string' || value.length === 0) die(`${label} must be a non-empty string`);
+};
+const requireNonNegativeInteger = (value, label) => {
+  if (!Number.isInteger(value) || value < 0) die(`${label} must be a non-negative integer`);
+};
+const requireDigest = (value, label) => {
+  if (typeof value !== 'string' || !/^[0-9a-f]{32}$/.test(value)) die(`${label} must be an MD5 digest`);
+};
+const requireExactOrder = (actual, expected, label) => {
+  requireArray(actual, label);
+  if (new Set(actual).size !== actual.length) die(`${label} contains duplicate entries`);
+  if (!sameJson(actual, expected)) {
+    die(`${label} mismatch: expected ${expected.join(', ')}, got ${actual.join(', ')}`);
+  }
+};
+
 const planShape = (plan) => {
   const root = (Array.isArray(plan) ? plan[0] : plan)?.Plan ?? plan;
   const walk = (node) => !node || typeof node !== 'object' ? null : ({
@@ -67,6 +103,7 @@ const planShape = (plan) => {
 };
 
 const explain = (repetitions) => {
+  requireArray(repetitions, 'EXPLAIN repetitions');
   const warm = repetitions.length > 1 ? repetitions.slice(1) : repetitions;
   return {
     repetitions: repetitions.length,
@@ -96,18 +133,67 @@ const snapshot = (value) => ({
   hot_updates: sum(value.table_stats.map((item) => item.hot_updates)),
 });
 
+const validateSourceOracle = (read, provenance, scale) => {
+  const sourceWorkloads = requireArray(read.source_workloads, `${scale} source_workloads`);
+  const names = sourceWorkloads.map((item) => item?.name);
+  requireExactOrder(names, canonicalReadWorkloads, `${scale} source workload order`);
+  requireExactOrder(
+    provenance.source_workload_names,
+    canonicalReadWorkloads,
+    `${scale} provenance source workload order`,
+  );
+
+  const oracle = new Map();
+  for (const item of sourceWorkloads) {
+    requireObject(item, `${scale} source/${item?.name ?? 'unknown'}`);
+    requireNonEmptyString(item.sql, `${scale} source/${item.name}.sql`);
+    if (!item.sql.includes('idx_bench_source.')) {
+      die(`${scale} source/${item.name}.sql must read from idx_bench_source`);
+    }
+    requireNonNegativeInteger(item.result_rows, `${scale} source/${item.name}.result_rows`);
+    requireDigest(item.result_digest, `${scale} source/${item.name}.result_digest`);
+    oracle.set(item.name, item);
+  }
+
+  for (const prototype of requireArray(read.prototypes, `${scale} read prototypes`)) {
+    requireExactOrder(
+      prototype.workloads?.map((item) => item?.name),
+      names,
+      `${scale}/${prototype.prototype} read workload order`,
+    );
+    for (const workload of prototype.workloads) {
+      const expected = oracle.get(workload.name);
+      requireNonNegativeInteger(workload.result_rows, `${scale}/${prototype.prototype}/${workload.name}.result_rows`);
+      requireDigest(workload.result_digest, `${scale}/${prototype.prototype}/${workload.name}.result_digest`);
+      if (!expected
+          || workload.result_rows !== expected.result_rows
+          || workload.result_digest !== expected.result_digest) {
+        die(`${scale}/${prototype.prototype}/${workload.name} differs from source oracle`);
+      }
+    }
+  }
+
+  return sourceWorkloads.map((item) => ({
+    name: item.name,
+    sql: item.sql,
+    result_rows: item.result_rows,
+    result_digest: item.result_digest,
+  }));
+};
+
 const loadScale = (directory) => {
-  const read = json(directory, 'read-report.json');
-  const mutation = json(directory, 'mutation-report.json');
-  const maintenance = json(directory, 'maintenance-report.json');
-  const provenance = json(directory, 'provenance.json');
+  const read = requireObject(json(directory, 'read-report.json'), `${directory}/read-report.json`);
+  const mutation = requireObject(json(directory, 'mutation-report.json'), `${directory}/mutation-report.json`);
+  const maintenance = requireObject(json(directory, 'maintenance-report.json'), `${directory}/maintenance-report.json`);
+  const provenance = requireObject(json(directory, 'provenance.json'), `${directory}/provenance.json`);
   const names = [read.dataset?.scale, mutation.dataset_scale, maintenance.dataset_scale, provenance.scale]
     .map(scaleName);
   if (names.some((name) => !name) || new Set(names).size !== 1) {
     die(`scale mismatch in ${directory}: ${names.join(', ')}`);
   }
+  const scale = names[0];
   if (provenance.packet_contract_version !== 2) {
-    die(`${names[0]} evidence must use packet contract version 2`);
+    die(`${scale} evidence must use packet contract version 2`);
   }
   for (const field of [
     'expected_product_rows',
@@ -116,17 +202,18 @@ const loadScale = (directory) => {
     'expected_link_rows',
   ]) {
     if (!Number.isInteger(provenance[field]) || provenance[field] <= 0) {
-      die(`${names[0]} provenance has invalid ${field}`);
+      die(`${scale} provenance has invalid ${field}`);
     }
   }
   if (read.source_entity_rows !== provenance.expected_entity_rows
       || read.source_link_rows !== provenance.expected_link_rows) {
-    die(`${names[0]} source cardinality does not match provenance`);
+    die(`${scale} source cardinality does not match provenance`);
   }
 
+  const sourceWorkloads = validateSourceOracle(read, provenance, scale);
   const prototypes = read.prototypes.map((item) => item.prototype);
   for (const report of [mutation, maintenance]) {
-    if (JSON.stringify(report.prototypes.map((item) => item.prototype)) !== JSON.stringify(prototypes)) {
+    if (!sameJson(report.prototypes.map((item) => item.prototype), prototypes)) {
       die(`prototype ordering mismatch in ${directory}`);
     }
   }
@@ -139,13 +226,14 @@ const loadScale = (directory) => {
       if (state.entity_rows !== provenance.expected_entity_rows
           || state.field_rows !== expectedFieldRows
           || state.link_rows !== provenance.expected_link_rows) {
-        die(`${names[0]}/${item.prototype}/${phase} maintenance cardinality mismatch`);
+        die(`${scale}/${item.prototype}/${phase} maintenance cardinality mismatch`);
       }
     }
   }
 
   return {
-    scale: names[0], directory,
+    scale,
+    directory,
     provenance: {
       packet_contract_version: provenance.packet_contract_version,
       repository: provenance.repository ?? null,
@@ -158,23 +246,35 @@ const loadScale = (directory) => {
       runner_arch: provenance.runner_arch ?? null,
       repetitions: provenance.repetitions ?? null,
       churn_cycles: provenance.churn_cycles ?? null,
+      source_workload_names: provenance.source_workload_names,
       expected_product_rows: provenance.expected_product_rows,
       expected_entity_rows: provenance.expected_entity_rows,
       expected_eav_field_rows: provenance.expected_eav_field_rows,
       expected_link_rows: provenance.expected_link_rows,
     },
-    database: read.database, dataset: read.dataset, source_load_ms: read.source_load_ms,
-    source_entity_rows: read.source_entity_rows, source_link_rows: read.source_link_rows,
+    database: read.database,
+    dataset: read.dataset,
+    source_load_ms: read.source_load_ms,
+    source_entity_rows: read.source_entity_rows,
+    source_link_rows: read.source_link_rows,
+    source_workloads: sourceWorkloads,
     read: read.prototypes.map((item) => ({
-      prototype: item.prototype, schema: item.schema, load_ms: item.load_ms,
-      schema_bytes: item.schema_bytes, entity_rows: item.entity_rows, link_rows: item.link_rows,
+      prototype: item.prototype,
+      schema: item.schema,
+      load_ms: item.load_ms,
+      schema_bytes: item.schema_bytes,
+      entity_rows: item.entity_rows,
+      link_rows: item.link_rows,
       workloads: item.workloads.map((workload) => ({
-        name: workload.name, result_rows: workload.result_rows,
-        result_digest: workload.result_digest, ...explain(workload.repetitions),
+        name: workload.name,
+        result_rows: workload.result_rows,
+        result_digest: workload.result_digest,
+        ...explain(workload.repetitions),
       })),
     })),
     mutation: mutation.prototypes.map((item) => ({
-      prototype: item.prototype, schema: item.schema,
+      prototype: item.prototype,
+      schema: item.schema,
       workloads: item.workloads.map((workload) => ({
         name: workload.name,
         affected_entities: workload.affected_entities,
@@ -193,8 +293,11 @@ const loadScale = (directory) => {
       const afterVacuum = snapshot(item.after_vacuum);
       const sizeDelta = afterVacuum.schema_bytes - afterChurn.schema_bytes;
       return {
-        prototype: item.prototype, schema: item.schema, baseline,
-        after_churn: afterChurn, after_vacuum: afterVacuum,
+        prototype: item.prototype,
+        schema: item.schema,
+        baseline,
+        after_churn: afterChurn,
+        after_vacuum: afterVacuum,
         churn_growth_bytes: afterChurn.schema_bytes - baseline.schema_bytes,
         churn_growth_percent: percent(afterChurn.schema_bytes - baseline.schema_bytes, baseline.schema_bytes),
         vacuum_size_delta_bytes: sizeDelta,
@@ -207,7 +310,6 @@ const loadScale = (directory) => {
 
 const candidate = (scale, section, name) => scale[section].find((item) => item.prototype === name);
 const workload = (item, name) => item.workloads.find((entry) => entry.name === name);
-
 const namesOf = (items) => items.map((item) => item.prototype);
 const workloadNamesOf = (items) => Object.fromEntries(
   items.map((item) => [item.prototype, item.workloads.map((entry) => entry.name)]),
@@ -221,7 +323,6 @@ const mutationEffectsOf = (items) => Object.fromEntries(items.map((item) => [
     affected_links: entry.affected_links,
   })),
 ]));
-const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 const requireDecisionProvenance = (scales) => {
   const lower = scales.find((item) => item.scale === '100k');
@@ -236,6 +337,7 @@ const requireDecisionProvenance = (scales) => {
       same_repetitions: null,
       same_churn_cycles: null,
       same_database_settings: null,
+      same_source_oracle_shape: null,
       same_report_shape: null,
       same_mutation_effect_contract: null,
     };
@@ -281,6 +383,12 @@ const requireDecisionProvenance = (scales) => {
     }
   }
 
+  if (!sameJson(
+    lower.source_workloads.map((item) => item.name),
+    upper.source_workloads.map((item) => item.name),
+  )) {
+    die('cross-scale source oracle workload ordering mismatch');
+  }
   for (const section of ['read', 'mutation', 'maintenance']) {
     if (!sameJson(namesOf(lower[section]), namesOf(upper[section]))) {
       die(`cross-scale ${section} prototype ordering mismatch`);
@@ -305,6 +413,7 @@ const requireDecisionProvenance = (scales) => {
     same_repetitions: true,
     same_churn_cycles: true,
     same_database_settings: true,
+    same_source_oracle_shape: true,
     same_report_shape: true,
     same_mutation_effect_contract: true,
   };
@@ -314,45 +423,54 @@ const crossScale = (scales) => {
   const lower = scales.find((item) => item.scale === '100k');
   const upper = scales.find((item) => item.scale === '1m');
   if (!lower || !upper) return null;
-  return lower.read.map((read) => {
-    const name = read.prototype;
-    const read1m = candidate(upper, 'read', name);
-    const mutation100k = candidate(lower, 'mutation', name);
-    const mutation1m = candidate(upper, 'mutation', name);
-    const maintenance100k = candidate(lower, 'maintenance', name);
-    const maintenance1m = candidate(upper, 'maintenance', name);
-    return {
-      prototype: name,
-      load_ms_ratio_1m_to_100k: ratio(read1m.load_ms, read.load_ms),
-      schema_bytes_ratio_1m_to_100k: ratio(read1m.schema_bytes, read.schema_bytes),
-      field_rows_ratio_1m_to_100k: ratio(
-        maintenance1m.after_churn.field_rows,
-        maintenance100k.after_churn.field_rows,
+  return {
+    source_workloads: lower.source_workloads.map((entry) => ({
+      name: entry.name,
+      result_rows_ratio_1m_to_100k: ratio(
+        upper.source_workloads.find((item) => item.name === entry.name)?.result_rows,
+        entry.result_rows,
       ),
-      vacuum_duration_ratio_1m_to_100k: ratio(
-        maintenance1m.vacuum_duration_ms,
-        maintenance100k.vacuum_duration_ms,
-      ),
-      read_workloads: read.workloads.map((entry) => ({
-        name: entry.name,
-        warm_execution_ratio_1m_to_100k: ratio(
-          workload(read1m, entry.name)?.warm_median_execution_ms,
-          entry.warm_median_execution_ms,
+    })),
+    prototypes: lower.read.map((read) => {
+      const name = read.prototype;
+      const read1m = candidate(upper, 'read', name);
+      const mutation100k = candidate(lower, 'mutation', name);
+      const mutation1m = candidate(upper, 'mutation', name);
+      const maintenance100k = candidate(lower, 'maintenance', name);
+      const maintenance1m = candidate(upper, 'maintenance', name);
+      return {
+        prototype: name,
+        load_ms_ratio_1m_to_100k: ratio(read1m.load_ms, read.load_ms),
+        schema_bytes_ratio_1m_to_100k: ratio(read1m.schema_bytes, read.schema_bytes),
+        field_rows_ratio_1m_to_100k: ratio(
+          maintenance1m.after_churn.field_rows,
+          maintenance100k.after_churn.field_rows,
         ),
-      })),
-      mutation_workloads: mutation100k.workloads.map((entry) => ({
-        name: entry.name,
-        execution_ratio_1m_to_100k: ratio(
-          workload(mutation1m, entry.name)?.median_execution_ms,
-          entry.median_execution_ms,
+        vacuum_duration_ratio_1m_to_100k: ratio(
+          maintenance1m.vacuum_duration_ms,
+          maintenance100k.vacuum_duration_ms,
         ),
-        wal_bytes_ratio_1m_to_100k: ratio(
-          workload(mutation1m, entry.name)?.median_maximum_node_wal_bytes,
-          entry.median_maximum_node_wal_bytes,
-        ),
-      })),
-    };
-  });
+        read_workloads: read.workloads.map((entry) => ({
+          name: entry.name,
+          warm_execution_ratio_1m_to_100k: ratio(
+            workload(read1m, entry.name)?.warm_median_execution_ms,
+            entry.warm_median_execution_ms,
+          ),
+        })),
+        mutation_workloads: mutation100k.workloads.map((entry) => ({
+          name: entry.name,
+          execution_ratio_1m_to_100k: ratio(
+            workload(mutation1m, entry.name)?.median_execution_ms,
+            entry.median_execution_ms,
+          ),
+          wal_bytes_ratio_1m_to_100k: ratio(
+            workload(mutation1m, entry.name)?.median_maximum_node_wal_bytes,
+            entry.median_maximum_node_wal_bytes,
+          ),
+        })),
+      };
+    }),
+  };
 };
 
 const fixed = (value, digits = 2) => Number.isFinite(value) ? value.toFixed(digits) : 'n/a';
@@ -378,6 +496,7 @@ const markdown = (report) => {
     `- Same commit: **${report.decision_contract.same_commit === true ? 'yes' : 'n/a'}**`,
     `- Same PostgreSQL image/settings: **${report.decision_contract.same_postgres_image === true && report.decision_contract.same_database_settings === true ? 'yes' : 'n/a'}**`,
     `- Same repetitions/churn contract: **${report.decision_contract.same_repetitions === true && report.decision_contract.same_churn_cycles === true ? 'yes' : 'n/a'}**`,
+    `- Same source-oracle shape: **${report.decision_contract.same_source_oracle_shape === true ? 'yes' : 'n/a'}**`,
     `- Same candidate/workload shape: **${report.decision_contract.same_report_shape === true ? 'yes' : 'n/a'}**`,
     `- Same mutation effect contract: **${report.decision_contract.same_mutation_effect_contract === true ? 'yes' : 'n/a'}**`,
     '',
@@ -390,6 +509,13 @@ const markdown = (report) => {
       `- Workflow run: \`${scale.provenance.run_id ?? 'unknown'}\``,
       `- PostgreSQL image: \`${scale.provenance.postgres_image ?? 'unknown'}\``,
       `- Source load: ${fixed(scale.source_load_ms, 0)} ms`, '',
+      '### Source oracle', '',
+      '| Workload | Result rows | Digest |',
+      '| --- | ---: | --- |');
+    for (const entry of scale.source_workloads) {
+      lines.push(`| ${entry.name} | ${integer(entry.result_rows)} | \`${entry.result_digest}\` |`);
+    }
+    lines.push('',
       '| Prototype | Load | Schema size | Fields after churn | Churn growth | Dead tuples after churn | VACUUM |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |');
     for (const read of scale.read) {
@@ -411,8 +537,15 @@ const markdown = (report) => {
     lines.push('');
   }
   if (report.cross_scale_ratios) {
-    lines.push('## 1m / 100k ratios', '', '| Prototype | Load | Schema | Field rows | VACUUM |', '| --- | ---: | ---: | ---: | ---: |');
-    for (const item of report.cross_scale_ratios) {
+    lines.push('## 1m / 100k ratios', '', '### Source oracle result rows', '',
+      '| Workload | Result rows |', '| --- | ---: |');
+    for (const item of report.cross_scale_ratios.source_workloads) {
+      lines.push(`| ${item.name} | ${fixed(item.result_rows_ratio_1m_to_100k)}x |`);
+    }
+    lines.push('', '### Storage candidates', '',
+      '| Prototype | Load | Schema | Field rows | VACUUM |',
+      '| --- | ---: | ---: | ---: | ---: |');
+    for (const item of report.cross_scale_ratios.prototypes) {
       lines.push(`| ${item.prototype} | ${fixed(item.load_ms_ratio_1m_to_100k)}x | ${fixed(item.schema_bytes_ratio_1m_to_100k)}x | ${fixed(item.field_rows_ratio_1m_to_100k)}x | ${fixed(item.vacuum_duration_ratio_1m_to_100k)}x |`);
     }
     lines.push('');
@@ -433,6 +566,7 @@ const decisionContract = requireDecisionProvenance(scales);
 const report = {
   generated_at: new Date().toISOString(),
   methodology: {
+    source_oracle: 'normalized idx_bench_source workload result digests',
     first_run: 'first EXPLAIN ANALYZE repetition',
     warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
