@@ -15,13 +15,85 @@ use super::{
     ListShippingOptionsParams, ListShippingProfilesParams,
 };
 use crate::{
-    ShippingProfileService,
+    CommerceError, ShippingProfileService,
     dto::{
         CreateShippingOptionInput, CreateShippingProfileInput, ListShippingProfilesInput,
         ShippingOptionResponse, ShippingProfileResponse, UpdateShippingOptionInput,
         UpdateShippingProfileInput,
     },
 };
+
+fn map_shipping_profile_error(error: CommerceError) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        CommerceError::ShippingProfileNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        CommerceError::DuplicateShippingProfileSlug(_) => (
+            StatusCode::CONFLICT,
+            "commerce_admin_shipping_profile_conflict",
+            "A shipping profile with this slug already exists",
+            "duplicate_slug",
+        ),
+        CommerceError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_shipping_profile_invalid",
+            "Shipping profile request is invalid",
+            "validation",
+        ),
+        CommerceError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_shipping_profile_storage_unavailable",
+            "Shipping profile storage is temporarily unavailable",
+            "database",
+        ),
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::DuplicateHandle { .. }
+        | CommerceError::DuplicateSku(_)
+        | CommerceError::InvalidPrice(_)
+        | CommerceError::InsufficientInventory { .. }
+        | CommerceError::InvalidOptionCombination
+        | CommerceError::NoVariants
+        | CommerceError::CannotDeletePublished
+        | CommerceError::Rich(_)
+        | CommerceError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_shipping_profile_failed",
+            "Shipping profile operation could not be completed safely",
+            "unexpected_commerce_error",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_commerce.shipping_profile",
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_shipping_http",
+        "commerce admin shipping profile operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+async fn validate_shipping_option_profile_inputs(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+    allowed_shipping_profile_slugs: Option<&Vec<String>>,
+) -> HttpResult<()> {
+    let Some(slugs) = allowed_shipping_profile_slugs else {
+        return Ok(());
+    };
+
+    ShippingProfileService::new(db.clone())
+        .ensure_shipping_profile_slugs_exist(tenant_id, slugs.iter())
+        .await
+        .map_err(map_shipping_profile_error)?;
+
+    Ok(())
+}
 
 /// List admin shipping profiles
 #[utoipa::path(
@@ -62,7 +134,7 @@ pub async fn list_shipping_profiles(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(super::map_shipping_profile_error)?;
+        .map_err(map_shipping_profile_error)?;
 
     Ok(Json(PaginatedResponse {
         data: items,
@@ -96,7 +168,7 @@ pub async fn create_shipping_profile(
     let profile = ShippingProfileService::new(runtime.db_clone())
         .create_shipping_profile(tenant.id, input)
         .await
-        .map_err(super::map_shipping_profile_error)?;
+        .map_err(map_shipping_profile_error)?;
 
     Ok((StatusCode::CREATED, Json(profile)))
 }
@@ -134,7 +206,7 @@ pub async fn show_shipping_profile(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(super::map_shipping_profile_error)?;
+        .map_err(map_shipping_profile_error)?;
 
     Ok(Json(profile))
 }
@@ -168,7 +240,7 @@ pub async fn update_shipping_profile(
     let profile = ShippingProfileService::new(runtime.db_clone())
         .update_shipping_profile(tenant.id, id, input)
         .await
-        .map_err(super::map_shipping_profile_error)?;
+        .map_err(map_shipping_profile_error)?;
 
     Ok(Json(profile))
 }
@@ -200,7 +272,7 @@ pub async fn deactivate_shipping_profile(
     let profile = ShippingProfileService::new(runtime.db_clone())
         .deactivate_shipping_profile(tenant.id, id)
         .await
-        .map_err(super::map_shipping_profile_error)?;
+        .map_err(map_shipping_profile_error)?;
 
     Ok(Json(profile))
 }
@@ -232,7 +304,7 @@ pub async fn reactivate_shipping_profile(
     let profile = ShippingProfileService::new(runtime.db_clone())
         .reactivate_shipping_profile(tenant.id, id)
         .await
-        .map_err(super::map_shipping_profile_error)?;
+        .map_err(map_shipping_profile_error)?;
 
     Ok(Json(profile))
 }
@@ -269,7 +341,7 @@ pub async fn list_shipping_options(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_fulfillment_error)?;
     if let Some(active) = params.active {
         items.retain(|option| option.active == active);
     }
@@ -321,7 +393,7 @@ pub async fn create_shipping_option(
         "Permission denied: fulfillments:create required",
     )?;
 
-    super::validate_shipping_option_profile_inputs(
+    validate_shipping_option_profile_inputs(
         runtime.db(),
         tenant.id,
         input.allowed_shipping_profile_slugs.as_ref(),
@@ -331,7 +403,7 @@ pub async fn create_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .create_shipping_option(tenant.id, input)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok((StatusCode::CREATED, Json(option)))
 }
@@ -369,12 +441,7 @@ pub async fn show_shipping_option(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| match err {
-            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-            }
-            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
-        })?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok(Json(option))
 }
@@ -405,7 +472,7 @@ pub async fn update_shipping_option(
         "Permission denied: fulfillments:update required",
     )?;
 
-    super::validate_shipping_option_profile_inputs(
+    validate_shipping_option_profile_inputs(
         runtime.db(),
         tenant.id,
         input.allowed_shipping_profile_slugs.as_ref(),
@@ -415,12 +482,7 @@ pub async fn update_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .update_shipping_option(tenant.id, id, input)
         .await
-        .map_err(|err| match err {
-            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-            }
-            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
-        })?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok(Json(option))
 }
@@ -452,12 +514,7 @@ pub async fn deactivate_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .deactivate_shipping_option(tenant.id, id)
         .await
-        .map_err(|err| match err {
-            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-            }
-            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
-        })?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok(Json(option))
 }
@@ -489,12 +546,7 @@ pub async fn reactivate_shipping_option(
     let option = FulfillmentService::new(runtime.db_clone())
         .reactivate_shipping_option(tenant.id, id)
         .await
-        .map_err(|err| match err {
-            rustok_fulfillment::error::FulfillmentError::ShippingOptionNotFound(_) => {
-                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-            }
-            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
-        })?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok(Json(option))
 }
