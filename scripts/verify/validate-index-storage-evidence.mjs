@@ -6,10 +6,32 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const canonicalLocales = ['en-US', 'ru-RU'];
+const canonicalPrototypes = [
+  { prototype: 'jsonb', schema: 'idx_bench_jsonb', relations: ['entity', 'link'] },
+  { prototype: 'typed_eav', schema: 'idx_bench_eav', relations: ['entity', 'field_value', 'link'] },
+  {
+    prototype: 'hot_projection',
+    schema: 'idx_bench_hot',
+    relations: ['link', 'product', 'sales_channel', 'variant'],
+  },
+];
+const canonicalReadWorkloads = [
+  'status_equality',
+  'price_range_sort',
+  'multi_value_tag',
+  'two_hop_channel_filter',
+  'keyset_page',
+  'exact_count',
+];
+const canonicalMutationWorkloads = ['update_product_batch', 'delete_product_batch'];
+
 const contracts = {
   smoke: {
     serializedScale: 'smoke',
     debugScale: 'Smoke',
+    tenants: 2,
+    productsPerTenant: 100,
     productRows: 400,
     entityRows: 1_216,
     linkRows: 2_400,
@@ -19,6 +41,8 @@ const contracts = {
   '100k': {
     serializedScale: 'rows100k',
     debugScale: 'Rows100k',
+    tenants: 10,
+    productsPerTenant: 5_000,
     productRows: 100_000,
     entityRows: 300_080,
     linkRows: 600_000,
@@ -28,6 +52,8 @@ const contracts = {
   '1m': {
     serializedScale: 'rows1m',
     debugScale: 'Rows1m',
+    tenants: 20,
+    productsPerTenant: 25_000,
     productRows: 1_000_000,
     entityRows: 3_000_160,
     linkRows: 6_000_000,
@@ -54,92 +80,251 @@ const readJson = (filename) => {
   }
 };
 
-const requireThreePrototypes = (report, label) => {
-  if (!Array.isArray(report.prototypes) || report.prototypes.length !== 3) {
-    fail(`${label} must contain exactly three prototypes`);
+const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+const requireObject = (value, label) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`${label} must be an object`);
+  }
+  return value;
+};
+
+const requireNonEmptyString = (value, label) => {
+  if (typeof value !== 'string' || value.length === 0) {
+    fail(`${label} must be a non-empty string`);
   }
 };
 
+const requireTimestamp = (value, label) => {
+  requireNonEmptyString(value, label);
+  if (!Number.isFinite(Date.parse(value))) fail(`${label} must be an ISO timestamp`);
+};
+
+const requireNonNegativeNumber = (value, label) => {
+  if (!Number.isFinite(value) || value < 0) fail(`${label} must be a non-negative number`);
+};
+
+const requirePositiveInteger = (value, label) => {
+  if (!Number.isInteger(value) || value <= 0) fail(`${label} must be a positive integer`);
+};
+
+const requireNonNegativeInteger = (value, label) => {
+  if (!Number.isInteger(value) || value < 0) fail(`${label} must be a non-negative integer`);
+};
+
+const requireExactOrder = (items, expected, label) => {
+  if (!Array.isArray(items)) fail(`${label} must be an array`);
+  if (new Set(items).size !== items.length) fail(`${label} contains duplicate entries`);
+  if (!sameJson(items, expected)) {
+    fail(`${label} mismatch: expected ${expected.join(', ')}, got ${items.join(', ')}`);
+  }
+};
+
+const requirePrototypeContract = (report, label) => {
+  if (!Array.isArray(report.prototypes)) fail(`${label}.prototypes must be an array`);
+  requireExactOrder(
+    report.prototypes.map((prototype) => prototype?.prototype),
+    canonicalPrototypes.map((prototype) => prototype.prototype),
+    `${label} prototype order`,
+  );
+  report.prototypes.forEach((prototype, index) => {
+    requireObject(prototype, `${label} prototype ${index}`);
+    const expected = canonicalPrototypes[index];
+    if (prototype.schema !== expected.schema) {
+      fail(`${label}/${expected.prototype} schema mismatch: expected ${expected.schema}, got ${prototype.schema}`);
+    }
+  });
+};
+
+const requirePlan = (plan, label) => {
+  if (!Array.isArray(plan) || plan.length !== 1 || !plan[0]?.Plan) {
+    fail(`${label} must contain one EXPLAIN JSON plan`);
+  }
+};
+
+const requireReadExplain = (evidence, label) => {
+  requireObject(evidence, label);
+  requireNonNegativeNumber(evidence.planning_time_ms, `${label}.planning_time_ms`);
+  requireNonNegativeNumber(evidence.execution_time_ms, `${label}.execution_time_ms`);
+  requireNonNegativeInteger(evidence.shared_hit_blocks, `${label}.shared_hit_blocks`);
+  requireNonNegativeInteger(evidence.shared_read_blocks, `${label}.shared_read_blocks`);
+  for (const field of ['temporary_read_blocks', 'temporary_written_blocks']) {
+    if (evidence[field] !== null) requireNonNegativeInteger(evidence[field], `${label}.${field}`);
+  }
+  requirePlan(evidence.plan, `${label}.plan`);
+};
+
+const requireMutationExplain = (evidence, label) => {
+  requireReadExplain(evidence, label);
+  for (const field of [
+    'maximum_node_wal_records',
+    'maximum_node_wal_fpi',
+    'maximum_node_wal_bytes',
+  ]) {
+    requireNonNegativeInteger(evidence[field], `${label}.${field}`);
+  }
+};
+
+const requireDatabaseContract = (database) => {
+  requireObject(database, 'read.database');
+  for (const field of [
+    'version',
+    'server_version_num',
+    'shared_buffers',
+    'effective_cache_size',
+    'work_mem',
+    'random_page_cost',
+    'jit',
+  ]) {
+    requireNonEmptyString(database[field], `read.database.${field}`);
+  }
+  const serverVersion = Number.parseInt(database.server_version_num, 10);
+  if (!Number.isInteger(serverVersion) || Math.floor(serverVersion / 10_000) !== 16) {
+    fail(`read.database.server_version_num must describe PostgreSQL 16; got ${database.server_version_num}`);
+  }
+  if (database.jit !== 'off') fail(`read.database.jit must be off; got ${database.jit}`);
+};
+
 const read = readJson('read-report.json');
-if (read.dataset?.scale !== contract.serializedScale) {
-  fail(`read scale mismatch: expected ${contract.serializedScale}, got ${read.dataset?.scale}`);
+requireObject(read, 'read report');
+requireTimestamp(read.generated_at, 'read.generated_at');
+requireDatabaseContract(read.database);
+const dataset = requireObject(read.dataset, 'read.dataset');
+if (dataset.scale !== contract.serializedScale) {
+  fail(`read scale mismatch: expected ${contract.serializedScale}, got ${dataset.scale}`);
 }
-const productRows = read.dataset?.tenants
-  * read.dataset?.products_per_tenant
-  * read.dataset?.locales?.length;
+if (dataset.tenants !== contract.tenants) {
+  fail(`read tenant count mismatch: expected ${contract.tenants}, got ${dataset.tenants}`);
+}
+if (dataset.products_per_tenant !== contract.productsPerTenant) {
+  fail(`read products-per-tenant mismatch: expected ${contract.productsPerTenant}, got ${dataset.products_per_tenant}`);
+}
+requireExactOrder(dataset.locales, canonicalLocales, 'read locale order');
+if (dataset.variants_per_product !== 2 || dataset.channels_per_tenant !== 8
+    || dataset.sales_channels_per_variant !== 2) {
+  fail('read dataset topology mismatch');
+}
+const productRows = dataset.tenants * dataset.products_per_tenant * dataset.locales.length;
 if (productRows !== contract.productRows) {
   fail(`read product-row mismatch: expected ${contract.productRows}, got ${productRows}`);
 }
+requireNonNegativeNumber(read.source_load_ms, 'read.source_load_ms');
 if (read.source_entity_rows !== contract.entityRows || read.source_link_rows !== contract.linkRows) {
   fail('read source cardinality mismatch');
 }
-requireThreePrototypes(read, 'read report');
+requirePrototypeContract(read, 'read report');
 
-const baselineReadWorkloads = new Map(
-  read.prototypes[0].workloads.map((workload) => [
-    workload.name,
-    { resultRows: workload.result_rows, resultDigest: workload.result_digest },
-  ]),
-);
-for (const prototype of read.prototypes) {
+const baselineReadWorkloads = new Map();
+for (const [prototypeIndex, prototype] of read.prototypes.entries()) {
+  const expectedPrototype = canonicalPrototypes[prototypeIndex];
+  requireNonNegativeNumber(prototype.load_ms, `${expectedPrototype.prototype}.load_ms`);
+  requirePositiveInteger(prototype.schema_bytes, `${expectedPrototype.prototype}.schema_bytes`);
   if (prototype.entity_rows !== contract.entityRows || prototype.link_rows !== contract.linkRows) {
     fail(`${prototype.prototype} read cardinality mismatch`);
   }
-  if (prototype.workloads.length !== baselineReadWorkloads.size) {
-    fail(`${prototype.prototype} read workload count mismatch`);
-  }
+  requireExactOrder(
+    prototype.workloads?.map((workload) => workload?.name),
+    canonicalReadWorkloads,
+    `${prototype.prototype} read workload order`,
+  );
   for (const workload of prototype.workloads) {
-    const baseline = baselineReadWorkloads.get(workload.name);
-    if (!baseline) fail(`${prototype.prototype} introduced unknown read workload ${workload.name}`);
-    if (baseline.resultRows !== workload.result_rows || baseline.resultDigest !== workload.result_digest) {
-      fail(`${prototype.prototype}/${workload.name} read parity mismatch`);
+    requireNonEmptyString(workload.sql, `${prototype.prototype}/${workload.name}.sql`);
+    requireNonNegativeInteger(workload.result_rows, `${prototype.prototype}/${workload.name}.result_rows`);
+    if (typeof workload.result_digest !== 'string' || !/^[0-9a-f]{32}$/.test(workload.result_digest)) {
+      fail(`${prototype.prototype}/${workload.name}.result_digest must be an MD5 digest`);
     }
     if (!Array.isArray(workload.repetitions) || workload.repetitions.length !== 3) {
       fail(`${prototype.prototype}/${workload.name} read repetitions mismatch`);
+    }
+    workload.repetitions.forEach((evidence, repetition) => {
+      requireReadExplain(evidence, `${prototype.prototype}/${workload.name}/repetition-${repetition + 1}`);
+    });
+
+    const baseline = baselineReadWorkloads.get(workload.name);
+    if (!baseline) {
+      baselineReadWorkloads.set(workload.name, {
+        resultRows: workload.result_rows,
+        resultDigest: workload.result_digest,
+      });
+    } else if (baseline.resultRows !== workload.result_rows
+        || baseline.resultDigest !== workload.result_digest) {
+      fail(`${prototype.prototype}/${workload.name} read parity mismatch`);
     }
   }
 }
 
 const mutation = readJson('mutation-report.json');
+requireObject(mutation, 'mutation report');
+requireTimestamp(mutation.generated_at, 'mutation.generated_at');
 if (mutation.dataset_scale !== contract.debugScale || mutation.repetitions !== 3) {
   fail('mutation scale/repetition mismatch');
 }
-requireThreePrototypes(mutation, 'mutation report');
+requirePrototypeContract(mutation, 'mutation report');
 const expectedMutations = new Map([
   ['update_product_batch', { entities: contract.mutationBatch, links: null }],
   ['delete_product_batch', { entities: contract.mutationBatch, links: contract.deletedLinks }],
 ]);
 for (const prototype of mutation.prototypes) {
-  if (prototype.workloads.length !== expectedMutations.size) {
-    fail(`${prototype.prototype} mutation workload count mismatch`);
-  }
+  requireExactOrder(
+    prototype.workloads?.map((workload) => workload?.name),
+    canonicalMutationWorkloads,
+    `${prototype.prototype} mutation workload order`,
+  );
   for (const workload of prototype.workloads) {
     const expected = expectedMutations.get(workload.name);
-    if (!expected) fail(`${prototype.prototype} introduced unknown mutation workload ${workload.name}`);
+    requireNonEmptyString(workload.sql, `${prototype.prototype}/${workload.name}.sql`);
     if (workload.affected_entities !== expected.entities || workload.affected_links !== expected.links) {
       fail(`${prototype.prototype}/${workload.name} mutation effect mismatch`);
     }
     if (!Array.isArray(workload.repetitions) || workload.repetitions.length !== 3) {
       fail(`${prototype.prototype}/${workload.name} mutation repetitions mismatch`);
     }
+    workload.repetitions.forEach((evidence, repetition) => {
+      requireMutationExplain(evidence, `${prototype.prototype}/${workload.name}/repetition-${repetition + 1}`);
+    });
   }
 }
 
 const maintenance = readJson('maintenance-report.json');
+requireObject(maintenance, 'maintenance report');
+requireTimestamp(maintenance.generated_at, 'maintenance.generated_at');
 if (maintenance.dataset_scale !== contract.serializedScale || maintenance.cycles !== 5) {
   fail('maintenance scale/cycle mismatch');
 }
-requireThreePrototypes(maintenance, 'maintenance report');
-for (const prototype of maintenance.prototypes) {
+requirePrototypeContract(maintenance, 'maintenance report');
+const statFields = [
+  'estimated_live_tuples',
+  'estimated_dead_tuples',
+  'tuples_inserted',
+  'tuples_updated',
+  'tuples_deleted',
+  'hot_updates',
+  'vacuum_count',
+  'autovacuum_count',
+  'analyze_count',
+  'autoanalyze_count',
+];
+for (const [prototypeIndex, prototype] of maintenance.prototypes.entries()) {
+  const expectedPrototype = canonicalPrototypes[prototypeIndex];
   for (const phase of ['baseline', 'after_churn', 'after_vacuum']) {
-    const snapshot = prototype[phase];
-    if (snapshot?.entity_rows !== contract.entityRows || snapshot?.link_rows !== contract.linkRows) {
+    const snapshot = requireObject(prototype[phase], `${prototype.prototype}/${phase}`);
+    requireTimestamp(snapshot.captured_at, `${prototype.prototype}/${phase}.captured_at`);
+    requirePositiveInteger(snapshot.schema_bytes, `${prototype.prototype}/${phase}.schema_bytes`);
+    if (snapshot.entity_rows !== contract.entityRows || snapshot.link_rows !== contract.linkRows) {
       fail(`${prototype.prototype}/${phase} maintenance cardinality mismatch`);
     }
+    requireExactOrder(
+      snapshot.table_stats?.map((stats) => stats?.relation),
+      expectedPrototype.relations,
+      `${prototype.prototype}/${phase} relation order`,
+    );
+    for (const stats of snapshot.table_stats) {
+      for (const field of statFields) {
+        requireNonNegativeInteger(stats[field], `${prototype.prototype}/${phase}/${stats.relation}.${field}`);
+      }
+    }
   }
-  if (!Number.isFinite(prototype.vacuum_duration_ms) || prototype.vacuum_duration_ms < 0) {
-    fail(`${prototype.prototype} has invalid VACUUM duration`);
-  }
+  requireNonNegativeNumber(prototype.vacuum_duration_ms, `${prototype.prototype}.vacuum_duration_ms`);
 }
 
 const resourceFiles = [
@@ -150,18 +335,34 @@ if (process.env.INDEX_BENCH_REQUIRE_RUNNER_RESOURCES === '1' && resourceFiles.le
   fail('scale evidence must include before/after runner resource snapshots');
 }
 
+const githubProvenance = {
+  repository: process.env.GITHUB_REPOSITORY ?? null,
+  commit: process.env.GITHUB_SHA ?? null,
+  ref: process.env.GITHUB_REF ?? null,
+  run_id: process.env.GITHUB_RUN_ID ?? null,
+  run_attempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+  job: process.env.GITHUB_JOB ?? null,
+  runner_os: process.env.RUNNER_OS ?? null,
+  runner_arch: process.env.RUNNER_ARCH ?? null,
+};
+if (process.env.INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE === '1') {
+  for (const [field, value] of Object.entries(githubProvenance)) {
+    requireNonEmptyString(value, `GitHub provenance ${field}`);
+  }
+  if (!/^[0-9a-f]{40}$/i.test(githubProvenance.commit)) {
+    fail(`GitHub provenance commit must be a full SHA; got ${githubProvenance.commit}`);
+  }
+  if (!/^\d+$/.test(githubProvenance.run_id) || !/^\d+$/.test(githubProvenance.run_attempt)) {
+    fail('GitHub provenance run_id and run_attempt must be numeric strings');
+  }
+}
+
 writeFileSync(
   path.join(root, 'provenance.json'),
   JSON.stringify({
+    packet_contract_version: 1,
     generated_at: new Date().toISOString(),
-    repository: process.env.GITHUB_REPOSITORY,
-    commit: process.env.GITHUB_SHA,
-    ref: process.env.GITHUB_REF,
-    run_id: process.env.GITHUB_RUN_ID,
-    run_attempt: process.env.GITHUB_RUN_ATTEMPT,
-    job: process.env.GITHUB_JOB,
-    runner_os: process.env.RUNNER_OS,
-    runner_arch: process.env.RUNNER_ARCH,
+    ...githubProvenance,
     postgres_image: 'postgres:16',
     scale,
     repetitions: 3,
