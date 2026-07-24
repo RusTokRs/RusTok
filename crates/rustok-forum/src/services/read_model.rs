@@ -556,13 +556,23 @@ OR EXISTS (
     WHERE reply.tenant_id = forum_topics.tenant_id
       AND reply.topic_id = forum_topics.id
       AND reply.status = 'approved'
-      AND reply.position > COALESCE((
-          SELECT state.last_read_position
-          FROM forum_topic_read_states state
-          WHERE state.tenant_id = forum_topics.tenant_id
-            AND state.topic_id = forum_topics.id
-            AND state.user_id = ?
-      ), 0)
+      AND (
+          reply.position > COALESCE((
+              SELECT state.last_read_position
+              FROM forum_topic_read_states state
+              WHERE state.tenant_id = forum_topics.tenant_id
+                AND state.topic_id = forum_topics.id
+                AND state.user_id = ?
+          ), 0)
+          OR EXISTS (
+              SELECT 1
+              FROM forum_topic_read_states state
+              WHERE state.tenant_id = forum_topics.tenant_id
+                AND state.topic_id = forum_topics.id
+                AND state.user_id = ?
+                AND reply.updated_at > state.updated_at
+          )
+      )
 )
 OR EXISTS (
     SELECT 1
@@ -579,7 +589,12 @@ OR EXISTS (
 )
 )
 "#,
-        vec![user_id.into(), user_id.into(), user_id.into()],
+        vec![
+            user_id.into(),
+            user_id.into(),
+            user_id.into(),
+            user_id.into(),
+        ],
     ))
 }
 
@@ -615,7 +630,10 @@ LEFT JOIN forum_replies unread_reply
   ON unread_reply.tenant_id = topic.tenant_id
  AND unread_reply.topic_id = topic.id
  AND unread_reply.status = 'approved'
- AND unread_reply.position > COALESCE(state.last_read_position, 0)
+ AND (
+      unread_reply.position > COALESCE(state.last_read_position, 0)
+      OR unread_reply.updated_at > state.updated_at
+ )
 LEFT JOIN forum_topic_revisions unread_revision
   ON unread_revision.tenant_id = topic.tenant_id
  AND unread_revision.topic_id = topic.id
