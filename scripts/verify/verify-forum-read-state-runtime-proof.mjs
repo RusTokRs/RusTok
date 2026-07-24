@@ -140,9 +140,9 @@ for (const marker of [
 }
 
 for (const marker of [
-  "insert-or-no-op",
-  "last_read_position",
-  "last_read_revision",
+  ".do_nothing()",
+  "LastReadPosition.lt(high_water.last_read_position)",
+  "LastReadRevision.lt(high_water.last_read_revision)",
   "upsert_topic_read_high_water_in_tx",
 ]) {
   requireText(readTracking, marker, `read-state owner source is missing ${marker}`);
