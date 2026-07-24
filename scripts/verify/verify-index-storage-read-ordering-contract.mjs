@@ -11,6 +11,7 @@ const fail = (message) => {
 
 const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
 const benchmarkBinary = read('ops/benches/src/bin/index_storage_benchmark.rs');
+const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
@@ -52,19 +53,44 @@ requireMarkers(connection, 'benchmark session contract', [
   'BENCHMARK_SESSION_METADATA.contains(&(field, value))',
 ]);
 
+requireMarkers(benchmarkRunner, 'observed database metadata', [
+  'const DATABASE_METADATA_SQL',
+  'pub struct DatabaseMetadata',
+  'pub standard_conforming_strings: String',
+  'pub timezone: String',
+  'pub date_style: String',
+  'pub extra_float_digits: String',
+  "current_setting('standard_conforming_strings') AS standard_conforming_strings",
+  "current_setting('TimeZone') AS timezone",
+  "current_setting('DateStyle') AS date_style",
+  "current_setting('extra_float_digits') AS extra_float_digits",
+  'standard_conforming_strings: row.try_get("", "standard_conforming_strings")?',
+  'timezone: row.try_get("", "timezone")?',
+  'date_style: row.try_get("", "date_style")?',
+  'extra_float_digits: row.try_get("", "extra_float_digits")?',
+  'fn database_metadata_query_observes_deterministic_session()',
+]);
 requireMarkers(benchmarkModule, 'benchmark report writer', [
-  'BENCHMARK_SESSION_METADATA',
-  'pub fn write_report_with_session_metadata',
-  'serde_json::to_value(report)',
-  'database.insert(field.to_owned(), Value::String(setting_value.to_owned()))',
-  'write_report_with_session_metadata(&config.output_path, &report)?',
+  'pub use runner::{BenchmarkReport, run, write_report};',
+  'write_report(&config.output_path, &report)?',
 ]);
 requireMarkers(benchmarkBinary, 'read evidence executable', [
-  'write_report_with_session_metadata',
-  'write_report_with_session_metadata(&config.output_path, &report)?',
+  'BenchmarkConfig, run, write_report',
+  'write_report(&config.output_path, &report)?',
 ]);
-if (benchmarkBinary.includes('write_report(&config.output_path, &report)?')) {
-  fail('read evidence executable bypasses deterministic session metadata serialization');
+for (const [label, content] of [
+  ['benchmark module', benchmarkModule],
+  ['read evidence executable', benchmarkBinary],
+]) {
+  for (const forbidden of [
+    'write_report_with_session_metadata',
+    'serde_json::to_value(report)',
+    'database.insert(field.to_owned()',
+  ]) {
+    if (content.includes(forbidden)) {
+      fail(`${label} restored post-hoc deterministic session metadata injection: ${forbidden}`);
+    }
+  }
 }
 
 requireMarkers(preflight, 'read ordering preflight', [
@@ -222,4 +248,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] deterministic PostgreSQL session metadata, session-aware evidence entrypoint, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] observed PostgreSQL session metadata, canonical evidence writer, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
