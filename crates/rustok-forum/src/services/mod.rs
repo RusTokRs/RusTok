@@ -41,6 +41,7 @@ pub mod subscription;
 mod topic {
     include!("topic.rs");
     include!("topic_inline.rs");
+    include!("topic_visibility_list.rs");
 }
 mod topic_facade;
 mod topic_owner {
