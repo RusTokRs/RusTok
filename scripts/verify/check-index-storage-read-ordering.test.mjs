@@ -130,6 +130,12 @@ test('rejects an ordering marker hidden in a dollar-quoted string', () => {
   }, /typed_eav\/status_equality\.sql must end with canonical ordering marker/u);
 });
 
+test('rejects an ordering marker hidden after an escaped quote in an E string', () => {
+  expectFailure((value) => {
+    value.source_workloads[0].sql = "SELECT E'payload\\' ORDER BY entity_id LIMIT 100' --'";
+  }, /source\/status_equality\.sql must end with canonical ordering marker/u);
+});
+
 test('rejects unterminated SQL comments before ordering validation', () => {
   expectFailure((value) => {
     value.prototypes[2].workloads[0].sql = [
