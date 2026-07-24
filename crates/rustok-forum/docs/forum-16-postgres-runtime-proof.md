@@ -37,8 +37,9 @@ revisions. A bounded 100-topic request contains four deterministic classes:
 - 4 unseen topics without a read-state row.
 
 The test calls the public `ForumReadModelService::summarize_topic_ids` owner
-contract and checks every class. Hidden and rejected replies are not seeded as
-public rows and therefore cannot contribute to the approved-reply aggregate.
+contract and checks every class. The static verifier binds its approved-reply
+predicate to the canonical owner source; hidden/rejected visibility transitions
+remain covered by the existing SQLite unread projection scenario.
 
 ## Query-plan evidence
 
