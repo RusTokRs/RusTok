@@ -215,6 +215,8 @@ migrations.
 - [x] Keep all candidate DDL outside production migrations in `ops/benches`.
 - [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.
 - [x] Canonicalize configured locales through `LocaleKey` before SQL generation.
+- [x] Pin the shared single-session PostgreSQL connection to
+      `standard_conforming_strings = on` before generated benchmark SQL runs.
 - [x] Generate Product, Variant, SalesChannel, tags, prices, timestamps, and links
       without random or wall-clock inputs.
 - [x] Prototype JSONB entity rows plus typed expression/GIN indexes.
@@ -449,3 +451,7 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   share repository, commit, PostgreSQL settings, repetitions, churn contract, and
   candidate/workload shape. Added fixture coverage for valid same-commit input and
   mixed or incomplete provenance; tests were not run by the assistant.
+- 2026-07-24: pinned every M2 benchmark connection to
+  `standard_conforming_strings = on` before source or candidate SQL runs, and
+  added a permanent source guard so server, database, or role defaults cannot
+  change archived SQL semantics. Tests were not run by the assistant.

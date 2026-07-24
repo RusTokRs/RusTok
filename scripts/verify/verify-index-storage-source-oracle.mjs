@@ -10,11 +10,13 @@ const fail = (message) => {
 };
 
 const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
+const connection = read('ops/benches/src/index_storage/connection.rs');
 const explainParser = read('ops/benches/src/index_storage/explain.rs');
 const sourceSql = read('ops/benches/src/index_storage/sql/source.rs');
 const sqlModule = read('ops/benches/src/index_storage/sql/mod.rs');
 const runner = read('ops/benches/src/index_storage/runner.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
+const maintenanceRunner = read('ops/benches/src/index_storage/maintenance_runner.rs');
 const validator = read('scripts/verify/validate-index-storage-evidence-core.mjs');
 const comparator = read('scripts/verify/compare-index-storage-evidence-core.mjs');
 const validatorWrapper = read('scripts/verify/validate-index-storage-evidence.mjs');
@@ -46,6 +48,28 @@ for (const marker of [
   'RESULT_DIGEST_CONTRACT',
 ]) {
   if (!benchmarkModule.includes(marker)) fail(`benchmark module missing ${marker}`);
+}
+for (const marker of [
+  'min_connections(1)',
+  'max_connections(1)',
+  'SET standard_conforming_strings = on;',
+  'failed to pin PostgreSQL standard-conforming string semantics',
+]) {
+  if (!connection.includes(marker)) {
+    fail(`benchmark connection missing deterministic string contract ${marker}`);
+  }
+}
+for (const [label, content] of [
+  ['read runner', runner],
+  ['mutation runner', mutationRunner],
+  ['maintenance runner', maintenanceRunner],
+]) {
+  if (!content.includes('connect_benchmark_database(&config.database_url).await?')) {
+    fail(`${label} must use the shared single-session benchmark connection`);
+  }
+  if (content.includes('standard_conforming_strings = off')) {
+    fail(`${label} overrides deterministic PostgreSQL string semantics`);
+  }
 }
 for (const marker of [
   'parse_read_explain_metrics',
@@ -354,4 +378,4 @@ for (const [label, workflow] of [
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle, byte-preserved evidence cores, self-described ordered digests, complete metrics, executable SQL entrypoints, and ADR integrity wiring are independently guarded');
+console.log('[verify-index-storage-source-oracle] source oracle, deterministic PostgreSQL string semantics, byte-preserved evidence cores, self-described ordered digests, complete metrics, executable SQL entrypoints, and ADR integrity wiring are independently guarded');
