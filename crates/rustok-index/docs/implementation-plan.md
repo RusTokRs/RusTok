@@ -48,6 +48,7 @@ Commits record which checks and evidence runs were not executed.
 - M2 read/query harness: `historical smoke/100k archived; replacement 100k/1m pending`
 - M2 transactional mutation/WAL harness: `historical smoke/100k archived; replacement 100k/1m pending`
 - M2 persistent churn/VACUUM harness: `historical smoke/100k archived; replacement 100k/1m pending`
+- M2 comparison provenance contract: `complete`
 - Production persistence: intentionally absent until the M2 ADR selects a model
 
 The active production crate contains only the generic domain/application core,
@@ -250,6 +251,9 @@ migrations.
 - [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a
       harness sanity check; retain it as historical evidence after later SQL fixes.
 - [x] Record the candidate operational review and ADR completion checklist.
+- [x] Require matching repository, commit, PostgreSQL settings, repetitions,
+      churn cycles, candidate order, and workload shape before `decision_ready`.
+- [x] Add fixture coverage that rejects mixed or incomplete cross-scale provenance.
 - [ ] Run and archive replacement 100k Product-locale row read, mutation, and
       maintenance evidence after the full-identity corrections.
 - [ ] Run and archive replacement 1m Product-locale row read, mutation, and
@@ -357,6 +361,7 @@ cargo xtask module validate index
 cargo xtask module test index
 npm run verify:index:fba
 npm run verify:index:runtime-fallback-smoke
+node --test scripts/verify/compare-index-storage-evidence.test.mjs
 ```
 
 M2 operational commands:
@@ -440,3 +445,7 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   and the canonical operational review. The original 100k packet is now historical
   diagnostic evidence; replacement same-commit 100k/1m evidence remains the next
   open M2 action.
+- 2026-07-24: made `decision_ready` fail closed unless replacement 100k/1m packets
+  share repository, commit, PostgreSQL settings, repetitions, churn contract, and
+  candidate/workload shape. Added fixture coverage for valid same-commit input and
+  mixed or incomplete provenance; tests were not run by the assistant.
