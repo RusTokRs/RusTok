@@ -1,0 +1,51 @@
+name: SEO application services finalize
+
+on:
+  push:
+    branches:
+      - agent/seo-application-services
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/seo-application-services
+          fetch-depth: 0
+
+      - name: Synchronize SEO application service docs
+        run: python3 scripts/finalize_seo_application_services_patch.py
+
+      - name: Format changed Rust sources when rustfmt is available
+        shell: bash
+        run: |
+          if command -v rustfmt >/dev/null 2>&1; then
+            rustfmt --edition 2024 --config skip_children=true \
+              apps/server/src/services/app_lifecycle.rs \
+              apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs \
+              crates/rustok-seo/admin/src/transport/native_server_adapter.rs \
+              crates/rustok-seo/src/controllers/mod.rs \
+              crates/rustok-seo/src/graphql/mod.rs \
+              crates/rustok-seo/src/lib.rs \
+              crates/rustok-seo/src/services/applications.rs \
+              crates/rustok-seo/src/services/services_base.rs \
+              crates/rustok-seo/tests/bulk_terminal_transaction.rs \
+              crates/rustok-seo/tests/meta_transaction.rs \
+              crates/rustok-seo/tests/redirect_transaction.rs \
+              crates/rustok-seo/tests/sitemap_transaction.rs
+          fi
+
+      - name: Commit clean documentation and formatting
+        run: |
+          git rm .github/workflows/seo-application-services-finalize.yml
+          git rm scripts/finalize_seo_application_services_patch.py
+          git add --all
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(seo): document focused application services"
+          git push origin HEAD:agent/seo-application-services
