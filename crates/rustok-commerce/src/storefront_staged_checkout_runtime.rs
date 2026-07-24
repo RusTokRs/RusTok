@@ -23,6 +23,8 @@ pub enum StorefrontStagedCheckoutRuntimeError {
     Validation(String),
     #[error("checkout cart is not accessible")]
     CartAccess,
+    #[error("authentication required for customer-owned cart")]
+    AuthenticationRequired,
     #[error("checkout dependency is temporarily unavailable")]
     TemporarilyUnavailable,
     #[error("checkout could not be completed")]
@@ -38,6 +40,7 @@ impl StorefrontStagedCheckoutRuntimeError {
         match self {
             Self::Validation(_) => "checkout_operation_invalid",
             Self::CartAccess => "checkout_cart_not_accessible",
+            Self::AuthenticationRequired => "checkout_authentication_required",
             Self::TemporarilyUnavailable => "checkout_temporarily_unavailable",
             Self::CheckoutFailed => "checkout_failed",
             Self::CompensationPending => "checkout_compensation_pending",
@@ -49,6 +52,7 @@ impl StorefrontStagedCheckoutRuntimeError {
         match self {
             Self::Validation(_) => "Checkout request is invalid",
             Self::CartAccess => "Checkout cart was not found or is not accessible",
+            Self::AuthenticationRequired => "Authentication is required for customer-owned carts",
             Self::TemporarilyUnavailable => "Checkout is temporarily unavailable",
             Self::CheckoutFailed => "Checkout could not be completed",
             Self::CompensationPending => {
@@ -133,7 +137,7 @@ pub async fn complete_storefront_checkout_input(
 
     let cart_id = checkout_input.cart_id;
     let cart_storefront_port = in_process_cart_storefront_port(runtime.db_clone());
-    let cart_port_context = cart_context(tenant_id, cart_id, request_context, auth.as_ref());
+    let cart_port_context = cart_context(tenant_id, cart_id, request_context, auth.as_ref(), &idempotency_key);
     let cart = cart_storefront_port
         .read_storefront_cart(
             cart_port_context.clone(),
@@ -150,6 +154,9 @@ pub async fn complete_storefront_checkout_input(
         })?;
     let customer_id = resolve_customer_id(runtime, tenant_id, auth.as_ref()).await?;
     if cart.customer_id.is_some() && cart.customer_id != customer_id {
+        if auth.is_none() {
+            return Err(StorefrontStagedCheckoutRuntimeError::AuthenticationRequired);
+        }
         return Err(StorefrontStagedCheckoutRuntimeError::CartAccess);
     }
     let actor_id = auth
@@ -278,6 +285,7 @@ fn cart_context(
     cart_id: Uuid,
     request_context: &RequestContext,
     auth: Option<&AuthContext>,
+    idempotency_key: &str,
 ) -> PortContext {
     let actor = auth
         .map(|auth| PortActor::user(auth.user_id.to_string()))
@@ -288,6 +296,7 @@ fn cart_context(
         request_context.locale.clone(),
         format!("storefront-checkout:cart:{cart_id}"),
     )
+    .with_idempotency_key(idempotency_key)
     .with_deadline(Duration::from_secs(2));
     if let Some(channel) = request_context.channel_slug.as_deref() {
         context = context.with_channel(channel.to_string());
@@ -323,6 +332,7 @@ fn map_checkout_error(
     cart_id: Uuid,
     error: crate::RecoveringStagedCheckoutError,
 ) -> StorefrontStagedCheckoutRuntimeError {
+    eprintln!("DEBUG STAGED CHECKOUT ERROR: {error:?}");
     tracing::error!(
         error = ?error,
         tenant_id = %tenant_id,

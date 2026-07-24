@@ -24,6 +24,7 @@ mod product_field_definitions_storage {
 }
 
 mod attached_values_storage {
+    use std::iter::FusedIterator;
     use sea_orm::entity::prelude::*;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]

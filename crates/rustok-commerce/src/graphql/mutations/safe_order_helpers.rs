@@ -5,27 +5,9 @@ use uuid::Uuid;
 
 use crate::{CommerceError, ShippingProfileService};
 use crate::storefront_shipping::normalize_shipping_profile_slug;
+pub(crate) use super::cart_safe_helpers::*;
 
-pub(crate) use super::cart_safe_helpers::{
-    ResolvedStorefrontLineItemInput, build_create_order_change_input,
-    build_create_order_return_input, build_create_return_decision_input,
-    build_return_claim_decision_input, build_return_exchange_decision_input,
-    build_return_refund_decision_input, build_storefront_pricing_context, cart_context_metadata,
-    cart_port_error, convert_create_product_input, current_shipping_selections,
-    enrich_storefront_cart, ensure_no_unused_promotion_amount, ensure_storefront_cart_access,
-    graphql_decision_requires_payments_update, map_cart_promotion_preview,
-    maybe_undefined_or_existing, merge_graphql_metadata, normalize_graphql_seller_id,
-    normalize_pricing_channel_slug, parse_decimal, parse_json_payload, parse_optional_decimal,
-    parse_optional_metadata, parse_pricing_currency_code, parse_required_promotion_decimal,
-    pick_product_translation, pick_variant_translation, reprice_storefront_cart_line_items,
-    request_public_channel_slug, resolve_commerce_graphql_locale,
-    resolve_optional_storefront_customer_id, resolve_storefront_line_item_input,
-    seller_snapshot_metadata, storefront_cart_port_context, storefront_cart_pricing_snapshot,
-    storefront_cart_pricing_update, storefront_pricing_port_context,
-    storefront_public_channel_slug_for_cart, validate_admin_cart_promotion_target,
-    validate_selected_shipping_option, validate_storefront_line_item_quantity,
-    validate_storefront_variant_inventory,
-};
+
 
 fn public_graphql_error(
     message: &'static str,
@@ -182,7 +164,7 @@ pub(crate) async fn validate_product_shipping_profile_input(
     tenant_id: Uuid,
     shipping_profile_slug: Option<&str>,
 ) -> Result<()> {
-    let Some(slug) = shipping_profile_slug.and_then(normalize_shipping_profile_slug) else {
+    let Some(slug) = shipping_profile_slug.and_then(|s| normalize_shipping_profile_slug(s)) else {
         return Ok(());
     };
 

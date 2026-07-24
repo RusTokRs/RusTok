@@ -1,6 +1,6 @@
 use rustok_cart::entities::{
-    cart, cart_adjustment, cart_line_item, cart_line_item_translation, cart_shipping_selection,
-    cart_tax_line,
+    cart, cart_adjustment, cart_line_item, cart_line_item_marketplace_snapshot,
+    cart_line_item_translation, cart_shipping_selection, cart_tax_line,
 };
 use rustok_channel::entities::{channel, channel_module_binding};
 use rustok_commerce::entities::{
@@ -37,6 +37,10 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
         return;
     }
+
+    use sea_orm_migration::MigrationTrait;
+    let manager = sea_orm_migration::SchemaManager::new(db);
+    let _ = rustok_outbox::SysEventsMigration.up(&manager).await;
 
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
@@ -197,6 +201,12 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         db,
         &builder,
         schema.create_table_from_entity(cart_shipping_selection::Entity),
+    )
+    .await;
+    create_entity_table(
+        db,
+        &builder,
+        schema.create_table_from_entity(cart_line_item_marketplace_snapshot::Entity),
     )
     .await;
     create_entity_table(

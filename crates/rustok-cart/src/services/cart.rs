@@ -232,7 +232,12 @@ impl CartService {
 
         let txn = self.db.begin().await?;
         let cart = load_cart_in_tx(&txn, tenant_id, cart_id).await?;
-        ensure_active(&cart.status, "update_context")?;
+        if cart.status != STATUS_ACTIVE && cart.status != STATUS_CHECKING_OUT {
+            return Err(CartError::InvalidTransition {
+                from: cart.status,
+                to: "update_context".to_string(),
+            });
+        }
         let shipping_patch_input = input.clone();
 
         let country_code = input

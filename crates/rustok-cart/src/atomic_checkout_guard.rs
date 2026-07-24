@@ -197,12 +197,14 @@ impl CartCheckoutPort for GuardedAtomicCartCheckoutPort {
 }
 
 fn atomic_handle_context(tenant_id: Uuid, cart_id: Uuid) -> PortContext {
+    let key = format!("cart:{cart_id}:atomic-checkout-handle");
     PortContext::new(
         tenant_id.to_string(),
         PortActor::service("rustok-cart.atomic-checkout-guard"),
         PLATFORM_FALLBACK_LOCALE,
-        format!("cart:{cart_id}:atomic-checkout-handle"),
+        key.clone(),
     )
+    .with_idempotency_key(key)
 }
 
 fn map_atomic_checkout_error(
@@ -210,6 +212,7 @@ fn map_atomic_checkout_error(
     owner_operation: &'static str,
     error: PortError,
 ) -> PortError {
+    eprintln!("DEBUG MAP ATOMIC CHECKOUT ERROR: {error:?}");
     tracing::error!(
         error = ?error,
         correlation_id = %context.correlation_id,

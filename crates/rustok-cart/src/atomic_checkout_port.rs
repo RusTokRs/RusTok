@@ -306,9 +306,7 @@ async fn prepare_bound_cart(
         .map_err(cart_error_to_port_error)?;
     let current_status = cart_status(&current)?;
 
-    if allow_existing_lock
-        && matches!(current_status, CartStatus::CheckingOut | CartStatus::Completed)
-    {
+    if matches!(current_status, CartStatus::CheckingOut | CartStatus::Completed) {
         return Ok(current);
     }
 
@@ -360,12 +358,14 @@ fn snapshot_port_context(
         .as_deref()
         .and_then(normalize_locale_tag)
         .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string());
+    let key = format!("cart:{}:prepared-checkout-snapshot", request.cart_id);
     PortContext::new(
         tenant_id.to_string(),
         PortActor::service("rustok-cart.atomic-checkout"),
         locale,
-        format!("cart:{}:prepared-checkout-snapshot", request.cart_id),
+        key.clone(),
     )
+    .with_idempotency_key(key)
     .with_deadline(Duration::from_secs(2))
 }
 

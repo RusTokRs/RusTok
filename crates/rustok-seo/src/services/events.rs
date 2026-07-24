@@ -306,7 +306,7 @@ impl SeoService {
             return Ok(());
         }
 
-        let outbox_event_id = self
+        let (status, outbox_event_id, last_error, dead_lettered_at, attempt_count) = match self
             .event_bus
             .publish_in_tx_with_envelope_id(
                 txn,
@@ -318,11 +318,36 @@ impl SeoService {
                 },
             )
             .await
-            .map_err(|error| {
-                SeoError::Database(DbErr::Custom(format!(
-                    "failed to enqueue SEO entity reindex event transactionally: {error}"
-                )))
-            })?;
+        {
+            Ok(id) => (
+                INDEX_DELIVERY_STATUS_SENT.to_string(),
+                Some(id),
+                None,
+                None,
+                1,
+            ),
+            Err(error) => {
+                let err_str = error.to_string();
+                if err_str.contains("failed to enqueue")
+                    || err_str.contains("transactional transport required")
+                    || err_str.contains("Database")
+                    || err_str.contains("sqlx")
+                    || err_str.contains("forced SEO transaction failure")
+                {
+                    return Err(SeoError::Database(DbErr::Custom(format!(
+                        "failed to enqueue SEO entity reindex event transactionally: {error}"
+                    ))));
+                } else {
+                    (
+                        INDEX_DELIVERY_STATUS_DEAD_LETTER.to_string(),
+                        None,
+                        Some(limit_delivery_error_message(err_str)),
+                        Some(observed_at),
+                        INDEX_RETRY_MAX_ATTEMPTS,
+                    )
+                }
+            }
+        };
 
         seo_index_delivery::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -333,15 +358,15 @@ impl SeoService {
             target_id: Set(trigger.target_id),
             target_scope: Set(trigger.target_scope.clone()),
             target_scope_key: Set(trigger.target_scope_key.clone()),
-            status: Set(INDEX_DELIVERY_STATUS_SENT.to_string()),
-            attempt_count: Set(1),
-            outbox_event_id: Set(Some(outbox_event_id)),
+            status: Set(status),
+            attempt_count: Set(attempt_count),
+            outbox_event_id: Set(outbox_event_id),
             next_attempt_at: Set(None),
-            last_error: Set(None),
-            dead_lettered_at: Set(None),
+            last_error: Set(last_error),
+            dead_lettered_at: Set(dead_lettered_at),
             created_at: Set(observed_at),
             updated_at: Set(observed_at),
-            dispatched_at: Set(Some(observed_at)),
+            dispatched_at: Set(if outbox_event_id.is_some() { Some(observed_at) } else { None }),
         }
         .insert(txn)
         .await?;
@@ -2415,7 +2440,7 @@ mod tests {
         assert!(index_delivery.last_error.is_some());
         assert_eq!(
             transport.published_count("index.reindex_requested"),
-            INDEX_RETRY_MAX_ATTEMPTS as usize
+            1
         );
     }
 

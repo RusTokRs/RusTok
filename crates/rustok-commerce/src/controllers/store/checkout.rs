@@ -226,6 +226,7 @@ fn storefront_checkout_http_error(
     let status = match &error {
         StorefrontStagedCheckoutRuntimeError::Validation(_) => StatusCode::BAD_REQUEST,
         StorefrontStagedCheckoutRuntimeError::CartAccess => StatusCode::NOT_FOUND,
+        StorefrontStagedCheckoutRuntimeError::AuthenticationRequired => StatusCode::UNAUTHORIZED,
         StorefrontStagedCheckoutRuntimeError::TemporarilyUnavailable => {
             StatusCode::SERVICE_UNAVAILABLE
         }
