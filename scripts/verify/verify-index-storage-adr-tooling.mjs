@@ -27,6 +27,7 @@ for (const marker of [
   'cross-scale prototype order',
   'read workload order differs across scales',
   'mutation workload order differs across scales',
+  'const render = (comparison, decision) =>',
   'renderer does not infer or rank a winning prototype',
 ]) {
   if (!renderer.includes(marker)) fail(`ADR renderer is missing contract marker: ${marker}`);
@@ -34,6 +35,7 @@ for (const marker of [
 
 for (const forbidden of [
   'Comparison input:',
+  'comparisonPath',
   'automatic_winner_selection: true',
   'selected_prototype =',
   'sort((left, right) => left.',
@@ -53,6 +55,9 @@ for (const marker of [
 
 if (schema.$schema !== 'https://json-schema.org/draft/2020-12/schema') {
   fail('storage decision schema must use JSON Schema draft 2020-12');
+}
+if (schema.properties?.$schema?.const !== './storage-decision.schema.json') {
+  fail('storage decision schema must allow the colocated schema reference used by the example');
 }
 if (!schema.properties?.selected_prototype?.enum
     || JSON.stringify(schema.properties.selected_prototype.enum)
@@ -92,9 +97,11 @@ if (JSON.stringify(Object.keys(example.rejection_rationales ?? {}).sort()) !== J
 
 for (const marker of [
   'render-index-storage-adr.mjs',
+  'storage-decision.schema.json',
   'decision_ready: true',
   'The renderer fails closed unless:',
   'It never infers or ranks a winner.',
+  'not on the filesystem path used to invoke the renderer',
 ]) {
   if (!guide.includes(marker)) fail(`storage decision guide is missing marker: ${marker}`);
 }
