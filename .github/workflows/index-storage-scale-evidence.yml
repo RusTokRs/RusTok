@@ -14,6 +14,8 @@ on:
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/index-storage-tooling.mjs"
+      - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
@@ -33,6 +35,8 @@ on:
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/index-storage-tooling.mjs"
+      - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
@@ -68,11 +72,11 @@ jobs:
               body: `Index scale push run: **${context.runId}** on commit \`${context.sha}\`. The 100k and guarded 1m jobs start independently after the contract gate.`,
             });
       - uses: actions/checkout@v7
-      - name: Verify Index boundary and benchmark contract
+      - name: Verify Index storage command and repository contracts
         run: |
-          node scripts/verify/verify-index-fba.mjs
-          node scripts/verify/verify-index-storage-source-oracle.mjs
-          node scripts/verify/verify-index-storage-adr-tooling.mjs
+          node --check scripts/verify/index-storage-tooling.mjs
+          node --check scripts/verify/index-storage-tooling.test.mjs
+          node scripts/verify/index-storage-tooling.mjs contract
       - name: Verify scale evidence validator syntax
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
       - name: Verify cross-scale comparator syntax
@@ -82,10 +86,10 @@ jobs:
           node --check scripts/verify/hash-index-storage-comparison.mjs
           node --check scripts/verify/render-index-storage-adr.mjs
           node --check scripts/verify/render-index-storage-adr.test.mjs
-      - name: Test cross-scale decision provenance
-        run: node --test scripts/verify/compare-index-storage-evidence.test.mjs
-      - name: Test manual ADR evidence binding
-        run: node --test scripts/verify/render-index-storage-adr.test.mjs
+      - name: Test storage tooling command routing
+        run: node --test scripts/verify/index-storage-tooling.test.mjs
+      - name: Test storage comparison and ADR fixtures
+        run: node scripts/verify/index-storage-tooling.mjs fixtures
 
   evidence-100k:
     needs: contract
@@ -133,9 +137,9 @@ jobs:
           name: index-storage-1m-${{ github.sha }}
           path: evidence/index-storage/1m
 
-      - name: Generate deterministic cross-scale comparison
+      - name: Generate deterministic cross-scale comparison through storage tooling
         run: >-
-          node scripts/verify/compare-index-storage-evidence.mjs
+          node scripts/verify/index-storage-tooling.mjs compare
           --input evidence/index-storage/100k
           --input evidence/index-storage/1m
           --output evidence/index-storage/comparison
