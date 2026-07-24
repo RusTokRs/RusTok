@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "task": "FORUM-20B",
+  "scope": "Forum-owned inherited category visibility policy foundation",
+  "enum_file": "crates/rustok-forum/src/visibility.rs",
+  "entity_file": "crates/rustok-forum/src/entities/forum_category_policy.rs",
+  "owner_file": "crates/rustok-forum/src/services/category_visibility.rs",
+  "migration_file": "crates/rustok-forum/src/migrations/m20260724_000002_add_forum_category_visibility_policy.rs",
+  "migration_registry_file": "crates/rustok-forum/src/migrations/mod.rs",
+  "topic_policy_file": "crates/rustok-forum/src/services/category_policy.rs",
+  "services_file": "crates/rustok-forum/src/services/mod.rs",
+  "crate_file": "crates/rustok-forum/src/lib.rs",
+  "test_file": "crates/rustok-forum/tests/category_visibility_policy_sqlite.rs",
+  "canonical_plan": "crates/rustok-forum/docs/implementation-plan.md",
+  "category_bound": 512,
+  "maximum_depth": 16,
+  "policy": {
+    "root_default": "public",
+    "stored_override": "authenticated",
+    "missing_override": "inherit from the nearest authenticated ancestor or remain public",
+    "broadening_rule": "public clears a local override only beneath an effective public parent",
+    "database_rule": "visibility_override is null or authenticated"
+  },
+  "compatibility": {
+    "existing_category_rows_require_backfill": false,
+    "allows_topics_preserved": true,
+    "transport_changes": false,
+    "storefront_changes": false,
+    "topic_visibility_scope_changes": false
+  },
+  "not_delivered": [
+    "topic read composition",
+    "reply read composition",
+    "authenticated storefront filtering",
+    "role visibility",
+    "trust-level visibility",
+    "group membership visibility",
+    "explicit allow and deny",
+    "visibility-scoped category and all-read mutations",
+    "search notification SEO and deep-link migration",
+    "PostgreSQL inheritance runtime evidence"
+  ],
+  "verification": {
+    "command": "cargo test -p rustok-forum --test category_visibility_policy_sqlite -- --nocapture",
+    "source_verifier": "node scripts/verify/verify-forum-category-visibility-policy.mjs",
+    "execution_status": "not_run_by_implementation_agent"
+  }
+}
