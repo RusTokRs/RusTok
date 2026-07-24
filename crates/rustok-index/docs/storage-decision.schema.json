@@ -17,6 +17,10 @@
     "rollback_strategy"
   ],
   "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "./storage-decision.schema.json"
+    },
     "status": {
       "type": "string",
       "enum": ["proposed", "accepted"]
