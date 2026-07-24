@@ -34,6 +34,7 @@
 ## Entry points
 
 - runtime module: `rustok_seo::SeoModule`
+- application composition: `rustok_seo::SeoApplicationServices`, exposing focused `settings()`, `metadata()`, `routing()`, `redirects()`, `sitemaps()`, `bulk()`, and `operations()` services
 - GraphQL: `rustok_seo::graphql::{SeoQuery, SeoMutation}`
 - HTTP routes: `rustok_seo::controllers::routes`
 - cross-cutting admin UI: `crates/rustok-seo/admin`

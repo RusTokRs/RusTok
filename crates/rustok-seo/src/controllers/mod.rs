@@ -20,11 +20,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    SeoBulkJobRecord, SeoBulkJobStatus, SeoCrossLinkSuggestionRecord, SeoDiagnosticCountRecord,
-    SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoError, SeoIndexDeliveryStatusRecord,
-    SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord, SeoPageContext, SeoService,
-    SeoSitemapJobRecord, SeoSitemapStatusRecord, SeoTargetCapabilityKind, SeoTargetRegistryEntry,
-    SeoTargetSlug,
+    SeoApplicationServices, SeoBulkJobRecord, SeoBulkJobStatus, SeoCrossLinkSuggestionRecord,
+    SeoDiagnosticCountRecord, SeoDiagnosticSeverity, SeoDiagnosticsSummaryRecord, SeoError,
+    SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
+    SeoPageContext, SeoSitemapJobRecord, SeoSitemapStatusRecord, SeoTargetCapabilityKind,
+    SeoTargetRegistryEntry, SeoTargetSlug,
 };
 
 #[derive(Debug, Deserialize)]
@@ -78,8 +78,8 @@ pub struct SeoHttpRuntime {
 }
 
 impl SeoHttpRuntime {
-    fn service(&self) -> SeoHttpResult<SeoService> {
-        SeoService::from_runtime_extensions(
+    fn service(&self) -> SeoHttpResult<SeoApplicationServices> {
+        SeoApplicationServices::from_runtime_extensions(
             self.db.clone(),
             self.event_bus.clone(),
             self.extensions.as_ref(),
@@ -190,6 +190,7 @@ pub async fn page_context_json(
 ) -> SeoHttpResult<Json<SeoPageContext>> {
     let service = runtime.service()?;
     let context = service
+        .routing()
         .resolve_page_context_for_channel(
             &tenant,
             request.locale.as_str(),
@@ -208,6 +209,7 @@ pub async fn robots_txt(
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
     let body = service
+        .sitemaps()
         .render_robots(&tenant)
         .await
         .map_err(map_seo_http_error)?;
@@ -220,6 +222,7 @@ pub async fn sitemap_index(
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
     if !service
+        .settings()
         .load_settings(tenant.id)
         .await
         .map_err(map_seo_http_error)?
@@ -229,6 +232,7 @@ pub async fn sitemap_index(
     }
 
     let file = match service
+        .sitemaps()
         .latest_sitemap_index(tenant.id)
         .await
         .map_err(map_seo_http_error)?
@@ -236,10 +240,12 @@ pub async fn sitemap_index(
         Some(file) => file,
         None => {
             service
+                .sitemaps()
                 .generate_sitemaps(&tenant)
                 .await
                 .map_err(map_seo_http_error)?;
             service
+                .sitemaps()
                 .latest_sitemap_index(tenant.id)
                 .await
                 .map_err(map_seo_http_error)?
@@ -261,6 +267,7 @@ pub async fn sitemap_file(
 ) -> SeoHttpResult<Response> {
     let service = runtime.service()?;
     let file = service
+        .sitemaps()
         .sitemap_file(tenant.id, name.as_str())
         .await
         .map_err(map_seo_http_error)?
@@ -288,6 +295,7 @@ pub async fn diagnostics_json(
     )?;
 
     let summary = service
+        .operations()
         .diagnostics_summary(&tenant, query.locale.as_deref())
         .await
         .map_err(map_seo_http_error)?;
@@ -309,6 +317,7 @@ pub async fn sitemap_status_json(
     )?;
 
     let status = service
+        .sitemaps()
         .sitemap_status(&tenant)
         .await
         .map_err(map_seo_http_error)?;
@@ -330,6 +339,7 @@ pub async fn sitemap_jobs_json(
     )?;
 
     let jobs = service
+        .sitemaps()
         .list_sitemap_jobs(tenant.id, query.limit.unwrap_or(20).clamp(1, 100) as usize)
         .await
         .map_err(map_seo_http_error)?;
@@ -351,6 +361,7 @@ pub async fn sitemap_job_json(
     )?;
 
     let job = service
+        .sitemaps()
         .sitemap_job(tenant.id, job_id)
         .await
         .map_err(map_seo_http_error)?
@@ -369,6 +380,7 @@ pub async fn bulk_jobs_json(
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
     let jobs = service
+        .bulk()
         .list_bulk_jobs(
             tenant.id,
             query.limit.unwrap_or(20).clamp(1, 100) as usize,
@@ -391,6 +403,7 @@ pub async fn bulk_job_json(
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
     let job = service
+        .bulk()
         .bulk_job(tenant.id, job_id)
         .await
         .map_err(map_seo_http_error)?
@@ -410,6 +423,7 @@ pub async fn index_tracking_json(
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
 
     let summary = service
+        .operations()
         .index_delivery_status(tenant.id, query.target_type.as_deref())
         .await
         .map_err(map_seo_http_error)?;
@@ -429,6 +443,7 @@ pub async fn index_repair_replay_json(
 
     let limit = input.limit.clamp(1, 500) as usize;
     let result = service
+        .operations()
         .run_index_repair_replay(
             tenant.id,
             input.target_type.as_deref(),
@@ -451,6 +466,7 @@ pub async fn bulk_artifact_download(
 
     let service = runtime.service()?;
     let artifact = service
+        .bulk()
         .bulk_artifact(tenant.id, job_id, artifact_id)
         .await
         .map_err(map_seo_http_error)?
@@ -480,7 +496,9 @@ pub async fn targets_json(
     let service = runtime.service()?;
     ensure_seo_module_enabled(&service, tenant.id).await?;
     ensure_seo_permission(&auth, &[Permission::SEO_MANAGE], "seo:manage required")?;
-    Ok(Json(service.target_registry_entries(query.capability)))
+    Ok(Json(
+        service.routing().target_registry_entries(query.capability),
+    ))
 }
 
 pub async fn cross_link_suggestions_json(
@@ -498,6 +516,7 @@ pub async fn cross_link_suggestions_json(
     )?;
 
     let suggestions = service
+        .routing()
         .cross_link_suggestions(
             &tenant,
             query.locale.as_deref(),
@@ -553,8 +572,12 @@ fn ensure_seo_permission(
     Ok(())
 }
 
-async fn ensure_seo_module_enabled(service: &SeoService, tenant_id: Uuid) -> SeoHttpResult<()> {
+async fn ensure_seo_module_enabled(
+    service: &SeoApplicationServices,
+    tenant_id: Uuid,
+) -> SeoHttpResult<()> {
     if service
+        .settings()
         .is_enabled(tenant_id)
         .await
         .map_err(map_seo_http_error)?

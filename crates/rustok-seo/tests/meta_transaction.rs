@@ -8,12 +8,12 @@ use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{
-    self as seo_meta, meta_translation, seo_event_delivery, seo_index_cursor,
-    seo_index_delivery, seo_revision,
+    self as seo_meta, meta_translation, seo_event_delivery, seo_index_cursor, seo_index_delivery,
+    seo_revision,
 };
 use rustok_seo::{
-    SeoMetaInput, SeoMetaTranslationInput, SeoService, SeoTargetRegistry, SeoTargetSlug,
-    seo_builtin_slug,
+    SeoApplicationServices, SeoMetaInput, SeoMetaTranslationInput, SeoTargetRegistry,
+    SeoTargetSlug, seo_builtin_slug,
 };
 use rustok_seo_targets::{
     SeoLoadedTargetRecord, SeoTargetAlternateRoute, SeoTargetCapabilities, SeoTargetLoadRequest,
@@ -21,8 +21,8 @@ use rustok_seo_targets::{
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -126,13 +126,14 @@ async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
     registry
         .register(TestPageProvider)
         .expect("test page provider should register");
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(2))),
         Arc::new(registry),
     );
 
     let error = service
+        .metadata()
         .upsert_meta(
             &tenant,
             SeoMetaInput {
@@ -242,12 +243,13 @@ async fn revision_creation_rolls_back_when_reindex_event_fails() {
     .await
     .expect("explicit metadata translation should be seeded");
 
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(2))),
         Arc::new(SeoTargetRegistry::default()),
     );
     let error = service
+        .metadata()
         .publish_revision(
             &tenant,
             page_slug(),
@@ -381,12 +383,13 @@ async fn revision_rollback_rolls_back_when_rollback_reindex_fails() {
     registry
         .register(TestPageProvider)
         .expect("test page provider should register");
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(4))),
         Arc::new(registry),
     );
     let error = service
+        .metadata()
         .rollback_revision(&tenant, page_slug(), target_id, 1)
         .await
         .expect_err("rollback reindex failure must abort the whole revision rollback");
