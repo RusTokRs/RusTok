@@ -25,7 +25,7 @@ pub use sql::{
     vacuum_statements, workloads,
 };
 
-fn write_report_with_session_metadata(path: &Path, report: &BenchmarkReport) -> Result<()> {
+pub fn write_report_with_session_metadata(path: &Path, report: &BenchmarkReport) -> Result<()> {
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
