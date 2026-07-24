@@ -55,6 +55,7 @@ const runContract = (args) => {
     'verify-index-fba.mjs',
     'verify-index-storage-source-oracle.mjs',
     'verify-index-storage-adr-tooling.mjs',
+    'verify-index-storage-adr-integrity.mjs',
   ]) {
     runScript(script);
   }
