@@ -13,19 +13,22 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::topic_owner;
+use super::topic_visibility::{ForumTopicVisibilityScope, ForumTopicVisibilityService};
 
 /// Public topic owner facade.
 ///
 /// The facade exposes only explicit domain operations. Persistence helpers stay
 /// crate-private and the public type never dereferences into the raw service.
 pub struct TopicService {
+    db: DatabaseConnection,
     inner: topic_owner::TopicService,
 }
 
 impl TopicService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {
-            inner: topic_owner::TopicService::new(db, event_bus),
+            inner: topic_owner::TopicService::new(db.clone(), event_bus),
+            db,
         }
     }
 
@@ -89,12 +92,20 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> ForumResult<Option<TopicResponse>> {
+        let scope = ForumTopicVisibilityScope::storefront(channel_slug)?;
+        if !ForumTopicVisibilityService::new(self.db.clone())
+            .is_topic_visible(tenant_id, topic_id, &scope)
+            .await?
+        {
+            return Ok(None);
+        }
+
         match self
             .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
             .await
         {
-            Ok(topic) if is_storefront_visible(&topic, channel_slug) => Ok(Some(topic)),
-            Ok(_) | Err(ForumError::TopicNotFound(_)) => Ok(None),
+            Ok(topic) => Ok(Some(topic)),
+            Err(ForumError::TopicNotFound(_)) => Ok(None),
             Err(error) => Err(error),
         }
     }
@@ -165,6 +176,7 @@ impl TopicService {
         fallback_locale: Option<&str>,
         channel_slug: Option<&str>,
     ) -> ForumResult<(Vec<TopicListItem>, u64)> {
+        let scope = ForumTopicVisibilityScope::storefront(channel_slug)?;
         let page = self
             .inner
             .list_storefront_visible_with_locale_fallback(
@@ -172,9 +184,19 @@ impl TopicService {
                 security,
                 filter,
                 fallback_locale,
-                channel_slug,
+                scope.channel_slug(),
             )
             .await?;
+        let candidate_ids = page.0.iter().map(|topic| topic.id).collect::<Vec<_>>();
+        let visible_ids = ForumTopicVisibilityService::new(self.db.clone())
+            .filter_visible_topic_ids(tenant_id, &candidate_ids, &scope)
+            .await?;
+        if visible_ids != candidate_ids {
+            return Err(ForumError::Internal(
+                "Forum storefront topic selection diverged from the owner visibility scope"
+                    .to_string(),
+            ));
+        }
         require_localized_topic_page(page)
     }
 
@@ -229,13 +251,6 @@ impl TopicService {
     ) -> ForumResult<()> {
         topic_owner::TopicService::set_status_in_tx(txn, tenant_id, topic_id, status).await
     }
-}
-
-fn is_storefront_visible(topic: &TopicResponse, channel_slug: Option<&str>) -> bool {
-    topic.status == crate::constants::topic_status::OPEN
-        && (topic.channel_slugs.is_empty()
-            || channel_slug
-                .is_some_and(|slug| topic.channel_slugs.iter().any(|value| value == slug)))
 }
 
 fn require_localized_topic_response(response: TopicResponse) -> ForumResult<TopicResponse> {
