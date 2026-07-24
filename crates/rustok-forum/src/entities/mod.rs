@@ -34,5 +34,5 @@ pub use forum_relation_revision::Entity as ForumRelationRevision;
 pub use forum_reply::Entity as ForumReply;
 pub use forum_reply_revision::Entity as ForumReplyRevision;
 pub use forum_topic::Entity as ForumTopic;
-pub use forum_topic_read_state::Entity as ForumTopicReadState;
+pub use forum_topic_read_state::Entity as ForumTopicReadStateEntity;
 pub use forum_topic_revision::Entity as ForumTopicRevision;
