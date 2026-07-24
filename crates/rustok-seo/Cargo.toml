@@ -14,15 +14,10 @@ server = [
   "dep:csv",
   "dep:moka",
   "dep:rustok-api",
-  "dep:rustok-blog",
-  "dep:rustok-commerce-foundation",
   "dep:rustok-content",
   "dep:rustok-core",
-  "dep:rustok-forum",
   "dep:rustok-media",
   "dep:rustok-outbox",
-  "dep:rustok-pages",
-  "dep:rustok-product",
   "dep:rustok-tenant",
   "dep:reqwest",
   "dep:sea-orm",
@@ -53,20 +48,19 @@ url = { version = "2.5", optional = true }
 uuid.workspace = true
 
 rustok-api = { workspace = true, optional = true }
-rustok-blog = { workspace = true, optional = true }
-rustok-commerce-foundation = { workspace = true, optional = true }
 rustok-content = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
-rustok-forum = { workspace = true, optional = true }
 rustok-media = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
-rustok-pages = { workspace = true, optional = true }
-rustok-product = { workspace = true, optional = true }
 rustok-seo-targets = { path = "../rustok-seo-targets", default-features = false }
 rustok-tenant = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
-tokio.workspace = true
+rustok-blog.workspace = true
+rustok-forum.workspace = true
 rustok-outbox = { workspace = true, features = ["test-transport-fallback"] }
+rustok-pages.workspace = true
+rustok-product.workspace = true
 rustok-taxonomy.workspace = true
+tokio.workspace = true
