@@ -15,12 +15,16 @@ const sourceSql = read('ops/benches/src/index_storage/sql/source.rs');
 const sqlModule = read('ops/benches/src/index_storage/sql/mod.rs');
 const runner = read('ops/benches/src/index_storage/runner.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
-const validator = read('scripts/verify/validate-index-storage-evidence.mjs');
-const comparator = read('scripts/verify/compare-index-storage-evidence.mjs');
+const validator = read('scripts/verify/validate-index-storage-evidence-core.mjs');
+const comparator = read('scripts/verify/compare-index-storage-evidence-core.mjs');
+const validatorWrapper = read('scripts/verify/validate-index-storage-evidence.mjs');
+const comparatorWrapper = read('scripts/verify/compare-index-storage-evidence.mjs');
 const comparatorFixture = read('scripts/verify/compare-index-storage-evidence.test.mjs');
 const orderingPreflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const orderingFixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
 const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs');
+const standaloneFixture = read('scripts/verify/index-storage-standalone-tools.test.mjs');
+const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs');
 const toolingRouter = read('scripts/verify/index-storage-tooling.mjs');
 const adrIntegrityGuard = read('scripts/verify/verify-index-storage-adr-integrity.mjs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
@@ -157,10 +161,10 @@ for (const marker of [
   'differs from source oracle',
   'source_workload_names: canonicalReadWorkloads',
 ]) {
-  if (!validator.includes(marker)) fail(`packet validator missing strict guard ${marker}`);
+  if (!validator.includes(marker)) fail(`packet validator core missing strict guard ${marker}`);
 }
 if (validator.includes('baselineReadWorkloads')) {
-  fail('packet validator must not restore first-candidate read parity');
+  fail('packet validator core must not restore first-candidate read parity');
 }
 
 for (const marker of [
@@ -185,14 +189,14 @@ for (const marker of [
   'Result digest contract:',
   '### Source oracle',
 ]) {
-  if (!comparator.includes(marker)) fail(`evidence comparator missing contract guard ${marker}`);
+  if (!comparator.includes(marker)) fail(`evidence comparator core missing contract guard ${marker}`);
 }
 for (const legacy of [
   'values.filter(Number.isFinite)',
   'const numbers = (values)',
   'baselineReadWorkloads',
 ]) {
-  if (comparator.includes(legacy)) fail(`evidence comparator restored lossy validation: ${legacy}`);
+  if (comparator.includes(legacy)) fail(`evidence comparator core restored lossy validation: ${legacy}`);
 }
 
 for (const marker of [
@@ -250,9 +254,12 @@ for (const marker of [
 for (const marker of [
   "const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs')",
   "const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs')",
+  "const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs')",
   'executableSql.trimEnd().endsWith(marker)',
   "test('packet runs terminal ordering preflight before the canonical validator'",
   "test('compare runs terminal ordering preflight before the canonical comparator'",
+  'standalone validator must preflight ordering before importing its core',
+  'standalone comparator must preflight every input before importing its core',
   'packet terminal ordering preflight must run before the canonical validator',
   'comparison terminal ordering preflight must run before the canonical comparator',
   'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
@@ -260,8 +267,47 @@ for (const marker of [
   if (!orderingGuard.includes(marker)) fail(`terminal ordering guard missing ${marker}`);
 }
 
+for (const [wrapper, label, markers] of [
+  [validatorWrapper, 'validator wrapper', [
+    "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
+    'validatePacketReadOrdering(evidenceRoot);',
+    "await import('./validate-index-storage-evidence-core.mjs')",
+  ]],
+  [comparatorWrapper, 'comparator wrapper', [
+    "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
+    'for (const input of inputs) validatePacketReadOrdering(input);',
+    "await import('./compare-index-storage-evidence-core.mjs')",
+  ]],
+]) {
+  for (const marker of markers) {
+    if (!wrapper.includes(marker)) fail(`${label} missing strict entrypoint marker ${marker}`);
+  }
+  if (wrapper.includes('migrated to inspect the preserved core directly')) {
+    fail(`${label} still contains the temporary compatibility marker shim`);
+  }
+}
+for (const marker of [
+  "const gitBlobSha = (bytes) => createHash('sha1')",
+  "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
+  "'97ef0e8a216735e457c4c827d975462b84b009b3'",
+  'validator wrapper must run terminal-ordering preflight before importing its core',
+  'comparator wrapper must preflight every input before importing its core',
+]) {
+  if (!standaloneGuard.includes(marker)) fail(`standalone evidence guard missing ${marker}`);
+}
+for (const marker of [
+  "test('direct validator rejects non-executable terminal ordering before its core'",
+  "test('direct comparator rejects nested-only terminal ordering before its core'",
+  "test('direct validator reaches the byte-preserved core after a valid preflight'",
+  "test('direct comparator forwards help to the byte-preserved core'",
+]) {
+  if (!standaloneFixture.includes(marker)) fail(`standalone evidence fixture coverage missing ${marker}`);
+}
+
 for (const marker of [
   "'verify-index-storage-read-ordering-contract.mjs'",
+  "'verify-index-storage-standalone-tools.mjs'",
+  "scriptPath('index-storage-standalone-tools.test.mjs')",
   "runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot])",
   "runScript('check-index-storage-read-ordering.mjs', orderingArgs)",
   "'verify-index-storage-adr-integrity.mjs'",
@@ -273,6 +319,7 @@ for (const marker of [
 for (const marker of [
   "const prefix = '[verify-index-storage-adr-integrity]'",
   "const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs')",
+  "const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs')",
   'executableSql.trimEnd().endsWith(marker)',
   "test('packet runs terminal ordering preflight before the canonical validator'",
   "test('compare runs terminal ordering preflight before the canonical comparator'",
@@ -291,9 +338,15 @@ for (const [label, workflow] of [
     'scripts/verify/check-index-storage-read-ordering.mjs',
     'scripts/verify/check-index-storage-read-ordering.test.mjs',
     'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'scripts/verify/validate-index-storage-evidence-core.mjs',
+    'scripts/verify/compare-index-storage-evidence-core.mjs',
+    'scripts/verify/index-storage-standalone-tools.test.mjs',
+    'scripts/verify/verify-index-storage-standalone-tools.mjs',
     'node --check scripts/verify/check-index-storage-read-ordering.mjs',
     'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
     'node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'node --check scripts/verify/index-storage-standalone-tools.test.mjs',
+    'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
     'scripts/verify/verify-index-storage-adr-integrity.mjs',
     'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
   ]) {
@@ -301,4 +354,4 @@ for (const [label, workflow] of [
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, complete evidence metrics, executable SQL ordering acceptance, and ADR integrity wiring are independently guarded');
+console.log('[verify-index-storage-source-oracle] source oracle, byte-preserved evidence cores, self-described ordered digests, complete metrics, executable SQL entrypoints, and ADR integrity wiring are independently guarded');
