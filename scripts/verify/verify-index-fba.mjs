@@ -28,15 +28,19 @@ const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
 const benchmarkConnection = read('ops/benches/src/index_storage/connection.rs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
+const maintenanceSql = read('ops/benches/src/index_storage/sql/maintenance.rs');
+const eavSql = read('ops/benches/src/index_storage/sql/eav.rs');
+const normalizedMaintenanceSql = maintenanceSql.replace(/\s+/gu, ' ');
+const normalizedEavSql = eavSql.replace(/\s+/gu, ' ');
 const benchmarkSql = [
   'ops/benches/src/index_storage/sql/mod.rs',
   'ops/benches/src/index_storage/sql/source.rs',
   'ops/benches/src/index_storage/sql/common.rs',
-  'ops/benches/src/index_storage/sql/maintenance.rs',
+  maintenanceSql,
   'ops/benches/src/index_storage/sql/jsonb.rs',
-  'ops/benches/src/index_storage/sql/eav.rs',
+  eavSql,
   'ops/benches/src/index_storage/sql/hot.rs',
-].map(read).join('\n');
+].map((entry) => entry.includes('\n') ? entry : read(entry)).join('\n');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
 const maintenanceRunner = read('ops/benches/src/index_storage/maintenance_runner.rs');
@@ -175,6 +179,27 @@ for (const marker of [
   'CREATE TABLE {schema}.link',
 ]) {
   if (!benchmarkSql.includes(marker)) fail(`benchmark SQL missing ${marker}`);
+}
+for (const marker of [
+  'CREATE TABLE idx_bench_eav.field_value ( tenant_id uuid NOT NULL, module_name text NOT NULL, entity_name text NOT NULL, schema_version integer NOT NULL',
+  'PRIMARY KEY ( tenant_id, module_name, entity_name, schema_version, entity_id, locale, field_name, ordinal )',
+  'FOREIGN KEY ( tenant_id, module_name, entity_name, schema_version, entity_id, locale ) REFERENCES idx_bench_eav.entity',
+  'status.module_name = entity.module_name',
+  'status.schema_version = entity.schema_version',
+  "channel_code.module_name = 'channel'",
+  "field.module_name = 'product'",
+  'field.schema_version = 1',
+]) {
+  if (!normalizedEavSql.includes(marker)) fail(`typed EAV full-identity guard missing: ${marker}`);
+}
+for (const marker of [
+  "entity.module_name = 'product' AND entity.entity_name = 'product' AND entity.schema_version = 1",
+  "field.module_name = 'product' AND field.entity_name = 'product' AND field.schema_version = 1",
+  'tenant_id, module_name, entity_name, schema_version, entity_id, locale, field_name',
+]) {
+  if (!normalizedMaintenanceSql.includes(marker)) {
+    fail(`maintenance full-identity guard missing: ${marker}`);
+  }
 }
 for (const marker of [
   'EXPLAIN (ANALYZE, BUFFERS, WAL, FORMAT JSON)',
