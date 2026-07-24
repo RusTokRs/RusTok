@@ -28,7 +28,12 @@ const readWorkloads = [
   'exact_count',
 ];
 
-for (const marker of ['mod explain;', 'source_workloads', 'read_workload_contract']) {
+for (const marker of [
+  'mod explain;',
+  'source_workloads',
+  'read_workload_contract',
+  'RESULT_DIGEST_CONTRACT',
+]) {
   if (!benchmarkModule.includes(marker)) fail(`benchmark module missing ${marker}`);
 }
 for (const marker of [
@@ -66,6 +71,7 @@ for (const workload of readWorkloads) {
 }
 
 for (const marker of [
+  'pub const RESULT_DIGEST_CONTRACT: &str = "ordered_length_prefixed_json_v1"',
   'pub fn source_workloads(config: &DatasetConfig) -> Vec<Workload>',
   'source::workloads(&WorkloadContext::new(config))',
   'pub(crate) fn read_workload_contract',
@@ -75,10 +81,12 @@ for (const marker of [
   'ORDER BY entity_id LIMIT 100',
   'ORDER BY price_minor, entity_id LIMIT 100',
 ]) {
-  if (!sqlModule.includes(marker)) fail(`SQL module missing read ordering contract ${marker}`);
+  if (!sqlModule.includes(marker)) fail(`SQL module missing read digest contract ${marker}`);
 }
 
 for (const marker of [
+  'pub result_digest_contract: &\'static str',
+  'result_digest_contract: RESULT_DIGEST_CONTRACT',
   'pub source_workloads: Vec<SourceWorkloadReport>',
   'run_source_workloads(&db, &config.dataset)',
   'validate_semantic_parity(&source_workload_reports, &prototypes)',
@@ -128,6 +136,11 @@ for (const legacy of [
 }
 
 for (const marker of [
+  "const resultDigestContract = 'ordered_length_prefixed_json_v1'",
+  'const readOrderMarkers = new Map',
+  'requireReadOrdering',
+  'read.result_digest_contract',
+  'result_digest_contract: resultDigestContract',
   'read.source_workloads',
   "'source workload order'",
   "sourceWorkload.sql.includes('idx_bench_source.')",
@@ -144,6 +157,9 @@ if (validator.includes('baselineReadWorkloads')) {
 }
 
 for (const marker of [
+  "const resultDigestContract = 'ordered_length_prefixed_json_v1'",
+  'const readOrderMarkers = new Map',
+  'requireReadOrdering',
   'validateReadEvidence',
   'validateMutationEvidence',
   'requirePlan',
@@ -154,10 +170,12 @@ for (const marker of [
   'validateReadReport',
   'validateMutationReport',
   'validateMaintenanceReport',
+  'same_result_digest_contract',
   'same_dataset_shape',
   'same_source_oracle_shape',
   'result_rows_ratio_1m_to_100k',
-  'fail closed on report shape, metrics, plans, effects, and cardinalities',
+  'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
+  'Result digest contract:',
   '### Source oracle',
 ]) {
   if (!comparator.includes(marker)) fail(`evidence comparator missing contract guard ${marker}`);
@@ -171,6 +189,10 @@ for (const legacy of [
 }
 
 for (const marker of [
+  "test('rejects missing read digest contract'",
+  "test('rejects provenance digest contract drift'",
+  "test('rejects source workload without canonical ordering'",
+  "test('rejects candidate workload without canonical ordering'",
   "test('rejects missing read execution timing'",
   "test('rejects malformed EXPLAIN plan'",
   "test('rejects missing mutation WAL metric'",
@@ -184,4 +206,4 @@ for (const marker of [
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle, ordered digests, and complete evidence metrics are statically guarded');
+console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, and complete evidence metrics are statically guarded');
