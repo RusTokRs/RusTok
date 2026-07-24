@@ -31,20 +31,35 @@ requireMarkers(preflight, 'read ordering preflight', [
   "'two_hop_channel_filter'",
   "'keyset_page'",
   "'exact_count'",
-  'sql.trimEnd().endsWith(marker)',
+  'const maskSqlText = (text) =>',
+  'const executableSqlText = (sql, label) =>',
+  "sql.startsWith('--', index)",
+  "sql.startsWith('/*', index)",
+  'unterminated block comment',
+  'unterminated string literal',
+  'unterminated quoted identifier',
+  'unterminated dollar-quoted string',
+  'executableSql.trimEnd().endsWith(marker)',
   'must end with canonical ordering marker',
+  'in executable SQL',
   'validatePacketReadOrdering',
   'source workload order',
   'prototype order',
 ]);
-if (preflight.includes('sql.includes(marker)')) {
-  fail('read ordering preflight restored substring-only ordering validation');
+for (const forbidden of ['sql.includes(marker)', 'sql.trimEnd().endsWith(marker)']) {
+  if (preflight.includes(forbidden)) {
+    fail(`read ordering preflight restored unsafe raw-SQL validation: ${forbidden}`);
+  }
 }
 
 requireMarkers(fixture, 'read ordering fixture', [
   "test('accepts canonical terminal ordering with trailing whitespace'",
+  "test('accepts comment tokens inside strings and comments after executable ordering'",
   "test('rejects a source ordering marker that exists only in a nested query'",
-  "test('rejects a candidate ordering marker that exists only in a comment'",
+  "test('rejects a candidate ordering marker that exists only in a block comment'",
+  "test('rejects a terminal ordering marker hidden in a line comment'",
+  "test('rejects an ordering marker hidden in a dollar-quoted string'",
+  "test('rejects unterminated SQL comments before ordering validation'",
   "test('rejects workload order drift before checking SQL text'",
 ]);
 
@@ -89,4 +104,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] terminal ordering preflight, direct and router fixtures, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, direct and router fixtures, public command order, and workflows are consistent');
