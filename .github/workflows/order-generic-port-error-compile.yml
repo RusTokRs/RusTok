@@ -1,0 +1,26 @@
+name: Order generic port error compile
+
+on:
+  push:
+    branches:
+      - agent/order-generic-port-error-compile
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_ENCODED_RUSTFLAGS: "-Dwarnings"
+  CARGO_INCREMENTAL: 0
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compile order crate
+        run: cargo check -p rustok-order --all-features
