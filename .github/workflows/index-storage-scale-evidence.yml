@@ -8,6 +8,7 @@ on:
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -20,6 +21,7 @@ on:
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence.mjs"
       - ".github/workflows/index-storage-smoke.yml"
       - ".github/workflows/index-storage-scale-evidence.yml"
       - ".github/workflows/index-storage-scale-run.yml"
@@ -58,6 +60,8 @@ jobs:
         run: node scripts/verify/verify-index-fba.mjs
       - name: Verify scale evidence validator syntax
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
+      - name: Verify cross-scale comparator syntax
+        run: node --check scripts/verify/compare-index-storage-evidence.mjs
 
   evidence-100k:
     needs: contract
@@ -83,3 +87,55 @@ jobs:
       # the inspected 100k runner reported about 93 GB free before evidence.
       runner_label: ${{ vars.INDEX_BENCH_LARGE_RUNNER || 'ubuntu-latest' }}
       minimum_free_bytes: 35000000000
+
+  comparison:
+    name: Cross-scale storage comparison
+    needs:
+      - evidence-100k
+      - evidence-1m
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download validated 100k evidence
+        uses: actions/download-artifact@v8
+        with:
+          name: index-storage-100k-${{ github.sha }}
+          path: evidence/index-storage/100k
+
+      - name: Download validated 1m evidence
+        uses: actions/download-artifact@v8
+        with:
+          name: index-storage-1m-${{ github.sha }}
+          path: evidence/index-storage/1m
+
+      - name: Generate deterministic cross-scale comparison
+        run: >-
+          node scripts/verify/compare-index-storage-evidence.mjs
+          --input evidence/index-storage/100k
+          --input evidence/index-storage/1m
+          --output evidence/index-storage/comparison
+
+      - name: Require decision-ready comparison
+        run: >-
+          node -e "const report = require('./evidence/index-storage/comparison/comparison.json');
+          if (report.decision_ready !== true) throw new Error('cross-scale comparison is not decision-ready');"
+
+      - name: Archive cross-scale comparison
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-comparison-${{ github.sha }}
+          path: evidence/index-storage/comparison
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Archive comparison failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-storage-comparison-diagnostic-${{ github.sha }}
+          path: evidence/index-storage/comparison
+          if-no-files-found: warn
+          retention-days: 14
