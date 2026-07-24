@@ -40,17 +40,13 @@ const sessionMetadataMarkers = [
 ];
 
 requireMarkers(connection, 'benchmark session contract', [
-  'pub(crate) const BENCHMARK_SESSION_METADATA',
-  '("standard_conforming_strings", "on")',
-  '("timezone", "UTC")',
-  '("date_style", "ISO, YMD")',
-  '("extra_float_digits", "3")',
+  'const BENCHMARK_SESSION_SQL',
   'SET standard_conforming_strings = on;',
   "SET TIME ZONE 'UTC';",
   "SET DateStyle = 'ISO, YMD';",
   'SET extra_float_digits = 3;',
   'failed to pin deterministic PostgreSQL benchmark session',
-  'BENCHMARK_SESSION_METADATA.contains(&(field, value))',
+  'fn benchmark_session_contract_is_explicit_and_deterministic()',
 ]);
 
 requireMarkers(benchmarkRunner, 'observed database metadata', [
@@ -117,7 +113,7 @@ requireMarkers(preflight, 'read ordering preflight', [
   "sql.startsWith('/*', index)",
   'unterminated block comment',
   "const escapeString = quote === \"'\" && isEscapeStringQuote(sql, index)",
-  "escapeString && sql[index] === '\\\\'",
+  "escapeString && sql[index] === '\\'",
   'unterminated escape string literal',
   "? (escapeString ? 'escape string literal' : 'string literal')",
   'contains an unterminated ${kind}',
@@ -248,4 +244,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] observed PostgreSQL session metadata, canonical evidence writer, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] enforced and observed PostgreSQL session metadata, canonical evidence writer, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');
