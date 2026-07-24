@@ -17,7 +17,7 @@ pub use maintenance_runner::{
     MaintenanceBenchmarkReport, run_maintenance, write_maintenance_report,
 };
 pub use mutation_runner::{MutationBenchmarkReport, run_mutations, write_mutation_report};
-pub use runner::{BenchmarkReport, run, write_report};
+pub use runner::{BenchmarkReport, run};
 pub(crate) use sql::read_workload_contract;
 pub use sql::{
     MutationWorkload, Prototype, RESULT_DIGEST_CONTRACT, Workload, analyze_sql, churn_cycle_sql,
@@ -55,4 +55,20 @@ pub async fn run_from_env() -> anyhow::Result<BenchmarkReport> {
     let report = run(&config).await?;
     write_report_with_session_metadata(&config.output_path, &report)?;
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn raw_report_writer_is_not_publicly_reexported() {
+        let source = include_str!("mod.rs");
+        assert!(
+            !source.lines().any(|line| {
+                line.trim_start().starts_with("pub use runner::")
+                    && line.contains("write_report")
+            }),
+            "the raw runner report writer must remain private to the benchmark module"
+        );
+        assert!(source.contains("pub fn write_report_with_session_metadata"));
+    }
 }
