@@ -18,6 +18,9 @@ const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
 const validator = read('scripts/verify/validate-index-storage-evidence.mjs');
 const comparator = read('scripts/verify/compare-index-storage-evidence.mjs');
 const comparatorFixture = read('scripts/verify/compare-index-storage-evidence.test.mjs');
+const orderingPreflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
+const orderingFixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
+const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs');
 const toolingRouter = read('scripts/verify/index-storage-tooling.mjs');
 const adrIntegrityGuard = read('scripts/verify/verify-index-storage-adr-integrity.mjs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
@@ -211,31 +214,72 @@ for (const marker of [
 }
 
 for (const marker of [
+  'sql.trimEnd().endsWith(marker)',
+  'must end with canonical ordering marker',
+  'validatePacketReadOrdering',
+  'source workload order',
+  'prototype order',
+]) {
+  if (!orderingPreflight.includes(marker)) fail(`terminal ordering preflight missing ${marker}`);
+}
+if (orderingPreflight.includes('sql.includes(marker)')) {
+  fail('terminal ordering preflight restored substring-only ordering validation');
+}
+for (const marker of [
+  "test('accepts canonical terminal ordering with trailing whitespace'",
+  "test('rejects a source ordering marker that exists only in a nested query'",
+  "test('rejects a candidate ordering marker that exists only in a comment'",
+  "test('rejects workload order drift before checking SQL text'",
+]) {
+  if (!orderingFixture.includes(marker)) fail(`terminal ordering fixture coverage missing ${marker}`);
+}
+for (const marker of [
+  "const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs')",
+  "const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs')",
+  'packet terminal ordering preflight must run before the canonical validator',
+  'comparison terminal ordering preflight must run before the canonical comparator',
+  'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+]) {
+  if (!orderingGuard.includes(marker)) fail(`terminal ordering guard missing ${marker}`);
+}
+
+for (const marker of [
+  "'verify-index-storage-read-ordering-contract.mjs'",
+  "runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot])",
+  "runScript('check-index-storage-read-ordering.mjs', orderingArgs)",
   "'verify-index-storage-adr-integrity.mjs'",
   "case 'verify-adr':",
   "runScript('verify-index-storage-adr.mjs', args)",
 ]) {
-  if (!toolingRouter.includes(marker)) fail(`storage tooling router missing independent ADR integrity wiring ${marker}`);
+  if (!toolingRouter.includes(marker)) fail(`storage tooling router missing independent integrity wiring ${marker}`);
 }
 for (const marker of [
   "const prefix = '[verify-index-storage-adr-integrity]'",
+  "const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs')",
+  'sql.trimEnd().endsWith(marker)',
   "runScript('finalize-index-storage-adr.mjs', args)",
   "runScript('verify-index-storage-adr.mjs', args)",
   'ADR bytes differ from deterministic finalization',
   'scripts/verify/verify-index-storage-adr-integrity.mjs',
 ]) {
-  if (!adrIntegrityGuard.includes(marker)) fail(`ADR integrity guard missing self-protection marker ${marker}`);
+  if (!adrIntegrityGuard.includes(marker)) fail(`ADR integrity guard missing cross-protection marker ${marker}`);
 }
 for (const [label, workflow] of [
   ['smoke', smokeWorkflow],
   ['scale', scaleWorkflow],
 ]) {
   for (const marker of [
+    'scripts/verify/check-index-storage-read-ordering.mjs',
+    'scripts/verify/check-index-storage-read-ordering.test.mjs',
+    'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'node --check scripts/verify/check-index-storage-read-ordering.mjs',
+    'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
+    'node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs',
     'scripts/verify/verify-index-storage-adr-integrity.mjs',
     'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
   ]) {
-    if (!workflow.includes(marker)) fail(`${label} workflow missing ADR integrity wiring ${marker}`);
+    if (!workflow.includes(marker)) fail(`${label} workflow missing integrity wiring ${marker}`);
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, complete evidence metrics, and ADR integrity wiring are statically guarded');
+console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, complete evidence metrics, terminal ordering acceptance, and ADR integrity wiring are independently guarded');
