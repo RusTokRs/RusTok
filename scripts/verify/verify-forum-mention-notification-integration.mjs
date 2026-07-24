@@ -5,7 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(scriptDir, "../..");
+const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
+  ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
+  : path.resolve(scriptDir, "../..");
 const contractPath = "crates/rustok-forum/contracts/forum-mention-notification-integration.json";
 const failures = [];
 
