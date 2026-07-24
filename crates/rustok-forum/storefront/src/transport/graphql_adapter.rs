@@ -16,8 +16,8 @@ pub enum ApiError {
 impl Display for ApiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Graphql(error) => write!(f, "{error}"),
-            Self::ServerFn(error) => write!(f, "{error}"),
+            Self::Graphql(_) => f.write_str("Forum GraphQL request failed"),
+            Self::ServerFn(_) => f.write_str("Forum server request failed"),
         }
     }
 }
@@ -264,4 +264,29 @@ pub async fn fetch_storefront_forum_graphql(
         selected_topic,
         replies,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiError;
+
+    #[test]
+    fn storefront_transport_errors_redact_public_display_but_keep_debug_detail() {
+        let secret = "https://internal.example/api/graphql: database password=private";
+        for (error, expected) in [
+            (
+                ApiError::Graphql(secret.to_string()),
+                "Forum GraphQL request failed",
+            ),
+            (
+                ApiError::ServerFn(secret.to_string()),
+                "Forum server request failed",
+            ),
+        ] {
+            let display = error.to_string();
+            assert_eq!(display, expected);
+            assert!(!display.contains(secret));
+            assert!(format!("{error:?}").contains(secret));
+        }
+    }
 }
