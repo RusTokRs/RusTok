@@ -11,26 +11,31 @@ const fail = (message) => {
 
 const router = read('scripts/verify/index-storage-tooling.mjs');
 const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
+const decisionPreparer = read('scripts/verify/prepare-index-storage-decision.mjs');
+const adrFinalizer = read('scripts/verify/finalize-index-storage-adr.mjs');
+const decisionFixture = read('scripts/verify/index-storage-decision-tooling.test.mjs');
 const renderer = read('scripts/verify/render-index-storage-adr.mjs');
 const digestHelper = read('scripts/verify/hash-index-storage-comparison.mjs');
-const fixture = read('scripts/verify/render-index-storage-adr.test.mjs');
+const rendererFixture = read('scripts/verify/render-index-storage-adr.test.mjs');
 const guide = read('crates/rustok-index/docs/storage-decision.md');
 const schema = JSON.parse(read('crates/rustok-index/docs/storage-decision.schema.json'));
 const example = JSON.parse(read('crates/rustok-index/docs/storage-decision.example.json'));
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
 const scaleRunWorkflow = read('.github/workflows/index-storage-scale-run.yml');
+const placeholderPrefix = 'TODO(index-storage-decision):';
 
 for (const marker of [
   "const prefix = '[index-storage-tooling]'",
   'const runNode = (args, label, environment = process.env) =>',
-  "spawnSync(process.execPath, args",
+  'spawnSync(process.execPath, args',
   "'verify-index-fba.mjs'",
   "'verify-index-storage-source-oracle.mjs'",
   "'verify-index-storage-adr-tooling.mjs'",
   "'--test'",
   "scriptPath('compare-index-storage-evidence.test.mjs')",
   "scriptPath('render-index-storage-adr.test.mjs')",
+  "scriptPath('index-storage-decision-tooling.test.mjs')",
   'INDEX_BENCH_SCALE: scale',
   'environment.INDEX_BENCH_EVIDENCE_ROOT = root',
   "case 'contract':",
@@ -38,7 +43,10 @@ for (const marker of [
   "case 'packet':",
   "case 'compare':",
   "case 'hash':",
+  "case 'prepare':",
+  "runScript('prepare-index-storage-decision.mjs', args)",
   "case 'render':",
+  "runScript('finalize-index-storage-adr.mjs', args)",
 ]) {
   if (!router.includes(marker)) fail(`storage tooling router is missing contract marker: ${marker}`);
 }
@@ -47,6 +55,7 @@ for (const forbidden of [
   'execSync(',
   'execFileSync(',
   'spawnSync(command',
+  "runScript('render-index-storage-adr.mjs', args)",
 ]) {
   if (router.includes(forbidden)) fail(`storage tooling router contains forbidden dispatch: ${forbidden}`);
 }
@@ -55,12 +64,68 @@ for (const marker of [
   "test('prints the stable Index storage tooling command surface'",
   "test('forwards hash help to the exact-byte comparison helper'",
   "test('forwards comparator help without rewriting its arguments'",
-  "test('forwards renderer help without rewriting its arguments'",
+  "test('forwards decision preparation help without rewriting its arguments'",
+  "test('forwards ADR finalization help without rewriting its arguments'",
   "test('rejects unsupported packet scales before invoking the validator'",
   "test('rejects arguments for aggregate commands'",
   "test('rejects unknown commands'",
 ]) {
   if (!routerFixture.includes(marker)) fail(`storage tooling router fixture is missing scenario: ${marker}`);
+}
+
+for (const marker of [
+  "const placeholderPrefix = 'TODO(index-storage-decision):'",
+  "const prototypes = ['jsonb', 'typed_eav', 'hot_projection']",
+  'comparison.decision_ready !== true',
+  'comparison.methodology?.automatic_winner_selection !== false',
+  'comparison decision contract ${field} is not satisfied',
+  'comparison must contain exactly the 100k and 1m scales',
+  "createHash('sha256').update(bytes).digest('hex')",
+  'refusing to overwrite existing decision without --force',
+  'Object.fromEntries(rejected.map((prototype)',
+  'comparison_commit: commit',
+  'comparison_sha256: sha256',
+  'selection_rationale: `${placeholderPrefix}',
+]) {
+  if (!decisionPreparer.includes(marker)) fail(`decision preparer is missing contract marker: ${marker}`);
+}
+for (const forbidden of [
+  'automatic_winner_selection: true',
+  'sort((left, right)',
+  'shell: true',
+]) {
+  if (decisionPreparer.includes(forbidden)) fail(`decision preparer contains forbidden behavior: ${forbidden}`);
+}
+
+for (const marker of [
+  "const placeholderPrefix = 'TODO(index-storage-decision):'",
+  'const readJsonBytes = (filename, label) =>',
+  "createHash('sha256').update(bytes).digest('hex')",
+  'still contains a preparation placeholder',
+  'writeFileSync(comparisonPath, comparison.bytes)',
+  'writeFileSync(decisionPath, decision.bytes)',
+  "path.join(scriptDirectory, 'render-index-storage-adr.mjs')",
+  'rendered ADR must contain exactly one Comparison SHA-256 line',
+  'Decision SHA-256:',
+  '--output must not overwrite the ${label} input',
+  'const stagedOutput = `${args.output}.tmp-${process.pid}`',
+  'renameSync(stagedOutput, args.output)',
+]) {
+  if (!adrFinalizer.includes(marker)) fail(`ADR finalizer is missing contract marker: ${marker}`);
+}
+for (const forbidden of ['shell: true', 'execSync(', 'execFileSync(']) {
+  if (adrFinalizer.includes(forbidden)) fail(`ADR finalizer contains forbidden execution: ${forbidden}`);
+}
+
+for (const marker of [
+  "test('prepares an exact-comparison-bound manual decision draft'",
+  "test('refuses to overwrite an existing decision without force'",
+  "test('rejects an unedited prepared decision'",
+  "test('finalizes an ADR bound to exact comparison and decision bytes'",
+  'Comparison SHA-256:',
+  'Decision SHA-256:',
+]) {
+  if (!decisionFixture.includes(marker)) fail(`decision tooling fixture is missing scenario: ${marker}`);
 }
 
 for (const marker of [
@@ -86,7 +151,6 @@ for (const marker of [
 ]) {
   if (!renderer.includes(marker)) fail(`ADR renderer is missing contract marker: ${marker}`);
 }
-
 for (const forbidden of [
   'Comparison input:',
   'comparisonPath',
@@ -115,7 +179,7 @@ for (const marker of [
   "test('rejects an unsatisfied evidence decision flag'",
   'comparison_sha256: sha256Json(comparison)',
 ]) {
-  if (!fixture.includes(marker)) fail(`ADR renderer fixture is missing scenario: ${marker}`);
+  if (!rendererFixture.includes(marker)) fail(`ADR renderer fixture is missing scenario: ${marker}`);
 }
 
 if (schema.$schema !== 'https://json-schema.org/draft/2020-12/schema') {
@@ -169,6 +233,20 @@ const rejected = schema.properties.selected_prototype.enum
 if (JSON.stringify(Object.keys(example.rejection_rationales ?? {}).sort()) !== JSON.stringify(rejected)) {
   fail('storage decision example must reject exactly the unselected prototypes');
 }
+for (const [label, value] of [
+  ['selection_rationale', example.selection_rationale],
+  ['operational_tradeoffs', example.operational_tradeoffs],
+  ['migration_strategy', example.migration_strategy],
+  ['rollback_strategy', example.rollback_strategy],
+  ...Object.entries(example.rejection_rationales ?? {}).map(([prototype, value]) => [
+    `rejection_rationales.${prototype}`,
+    value,
+  ]),
+]) {
+  if (typeof value !== 'string' || !value.startsWith(placeholderPrefix)) {
+    fail(`storage decision example ${label} must use the preparation placeholder prefix`);
+  }
+}
 
 for (const marker of [
   'index-storage-tooling.mjs contract',
@@ -176,34 +254,48 @@ for (const marker of [
   'index-storage-tooling.mjs packet',
   'index-storage-tooling.mjs compare',
   'index-storage-tooling.mjs hash',
+  'index-storage-tooling.mjs prepare',
   'index-storage-tooling.mjs render',
   'without shell evaluation',
-  'hash-index-storage-comparison.mjs',
-  'comparison_sha256',
-  'exact comparison-file bytes',
-  'render-index-storage-adr.mjs',
+  'TODO(index-storage-decision):',
+  'refuses to overwrite an existing decision unless `--force` is provided',
+  'exact comparison and decision bytes',
+  'Comparison SHA-256',
+  'Decision SHA-256',
   'storage-decision.schema.json',
   'decision_ready: true',
-  'The renderer fails closed unless:',
+  'The finalizer fails closed unless:',
   'It never infers or ranks a winner.',
-  'not on the filesystem path used to invoke the renderer',
+  'not on the filesystem paths used to invoke the tooling',
 ]) {
   if (!guide.includes(marker)) fail(`storage decision guide is missing marker: ${marker}`);
+}
+for (const forbidden of [
+  'node scripts/verify/render-index-storage-adr.mjs',
+  'Copy the printed 64-character digest into `comparison_sha256`',
+]) {
+  if (guide.includes(forbidden)) fail(`storage decision guide restored a legacy manual path: ${forbidden}`);
 }
 
 for (const [name, workflow, markers] of [
   ['smoke', smokeWorkflow, [
-    'scripts/verify/index-storage-tooling.mjs',
-    'scripts/verify/index-storage-tooling.test.mjs',
+    'scripts/verify/prepare-index-storage-decision.mjs',
+    'scripts/verify/finalize-index-storage-adr.mjs',
+    'scripts/verify/index-storage-decision-tooling.test.mjs',
+    'node --check scripts/verify/prepare-index-storage-decision.mjs',
+    'node --check scripts/verify/finalize-index-storage-adr.mjs',
+    'node --test scripts/verify/index-storage-decision-tooling.test.mjs',
     'node scripts/verify/index-storage-tooling.mjs contract',
-    'node --test scripts/verify/index-storage-tooling.test.mjs',
     'node scripts/verify/index-storage-tooling.mjs packet',
     '--scale smoke',
     '--root evidence/index-storage/smoke',
   ]],
   ['scale evidence', scaleWorkflow, [
-    'scripts/verify/index-storage-tooling.mjs',
-    'scripts/verify/index-storage-tooling.test.mjs',
+    'scripts/verify/prepare-index-storage-decision.mjs',
+    'scripts/verify/finalize-index-storage-adr.mjs',
+    'scripts/verify/index-storage-decision-tooling.test.mjs',
+    'node --check scripts/verify/prepare-index-storage-decision.mjs',
+    'node --check scripts/verify/finalize-index-storage-adr.mjs',
     'node scripts/verify/index-storage-tooling.mjs contract',
     'node --test scripts/verify/index-storage-tooling.test.mjs',
     'node scripts/verify/index-storage-tooling.mjs fixtures',
@@ -226,4 +318,4 @@ for (const [name, workflow, legacy] of [
   if (workflow.includes(legacy)) fail(`${name} workflow restored a direct packet-validator invocation`);
 }
 
-console.log('[verify-index-storage-adr-tooling] command router, workflows, ADR renderer, digest binding, schema, examples, fixtures and guide are consistent');
+console.log('[verify-index-storage-adr-tooling] command router, workflows, decision preparation, byte-bound ADR finalization, schema, examples, fixtures, and guide are consistent');
