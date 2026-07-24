@@ -19,15 +19,17 @@ const usage = () => {
   node scripts/verify/index-storage-tooling.mjs packet --scale <smoke|100k|1m> [--root <directory>]
   node scripts/verify/index-storage-tooling.mjs compare --input <directory> [--input <directory>] [--output <directory>]
   node scripts/verify/index-storage-tooling.mjs hash <comparison.json>
+  node scripts/verify/index-storage-tooling.mjs prepare --comparison <comparison.json> --selected <prototype> --owner <owner> --date <YYYY-MM-DD> --output <decision.json> [--force]
   node scripts/verify/index-storage-tooling.mjs render --comparison <comparison.json> --decision <decision.json> --output <adr.md>
 
 Commands:
-  contract  Run static Index boundary, source-oracle/evidence, and ADR tooling guards.
-  fixtures Run the comparator and ADR renderer fixture suites.
+  contract Run static Index boundary, source-oracle/evidence, and ADR tooling guards.
+  fixtures Run comparator, decision preparation/finalization, and ADR renderer fixture suites.
   packet   Validate one smoke, 100k, or 1m evidence packet through the canonical validator.
   compare  Generate a cross-scale comparison from validated packet directories.
   hash     Print the SHA-256 digest of the exact comparison.json bytes.
-  render   Render the manual storage ADR after commit and SHA-256 binding checks.`);
+  prepare  Create a non-overwriting manual decision draft bound to the exact comparison bytes.
+  render   Finalize the manual storage ADR with comparison and decision SHA-256 bindings.`);
 };
 
 const runNode = (args, label, environment = process.env) => {
@@ -62,6 +64,7 @@ const runFixtures = (args) => {
     '--test',
     scriptPath('compare-index-storage-evidence.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
+    scriptPath('index-storage-decision-tooling.test.mjs'),
   ], 'Index storage fixture suites');
 };
 
@@ -116,8 +119,11 @@ switch (command) {
   case 'hash':
     runScript('hash-index-storage-comparison.mjs', args);
     break;
+  case 'prepare':
+    runScript('prepare-index-storage-decision.mjs', args);
+    break;
   case 'render':
-    runScript('render-index-storage-adr.mjs', args);
+    runScript('finalize-index-storage-adr.mjs', args);
     break;
   default:
     fail(`unknown command: ${command}`);
