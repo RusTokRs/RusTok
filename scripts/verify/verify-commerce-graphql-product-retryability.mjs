@@ -22,6 +22,15 @@ const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
+const mapperStart = graphqlRoot.indexOf('pub(crate) fn map_product_service_error(');
+const mapperEnd = graphqlRoot.indexOf('\npub(crate) fn current_tenant_scope(', mapperStart);
+if (mapperStart < 0 || mapperEnd < 0) {
+  failures.push('unable to isolate shared product mapper');
+}
+const mapper = mapperStart >= 0 && mapperEnd >= 0
+  ? graphqlRoot.slice(mapperStart, mapperEnd)
+  : graphqlRoot;
+
 for (const [value, label] of [
   ['pub(crate) fn map_product_service_error(', 'shared product mapper'],
   ['let (public_message, code, retryable) = match &error {', 'typed public envelope'],
@@ -59,41 +68,54 @@ for (const [value, label] of [
   ['extensions.set("code", code)', 'code extension'],
   ['extensions.set("retryable", retryable)', 'retryability extension'],
 ]) {
-  requireText(graphqlRoot, value, label);
+  requireText(mapper, value, label);
 }
 
 forbidText(
-  graphqlRoot,
+  mapper,
   'let (public_message, code) = match error {',
   'legacy code-only product envelope',
 );
 
-const databaseBlock = graphqlRoot.match(
+const databaseBlock = mapper.match(
   /CommerceError::Database\(_\) => \([\s\S]*?"PRODUCT_TEMPORARILY_UNAVAILABLE",\s*true,\s*\)/,
 );
 if (!databaseBlock) {
   failures.push('database mapping must be the retryable PRODUCT_TEMPORARILY_UNAVAILABLE envelope');
 }
 
-const retryableTrueOccurrences = graphqlRoot.match(/\btrue,\s*\)/g) ?? [];
+const retryableTrueOccurrences = mapper.match(/\btrue,\s*\)/g) ?? [];
 if (retryableTrueOccurrences.length !== 1) {
   failures.push(`expected exactly one retryable product envelope, found ${retryableTrueOccurrences.length}`);
 }
 
 const retryableExtensionOccurrences =
-  graphqlRoot.match(/extensions\.set\("retryable", retryable\)/g) ?? [];
+  mapper.match(/extensions\.set\("retryable", retryable\)/g) ?? [];
 if (retryableExtensionOccurrences.length !== 1) {
   failures.push(
     `expected one product retryability extension, found ${retryableExtensionOccurrences.length}`,
   );
 }
 
-for (const [content, value, label] of [
-  [catalogMutations, 'map_product_service_error(error, "product_catalog_mutation")', 'catalog mutation mapper use'],
-  [queries, 'map_product_service_error(err, "product_query")', 'product query mapper use'],
-  [queries, 'map_product_service_error(err, "products_query")', 'products query mapper use'],
-]) {
-  requireText(content, value, label);
+requireText(
+  catalogMutations,
+  'map_product_service_error(error, "product_catalog_mutation")',
+  'catalog mutation mapper use',
+);
+requireText(queries, 'map_product_service_error(err, "product_query")', 'product detail mapper use');
+requireText(
+  queries,
+  'map_product_service_error(error, "product_query")',
+  'product schema query mapper use',
+);
+
+const catalogMapperUses = catalogMutations.match(/map_product_service_error\(/g) ?? [];
+if (catalogMapperUses.length < 5) {
+  failures.push(`expected shared mapper across catalog mutations, found ${catalogMapperUses.length} uses`);
+}
+const queryMapperUses = queries.match(/map_product_service_error\(/g) ?? [];
+if (queryMapperUses.length < 5) {
+  failures.push(`expected shared mapper across product queries, found ${queryMapperUses.length} uses`);
 }
 
 if (failures.length > 0) {
