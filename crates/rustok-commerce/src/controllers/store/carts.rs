@@ -3,8 +3,8 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use rustok_api::{OptionalAuthContext, RequestContext, TenantContext};
-use rustok_web::{HttpError, HttpResult};
+use rustok_api::{OptionalAuthContext, PortError, RequestContext, TenantContext};
+use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use uuid::Uuid;
 
 use super::{
@@ -20,8 +20,27 @@ use rustok_cart::{
 };
 use rustok_pricing::{ResolveProductPriceRequest, in_process_pricing_read_port};
 
-fn map_cart_port_error(error: rustok_api::PortError) -> HttpError {
-    rustok_web::port_error_to_http_error(error)
+fn map_cart_port_error(
+    error: PortError,
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Option<Uuid>,
+) -> HttpError {
+    let public = port_error_to_http_error(error.clone());
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_cart",
+        operation,
+        tenant_id = %tenant_id,
+        cart_id = ?cart_id,
+        error_kind = ?error.kind,
+        retryable = error.retryable,
+        public_code = %public.code,
+        status = %public.status,
+        boundary = "commerce_storefront_cart_http",
+        "storefront cart port operation failed"
+    );
+    public
 }
 
 /// Create a storefront cart
@@ -62,9 +81,8 @@ pub async fn create_cart(
         .or(input.currency_code.clone())
         .ok_or_else(|| {
             HttpError::bad_request(
-                "commerce_operation_failed",
-                "currency_code is required unless it can be resolved from region/country"
-                    .to_string(),
+                "commerce_store_cart_context_invalid",
+                "Currency code is required unless it can be resolved from region or country",
             )
         })?;
 
@@ -94,7 +112,7 @@ pub async fn create_cart(
             },
         )
         .await
-        .map_err(rustok_web::port_error_to_http_error)?;
+        .map_err(|error| map_cart_port_error(error, "create_cart", tenant.id, None))?;
     let cart = super::enrich_storefront_cart_for_db(
         runtime.db(),
         tenant.id,
@@ -146,7 +164,7 @@ pub async fn get_cart(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(rustok_web::port_error_to_http_error)?;
+        .map_err(|error| map_cart_port_error(error, "get_cart", tenant.id, Some(id)))?;
     super::ensure_store_cart_access(&cart, customer_id)?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
@@ -198,7 +216,9 @@ pub async fn update_cart_context(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(map_cart_port_error)?;
+        .map_err(|error| {
+            map_cart_port_error(error, "update_cart_context_read", tenant.id, Some(id))
+        })?;
     super::ensure_store_cart_access(&cart, customer_id)?;
 
     let updated = super::apply_cart_context_patch_for_db(
@@ -266,7 +286,9 @@ pub async fn add_cart_line_item(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(map_cart_port_error)?;
+        .map_err(|error| {
+            map_cart_port_error(error, "add_cart_line_item_read", tenant.id, Some(id))
+        })?;
     super::ensure_store_cart_access(&existing, customer_id)?;
     let event_bus = runtime.event_bus();
     let pricing_read_port = in_process_pricing_read_port(runtime.db_clone(), event_bus.clone());
@@ -308,7 +330,7 @@ pub async fn add_cart_line_item(
             },
         )
         .await
-        .map_err(map_cart_port_error)?;
+        .map_err(|error| map_cart_port_error(error, "add_cart_line_item", tenant.id, Some(id)))?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
             runtime.db(),
@@ -363,7 +385,9 @@ pub async fn update_cart_line_item(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(map_cart_port_error)?;
+        .map_err(|error| {
+            map_cart_port_error(error, "update_cart_line_item_read", tenant.id, Some(id))
+        })?;
     super::ensure_store_cart_access(&existing, customer_id)?;
     let event_bus = runtime.event_bus();
     if let Some(existing_line_item) = existing.line_items.iter().find(|item| item.id == line_id) {
@@ -408,7 +432,7 @@ pub async fn update_cart_line_item(
                 },
             )
             .await
-            .map_err(rustok_web::port_error_to_http_error)?
+            .map_err(port_error_to_http_error)?
             .into();
 
         let pricing_update =
@@ -432,7 +456,14 @@ pub async fn update_cart_line_item(
                 },
             )
             .await
-            .map_err(map_cart_port_error)?
+            .map_err(|error| {
+                map_cart_port_error(
+                    error,
+                    "update_cart_line_item_pricing",
+                    tenant.id,
+                    Some(id),
+                )
+            })?
     } else {
         storefront_port
             .update_storefront_line_item_quantity(
@@ -451,7 +482,14 @@ pub async fn update_cart_line_item(
                 },
             )
             .await
-            .map_err(map_cart_port_error)?
+            .map_err(|error| {
+                map_cart_port_error(
+                    error,
+                    "update_cart_line_item_quantity",
+                    tenant.id,
+                    Some(id),
+                )
+            })?
     };
     Ok(Json(
         super::enrich_storefront_cart_for_db(
@@ -505,7 +543,9 @@ pub async fn remove_cart_line_item(
             CartStorefrontReadRequest { cart_id: id },
         )
         .await
-        .map_err(map_cart_port_error)?;
+        .map_err(|error| {
+            map_cart_port_error(error, "remove_cart_line_item_read", tenant.id, Some(id))
+        })?;
     super::ensure_store_cart_access(&existing, customer_id)?;
 
     let cart = storefront_port
@@ -524,7 +564,9 @@ pub async fn remove_cart_line_item(
             },
         )
         .await
-        .map_err(map_cart_port_error)?;
+        .map_err(|error| {
+            map_cart_port_error(error, "remove_cart_line_item", tenant.id, Some(id))
+        })?;
     Ok(Json(
         super::enrich_storefront_cart_for_db(
             runtime.db(),
