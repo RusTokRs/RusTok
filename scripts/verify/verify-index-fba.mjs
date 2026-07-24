@@ -113,6 +113,9 @@ for (const marker of [
   '- [x] Add deterministic `smoke`, `100k`, and `1m` dataset presets.',
   '- [x] Prototype JSONB entity rows plus typed expression/GIN indexes.',
   '- [x] Prototype normalized typed field-value rows.',
+  '- [x] Preserve complete module/entity/schema-version identity in typed EAV field',
+  '- [x] Scope JSONB and typed EAV maintenance entity mutations by the complete schema',
+  '- [x] Add static guards for full-identity EAV and maintenance SQL.',
   '- [x] Prototype a specialized hot typed projection as the comparison baseline.',
   '- [x] Verify source/candidate entity and link cardinality before timing.',
   '- [x] Verify identical workload result digests across all candidates.',
@@ -121,8 +124,9 @@ for (const marker of [
   '- [x] Add committed update plus delete/reinsert churn cycles for every candidate.',
   '- [x] Execute `VACUUM (ANALYZE)` outside transactions and record its duration.',
   '- [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a',
-  '- [x] Run and archive 100k Product-locale row read, mutation, and maintenance',
-  '- [ ] Run and archive 1m Product-locale row read, mutation, and maintenance',
+  '- [x] Record the candidate operational review and ADR completion checklist.',
+  '- [ ] Run and archive replacement 100k Product-locale row read, mutation, and',
+  '- [ ] Run and archive replacement 1m Product-locale row read, mutation, and',
   '- [ ] Record the selected model and rejected alternatives in an ADR.',
 ]) {
   if (!plan.includes(marker)) fail(`M2 plan marker missing: ${marker}`);
@@ -257,11 +261,14 @@ if (!normalizedBenchmarkDoc.includes('Production migrations: intentionally absen
 if (!normalizedBenchmarkDoc.includes('It does not run `VACUUM FULL`')) {
   fail('benchmark documentation must reject VACUUM FULL as a health assumption');
 }
-if (!normalizedBenchmarkDoc.includes('Smoke evidence: archived from Actions run `30041091121`')) {
-  fail('benchmark documentation must record the inspected smoke evidence run');
+if (!normalizedBenchmarkDoc.includes('Smoke evidence: historical harness-sanity packet from Actions run `30041091121`')) {
+  fail('benchmark documentation must record the historical smoke evidence run');
 }
-if (!normalizedBenchmarkDoc.includes('100k evidence: archived and inspected from Actions run `30051321255`')) {
-  fail('benchmark documentation must record the inspected 100k evidence run');
+if (!normalizedBenchmarkDoc.includes('100k evidence: historical diagnostic packet from Actions run `30051321255`')) {
+  fail('benchmark documentation must record the historical 100k evidence run');
+}
+if (!normalizedBenchmarkDoc.includes('Replacement evidence: same-commit 100k and 1m packets pending after full-identity corrections')) {
+  fail('benchmark documentation must keep replacement scale evidence pending');
 }
 if (!normalizedBenchmarkDoc.includes('1m evidence: enabled on `INDEX_BENCH_LARGE_RUNNER` when configured, otherwise `ubuntu-latest`, with a fail-closed 35 GB free-disk check')) {
   fail('benchmark documentation must keep the guarded 1m runner policy visible');
