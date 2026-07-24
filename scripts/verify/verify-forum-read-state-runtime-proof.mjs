@@ -100,7 +100,7 @@ for (const marker of [
   "SET enable_seqscan = off",
   "RESET enable_seqscan",
   "per-row SubPlan",
-  "bounded topic-page loop count",
+  "natural unread aggregate plan is missing relation",
   "forum_topic_read_states_pkey",
   "idx_forum_topic_revisions_tenant_topic_created",
 ]) {
