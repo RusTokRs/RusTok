@@ -12,8 +12,12 @@ on:
       - "scripts/verify/check-index-storage-read-ordering.test.mjs"
       - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
+      - "scripts/verify/index-storage-standalone-tools.test.mjs"
+      - "scripts/verify/verify-index-storage-standalone-tools.mjs"
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
@@ -41,8 +45,12 @@ on:
       - "scripts/verify/check-index-storage-read-ordering.test.mjs"
       - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
+      - "scripts/verify/validate-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
+      - "scripts/verify/compare-index-storage-evidence-core.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
+      - "scripts/verify/index-storage-standalone-tools.test.mjs"
+      - "scripts/verify/verify-index-storage-standalone-tools.mjs"
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
@@ -95,11 +103,17 @@ jobs:
           node --check scripts/verify/check-index-storage-read-ordering.mjs
           node --check scripts/verify/check-index-storage-read-ordering.test.mjs
           node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs
+          node --check scripts/verify/index-storage-standalone-tools.test.mjs
+          node --check scripts/verify/verify-index-storage-standalone-tools.mjs
           node scripts/verify/index-storage-tooling.mjs contract
       - name: Verify scale evidence validator syntax
-        run: node --check scripts/verify/validate-index-storage-evidence.mjs
+        run: |
+          node --check scripts/verify/validate-index-storage-evidence.mjs
+          node --check scripts/verify/validate-index-storage-evidence-core.mjs
       - name: Verify cross-scale comparator syntax
-        run: node --check scripts/verify/compare-index-storage-evidence.mjs
+        run: |
+          node --check scripts/verify/compare-index-storage-evidence.mjs
+          node --check scripts/verify/compare-index-storage-evidence-core.mjs
       - name: Verify storage decision and ADR tooling syntax
         run: |
           node --check scripts/verify/hash-index-storage-comparison.mjs
@@ -112,7 +126,7 @@ jobs:
           node --check scripts/verify/index-storage-decision-tooling.test.mjs
       - name: Test storage tooling command routing
         run: node --test scripts/verify/index-storage-tooling.test.mjs
-      - name: Test storage comparison, ordering, decision, and ADR fixtures
+      - name: Test storage standalone, comparison, ordering, decision, and ADR fixtures
         run: node scripts/verify/index-storage-tooling.mjs fixtures
 
   evidence-100k:
