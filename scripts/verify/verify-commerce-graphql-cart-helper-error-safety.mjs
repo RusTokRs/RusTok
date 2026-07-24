@@ -22,7 +22,8 @@ const forbidText = (source, value, label) => {
 
 for (const [value, label] of [
   ['#[path = "helpers.rs"]\nmod legacy_helpers;', 'private legacy helper routing'],
-  ['#[path = "safe_helpers.rs"]\npub mod helpers;', 'public safe helper routing'],
+  ['#[path = "safe_helpers.rs"]\nmod cart_safe_helpers;', 'private cart safe helper routing'],
+  ['#[path = "safe_order_helpers.rs"]\npub mod helpers;', 'public layered safe helper routing'],
 ]) {
   requireText(moduleSource, value, label);
 }
@@ -97,5 +98,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  '✔ Commerce GraphQL storefront cart helpers route through stable public envelopes while legacy implementation stays private',
+  '✔ Commerce GraphQL storefront cart helpers remain behind stable public envelopes while layered helper routing stays private',
 );
