@@ -1,0 +1,89 @@
+name: SEO bulk terminal current main verification
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-bulk-terminal-current-main-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  merge-and-check:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/seo-bulk-terminal-transaction-v4
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Merge current main and verify scoped slice
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          (
+            set -euo pipefail
+            git config user.name "RusTok Automation"
+            git config user.email "actions@users.noreply.github.com"
+            git fetch origin main
+            git merge --no-edit origin/main
+
+            cargo fmt -p rustok-seo -- --check
+            cargo check -p rustok-seo
+            cargo test -p rustok-seo --no-run
+            cargo test -p rustok-seo --test bulk_terminal_transaction
+            cargo test -p rustok-seo --lib services::bulk::tests::
+            cargo test -p rustok-seo --lib services::events::tests::seo_bulk_
+
+            rm -f .github/workflows/seo-bulk-terminal-current-main.yml
+            git add -A
+            git commit -m "ci(seo): verify bulk terminal slice against current main"
+
+            changed="$(git diff --name-only origin/main...HEAD)"
+            unexpected="$(printf '%s\n' "$changed" | grep -Ev '^(\.github/workflows/seo-bulk-terminal-transaction-slice\.yml|crates/rustok-seo/src/services/bulk\.rs|crates/rustok-seo/src/services/events\.rs|crates/rustok-seo/tests/bulk_terminal_transaction\.rs|docs/roadmaps/seo-hardening-progress\.md|scripts/seo/apply_bulk_terminal_transaction\.py)$' || true)"
+            if [ -n "$unexpected" ]; then
+              echo "unexpected final SEO paths:"
+              printf '%s\n' "$unexpected"
+              exit 1
+            fi
+            for required in \
+              .github/workflows/seo-bulk-terminal-transaction-slice.yml \
+              crates/rustok-seo/src/services/bulk.rs \
+              crates/rustok-seo/src/services/events.rs \
+              crates/rustok-seo/tests/bulk_terminal_transaction.rs \
+              docs/roadmaps/seo-hardening-progress.md \
+              scripts/seo/apply_bulk_terminal_transaction.py
+            do
+              printf '%s\n' "$changed" | grep -Fxq "$required"
+            done
+            git diff --check origin/main...HEAD
+            git push origin HEAD:fix/seo-bulk-terminal-transaction-v4
+          ) >seo-bulk-terminal-current-main.log 2>&1
+          status=$?
+          cat seo-bulk-terminal-current-main.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload current-main verification log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: seo-bulk-terminal-current-main-log
+          path: seo-bulk-terminal-current-main.log
+          retention-days: 1
+
+      - name: Fail when current-main verification failed
+        if: steps.verify.outputs.status != '0'
+        run: exit 1
