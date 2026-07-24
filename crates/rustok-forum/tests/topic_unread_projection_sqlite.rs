@@ -392,3 +392,127 @@ async fn unread_projection_is_bounded_visibility_aware_and_cursor_correct() {
         "personal unread projection must require an authenticated user"
     );
 }
+
+#[tokio::test]
+async fn late_approval_below_read_position_becomes_unread() {
+    let (db, event_bus, tenant_id) = setup().await;
+    let author = SecurityContext::new(UserRole::Admin, Some(Uuid::new_v4()));
+    let reader = SecurityContext::new(UserRole::Customer, Some(Uuid::new_v4()));
+
+    let category = CategoryService::new(db.clone())
+        .create(
+            tenant_id,
+            author.clone(),
+            CreateCategoryInput {
+                locale: "en".into(),
+                name: "Moderated unread".into(),
+                slug: "moderated-unread".into(),
+                description: None,
+                icon: None,
+                color: None,
+                parent_id: None,
+                position: Some(0),
+                moderated: true,
+            },
+        )
+        .await
+        .expect("moderated category should be created");
+    let topics = TopicService::new(db.clone(), event_bus.clone());
+    let topic_id = create_topic(
+        &topics,
+        tenant_id,
+        category.id,
+        author.clone(),
+        "Late approval topic",
+    )
+    .await;
+    let replies = ReplyService::new(db.clone(), event_bus.clone());
+    let first_pending = replies
+        .create(
+            tenant_id,
+            reader.clone(),
+            topic_id,
+            CreateReplyInput {
+                locale: "en".into(),
+                content: "Pending position one".into(),
+                content_format: "markdown".into(),
+                content_json: None,
+                parent_reply_id: None,
+            },
+        )
+        .await
+        .expect("first pending reply should be created");
+    let second_pending = replies
+        .create(
+            tenant_id,
+            reader.clone(),
+            topic_id,
+            CreateReplyInput {
+                locale: "en".into(),
+                content: "Pending position two".into(),
+                content_format: "markdown".into(),
+                content_json: None,
+                parent_reply_id: None,
+            },
+        )
+        .await
+        .expect("second pending reply should be created");
+    assert_eq!(first_pending.status, "pending");
+    assert_eq!(second_pending.status, "pending");
+
+    let moderation = ModerationService::new(db.clone(), event_bus);
+    moderation
+        .approve_reply(tenant_id, second_pending.id, topic_id, author.clone())
+        .await
+        .expect("position two should be approved first");
+    ForumTopicReadStateService::new(db.clone())
+        .mark_topic_read(
+            tenant_id,
+            topic_id,
+            reader.clone(),
+            MarkForumTopicReadInput {
+                last_read_position: 2,
+                last_read_revision: 0,
+            },
+        )
+        .await
+        .expect("reader should record approved position two");
+
+    let projection = ForumReadModelService::new(db.clone());
+    let before_late_approval = projection
+        .list_topics_with_unread(
+            tenant_id,
+            reader.clone(),
+            TopicUnreadCursorQuery {
+                category_id: Some(category.id),
+                unread_only: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("unread projection before late approval should load");
+    assert!(before_late_approval.items.is_empty());
+
+    moderation
+        .approve_reply(tenant_id, first_pending.id, topic_id, author)
+        .await
+        .expect("position one should be approved after the read snapshot");
+    let after_late_approval = projection
+        .list_topics_with_unread(
+            tenant_id,
+            reader,
+            TopicUnreadCursorQuery {
+                category_id: Some(category.id),
+                unread_only: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("unread projection after late approval should load");
+    assert_eq!(after_late_approval.items.len(), 1);
+    let item = &after_late_approval.items[0];
+    assert_eq!(item.topic.id, topic_id);
+    assert_eq!(item.last_read_position, 2);
+    assert_eq!(item.unread_count, 1);
+    assert!(item.is_unread);
+}
