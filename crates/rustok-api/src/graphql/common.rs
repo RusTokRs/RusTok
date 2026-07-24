@@ -62,15 +62,27 @@ impl PaginationInput {
             return Err("Provide only one of `first` or `last`".into());
         }
 
+        let after = self
+            .after
+            .as_deref()
+            .map(|cursor| decode_pagination_cursor(cursor, "after"))
+            .transpose()?;
+        let before = self
+            .before
+            .as_deref()
+            .map(|cursor| decode_pagination_cursor(cursor, "before"))
+            .transpose()?;
+
         const MAX_LIMIT: i64 = 100;
         let mut offset = self.offset.max(0);
-        if let Some(ref cursor) = self.after {
-            offset = decode_cursor(cursor).unwrap_or(-1) + 1;
+        if let Some(after) = after {
+            offset = after
+                .checked_add(1)
+                .ok_or_else(|| pagination_cursor_error("after"))?;
         }
 
-        if let Some(ref cursor) = self.before {
-            let before = decode_cursor(cursor).unwrap_or(0);
-            offset = offset.min(before.max(0));
+        if let Some(before) = before {
+            offset = offset.min(before);
         }
 
         let mut limit = self.limit.clamp(1, MAX_LIMIT);
@@ -80,8 +92,7 @@ impl PaginationInput {
 
         if let Some(last) = self.last {
             let last = last.clamp(1, MAX_LIMIT);
-            if let Some(ref cursor) = self.before {
-                let before = decode_cursor(cursor).unwrap_or(0).max(0);
+            if let Some(before) = before {
                 offset = (before - last).max(0);
                 limit = last;
             }
@@ -103,6 +114,17 @@ pub fn decode_cursor(s: &str) -> Option<i64> {
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|value| value.parse().ok())
+}
+
+fn decode_pagination_cursor(cursor: &str, argument: &'static str) -> Result<i64> {
+    decode_cursor(cursor)
+        .filter(|offset| *offset >= 0)
+        .ok_or_else(|| pagination_cursor_error(argument))
+}
+
+fn pagination_cursor_error(argument: &'static str) -> Error {
+    Error::new(format!("Invalid `{argument}` pagination cursor"))
+        .extend_with(|_, ext| ext.set("code", "BAD_USER_INPUT"))
 }
 
 fn module_check_error(source: sea_orm::DbErr) -> Error {
@@ -180,7 +202,7 @@ pub fn resolve_graphql_locale(ctx: &Context<'_>, requested: Option<&str>) -> Str
 
 #[cfg(test)]
 mod tests {
-    use super::{module_check_error, resolve_graphql_tenant_id};
+    use super::{PaginationInput, encode_cursor, module_check_error, resolve_graphql_tenant_id};
     use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Pos, Schema, Value};
     use sea_orm::DbErr;
     use uuid::Uuid;
@@ -208,6 +230,73 @@ mod tests {
             default_locale: "en".to_string(),
             is_active: true,
         }
+    }
+
+    fn error_code(error: &async_graphql::Error) -> Option<&Value> {
+        error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+    }
+
+    #[test]
+    fn pagination_accepts_valid_forward_and_backward_cursors() {
+        let forward = PaginationInput {
+            first: Some(25),
+            after: Some(encode_cursor(4)),
+            ..Default::default()
+        };
+        assert_eq!(forward.normalize().expect("valid forward cursor"), (5, 25));
+
+        let backward = PaginationInput {
+            last: Some(5),
+            before: Some(encode_cursor(20)),
+            ..Default::default()
+        };
+        assert_eq!(
+            backward.normalize().expect("valid backward cursor"),
+            (15, 5)
+        );
+    }
+
+    #[test]
+    fn pagination_rejects_malformed_cursors_as_bad_user_input() {
+        for (argument, input) in [
+            (
+                "after",
+                PaginationInput {
+                    after: Some("not-base64".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "before",
+                PaginationInput {
+                    before: Some(encode_cursor(-1)),
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let error = input.normalize().expect_err("invalid cursor must fail");
+            assert_eq!(
+                error.message,
+                format!("Invalid `{argument}` pagination cursor")
+            );
+            assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
+        }
+    }
+
+    #[test]
+    fn pagination_rejects_after_cursor_offset_overflow() {
+        let error = PaginationInput {
+            after: Some(encode_cursor(i64::MAX)),
+            ..Default::default()
+        }
+        .normalize()
+        .expect_err("overflowing cursor must fail");
+
+        assert_eq!(error.message, "Invalid `after` pagination cursor");
+        assert_eq!(error_code(&error), Some(&Value::from("BAD_USER_INPUT")));
     }
 
     #[test]
