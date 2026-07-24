@@ -6,6 +6,7 @@ const die = (message) => {
   process.exit(1);
 };
 
+const resultDigestContract = 'ordered_length_prefixed_json_v1';
 const canonicalLocales = ['en-US', 'ru-RU'];
 const canonicalPrototypes = [
   { prototype: 'jsonb', schema: 'idx_bench_jsonb', relations: ['entity', 'link'] },
@@ -25,6 +26,14 @@ const canonicalReadWorkloads = [
   'exact_count',
 ];
 const canonicalMutationWorkloads = ['update_product_batch', 'delete_product_batch'];
+const readOrderMarkers = new Map([
+  ['status_equality', 'ORDER BY entity_id LIMIT 100'],
+  ['price_range_sort', 'ORDER BY price_minor, entity_id LIMIT 100'],
+  ['multi_value_tag', 'ORDER BY entity_id LIMIT 100'],
+  ['two_hop_channel_filter', 'ORDER BY entity_id LIMIT 100'],
+  ['keyset_page', 'ORDER BY price_minor, entity_id LIMIT 100'],
+  ['exact_count', null],
+]);
 const comparableDatabaseFields = [
   'server_version_num',
   'shared_buffers',
@@ -48,40 +57,19 @@ const maintenanceStatFields = [
 ];
 const contracts = {
   smoke: {
-    serializedScale: 'smoke',
-    debugScale: 'Smoke',
-    tenants: 2,
-    productsPerTenant: 100,
-    productRows: 400,
-    entityRows: 1_216,
-    eavFieldRows: 5_632,
-    linkRows: 2_400,
-    mutationBatch: 100,
-    deletedLinks: 200,
+    serializedScale: 'smoke', debugScale: 'Smoke', tenants: 2, productsPerTenant: 100,
+    productRows: 400, entityRows: 1_216, eavFieldRows: 5_632, linkRows: 2_400,
+    mutationBatch: 100, deletedLinks: 200,
   },
   '100k': {
-    serializedScale: 'rows100k',
-    debugScale: 'Rows100k',
-    tenants: 10,
-    productsPerTenant: 5_000,
-    productRows: 100_000,
-    entityRows: 300_080,
-    eavFieldRows: 1_400_160,
-    linkRows: 600_000,
-    mutationBatch: 1_000,
-    deletedLinks: 2_000,
+    serializedScale: 'rows100k', debugScale: 'Rows100k', tenants: 10, productsPerTenant: 5_000,
+    productRows: 100_000, entityRows: 300_080, eavFieldRows: 1_400_160, linkRows: 600_000,
+    mutationBatch: 1_000, deletedLinks: 2_000,
   },
   '1m': {
-    serializedScale: 'rows1m',
-    debugScale: 'Rows1m',
-    tenants: 20,
-    productsPerTenant: 25_000,
-    productRows: 1_000_000,
-    entityRows: 3_000_160,
-    eavFieldRows: 14_000_320,
-    linkRows: 6_000_000,
-    mutationBatch: 1_000,
-    deletedLinks: 2_000,
+    serializedScale: 'rows1m', debugScale: 'Rows1m', tenants: 20, productsPerTenant: 25_000,
+    productRows: 1_000_000, entityRows: 3_000_160, eavFieldRows: 14_000_320, linkRows: 6_000_000,
+    mutationBatch: 1_000, deletedLinks: 2_000,
   },
 };
 
@@ -152,9 +140,17 @@ const requireExactOrder = (actual, expected, label) => {
     die(`${label} mismatch: expected ${expected.join(', ')}, got ${actual.join(', ')}`);
   }
 };
+const requireReadOrdering = (sql, workloadName, label) => {
+  if (!readOrderMarkers.has(workloadName)) die(`${label} has no canonical ordering contract`);
+  const marker = readOrderMarkers.get(workloadName);
+  if (marker !== null && !sql.includes(marker)) {
+    die(`${label}.sql is missing canonical ordering marker ${marker}`);
+  }
+};
 const requirePlan = (plan, label) => {
-  if (!Array.isArray(plan) || plan.length !== 1 || !plan[0] || typeof plan[0] !== 'object'
-      || !plan[0].Plan || typeof plan[0].Plan !== 'object') {
+  if (!Array.isArray(plan) || plan.length !== 1
+      || !plan[0] || typeof plan[0] !== 'object' || Array.isArray(plan[0])
+      || !plan[0].Plan || typeof plan[0].Plan !== 'object' || Array.isArray(plan[0].Plan)) {
     die(`${label} must contain one EXPLAIN JSON plan`);
   }
 };
@@ -201,17 +197,16 @@ const validateMutationEvidence = (evidence, label) => {
   requireNonNegativeInteger(evidence.maximum_node_wal_bytes, `${label}.maximum_node_wal_bytes`);
 };
 const summarizeExplain = (repetitions) => {
-  const warm = repetitions.slice(1);
-  const warmEvidence = warm.length > 0 ? warm : repetitions;
+  const warm = repetitions.length > 1 ? repetitions.slice(1) : repetitions;
   return {
     repetitions: repetitions.length,
     first_execution_ms: repetitions[0].execution_time_ms,
-    warm_median_execution_ms: median(warmEvidence.map((item) => item.execution_time_ms)),
+    warm_median_execution_ms: median(warm.map((item) => item.execution_time_ms)),
     median_execution_ms: median(repetitions.map((item) => item.execution_time_ms)),
     median_planning_ms: median(repetitions.map((item) => item.planning_time_ms)),
     first_shared_read_blocks: repetitions[0].shared_read_blocks,
-    warm_median_shared_read_blocks: median(warmEvidence.map((item) => item.shared_read_blocks)),
-    warm_median_shared_hit_blocks: median(warmEvidence.map((item) => item.shared_hit_blocks)),
+    warm_median_shared_read_blocks: median(warm.map((item) => item.shared_read_blocks)),
+    warm_median_shared_hit_blocks: median(warm.map((item) => item.shared_hit_blocks)),
     median_temp_read_blocks: median(repetitions.map((item) => item.temporary_read_blocks ?? 0)),
     median_temp_written_blocks: median(repetitions.map((item) => item.temporary_written_blocks ?? 0)),
     plan_shape_variants: new Set(repetitions.map((item) => planShape(item.plan))).size,
@@ -247,7 +242,7 @@ const validateDataset = (dataset, contract, scale) => {
   return dataset;
 };
 
-const validateProvenance = (directory, provenance, contract, scale) => {
+const validateProvenance = (directory, provenance, contract, scale, readDigestContract) => {
   requireObject(provenance, `${scale} provenance`);
   if (provenance.packet_contract_version !== 2) {
     die(`${scale} evidence must use packet contract version 2`);
@@ -258,6 +253,11 @@ const validateProvenance = (directory, provenance, contract, scale) => {
   }
   if (provenance.repetitions !== 3 || provenance.churn_cycles !== 5) {
     die(`${scale} provenance must use 3 repetitions and 5 churn cycles`);
+  }
+  if (readDigestContract !== resultDigestContract
+      || provenance.result_digest_contract !== resultDigestContract
+      || provenance.result_digest_contract !== readDigestContract) {
+    die(`${scale} result digest contract mismatch`);
   }
   requireExactOrder(
     provenance.source_workload_names,
@@ -315,10 +315,11 @@ const validateSourceOracle = (read, contract, scale) => {
   );
   const oracle = new Map();
   for (const item of sourceWorkloads) {
-    const label = `${scale} source/${item.name}`;
+    const label = `${scale} source/${item?.name ?? 'unknown'}`;
     requireObject(item, label);
     requireNonEmptyString(item.sql, `${label}.sql`);
     if (!item.sql.includes('idx_bench_source.')) die(`${label}.sql must read from idx_bench_source`);
+    requireReadOrdering(item.sql, item.name, label);
     requireNonNegativeInteger(item.result_rows, `${label}.result_rows`);
     requireDigest(item.result_digest, `${label}.result_digest`);
     oracle.set(item.name, item);
@@ -328,6 +329,9 @@ const validateSourceOracle = (read, contract, scale) => {
 
 const validateReadReport = (read, oracle, contract, scale) => {
   requireTimestamp(read.generated_at, `${scale} read.generated_at`);
+  if (read.result_digest_contract !== resultDigestContract) {
+    die(`${scale} read.result_digest_contract must be ${resultDigestContract}`);
+  }
   const prototypes = requireArray(read.prototypes, `${scale} read.prototypes`);
   requireExactOrder(
     prototypes.map((item) => item?.prototype),
@@ -358,12 +362,13 @@ const validateReadReport = (read, oracle, contract, scale) => {
       entity_rows: prototype.entity_rows,
       link_rows: prototype.link_rows,
       workloads: workloads.map((workload) => {
-        const workloadLabel = `${label}/${workload.name}`;
+        const workloadLabel = `${label}/${workload?.name ?? 'unknown'}`;
         requireObject(workload, workloadLabel);
         requireNonEmptyString(workload.sql, `${workloadLabel}.sql`);
         if (workload.sql.includes('idx_bench_source.')) {
           die(`${workloadLabel}.sql must not read from the source oracle tables`);
         }
+        requireReadOrdering(workload.sql, workload.name, workloadLabel);
         requireNonNegativeInteger(workload.result_rows, `${workloadLabel}.result_rows`);
         requireDigest(workload.result_digest, `${workloadLabel}.result_digest`);
         const expected = oracle.get(workload.name);
@@ -430,7 +435,7 @@ const validateMutationReport = (mutation, contract, scale) => {
       prototype: prototype.prototype,
       schema: prototype.schema,
       workloads: workloads.map((workload) => {
-        const workloadLabel = `${label}/${workload.name}`;
+        const workloadLabel = `${label}/${workload?.name ?? 'unknown'}`;
         requireObject(workload, workloadLabel);
         requireNonEmptyString(workload.sql, `${workloadLabel}.sql`);
         for (const marker of ['affected_fields', 'expected_fields', 'affected_links', 'expected_links']) {
@@ -518,9 +523,15 @@ const validateMaintenanceReport = (maintenance, contract, scale) => {
     const label = `${scale}/${prototype.prototype}`;
     requireObject(item, `${label} maintenance`);
     if (item.schema !== prototype.schema) die(`${label} maintenance schema mismatch`);
-    const baseline = summarizeSnapshot(validateMaintenanceSnapshot(item.baseline, prototype, 'baseline', contract, scale));
-    const afterChurn = summarizeSnapshot(validateMaintenanceSnapshot(item.after_churn, prototype, 'after_churn', contract, scale));
-    const afterVacuum = summarizeSnapshot(validateMaintenanceSnapshot(item.after_vacuum, prototype, 'after_vacuum', contract, scale));
+    const baseline = summarizeSnapshot(
+      validateMaintenanceSnapshot(item.baseline, prototype, 'baseline', contract, scale),
+    );
+    const afterChurn = summarizeSnapshot(
+      validateMaintenanceSnapshot(item.after_churn, prototype, 'after_churn', contract, scale),
+    );
+    const afterVacuum = summarizeSnapshot(
+      validateMaintenanceSnapshot(item.after_vacuum, prototype, 'after_vacuum', contract, scale),
+    );
     requireNonNegativeNumber(item.vacuum_duration_ms, `${label}.vacuum_duration_ms`);
     const vacuumSizeDelta = afterVacuum.schema_bytes - afterChurn.schema_bytes;
     return {
@@ -547,7 +558,7 @@ const loadScale = (directory) => {
   const contract = contracts[scale];
   if (!contract) die(`unsupported evidence scale in ${directory}: ${scale}`);
 
-  validateProvenance(directory, provenance, contract, scale);
+  validateProvenance(directory, provenance, contract, scale, read.result_digest_contract);
   validateDatabase(read.database, scale);
   const dataset = validateDataset(read.dataset, contract, scale);
   if (mutation.dataset_scale !== contract.debugScale || maintenance.dataset_scale !== contract.serializedScale) {
@@ -563,6 +574,7 @@ const loadScale = (directory) => {
     directory,
     provenance: {
       packet_contract_version: provenance.packet_contract_version,
+      result_digest_contract: provenance.result_digest_contract,
       repository: provenance.repository ?? null,
       commit: provenance.commit ?? null,
       ref: provenance.ref ?? null,
@@ -624,6 +636,7 @@ const requireDecisionProvenance = (scales) => {
     return {
       required_scales_present: false,
       same_packet_contract_version: null,
+      same_result_digest_contract: null,
       same_repository: null,
       same_commit: null,
       same_postgres_image: null,
@@ -640,6 +653,7 @@ const requireDecisionProvenance = (scales) => {
     if (!sameJson(left, right)) die(`cross-scale ${label} mismatch`);
   };
   equal(lower.provenance.packet_contract_version, upper.provenance.packet_contract_version, 'packet contract version');
+  equal(lower.provenance.result_digest_contract, upper.provenance.result_digest_contract, 'result digest contract');
   equal(lower.provenance.repository, upper.provenance.repository, 'repository');
   equal(lower.provenance.commit, upper.provenance.commit, 'commit');
   equal(lower.provenance.postgres_image, upper.provenance.postgres_image, 'PostgreSQL image');
@@ -667,6 +681,7 @@ const requireDecisionProvenance = (scales) => {
   return {
     required_scales_present: true,
     same_packet_contract_version: true,
+    same_result_digest_contract: true,
     same_repository: true,
     same_commit: true,
     same_postgres_image: true,
@@ -761,6 +776,7 @@ const markdown = (report) => {
     '',
     `- Required 100k/1m scales: **${report.decision_contract.required_scales_present ? 'yes' : 'no'}**`,
     `- Same packet contract version: **${report.decision_contract.same_packet_contract_version === true ? 'yes' : 'n/a'}**`,
+    `- Same result digest contract: **${report.decision_contract.same_result_digest_contract === true ? 'yes' : 'n/a'}**`,
     `- Same repository: **${report.decision_contract.same_repository === true ? 'yes' : 'n/a'}**`,
     `- Same commit: **${report.decision_contract.same_commit === true ? 'yes' : 'n/a'}**`,
     `- Same PostgreSQL image/settings: **${report.decision_contract.same_postgres_image === true && report.decision_contract.same_database_settings === true ? 'yes' : 'n/a'}**`,
@@ -776,6 +792,7 @@ const markdown = (report) => {
       `## ${scale.scale} evidence`,
       '',
       `- Packet contract: \`v${scale.provenance.packet_contract_version}\``,
+      `- Result digest contract: \`${scale.provenance.result_digest_contract}\``,
       `- Repository: \`${scale.provenance.repository ?? 'unknown'}\``,
       `- Commit: \`${scale.provenance.commit ?? 'unknown'}\``,
       `- Workflow run: \`${scale.provenance.run_id ?? 'unknown'}\``,
@@ -870,7 +887,8 @@ const report = {
   generated_at: new Date().toISOString(),
   methodology: {
     source_oracle: 'normalized idx_bench_source workload result digests',
-    evidence_validation: 'fail closed on report shape, metrics, plans, effects, and cardinalities',
+    result_digest: resultDigestContract,
+    evidence_validation: 'fail closed on report shape, metrics, plans, effects, ordering, digest semantics, and cardinalities',
     first_run: 'first EXPLAIN ANALYZE repetition',
     warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
