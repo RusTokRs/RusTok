@@ -129,6 +129,9 @@ if (!prototypes.includes(args.selected)) {
 }
 if (args.owner.trim().length === 0) fail('--owner must be non-empty');
 requireDate(args.date);
+if (path.resolve(args.output) === path.resolve(args.comparison)) {
+  fail('--output must not overwrite the comparison input');
+}
 if (existsSync(args.output) && !args.force) {
   fail(`refusing to overwrite existing decision without --force: ${args.output}`);
 }
@@ -137,7 +140,6 @@ const { comparison, sha256 } = readComparison(args.comparison);
 const commit = comparisonCommit(comparison);
 const rejected = prototypes.filter((prototype) => prototype !== args.selected);
 const decision = {
-  $schema: './storage-decision.schema.json',
   status: 'proposed',
   decision_date: args.date,
   owner: args.owner.trim(),
