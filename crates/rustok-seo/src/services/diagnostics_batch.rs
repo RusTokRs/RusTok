@@ -1,0 +1,1357 @@
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+use rustok_api::TenantContext;
+use rustok_content::resolve_by_locale_with_fallback;
+use rustok_seo_targets::{
+    SeoBulkSummaryRecord, SeoTargetBulkListRequest, SeoTargetCapabilityKind, SeoTargetSlug,
+    builtin_slug,
+};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use url::Url;
+use uuid::Uuid;
+
+use crate::dto::{
+    SeoDiagnosticCountRecord, SeoDiagnosticIssueRecord, SeoDiagnosticSeverity,
+    SeoDiagnosticsSummaryRecord, SeoDocumentEffectiveState, SeoFieldSource, SeoFieldState,
+    SeoImageAsset, SeoMetaRecord, SeoMetaTranslationRecord, SeoModuleSettings, SeoPageContext,
+    SeoRedirectMatchType, SeoRouteContext,
+};
+use crate::entities::{self as seo_meta, meta_translation};
+use crate::{SeoError, SeoResult};
+
+use super::robots::{
+    apply_robots, build_document, first_open_graph_image_url, merge_open_graph,
+    robots_from_directives, schema_blocks_from_value,
+};
+use super::routing::{canonical_url_for_locale, locale_prefixed_path, with_x_default};
+use super::templates::{generated_translation, render_generated_record, source_label};
+use super::{trimmed_option, LoadedMeta, SeoService, TargetState};
+
+const MAX_EXPOSED_ISSUES: usize = 50;
+const DIAGNOSTICS_META_BATCH_SIZE: usize = 256;
+const CROSS_LINK_GAP_REMEDIATION_MESSAGE: &str = "No cross-link suggestions were generated for this target. Use seoCrossLinkSuggestions or GET /api/seo/cross-link-suggestions to review remediation candidates.";
+const MISSING_IMAGE_ALT_REMEDIATION_MESSAGE: &str =
+    "Open Graph/Twitter image descriptors are missing alt text in SEO-critical targets.";
+const MISSING_IMAGE_SIZE_REMEDIATION_MESSAGE: &str =
+    "Open Graph/Twitter image descriptors are missing width/height in SEO-critical targets.";
+
+type CanonicalUsageEntry = (SeoTargetSlug, Uuid, String, String, String);
+
+impl SeoService {
+    pub async fn diagnostics_summary(
+        &self,
+        tenant: &TenantContext,
+        locale: Option<&str>,
+    ) -> SeoResult<SeoDiagnosticsSummaryRecord> {
+        let locale = super::normalize_effective_locale(
+            locale.unwrap_or(tenant.default_locale.as_str()),
+            tenant.default_locale.as_str(),
+        )?;
+        let enabled = self.is_enabled(tenant.id).await?;
+        let settings = if enabled {
+            Some(self.load_settings(tenant.id).await?)
+        } else {
+            None
+        };
+        let mut issues = Vec::new();
+        let mut canonical_usage: HashMap<String, Vec<CanonicalUsageEntry>> = HashMap::new();
+        let mut sitemap_targets = BTreeSet::new();
+        let redirect_graph = self.redirect_graph(tenant.id).await?;
+        let mut total_targets = 0_i32;
+        let mut explicit_count = 0_i32;
+        let mut generated_count = 0_i32;
+        let mut fallback_count = 0_i32;
+        let cross_link_suggestion_counts = self
+            .cross_link_suggestions_by_target(tenant, locale.as_str(), None)
+            .await?;
+
+        for provider in self
+            .registry
+            .providers_with_capability(SeoTargetCapabilityKind::Sitemaps)
+        {
+            let candidates = provider
+                .sitemap_candidates(
+                    &self.target_runtime(),
+                    rustok_seo_targets::SeoTargetSitemapRequest {
+                        tenant_id: tenant.id,
+                        default_locale: tenant.default_locale.as_str(),
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    SeoError::validation(format!(
+                        "SEO target provider `{}` failed to list sitemap candidates: {error}",
+                        provider.slug().as_str()
+                    ))
+                })?;
+            for candidate in candidates {
+                sitemap_targets.insert((candidate.target_kind, candidate.target_id));
+            }
+        }
+
+        for provider in self
+            .registry
+            .providers_with_capability(SeoTargetCapabilityKind::Bulk)
+        {
+            let summaries = provider
+                .list_bulk_summaries(
+                    &self.target_runtime(),
+                    SeoTargetBulkListRequest {
+                        tenant_id: tenant.id,
+                        default_locale: tenant.default_locale.as_str(),
+                        locale: locale.as_str(),
+                    },
+                )
+                .await
+                .map_err(|error| {
+                    SeoError::validation(format!(
+                        "SEO target provider `{}` failed to list bulk summaries: {error}",
+                        provider.slug().as_str()
+                    ))
+                })?;
+            total_targets += summaries.len() as i32;
+            if !enabled || summaries.is_empty() {
+                continue;
+            }
+
+            let settings = settings
+                .as_ref()
+                .expect("enabled diagnostics must load one settings snapshot");
+            let target_ids = summaries
+                .iter()
+                .map(|summary| summary.target_id)
+                .collect::<Vec<_>>();
+            let mut explicit_by_target = self
+                .load_diagnostics_explicit_meta_batches(
+                    tenant.id,
+                    provider.slug().as_str(),
+                    target_ids.as_slice(),
+                )
+                .await?;
+
+            for summary in summaries {
+                let explicit = explicit_by_target.remove(&summary.target_id);
+                let authoring_state = self
+                    .load_target_state(
+                        tenant,
+                        summary.target_kind.clone(),
+                        summary.target_id,
+                        locale.as_str(),
+                    )
+                    .await?;
+                let route_state = self
+                    .load_route_target_state(
+                        tenant,
+                        summary.target_kind.clone(),
+                        summary.target_id,
+                        locale.as_str(),
+                        None,
+                    )
+                    .await?;
+                let Some(meta) = build_diagnostics_meta_record(
+                    tenant,
+                    summary.target_kind.clone(),
+                    summary.target_id,
+                    locale.as_str(),
+                    explicit.clone(),
+                    authoring_state,
+                    settings,
+                ) else {
+                    continue;
+                };
+                let page_context = route_state.map(|state| {
+                    build_diagnostics_page_context(tenant, state, explicit, settings)
+                });
+                let effective_canonical = page_context
+                    .as_ref()
+                    .map(|context| context.route.canonical_url.clone())
+                    .or_else(|| meta.canonical_url.clone());
+
+                match meta.effective_state.title.source {
+                    SeoFieldSource::Explicit => explicit_count += 1,
+                    SeoFieldSource::Generated => generated_count += 1,
+                    SeoFieldSource::Fallback => fallback_count += 1,
+                }
+
+                if let Some(canonical_url) = effective_canonical.clone() {
+                    canonical_usage.entry(canonical_url).or_default().push((
+                        summary.target_kind.clone(),
+                        summary.target_id,
+                        meta.source.clone(),
+                        summary.label.clone(),
+                        summary.route.clone(),
+                    ));
+                }
+
+                if let Some(canonical_url) = effective_canonical.as_deref()
+                    && let Some(route) = redirect_lookup_route(canonical_url)
+                    && let Some(trace) = trace_redirects(route.as_str(), &redirect_graph)
+                {
+                    issues.push(issue(
+                        trace.code(),
+                        trace.severity(),
+                        &summary,
+                        trace.message().as_str(),
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                if let Some(context) = page_context.as_ref() {
+                    let alternate_locales = context
+                        .route
+                        .alternates
+                        .iter()
+                        .map(|alternate| alternate.locale.as_str())
+                        .collect::<HashSet<_>>();
+                    let expected_locales = meta
+                        .available_locales
+                        .iter()
+                        .map(String::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .collect::<BTreeSet<_>>();
+                    if expected_locales.len() > 1 {
+                        let missing = expected_locales
+                            .iter()
+                            .filter(|expected| !alternate_locales.contains(**expected))
+                            .copied()
+                            .collect::<Vec<_>>();
+                        if !missing.is_empty() {
+                            issues.push(issue(
+                                "missing_hreflang_pair",
+                                SeoDiagnosticSeverity::Warning,
+                                &summary,
+                                format!("Missing hreflang alternates for {}.", missing.join(", "))
+                                    .as_str(),
+                                effective_canonical.clone(),
+                                meta.source.clone(),
+                                locale.as_str(),
+                            ));
+                        }
+                        if !alternate_locales.contains("x-default") {
+                            issues.push(issue(
+                                "missing_hreflang_x_default",
+                                SeoDiagnosticSeverity::Info,
+                                &summary,
+                                "Localized target alternates do not expose x-default.",
+                                effective_canonical.clone(),
+                                meta.source.clone(),
+                                locale.as_str(),
+                            ));
+                        }
+                    }
+                }
+
+                if meta
+                    .translation
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_none_or(|value| value.is_empty())
+                {
+                    issues.push(issue(
+                        "missing_title",
+                        SeoDiagnosticSeverity::Error,
+                        &summary,
+                        "Effective SEO title is missing.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                if meta
+                    .translation
+                    .description
+                    .as_deref()
+                    .map(str::trim)
+                    .is_none_or(|value| value.is_empty())
+                {
+                    issues.push(issue(
+                        "missing_description",
+                        SeoDiagnosticSeverity::Warning,
+                        &summary,
+                        "Effective SEO description is missing.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                if matches!(meta.effective_state.title.source, SeoFieldSource::Fallback) {
+                    issues.push(issue(
+                        "fallback_only",
+                        SeoDiagnosticSeverity::Info,
+                        &summary,
+                        "Target still resolves through entity fallback instead of explicit or template SEO.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                if cross_link_suggestion_counts
+                    .get(&(summary.target_kind.clone(), summary.target_id))
+                    .copied()
+                    .unwrap_or_default()
+                    == 0
+                {
+                    issues.push(issue(
+                        "cross_link_gap",
+                        SeoDiagnosticSeverity::Info,
+                        &summary,
+                        CROSS_LINK_GAP_REMEDIATION_MESSAGE,
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                append_image_descriptor_diagnostics(
+                    &mut issues,
+                    &summary,
+                    page_context.as_ref(),
+                    effective_canonical.clone(),
+                    meta.source.clone(),
+                    locale.as_str(),
+                );
+
+                let schema_blocks = meta
+                    .structured_data
+                    .as_ref()
+                    .map(|value| {
+                        schema_blocks_from_value(
+                            value.0.clone(),
+                            meta.effective_state.structured_data.source,
+                        )
+                    })
+                    .unwrap_or_default();
+                if schema_blocks.is_empty() {
+                    issues.push(issue(
+                        "missing_schema",
+                        SeoDiagnosticSeverity::Warning,
+                        &summary,
+                        "Typed structured data blocks are missing for the effective SEO document.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                } else {
+                    if schema_blocks
+                        .iter()
+                        .any(|block| block.schema_kind == crate::dto::SeoSchemaBlockKind::Unknown)
+                    {
+                        issues.push(issue(
+                            "unknown_schema_type",
+                            SeoDiagnosticSeverity::Info,
+                            &summary,
+                            "Structured data is present but at least one block has no recognized schema.org type.",
+                            effective_canonical.clone(),
+                            meta.source.clone(),
+                            locale.as_str(),
+                        ));
+                    }
+                    for block in &schema_blocks {
+                        for validation_issue in super::schema_validation::validate_schema_block(block)
+                        {
+                            issues.push(issue(
+                                validation_issue.code,
+                                validation_issue.severity,
+                                &summary,
+                                validation_issue.message.as_str(),
+                                effective_canonical.clone(),
+                                meta.source.clone(),
+                                locale.as_str(),
+                            ));
+                        }
+                    }
+                }
+
+                if meta.noindex && meta.canonical_url.is_some() {
+                    issues.push(issue(
+                        "noindex_canonical_conflict",
+                        SeoDiagnosticSeverity::Warning,
+                        &summary,
+                        "Target combines an explicit canonical URL with noindex.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+
+                if provider.capabilities().sitemaps
+                    && !sitemap_targets.contains(&(summary.target_kind.clone(), summary.target_id))
+                {
+                    issues.push(issue(
+                        "missing_sitemap_entry",
+                        SeoDiagnosticSeverity::Warning,
+                        &summary,
+                        "Target is missing from the sitemap candidate set.",
+                        effective_canonical.clone(),
+                        meta.source.clone(),
+                        locale.as_str(),
+                    ));
+                }
+            }
+        }
+
+        for (canonical_url, entries) in canonical_usage {
+            if entries.len() < 2 {
+                continue;
+            }
+            for (target_kind, target_id, source, target_label, route) in entries {
+                issues.push(SeoDiagnosticIssueRecord {
+                    code: "duplicate_canonical".to_string(),
+                    severity: SeoDiagnosticSeverity::Error,
+                    target_kind,
+                    target_id,
+                    target_label,
+                    route,
+                    locale: locale.clone(),
+                    message: format!(
+                        "Canonical URL `{canonical_url}` is used by multiple targets."
+                    ),
+                    canonical_url: Some(canonical_url.clone()),
+                    source,
+                });
+            }
+        }
+
+        let error_count = issues
+            .iter()
+            .filter(|issue| issue.severity == SeoDiagnosticSeverity::Error)
+            .count() as i32;
+        let warning_count = issues
+            .iter()
+            .filter(|issue| issue.severity == SeoDiagnosticSeverity::Warning)
+            .count() as i32;
+        let issue_counts_by_code = count_by_key(issues.iter().map(|issue| issue.code.as_str()));
+        let issue_counts_by_target_kind =
+            count_by_key(issues.iter().map(|issue| issue.target_kind.as_str()));
+        let total_targets = total_targets.max(0);
+        let readiness_score = if total_targets == 0 {
+            100
+        } else {
+            let info_count = issues.len() as i32 - error_count - warning_count;
+            let weighted_issues = (error_count * 3) + (warning_count * 2) + info_count;
+            let max_weight = (total_targets * 6).max(1);
+            let penalty = ((weighted_issues * 100) / max_weight).min(100);
+            100 - penalty
+        };
+
+        Ok(SeoDiagnosticsSummaryRecord {
+            locale,
+            total_targets,
+            readiness_score,
+            issue_count: issues.len() as i32,
+            error_count,
+            warning_count,
+            generated_count,
+            explicit_count,
+            fallback_count,
+            issue_counts_by_code,
+            issue_counts_by_target_kind,
+            issues: issues.into_iter().take(MAX_EXPOSED_ISSUES).collect(),
+        })
+    }
+
+    async fn load_diagnostics_explicit_meta_batches(
+        &self,
+        tenant_id: Uuid,
+        target_kind: &str,
+        target_ids: &[Uuid],
+    ) -> SeoResult<HashMap<Uuid, LoadedMeta>> {
+        let mut loaded = HashMap::new();
+        for target_ids in target_ids.chunks(DIAGNOSTICS_META_BATCH_SIZE) {
+            let metas = seo_meta::Entity::find()
+                .filter(seo_meta::Column::TenantId.eq(tenant_id))
+                .filter(seo_meta::Column::TargetType.eq(target_kind))
+                .filter(seo_meta::Column::TargetId.is_in(target_ids.iter().copied()))
+                .all(&self.db)
+                .await?;
+            if metas.is_empty() {
+                continue;
+            }
+
+            let meta_ids = metas.iter().map(|meta| meta.id).collect::<Vec<_>>();
+            let translations = meta_translation::Entity::find()
+                .filter(meta_translation::Column::MetaId.is_in(meta_ids))
+                .order_by_asc(meta_translation::Column::MetaId)
+                .order_by_asc(meta_translation::Column::Locale)
+                .all(&self.db)
+                .await?;
+            let mut translations_by_meta = HashMap::<Uuid, Vec<meta_translation::Model>>::new();
+            for translation in translations {
+                translations_by_meta
+                    .entry(translation.meta_id)
+                    .or_default()
+                    .push(translation);
+            }
+
+            for meta in metas {
+                loaded.insert(
+                    meta.target_id,
+                    LoadedMeta {
+                        translations: translations_by_meta.remove(&meta.id).unwrap_or_default(),
+                        meta,
+                    },
+                );
+            }
+        }
+        Ok(loaded)
+    }
+
+    async fn redirect_graph(&self, tenant_id: Uuid) -> SeoResult<HashMap<String, String>> {
+        let redirects = self.list_redirects(tenant_id).await?;
+        Ok(redirects
+            .into_iter()
+            .filter(|redirect| {
+                redirect.is_active && redirect.match_type == SeoRedirectMatchType::Exact
+            })
+            .filter_map(|redirect| {
+                let source = redirect_lookup_route(redirect.source_pattern.as_str())?;
+                let target = redirect_lookup_route(redirect.target_url.as_str())?;
+                Some((source, target))
+            })
+            .collect())
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_diagnostics_meta_record(
+    tenant: &TenantContext,
+    target_kind: SeoTargetSlug,
+    target_id: Uuid,
+    requested_locale: &str,
+    explicit: Option<LoadedMeta>,
+    state: Option<TargetState>,
+    settings: &SeoModuleSettings,
+) -> Option<SeoMetaRecord> {
+    let requested_locale = Some(requested_locale.to_string());
+    match (explicit, state) {
+        (Some(explicit), Some(state)) => {
+            let resolved = resolve_by_locale_with_fallback(
+                explicit.translations.as_slice(),
+                state.effective_locale.as_str(),
+                Some(tenant.default_locale.as_str()),
+                |item| item.locale.as_str(),
+            );
+            let translation = resolved.item.cloned();
+            let title_present = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.title.clone()))
+                .is_some();
+            let description_present = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.description.clone()))
+                .is_some();
+            let keywords_present = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.keywords.clone()))
+                .is_some();
+            let canonical_present = explicit
+                .meta
+                .canonical_url
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+            let structured_data_present = explicit.meta.structured_data.is_some();
+            Some(SeoMetaRecord {
+                target_kind: state.target_kind,
+                target_id: state.target_id,
+                requested_locale,
+                effective_locale: resolved.effective_locale.clone(),
+                available_locales: explicit
+                    .translations
+                    .iter()
+                    .map(|item| item.locale.clone())
+                    .collect(),
+                noindex: explicit.meta.no_index,
+                nofollow: explicit.meta.no_follow,
+                canonical_url: explicit.meta.canonical_url.clone(),
+                translation: SeoMetaTranslationRecord {
+                    locale: translation
+                        .as_ref()
+                        .map(|item| item.locale.clone())
+                        .unwrap_or(resolved.effective_locale),
+                    title: translation
+                        .as_ref()
+                        .and_then(|item| trimmed_option(item.title.clone()))
+                        .or(Some(state.title)),
+                    description: translation
+                        .as_ref()
+                        .and_then(|item| trimmed_option(item.description.clone()))
+                        .or(state.description),
+                    keywords: translation
+                        .as_ref()
+                        .and_then(|item| trimmed_option(item.keywords.clone())),
+                    og_title: translation
+                        .as_ref()
+                        .and_then(|item| trimmed_option(item.og_title.clone())),
+                    og_description: translation
+                        .as_ref()
+                        .and_then(|item| trimmed_option(item.og_description.clone())),
+                    og_image: translation
+                        .as_ref()
+                        .and_then(|item| trimmed_option(item.og_image.clone())),
+                },
+                source: "explicit".to_string(),
+                open_graph: Some(state.open_graph),
+                structured_data: explicit.meta.structured_data.clone().map(async_graphql::Json),
+                effective_state: SeoDocumentEffectiveState {
+                    title: diagnostic_field_state(SeoFieldSource::Explicit, title_present),
+                    description: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        description_present,
+                    ),
+                    canonical_url: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        canonical_present,
+                    ),
+                    keywords: diagnostic_field_state(SeoFieldSource::Explicit, keywords_present),
+                    robots: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    open_graph: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    twitter: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    structured_data: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        structured_data_present,
+                    ),
+                },
+            })
+        }
+        (Some(explicit), None) => {
+            let resolved = resolve_by_locale_with_fallback(
+                explicit.translations.as_slice(),
+                requested_locale.as_deref().unwrap_or(tenant.default_locale.as_str()),
+                Some(tenant.default_locale.as_str()),
+                |item| item.locale.as_str(),
+            );
+            let translation = resolved.item.cloned();
+            let title_present = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.title.clone()))
+                .is_some();
+            let description_present = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.description.clone()))
+                .is_some();
+            let keywords_present = translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.keywords.clone()))
+                .is_some();
+            let canonical_present = explicit
+                .meta
+                .canonical_url
+                .as_deref()
+                .is_some_and(|value| !value.trim().is_empty());
+            let structured_data_present = explicit.meta.structured_data.is_some();
+            Some(SeoMetaRecord {
+                target_kind,
+                target_id,
+                requested_locale,
+                effective_locale: resolved.effective_locale.clone(),
+                available_locales: explicit
+                    .translations
+                    .iter()
+                    .map(|item| item.locale.clone())
+                    .collect(),
+                noindex: explicit.meta.no_index,
+                nofollow: explicit.meta.no_follow,
+                canonical_url: explicit.meta.canonical_url.clone(),
+                translation: SeoMetaTranslationRecord {
+                    locale: translation
+                        .as_ref()
+                        .map(|item| item.locale.clone())
+                        .unwrap_or(resolved.effective_locale),
+                    title: translation.as_ref().and_then(|item| item.title.clone()),
+                    description: translation
+                        .as_ref()
+                        .and_then(|item| item.description.clone()),
+                    keywords: translation.as_ref().and_then(|item| item.keywords.clone()),
+                    og_title: translation.as_ref().and_then(|item| item.og_title.clone()),
+                    og_description: translation
+                        .as_ref()
+                        .and_then(|item| item.og_description.clone()),
+                    og_image: translation.as_ref().and_then(|item| item.og_image.clone()),
+                },
+                source: "explicit".to_string(),
+                open_graph: None,
+                structured_data: explicit.meta.structured_data.clone().map(async_graphql::Json),
+                effective_state: SeoDocumentEffectiveState {
+                    title: diagnostic_field_state(SeoFieldSource::Explicit, title_present),
+                    description: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        description_present,
+                    ),
+                    canonical_url: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        canonical_present,
+                    ),
+                    keywords: diagnostic_field_state(SeoFieldSource::Explicit, keywords_present),
+                    robots: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    open_graph: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        translation
+                            .as_ref()
+                            .and_then(|item| trimmed_option(item.og_title.clone()))
+                            .is_some()
+                            || translation
+                                .as_ref()
+                                .and_then(|item| trimmed_option(item.og_description.clone()))
+                                .is_some()
+                            || translation
+                                .as_ref()
+                                .and_then(|item| trimmed_option(item.og_image.clone()))
+                                .is_some(),
+                    ),
+                    twitter: diagnostic_field_state(SeoFieldSource::Explicit, false),
+                    structured_data: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        structured_data_present,
+                    ),
+                },
+            })
+        }
+        (None, Some(state)) => {
+            debug_assert_eq!(state.target_kind, target_kind);
+            debug_assert_eq!(state.target_id, target_id);
+            let generated = render_generated_record(
+                &state,
+                &settings.template_defaults,
+                settings.template_overrides.get(state.target_kind.as_str()),
+            );
+            let generated_source = generated.title.is_some()
+                || generated.description.is_some()
+                || generated.canonical_url.is_some()
+                || generated.keywords.is_some()
+                || generated.og_title.is_some()
+                || generated.og_description.is_some()
+                || generated.robots.is_some()
+                || generated.twitter_title.is_some()
+                || generated.twitter_description.is_some();
+            let source = if generated_source {
+                SeoFieldSource::Generated
+            } else {
+                SeoFieldSource::Fallback
+            };
+            let title = generated
+                .title
+                .clone()
+                .unwrap_or_else(|| state.title.clone());
+            let description = generated
+                .description
+                .clone()
+                .or_else(|| state.description.clone());
+            let og_title = generated
+                .og_title
+                .clone()
+                .or_else(|| state.open_graph.title.clone());
+            let og_description = generated
+                .og_description
+                .clone()
+                .or_else(|| state.open_graph.description.clone());
+            let canonical_url = generated.canonical_url.clone();
+            let mut translation = if source == SeoFieldSource::Generated {
+                generated_translation(&generated, state.effective_locale.clone())
+            } else {
+                SeoMetaTranslationRecord::default()
+            };
+            translation.locale = state.effective_locale.clone();
+            translation.title = Some(title);
+            translation.description = description.clone();
+            translation.og_title = og_title.clone();
+            translation.og_description = og_description.clone();
+            translation.og_image = first_open_graph_image_url(&state.open_graph);
+
+            Some(SeoMetaRecord {
+                target_kind: state.target_kind,
+                target_id: state.target_id,
+                requested_locale: requested_locale.or(state.requested_locale),
+                effective_locale: state.effective_locale.clone(),
+                available_locales: state
+                    .alternates
+                    .iter()
+                    .map(|item| item.locale.clone())
+                    .collect(),
+                noindex: false,
+                nofollow: false,
+                canonical_url: canonical_url.clone(),
+                translation,
+                source: source_label(source, state.fallback_source.as_str()),
+                open_graph: Some(state.open_graph),
+                structured_data: Some(async_graphql::Json(state.structured_data)),
+                effective_state: SeoDocumentEffectiveState {
+                    title: diagnostic_field_state(source, true),
+                    description: diagnostic_field_state(source, description.is_some()),
+                    canonical_url: diagnostic_field_state(source, canonical_url.is_some()),
+                    keywords: diagnostic_field_state(source, generated.keywords.is_some()),
+                    robots: diagnostic_field_state(source, generated.robots.is_some()),
+                    open_graph: diagnostic_field_state(
+                        source,
+                        og_title.is_some() || og_description.is_some(),
+                    ),
+                    twitter: diagnostic_field_state(
+                        source,
+                        generated.twitter_title.is_some()
+                            || generated.twitter_description.is_some(),
+                    ),
+                    structured_data: diagnostic_field_state(SeoFieldSource::Fallback, true),
+                },
+            })
+        }
+        (None, None) => None,
+    }
+}
+
+fn build_diagnostics_page_context(
+    tenant: &TenantContext,
+    state: TargetState,
+    explicit: Option<LoadedMeta>,
+    settings: &SeoModuleSettings,
+) -> SeoPageContext {
+    let requested_locale = state.requested_locale.clone();
+    if let Some(explicit) = explicit {
+        let translation = resolve_by_locale_with_fallback(
+            explicit.translations.as_slice(),
+            state.effective_locale.as_str(),
+            Some(tenant.default_locale.as_str()),
+            |item| item.locale.as_str(),
+        );
+        let effective_translation = translation.item.cloned();
+        let title = effective_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.title.clone()))
+            .unwrap_or_else(|| state.title.clone());
+        let description = effective_translation
+            .as_ref()
+            .and_then(|item| trimmed_option(item.description.clone()))
+            .or(state.description.clone());
+        let effective_locale = translation.effective_locale;
+        let canonical_url = explicit
+            .meta
+            .canonical_url
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| canonical_url_for_locale(effective_locale.as_str(), value.as_str()))
+            .unwrap_or_else(|| {
+                locale_prefixed_path(effective_locale.as_str(), state.canonical_path.as_str())
+            });
+        let open_graph = merge_open_graph(
+            &state.open_graph,
+            effective_translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.og_title.clone())),
+            effective_translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.og_description.clone())),
+            effective_translation
+                .as_ref()
+                .and_then(|item| trimmed_option(item.og_image.clone())),
+            canonical_url.as_str(),
+            effective_locale.as_str(),
+        );
+
+        return SeoPageContext {
+            route: SeoRouteContext {
+                target_kind: Some(state.target_kind),
+                target_id: Some(state.target_id),
+                requested_locale,
+                effective_locale: effective_locale.clone(),
+                canonical_url: canonical_url.clone(),
+                redirect: None,
+                alternates: with_x_default(
+                    state.alternates,
+                    settings.x_default_locale.as_deref(),
+                    tenant.default_locale.as_str(),
+                ),
+            },
+            document: build_document(
+                title,
+                description,
+                apply_robots(
+                    explicit.meta.no_index,
+                    explicit.meta.no_follow,
+                    settings.default_robots.as_slice(),
+                ),
+                Some(open_graph),
+                explicit
+                    .meta
+                    .structured_data
+                    .clone()
+                    .unwrap_or(state.structured_data),
+                effective_translation
+                    .as_ref()
+                    .and_then(|item| trimmed_option(item.keywords.clone())),
+                canonical_url.as_str(),
+                effective_locale.as_str(),
+                SeoDocumentEffectiveState {
+                    title: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    description: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        effective_translation
+                            .as_ref()
+                            .and_then(|item| trimmed_option(item.description.clone()))
+                            .is_some(),
+                    ),
+                    canonical_url: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        explicit
+                            .meta
+                            .canonical_url
+                            .as_deref()
+                            .is_some_and(|value| !value.trim().is_empty()),
+                    ),
+                    keywords: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        effective_translation
+                            .as_ref()
+                            .and_then(|item| trimmed_option(item.keywords.clone()))
+                            .is_some(),
+                    ),
+                    robots: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    open_graph: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    twitter: diagnostic_field_state(SeoFieldSource::Explicit, true),
+                    structured_data: diagnostic_field_state(
+                        SeoFieldSource::Explicit,
+                        explicit.meta.structured_data.is_some(),
+                    ),
+                },
+                None,
+                None,
+            ),
+        };
+    }
+
+    let generated = render_generated_record(
+        &state,
+        &settings.template_defaults,
+        settings.template_overrides.get(state.target_kind.as_str()),
+    );
+    let generated_source = generated.title.is_some()
+        || generated.description.is_some()
+        || generated.canonical_url.is_some()
+        || generated.keywords.is_some()
+        || generated.robots.is_some()
+        || generated.og_title.is_some()
+        || generated.og_description.is_some()
+        || generated.twitter_title.is_some()
+        || generated.twitter_description.is_some();
+    let source = if generated_source {
+        SeoFieldSource::Generated
+    } else {
+        SeoFieldSource::Fallback
+    };
+    let effective_title = generated
+        .title
+        .clone()
+        .unwrap_or_else(|| state.title.clone());
+    let effective_description = generated
+        .description
+        .clone()
+        .or_else(|| state.description.clone());
+    let canonical_url = generated
+        .canonical_url
+        .as_deref()
+        .map(|value| canonical_url_for_locale(state.effective_locale.as_str(), value))
+        .unwrap_or_else(|| {
+            locale_prefixed_path(
+                state.effective_locale.as_str(),
+                state.canonical_path.as_str(),
+            )
+        });
+    let open_graph = merge_open_graph(
+        &state.open_graph,
+        generated.og_title.clone(),
+        generated.og_description.clone(),
+        None,
+        canonical_url.as_str(),
+        state.effective_locale.as_str(),
+    );
+    SeoPageContext {
+        route: SeoRouteContext {
+            target_kind: Some(state.target_kind),
+            target_id: Some(state.target_id),
+            requested_locale,
+            effective_locale: state.effective_locale.clone(),
+            canonical_url: canonical_url.clone(),
+            redirect: None,
+            alternates: with_x_default(
+                state.alternates,
+                settings.x_default_locale.as_deref(),
+                tenant.default_locale.as_str(),
+            ),
+        },
+        document: build_document(
+            effective_title,
+            effective_description.clone(),
+            generated
+                .robots
+                .as_deref()
+                .map(robots_from_directives)
+                .unwrap_or_else(|| robots_from_directives(settings.default_robots.as_slice())),
+            Some(open_graph),
+            state.structured_data,
+            generated.keywords.clone(),
+            canonical_url.as_str(),
+            state.effective_locale.as_str(),
+            SeoDocumentEffectiveState {
+                title: diagnostic_field_state(source, true),
+                description: diagnostic_field_state(source, effective_description.is_some()),
+                canonical_url: diagnostic_field_state(source, true),
+                keywords: diagnostic_field_state(source, generated.keywords.is_some()),
+                robots: diagnostic_field_state(
+                    if generated.robots.is_some() {
+                        SeoFieldSource::Generated
+                    } else {
+                        SeoFieldSource::Fallback
+                    },
+                    true,
+                ),
+                open_graph: diagnostic_field_state(source, true),
+                twitter: diagnostic_field_state(
+                    source,
+                    generated.twitter_title.is_some()
+                        || generated.twitter_description.is_some(),
+                ),
+                structured_data: diagnostic_field_state(SeoFieldSource::Fallback, true),
+            },
+            generated.twitter_title,
+            generated.twitter_description,
+        ),
+    }
+}
+
+fn diagnostic_field_state(source: SeoFieldSource, present: bool) -> SeoFieldState {
+    SeoFieldState { source, present }
+}
+
+fn issue(
+    code: &str,
+    severity: SeoDiagnosticSeverity,
+    summary: &SeoBulkSummaryRecord,
+    message: &str,
+    canonical_url: Option<String>,
+    source: String,
+    locale: &str,
+) -> SeoDiagnosticIssueRecord {
+    SeoDiagnosticIssueRecord {
+        code: code.to_string(),
+        severity,
+        target_kind: summary.target_kind.clone(),
+        target_id: summary.target_id,
+        target_label: summary.label.clone(),
+        route: summary.route.clone(),
+        locale: locale.to_string(),
+        message: message.to_string(),
+        canonical_url,
+        source,
+    }
+}
+
+fn append_image_descriptor_diagnostics(
+    issues: &mut Vec<SeoDiagnosticIssueRecord>,
+    summary: &SeoBulkSummaryRecord,
+    page_context: Option<&SeoPageContext>,
+    canonical_url: Option<String>,
+    source: String,
+    locale: &str,
+) {
+    if !is_image_seo_critical_target(summary.target_kind.as_str()) {
+        return;
+    }
+    let Some(page_context) = page_context else {
+        return;
+    };
+
+    let (missing_alt_count, missing_size_count) =
+        collect_missing_image_descriptor_counts(page_context);
+    if missing_alt_count > 0 {
+        issues.push(issue(
+            "missing_image_alt",
+            SeoDiagnosticSeverity::Warning,
+            summary,
+            format!(
+                "{} Missing alt text for {} image descriptor(s).",
+                MISSING_IMAGE_ALT_REMEDIATION_MESSAGE, missing_alt_count
+            )
+            .as_str(),
+            canonical_url.clone(),
+            source.clone(),
+            locale,
+        ));
+    }
+    if missing_size_count > 0 {
+        issues.push(issue(
+            "missing_image_size",
+            SeoDiagnosticSeverity::Warning,
+            summary,
+            format!(
+                "{} Missing width/height for {} image descriptor(s).",
+                MISSING_IMAGE_SIZE_REMEDIATION_MESSAGE, missing_size_count
+            )
+            .as_str(),
+            canonical_url,
+            source,
+            locale,
+        ));
+    }
+}
+
+fn is_image_seo_critical_target(target_kind: &str) -> bool {
+    matches!(
+        target_kind,
+        builtin_slug::PAGE
+            | builtin_slug::PRODUCT
+            | builtin_slug::BLOG_POST
+            | builtin_slug::FORUM_TOPIC
+    )
+}
+
+fn collect_missing_image_descriptor_counts(page_context: &SeoPageContext) -> (usize, usize) {
+    let mut unique_urls = HashSet::new();
+    let mut missing_alt_count = 0_usize;
+    let mut missing_size_count = 0_usize;
+
+    let open_graph_images = page_context
+        .document
+        .open_graph
+        .as_ref()
+        .map(|open_graph| open_graph.images.as_slice())
+        .unwrap_or_default();
+    let twitter_images = page_context
+        .document
+        .twitter
+        .as_ref()
+        .map(|twitter| twitter.images.as_slice())
+        .unwrap_or_default();
+
+    for image in open_graph_images.iter().chain(twitter_images.iter()) {
+        if !register_unique_image(image, &mut unique_urls) {
+            continue;
+        }
+        if image
+            .alt
+            .as_deref()
+            .map(str::trim)
+            .is_none_or(|value| value.is_empty())
+        {
+            missing_alt_count += 1;
+        }
+        if image.width.is_none() || image.height.is_none() {
+            missing_size_count += 1;
+        }
+    }
+
+    (missing_alt_count, missing_size_count)
+}
+
+fn register_unique_image(image: &SeoImageAsset, unique_urls: &mut HashSet<String>) -> bool {
+    let url = image.url.trim();
+    if url.is_empty() {
+        return false;
+    }
+    unique_urls.insert(url.to_string())
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum RedirectTrace {
+    Single { target: String },
+    Chain { final_target: String, hops: usize },
+    Loop { at: String },
+}
+
+impl RedirectTrace {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Single { .. } => "canonical_redirect_target",
+            Self::Chain { .. } => "canonical_redirect_chain",
+            Self::Loop { .. } => "canonical_redirect_loop",
+        }
+    }
+
+    fn severity(&self) -> SeoDiagnosticSeverity {
+        match self {
+            Self::Loop { .. } => SeoDiagnosticSeverity::Error,
+            Self::Single { .. } | Self::Chain { .. } => SeoDiagnosticSeverity::Warning,
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            Self::Single { target } => {
+                format!("Effective canonical URL redirects to `{target}`.")
+            }
+            Self::Chain { final_target, hops } => {
+                format!(
+                    "Effective canonical URL redirects through {hops} hops to `{final_target}`."
+                )
+            }
+            Self::Loop { at } => {
+                format!("Effective canonical URL participates in a redirect loop at `{at}`.")
+            }
+        }
+    }
+}
+
+fn redirect_lookup_route(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.starts_with('/') {
+        return Some(value.to_string());
+    }
+    let parsed = Url::parse(value).ok()?;
+    let mut route = parsed.path().to_string();
+    if let Some(query) = parsed.query() {
+        route.push('?');
+        route.push_str(query);
+    }
+    Some(route)
+}
+
+fn trace_redirects(route: &str, graph: &HashMap<String, String>) -> Option<RedirectTrace> {
+    let first = graph.get(route)?;
+    let mut visited = HashSet::from([route.to_string()]);
+    let mut current = first.clone();
+    let mut hops = 1_usize;
+
+    loop {
+        if !visited.insert(current.clone()) {
+            return Some(RedirectTrace::Loop { at: current });
+        }
+        let Some(next) = graph.get(current.as_str()) else {
+            return if hops == 1 {
+                Some(RedirectTrace::Single { target: current })
+            } else {
+                Some(RedirectTrace::Chain {
+                    final_target: current,
+                    hops,
+                })
+            };
+        };
+        current = next.clone();
+        hops += 1;
+    }
+}
+
+fn count_by_key<'a>(keys: impl Iterator<Item = &'a str>) -> Vec<SeoDiagnosticCountRecord> {
+    let mut counts = BTreeMap::<String, i32>::new();
+    for key in keys {
+        *counts.entry(key.to_string()).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(key, count)| SeoDiagnosticCountRecord { key, count })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CROSS_LINK_GAP_REMEDIATION_MESSAGE, RedirectTrace,
+        collect_missing_image_descriptor_counts, is_image_seo_critical_target,
+        redirect_lookup_route, trace_redirects,
+    };
+    use crate::dto::{SeoDocument, SeoImageAsset, SeoOpenGraph, SeoPageContext, SeoTwitterCard};
+    use std::collections::HashMap;
+
+    #[test]
+    fn redirect_lookup_route_keeps_relative_path_and_query() {
+        assert_eq!(
+            redirect_lookup_route("https://example.test/en/page?x=1").as_deref(),
+            Some("/en/page?x=1")
+        );
+        assert_eq!(redirect_lookup_route("/en/page").as_deref(), Some("/en/page"));
+    }
+
+    #[test]
+    fn trace_redirects_classifies_single_chain_and_loop() {
+        let single = HashMap::from([("/a".to_string(), "/b".to_string())]);
+        assert_eq!(
+            trace_redirects("/a", &single),
+            Some(RedirectTrace::Single {
+                target: "/b".to_string()
+            })
+        );
+
+        let chain = HashMap::from([
+            ("/a".to_string(), "/b".to_string()),
+            ("/b".to_string(), "/c".to_string()),
+        ]);
+        assert_eq!(
+            trace_redirects("/a", &chain),
+            Some(RedirectTrace::Chain {
+                final_target: "/c".to_string(),
+                hops: 2
+            })
+        );
+
+        let looped = HashMap::from([
+            ("/a".to_string(), "/b".to_string()),
+            ("/b".to_string(), "/a".to_string()),
+        ]);
+        assert_eq!(
+            trace_redirects("/a", &looped),
+            Some(RedirectTrace::Loop {
+                at: "/a".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn collect_missing_image_descriptor_counts_deduplicates_images_by_url() {
+        let context = SeoPageContext {
+            route: Default::default(),
+            document: SeoDocument {
+                open_graph: Some(SeoOpenGraph {
+                    images: vec![
+                        SeoImageAsset {
+                            url: "https://cdn.example.com/a.jpg".to_string(),
+                            alt: None,
+                            width: Some(1200),
+                            height: None,
+                            mime_type: Some("image/jpeg".to_string()),
+                        },
+                        SeoImageAsset {
+                            url: "https://cdn.example.com/b.jpg".to_string(),
+                            alt: Some("Cover".to_string()),
+                            width: Some(800),
+                            height: Some(800),
+                            mime_type: Some("image/jpeg".to_string()),
+                        },
+                    ],
+                    ..SeoOpenGraph::default()
+                }),
+                twitter: Some(SeoTwitterCard {
+                    images: vec![SeoImageAsset {
+                        url: "https://cdn.example.com/a.jpg".to_string(),
+                        alt: Some("Already counted".to_string()),
+                        width: Some(1200),
+                        height: Some(630),
+                        mime_type: Some("image/jpeg".to_string()),
+                    }],
+                    ..SeoTwitterCard::default()
+                }),
+                ..SeoDocument::default()
+            },
+        };
+
+        assert_eq!(collect_missing_image_descriptor_counts(&context), (1, 1));
+    }
+
+    #[test]
+    fn image_seo_critical_target_filter_matches_builtins() {
+        assert!(is_image_seo_critical_target("page"));
+        assert!(is_image_seo_critical_target("product"));
+        assert!(is_image_seo_critical_target("blog_post"));
+        assert!(is_image_seo_critical_target("forum_topic"));
+        assert!(!is_image_seo_critical_target("forum_category"));
+    }
+
+    #[test]
+    fn cross_link_gap_message_mentions_control_plane_entrypoints() {
+        assert!(CROSS_LINK_GAP_REMEDIATION_MESSAGE.contains("seoCrossLinkSuggestions"));
+        assert!(CROSS_LINK_GAP_REMEDIATION_MESSAGE.contains("/api/seo/cross-link-suggestions"));
+    }
+}
