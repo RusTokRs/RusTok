@@ -9,12 +9,56 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const router = read('scripts/verify/index-storage-tooling.mjs');
+const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
 const renderer = read('scripts/verify/render-index-storage-adr.mjs');
 const digestHelper = read('scripts/verify/hash-index-storage-comparison.mjs');
 const fixture = read('scripts/verify/render-index-storage-adr.test.mjs');
 const guide = read('crates/rustok-index/docs/storage-decision.md');
 const schema = JSON.parse(read('crates/rustok-index/docs/storage-decision.schema.json'));
 const example = JSON.parse(read('crates/rustok-index/docs/storage-decision.example.json'));
+
+for (const marker of [
+  "const prefix = '[index-storage-tooling]'",
+  'const runNode = (args, label, environment = process.env) =>',
+  "spawnSync(process.execPath, args",
+  "'verify-index-fba.mjs'",
+  "'verify-index-storage-source-oracle.mjs'",
+  "'verify-index-storage-adr-tooling.mjs'",
+  "'--test'",
+  "scriptPath('compare-index-storage-evidence.test.mjs')",
+  "scriptPath('render-index-storage-adr.test.mjs')",
+  'INDEX_BENCH_SCALE: scale',
+  'environment.INDEX_BENCH_EVIDENCE_ROOT = root',
+  "case 'contract':",
+  "case 'fixtures':",
+  "case 'packet':",
+  "case 'compare':",
+  "case 'hash':",
+  "case 'render':",
+]) {
+  if (!router.includes(marker)) fail(`storage tooling router is missing contract marker: ${marker}`);
+}
+for (const forbidden of [
+  'shell: true',
+  'execSync(',
+  'execFileSync(',
+  'spawnSync(command',
+]) {
+  if (router.includes(forbidden)) fail(`storage tooling router contains forbidden dispatch: ${forbidden}`);
+}
+
+for (const marker of [
+  "test('prints the stable Index storage tooling command surface'",
+  "test('forwards hash help to the exact-byte comparison helper'",
+  "test('forwards comparator help without rewriting its arguments'",
+  "test('forwards renderer help without rewriting its arguments'",
+  "test('rejects unsupported packet scales before invoking the validator'",
+  "test('rejects arguments for aggregate commands'",
+  "test('rejects unknown commands'",
+]) {
+  if (!routerFixture.includes(marker)) fail(`storage tooling router fixture is missing scenario: ${marker}`);
+}
 
 for (const marker of [
   "import { createHash } from 'node:crypto'",
@@ -66,7 +110,7 @@ for (const marker of [
   "test('rejects comparison bytes changed after the decision'",
   "test('requires rationale for every rejected alternative'",
   "test('rejects an unsatisfied evidence decision flag'",
-  "comparison_sha256: sha256Json(comparison)",
+  'comparison_sha256: sha256Json(comparison)',
 ]) {
   if (!fixture.includes(marker)) fail(`ADR renderer fixture is missing scenario: ${marker}`);
 }
@@ -124,6 +168,13 @@ if (JSON.stringify(Object.keys(example.rejection_rationales ?? {}).sort()) !== J
 }
 
 for (const marker of [
+  'index-storage-tooling.mjs contract',
+  'index-storage-tooling.mjs fixtures',
+  'index-storage-tooling.mjs packet',
+  'index-storage-tooling.mjs compare',
+  'index-storage-tooling.mjs hash',
+  'index-storage-tooling.mjs render',
+  'without shell evaluation',
   'hash-index-storage-comparison.mjs',
   'comparison_sha256',
   'exact comparison-file bytes',
@@ -137,4 +188,4 @@ for (const marker of [
   if (!guide.includes(marker)) fail(`storage decision guide is missing marker: ${marker}`);
 }
 
-console.log('[verify-index-storage-adr-tooling] ADR renderer, digest binding, schema, example, fixtures and guide are consistent');
+console.log('[verify-index-storage-adr-tooling] command router, ADR renderer, digest binding, schema, examples, fixtures and guide are consistent');
