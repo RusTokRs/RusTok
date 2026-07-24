@@ -243,7 +243,7 @@ impl ForumReadStateMutation {
                 batch_input(input)?,
             )
             .await?;
-        map_batch_result(result)
+        Ok(map_batch_result(result))
     }
 
     async fn mark_all_forum_topics_read(
@@ -265,7 +265,7 @@ impl ForumReadStateMutation {
         let result = ForumTopicReadStateService::new(db.clone())
             .mark_all_read(tenant_id, forum_security(&auth), batch_input(input)?)
             .await?;
-        map_batch_result(result)
+        Ok(map_batch_result(result))
     }
 }
 
@@ -368,17 +368,11 @@ fn map_read_state(state: ForumTopicReadState) -> GqlForumTopicReadState {
     }
 }
 
-fn map_batch_result(
-    result: MarkForumTopicsReadBatchResult,
-) -> Result<GqlForumTopicsReadBatchResult> {
-    Ok(GqlForumTopicsReadBatchResult {
-        processed: i64::try_from(result.processed).map_err(|_| {
-            <FieldError as GraphQLError>::internal_server_error(
-                "Forum read batch result exceeded the transport range",
-            )
-        })?,
+fn map_batch_result(result: MarkForumTopicsReadBatchResult) -> GqlForumTopicsReadBatchResult {
+    GqlForumTopicsReadBatchResult {
+        processed: result.processed as i64,
         next_cursor: result.next_cursor,
         has_more: result.has_more,
         snapshot_at: result.snapshot_at,
-    })
+    }
 }
