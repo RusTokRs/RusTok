@@ -64,7 +64,10 @@ pub use read_tracking::{
 pub use relation_read::ForumRelationReadService;
 pub use reply_facade::ReplyService;
 pub use revision::RevisionService;
-pub use storefront_read_state::{ForumStorefrontReadStateService, ForumTopicUnreadSummary};
+pub use storefront_read_state::{
+    ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
+    ForumStorefrontUnreadTopicPage, ForumTopicUnreadSummary,
+};
 pub use subscription::SubscriptionService;
 pub use topic_facade::TopicService;
 pub use user_stats::UserStatsService;
