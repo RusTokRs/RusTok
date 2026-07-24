@@ -63,6 +63,11 @@ pub async fn fetch_category(
     }
 }
 
+/// Execute category creation through exactly one write transport.
+///
+/// Retrying a failed GraphQL mutation over REST is unsafe because the GraphQL
+/// write may have committed before its response was lost or rejected by the
+/// client. Reads retain their compatibility fallback, but writes fail closed.
 pub async fn create_category(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -70,22 +75,22 @@ pub async fn create_category(
 ) -> Result<CategoryDetail, ApiError> {
     let locale = draft.locale.clone();
     let requested_position = placement_position(draft.position)?;
+    let category = graphql_adapter::create_category(
+        token.clone(),
+        tenant_slug.clone(),
+        draft,
+    )
+    .await?;
 
-    match graphql_adapter::create_category(token.clone(), tenant_slug.clone(), draft.clone()).await
-    {
-        Ok(category) => {
-            move_category(
-                token.clone(),
-                tenant_slug.clone(),
-                category.id.clone(),
-                category.parent_id.clone(),
-                requested_position,
-            )
-            .await?;
-            fetch_category(token, tenant_slug, category.id, locale).await
-        }
-        Err(_) => rest_adapter::create_category(token, tenant_slug, draft).await,
-    }
+    move_category(
+        token.clone(),
+        tenant_slug.clone(),
+        category.id.clone(),
+        category.parent_id.clone(),
+        requested_position,
+    )
+    .await?;
+    fetch_category(token, tenant_slug, category.id, locale).await
 }
 
 pub async fn update_category(
@@ -96,28 +101,26 @@ pub async fn update_category(
 ) -> Result<CategoryDetail, ApiError> {
     let locale = draft.locale.clone();
     let requested_position = placement_position(draft.position)?;
-
-    match graphql_adapter::update_category(
+    let category = graphql_adapter::update_category(
         token.clone(),
         tenant_slug.clone(),
         id.clone(),
         draft.clone(),
     )
-    .await
-    {
-        Ok(category) if category.position != draft.position => {
-            move_category(
-                token.clone(),
-                tenant_slug.clone(),
-                id.clone(),
-                category.parent_id,
-                requested_position,
-            )
-            .await?;
-            fetch_category(token, tenant_slug, id, locale).await
-        }
-        Ok(category) => Ok(category),
-        Err(_) => rest_adapter::update_category(token, tenant_slug, id, draft).await,
+    .await?;
+
+    if category.position != draft.position {
+        move_category(
+            token.clone(),
+            tenant_slug.clone(),
+            id.clone(),
+            category.parent_id,
+            requested_position,
+        )
+        .await?;
+        fetch_category(token, tenant_slug, id, locale).await
+    } else {
+        Ok(category)
     }
 }
 
@@ -128,18 +131,7 @@ pub async fn move_category(
     parent_id: Option<String>,
     position: u32,
 ) -> Result<(), ApiError> {
-    match graphql_adapter::move_category(
-        token.clone(),
-        tenant_slug.clone(),
-        id.clone(),
-        parent_id.clone(),
-        position,
-    )
-    .await
-    {
-        Ok(()) => Ok(()),
-        Err(_) => rest_adapter::move_category(token, tenant_slug, id, parent_id, position).await,
-    }
+    graphql_adapter::move_category(token, tenant_slug, id, parent_id, position).await
 }
 
 pub async fn reorder_category_siblings(
@@ -148,25 +140,13 @@ pub async fn reorder_category_siblings(
     parent_id: Option<String>,
     ordered_category_ids: Vec<String>,
 ) -> Result<(), ApiError> {
-    match graphql_adapter::reorder_category_siblings(
-        token.clone(),
-        tenant_slug.clone(),
-        parent_id.clone(),
-        ordered_category_ids.clone(),
+    graphql_adapter::reorder_category_siblings(
+        token,
+        tenant_slug,
+        parent_id,
+        ordered_category_ids,
     )
     .await
-    {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            rest_adapter::reorder_category_siblings(
-                token,
-                tenant_slug,
-                parent_id,
-                ordered_category_ids,
-            )
-            .await
-        }
-    }
 }
 
 pub async fn delete_category(
@@ -174,10 +154,7 @@ pub async fn delete_category(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    match graphql_adapter::delete_category(token.clone(), tenant_slug.clone(), id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(_) => rest_adapter::delete_category(token, tenant_slug, id).await,
-    }
+    graphql_adapter::delete_category(token, tenant_slug, id).await
 }
 
 pub async fn fetch_topics(
@@ -223,10 +200,7 @@ pub async fn create_topic(
     tenant_slug: Option<String>,
     draft: TopicDraft,
 ) -> Result<TopicDetail, ApiError> {
-    match graphql_adapter::create_topic(token.clone(), tenant_slug.clone(), draft.clone()).await {
-        Ok(topic) => Ok(topic),
-        Err(_) => rest_adapter::create_topic(token, tenant_slug, draft).await,
-    }
+    graphql_adapter::create_topic(token, tenant_slug, draft).await
 }
 
 pub async fn update_topic(
@@ -235,17 +209,7 @@ pub async fn update_topic(
     id: String,
     draft: TopicDraft,
 ) -> Result<TopicDetail, ApiError> {
-    match graphql_adapter::update_topic(
-        token.clone(),
-        tenant_slug.clone(),
-        id.clone(),
-        draft.clone(),
-    )
-    .await
-    {
-        Ok(topic) => Ok(topic),
-        Err(_) => rest_adapter::update_topic(token, tenant_slug, id, draft).await,
-    }
+    graphql_adapter::update_topic(token, tenant_slug, id, draft).await
 }
 
 pub async fn delete_topic(
@@ -253,10 +217,7 @@ pub async fn delete_topic(
     tenant_slug: Option<String>,
     id: String,
 ) -> Result<(), ApiError> {
-    match graphql_adapter::delete_topic(token.clone(), tenant_slug.clone(), id.clone()).await {
-        Ok(()) => Ok(()),
-        Err(_) => rest_adapter::delete_topic(token, tenant_slug, id).await,
-    }
+    graphql_adapter::delete_topic(token, tenant_slug, id).await
 }
 
 pub async fn fetch_replies(
@@ -280,4 +241,63 @@ pub async fn fetch_replies(
 
 fn placement_position(position: i32) -> Result<u32, ApiError> {
     u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    const SOURCE: &str = include_str!("transport.rs");
+
+    fn function_source(name: &str) -> &str {
+        let marker = format!("pub async fn {name}(");
+        let start = SOURCE
+            .find(marker.as_str())
+            .unwrap_or_else(|| panic!("missing transport function {name}"));
+        let after_start = &SOURCE[start + marker.len()..];
+        let end = after_start
+            .find("\npub async fn ")
+            .unwrap_or(after_start.len());
+        &SOURCE[start..start + marker.len() + end]
+    }
+
+    #[test]
+    fn forum_admin_writes_do_not_retry_through_rest() {
+        for operation in [
+            "create_category",
+            "update_category",
+            "move_category",
+            "reorder_category_siblings",
+            "delete_category",
+            "create_topic",
+            "update_topic",
+            "delete_topic",
+        ] {
+            let source = function_source(operation);
+            assert!(
+                !source.contains("rest_adapter::"),
+                "{operation} must not retry a possibly committed GraphQL write through REST"
+            );
+            assert!(
+                source.contains("graphql_adapter::"),
+                "{operation} must keep an explicit owner transport"
+            );
+        }
+    }
+
+    #[test]
+    fn forum_admin_reads_retain_compatibility_fallbacks() {
+        for operation in [
+            "fetch_category_tree",
+            "fetch_categories",
+            "fetch_category",
+            "fetch_topics",
+            "fetch_topic",
+            "fetch_replies",
+        ] {
+            let source = function_source(operation);
+            assert!(
+                source.contains("rest_adapter::") || source.contains("category_tree_rest_adapter::"),
+                "{operation} should retain the read-only compatibility fallback"
+            );
+        }
+    }
 }
