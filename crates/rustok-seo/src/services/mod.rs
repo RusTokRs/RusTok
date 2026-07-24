@@ -102,12 +102,14 @@ pub async fn redirect_cache_changes_after(
 /// Invalidate one tenant's process-local redirect cache.
 pub async fn invalidate_redirect_cache(tenant_id: Uuid) {
     REDIRECT_CACHE.invalidate(&tenant_id).await;
+    redirects::invalidate_redirect_lookup_cache(tenant_id).await;
 }
 
 /// Invalidate every process-local redirect cache entry during startup or cursor recovery.
 pub async fn invalidate_all_redirect_cache() {
     REDIRECT_CACHE.invalidate_all();
     REDIRECT_CACHE.run_pending_tasks().await;
+    redirects::invalidate_all_redirect_lookup_cache().await;
 }
 
 #[cfg(test)]
