@@ -468,15 +468,17 @@ impl SeoService {
         Ok(())
     }
 
-    pub(super) async fn publish_seo_revision_rolled_back_event(
+    pub(super) async fn publish_seo_revision_rolled_back_event_in_tx(
         &self,
+        txn: &DatabaseTransaction,
         tenant_id: Uuid,
         target_kind: &str,
         target_id: Uuid,
         revision: i32,
-    ) {
+    ) -> SeoResult<()> {
+        let event_type = "seo.revision.rolled_back";
         let idempotency_key = self.build_event_key(
-            "seo.revision.rolled_back",
+            event_type,
             tenant_id,
             &[
                 target_kind.to_string(),
@@ -484,16 +486,62 @@ impl SeoService {
                 revision.to_string(),
             ],
         );
-        self.publish_seo_event(
-            tenant_id,
-            DomainEvent::SeoRevisionRolledBack {
-                target_kind: target_kind.to_string(),
-                target_id,
-                revision,
-                idempotency_key,
-            },
-        )
-        .await;
+        let existing = seo_event_delivery::Entity::find()
+            .filter(seo_event_delivery::Column::TenantId.eq(tenant_id))
+            .filter(seo_event_delivery::Column::IdempotencyKey.eq(idempotency_key.as_str()))
+            .one(txn)
+            .await?;
+        if existing.is_some() {
+            return Ok(());
+        }
+
+        let event = DomainEvent::SeoRevisionRolledBack {
+            target_kind: target_kind.to_string(),
+            target_id,
+            revision,
+            idempotency_key: idempotency_key.clone(),
+        };
+        let outbox_event_id = self
+            .event_bus
+            .publish_in_tx_with_envelope_id(txn, tenant_id, None, event.clone())
+            .await
+            .map_err(|error| {
+                SeoError::Database(DbErr::Custom(format!(
+                    "failed to enqueue SEO revision rollback event transactionally: {error}"
+                )))
+            })?;
+        let now = Utc::now().fixed_offset();
+
+        seo_event_delivery::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            event_type: Set(event_type.to_string()),
+            idempotency_key: Set(idempotency_key.clone()),
+            source_kind: Set(Some(target_kind.to_string())),
+            source_id: Set(Some(target_id)),
+            status: Set(DELIVERY_STATUS_SENT.to_string()),
+            outbox_event_id: Set(Some(outbox_event_id)),
+            last_error: Set(None),
+            created_at: Set(now),
+            updated_at: Set(now),
+            dispatched_at: Set(Some(now)),
+        }
+        .insert(txn)
+        .await?;
+
+        for trigger in index_reindex_triggers_for_event(&event) {
+            self.publish_entity_reindex_in_tx(
+                txn,
+                tenant_id,
+                event_type,
+                idempotency_key.as_str(),
+                &trigger,
+                now,
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]

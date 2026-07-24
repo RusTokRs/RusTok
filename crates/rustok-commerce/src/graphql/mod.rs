@@ -6,7 +6,8 @@ mod types;
 use async_graphql::{Context, ErrorExtensions, FieldError, MergedObject, Result};
 use rustok_api::Permission;
 use rustok_api::{
-    AuthContext, RequestContext, TenantContext, graphql::GraphQLError, has_any_effective_permission,
+    AuthContext, RequestContext, TenantContext, graphql::GraphQLError,
+    has_any_effective_permission,
 };
 use sea_orm::DatabaseConnection;
 
@@ -40,18 +41,57 @@ pub(crate) fn map_product_service_error(
     error: rustok_commerce_foundation::CommerceError,
     operation: &'static str,
 ) -> async_graphql::Error {
-    use rustok_core::error::RichError;
+    use rustok_commerce_foundation::CommerceError;
 
-    tracing::error!(error = %error, operation, "product service operation failed");
-    let rich: RichError = error.into();
-    let public_message = rich
-        .user_message
-        .clone()
-        .unwrap_or_else(|| "Product operation failed".to_owned());
-    let code = rich
-        .error_code
-        .clone()
-        .unwrap_or_else(|| "PRODUCT_OPERATION_FAILED".to_owned());
+    tracing::error!(error = ?error, operation, "product service operation failed");
+    let (public_message, code) = match error {
+        CommerceError::Database(_) => (
+            "Product data is temporarily unavailable",
+            "PRODUCT_TEMPORARILY_UNAVAILABLE",
+        ),
+        CommerceError::ProductNotFound(_) => ("Product was not found", "PRODUCT_NOT_FOUND"),
+        CommerceError::VariantNotFound(_) => {
+            ("Product variant was not found", "VARIANT_NOT_FOUND")
+        }
+        CommerceError::DuplicateHandle { .. } => (
+            "Product handle conflicts with an existing product",
+            "DUPLICATE_HANDLE",
+        ),
+        CommerceError::DuplicateSku(_) => (
+            "Product SKU conflicts with an existing product",
+            "DUPLICATE_SKU",
+        ),
+        CommerceError::InvalidPrice(_) => ("Product price is invalid", "INVALID_PRICE"),
+        CommerceError::InsufficientInventory { .. } => (
+            "Product inventory is insufficient",
+            "INSUFFICIENT_INVENTORY",
+        ),
+        CommerceError::InvalidOptionCombination => (
+            "Product option combination is invalid",
+            "INVALID_OPTIONS",
+        ),
+        CommerceError::Validation(_) => ("Product request is invalid", "PRODUCT_VALIDATION"),
+        CommerceError::ShippingProfileNotFound(_) => (
+            "Shipping profile was not found",
+            "SHIPPING_PROFILE_NOT_FOUND",
+        ),
+        CommerceError::DuplicateShippingProfileSlug(_) => (
+            "Shipping profile slug conflicts with an existing profile",
+            "DUPLICATE_SHIPPING_PROFILE_SLUG",
+        ),
+        CommerceError::NoVariants => (
+            "Product requires at least one variant",
+            "NO_VARIANTS",
+        ),
+        CommerceError::CannotDeletePublished => (
+            "Published products must be archived before removal",
+            "CANNOT_DELETE_PUBLISHED",
+        ),
+        CommerceError::Rich(_) | CommerceError::Core(_) => (
+            "Product operation could not be completed safely",
+            "PRODUCT_OPERATION_FAILED",
+        ),
+    };
 
     async_graphql::Error::new(public_message)
         .extend_with(|_, extensions| extensions.set("code", code))
@@ -137,16 +177,31 @@ pub(crate) async fn require_storefront_channel_enabled(ctx: &Context<'_>) -> Res
     let db = ctx.data::<DatabaseConnection>()?;
     let enabled = is_module_enabled_for_request_channel(db, request_context, MODULE_SLUG)
         .await
-        .map_err(|err| {
-            async_graphql::Error::new(format!("Module check failed: {err}"))
-                .extend_with(|_, ext| ext.set("code", "INTERNAL_SERVER_ERROR"))
+        .map_err(|error| {
+            tracing::error!(
+                error = ?error,
+                tenant_id = %request_context.tenant_id,
+                channel_id = ?request_context.channel_id,
+                channel_slug = ?request_context.channel_slug,
+                operation = "require_storefront_channel_enabled",
+                "commerce GraphQL channel module check failed"
+            );
+            <FieldError as GraphQLError>::internal_error(
+                "Commerce availability could not be verified",
+            )
         })?;
 
     if !enabled {
-        return Err(async_graphql::Error::new(format!(
-            "Module '{MODULE_SLUG}' is not enabled for channel '{}'",
-            request_context.channel_slug.as_deref().unwrap_or("current"),
-        ))
+        tracing::warn!(
+            tenant_id = %request_context.tenant_id,
+            channel_id = ?request_context.channel_id,
+            channel_slug = ?request_context.channel_slug,
+            operation = "require_storefront_channel_enabled",
+            "commerce GraphQL module is disabled for the request channel"
+        );
+        return Err(async_graphql::Error::new(
+            "Commerce is not enabled for the current channel",
+        )
         .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED")));
     }
 
