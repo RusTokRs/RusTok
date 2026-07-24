@@ -174,9 +174,9 @@ fn normalize_channel_slug(channel_slug: Option<&str>) -> ForumResult<Option<Stri
     let Some(channel_slug) = channel_slug.map(str::trim).filter(|slug| !slug.is_empty()) else {
         return Ok(None);
     };
-    if channel_slug.len() > MAX_FORUM_CHANNEL_SLUG_LEN {
+    if channel_slug.chars().count() > MAX_FORUM_CHANNEL_SLUG_LEN {
         return Err(ForumError::Validation(format!(
-            "Forum channel slug must not exceed {MAX_FORUM_CHANNEL_SLUG_LEN} bytes"
+            "Forum channel slug must not exceed {MAX_FORUM_CHANNEL_SLUG_LEN} characters"
         )));
     }
     Ok(Some(channel_slug.to_ascii_lowercase()))
