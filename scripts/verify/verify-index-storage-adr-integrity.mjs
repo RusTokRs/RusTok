@@ -31,6 +31,7 @@ const forbidMarkers = (content, label, markers) => {
 };
 
 requireMarkers(router, 'storage tooling router', [
+  "'verify-index-storage-adr-integrity.mjs'",
   "case 'prepare':",
   "runScript('prepare-index-storage-decision.mjs', args)",
   "case 'render':",
@@ -61,6 +62,9 @@ requireMarkers(preparer, 'decision preparer', [
   'refusing to overwrite existing decision without --force',
   'comparison_commit: commit',
   'comparison_sha256: sha256',
+  'const stagedOutput = `${args.output}.tmp-${process.pid}`',
+  'renameSync(stagedOutput, args.output)',
+  'if (existsSync(stagedOutput)) rmSync(stagedOutput, { force: true })',
 ]);
 forbidMarkers(preparer, 'decision preparer', [
   "$schema: './storage-decision.schema.json'",
@@ -87,6 +91,7 @@ forbidMarkers(finalizer, 'ADR finalizer', ['shell: true', 'execSync(', 'process.
 requireMarkers(verifier, 'saved ADR verifier', [
   "const prefix = '[verify-index-storage-adr]'",
   "createHash('sha256').update(bytes).digest('hex')",
+  '\\x60([0-9a-f]{64})\\x60',
   'ADR must contain exactly one ${label} SHA-256 line',
   'ADR ${label} SHA-256 does not match the exact input bytes',
   'writeFileSync(comparisonPath, comparisonBytes)',
@@ -104,7 +109,8 @@ requireMarkers(fixture, 'decision tooling fixture', [
   "test('rejects unsupported fields in the decision envelope'",
   "test('finalizes an ADR bound to exact comparison and decision bytes'",
   "test('rejects a saved ADR changed after finalization'",
-  'Object.hasOwn(decision, \'$schema\'), false',
+  "Object.hasOwn(decision, '$schema'), false",
+  'String.fromCharCode(96)',
   'ADR bytes differ from deterministic finalization',
 ]);
 
@@ -131,7 +137,8 @@ for (const [label, workflow] of [
     'scripts/verify/verify-index-storage-adr.mjs',
     'node --check scripts/verify/verify-index-storage-adr.mjs',
     'scripts/verify/verify-index-storage-adr-integrity.mjs',
+    'node --check scripts/verify/verify-index-storage-adr-integrity.mjs',
   ]);
 }
 
-console.log('[verify-index-storage-adr-integrity] decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are consistent');
+console.log('[verify-index-storage-adr-integrity] atomic decision preparation, byte-bound finalization, saved ADR verification, fixtures, docs, and workflows are consistent');
