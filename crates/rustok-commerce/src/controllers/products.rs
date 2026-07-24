@@ -20,11 +20,84 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    dto::ProductResponse, search::product_translation_title_search_condition,
+    CommerceError, dto::ProductResponse, search::product_translation_title_search_condition,
     storefront_shipping::product_shipping_profile_slug,
 };
 
 use super::common::{PaginatedResponse, PaginationMeta, PaginationParams, ensure_permissions};
+
+fn map_product_service_error(error: CommerceError) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        CommerceError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_product_storage_unavailable",
+            "Product storage is temporarily unavailable",
+            "database",
+        ),
+        CommerceError::ProductNotFound(_) | CommerceError::VariantNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        CommerceError::DuplicateHandle { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_handle_conflict",
+            "A product with this handle already exists",
+            "duplicate_handle",
+        ),
+        CommerceError::DuplicateSku(_) => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_sku_conflict",
+            "A product variant with this SKU already exists",
+            "duplicate_sku",
+        ),
+        CommerceError::InvalidPrice(_)
+        | CommerceError::InvalidOptionCombination
+        | CommerceError::Validation(_)
+        | CommerceError::NoVariants => (
+            StatusCode::BAD_REQUEST,
+            "commerce_admin_product_invalid",
+            "Product request is invalid",
+            "validation",
+        ),
+        CommerceError::InsufficientInventory { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_inventory_conflict",
+            "Product inventory conflicts with the requested operation",
+            "inventory_conflict",
+        ),
+        CommerceError::CannotDeletePublished => (
+            StatusCode::CONFLICT,
+            "commerce_admin_product_state_conflict",
+            "Product operation conflicts with the current state",
+            "state_conflict",
+        ),
+        CommerceError::ShippingProfileNotFound(_)
+        | CommerceError::DuplicateShippingProfileSlug(_)
+        | CommerceError::Rich(_)
+        | CommerceError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_product_failed",
+            "Product operation could not be completed safely",
+            "unexpected_owner_error",
+        ),
+    };
+    tracing::error!(
+        error = ?error,
+        owner = "rustok_product.catalog",
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_product_http",
+        "commerce admin product operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_product_database_error(error: sea_orm::DbErr) -> HttpError {
+    map_product_service_error(CommerceError::Database(error))
+}
 
 /// Shared admin product list handler.
 pub async fn list_products(
@@ -74,7 +147,7 @@ pub async fn list_products(
         .clone()
         .count(runtime.db())
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_database_error)?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -90,7 +163,7 @@ pub async fn list_products(
         .limit(pagination.limit())
         .all(runtime.db())
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_database_error)?;
     metrics::record_read_path_query(
         "http",
         "commerce.list_products",
@@ -111,7 +184,7 @@ pub async fn list_products(
             .filter(product_translation::Column::ProductId.is_in(product_ids))
             .all(runtime.db())
             .await
-            .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+            .map_err(map_product_database_error)?;
         metrics::record_read_path_query(
             "http",
             "commerce.list_products",
@@ -138,7 +211,7 @@ pub async fn list_products(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_service_error)?;
 
     let items = products
         .into_iter()
@@ -224,7 +297,7 @@ pub async fn show_product(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_service_error)?;
 
     Ok(Json(product))
 }
@@ -246,7 +319,7 @@ pub async fn delete_product(
     service
         .delete_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_service_error)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -268,7 +341,7 @@ pub async fn publish_product(
     let product = service
         .publish_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_service_error)?;
 
     Ok(Json(product))
 }
@@ -290,7 +363,7 @@ pub async fn unpublish_product(
     let product = service
         .unpublish_product(tenant.id, auth.user_id, id)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(map_product_service_error)?;
 
     Ok(Json(product))
 }
