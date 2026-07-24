@@ -14767,7 +14767,6 @@ dependencies = [
  "reqwest 0.13.4",
  "rustok-api",
  "rustok-blog",
- "rustok-commerce-foundation",
  "rustok-content",
  "rustok-core",
  "rustok-forum",
