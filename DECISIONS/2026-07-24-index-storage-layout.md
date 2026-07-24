@@ -46,7 +46,7 @@ review. Do not fill it from smoke measurements.
 
 | Criterion | JSONB entity rows | Typed EAV | Hot typed projection |
 | --- | --- | --- | --- |
-| 100k read/query | Status/keyset/count warm medians 0.222/0.563/1.483 ms; two-hop 11.516 s | 7.074/20.814/4.074 ms; two-hop 14.989 s | 0.073/0.032/0.456 ms; two-hop 10.305 s |
+| 100k read/query | Status/keyset/count warm medians 0.222/0.563/1.483 ms; pre-fix two-hop 11.516 s; rerun pending | 7.074/20.814/4.074 ms; pre-fix two-hop 14.989 s; rerun pending | 0.073/0.032/0.456 ms; pre-fix two-hop 10.305 s; rerun pending |
 | 1m read/query | Pending guarded run | Pending guarded run | Pending guarded run |
 | Relation-size scaling | 385.58 MiB at 100k; 1m ratio pending | 687.23 MiB at 100k; 1m ratio pending | 295.56 MiB at 100k; 1m ratio pending |
 | Mutation/WAL | Update 51.060 ms / 1,054,238 B; delete 27.165 ms / 162,000 B | Update 62.207 ms / 1,238,933 B; delete 46.305 ms / 594,000 B | Update 43.672 ms / 834,784 B; delete 24.683 ms / 162,000 B |
@@ -71,8 +71,9 @@ The 100k packet establishes these provisional findings:
 - JSONB is materially smaller and faster than typed EAV across this packet;
 - typed EAV has the largest relation size, slowest load, highest delete WAL, and
   highest post-churn dead-tuple estimate;
-- the two-hop workload is unacceptable for all three candidates and requires a
-  query/index redesign independent of the entity representation;
+- the pre-fix two-hop workload was unacceptable for all three candidates;
+  EXPLAIN identified missing typed-link target predicates, which are now fixed and
+  require a same-commit 100k/1m rerun before comparison;
 - all plan shapes are stable across the three repetitions at 100k;
 - ordinary VACUUM clears dead-tuple estimates but does not shrink relation files.
 

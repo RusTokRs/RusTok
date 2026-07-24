@@ -420,3 +420,9 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
   packet and 88,893,792,256 after it. Enabled a guarded `ubuntu-latest` fallback
   for the 1m stage while preserving `INDEX_BENCH_LARGE_RUNNER` as an override
   and the existing 35 GB fail-closed disk check.
+- 2026-07-24: inspected the 100k `two_hop_channel_filter` EXPLAIN tree. The
+  Product-to-Variant reverse lookup performed about 1.64 million shared-hit
+  buffer accesses because both link hops omitted their known `target_entity`
+  discriminators. Added `variant` and `sales_channel` target predicates to all
+  three candidate queries and locked them in `verify-index-fba.mjs`; the prior
+  two-hop latency is retained only as pre-fix diagnostic evidence.

@@ -235,11 +235,14 @@ Warm-median read execution in milliseconds:
 | Typed EAV | 7.074 | 6.102 | 4.742 | 14,989.380 | 20.814 | 4.074 |
 | Hot typed projection | 0.073 | 0.071 | 1.394 | 10,305.135 | 0.032 | 0.456 |
 
-The two-hop workload is pathological for every candidate at this scale: it uses
-roughly 1.65-2.66 million shared-hit blocks and takes 10-15 seconds even though
-no shared-read or temporary blocks are recorded. This is a query/index design
-problem that must be addressed before production regardless of the selected
-entity representation.
+The original two-hop workload was pathological for every candidate at this
+scale: it used roughly 1.65-2.66 million shared-hit blocks and took 10-15 seconds
+even though no shared-read or temporary blocks were recorded. EXPLAIN showed that
+the query omitted the known `target_entity = 'variant'` and
+`target_entity = 'sales_channel'` discriminators, preventing full use of
+`link_target_lookup`. Those predicates are now part of all three candidate SQL
+queries and are verifier-locked. The values above remain pre-fix diagnostics; a
+same-commit 100k/1m rerun supplies the canonical cross-scale two-hop evidence.
 
 Median mutation execution and maximum-node WAL bytes:
 

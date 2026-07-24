@@ -164,6 +164,8 @@ for (const marker of [
   'idx_bench_eav',
   'idx_bench_hot',
   'two_hop_channel_filter',
+  "product_variant.target_entity = 'variant'",
+  "variant_channel.target_entity = 'sales_channel'",
   'keyset_page',
   'update_product_batch',
   'delete_product_batch',
