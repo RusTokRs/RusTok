@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, Statement, Value, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -14,11 +15,12 @@ use rustok_core::SecurityContext;
 
 use crate::dto::{
     CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, ReplyCursorPage, ReplyCursorQuery,
-    ReplyReadModel, TopicCursorPage, TopicCursorQuery, TopicReadModel, bounded_forum_read_limit,
+    ReplyReadModel, TopicCursorPage, TopicCursorQuery, TopicReadModel, TopicUnreadCursorPage,
+    TopicUnreadCursorQuery, TopicUnreadReadModel, bounded_forum_read_limit,
 };
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply, forum_reply_body, forum_solution,
-    forum_topic, forum_topic_translation,
+    forum_topic, forum_topic_read_state, forum_topic_revision, forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
 use crate::services::rbac::enforce_scope;
@@ -28,6 +30,16 @@ use crate::services::vote::VoteService;
 const CATEGORY_CURSOR_VERSION: &str = "c1";
 const TOPIC_CURSOR_VERSION: &str = "t1";
 const REPLY_CURSOR_VERSION: &str = "r1";
+
+#[derive(Clone, Copy, Debug)]
+struct TopicUnreadSummary {
+    read_state_explicit: bool,
+    last_read_position: i64,
+    last_read_revision: i64,
+    unread_count: i64,
+    has_unread_topic_revision: bool,
+    is_unread: bool,
+}
 
 pub struct ForumReadModelService {
     db: DatabaseConnection,
@@ -138,95 +150,77 @@ impl ForumReadModelService {
         enforce_scope(&security, Resource::ForumTopics, Action::List)?;
         let locale = normalized_locale(query.locale.as_deref())?;
         let fallback_locale = normalized_optional_locale(query.fallback_locale.as_deref())?;
-        let limit = bounded_forum_read_limit(query.limit);
-
-        let mut select =
-            forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
-        if let Some(category_id) = query.category_id {
-            select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
-        }
-        if let Some(status) = query.status {
-            select = select.filter(forum_topic::Column::Status.eq(status));
-        }
-        if let Some(cursor) = query.cursor.as_deref() {
-            let cursor = decode_topic_cursor(cursor)?;
-            select = select.filter(
-                Condition::any()
-                    .add(forum_topic::Column::UpdatedAt.lt(cursor.updated_at))
-                    .add(
-                        Condition::all()
-                            .add(forum_topic::Column::UpdatedAt.eq(cursor.updated_at))
-                            .add(forum_topic::Column::Id.lt(cursor.id)),
-                    ),
-            );
-        }
-
-        let mut topics = select
-            .order_by_desc(forum_topic::Column::UpdatedAt)
-            .order_by_desc(forum_topic::Column::Id)
-            .limit(limit + 1)
-            .all(&self.db)
+        let (topics, next_cursor, has_more) = self
+            .load_topic_rows(tenant_id, &query, None)
             .await?;
-        let has_more = topics.len() > limit as usize;
-        topics.truncate(limit as usize);
-        let next_cursor = has_more
-            .then(|| topics.last().map(encode_topic_cursor))
-            .flatten();
-
-        let ids = topics.iter().map(|item| item.id).collect::<Vec<_>>();
-        let translations = topic_translations_by_id(&self.db, tenant_id, &ids).await?;
-        let votes = VoteService::new(self.db.clone())
-            .topic_vote_summaries(tenant_id, &ids, security.user_id)
+        let items = self
+            .materialize_topic_read_models(
+                tenant_id,
+                topics,
+                &locale,
+                fallback_locale.as_deref(),
+                security.user_id,
+            )
             .await?;
-        let subscriptions = SubscriptionService::new(self.db.clone())
-            .topic_subscription_flags(tenant_id, &ids, security.user_id)
-            .await?;
-        let solutions = solution_ids_by_topic(&self.db, tenant_id, &ids).await?;
-
-        let items = topics
-            .into_iter()
-            .map(|topic| {
-                let localized = translations.get(&topic.id).cloned().unwrap_or_default();
-                let resolved = resolve_by_locale_with_fallback(
-                    &localized,
-                    &locale,
-                    fallback_locale.as_deref(),
-                    |translation| translation.locale.as_str(),
-                );
-                let vote = votes.get(&topic.id).copied().unwrap_or_default();
-                TopicReadModel {
-                    id: topic.id,
-                    category_id: topic.category_id,
-                    author_id: topic.author_id,
-                    requested_locale: locale.clone(),
-                    effective_locale: resolved.effective_locale,
-                    available_locales: available_locales_from(&localized, |translation| {
-                        translation.locale.as_str()
-                    }),
-                    title: resolved
-                        .item
-                        .map(|translation| translation.title.clone())
-                        .unwrap_or_default(),
-                    slug: resolved
-                        .item
-                        .and_then(|translation| translation.slug.clone())
-                        .unwrap_or_default(),
-                    metadata: topic.metadata,
-                    status: topic.status.to_string(),
-                    is_pinned: topic.is_pinned,
-                    is_locked: topic.is_locked,
-                    reply_count: topic.reply_count,
-                    vote_score: vote.score,
-                    current_user_vote: vote.current_user_vote,
-                    is_subscribed: subscriptions.get(&topic.id).copied().unwrap_or(false),
-                    solution_reply_id: solutions.get(&topic.id).copied(),
-                    created_at: topic.created_at.to_rfc3339(),
-                    updated_at: topic.updated_at.to_rfc3339(),
-                }
-            })
-            .collect();
 
         Ok(TopicCursorPage {
+            items,
+            next_cursor,
+            has_more,
+        })
+    }
+
+    pub async fn list_topics_with_unread(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        query: TopicUnreadCursorQuery,
+    ) -> ForumResult<TopicUnreadCursorPage> {
+        enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        let user_id = security.user_id.ok_or_else(|| {
+            ForumError::forbidden(
+                "Authenticated user context is required for the topic unread projection",
+            )
+        })?;
+        let locale = normalized_locale(query.locale.as_deref())?;
+        let fallback_locale = normalized_optional_locale(query.fallback_locale.as_deref())?;
+        let topic_query = query.topic_query();
+        let unread_filter = query.unread_only.then(|| unread_topic_condition(user_id));
+        let (topics, next_cursor, has_more) = self
+            .load_topic_rows(tenant_id, &topic_query, unread_filter)
+            .await?;
+        let topic_ids = topics.iter().map(|topic| topic.id).collect::<Vec<_>>();
+        let topic_models = self
+            .materialize_topic_read_models(
+                tenant_id,
+                topics,
+                &locale,
+                fallback_locale.as_deref(),
+                Some(user_id),
+            )
+            .await?;
+        let unread = topic_unread_summaries(&self.db, tenant_id, user_id, &topic_ids).await?;
+        let items = topic_models
+            .into_iter()
+            .map(|topic| {
+                let summary = unread.get(&topic.id).copied().ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum topic unread projection is missing a bounded summary".to_string(),
+                    )
+                })?;
+                Ok(TopicUnreadReadModel {
+                    topic,
+                    read_state_explicit: summary.read_state_explicit,
+                    last_read_position: summary.last_read_position,
+                    last_read_revision: summary.last_read_revision,
+                    unread_count: summary.unread_count,
+                    has_unread_topic_revision: summary.has_unread_topic_revision,
+                    is_unread: summary.is_unread,
+                })
+            })
+            .collect::<ForumResult<Vec<_>>>()?;
+
+        Ok(TopicUnreadCursorPage {
             items,
             next_cursor,
             has_more,
@@ -327,6 +321,113 @@ impl ForumReadModelService {
             next_cursor,
             has_more,
         })
+    }
+
+    async fn load_topic_rows(
+        &self,
+        tenant_id: Uuid,
+        query: &TopicCursorQuery,
+        extra_filter: Option<Condition>,
+    ) -> ForumResult<(Vec<forum_topic::Model>, Option<String>, bool)> {
+        let limit = bounded_forum_read_limit(query.limit);
+        let mut select =
+            forum_topic::Entity::find().filter(forum_topic::Column::TenantId.eq(tenant_id));
+        if let Some(category_id) = query.category_id {
+            select = select.filter(forum_topic::Column::CategoryId.eq(category_id));
+        }
+        if let Some(status) = query.status {
+            select = select.filter(forum_topic::Column::Status.eq(status));
+        }
+        if let Some(extra_filter) = extra_filter {
+            select = select.filter(extra_filter);
+        }
+        if let Some(cursor) = query.cursor.as_deref() {
+            let cursor = decode_topic_cursor(cursor)?;
+            select = select.filter(
+                Condition::any()
+                    .add(forum_topic::Column::UpdatedAt.lt(cursor.updated_at))
+                    .add(
+                        Condition::all()
+                            .add(forum_topic::Column::UpdatedAt.eq(cursor.updated_at))
+                            .add(forum_topic::Column::Id.lt(cursor.id)),
+                    ),
+            );
+        }
+
+        let mut topics = select
+            .order_by_desc(forum_topic::Column::UpdatedAt)
+            .order_by_desc(forum_topic::Column::Id)
+            .limit(limit + 1)
+            .all(&self.db)
+            .await?;
+        let has_more = topics.len() > limit as usize;
+        topics.truncate(limit as usize);
+        let next_cursor = has_more
+            .then(|| topics.last().map(encode_topic_cursor))
+            .flatten();
+        Ok((topics, next_cursor, has_more))
+    }
+
+    async fn materialize_topic_read_models(
+        &self,
+        tenant_id: Uuid,
+        topics: Vec<forum_topic::Model>,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        user_id: Option<Uuid>,
+    ) -> ForumResult<Vec<TopicReadModel>> {
+        let ids = topics.iter().map(|item| item.id).collect::<Vec<_>>();
+        let translations = topic_translations_by_id(&self.db, tenant_id, &ids).await?;
+        let votes = VoteService::new(self.db.clone())
+            .topic_vote_summaries(tenant_id, &ids, user_id)
+            .await?;
+        let subscriptions = SubscriptionService::new(self.db.clone())
+            .topic_subscription_flags(tenant_id, &ids, user_id)
+            .await?;
+        let solutions = solution_ids_by_topic(&self.db, tenant_id, &ids).await?;
+
+        Ok(topics
+            .into_iter()
+            .map(|topic| {
+                let localized = translations.get(&topic.id).cloned().unwrap_or_default();
+                let resolved = resolve_by_locale_with_fallback(
+                    &localized,
+                    locale,
+                    fallback_locale,
+                    |translation| translation.locale.as_str(),
+                );
+                let vote = votes.get(&topic.id).copied().unwrap_or_default();
+                TopicReadModel {
+                    id: topic.id,
+                    category_id: topic.category_id,
+                    author_id: topic.author_id,
+                    requested_locale: locale.to_string(),
+                    effective_locale: resolved.effective_locale,
+                    available_locales: available_locales_from(&localized, |translation| {
+                        translation.locale.as_str()
+                    }),
+                    title: resolved
+                        .item
+                        .map(|translation| translation.title.clone())
+                        .unwrap_or_default(),
+                    slug: resolved
+                        .item
+                        .and_then(|translation| translation.slug.clone())
+                        .unwrap_or_default(),
+                    metadata: topic.metadata,
+                    status: topic.status.to_string(),
+                    is_pinned: topic.is_pinned,
+                    is_locked: topic.is_locked,
+                    reply_count: topic.reply_count,
+                    vote_score: vote.score,
+                    current_user_vote: vote.current_user_vote,
+                    is_subscribed: subscriptions.get(&topic.id).copied().unwrap_or(false),
+                    solution_reply_id: solutions.get(&topic.id).copied(),
+                    created_at: topic.created_at.to_rfc3339(),
+                    updated_at: topic.updated_at.to_rfc3339(),
+                }
+            })
+            .collect())
     }
 }
 
@@ -436,6 +537,134 @@ fn normalized_optional_locale(locale: Option<&str>) -> ForumResult<Option<String
                 .ok_or_else(|| ForumError::Validation("Invalid fallback locale".to_string()))
         })
         .transpose()
+}
+
+fn unread_topic_condition(user_id: Uuid) -> Condition {
+    Condition::all().add(Expr::cust_with_values(
+        r#"
+NOT EXISTS (
+    SELECT 1
+    FROM forum_topic_read_states state
+    WHERE state.tenant_id = forum_topics.tenant_id
+      AND state.topic_id = forum_topics.id
+      AND state.user_id = ?
+)
+OR EXISTS (
+    SELECT 1
+    FROM forum_replies reply
+    WHERE reply.tenant_id = forum_topics.tenant_id
+      AND reply.topic_id = forum_topics.id
+      AND reply.status = 'approved'
+      AND reply.position > COALESCE((
+          SELECT state.last_read_position
+          FROM forum_topic_read_states state
+          WHERE state.tenant_id = forum_topics.tenant_id
+            AND state.topic_id = forum_topics.id
+            AND state.user_id = ?
+      ), 0)
+)
+OR EXISTS (
+    SELECT 1
+    FROM forum_topic_revisions revision
+    WHERE revision.tenant_id = forum_topics.tenant_id
+      AND revision.topic_id = forum_topics.id
+      AND revision.id > COALESCE((
+          SELECT state.last_read_revision
+          FROM forum_topic_read_states state
+          WHERE state.tenant_id = forum_topics.tenant_id
+            AND state.topic_id = forum_topics.id
+            AND state.user_id = ?
+      ), 0)
+)
+"#,
+        vec![user_id.into(), user_id.into(), user_id.into()],
+    ))
+}
+
+async fn topic_unread_summaries(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    topic_ids: &[Uuid],
+) -> ForumResult<HashMap<Uuid, TopicUnreadSummary>> {
+    if topic_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = (0..topic_ids.len())
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        r#"
+SELECT
+    topic.id AS topic_id,
+    state.user_id AS state_user_id,
+    COALESCE(state.last_read_position, 0) AS last_read_position,
+    COALESCE(state.last_read_revision, 0) AS last_read_revision,
+    COUNT(DISTINCT unread_reply.id) AS unread_count,
+    COUNT(DISTINCT unread_revision.id) AS unread_revision_count
+FROM forum_topics topic
+LEFT JOIN forum_topic_read_states state
+  ON state.tenant_id = topic.tenant_id
+ AND state.topic_id = topic.id
+ AND state.user_id = ?
+LEFT JOIN forum_replies unread_reply
+  ON unread_reply.tenant_id = topic.tenant_id
+ AND unread_reply.topic_id = topic.id
+ AND unread_reply.status = 'approved'
+ AND unread_reply.position > COALESCE(state.last_read_position, 0)
+LEFT JOIN forum_topic_revisions unread_revision
+  ON unread_revision.tenant_id = topic.tenant_id
+ AND unread_revision.topic_id = topic.id
+ AND unread_revision.id > COALESCE(state.last_read_revision, 0)
+WHERE topic.tenant_id = ?
+  AND topic.id IN ({placeholders})
+GROUP BY
+    topic.id,
+    state.user_id,
+    state.last_read_position,
+    state.last_read_revision
+"#,
+    );
+    let mut values = Vec::<Value>::with_capacity(topic_ids.len() + 2);
+    values.push(user_id.into());
+    values.push(tenant_id.into());
+    values.extend(topic_ids.iter().copied().map(Value::from));
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            sql,
+            values,
+        ))
+        .await?;
+    let mut summaries = HashMap::with_capacity(rows.len());
+    for row in rows {
+        let topic_id = row.try_get::<Uuid>("", "topic_id")?;
+        let read_state_explicit = row
+            .try_get::<Option<Uuid>>("", "state_user_id")?
+            .is_some();
+        let last_read_position = row.try_get::<i64>("", "last_read_position")?;
+        let last_read_revision = row.try_get::<i64>("", "last_read_revision")?;
+        let unread_count = row.try_get::<i64>("", "unread_count")?;
+        let unread_revision_count = row.try_get::<i64>("", "unread_revision_count")?;
+        let has_unread_topic_revision = unread_revision_count > 0;
+        summaries.insert(
+            topic_id,
+            TopicUnreadSummary {
+                read_state_explicit,
+                last_read_position,
+                last_read_revision,
+                unread_count,
+                has_unread_topic_revision,
+                is_unread: !read_state_explicit
+                    || unread_count > 0
+                    || has_unread_topic_revision,
+            },
+        );
+    }
+    Ok(summaries)
 }
 
 async fn category_translations_by_id(
