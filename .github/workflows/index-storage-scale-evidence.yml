@@ -14,6 +14,9 @@ on:
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/prepare-index-storage-decision.mjs"
+      - "scripts/verify/finalize-index-storage-adr.mjs"
+      - "scripts/verify/index-storage-decision-tooling.test.mjs"
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
@@ -35,6 +38,9 @@ on:
       - "scripts/verify/hash-index-storage-comparison.mjs"
       - "scripts/verify/render-index-storage-adr.mjs"
       - "scripts/verify/render-index-storage-adr.test.mjs"
+      - "scripts/verify/prepare-index-storage-decision.mjs"
+      - "scripts/verify/finalize-index-storage-adr.mjs"
+      - "scripts/verify/index-storage-decision-tooling.test.mjs"
       - "scripts/verify/index-storage-tooling.mjs"
       - "scripts/verify/index-storage-tooling.test.mjs"
       - "scripts/verify/verify-index-storage-adr-tooling.mjs"
@@ -81,14 +87,17 @@ jobs:
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
       - name: Verify cross-scale comparator syntax
         run: node --check scripts/verify/compare-index-storage-evidence.mjs
-      - name: Verify storage ADR tooling syntax
+      - name: Verify storage decision and ADR tooling syntax
         run: |
           node --check scripts/verify/hash-index-storage-comparison.mjs
           node --check scripts/verify/render-index-storage-adr.mjs
           node --check scripts/verify/render-index-storage-adr.test.mjs
+          node --check scripts/verify/prepare-index-storage-decision.mjs
+          node --check scripts/verify/finalize-index-storage-adr.mjs
+          node --check scripts/verify/index-storage-decision-tooling.test.mjs
       - name: Test storage tooling command routing
         run: node --test scripts/verify/index-storage-tooling.test.mjs
-      - name: Test storage comparison and ADR fixtures
+      - name: Test storage comparison, decision, and ADR fixtures
         run: node scripts/verify/index-storage-tooling.mjs fixtures
 
   evidence-100k:
