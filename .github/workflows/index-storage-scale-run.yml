@@ -138,8 +138,11 @@ jobs:
             df -B1
           } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-after.txt"
 
-      - name: Validate ${{ inputs.scale }} evidence packet
-        run: node scripts/verify/validate-index-storage-evidence.mjs
+      - name: Validate ${{ inputs.scale }} evidence packet through storage tooling
+        run: >-
+          node scripts/verify/index-storage-tooling.mjs packet
+          --scale ${{ inputs.scale }}
+          --root evidence/index-storage/${{ inputs.scale }}
 
       - name: Archive validated ${{ inputs.scale }} evidence
         uses: actions/upload-artifact@v7
