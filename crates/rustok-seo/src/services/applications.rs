@@ -1,3 +1,5 @@
+mod bulk_reads;
+
 use std::sync::Arc;
 
 use sea_orm::DatabaseConnection;
@@ -323,7 +325,7 @@ impl SeoBulkService {
         tenant: &TenantContext,
         input: SeoBulkListInput,
     ) -> SeoResult<SeoBulkPage> {
-        self.runtime.list_bulk_items(tenant, input).await
+        self.runtime.list_bulk_items_batched(tenant, input).await
     }
 
     pub async fn preview_bulk_selection_count(
