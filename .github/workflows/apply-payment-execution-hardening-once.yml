@@ -11,3 +11,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Patch is applied by the trusted main runner"
+
+# synchronize trigger
