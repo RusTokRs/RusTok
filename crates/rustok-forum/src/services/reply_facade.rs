@@ -221,12 +221,11 @@ impl ReplyService {
         topic_id: Uuid,
         security: &SecurityContext,
     ) -> ForumResult<bool> {
+        if !security.is_public_read() {
+            return Ok(true);
+        }
         ForumTopicVisibilityService::new(self.db.clone())
-            .is_topic_category_visible_to_viewer(
-                tenant_id,
-                topic_id,
-                !security.is_public_read(),
-            )
+            .is_topic_category_visible_to_viewer(tenant_id, topic_id, false)
             .await
     }
 
