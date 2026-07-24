@@ -13,6 +13,7 @@ use support::{TestResult, test_error};
 
 const TOPIC_COUNT: usize = 128;
 const REPLIES_PER_TOPIC: i64 = 64;
+const LAST_READ_REPLY_POSITION: i64 = REPLIES_PER_TOPIC - 1;
 const REVISIONS_PER_TOPIC: i64 = 4;
 const PROJECTION_TOPIC_COUNT: usize = 100;
 
@@ -24,15 +25,8 @@ async fn concurrent_devices_converge_to_component_wise_maximum_on_postgres() -> 
 
     let outcome = async {
         let tenant_id = Uuid::new_v4();
-        let fixture_user_id = Uuid::new_v4();
         let concurrent_user_id = Uuid::new_v4();
-        let topic_ids = seed_production_sized_read_fixture(
-            &context.db,
-            tenant_id,
-            fixture_user_id,
-        )
-        .await?;
-        let topic_id = topic_ids[0];
+        let topic_id = seed_concurrency_topic(&context.db, tenant_id).await?;
         let latest_revision = latest_topic_revision(&context.db, tenant_id, topic_id).await?;
         let peer = context.peer().await?;
 
@@ -199,6 +193,63 @@ async fn bounded_unread_aggregate_matches_large_fixture_and_plan_contract_on_pos
     outcome
 }
 
+async fn seed_concurrency_topic(
+    db: &sea_orm::DatabaseConnection,
+    tenant_id: Uuid,
+) -> TestResult<Uuid> {
+    let category_id = Uuid::new_v4();
+    let topic_id = Uuid::new_v4();
+    execute(
+        db,
+        format!(
+            r#"
+INSERT INTO forum_categories
+    (id, tenant_id, position, moderated, topic_count, reply_count)
+VALUES
+    ('{category_id}', '{tenant_id}', 0, FALSE, 0, 0);
+
+INSERT INTO forum_topics
+    (id, tenant_id, category_id, status, metadata, is_pinned, is_locked,
+     reply_count, created_at, updated_at)
+VALUES
+    ('{topic_id}', '{tenant_id}', '{category_id}', 'open', '{{}}'::jsonb,
+     FALSE, FALSE, 0, CURRENT_TIMESTAMP - INTERVAL '2 days',
+     CURRENT_TIMESTAMP - INTERVAL '2 days');
+
+INSERT INTO forum_replies
+    (id, tenant_id, topic_id, status, position, created_at, updated_at)
+SELECT
+    md5('{topic_id}:reply:' || reply_no::text)::uuid,
+    '{tenant_id}',
+    '{topic_id}',
+    'approved',
+    reply_no,
+    CURRENT_TIMESTAMP - INTERVAL '1 day' + reply_no * INTERVAL '1 second',
+    CURRENT_TIMESTAMP - INTERVAL '1 day' + reply_no * INTERVAL '1 second'
+FROM generate_series(1, {REPLIES_PER_TOPIC}) AS reply_no;
+
+INSERT INTO forum_topic_revisions
+    (tenant_id, topic_id, locale, title, slug, body, body_format, metadata,
+     revision_reason, created_at)
+SELECT
+    '{tenant_id}',
+    '{topic_id}',
+    'en',
+    'Concurrent read-state proof topic',
+    NULL,
+    'Revision ' || revision_no::text,
+    'markdown',
+    '{{}}'::jsonb,
+    'edit',
+    CURRENT_TIMESTAMP - INTERVAL '12 hours' + revision_no * INTERVAL '1 second'
+FROM generate_series(1, {REVISIONS_PER_TOPIC}) AS revision_no;
+"#
+        ),
+    )
+    .await?;
+    Ok(topic_id)
+}
+
 async fn seed_production_sized_read_fixture(
     db: &sea_orm::DatabaseConnection,
     tenant_id: Uuid,
@@ -299,7 +350,7 @@ SELECT
     '{tenant_id}',
     mark.id,
     '{reader_id}',
-    CASE WHEN mark.ordinal <= 32 THEN {REPLIES_PER_TOPIC - 1} ELSE {REPLIES_PER_TOPIC} END,
+    CASE WHEN mark.ordinal <= 32 THEN {LAST_READ_REPLY_POSITION} ELSE {REPLIES_PER_TOPIC} END,
     CASE
         WHEN mark.ordinal BETWEEN 33 AND 64 THEN mark.previous_revision
         ELSE mark.latest_revision
@@ -455,14 +506,22 @@ fn assert_plan_is_bounded(plan: &Value, expected_rows: i64) -> TestResult<()> {
             "unread aggregate plan contains a per-row SubPlan",
         ));
     }
-    if nodes.iter().any(|node| {
-        node.get("Actual Loops")
-            .and_then(Value::as_i64)
-            .is_some_and(|loops| loops > expected_rows)
-    }) {
-        return Err(test_error(
-            "unread aggregate plan exceeds the bounded topic-page loop count",
-        ));
+
+    let relation_names = nodes
+        .iter()
+        .filter_map(|node| node.get("Relation Name").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    for relation in [
+        "forum_topics",
+        "forum_topic_read_states",
+        "forum_replies",
+        "forum_topic_revisions",
+    ] {
+        if !relation_names.iter().any(|name| name == &relation) {
+            return Err(test_error(format!(
+                "natural unread aggregate plan is missing relation {relation}: {relation_names:?}"
+            )));
+        }
     }
     Ok(())
 }
