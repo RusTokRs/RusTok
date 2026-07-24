@@ -9,6 +9,7 @@ mod mutation;
 mod query;
 mod quote_commands;
 mod read_state;
+mod storefront_read_state;
 mod types;
 
 use async_graphql::MergedObject;
@@ -33,6 +34,7 @@ pub use quote_commands::{
     GqlForumRelationSnapshot, SetForumQuoteRelationsInput,
 };
 pub use read_state::*;
+pub use storefront_read_state::*;
 pub use types::*;
 
 #[derive(MergedObject, Default)]
@@ -41,6 +43,7 @@ pub struct ForumQuery(
     category_tree_query::ForumCategoryTreeQuery,
     category_policy::ForumCategoryTopicPolicyQuery,
     read_state::ForumReadStateQuery,
+    storefront_read_state::ForumStorefrontReadStateQuery,
 );
 
 #[derive(MergedObject, Default)]
@@ -52,4 +55,5 @@ pub struct ForumMutation(
     quote_commands::ForumQuoteCommandMutation,
     content_commands::ForumContentCommandMutation,
     read_state::ForumReadStateMutation,
+    storefront_read_state::ForumStorefrontReadStateMutation,
 );

@@ -77,6 +77,25 @@ impl TopicService {
         require_localized_topic_response(response)
     }
 
+    pub async fn get_storefront_visible_with_locale_fallback(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> ForumResult<Option<TopicResponse>> {
+        match self
+            .get_with_locale_fallback(tenant_id, security, topic_id, locale, fallback_locale)
+            .await
+        {
+            Ok(topic) if is_storefront_visible(&topic, channel_slug) => Ok(Some(topic)),
+            Ok(_) | Err(ForumError::TopicNotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     pub async fn update(
         &self,
         tenant_id: Uuid,
@@ -207,6 +226,13 @@ impl TopicService {
     ) -> ForumResult<()> {
         topic_owner::TopicService::set_status_in_tx(txn, tenant_id, topic_id, status).await
     }
+}
+
+fn is_storefront_visible(topic: &TopicResponse, channel_slug: Option<&str>) -> bool {
+    topic.status == crate::constants::topic_status::OPEN
+        && (topic.channel_slugs.is_empty()
+            || channel_slug
+                .is_some_and(|slug| topic.channel_slugs.iter().any(|value| value == slug)))
 }
 
 fn require_localized_topic_response(response: TopicResponse) -> ForumResult<TopicResponse> {

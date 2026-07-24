@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use sea_orm::{
@@ -14,9 +14,10 @@ use rustok_content::{
 use rustok_core::SecurityContext;
 
 use crate::dto::{
-    CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, ReplyCursorPage, ReplyCursorQuery,
-    ReplyReadModel, TopicCursorPage, TopicCursorQuery, TopicReadModel, TopicUnreadCursorPage,
-    TopicUnreadCursorQuery, TopicUnreadReadModel, bounded_forum_read_limit,
+    CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, MAX_FORUM_READ_LIMIT,
+    ReplyCursorPage, ReplyCursorQuery, ReplyReadModel, TopicCursorPage, TopicCursorQuery,
+    TopicReadModel, TopicUnreadCursorPage, TopicUnreadCursorQuery, TopicUnreadReadModel,
+    TopicUnreadSummaryReadModel, bounded_forum_read_limit,
 };
 use crate::entities::{
     forum_category, forum_category_translation, forum_reply, forum_reply_body, forum_solution,
@@ -30,16 +31,6 @@ use crate::services::vote::VoteService;
 const CATEGORY_CURSOR_VERSION: &str = "c1";
 const TOPIC_CURSOR_VERSION: &str = "t1";
 const REPLY_CURSOR_VERSION: &str = "r1";
-
-#[derive(Clone, Copy, Debug)]
-struct TopicUnreadSummary {
-    read_state_explicit: bool,
-    last_read_position: i64,
-    last_read_revision: i64,
-    unread_count: i64,
-    has_unread_topic_revision: bool,
-    is_unread: bool,
-}
 
 pub struct ForumReadModelService {
     db: DatabaseConnection,
@@ -225,6 +216,48 @@ impl ForumReadModelService {
             next_cursor,
             has_more,
         })
+    }
+
+    /// Returns canonical unread summaries for a caller-supplied bounded topic ID set.
+    ///
+    /// Visibility remains the caller's responsibility. Storefront transports use
+    /// this only after the owner storefront-visible topic query has selected the
+    /// exact IDs that may be presented to the current channel.
+    pub async fn summarize_topic_ids(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_ids: Vec<Uuid>,
+    ) -> ForumResult<Vec<TopicUnreadSummaryReadModel>> {
+        enforce_scope(&security, Resource::ForumTopics, Action::List)?;
+        let user_id = security.user_id.ok_or_else(|| {
+            ForumError::forbidden(
+                "Authenticated user context is required for topic unread summaries",
+            )
+        })?;
+        if topic_ids.len() > MAX_FORUM_READ_LIMIT as usize {
+            return Err(ForumError::Validation(format!(
+                "Forum topic unread summaries are limited to {MAX_FORUM_READ_LIMIT} topic IDs"
+            )));
+        }
+
+        let mut seen = HashSet::with_capacity(topic_ids.len());
+        let topic_ids = topic_ids
+            .into_iter()
+            .filter(|topic_id| seen.insert(*topic_id))
+            .collect::<Vec<_>>();
+        let summaries = topic_unread_summaries(&self.db, tenant_id, user_id, &topic_ids).await?;
+        topic_ids
+            .into_iter()
+            .map(|topic_id| {
+                summaries.get(&topic_id).copied().ok_or_else(|| {
+                    ForumError::Validation(
+                        "Forum topic unread summary is unavailable for the bounded topic set"
+                            .to_string(),
+                    )
+                })
+            })
+            .collect()
     }
 
     pub async fn list_replies(
@@ -603,7 +636,7 @@ async fn topic_unread_summaries(
     tenant_id: Uuid,
     user_id: Uuid,
     topic_ids: &[Uuid],
-) -> ForumResult<HashMap<Uuid, TopicUnreadSummary>> {
+) -> ForumResult<HashMap<Uuid, TopicUnreadSummaryReadModel>> {
     if topic_ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -674,7 +707,8 @@ GROUP BY
         let has_unread_topic_revision = unread_revision_count > 0;
         summaries.insert(
             topic_id,
-            TopicUnreadSummary {
+            TopicUnreadSummaryReadModel {
+                topic_id,
                 read_state_explicit,
                 last_read_position,
                 last_read_revision,

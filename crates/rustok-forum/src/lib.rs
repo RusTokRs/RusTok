@@ -32,10 +32,11 @@ pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
 pub use services::{
     CategoryService, ForumEventService, ForumQuoteCommandService, ForumReadModelService,
-    ForumRelationReadService, ForumTopicReadState, ForumTopicReadStateService,
-    ForumWidgetContractService, MarkForumTopicReadInput, MarkForumTopicsReadBatchInput,
-    MarkForumTopicsReadBatchResult, ModerationService, ReplyService, RevisionService,
-    SubscriptionService, TopicService, UserStatsService, VoteService,
+    ForumRelationReadService, ForumStorefrontReadStateService, ForumStorefrontUnreadTopic,
+    ForumStorefrontUnreadTopicPage, ForumTopicReadState, ForumTopicReadStateService,
+    ForumTopicUnreadSummary, ForumWidgetContractService, MarkForumTopicReadInput,
+    MarkForumTopicsReadBatchInput, MarkForumTopicsReadBatchResult, ModerationService, ReplyService,
+    RevisionService, SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
 pub use subscription::{ForumDigestMode, ForumSubscriptionLevel, ForumSubscriptionPreferences};

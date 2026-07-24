@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
@@ -20,6 +21,7 @@ pub fn ForumView() -> impl IntoView {
     let selected_category_id = read_route_query_value(&route_context, "category");
     let selected_topic_id = read_route_query_value(&route_context, "topic");
     let locale = route_context.locale.clone();
+    let mutation_locale = route_context.locale.clone();
     let badge_label = t(locale.as_deref(), "forum.badge", "forum");
     let title_label = t(
         locale.as_deref(),
@@ -36,6 +38,15 @@ pub fn ForumView() -> impl IntoView {
         "forum.error.loadStorefront",
         "Failed to load forum storefront data",
     );
+    let mutation_error_label = t(
+        locale.as_deref(),
+        "forum.error.updateReadState",
+        "Failed to update forum read state",
+    );
+
+    let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let (mutation_busy, set_mutation_busy) = signal(false);
+    let (mutation_error, set_mutation_error) = signal(Option::<transport::TransportError>::None);
 
     let forum_resource = Resource::new_blocking(
         move || {
@@ -43,12 +54,26 @@ pub fn ForumView() -> impl IntoView {
                 selected_category_id.clone(),
                 selected_topic_id.clone(),
                 locale.clone(),
+                refresh_nonce.get(),
             )
         },
-        move |(category_id, topic_id, locale)| async move {
+        move |(category_id, topic_id, locale, _)| async move {
             transport::fetch_storefront_forum(category_id, topic_id, locale).await
         },
     );
+
+    let on_mark_topic_read = Callback::new(move |topic_id: String| {
+        let locale = mutation_locale.clone();
+        set_mutation_busy.set(true);
+        set_mutation_error.set(None);
+        spawn_local(async move {
+            match transport::mark_storefront_topic_read(topic_id, locale).await {
+                Ok(()) => set_refresh_nonce.update(|value| *value += 1),
+                Err(error) => set_mutation_error.set(Some(error)),
+            }
+            set_mutation_busy.set(false);
+        });
+    });
 
     view! {
         <section class="overflow-hidden rounded-[2rem] border border-border bg-gradient-to-br from-card via-card to-muted/35 p-8 shadow-sm">
@@ -65,7 +90,12 @@ pub fn ForumView() -> impl IntoView {
                 </p>
             </div>
 
-            <div class="mt-8">
+            <div class="mt-8 space-y-4">
+                {move || mutation_error.get().map(|error| view! {
+                    <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                        {format!("{}: {error}", mutation_error_label)}
+                    </div>
+                })}
                 <Suspense fallback=|| view! {
                     <div class="grid gap-4 xl:grid-cols-[16rem_minmax(0,1fr)_24rem]">
                         <div class="h-80 animate-pulse rounded-[1.5rem] bg-muted"></div>
@@ -76,9 +106,16 @@ pub fn ForumView() -> impl IntoView {
                     {move || {
                         let forum_resource = forum_resource;
                         let load_error_label = load_error_label.clone();
+                        let on_mark_topic_read = on_mark_topic_read;
                         Suspend::new(async move {
                             match forum_resource.await {
-                                Ok(data) => view! { <ForumShowcase data /> }.into_any(),
+                                Ok(data) => view! {
+                                    <ForumShowcase
+                                        data
+                                        on_mark_topic_read
+                                        mutation_busy
+                                    />
+                                }.into_any(),
                                 Err(err) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                                         {format!("{}: {err}", load_error_label)}
@@ -94,7 +131,11 @@ pub fn ForumView() -> impl IntoView {
 }
 
 #[component]
-fn ForumShowcase(data: StorefrontForumData) -> impl IntoView {
+fn ForumShowcase(
+    data: StorefrontForumData,
+    on_mark_topic_read: Callback<String>,
+    mutation_busy: ReadSignal<bool>,
+) -> impl IntoView {
     let StorefrontForumData {
         categories,
         topics,
@@ -102,6 +143,7 @@ fn ForumShowcase(data: StorefrontForumData) -> impl IntoView {
         selected_topic_id,
         selected_topic,
         replies,
+        read_state_available,
     } = data;
 
     view! {
@@ -121,6 +163,9 @@ fn ForumShowcase(data: StorefrontForumData) -> impl IntoView {
                 topic=selected_topic
                 replies=replies.items
                 replies_total=replies.total
+                read_state_available
+                on_mark_topic_read
+                mutation_busy
             />
         </div>
     }
@@ -234,6 +279,8 @@ fn ForumTopicFeed(
     let threads_template = t(locale.as_deref(), "forum.feed.threads", "{count} threads");
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
+    let unread_template = t(locale.as_deref(), "forum.topic.unreadCount", "{count} unread");
+    let updated_unread_label = t(locale.as_deref(), "forum.topic.updatedUnread", "Updated");
     let slug_template = t(locale.as_deref(), "forum.topic.slug", "thread slug: {slug}");
     let replies_label = t(locale.as_deref(), "forum.topic.replies", "Replies");
 
@@ -272,6 +319,11 @@ fn ForumTopicFeed(
                         selected_topic_id.as_deref(),
                         slug_template.as_str(),
                     );
+                    let unread_label = if card.unread_count > 0 {
+                        forum_storefront_count_label(unread_template.as_str(), card.unread_count)
+                    } else {
+                        updated_unread_label.clone()
+                    };
                     view! {
                         <a
                             class=format!(
@@ -287,6 +339,9 @@ fn ForumTopicFeed(
                                         <span class="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                                             {card.effective_locale.clone()}
                                         </span>
+                                        {card.is_unread.then(|| view! {
+                                            <span class=card.unread_badge_class>{unread_label}</span>
+                                        })}
                                         {card.is_pinned.then(|| view! {
                                             <span class="rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                                                 {pinned_label.clone()}
@@ -323,6 +378,9 @@ fn ForumThreadPanel(
     topic: Option<ForumTopicDetail>,
     replies: Vec<ForumReplyDetail>,
     replies_total: u64,
+    read_state_available: bool,
+    on_mark_topic_read: Callback<String>,
+    mutation_busy: ReadSignal<bool>,
 ) -> impl IntoView {
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let open_thread_title = t(locale.as_deref(), "forum.thread.openTitle", "Open a thread");
@@ -342,6 +400,7 @@ fn ForumThreadPanel(
         }.into_any();
     };
 
+    let topic_id = topic.id.clone();
     let status_class = topic_status_class(topic.status.as_str());
     let body = summarize_rich_content(
         topic.body.as_str(),
@@ -350,6 +409,8 @@ fn ForumThreadPanel(
     );
     let pinned_label = t(locale.as_deref(), "forum.topic.pinned", "Pinned");
     let locked_label = t(locale.as_deref(), "forum.topic.locked", "Locked");
+    let mark_read_label = t(locale.as_deref(), "forum.thread.markRead", "Mark topic read");
+    let marking_read_label = t(locale.as_deref(), "forum.thread.markingRead", "Marking read…");
     let slug_template = t(locale.as_deref(), "forum.thread.slug", "slug: {slug}");
     let replies_title = t(locale.as_deref(), "forum.thread.repliesTitle", "Replies");
     let replies_total_template = t(
@@ -387,6 +448,23 @@ fn ForumThreadPanel(
                     <p class="mt-2 text-sm text-muted-foreground">{crate::core::forum_storefront_slug_label(slug_template.as_str(), topic.slug.as_str())}</p>
                 </div>
                 <p class="whitespace-pre-line text-sm leading-7 text-muted-foreground">{body}</p>
+                {read_state_available.then(|| {
+                    let topic_id = topic_id.clone();
+                    view! {
+                        <button
+                            type="button"
+                            class="inline-flex items-center justify-center rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled=move || mutation_busy.get()
+                            on:click=move |_| on_mark_topic_read.run(topic_id.clone())
+                        >
+                            {move || if mutation_busy.get() {
+                                marking_read_label.clone()
+                            } else {
+                                mark_read_label.clone()
+                            }}
+                        </button>
+                    }
+                })}
             </div>
 
             {if topic.tags.is_empty() {

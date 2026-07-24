@@ -30,3 +30,14 @@ pub async fn fetch_storefront_forum(
         .await
     }
 }
+
+pub async fn mark_storefront_topic_read(
+    topic_id: String,
+    locale: Option<String>,
+) -> Result<(), TransportError> {
+    if use_native_transport() {
+        native_server_adapter::mark_storefront_topic_read_server(topic_id, locale).await
+    } else {
+        graphql_adapter::mark_storefront_topic_read_graphql(topic_id, locale).await
+    }
+}

@@ -115,6 +115,17 @@ pub struct TopicReadModel {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema)]
+pub struct TopicUnreadSummaryReadModel {
+    pub topic_id: Uuid,
+    pub read_state_explicit: bool,
+    pub last_read_position: i64,
+    pub last_read_revision: i64,
+    pub unread_count: i64,
+    pub has_unread_topic_revision: bool,
+    pub is_unread: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TopicUnreadReadModel {
     pub topic: TopicReadModel,
