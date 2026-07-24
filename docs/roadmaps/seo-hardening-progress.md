@@ -18,7 +18,7 @@ Automated verification is recorded separately because direct pushes currently do
 - [ ] Persist SEO metadata, translations, delivery tracking, and reindex events transactionally.
 - [ ] Persist revision creation and its event transactionally.
 - [ ] Persist revision rollback and all resulting events transactionally.
-- [x] Persist bulk terminal state and terminal event transactionally. (#2022)
+- [x] Persist bulk terminal state and terminal event transactionally. (#2051)
 
 ## Regression coverage
 
@@ -26,7 +26,7 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Add an integration regression test proving that sitemap jobs, generated files, and delivery tracking roll back when the transactional outbox write fails. (`a4d9476`)
 - [x] Add contract coverage for transition-scoped redirect events, safe redirect targets, fail-closed settings, and tenant-scoped sitemap reads. (`7593f8c`)
 - [ ] Add rollback coverage for metadata and revision transactions.
-- [x] Add rollback coverage for bulk terminal state and terminal event transactions. (#2022)
+- [x] Add rollback coverage for bulk terminal state and terminal event transactions. (#2051)
 
 ## P1 — performance and maintainability
 
@@ -40,10 +40,10 @@ Automated verification is recorded separately because direct pushes currently do
 
 ## Verification status
 
-- [x] Run `cargo fmt --check` for the affected workspace packages. (#2022)
-- [x] Run `cargo check -p rustok-seo`. (#2022)
+- [x] Run `cargo fmt --check` for the affected workspace packages. (scoped PR #2022 verification; landed via #2051)
+- [x] Run `cargo check -p rustok-seo`. (scoped PR #2022 verification; landed via #2051)
 - [ ] Run `cargo test -p rustok-seo`. Full suite currently has nine pre-existing failures outside the bulk terminal slice.
-- [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (#2022)
+- [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (scoped PR #2022 verification; landed via #2051)
 - [ ] Confirm GitHub Actions status checks for the hardening commits.
 
-The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification through GitHub Actions; the full-suite checkbox remains open because nine pre-existing failures outside this slice still need resolution.
+The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification; PR #2051 is the clean follow-up without the temporary workflow, patch script, or `Cargo.lock` churn. No fresh tests were run for #2051 at the user's request, and the full-suite checkbox remains open because nine pre-existing failures outside this slice still need resolution.
