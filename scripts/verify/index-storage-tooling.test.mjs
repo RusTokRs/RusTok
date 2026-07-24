@@ -14,7 +14,7 @@ const run = (...args) => spawnSync(process.execPath, [script, ...args], {
 test('prints the stable Index storage tooling command surface', () => {
   const result = run('--help');
   assert.equal(result.status, 0, result.stderr);
-  for (const command of ['contract', 'fixtures', 'packet', 'compare', 'hash', 'prepare', 'render']) {
+  for (const command of ['contract', 'fixtures', 'packet', 'compare', 'hash', 'prepare', 'render', 'verify-adr']) {
     assert.match(result.stdout, new RegExp(`\\b${command}\\b`, 'u'));
   }
 });
@@ -43,6 +43,13 @@ test('forwards ADR finalization help without rewriting its arguments', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /finalize-index-storage-adr\.mjs/u);
   assert.match(result.stdout, /--comparison <comparison\.json>/u);
+});
+
+test('forwards ADR verification help without rewriting its arguments', () => {
+  const result = run('verify-adr', '--help');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /verify-index-storage-adr\.mjs/u);
+  assert.match(result.stdout, /--adr <adr\.md>/u);
 });
 
 test('rejects unsupported packet scales before invoking the validator', () => {
