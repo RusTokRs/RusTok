@@ -1,5 +1,6 @@
 mod marketplace_financial;
 mod mutations;
+#[path = "safe_query.rs"]
 mod query;
 mod types;
 
