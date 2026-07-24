@@ -26,6 +26,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: "1"
   DATABASE_URL: postgres://postgres:postgres@localhost:5432/rustok_index_bench
   INDEX_BENCH_SCALE: ${{ inputs.scale }}
   INDEX_BENCH_REPETITIONS: "3"
@@ -90,24 +91,41 @@ jobs:
           } > "$INDEX_BENCH_EVIDENCE_ROOT/runner-resources-before.txt"
 
       - name: Build scale evidence executables
-        run: >-
-          cargo build -p rustok-benchmarks --release
-          --bin index-storage-benchmark
-          --bin index-storage-mutation-benchmark
-          --bin index-storage-maintenance-benchmark
-
-      - name: Run ${{ inputs.scale }} read/query evidence
-        run: target/release/index-storage-benchmark
-
-      - name: Run ${{ inputs.scale }} mutation/WAL evidence
-        run: target/release/index-storage-mutation-benchmark
-
-      - name: Run ${{ inputs.scale }} persistent churn/VACUUM evidence
-        run: target/release/index-storage-maintenance-benchmark
-
-      - name: Capture runner resources after evidence
         shell: bash
         run: |
+          set -o pipefail
+          cargo build -p rustok-benchmarks --release \
+            --bin index-storage-benchmark \
+            --bin index-storage-mutation-benchmark \
+            --bin index-storage-maintenance-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/build.log"
+
+      - name: Run ${{ inputs.scale }} read/query evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/read-run.log"
+
+      - name: Run ${{ inputs.scale }} mutation/WAL evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-mutation-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/mutation-run.log"
+
+      - name: Run ${{ inputs.scale }} persistent churn/VACUUM evidence
+        shell: bash
+        run: |
+          set -o pipefail
+          stdbuf -oL -eL target/release/index-storage-maintenance-benchmark \
+            2>&1 | tee "$INDEX_BENCH_EVIDENCE_ROOT/maintenance-run.log"
+
+      - name: Capture runner resources after evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$INDEX_BENCH_EVIDENCE_ROOT"
           {
             echo "captured_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "phase=after"
