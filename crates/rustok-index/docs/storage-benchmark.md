@@ -9,8 +9,9 @@
 - Smoke evidence automation: implemented in `.github/workflows/index-storage-smoke.yml`
 - Production migrations: intentionally absent
 - Smoke evidence: archived from Actions run `30041091121`
-- 100k/1m evidence: pending repository-owner execution
-- Storage decision ADR: pending scale evidence and comparison
+- 100k evidence: archived and inspected from Actions run `30051321255`
+- 1m evidence: blocked until `INDEX_BENCH_LARGE_RUNNER` names a Linux larger runner with at least 35 GB free disk
+- Storage decision ADR: Proposed; 100k evidence is populated, acceptance still waits on 1m and the cross-scale comparison
 
 ## Goal
 
@@ -199,8 +200,63 @@ result digests, validated equal mutation effects, and preserved exact
 cardinality after churn and VACUUM.
 
 This smoke packet proves harness sanity only. Its small-scale latency, size, WAL,
-and VACUUM values must not select a production candidate; the 100k and 1m runs
-and the cross-scale comparison remain required.
+and VACUUM values must not select a production candidate. The inspected 100k
+packet establishes the first scale baseline; the 1m packet and cross-scale
+comparison remain required before a production model is selected.
+
+### Inspected 100k scale evidence
+
+Actions run `30051321255` archived artifact
+`index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4` for
+PostgreSQL 16, three repetitions, and five committed churn cycles. Provenance
+records PR merge commit `84a11b147689b226ca161f5a0287990c1e8489d4`.
+The packet contains the three JSON reports plus before/after runner resource
+snapshots.
+
+The validated dataset contains 100,000 Product-locale rows, 300,080 total entity
+rows, and 600,000 links. Every candidate preserved exact cardinality, produced
+identical result rows and digests for all six read workloads, affected the same
+1,000 Product entities and 2,000 outgoing links in mutation validation, and
+returned to exact cardinality after five churn cycles and `VACUUM (ANALYZE)`.
+Every read and mutation workload retained one plan shape across its three
+repetitions.
+
+| Candidate | Load | Baseline size | Churn growth | Dead tuples after churn | VACUUM |
+|---|---:|---:|---:|---:|---:|
+| JSONB entity rows | 9.499 s | 385.58 MiB | 6.80 MiB (1.76%) | 20,000 | 800 ms |
+| Typed EAV | 17.441 s | 687.23 MiB | 10.97 MiB (1.60%) | 69,934 | 921 ms |
+| Hot typed projection | 6.132 s | 295.56 MiB | 4.61 MiB (1.56%) | 20,000 | 728 ms |
+
+Warm-median read execution in milliseconds:
+
+| Candidate | Status equality | Price range | Multi-value tag | Two-hop channel | Keyset page | Exact count |
+|---|---:|---:|---:|---:|---:|---:|
+| JSONB entity rows | 0.222 | 0.105 | 1.895 | 11,515.678 | 0.563 | 1.483 |
+| Typed EAV | 7.074 | 6.102 | 4.742 | 14,989.380 | 20.814 | 4.074 |
+| Hot typed projection | 0.073 | 0.071 | 1.394 | 10,305.135 | 0.032 | 0.456 |
+
+The two-hop workload is pathological for every candidate at this scale: it uses
+roughly 1.65-2.66 million shared-hit blocks and takes 10-15 seconds even though
+no shared-read or temporary blocks are recorded. This is a query/index design
+problem that must be addressed before production regardless of the selected
+entity representation.
+
+Median mutation execution and maximum-node WAL bytes:
+
+| Candidate | Update 1,000 Products | Update WAL | Delete 1,000 Products + 2,000 links | Delete WAL |
+|---|---:|---:|---:|---:|
+| JSONB entity rows | 51.060 ms | 1,054,238 B | 27.165 ms | 162,000 B |
+| Typed EAV | 62.207 ms | 1,238,933 B | 46.305 ms | 594,000 B |
+| Hot typed projection | 43.672 ms | 834,784 B | 24.683 ms | 162,000 B |
+
+Ordinary VACUUM reduced estimated dead tuples to zero for every candidate but did
+not shrink relation files; after-VACUUM size deltas were small positive values,
+which is valid under the benchmark's neutral size-delta rule.
+
+The workflow then failed closed before `1m` because repository variable
+`INDEX_BENCH_LARGE_RUNNER` is not configured. It must name a Linux runner label
+with at least 35 GB free disk. The 100k result is therefore archived and accepted
+as evidence, while the storage ADR remains Proposed and M3 remains blocked.
 
 Optional settings:
 

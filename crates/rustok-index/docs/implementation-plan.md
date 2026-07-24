@@ -244,7 +244,7 @@ migrations.
       configurable churn-cycle count.
 - [x] Run and archive the `smoke` read, mutation, and maintenance evidence as a
       harness sanity check.
-- [ ] Run and archive 100k Product-locale row read, mutation, and maintenance
+- [x] Run and archive 100k Product-locale row read, mutation, and maintenance
       evidence.
 - [ ] Run and archive 1m Product-locale row read, mutation, and maintenance
       evidence.
@@ -408,3 +408,10 @@ DATABASE_URL=postgres://... INDEX_BENCH_SCALE=1m INDEX_BENCH_CHURN_CYCLES=5 \
 - 2026-07-24: synchronized the central module registry and FBA overview with
   complete Index v1 removal, removed references to deleted registry/evidence
   and read-model contracts, and reset central FBA readiness to `in_progress`.
+- 2026-07-24: inspected Actions run `30051321255` and artifact
+  `index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4`.
+  PostgreSQL 16 preserved 300,080 entities and 600,000 links across JSONB,
+  typed EAV, and hot projection candidates; all read digests, mutation effects,
+  five churn cycles, and post-VACUUM cardinalities matched. The 1m stage remains
+  blocked until `INDEX_BENCH_LARGE_RUNNER` names a Linux runner with at least
+  35 GB free disk.

@@ -46,14 +46,39 @@ review. Do not fill it from smoke measurements.
 
 | Criterion | JSONB entity rows | Typed EAV | Hot typed projection |
 | --- | --- | --- | --- |
-| 100k read/query | Pending | Pending | Pending |
-| 1m read/query | Pending | Pending | Pending |
-| Relation-size scaling | Pending | Pending | Pending |
-| Mutation/WAL | Pending | Pending | Pending |
-| Churn/VACUUM | Pending | Pending | Pending |
-| Planner stability | Pending | Pending | Pending |
-| Dynamic schema evolution | Pending | Pending | Baseline limitation |
-| Operational complexity | Pending | Pending | Baseline limitation |
+| 100k read/query | Status/keyset/count warm medians 0.222/0.563/1.483 ms; two-hop 11.516 s | 7.074/20.814/4.074 ms; two-hop 14.989 s | 0.073/0.032/0.456 ms; two-hop 10.305 s |
+| 1m read/query | Pending larger runner | Pending larger runner | Pending larger runner |
+| Relation-size scaling | 385.58 MiB at 100k; 1m ratio pending | 687.23 MiB at 100k; 1m ratio pending | 295.56 MiB at 100k; 1m ratio pending |
+| Mutation/WAL | Update 51.060 ms / 1,054,238 B; delete 27.165 ms / 162,000 B | Update 62.207 ms / 1,238,933 B; delete 46.305 ms / 594,000 B | Update 43.672 ms / 834,784 B; delete 24.683 ms / 162,000 B |
+| Churn/VACUUM | +6.80 MiB, 20,000 dead, 800 ms | +10.97 MiB, 69,934 dead, 921 ms | +4.61 MiB, 20,000 dead, 728 ms |
+| Planner stability | One shape per read/mutation workload at 100k; 1m pending | One shape per read/mutation workload at 100k; 1m pending | One shape per read/mutation workload at 100k; 1m pending |
+| Dynamic schema evolution | Pending operational review | Pending operational review | Baseline limitation |
+| Operational complexity | Pending final review | Pending final review | Baseline limitation |
+
+## Inspected 100k evidence
+
+Actions run `30051321255` and artifact
+`index-storage-100k-84a11b147689b226ca161f5a0287990c1e8489d4`
+passed the scale validator for PostgreSQL 16, three repetitions, and five churn
+cycles. All candidates preserved 300,080 entities and 600,000 links, returned
+identical read rows/digests, matched mutation effects, and preserved cardinality
+through churn and VACUUM.
+
+The 100k packet establishes these provisional findings:
+
+- the hot typed projection is the size/load/read/write best-case baseline, but it
+  does not satisfy the generic dynamic-schema requirement by itself;
+- JSONB is materially smaller and faster than typed EAV across this packet;
+- typed EAV has the largest relation size, slowest load, highest delete WAL, and
+  highest post-churn dead-tuple estimate;
+- the two-hop workload is unacceptable for all three candidates and requires a
+  query/index redesign independent of the entity representation;
+- all plan shapes are stable across the three repetitions at 100k;
+- ordinary VACUUM clears dead-tuple estimates but does not shrink relation files.
+
+The `1m` stage did not run. The workflow failed closed because repository variable
+`INDEX_BENCH_LARGE_RUNNER` is unset; it must name a Linux larger-runner label with
+at least 35 GB free disk. These findings are not sufficient to accept the ADR.
 
 ## Decision
 
