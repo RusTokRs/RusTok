@@ -25,9 +25,9 @@ const usage = () => {
 
 Commands:
   contract  Run static Index boundary, source-oracle/evidence, and ADR tooling guards.
-  fixtures  Run comparator, decision preparation/finalization, and ADR renderer fixture suites.
-  packet    Validate one smoke, 100k, or 1m evidence packet through the canonical validator.
-  compare   Generate a cross-scale comparison from validated packet directories.
+  fixtures  Run comparator, read-ordering, decision preparation/finalization, and ADR renderer fixture suites.
+  packet    Validate one smoke, 100k, or 1m evidence packet through terminal-ordering preflight and the canonical validator.
+  compare   Generate a cross-scale comparison after terminal-ordering preflight for every input packet.
   hash      Print the SHA-256 digest of the exact comparison.json bytes.
   prepare   Create a non-overwriting manual decision draft bound to the exact comparison bytes.
   render    Finalize the manual storage ADR with comparison and decision SHA-256 bindings.
@@ -54,6 +54,7 @@ const runContract = (args) => {
   for (const script of [
     'verify-index-fba.mjs',
     'verify-index-storage-source-oracle.mjs',
+    'verify-index-storage-read-ordering-contract.mjs',
     'verify-index-storage-adr-tooling.mjs',
     'verify-index-storage-adr-integrity.mjs',
   ]) {
@@ -65,6 +66,7 @@ const runFixtures = (args) => {
   if (args.length !== 0) fail('fixtures does not accept arguments');
   runNode([
     '--test',
+    scriptPath('check-index-storage-read-ordering.test.mjs'),
     scriptPath('compare-index-storage-evidence.test.mjs'),
     scriptPath('render-index-storage-adr.test.mjs'),
     scriptPath('index-storage-decision-tooling.test.mjs'),
@@ -76,9 +78,9 @@ const parsePacketArgs = (args) => {
   let root = null;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (argument === '--scale' && args[index + 1]) {
+    if (argument === '--scale' && args[index + 1] && !args[index + 1].startsWith('--')) {
       scale = args[++index];
-    } else if (argument === '--root' && args[index + 1]) {
+    } else if (argument === '--root' && args[index + 1] && !args[index + 1].startsWith('--')) {
       root = args[++index];
     } else {
       fail(`unknown or incomplete packet argument: ${argument}`);
@@ -92,12 +94,40 @@ const parsePacketArgs = (args) => {
 
 const runPacket = (args) => {
   const { scale, root } = parsePacketArgs(args);
+  const packetRoot = root ?? path.join('evidence/index-storage', scale);
+  runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot]);
   const environment = {
     ...process.env,
     INDEX_BENCH_SCALE: scale,
   };
   if (root !== null) environment.INDEX_BENCH_EVIDENCE_ROOT = root;
   runScript('validate-index-storage-evidence.mjs', [], environment);
+};
+
+const parseCompareInputs = (args) => {
+  const inputs = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === '--help' || argument === '-h') return null;
+    if ((argument === '--input' || argument === '--output')
+        && args[index + 1] && !args[index + 1].startsWith('--')) {
+      if (argument === '--input') inputs.push(args[index + 1]);
+      index += 1;
+    } else {
+      fail(`unknown or incomplete compare argument: ${argument}`);
+    }
+  }
+  if (inputs.length === 0) fail('compare requires at least one --input directory');
+  return inputs;
+};
+
+const runCompare = (args) => {
+  const inputs = parseCompareInputs(args);
+  if (inputs !== null) {
+    const orderingArgs = inputs.flatMap((input) => ['--input', input]);
+    runScript('check-index-storage-read-ordering.mjs', orderingArgs);
+  }
+  runScript('compare-index-storage-evidence.mjs', args);
 };
 
 const [command, ...args] = process.argv.slice(2);
@@ -117,7 +147,7 @@ switch (command) {
     runPacket(args);
     break;
   case 'compare':
-    runScript('compare-index-storage-evidence.mjs', args);
+    runCompare(args);
     break;
   case 'hash':
     runScript('hash-index-storage-comparison.mjs', args);
