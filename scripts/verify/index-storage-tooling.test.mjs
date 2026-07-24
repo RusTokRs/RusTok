@@ -14,7 +14,7 @@ const run = (...args) => spawnSync(process.execPath, [script, ...args], {
 test('prints the stable Index storage tooling command surface', () => {
   const result = run('--help');
   assert.equal(result.status, 0, result.stderr);
-  for (const command of ['contract', 'fixtures', 'packet', 'compare', 'hash', 'render']) {
+  for (const command of ['contract', 'fixtures', 'packet', 'compare', 'hash', 'prepare', 'render']) {
     assert.match(result.stdout, new RegExp(`\\b${command}\\b`, 'u'));
   }
 });
@@ -31,10 +31,17 @@ test('forwards comparator help without rewriting its arguments', () => {
   assert.match(result.stdout, /compare-index-storage-evidence\.mjs --input <dir>/u);
 });
 
-test('forwards renderer help without rewriting its arguments', () => {
+test('forwards decision preparation help without rewriting its arguments', () => {
+  const result = run('prepare', '--help');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /prepare-index-storage-decision\.mjs/u);
+  assert.match(result.stdout, /--selected <jsonb\|typed_eav\|hot_projection>/u);
+});
+
+test('forwards ADR finalization help without rewriting its arguments', () => {
   const result = run('render', '--help');
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /render-index-storage-adr\.mjs/u);
+  assert.match(result.stdout, /finalize-index-storage-adr\.mjs/u);
   assert.match(result.stdout, /--comparison <comparison\.json>/u);
 });
 
