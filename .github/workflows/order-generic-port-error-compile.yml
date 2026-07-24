@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/order-generic-port-error-compile
+  pull_request:
+    branches:
+      - agent/order-generic-port-error-context
 
 permissions:
   contents: read
