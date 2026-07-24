@@ -125,6 +125,28 @@ impl ForumCategoryVisibilityPolicyService {
         txn.commit().await?;
         Ok(result)
     }
+
+    pub(crate) async fn hidden_category_ids_for_viewer(
+        &self,
+        tenant_id: Uuid,
+        is_authenticated: bool,
+    ) -> ForumResult<Vec<Uuid>> {
+        if is_authenticated {
+            return Ok(Vec::new());
+        }
+
+        let snapshot = CategoryVisibilitySnapshot::load(&self.db, tenant_id).await?;
+        let mut hidden = Vec::new();
+        for category_id in snapshot.parents.keys().copied() {
+            if snapshot.resolve(category_id)?.effective_visibility
+                == ForumCategoryVisibility::Authenticated
+            {
+                hidden.push(category_id);
+            }
+        }
+        hidden.sort_unstable();
+        Ok(hidden)
+    }
 }
 
 struct CategoryVisibilitySnapshot {
