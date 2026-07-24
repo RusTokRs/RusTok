@@ -28,6 +28,12 @@ const readSql = (relation, workload) => {
 };
 
 const report = () => ({
+  database: {
+    standard_conforming_strings: 'on',
+    timezone: 'UTC',
+    date_style: 'ISO, YMD',
+    extra_float_digits: '3',
+  },
   source_workloads: workloads.map((name) => ({
     name,
     sql: readSql('idx_bench_source.product', name),

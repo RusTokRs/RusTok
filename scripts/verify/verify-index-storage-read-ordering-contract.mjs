@@ -9,8 +9,12 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
+const benchmarkBinary = read('ops/benches/src/bin/index_storage_benchmark.rs');
+const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
+const comparatorFixture = read('scripts/verify/compare-index-storage-evidence.test.mjs');
 const validatorWrapper = read('scripts/verify/validate-index-storage-evidence.mjs');
 const comparatorWrapper = read('scripts/verify/compare-index-storage-evidence.mjs');
 const standaloneFixture = read('scripts/verify/index-storage-standalone-tools.test.mjs');
@@ -27,6 +31,42 @@ const requireMarkers = (content, label, markers) => {
   }
 };
 
+const sessionMetadataMarkers = [
+  "standard_conforming_strings: 'on'",
+  "timezone: 'UTC'",
+  "date_style: 'ISO, YMD'",
+  "extra_float_digits: '3'",
+];
+
+requireMarkers(connection, 'benchmark session contract', [
+  'pub(crate) const BENCHMARK_SESSION_METADATA',
+  '("standard_conforming_strings", "on")',
+  '("timezone", "UTC")',
+  '("date_style", "ISO, YMD")',
+  '("extra_float_digits", "3")',
+  'SET standard_conforming_strings = on;',
+  "SET TIME ZONE 'UTC';",
+  "SET DateStyle = 'ISO, YMD';",
+  'SET extra_float_digits = 3;',
+  'failed to pin deterministic PostgreSQL benchmark session',
+  'BENCHMARK_SESSION_METADATA.contains(&(field, value))',
+]);
+
+requireMarkers(benchmarkModule, 'benchmark report writer', [
+  'BENCHMARK_SESSION_METADATA',
+  'pub fn write_report_with_session_metadata',
+  'serde_json::to_value(report)',
+  'database.insert(field.to_owned(), Value::String(setting_value.to_owned()))',
+  'write_report_with_session_metadata(&config.output_path, &report)?',
+]);
+requireMarkers(benchmarkBinary, 'read evidence executable', [
+  'write_report_with_session_metadata',
+  'write_report_with_session_metadata(&config.output_path, &report)?',
+]);
+if (benchmarkBinary.includes('write_report(&config.output_path, &report)?')) {
+  fail('read evidence executable bypasses deterministic session metadata serialization');
+}
+
 requireMarkers(preflight, 'read ordering preflight', [
   "const canonicalPrototypes = ['jsonb', 'typed_eav', 'hot_projection']",
   "'status_equality'",
@@ -35,6 +75,14 @@ requireMarkers(preflight, 'read ordering preflight', [
   "'two_hop_channel_filter'",
   "'keyset_page'",
   "'exact_count'",
+  'const canonicalSessionMetadata = new Map',
+  "['standard_conforming_strings', 'on']",
+  "['timezone', 'UTC']",
+  "['date_style', 'ISO, YMD']",
+  "['extra_float_digits', '3']",
+  'const requireSessionMetadata = (read, directory) =>',
+  'requireSessionMetadata(read, directory);',
+  'deterministic session metadata and executable terminal ordering verified',
   'const maskSqlText = (text) =>',
   'const identifierContinuation = /[A-Za-z0-9_$]/u',
   'const isEscapeStringQuote = (sql, quoteIndex) =>',
@@ -62,7 +110,10 @@ for (const forbidden of ['sql.includes(marker)', 'sql.trimEnd().endsWith(marker)
 }
 
 requireMarkers(fixture, 'read ordering fixture', [
+  ...sessionMetadataMarkers,
   "test('accepts canonical terminal ordering with trailing whitespace'",
+  "test('rejects missing deterministic session metadata'",
+  "test('rejects deterministic session metadata drift'",
   "test('accepts comment tokens inside strings and comments after executable ordering'",
   "test('rejects a source ordering marker that exists only in a nested query'",
   "test('rejects a candidate ordering marker that exists only in a block comment'",
@@ -71,6 +122,11 @@ requireMarkers(fixture, 'read ordering fixture', [
   "test('rejects an ordering marker hidden after an escaped quote in an E string'",
   "test('rejects unterminated SQL comments before ordering validation'",
   "test('rejects workload order drift before checking SQL text'",
+]);
+requireMarkers(comparatorFixture, 'comparison evidence fixture', [
+  ...sessionMetadataMarkers,
+  'function writePacket(root, scale, overrides = {})',
+  "test('same-commit complete 100k and 1m evidence is decision-ready'",
 ]);
 
 requireMarkers(validatorWrapper, 'standalone validator wrapper', [
@@ -101,6 +157,7 @@ if (standaloneCompareOrdering < 0 || standaloneComparatorCore < 0
 }
 
 requireMarkers(standaloneFixture, 'standalone evidence fixture', [
+  ...sessionMetadataMarkers,
   "test('direct validator rejects non-executable terminal ordering before its core'",
   "test('direct comparator rejects nested-only terminal ordering before its core'",
   "test('direct validator reaches the byte-preserved core after a valid preflight'",
@@ -137,6 +194,7 @@ if (compareOrdering < 0 || comparator < 0 || compareOrdering > comparator) {
 }
 
 requireMarkers(routerFixture, 'storage tooling router fixture', [
+  ...sessionMetadataMarkers,
   "test('packet runs terminal ordering preflight before the canonical validator'",
   "test('compare runs terminal ordering preflight before the canonical comparator'",
   'assert.doesNotMatch(result.stderr, /missing evidence file: .*mutation-report\\.json/u)',
@@ -164,4 +222,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] deterministic PostgreSQL session metadata, session-aware evidence entrypoint, session-complete fixtures, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, public command order, and workflows are consistent');

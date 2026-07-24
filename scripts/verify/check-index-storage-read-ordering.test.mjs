@@ -33,6 +33,12 @@ const sql = (relation, workload) => {
 };
 
 const report = () => ({
+  database: {
+    standard_conforming_strings: 'on',
+    timezone: 'UTC',
+    date_style: 'ISO, YMD',
+    extra_float_digits: '3',
+  },
   source_workloads: workloads.map((name) => ({
     name,
     sql: `${sql('idx_bench_source.product', name)}   \n`,
@@ -64,7 +70,7 @@ const run = (root) => spawnSync(process.execPath, [script, '--input', root], { e
 const expectFailure = (mutate, pattern) => {
   withPacket(mutate, (root) => {
     const result = run(root);
-    assert.notEqual(result.status, 0, 'expected terminal ordering preflight to fail');
+    assert.notEqual(result.status, 0, 'expected evidence preflight to fail');
     assert.match(result.stderr, pattern);
   });
 };
@@ -74,6 +80,18 @@ test('accepts canonical terminal ordering with trailing whitespace', () => {
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
   });
+});
+
+test('rejects missing deterministic session metadata', () => {
+  expectFailure((value) => {
+    delete value.database.standard_conforming_strings;
+  }, /read\.database\.standard_conforming_strings must be on; got undefined/u);
+});
+
+test('rejects deterministic session metadata drift', () => {
+  expectFailure((value) => {
+    value.database.timezone = 'Europe/Moscow';
+  }, /read\.database\.timezone must be UTC; got Europe\/Moscow/u);
 });
 
 test('accepts comment tokens inside strings and comments after executable ordering', () => {
