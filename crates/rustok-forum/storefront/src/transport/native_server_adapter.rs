@@ -36,10 +36,13 @@ async fn storefront_forum_native(
 ) -> Result<StorefrontForumData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{
+            HostRuntimeContext, OptionalAuthContext, Permission, RequestContext, TenantContext,
+            has_any_effective_permission,
+        };
         use rustok_core::SecurityContext;
         use rustok_forum::{
-            CategoryService, ForumError, ForumStorefrontReadStateService, ListRepliesFilter,
+            CategoryService, ForumStorefrontReadStateService, ListRepliesFilter,
             ListTopicsFilter, ReplyService, ReplyStatus, TopicService,
         };
         use rustok_outbox::TransactionalEventBus;
@@ -116,51 +119,33 @@ async fn storefront_forum_native(
         };
 
         let (topic_items, topics_total, first_topic_id, read_state_available) =
-            if let Some(auth) = auth.0 {
+            if let Some(auth) = auth.0.filter(|auth| {
+                has_any_effective_permission(
+                    &auth.permissions,
+                    &[Permission::FORUM_TOPICS_LIST],
+                )
+            }) {
                 let security = SecurityContext::from_permission_snapshot(
                     Some(auth.user_id),
                     &auth.permissions,
                 );
-                match ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
+                let page = ForumStorefrontReadStateService::new(db.clone(), event_bus.clone())
                     .list_topics_with_unread(
                         tenant.id,
                         security,
-                        topic_filter.clone(),
+                        topic_filter,
                         Some(tenant.default_locale.as_str()),
                         channel_slug,
                     )
                     .await
-                {
-                    Ok(page) => {
-                        let first_topic_id = page.items.first().map(|item| item.topic.id);
-                        (
-                            page.items.into_iter().map(map_unread_topic).collect(),
-                            page.total,
-                            first_topic_id,
-                            true,
-                        )
-                    }
-                    Err(ForumError::Forbidden(_)) => {
-                        let (topics, total) = topic_service
-                            .list_storefront_visible_with_locale_fallback(
-                                tenant.id,
-                                public_security.clone(),
-                                topic_filter,
-                                Some(tenant.default_locale.as_str()),
-                                channel_slug,
-                            )
-                            .await
-                            .map_err(server_error)?;
-                        let first_topic_id = topics.first().map(|topic| topic.id);
-                        (
-                            topics.into_iter().map(map_topic_list_item).collect(),
-                            total,
-                            first_topic_id,
-                            false,
-                        )
-                    }
-                    Err(error) => return Err(server_error(error)),
-                }
+                    .map_err(server_error)?;
+                let first_topic_id = page.items.first().map(|item| item.topic.id);
+                (
+                    page.items.into_iter().map(map_unread_topic).collect(),
+                    page.total,
+                    first_topic_id,
+                    true,
+                )
             } else {
                 let (topics, total) = topic_service
                     .list_storefront_visible_with_locale_fallback(
