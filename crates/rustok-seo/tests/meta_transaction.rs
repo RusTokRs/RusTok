@@ -12,7 +12,7 @@ use rustok_seo::entities::{
     seo_index_delivery, seo_revision,
 };
 use rustok_seo::{
-    SeoMetaInput, SeoMetaTranslationInput, SeoService, SeoTargetRegistry, SeoTargetSlug,
+    SeoMetaInput, SeoMetaTranslationInput, SeoApplicationServices, SeoTargetRegistry, SeoTargetSlug,
     seo_builtin_slug,
 };
 use rustok_seo_targets::{
@@ -126,14 +126,14 @@ async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
     registry
         .register(TestPageProvider)
         .expect("test page provider should register");
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(2))),
         Arc::new(registry),
     );
 
     let error = service
-        .upsert_meta(
+        .metadata().upsert_meta(
             &tenant,
             SeoMetaInput {
                 target_kind: page_slug(),
@@ -242,13 +242,13 @@ async fn revision_creation_rolls_back_when_reindex_event_fails() {
     .await
     .expect("explicit metadata translation should be seeded");
 
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(2))),
         Arc::new(SeoTargetRegistry::default()),
     );
     let error = service
-        .publish_revision(
+        .metadata().publish_revision(
             &tenant,
             page_slug(),
             target_id,
@@ -381,13 +381,13 @@ async fn revision_rollback_rolls_back_when_rollback_reindex_fails() {
     registry
         .register(TestPageProvider)
         .expect("test page provider should register");
-    let service = SeoService::new(
+    let service = SeoApplicationServices::new(
         db.clone(),
         TransactionalEventBus::new(Arc::new(FailOnNthTransport::new(4))),
         Arc::new(registry),
     );
     let error = service
-        .rollback_revision(&tenant, page_slug(), target_id, 1)
+        .metadata().rollback_revision(&tenant, page_slug(), target_id, 1)
         .await
         .expect_err("rollback reindex failure must abort the whole revision rollback");
     assert!(

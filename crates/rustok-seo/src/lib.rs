@@ -50,7 +50,11 @@ pub use rustok_seo_targets::{
     builtin_slug as seo_builtin_slug,
 };
 #[cfg(feature = "server")]
-pub use services::{SeoMediaAssetReadProvider, SeoService};
+pub use services::{
+    SeoApplicationServices, SeoBulkService, SeoMediaAssetReadProvider, SeoMetadataService,
+    SeoOperationsService, SeoRedirectService, SeoRoutingService, SeoSettingsService,
+    SeoSitemapService,
+};
 
 #[cfg(feature = "server")]
 pub struct SeoModule;

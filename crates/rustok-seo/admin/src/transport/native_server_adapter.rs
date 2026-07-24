@@ -3,7 +3,7 @@ use leptos::prelude::*;
 #[cfg(feature = "ssr")]
 use rustok_seo::SeoBulkApplyMode;
 #[cfg(feature = "ssr")]
-use rustok_seo::SeoService;
+use rustok_seo::{SeoApplicationServices, SeoSettingsService};
 #[cfg(feature = "ssr")]
 use rustok_seo::SeoTargetCapabilityKind;
 use rustok_seo::{
@@ -45,7 +45,7 @@ async fn persist_seo_settings(
     tenant_id: Uuid,
     input: SeoModuleSettings,
 ) -> Result<SeoModuleSettings, ServerFnError> {
-    let settings = SeoService::normalize_settings(input);
+    let settings = SeoSettingsService::normalize_settings(input);
     let Some(model) = tenant_module::Entity::find()
         .filter(tenant_module::Column::TenantId.eq(tenant_id))
         .filter(tenant_module::Column::ModuleSlug.eq(MODULE_SLUG))
@@ -78,7 +78,7 @@ async fn persist_seo_settings(
 #[cfg(feature = "ssr")]
 pub(super) async fn seo_service_from_context() -> Result<
     (
-        SeoService,
+        SeoApplicationServices,
         rustok_api::AuthContext,
         rustok_api::TenantContext,
     ),
@@ -112,7 +112,7 @@ pub(super) async fn seo_service_from_context() -> Result<
                         "SEO runtime extensions are not initialized; host bootstrap must insert ModuleRuntimeExtensions",
                     )
                 })?;
-            SeoService::from_runtime_extensions(runtime_ctx.db_clone(), event_bus, &extensions)
+            SeoApplicationServices::from_runtime_extensions(runtime_ctx.db_clone(), event_bus, &extensions)
                 .map_err(|err| ServerFnError::new(err.to_string()))?
         },
         auth,
@@ -132,7 +132,7 @@ pub(super) async fn seo_redirects_native() -> Result<Vec<SeoRedirectRecord>, Ser
         )?;
 
         service
-            .list_redirects(tenant.id)
+            .redirects().list_redirects(tenant.id)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -158,7 +158,7 @@ pub(super) async fn seo_upsert_redirect_native(
         )?;
 
         service
-            .upsert_redirect(&tenant, input)
+            .redirects().upsert_redirect(&tenant, input)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -186,7 +186,7 @@ pub(super) async fn seo_sitemap_status_native() -> Result<SeoSitemapStatusRecord
         )?;
 
         service
-            .sitemap_status(&tenant)
+            .sitemaps().sitemap_status(&tenant)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -211,7 +211,7 @@ pub(super) async fn seo_generate_sitemaps_native() -> Result<SeoSitemapStatusRec
         )?;
 
         service
-            .generate_sitemaps(&tenant)
+            .sitemaps().generate_sitemaps(&tenant)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -235,7 +235,7 @@ pub(super) async fn seo_settings_native() -> Result<SeoModuleSettings, ServerFnE
         )?;
 
         service
-            .load_settings(tenant.id)
+            .settings().load_settings(tenant.id)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -268,7 +268,7 @@ pub(super) async fn seo_save_settings_native(
         persist_seo_settings(&db, tenant.id, input).await?;
 
         service
-            .load_settings(tenant.id)
+            .settings().load_settings(tenant.id)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -293,7 +293,7 @@ pub(super) async fn seo_robots_preview_native() -> Result<SeoRobotsPreviewRecord
         )?;
 
         service
-            .robots_preview(&tenant)
+            .sitemaps().robots_preview(&tenant)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -322,7 +322,7 @@ pub(super) async fn seo_diagnostics_native(
         )?;
 
         service
-            .diagnostics_summary(&tenant, locale.as_deref())
+            .operations().diagnostics_summary(&tenant, locale.as_deref())
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -349,7 +349,7 @@ pub(super) async fn seo_bulk_items_native(
         )?;
 
         service
-            .list_bulk_items(&tenant, input)
+            .bulk().list_bulk_items(&tenant, input)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -374,7 +374,7 @@ pub(super) async fn seo_bulk_targets_native() -> Result<Vec<SeoTargetRegistryEnt
             "seo:manage required",
         )?;
 
-        Ok(service.target_registry_entries(Some(SeoTargetCapabilityKind::Bulk)))
+        Ok(service.routing().target_registry_entries(Some(SeoTargetCapabilityKind::Bulk)))
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -398,7 +398,7 @@ pub(super) async fn seo_bulk_selection_preview_native(
         )?;
 
         service
-            .preview_bulk_selection_count(&tenant, input)
+            .bulk().preview_bulk_selection_count(&tenant, input)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -426,7 +426,7 @@ pub(super) async fn seo_bulk_jobs_native(
         )?;
 
         service
-            .list_bulk_jobs(
+            .bulk().list_bulk_jobs(
                 tenant.id,
                 limit.unwrap_or(20).clamp(1, 100) as usize,
                 status,
@@ -459,7 +459,7 @@ pub(super) async fn seo_bulk_job_native(
             Uuid::parse_str(job_id.as_str()).map_err(|err| ServerFnError::new(err.to_string()))?;
 
         service
-            .bulk_job(tenant.id, job_id)
+            .bulk().bulk_job(tenant.id, job_id)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -515,7 +515,7 @@ pub(super) async fn seo_queue_bulk_apply_native(
         }
 
         service
-            .queue_bulk_apply(&tenant, Some(auth.user_id), input)
+            .bulk().queue_bulk_apply(&tenant, Some(auth.user_id), input)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -538,7 +538,7 @@ pub(super) async fn seo_queue_bulk_import_native(
         require_bulk_write_permissions(&auth, input.publish_after_write)?;
 
         service
-            .queue_bulk_import(&tenant, Some(auth.user_id), input)
+            .bulk().queue_bulk_import(&tenant, Some(auth.user_id), input)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -565,7 +565,7 @@ pub(super) async fn seo_queue_bulk_export_native(
         )?;
 
         service
-            .queue_bulk_export(&tenant, Some(auth.user_id), input)
+            .bulk().queue_bulk_export(&tenant, Some(auth.user_id), input)
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -592,7 +592,7 @@ pub(super) async fn seo_index_tracking_native(
         )?;
 
         service
-            .index_delivery_status(tenant.id, target_type.as_deref())
+            .operations().index_delivery_status(tenant.id, target_type.as_deref())
             .await
             .map_err(|err| ServerFnError::new(err.to_string()))
     }
@@ -619,7 +619,7 @@ pub(super) async fn seo_index_repair_replay_native(
         )?;
 
         service
-            .run_index_repair_replay(
+            .operations().run_index_repair_replay(
                 tenant.id,
                 input.target_type.as_deref(),
                 input.limit.clamp(1, 500) as usize,

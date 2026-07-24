@@ -31,7 +31,7 @@ Automated verification is recorded separately because direct pushes currently do
 ## P1 — performance and maintainability
 
 - [x] Remove avoidable direct owner dependencies from the SEO crate. (#2064)
-- [ ] Split the broad `SeoService` facade into focused application services.
+- [x] Split the broad `SeoService` facade into focused application services. (application services PR)
 - [ ] Replace the linear redirect cache scan with indexed exact and wildcard lookup structures.
 - [ ] Remove N+1 query patterns from bulk operations and diagnostics.
 - [ ] Move synchronous in-memory SEO pipelines to bounded background execution.

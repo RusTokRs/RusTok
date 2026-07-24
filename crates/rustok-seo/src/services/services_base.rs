@@ -1,3 +1,4 @@
+mod applications;
 mod bulk;
 mod cross_links;
 mod diagnostics;
@@ -35,6 +36,11 @@ use rustok_tenant::entities::tenant_module;
 use crate::dto::{SeoAlternateLink, SeoModuleSettings, SeoOpenGraph};
 use crate::entities::{self as seo_meta, meta_translation, seo_redirect};
 use crate::{SeoError, SeoResult};
+
+pub use applications::{
+    SeoApplicationServices, SeoBulkService, SeoMetadataService, SeoOperationsService,
+    SeoRedirectService, SeoRoutingService, SeoSettingsService, SeoSitemapService,
+};
 
 const MODULE_SLUG: &str = "seo";
 const REDIRECT_CACHE_TTL_SECS: u64 = 30;
@@ -77,7 +83,7 @@ fn redirect_cache_entry_weight(
 }
 
 #[derive(Clone)]
-pub struct SeoService {
+pub(crate) struct SeoService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     registry: Arc<SeoTargetRegistry>,
