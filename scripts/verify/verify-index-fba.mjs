@@ -28,18 +28,25 @@ const benchmarkConfig = read('ops/benches/src/index_storage/config.rs');
 const benchmarkConnection = read('ops/benches/src/index_storage/connection.rs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
 const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
+const sqlModule = read('ops/benches/src/index_storage/sql/mod.rs');
+const commonSql = read('ops/benches/src/index_storage/sql/common.rs');
 const maintenanceSql = read('ops/benches/src/index_storage/sql/maintenance.rs');
+const jsonbSql = read('ops/benches/src/index_storage/sql/jsonb.rs');
 const eavSql = read('ops/benches/src/index_storage/sql/eav.rs');
+const hotSql = read('ops/benches/src/index_storage/sql/hot.rs');
+const normalizedCommonSql = commonSql.replace(/\s+/gu, ' ');
 const normalizedMaintenanceSql = maintenanceSql.replace(/\s+/gu, ' ');
+const normalizedJsonbSql = jsonbSql.replace(/\s+/gu, ' ');
 const normalizedEavSql = eavSql.replace(/\s+/gu, ' ');
+const normalizedHotSql = hotSql.replace(/\s+/gu, ' ');
 const benchmarkSql = [
-  'ops/benches/src/index_storage/sql/mod.rs',
+  sqlModule,
   'ops/benches/src/index_storage/sql/source.rs',
-  'ops/benches/src/index_storage/sql/common.rs',
+  commonSql,
   maintenanceSql,
-  'ops/benches/src/index_storage/sql/jsonb.rs',
+  jsonbSql,
   eavSql,
-  'ops/benches/src/index_storage/sql/hot.rs',
+  hotSql,
 ].map((entry) => entry.includes('\n') ? entry : read(entry)).join('\n');
 const benchmarkRunner = read('ops/benches/src/index_storage/runner.rs');
 const mutationRunner = read('ops/benches/src/index_storage/mutation_runner.rs');
@@ -185,12 +192,71 @@ for (const marker of [
   if (!benchmarkSql.includes(marker)) fail(`benchmark SQL missing ${marker}`);
 }
 for (const marker of [
+  'source_module text NOT NULL',
+  'source_schema_version integer NOT NULL CHECK (source_schema_version > 0)',
+  'target_module text NOT NULL',
+  'target_schema_version integer NOT NULL CHECK (target_schema_version > 0)',
+  'tenant_id, source_module, source_entity, source_schema_version, source_entity_id',
+  'tenant_id, target_module, target_entity, target_schema_version, target_entity_id',
+]) {
+  if (!normalizedCommonSql.includes(marker)) fail(`benchmark link envelope missing ${marker}`);
+}
+for (const marker of [
+  'assert_full_link_identity_sql',
+  'workload.sql = common::assert_full_link_identity_sql(workload.sql)',
+  'common::assert_full_link_identity_sql(maintenance::churn_cycle_sql',
+]) {
+  if (!sqlModule.includes(marker)) fail(`benchmark SQL identity guard missing ${marker}`);
+}
+for (const [label, source] of [
+  ['JSONB', normalizedJsonbSql],
+  ['typed EAV', normalizedEavSql],
+  ['hot projection', normalizedHotSql],
+]) {
+  for (const marker of [
+    'product_variant.source_module',
+    'product_variant.source_schema_version',
+    'product_variant.target_module',
+    'product_variant.target_schema_version',
+    'variant_channel.source_module = product_variant.target_module',
+    'variant_channel.source_schema_version = product_variant.target_schema_version',
+    'variant_channel.target_module',
+    'variant_channel.target_schema_version',
+    "link.source_module = 'product'",
+    'link.source_schema_version = 1',
+  ]) {
+    if (!source.includes(marker)) fail(`${label} link identity missing ${marker}`);
+  }
+}
+for (const marker of [
+  'source_module, source_entity, source_schema_version',
+  'target_module, target_entity, target_schema_version',
+  "link.source_module = 'product'",
+  'link.source_schema_version = 1',
+]) {
+  if (!normalizedMaintenanceSql.includes(marker)) {
+    fail(`maintenance link identity missing ${marker}`);
+  }
+}
+for (const legacy of [
+  'tenant_id, source_entity, source_entity_id, source_locale, link_name, ordinal, target_entity, target_entity_id, target_locale',
+  "product_variant.source_entity = 'product' AND product_variant.source_entity_id",
+  "variant_channel.source_entity = 'variant' AND variant_channel.source_entity_id",
+  "link.source_entity = 'product' AND link.source_locale",
+]) {
+  if ([normalizedCommonSql, normalizedJsonbSql, normalizedEavSql, normalizedHotSql, normalizedMaintenanceSql]
+    .some((source) => source.includes(legacy))) {
+    fail(`incomplete benchmark link identity returned: ${legacy}`);
+  }
+}
+for (const marker of [
   'CREATE TABLE idx_bench_eav.field_value ( tenant_id uuid NOT NULL, module_name text NOT NULL, entity_name text NOT NULL, schema_version integer NOT NULL',
   'PRIMARY KEY ( tenant_id, module_name, entity_name, schema_version, entity_id, locale, field_name, ordinal )',
   'FOREIGN KEY ( tenant_id, module_name, entity_name, schema_version, entity_id, locale ) REFERENCES idx_bench_eav.entity',
   'status.module_name = entity.module_name',
   'status.schema_version = entity.schema_version',
-  "channel_code.module_name = 'channel'",
+  'channel_code.module_name = variant_channel.target_module',
+  'channel_code.schema_version = variant_channel.target_schema_version',
   "field.module_name = 'product'",
   'field.schema_version = 1',
 ]) {
