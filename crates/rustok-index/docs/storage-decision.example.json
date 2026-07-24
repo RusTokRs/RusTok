@@ -4,6 +4,7 @@
   "decision_date": "2026-07-24",
   "owner": "Index maintainers",
   "comparison_commit": "0123456789abcdef0123456789abcdef01234567",
+  "comparison_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "selected_prototype": "typed_eav",
   "selection_rationale": "Replace this text with the evidence-based reason for selecting typed EAV.",
   "rejection_rationales": {
