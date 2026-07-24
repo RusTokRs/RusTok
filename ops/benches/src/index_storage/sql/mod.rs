@@ -52,12 +52,41 @@ pub struct MutationWorkload {
     pub expected_affected_entities: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ReadWorkloadContract {
+    pub digest_order_by: &'static str,
+    sql_order_marker: Option<&'static str>,
+}
+
+pub(crate) fn read_workload_contract(name: &str) -> ReadWorkloadContract {
+    match name {
+        "status_equality" | "multi_value_tag" | "two_hop_channel_filter" => {
+            ReadWorkloadContract {
+                digest_order_by: "entity_id",
+                sql_order_marker: Some("ORDER BY entity_id LIMIT 100"),
+            }
+        }
+        "price_range_sort" | "keyset_page" => ReadWorkloadContract {
+            digest_order_by: "price_minor, entity_id",
+            sql_order_marker: Some("ORDER BY price_minor, entity_id LIMIT 100"),
+        },
+        "exact_count" => ReadWorkloadContract {
+            digest_order_by: "result_count",
+            sql_order_marker: None,
+        },
+        other => panic!("unknown index storage read workload contract: {other}"),
+    }
+}
+
 pub fn source_dataset_sql(config: &DatasetConfig) -> String {
     source::dataset_sql(config)
 }
 
 pub fn source_workloads(config: &DatasetConfig) -> Vec<Workload> {
     source::workloads(&WorkloadContext::new(config))
+        .into_iter()
+        .map(assert_read_workload_contract)
+        .collect()
 }
 
 pub fn prototype_sql(prototype: Prototype) -> String {
@@ -86,9 +115,21 @@ pub fn workloads(prototype: Prototype, config: &DatasetConfig) -> Vec<Workload> 
         .into_iter()
         .map(|mut workload| {
             workload.sql = common::assert_full_link_identity_sql(workload.sql);
-            workload
+            assert_read_workload_contract(workload)
         })
         .collect()
+}
+
+fn assert_read_workload_contract(workload: Workload) -> Workload {
+    let contract = read_workload_contract(workload.name);
+    if let Some(marker) = contract.sql_order_marker {
+        assert!(
+            workload.sql.contains(marker),
+            "read workload {} must contain canonical ordering marker {marker}",
+            workload.name
+        );
+    }
+    workload
 }
 
 pub fn mutation_workloads(
@@ -227,6 +268,25 @@ mod tests {
                     .collect::<Vec<_>>(),
                 expected_mutations
             );
+        }
+    }
+
+    #[test]
+    fn read_workloads_keep_canonical_ordering_contracts() {
+        let config = smoke_config();
+        for workload in source_workloads(&config) {
+            let contract = read_workload_contract(workload.name);
+            if let Some(marker) = contract.sql_order_marker {
+                assert!(workload.sql.contains(marker));
+            }
+        }
+        for prototype in Prototype::ALL {
+            for workload in workloads(prototype, &config) {
+                let contract = read_workload_contract(workload.name);
+                if let Some(marker) = contract.sql_order_marker {
+                    assert!(workload.sql.contains(marker));
+                }
+            }
         }
     }
 
