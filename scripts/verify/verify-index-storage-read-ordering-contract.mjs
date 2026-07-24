@@ -9,6 +9,8 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const benchmarkModule = read('ops/benches/src/index_storage/mod.rs');
+const connection = read('ops/benches/src/index_storage/connection.rs');
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
 const validatorWrapper = read('scripts/verify/validate-index-storage-evidence.mjs');
@@ -27,6 +29,28 @@ const requireMarkers = (content, label, markers) => {
   }
 };
 
+requireMarkers(connection, 'benchmark session contract', [
+  'pub(crate) const BENCHMARK_SESSION_METADATA',
+  '("standard_conforming_strings", "on")',
+  '("timezone", "UTC")',
+  '("date_style", "ISO, YMD")',
+  '("extra_float_digits", "3")',
+  'SET standard_conforming_strings = on;',
+  "SET TIME ZONE 'UTC';",
+  "SET DateStyle = 'ISO, YMD';",
+  'SET extra_float_digits = 3;',
+  'failed to pin deterministic PostgreSQL benchmark session',
+  'BENCHMARK_SESSION_METADATA.contains(&(field, value))',
+]);
+
+requireMarkers(benchmarkModule, 'benchmark report writer', [
+  'BENCHMARK_SESSION_METADATA',
+  'fn write_report_with_session_metadata',
+  'serde_json::to_value(report)',
+  'database.insert(field.to_owned(), Value::String(setting_value.to_owned()))',
+  'write_report_with_session_metadata(&config.output_path, &report)?',
+]);
+
 requireMarkers(preflight, 'read ordering preflight', [
   "const canonicalPrototypes = ['jsonb', 'typed_eav', 'hot_projection']",
   "'status_equality'",
@@ -35,6 +59,14 @@ requireMarkers(preflight, 'read ordering preflight', [
   "'two_hop_channel_filter'",
   "'keyset_page'",
   "'exact_count'",
+  'const canonicalSessionMetadata = new Map',
+  "['standard_conforming_strings', 'on']",
+  "['timezone', 'UTC']",
+  "['date_style', 'ISO, YMD']",
+  "['extra_float_digits', '3']",
+  'const requireSessionMetadata = (read, directory) =>',
+  'requireSessionMetadata(read, directory);',
+  'deterministic session metadata and executable terminal ordering verified',
   'const maskSqlText = (text) =>',
   'const identifierContinuation = /[A-Za-z0-9_$]/u',
   'const isEscapeStringQuote = (sql, quoteIndex) =>',
@@ -63,6 +95,8 @@ for (const forbidden of ['sql.includes(marker)', 'sql.trimEnd().endsWith(marker)
 
 requireMarkers(fixture, 'read ordering fixture', [
   "test('accepts canonical terminal ordering with trailing whitespace'",
+  "test('rejects missing deterministic session metadata'",
+  "test('rejects deterministic session metadata drift'",
   "test('accepts comment tokens inside strings and comments after executable ordering'",
   "test('rejects a source ordering marker that exists only in a nested query'",
   "test('rejects a candidate ordering marker that exists only in a block comment'",
@@ -164,4 +198,4 @@ requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] deterministic PostgreSQL session metadata, executable SQL lexer, PostgreSQL escape strings, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
