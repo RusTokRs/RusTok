@@ -32,7 +32,8 @@ pub use graphql::{ForumMutation, ForumQuery};
 pub use mentions::*;
 pub use services::{
     CategoryService, ForumEventService, ForumQuoteCommandService, ForumReadModelService,
-    ForumRelationReadService, ForumWidgetContractService, ModerationService, ReplyService,
+    ForumRelationReadService, ForumTopicReadState, ForumTopicReadStateService,
+    ForumWidgetContractService, MarkForumTopicReadInput, ModerationService, ReplyService,
     RevisionService, SubscriptionService, TopicService, UserStatsService, VoteService,
 };
 pub use state_machine::{ReplyStatus, TopicStatus};
