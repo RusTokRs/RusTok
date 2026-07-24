@@ -54,7 +54,7 @@ pub async fn list_payment_collections(
             },
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_payment_error)?;
     Ok(Json(PaginatedResponse {
         data: collections,
         meta: super::super::common::PaginationMeta::new(pagination.page, pagination.limit(), total),
