@@ -4,6 +4,7 @@ use super::marketplace_financial::MarketplaceFinancialMutation;
 
 pub mod cart;
 pub mod catalog;
+#[path = "safe_checkout.rs"]
 pub mod checkout;
 pub mod fulfillment;
 #[path = "helpers.rs"]
