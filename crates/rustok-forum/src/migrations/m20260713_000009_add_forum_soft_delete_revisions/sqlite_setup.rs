@@ -23,8 +23,8 @@ pub(super) async fn apply_setup(manager: &SchemaManager<'_>) -> Result<(), DbErr
             revision_reason TEXT NOT NULL
                 CHECK (revision_reason IN ('edit', 'delete')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tenant_id, topic_id)
-                REFERENCES forum_topics (tenant_id, id)
+            FOREIGN KEY (topic_id)
+                REFERENCES forum_topics (id)
                 ON UPDATE CASCADE
                 ON DELETE CASCADE
         )"#,
@@ -40,8 +40,8 @@ pub(super) async fn apply_setup(manager: &SchemaManager<'_>) -> Result<(), DbErr
             revision_reason TEXT NOT NULL
                 CHECK (revision_reason IN ('edit', 'delete')),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tenant_id, reply_id)
-                REFERENCES forum_replies (tenant_id, id)
+            FOREIGN KEY (reply_id)
+                REFERENCES forum_replies (id)
                 ON UPDATE CASCADE
                 ON DELETE CASCADE
         )"#,

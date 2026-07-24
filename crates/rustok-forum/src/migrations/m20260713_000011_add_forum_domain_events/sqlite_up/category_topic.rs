@@ -21,8 +21,8 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'category', NEW.id,
         'forum.category.created', 1, NULL, json_object(
-            'category_id', lower(hex(substr(NEW.id,1,4))) || '-' || lower(hex(substr(NEW.id,5,2))) || '-' || lower(hex(substr(NEW.id,7,2))) || '-' || lower(hex(substr(NEW.id,9,2))) || '-' || lower(hex(substr(NEW.id,11,6))),
-            'parent_id', CASE WHEN NEW.parent_id IS NULL THEN NULL ELSE lower(hex(substr(NEW.parent_id,1,4))) || '-' || lower(hex(substr(NEW.parent_id,5,2))) || '-' || lower(hex(substr(NEW.parent_id,7,2))) || '-' || lower(hex(substr(NEW.parent_id,9,2))) || '-' || lower(hex(substr(NEW.parent_id,11,6))) END,
+            'category_id', lower(hex(NEW.id)),
+            'parent_id', CASE WHEN NEW.parent_id IS NULL THEN NULL ELSE lower(hex(NEW.parent_id)) END,
             'position', NEW.position,
             'moderated', NEW.moderated
         )
@@ -48,7 +48,13 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'category', NEW.id,
-        'forum.category.updated', 1, NULL, json_object('category_id', NEW.id, 'change_scope', 'category', 'parent_id', NEW.parent_id, 'position', NEW.position, 'moderated', NEW.moderated)
+        'forum.category.updated', 1, NULL, json_object(
+            'category_id', lower(hex(NEW.id)),
+            'change_scope', 'category',
+            'parent_id', CASE WHEN NEW.parent_id IS NULL THEN NULL ELSE lower(hex(NEW.parent_id)) END,
+            'position', NEW.position,
+            'moderated', NEW.moderated
+        )
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_category_deleted_event"##,
@@ -66,7 +72,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         OLD.tenant_id, 'category', OLD.id,
-        'forum.category.deleted', 1, NULL, json_object('category_id', OLD.id)
+        'forum.category.deleted', 1, NULL, json_object('category_id', lower(hex(OLD.id)))
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_category_translation_insert_event"##,
@@ -90,7 +96,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'category', NEW.category_id,
-        'forum.category.updated', 1, NULL, json_object('category_id', NEW.category_id, 'change_scope', 'translation', 'locale', NEW.locale)
+        'forum.category.updated', 1, NULL, json_object('category_id', lower(hex(NEW.category_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_category_translation_update_event"##,
@@ -111,7 +117,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'category', NEW.category_id,
-        'forum.category.updated', 1, NULL, json_object('category_id', NEW.category_id, 'change_scope', 'translation', 'locale', NEW.locale)
+        'forum.category.updated', 1, NULL, json_object('category_id', lower(hex(NEW.category_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_created_event"##,
@@ -129,7 +135,12 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.id,
-        'forum.topic.created', 1, NEW.author_id, json_object('topic_id', NEW.id, 'category_id', NEW.category_id, 'author_id', NEW.author_id, 'status', NEW.status)
+        'forum.topic.created', 1, NEW.author_id, json_object(
+            'topic_id', lower(hex(NEW.id)),
+            'category_id', lower(hex(NEW.category_id)),
+            'author_id', CASE WHEN NEW.author_id IS NULL THEN NULL ELSE lower(hex(NEW.author_id)) END,
+            'status', NEW.status
+        )
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_updated_event"##,
@@ -149,7 +160,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.id,
-        'forum.topic.updated', 1, NULL, json_object('topic_id', NEW.id, 'change_scope', 'topic', 'category_id', NEW.category_id)
+        'forum.topic.updated', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'change_scope', 'topic', 'category_id', lower(hex(NEW.category_id)))
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_status_event"##,
@@ -168,7 +179,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.id,
-        'forum.topic.status_changed', 1, NULL, json_object('topic_id', NEW.id, 'old_status', OLD.status, 'new_status', NEW.status)
+        'forum.topic.status_changed', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'old_status', OLD.status, 'new_status', NEW.status)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_pinned_event"##,
@@ -187,7 +198,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.id,
-        'forum.topic.pinned_changed', 1, NULL, json_object('topic_id', NEW.id, 'is_pinned', NEW.is_pinned)
+        'forum.topic.pinned_changed', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'is_pinned', NEW.is_pinned)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_lock_event"##,
@@ -206,7 +217,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.id,
-        'forum.topic.lock_changed', 1, NULL, json_object('topic_id', NEW.id, 'is_locked', NEW.is_locked)
+        'forum.topic.lock_changed', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'is_locked', NEW.is_locked)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_deleted_event"##,
@@ -225,7 +236,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.id,
-        'forum.topic.deleted', 1, NULL, json_object('topic_id', NEW.id, 'deleted_at', NEW.deleted_at)
+        'forum.topic.deleted', 1, NULL, json_object('topic_id', lower(hex(NEW.id)), 'deleted_at', NEW.deleted_at)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_translation_insert_event"##,
@@ -250,7 +261,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.topic_id,
-        'forum.topic.updated', 1, NULL, json_object('topic_id', NEW.topic_id, 'change_scope', 'translation', 'locale', NEW.locale)
+        'forum.topic.updated', 1, NULL, json_object('topic_id', lower(hex(NEW.topic_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
 END"##,
         r##"DROP TRIGGER IF EXISTS forum_80_topic_translation_update_event"##,
@@ -275,7 +286,7 @@ INSERT INTO forum_domain_events (
                lower(hex(randomblob(2))) || '-' ||
                lower(hex(randomblob(6))),
         NEW.tenant_id, 'topic', NEW.topic_id,
-        'forum.topic.updated', 1, NULL, json_object('topic_id', NEW.topic_id, 'change_scope', 'translation', 'locale', NEW.locale)
+        'forum.topic.updated', 1, NULL, json_object('topic_id', lower(hex(NEW.topic_id)), 'change_scope', 'translation', 'locale', NEW.locale)
     );
 END"##,
     ] {

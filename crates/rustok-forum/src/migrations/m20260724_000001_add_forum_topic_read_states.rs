@@ -113,8 +113,8 @@ CREATE TABLE IF NOT EXISTS forum_topic_read_states (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tenant_id, topic_id, user_id),
     CONSTRAINT fk_forum_topic_read_states_topic_tenant
-        FOREIGN KEY (tenant_id, topic_id)
-        REFERENCES forum_topics (tenant_id, id)
+        FOREIGN KEY (topic_id)
+        REFERENCES forum_topics (id)
         ON UPDATE CASCADE ON DELETE CASCADE
 );
 
