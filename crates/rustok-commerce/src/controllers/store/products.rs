@@ -3,15 +3,17 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
-use rustok_api::{OptionalAuthContext, PortActor, PortContext, RequestContext, TenantContext};
+use rustok_api::{
+    OptionalAuthContext, PortActor, PortContext, PortError, RequestContext, TenantContext,
+};
 use rustok_cart::{CartStorefrontReadRequest, in_process_cart_storefront_port};
-use rustok_fulfillment::FulfillmentService;
+use rustok_fulfillment::{FulfillmentService, error::FulfillmentError};
 use rustok_product::{
     CatalogService,
     entities::{product, product_translation},
 };
 use rustok_region::{RegionListRequest, RegionReadPort};
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
@@ -100,6 +102,161 @@ fn map_storefront_product_database_error(
         operation,
         tenant_id,
         product_id,
+    )
+}
+
+fn map_storefront_auxiliary_port_error(
+    error: PortError,
+    owner: &'static str,
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Option<Uuid>,
+) -> HttpError {
+    let public = port_error_to_http_error(error.clone());
+    tracing::error!(
+        error = ?error,
+        owner,
+        operation,
+        tenant_id = %tenant_id,
+        cart_id = ?cart_id,
+        error_kind = ?error.kind,
+        retryable = error.retryable,
+        public_code = %public.code,
+        status = %public.status,
+        boundary = "commerce_storefront_auxiliary_http",
+        "storefront auxiliary port operation failed"
+    );
+    public
+}
+
+fn storefront_auxiliary_public_error<E>(
+    error: &E,
+    owner: &'static str,
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Option<Uuid>,
+    status: StatusCode,
+    code: &'static str,
+    message: &'static str,
+    error_kind: &'static str,
+) -> HttpError
+where
+    E: std::fmt::Debug,
+{
+    tracing::error!(
+        error = ?error,
+        owner,
+        operation,
+        tenant_id = %tenant_id,
+        cart_id = ?cart_id,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_storefront_auxiliary_http",
+        "storefront auxiliary operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
+fn map_storefront_shipping_context_error(
+    error: CommerceError,
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Option<Uuid>,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        CommerceError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_shipping_unavailable",
+            "Shipping service is temporarily unavailable",
+            "database",
+        ),
+        CommerceError::ProductNotFound(_)
+        | CommerceError::VariantNotFound(_)
+        | CommerceError::ShippingProfileNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        CommerceError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_shipping_invalid",
+            "Shipping request is invalid",
+            "validation",
+        ),
+        CommerceError::DuplicateHandle { .. }
+        | CommerceError::DuplicateSku(_)
+        | CommerceError::InvalidPrice(_)
+        | CommerceError::InsufficientInventory { .. }
+        | CommerceError::InvalidOptionCombination
+        | CommerceError::DuplicateShippingProfileSlug(_)
+        | CommerceError::NoVariants
+        | CommerceError::CannotDeletePublished
+        | CommerceError::Rich(_)
+        | CommerceError::Core(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_store_shipping_failed",
+            "Shipping operation could not be completed safely",
+            "unexpected_owner_error",
+        ),
+    };
+    storefront_auxiliary_public_error(
+        &error,
+        "rustok_commerce.storefront_shipping",
+        operation,
+        tenant_id,
+        cart_id,
+        status,
+        code,
+        message,
+        error_kind,
+    )
+}
+
+fn map_storefront_fulfillment_error(
+    error: FulfillmentError,
+    operation: &'static str,
+    tenant_id: Uuid,
+    cart_id: Option<Uuid>,
+) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        FulfillmentError::Validation(_) => (
+            StatusCode::BAD_REQUEST,
+            "commerce_store_shipping_invalid",
+            "Shipping request is invalid",
+            "validation",
+        ),
+        FulfillmentError::ShippingOptionNotFound(_)
+        | FulfillmentError::FulfillmentNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            "commerce_store_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        FulfillmentError::InvalidTransition { .. } => (
+            StatusCode::CONFLICT,
+            "commerce_store_shipping_state_conflict",
+            "Shipping operation conflicts with the current state",
+            "state_conflict",
+        ),
+        FulfillmentError::Database(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_store_shipping_unavailable",
+            "Shipping service is temporarily unavailable",
+            "database",
+        ),
+    };
+    storefront_auxiliary_public_error(
+        &error,
+        "rustok_fulfillment",
+        operation,
+        tenant_id,
+        cart_id,
+        status,
+        code,
+        message,
+        error_kind,
     )
 }
 
@@ -349,9 +506,12 @@ pub async fn list_regions(
         )
         .await
         .map_err(|error| {
-            HttpError::bad_request(
-                "commerce_operation_failed",
-                format!("{}: {}", error.code, error.message),
+            map_storefront_auxiliary_port_error(
+                error,
+                "rustok_region",
+                "list_regions",
+                tenant.id,
+                None,
             )
         })?;
     Ok(Json(
@@ -383,8 +543,9 @@ pub async fn list_shipping_options(
 
     let customer_id =
         super::current_customer_id_for_db(runtime.db(), tenant.id, auth.0.as_ref()).await?;
+    let requested_cart_id = query.cart_id;
     let (context, public_channel_slug, required_shipping_profiles) = if let Some(cart_id) =
-        query.cart_id
+        requested_cart_id
     {
         let cart = in_process_cart_storefront_port(runtime.db_clone())
             .read_storefront_cart(
@@ -399,13 +560,26 @@ pub async fn list_shipping_options(
                 CartStorefrontReadRequest { cart_id },
             )
             .await
-            .map_err(|error| HttpError::bad_request("commerce_operation_failed", error.message))?;
+            .map_err(|error| {
+                map_storefront_auxiliary_port_error(
+                    error,
+                    "rustok_cart",
+                    "read_shipping_options_cart",
+                    tenant.id,
+                    Some(cart_id),
+                )
+            })?;
         super::ensure_store_cart_access(&cart, customer_id)?;
         let required_shipping_profiles =
             load_cart_shipping_profile_slugs(runtime.db(), tenant.id, &cart)
                 .await
-                .map_err(|err| {
-                    HttpError::bad_request("commerce_operation_failed", err.to_string())
+                .map_err(|error| {
+                    map_storefront_shipping_context_error(
+                        error,
+                        "load_cart_shipping_profiles",
+                        tenant.id,
+                        Some(cart_id),
+                    )
                 })?;
         (
             super::resolve_context_from_cart_for_db(
@@ -443,7 +617,14 @@ pub async fn list_shipping_options(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(|error| {
+            map_storefront_fulfillment_error(
+                error,
+                "list_shipping_options",
+                tenant.id,
+                requested_cart_id,
+            )
+        })?;
 
     if let Some(currency_code) = context.currency_code.as_deref() {
         options.retain(|option| option.currency_code.eq_ignore_ascii_case(currency_code));
