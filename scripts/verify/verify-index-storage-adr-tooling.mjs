@@ -17,6 +17,9 @@ const fixture = read('scripts/verify/render-index-storage-adr.test.mjs');
 const guide = read('crates/rustok-index/docs/storage-decision.md');
 const schema = JSON.parse(read('crates/rustok-index/docs/storage-decision.schema.json'));
 const example = JSON.parse(read('crates/rustok-index/docs/storage-decision.example.json'));
+const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
+const scaleWorkflow = read('.github/workflows/index-storage-scale-evidence.yml');
+const scaleRunWorkflow = read('.github/workflows/index-storage-scale-run.yml');
 
 for (const marker of [
   "const prefix = '[index-storage-tooling]'",
@@ -188,4 +191,39 @@ for (const marker of [
   if (!guide.includes(marker)) fail(`storage decision guide is missing marker: ${marker}`);
 }
 
-console.log('[verify-index-storage-adr-tooling] command router, ADR renderer, digest binding, schema, examples, fixtures and guide are consistent');
+for (const [name, workflow, markers] of [
+  ['smoke', smokeWorkflow, [
+    'scripts/verify/index-storage-tooling.mjs',
+    'scripts/verify/index-storage-tooling.test.mjs',
+    'node scripts/verify/index-storage-tooling.mjs contract',
+    'node --test scripts/verify/index-storage-tooling.test.mjs',
+    'node scripts/verify/index-storage-tooling.mjs packet',
+    '--scale smoke',
+    '--root evidence/index-storage/smoke',
+  ]],
+  ['scale evidence', scaleWorkflow, [
+    'scripts/verify/index-storage-tooling.mjs',
+    'scripts/verify/index-storage-tooling.test.mjs',
+    'node scripts/verify/index-storage-tooling.mjs contract',
+    'node --test scripts/verify/index-storage-tooling.test.mjs',
+    'node scripts/verify/index-storage-tooling.mjs fixtures',
+    'node scripts/verify/index-storage-tooling.mjs compare',
+  ]],
+  ['scale run', scaleRunWorkflow, [
+    'node scripts/verify/index-storage-tooling.mjs packet',
+    '--scale ${{ inputs.scale }}',
+    '--root evidence/index-storage/${{ inputs.scale }}',
+  ]],
+]) {
+  for (const marker of markers) {
+    if (!workflow.includes(marker)) fail(`${name} workflow is missing storage tooling marker: ${marker}`);
+  }
+}
+for (const [name, workflow, legacy] of [
+  ['smoke', smokeWorkflow, 'run: node scripts/verify/validate-index-storage-evidence.mjs'],
+  ['scale run', scaleRunWorkflow, 'run: node scripts/verify/validate-index-storage-evidence.mjs'],
+]) {
+  if (workflow.includes(legacy)) fail(`${name} workflow restored a direct packet-validator invocation`);
+}
+
+console.log('[verify-index-storage-adr-tooling] command router, workflows, ADR renderer, digest binding, schema, examples, fixtures and guide are consistent');
