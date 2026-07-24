@@ -11,6 +11,10 @@ const fail = (message) => {
 
 const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs');
 const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs');
+const validatorWrapper = read('scripts/verify/validate-index-storage-evidence.mjs');
+const comparatorWrapper = read('scripts/verify/compare-index-storage-evidence.mjs');
+const standaloneFixture = read('scripts/verify/index-storage-standalone-tools.test.mjs');
+const standaloneGuard = read('scripts/verify/verify-index-storage-standalone-tools.mjs');
 const router = read('scripts/verify/index-storage-tooling.mjs');
 const routerFixture = read('scripts/verify/index-storage-tooling.test.mjs');
 const smokeWorkflow = read('.github/workflows/index-storage-smoke.yml');
@@ -63,9 +67,53 @@ requireMarkers(fixture, 'read ordering fixture', [
   "test('rejects workload order drift before checking SQL text'",
 ]);
 
+requireMarkers(validatorWrapper, 'standalone validator wrapper', [
+  "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
+  'validatePacketReadOrdering(evidenceRoot);',
+  "await import('./validate-index-storage-evidence-core.mjs')",
+]);
+const validatorOrdering = validatorWrapper.indexOf('validatePacketReadOrdering(evidenceRoot);');
+const validatorCore = validatorWrapper.indexOf("await import('./validate-index-storage-evidence-core.mjs')");
+if (validatorOrdering < 0 || validatorCore < 0 || validatorOrdering > validatorCore) {
+  fail('standalone validator must preflight ordering before importing its core');
+}
+
+requireMarkers(comparatorWrapper, 'standalone comparator wrapper', [
+  "import { validatePacketReadOrdering } from './check-index-storage-read-ordering.mjs'",
+  'for (const input of inputs) validatePacketReadOrdering(input);',
+  "await import('./compare-index-storage-evidence-core.mjs')",
+]);
+const standaloneCompareOrdering = comparatorWrapper.indexOf(
+  'for (const input of inputs) validatePacketReadOrdering(input);',
+);
+const standaloneComparatorCore = comparatorWrapper.indexOf(
+  "await import('./compare-index-storage-evidence-core.mjs')",
+);
+if (standaloneCompareOrdering < 0 || standaloneComparatorCore < 0
+    || standaloneCompareOrdering > standaloneComparatorCore) {
+  fail('standalone comparator must preflight every input before importing its core');
+}
+
+requireMarkers(standaloneFixture, 'standalone evidence fixture', [
+  "test('direct validator rejects non-executable terminal ordering before its core'",
+  "test('direct comparator rejects nested-only terminal ordering before its core'",
+  "test('direct validator reaches the byte-preserved core after a valid preflight'",
+  "test('direct comparator forwards help to the byte-preserved core'",
+  'assert.doesNotMatch(result.stderr, missingMutation)',
+]);
+requireMarkers(standaloneGuard, 'standalone evidence guard', [
+  "const gitBlobSha = (bytes) => createHash('sha1')",
+  "'dabc18d59360c300352ab3afb2510f0a0ff22796'",
+  "'97ef0e8a216735e457c4c827d975462b84b009b3'",
+  'validator wrapper must run terminal-ordering preflight before importing its core',
+  'comparator wrapper must preflight every input before importing its core',
+]);
+
 requireMarkers(router, 'storage tooling router', [
   "'verify-index-storage-read-ordering-contract.mjs'",
+  "'verify-index-storage-standalone-tools.mjs'",
   "scriptPath('check-index-storage-read-ordering.test.mjs')",
+  "scriptPath('index-storage-standalone-tools.test.mjs')",
   "runScript('check-index-storage-read-ordering.mjs', ['--input', packetRoot])",
   "runScript('check-index-storage-read-ordering.mjs', orderingArgs)",
   "runScript('validate-index-storage-evidence.mjs', [], environment)",
@@ -96,12 +144,18 @@ for (const [label, workflow] of [
     'scripts/verify/check-index-storage-read-ordering.mjs',
     'scripts/verify/check-index-storage-read-ordering.test.mjs',
     'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
+    'scripts/verify/validate-index-storage-evidence-core.mjs',
+    'scripts/verify/compare-index-storage-evidence-core.mjs',
+    'scripts/verify/index-storage-standalone-tools.test.mjs',
+    'scripts/verify/verify-index-storage-standalone-tools.mjs',
     'node --check scripts/verify/check-index-storage-read-ordering.mjs',
     'node --check scripts/verify/check-index-storage-read-ordering.test.mjs',
+    'node --check scripts/verify/index-storage-standalone-tools.test.mjs',
+    'node --check scripts/verify/verify-index-storage-standalone-tools.mjs',
   ]);
 }
 requireMarkers(scaleRunWorkflow, 'scale run workflow', [
   'node scripts/verify/index-storage-tooling.mjs packet',
 ]);
 
-console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, direct and router fixtures, public command order, and workflows are consistent');
+console.log('[verify-index-storage-read-ordering-contract] executable SQL lexer, standalone entrypoints, direct and router fixtures, public command order, and workflows are consistent');
