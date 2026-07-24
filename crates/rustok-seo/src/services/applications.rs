@@ -354,7 +354,7 @@ impl SeoBulkService {
         input: SeoBulkExportInput,
     ) -> SeoResult<SeoBulkJobRecord> {
         self.runtime
-            .queue_bulk_export_batched(tenant, created_by, input)
+            .queue_bulk_export_bounded_io(tenant, created_by, input)
             .await
     }
 
@@ -365,7 +365,7 @@ impl SeoBulkService {
         input: SeoBulkImportInput,
     ) -> SeoResult<SeoBulkJobRecord> {
         self.runtime
-            .queue_bulk_import(tenant, created_by, input)
+            .queue_bulk_import_bounded_io(tenant, created_by, input)
             .await
     }
 
@@ -398,7 +398,7 @@ impl SeoBulkService {
     }
 
     pub async fn execute_next_bulk_job(&self) -> SeoResult<Option<SeoBulkJobRecord>> {
-        self.runtime.execute_next_bulk_job_batched().await
+        self.runtime.execute_next_bulk_job_with_bounded_io().await
     }
 }
 
