@@ -6,6 +6,15 @@ The storage benchmark comparison is evidence, not an automatic model selector. A
 
 Start from [`storage-decision.example.json`](storage-decision.example.json). It references [`storage-decision.schema.json`](storage-decision.schema.json), so editors and external validation environments can check the same structural contract used by the renderer.
 
+Calculate the digest of the exact comparison file that will be reviewed:
+
+```bash
+node scripts/verify/hash-index-storage-comparison.mjs \
+  evidence/index-storage/comparison/comparison.json
+```
+
+Copy the printed 64-character digest into `comparison_sha256`. Recalculate it whenever `comparison.json` is regenerated, reformatted, or otherwise changed.
+
 ```json
 {
   "$schema": "./storage-decision.schema.json",
@@ -13,6 +22,7 @@ Start from [`storage-decision.example.json`](storage-decision.example.json). It 
   "decision_date": "2026-07-24",
   "owner": "Index maintainers",
   "comparison_commit": "0123456789abcdef0123456789abcdef01234567",
+  "comparison_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "selected_prototype": "typed_eav",
   "selection_rationale": "Explain why this model is preferred using measured and operational evidence.",
   "rejection_rationales": {
@@ -31,7 +41,7 @@ Start from [`storage-decision.example.json`](storage-decision.example.json). It 
 - `typed_eav`
 - `hot_projection`
 
-`rejection_rationales` must contain exactly the other two prototypes. The `comparison_commit` must match the full Git commit recorded by both scale packets.
+`rejection_rationales` must contain exactly the other two prototypes. The `comparison_commit` must match the full Git commit recorded by both scale packets. The `comparison_sha256` must match the exact bytes of the reviewed `comparison.json`.
 
 ## Render the ADR
 
@@ -50,6 +60,7 @@ The renderer fails closed unless:
 - automatic winner selection is explicitly disabled;
 - every displayed metric and cross-scale ratio is present and numeric;
 - the decision identifies the same comparison commit;
+- the decision SHA-256 matches the exact comparison-file bytes;
 - selection, rejection, operations, migration and rollback rationales are all present.
 
 The generated ADR includes storage size, read latency, mutation latency, WAL, churn and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem path used to invoke the renderer.
