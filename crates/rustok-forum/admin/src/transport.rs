@@ -28,11 +28,11 @@ pub async fn fetch_category_tree(
     .await
     {
         Ok(tree) => Ok(tree.into_flat_items()),
-        Err(error) if should_fallback_to_rest(error.as_str()) => {
+        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
             category_tree_rest_adapter::fetch_category_tree(token, tenant_slug, locale)
                 .await
-                .map(|tree| tree.into_flat_items())
-        }
+                .map(|tree| tree.into_flat_items()),
+        ),
         Err(error) => Err(error),
     }
 }
@@ -46,9 +46,9 @@ pub async fn fetch_categories(
         .await
     {
         Ok(categories) => Ok(categories),
-        Err(error) if should_fallback_to_rest(error.as_str()) => {
-            rest_adapter::fetch_categories(token, tenant_slug, locale).await
-        }
+        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
+            rest_adapter::fetch_categories(token, tenant_slug, locale).await,
+        ),
         Err(error) => Err(error),
     }
 }
@@ -68,9 +68,9 @@ pub async fn fetch_category(
     .await
     {
         Ok(category) => Ok(category),
-        Err(error) if should_fallback_to_rest(error.as_str()) => {
-            rest_adapter::fetch_category(token, tenant_slug, id, locale).await
-        }
+        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
+            rest_adapter::fetch_category(token, tenant_slug, id, locale).await,
+        ),
         Err(error) => Err(error),
     }
 }
@@ -179,9 +179,9 @@ pub async fn fetch_topics(
     .await
     {
         Ok(topics) => Ok(topics),
-        Err(error) if should_fallback_to_rest(error.as_str()) => {
-            rest_adapter::fetch_topics(token, tenant_slug, locale, category_id).await
-        }
+        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
+            rest_adapter::fetch_topics(token, tenant_slug, locale, category_id).await,
+        ),
         Err(error) => Err(error),
     }
 }
@@ -201,9 +201,9 @@ pub async fn fetch_topic(
     .await
     {
         Ok(topic) => Ok(topic),
-        Err(error) if should_fallback_to_rest(error.as_str()) => {
-            rest_adapter::fetch_topic(token, tenant_slug, id, locale).await
-        }
+        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
+            rest_adapter::fetch_topic(token, tenant_slug, id, locale).await,
+        ),
         Err(error) => Err(error),
     }
 }
@@ -248,9 +248,9 @@ pub async fn fetch_replies(
     .await
     {
         Ok(replies) => Ok(replies),
-        Err(error) if should_fallback_to_rest(error.as_str()) => {
-            rest_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await
-        }
+        Err(error) if should_fallback_to_rest(error.as_str()) => redact_rest_fallback(
+            rest_adapter::fetch_replies(token, tenant_slug, topic_id, locale).await,
+        ),
         Err(error) => Err(error),
     }
 }
@@ -262,13 +262,17 @@ fn should_fallback_to_rest(error: &str) -> bool {
     )
 }
 
+fn redact_rest_fallback<T>(result: Result<T, String>) -> Result<T, String> {
+    result.map_err(|_| "Forum REST fallback failed".to_string())
+}
+
 fn placement_position(position: i32) -> Result<u32, ApiError> {
     u32::try_from(position).map_err(|_| "Category position must be zero or greater".to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::should_fallback_to_rest;
+    use super::{redact_rest_fallback, should_fallback_to_rest};
 
     const SOURCE: &str = include_str!("transport.rs");
 
@@ -309,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    fn forum_admin_reads_guard_compatibility_fallbacks() {
+    fn forum_admin_reads_guard_and_redact_compatibility_fallbacks() {
         for operation in [
             "fetch_category_tree",
             "fetch_categories",
@@ -322,6 +326,10 @@ mod tests {
             assert!(
                 source.contains("should_fallback_to_rest"),
                 "{operation} must classify the GraphQL failure before using REST"
+            );
+            assert!(
+                source.contains("redact_rest_fallback"),
+                "{operation} must redact REST response and network details"
             );
             assert!(
                 source.contains("rest_adapter::") || source.contains("category_tree_rest_adapter::"),
@@ -341,5 +349,14 @@ mod tests {
         assert!(!should_fallback_to_rest("GraphQL error: permission denied"));
         assert!(!should_fallback_to_rest("Http error: 503 Service Unavailable"));
         assert!(!should_fallback_to_rest("unknown adapter error"));
+    }
+
+    #[test]
+    fn forum_admin_rest_fallback_errors_are_publicly_redacted() {
+        let secret = "HTTP 500: database password=private host=internal";
+        let error = redact_rest_fallback::<()>(Err(secret.to_string()))
+            .expect_err("REST fallback failure must stay an error");
+        assert_eq!(error, "Forum REST fallback failed");
+        assert!(!error.contains(secret));
     }
 }
