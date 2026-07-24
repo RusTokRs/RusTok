@@ -1,3 +1,19 @@
+const BULK_APPLY_CHUNK_SIZE: usize = 50;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QueuedBulkApplyPayload {
+    input: SeoBulkApplyInput,
+    target_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BulkJobProgress {
+    processed: i32,
+    succeeded: i32,
+    failed: i32,
+    artifacts: i32,
+}
+
 #[derive(Debug, Clone)]
 struct BatchedBulkSelectionResolution {
     filter: NormalizedBulkListFilter,
@@ -28,6 +44,15 @@ impl SeoService {
         let resolution = self
             .resolve_bulk_selection_batched(tenant, input.selection.clone())
             .await?;
+        let target_ids = resolution
+            .rows
+            .iter()
+            .map(|row| row.target_id)
+            .collect::<Vec<_>>();
+        let queued_payload = QueuedBulkApplyPayload {
+            input: input.clone(),
+            target_ids: target_ids.clone(),
+        };
         let now = Utc::now().fixed_offset();
         let model = seo_bulk_job::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -39,11 +64,11 @@ impl SeoService {
             filter_payload: Set(serde_json::to_value(&resolution.filter).map_err(|err| {
                 SeoError::validation(format!("failed to serialize bulk filter: {err}"))
             })?),
-            input_payload: Set(serde_json::to_value(&input).map_err(|err| {
-                SeoError::validation(format!("failed to serialize bulk apply input: {err}"))
+            input_payload: Set(serde_json::to_value(&queued_payload).map_err(|err| {
+                SeoError::validation(format!("failed to serialize bounded bulk apply payload: {err}"))
             })?),
             publish_after_write: Set(input.publish_after_write),
-            matched_count: Set(resolution.rows.len() as i32),
+            matched_count: Set(target_ids.len() as i32),
             processed_count: Set(0),
             succeeded_count: Set(0),
             failed_count: Set(0),
@@ -110,26 +135,39 @@ impl SeoService {
     pub(super) async fn execute_next_bulk_job_batched(
         &self,
     ) -> SeoResult<Option<SeoBulkJobRecord>> {
-        let Some(job) = seo_bulk_job::Entity::find()
-            .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
-            .order_by_asc(seo_bulk_job::Column::CreatedAt)
+        let running_apply = seo_bulk_job::Entity::find()
+            .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Running.as_str()))
+            .filter(
+                seo_bulk_job::Column::OperationKind.eq(SeoBulkJobOperationKind::Apply.as_str()),
+            )
+            .order_by_asc(seo_bulk_job::Column::UpdatedAt)
             .one(&self.db)
-            .await?
-        else {
-            return Ok(None);
-        };
+            .await?;
 
-        let now = Utc::now().fixed_offset();
-        let mut active: seo_bulk_job::ActiveModel = job.clone().into();
-        active.status = Set(SeoBulkJobStatus::Running.as_str().to_string());
-        active.started_at = Set(Some(now));
-        active.updated_at = Set(now);
-        active.last_error = Set(None);
-        let running = active.update(&self.db).await?;
+        let running = if let Some(job) = running_apply {
+            job
+        } else {
+            let Some(job) = seo_bulk_job::Entity::find()
+                .filter(seo_bulk_job::Column::Status.eq(SeoBulkJobStatus::Queued.as_str()))
+                .order_by_asc(seo_bulk_job::Column::CreatedAt)
+                .one(&self.db)
+                .await?
+            else {
+                return Ok(None);
+            };
+
+            let now = Utc::now().fixed_offset();
+            let mut active: seo_bulk_job::ActiveModel = job.into();
+            active.status = Set(SeoBulkJobStatus::Running.as_str().to_string());
+            active.started_at = Set(Some(now));
+            active.updated_at = Set(now);
+            active.last_error = Set(None);
+            active.update(&self.db).await?
+        };
 
         let result = match SeoBulkJobOperationKind::parse(running.operation_kind.as_str()) {
             Some(SeoBulkJobOperationKind::Apply) => {
-                self.execute_apply_job_batched(&running).await
+                self.execute_apply_job_chunk(&running).await
             }
             Some(SeoBulkJobOperationKind::ExportCsv) => {
                 self.execute_export_job_batched(&running).await
@@ -183,60 +221,71 @@ impl SeoService {
         .await
     }
 
-    async fn execute_apply_job_batched(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
+    async fn execute_apply_job_chunk(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
         let tenant = self.load_tenant_context(job.tenant_id).await?;
-        let input = serde_json::from_value::<SeoBulkApplyInput>(job.input_payload.clone())
-            .map_err(|err| {
-                SeoError::validation(format!("failed to decode bulk apply payload: {err}"))
-            })?;
-        let resolution = self
-            .resolve_bulk_selection_batched(&tenant, input.selection)
+        let payload = self.decode_bounded_apply_payload(&tenant, job).await?;
+        let processed_items = seo_bulk_job_item::Entity::find()
+            .filter(seo_bulk_job_item::Column::JobId.eq(job.id))
+            .order_by_asc(seo_bulk_job_item::Column::CreatedAt)
+            .all(&self.db)
             .await?;
-        let mut succeeded = 0_i32;
-        let mut failed = 0_i32;
+        let processed_ids = processed_items
+            .iter()
+            .map(|item| item.target_id)
+            .collect::<HashSet<_>>();
+        let chunk = payload
+            .target_ids
+            .iter()
+            .copied()
+            .filter(|target_id| !processed_ids.contains(target_id))
+            .take(BULK_APPLY_CHUNK_SIZE)
+            .collect::<Vec<_>>();
+
+        if chunk.is_empty() {
+            let progress = self.load_bulk_job_progress(job.id).await?;
+            return self
+                .finish_bulk_job(
+                    job,
+                    progress.processed,
+                    progress.succeeded,
+                    progress.failed,
+                    progress.artifacts,
+                    None,
+                )
+                .await;
+        }
+
+        let chunk_start = processed_ids.len() + 1;
+        let chunk_end = chunk_start + chunk.len() - 1;
         let mut preview_rows = Vec::<Vec<String>>::new();
         let mut failure_rows = Vec::new();
 
-        for row in resolution.rows {
-            let target_id = row.target_id;
-            if input.apply_mode == SeoBulkApplyMode::PreviewOnly {
-                preview_rows.push(export_bulk_projection_row(
-                    resolution.filter.target_kind.clone(),
-                    target_id,
-                    resolution.filter.locale.as_str(),
-                    &row.projection,
-                ));
-                succeeded += 1;
-                self.insert_bulk_job_item(job, target_id, None, None)
-                    .await?;
-                continue;
-            }
+        if payload.input.apply_mode == SeoBulkApplyMode::PreviewOnly {
+            let resolution = self
+                .resolve_bulk_selection_batched(&tenant, payload.input.selection.clone())
+                .await?;
+            let projections = resolution
+                .rows
+                .into_iter()
+                .map(|row| (row.target_id, row.projection))
+                .collect::<HashMap<_, _>>();
 
-            match self
-                .apply_bulk_patch_to_target(
-                    &tenant,
-                    job.id,
-                    resolution.filter.target_kind.clone(),
-                    resolution.filter.locale.as_str(),
-                    target_id,
-                    &input.patch,
-                    input.apply_mode,
-                    job.publish_after_write,
-                )
-                .await
-            {
-                Ok(revision) => {
-                    succeeded += 1;
-                    self.insert_bulk_job_item(job, target_id, None, revision)
+            for target_id in chunk {
+                if let Some(projection) = projections.get(&target_id) {
+                    preview_rows.push(export_bulk_projection_row(
+                        resolution.filter.target_kind.clone(),
+                        target_id,
+                        resolution.filter.locale.as_str(),
+                        projection,
+                    ));
+                    self.insert_bulk_job_item(job, target_id, None, None)
                         .await?;
-                }
-                Err(error) => {
-                    failed += 1;
-                    let message = error.to_string();
+                } else {
+                    let message = "SEO target not found".to_string();
                     self.insert_bulk_job_item(job, target_id, Some(message.clone()), None)
                         .await?;
                     failure_rows.push((
-                        empty_csv_row(
+                        preview_failure_row(
                             resolution.filter.target_kind.as_str(),
                             target_id,
                             resolution.filter.locale.as_str(),
@@ -245,36 +294,166 @@ impl SeoService {
                     ));
                 }
             }
+        } else {
+            let filter = normalize_bulk_list_input(
+                payload
+                    .input
+                    .selection
+                    .filter
+                    .clone()
+                    .ok_or_else(|| SeoError::validation("bulk selection filter is required"))?,
+                tenant.default_locale.as_str(),
+            )?;
+            for target_id in chunk {
+                match self
+                    .apply_bulk_patch_to_target(
+                        &tenant,
+                        job.id,
+                        filter.target_kind.clone(),
+                        filter.locale.as_str(),
+                        target_id,
+                        &payload.input.patch,
+                        payload.input.apply_mode,
+                        job.publish_after_write,
+                    )
+                    .await
+                {
+                    Ok(revision) => {
+                        self.insert_bulk_job_item(job, target_id, None, revision)
+                            .await?;
+                    }
+                    Err(error) => {
+                        let message = error.to_string();
+                        self.insert_bulk_job_item(job, target_id, Some(message.clone()), None)
+                            .await?;
+                        failure_rows.push((
+                            empty_csv_row(
+                                filter.target_kind.as_str(),
+                                target_id,
+                                filter.locale.as_str(),
+                            ),
+                            message,
+                        ));
+                    }
+                }
+            }
         }
 
-        let mut artifacts = 0_i32;
         if !preview_rows.is_empty() {
             let content = build_preview_csv(&preview_rows)?;
             self.insert_bulk_job_artifact(
                 job,
                 "preview_report",
-                format!("seo-bulk-preview-{}.csv", job.id),
+                format!(
+                    "seo-bulk-preview-{}-{}-{}.csv",
+                    job.id, chunk_start, chunk_end
+                ),
                 CSV_MIME_TYPE,
                 content,
             )
             .await?;
-            artifacts += 1;
         }
         if !failure_rows.is_empty() {
             let content = build_failure_csv(&failure_rows)?;
             self.insert_bulk_job_artifact(
                 job,
                 "failure_report",
-                format!("seo-bulk-apply-failures-{}.csv", job.id),
+                format!(
+                    "seo-bulk-apply-failures-{}-{}-{}.csv",
+                    job.id, chunk_start, chunk_end
+                ),
                 CSV_MIME_TYPE,
                 content,
             )
             .await?;
-            artifacts += 1;
         }
 
-        self.finish_bulk_job(job, succeeded + failed, succeeded, failed, artifacts, None)
+        let progress = self.load_bulk_job_progress(job.id).await?;
+        if progress.processed as usize >= payload.target_ids.len() {
+            self.finish_bulk_job(
+                job,
+                progress.processed,
+                progress.succeeded,
+                progress.failed,
+                progress.artifacts,
+                None,
+            )
             .await
+        } else {
+            self.checkpoint_bulk_apply_job(job, payload.target_ids.len(), progress)
+                .await
+        }
+    }
+
+    async fn decode_bounded_apply_payload(
+        &self,
+        tenant: &TenantContext,
+        job: &seo_bulk_job::Model,
+    ) -> SeoResult<QueuedBulkApplyPayload> {
+        if let Ok(payload) =
+            serde_json::from_value::<QueuedBulkApplyPayload>(job.input_payload.clone())
+        {
+            return Ok(payload);
+        }
+
+        let input = serde_json::from_value::<SeoBulkApplyInput>(job.input_payload.clone())
+            .map_err(|err| {
+                SeoError::validation(format!("failed to decode bulk apply payload: {err}"))
+            })?;
+        let resolution = self
+            .resolve_bulk_selection_batched(tenant, input.selection.clone())
+            .await?;
+        Ok(QueuedBulkApplyPayload {
+            input,
+            target_ids: resolution.rows.into_iter().map(|row| row.target_id).collect(),
+        })
+    }
+
+    async fn load_bulk_job_progress(&self, job_id: Uuid) -> SeoResult<BulkJobProgress> {
+        let items = seo_bulk_job_item::Entity::find()
+            .filter(seo_bulk_job_item::Column::JobId.eq(job_id))
+            .all(&self.db)
+            .await?;
+        let succeeded = items
+            .iter()
+            .filter(|item| item.status == "completed")
+            .count() as i32;
+        let failed = items
+            .iter()
+            .filter(|item| item.status == "failed")
+            .count() as i32;
+        let artifacts = seo_bulk_job_artifact::Entity::find()
+            .filter(seo_bulk_job_artifact::Column::JobId.eq(job_id))
+            .all(&self.db)
+            .await?
+            .len() as i32;
+        Ok(BulkJobProgress {
+            processed: items.len() as i32,
+            succeeded,
+            failed,
+            artifacts,
+        })
+    }
+
+    async fn checkpoint_bulk_apply_job(
+        &self,
+        job: &seo_bulk_job::Model,
+        matched_count: usize,
+        progress: BulkJobProgress,
+    ) -> SeoResult<()> {
+        let now = Utc::now().fixed_offset();
+        let mut active: seo_bulk_job::ActiveModel = job.clone().into();
+        active.status = Set(SeoBulkJobStatus::Running.as_str().to_string());
+        active.matched_count = Set(matched_count as i32);
+        active.processed_count = Set(progress.processed);
+        active.succeeded_count = Set(progress.succeeded);
+        active.failed_count = Set(progress.failed);
+        active.artifact_count = Set(progress.artifacts);
+        active.last_error = Set(None);
+        active.completed_at = Set(None);
+        active.updated_at = Set(now);
+        active.update(&self.db).await?;
+        Ok(())
     }
 
     async fn execute_export_job_batched(&self, job: &seo_bulk_job::Model) -> SeoResult<()> {
@@ -362,7 +541,7 @@ fn export_bulk_projection_row(
 }
 
 #[cfg(test)]
-mod batched_execution_tests {
+mod bounded_execution_tests {
     use super::*;
 
     #[test]
@@ -394,5 +573,10 @@ mod batched_execution_tests {
         assert_eq!(row[10], "{\"@type\":\"WebPage\"}");
         assert_eq!(row[11], "true");
         assert_eq!(row[12], "false");
+    }
+
+    #[test]
+    fn apply_chunk_size_stays_bounded() {
+        assert_eq!(BULK_APPLY_CHUNK_SIZE, 50);
     }
 }
