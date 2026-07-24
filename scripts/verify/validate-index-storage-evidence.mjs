@@ -115,6 +115,12 @@ const requireNonNegativeInteger = (value, label) => {
   if (!Number.isInteger(value) || value < 0) fail(`${label} must be a non-negative integer`);
 };
 
+const requireDigest = (value, label) => {
+  if (typeof value !== 'string' || !/^[0-9a-f]{32}$/.test(value)) {
+    fail(`${label} must be an MD5 digest`);
+  }
+};
+
 const requireExactOrder = (items, expected, label) => {
   if (!Array.isArray(items)) fail(`${label} must be an array`);
   if (new Set(items).size !== items.length) fail(`${label} contains duplicate entries`);
@@ -215,9 +221,28 @@ requireNonNegativeNumber(read.source_load_ms, 'read.source_load_ms');
 if (read.source_entity_rows !== contract.entityRows || read.source_link_rows !== contract.linkRows) {
   fail('read source cardinality mismatch');
 }
-requirePrototypeContract(read, 'read report');
 
-const baselineReadWorkloads = new Map();
+requireExactOrder(
+  read.source_workloads?.map((workload) => workload?.name),
+  canonicalReadWorkloads,
+  'source workload order',
+);
+const sourceOracle = new Map();
+for (const sourceWorkload of read.source_workloads) {
+  requireObject(sourceWorkload, `source/${sourceWorkload?.name ?? 'unknown'}`);
+  requireNonEmptyString(sourceWorkload.sql, `source/${sourceWorkload.name}.sql`);
+  if (!sourceWorkload.sql.includes('idx_bench_source.')) {
+    fail(`source/${sourceWorkload.name}.sql must read from idx_bench_source`);
+  }
+  requireNonNegativeInteger(sourceWorkload.result_rows, `source/${sourceWorkload.name}.result_rows`);
+  requireDigest(sourceWorkload.result_digest, `source/${sourceWorkload.name}.result_digest`);
+  sourceOracle.set(sourceWorkload.name, {
+    resultRows: sourceWorkload.result_rows,
+    resultDigest: sourceWorkload.result_digest,
+  });
+}
+
+requirePrototypeContract(read, 'read report');
 for (const [prototypeIndex, prototype] of read.prototypes.entries()) {
   const expectedPrototype = canonicalPrototypes[prototypeIndex];
   requireNonNegativeNumber(prototype.load_ms, `${expectedPrototype.prototype}.load_ms`);
@@ -233,9 +258,7 @@ for (const [prototypeIndex, prototype] of read.prototypes.entries()) {
   for (const workload of prototype.workloads) {
     requireNonEmptyString(workload.sql, `${prototype.prototype}/${workload.name}.sql`);
     requireNonNegativeInteger(workload.result_rows, `${prototype.prototype}/${workload.name}.result_rows`);
-    if (typeof workload.result_digest !== 'string' || !/^[0-9a-f]{32}$/.test(workload.result_digest)) {
-      fail(`${prototype.prototype}/${workload.name}.result_digest must be an MD5 digest`);
-    }
+    requireDigest(workload.result_digest, `${prototype.prototype}/${workload.name}.result_digest`);
     if (!Array.isArray(workload.repetitions) || workload.repetitions.length !== 3) {
       fail(`${prototype.prototype}/${workload.name} read repetitions mismatch`);
     }
@@ -243,15 +266,11 @@ for (const [prototypeIndex, prototype] of read.prototypes.entries()) {
       requireReadExplain(evidence, `${prototype.prototype}/${workload.name}/repetition-${repetition + 1}`);
     });
 
-    const baseline = baselineReadWorkloads.get(workload.name);
-    if (!baseline) {
-      baselineReadWorkloads.set(workload.name, {
-        resultRows: workload.result_rows,
-        resultDigest: workload.result_digest,
-      });
-    } else if (baseline.resultRows !== workload.result_rows
-        || baseline.resultDigest !== workload.result_digest) {
-      fail(`${prototype.prototype}/${workload.name} read parity mismatch`);
+    const expected = sourceOracle.get(workload.name);
+    if (!expected
+        || expected.resultRows !== workload.result_rows
+        || expected.resultDigest !== workload.result_digest) {
+      fail(`${prototype.prototype}/${workload.name} differs from source oracle`);
     }
   }
 }
@@ -389,6 +408,7 @@ writeFileSync(
     scale,
     repetitions: 3,
     churn_cycles: 5,
+    source_workload_names: canonicalReadWorkloads,
     expected_product_rows: contract.productRows,
     expected_entity_rows: contract.entityRows,
     expected_eav_field_rows: contract.eavFieldRows,
