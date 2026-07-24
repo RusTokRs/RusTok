@@ -36,9 +36,16 @@ for (const marker of [
   'parse_mutation_explain_metrics',
   'root_and_plan_node',
   'required_non_negative_f64',
-  'required_non_negative_u64',
-  'required_maximum_metric',
+  'required_direct_metric_pair',
+  'required_maximum_metric_pair',
+  'required_maximum_metric_triple',
+  'first.unwrap_or(0)',
+  'second.unwrap_or(0)',
+  'third.unwrap_or(0)',
   'EXPLAIN result must contain exactly one root entry',
+  'missing the {family} metric family',
+  'omitted_members_of_present_metric_family_become_zero',
+  'required_metric_family_fails_closed_when_absent',
 ]) {
   if (!explainParser.includes(marker)) fail(`Rust EXPLAIN parser missing ${marker}`);
 }
@@ -108,10 +115,13 @@ for (const marker of [
   'read.source_workloads',
   "'source workload order'",
   "sourceWorkload.sql.includes('idx_bench_source.')",
+  "workload.sql.includes('idx_bench_source.')",
+  'RFC 3339 UTC timestamp',
+  'server_version_num must contain only digits',
   'differs from source oracle',
   'source_workload_names: canonicalReadWorkloads',
 ]) {
-  if (!validator.includes(marker)) fail(`packet validator missing source oracle guard ${marker}`);
+  if (!validator.includes(marker)) fail(`packet validator missing strict guard ${marker}`);
 }
 if (validator.includes('baselineReadWorkloads')) {
   fail('packet validator must not restore first-candidate read parity');
