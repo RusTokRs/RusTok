@@ -15,7 +15,7 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Persist sitemap jobs, generated files, delivery tracking, and generated events transactionally. (`5840246`)
 - [x] Persist sitemap submission outcome and submitted event transactionally after external HTTP completes. (`5840246`)
 - [x] Tenant-scope sitemap file aggregation for job reads. (`7593f8c`)
-- [ ] Persist SEO metadata, translations, delivery tracking, and reindex events transactionally.
+- [x] Persist SEO metadata, translations, delivery tracking, and reindex events transactionally. (metadata transaction PR)
 - [ ] Persist revision creation and its event transactionally.
 - [ ] Persist revision rollback and all resulting events transactionally.
 - [x] Persist bulk terminal state and terminal event transactionally. (#2051)
@@ -25,7 +25,7 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Add an integration regression test proving that redirect data and delivery tracking roll back when the transactional event transport fails. (`1d5144c`, `c940afd`)
 - [x] Add an integration regression test proving that sitemap jobs, generated files, and delivery tracking roll back when the transactional outbox write fails. (`a4d9476`)
 - [x] Add contract coverage for transition-scoped redirect events, safe redirect targets, fail-closed settings, and tenant-scoped sitemap reads. (`7593f8c`)
-- [ ] Add rollback coverage for metadata and revision transactions.
+- [ ] Add rollback coverage for metadata and revision transactions. Metadata rollback is covered; revision creation and rollback remain open. (metadata transaction PR)
 - [x] Add rollback coverage for bulk terminal state and terminal event transactions. (#2051)
 
 ## P1 — performance and maintainability

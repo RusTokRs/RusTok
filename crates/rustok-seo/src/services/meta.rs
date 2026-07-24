@@ -1,5 +1,7 @@
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -117,12 +119,13 @@ impl SeoService {
 
         let target_kind = input.target_kind.clone();
         let target_id = input.target_id;
+        let txn = self.db.begin().await?;
 
         let existing = seo_meta::Entity::find()
             .filter(seo_meta::Column::TenantId.eq(tenant.id))
             .filter(seo_meta::Column::TargetType.eq(input.target_kind.as_str()))
             .filter(seo_meta::Column::TargetId.eq(input.target_id))
-            .one(&self.db)
+            .one(&txn)
             .await?;
 
         let meta = if let Some(existing) = existing {
@@ -131,7 +134,7 @@ impl SeoService {
             active.no_follow = Set(input.nofollow);
             active.canonical_url = Set(input.canonical_url.clone());
             active.structured_data = Set(input.structured_data.clone().map(|value| value.0));
-            active.update(&self.db).await?
+            active.update(&txn).await?
         } else {
             seo_meta::ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -143,7 +146,7 @@ impl SeoService {
                 canonical_url: Set(input.canonical_url.clone()),
                 structured_data: Set(input.structured_data.clone().map(|value| value.0)),
             }
-            .insert(&self.db)
+            .insert(&txn)
             .await?
         };
 
@@ -155,7 +158,7 @@ impl SeoService {
             let existing_translation = meta_translation::Entity::find()
                 .filter(meta_translation::Column::MetaId.eq(meta.id))
                 .filter(meta_translation::Column::Locale.eq(locale.clone()))
-                .one(&self.db)
+                .one(&txn)
                 .await?;
 
             if let Some(existing_translation) = existing_translation {
@@ -166,7 +169,7 @@ impl SeoService {
                 active.og_title = Set(trimmed_option(translation.og_title));
                 active.og_description = Set(trimmed_option(translation.og_description));
                 active.og_image = Set(trimmed_option(translation.og_image));
-                active.update(&self.db).await?;
+                active.update(&txn).await?;
             } else {
                 meta_translation::ActiveModel {
                     id: Set(Uuid::new_v4()),
@@ -179,32 +182,31 @@ impl SeoService {
                     og_description: Set(trimmed_option(translation.og_description)),
                     og_image: Set(trimmed_option(translation.og_image)),
                 }
-                .insert(&self.db)
+                .insert(&txn)
                 .await?;
             }
         }
 
-        let record = self
-            .seo_meta(
-                tenant,
-                target_kind.clone(),
-                target_id,
-                Some(response_locale.as_str()),
-            )
-            .await?
-            .ok_or(SeoError::NotFound)?;
-
-        self.publish_seo_meta_upserted_event(
+        self.publish_seo_meta_upserted_event_in_tx(
+            &txn,
             tenant.id,
             target_kind.as_str(),
             target_id,
-            record.effective_locale.as_str(),
-            record.source.as_str(),
+            response_locale.as_str(),
+            "explicit",
             transition_ref.as_deref(),
         )
-        .await;
+        .await?;
+        txn.commit().await?;
 
-        Ok(record)
+        self.seo_meta(
+            tenant,
+            target_kind,
+            target_id,
+            Some(response_locale.as_str()),
+        )
+        .await?
+        .ok_or(SeoError::NotFound)
     }
 
     pub async fn publish_revision(
