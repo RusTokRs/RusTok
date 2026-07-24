@@ -35,7 +35,8 @@
     "source_contracts": [
       "crates/rustok-forum/rustok-module.toml",
       "crates/rustok-forum/contracts/evidence/fw2-fallback-static-matrix.json",
-      "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs"
+      "crates/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs",
+      "scripts/verify/verify-forum-wave-plan-sync.mjs"
     ],
     "fallback_profiles": [
       {
@@ -158,7 +159,9 @@
     "no_compile_gates": [
       "npm run verify:page-builder:consumer:forum",
       "npm run verify:forum:wave-evidence-freshness",
-      "npm run test:verify:forum:wave-evidence-freshness"
+      "npm run test:verify:forum:wave-evidence-freshness",
+      "node scripts/verify/verify-forum-wave-plan-sync.mjs",
+      "node scripts/verify/verify-forum-wave-plan-sync.test.mjs"
     ],
     "execution_status": "not_run_by_implementation_agent"
   },
