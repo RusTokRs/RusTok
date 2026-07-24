@@ -29,6 +29,14 @@ const fail = (message) => {
 
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const maskSqlText = (text) => text.replace(/[^\r\n]/gu, ' ');
+const identifierContinuation = /[A-Za-z0-9_$]/u;
+
+const isEscapeStringQuote = (sql, quoteIndex) => {
+  const prefixIndex = quoteIndex - 1;
+  if (prefixIndex < 0 || (sql[prefixIndex] !== 'E' && sql[prefixIndex] !== 'e')) return false;
+  const beforePrefix = sql[prefixIndex - 1];
+  return beforePrefix === undefined || !identifierContinuation.test(beforePrefix);
+};
 
 const requireObject = (value, label) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -81,9 +89,17 @@ const executableSqlText = (sql, label) => {
     const quote = sql[index];
     if (quote === "'" || quote === '"') {
       const start = index;
+      const escapeString = quote === "'" && isEscapeStringQuote(sql, index);
       index += 1;
       let closed = false;
       while (index < sql.length) {
+        if (escapeString && sql[index] === '\\') {
+          if (index + 1 >= sql.length) {
+            fail(`${label}.sql contains an unterminated escape string literal`);
+          }
+          index += 2;
+          continue;
+        }
         if (sql[index] === quote) {
           if (sql[index + 1] === quote) {
             index += 2;
@@ -96,7 +112,9 @@ const executableSqlText = (sql, label) => {
         index += 1;
       }
       if (!closed) {
-        const kind = quote === "'" ? 'string literal' : 'quoted identifier';
+        const kind = quote === "'"
+          ? (escapeString ? 'escape string literal' : 'string literal')
+          : 'quoted identifier';
         fail(`${label}.sql contains an unterminated ${kind}`);
       }
       output += maskSqlText(sql.slice(start, index));
