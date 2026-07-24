@@ -8,6 +8,9 @@ on:
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/verify-index-storage-source-oracle.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.test.mjs"
+      - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
@@ -34,6 +37,9 @@ on:
       - "ops/benches/**"
       - "scripts/verify/verify-index-fba.mjs"
       - "scripts/verify/verify-index-storage-source-oracle.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.mjs"
+      - "scripts/verify/check-index-storage-read-ordering.test.mjs"
+      - "scripts/verify/verify-index-storage-read-ordering-contract.mjs"
       - "scripts/verify/validate-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.mjs"
       - "scripts/verify/compare-index-storage-evidence.test.mjs"
@@ -86,6 +92,9 @@ jobs:
         run: |
           node --check scripts/verify/index-storage-tooling.mjs
           node --check scripts/verify/index-storage-tooling.test.mjs
+          node --check scripts/verify/check-index-storage-read-ordering.mjs
+          node --check scripts/verify/check-index-storage-read-ordering.test.mjs
+          node --check scripts/verify/verify-index-storage-read-ordering-contract.mjs
           node scripts/verify/index-storage-tooling.mjs contract
       - name: Verify scale evidence validator syntax
         run: node --check scripts/verify/validate-index-storage-evidence.mjs
@@ -103,7 +112,7 @@ jobs:
           node --check scripts/verify/index-storage-decision-tooling.test.mjs
       - name: Test storage tooling command routing
         run: node --test scripts/verify/index-storage-tooling.test.mjs
-      - name: Test storage comparison, decision, and ADR fixtures
+      - name: Test storage comparison, ordering, decision, and ADR fixtures
         run: node scripts/verify/index-storage-tooling.mjs fixtures
 
   evidence-100k:
