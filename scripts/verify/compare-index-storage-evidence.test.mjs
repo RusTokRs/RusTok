@@ -29,6 +29,8 @@ const scaleValues = {
   '100k': {
     serialized: 'rows100k',
     debug: 'Rows100k',
+    tenants: 10,
+    productsPerTenant: 5_000,
     products: 100_000,
     entities: 300_080,
     fields: 1_400_160,
@@ -38,6 +40,8 @@ const scaleValues = {
   '1m': {
     serialized: 'rows1m',
     debug: 'Rows1m',
+    tenants: 20,
+    productsPerTenant: 25_000,
     products: 1_000_000,
     entities: 3_000_160,
     fields: 14_000_320,
@@ -64,7 +68,7 @@ const repetition = (seed = 1) => ({
   plan: [{ Plan: { 'Node Type': 'Index Scan', 'Index Name': 'fixture_index' } }],
 });
 
-const repetitions = () => [repetition(1), repetition(2), repetition(3)];
+const repetitions = (count = 3) => Array.from({ length: count }, (_, index) => repetition(index + 1));
 
 const tableStats = () => [{
   estimated_live_tuples: 10,
@@ -95,10 +99,12 @@ function writePacket(root, scale, overrides = {}) {
   const candidateNames = overrides.readWorkloads ?? sourceNames;
   const mutationNames = overrides.mutationWorkloads ?? mutationWorkloads;
   const prototypeNames = overrides.prototypes ?? prototypes;
+  const readRepetitionCount = overrides.readRepetitions ?? 3;
+  const mutationRepetitionCount = overrides.mutationWorkloadRepetitions ?? 3;
 
   const sourceWorkloads = sourceNames.map((name, workloadIndex) => ({
     name,
-    sql: `SELECT product_id AS entity_id FROM idx_bench_source.product WHERE workload = '${name}'`,
+    sql: `SELECT product_id AS entity_id FROM idx_bench_source.product WHERE status = '${name}'`,
     result_rows: resultRows(values, workloadIndex),
     result_digest: overrides.sourceDigestByName?.[name] ?? digest(scale, name),
   }));
@@ -115,7 +121,16 @@ function writePacket(root, scale, overrides = {}) {
       jit: 'off',
       ...overrides.database,
     },
-    dataset: { scale: values.serialized },
+    dataset: {
+      scale: values.serialized,
+      tenants: values.tenants,
+      products_per_tenant: values.productsPerTenant,
+      locales: ['en-US', 'ru-RU'],
+      variants_per_product: 2,
+      channels_per_tenant: 8,
+      sales_channels_per_variant: 2,
+      ...overrides.dataset,
+    },
     source_load_ms: 10,
     source_entity_rows: values.entities,
     source_link_rows: values.links,
@@ -135,7 +150,7 @@ function writePacket(root, scale, overrides = {}) {
           result_digest: overrides.candidateDigestByPrototype?.[prototype]?.[name]
             ?? source?.result_digest
             ?? digest(scale, name),
-          repetitions: repetitions().map((item) => ({
+          repetitions: repetitions(readRepetitionCount).map((item) => ({
             ...item,
             execution_time_ms: item.execution_time_ms + workloadIndex,
           })),
@@ -146,6 +161,7 @@ function writePacket(root, scale, overrides = {}) {
 
   const mutation = {
     dataset_scale: values.debug,
+    repetitions: overrides.mutationRepetitions ?? 3,
     prototypes: prototypeNames.map((prototype) => ({
       prototype,
       schema: prototypeSchemas[prototype] ?? `idx_bench_${prototype}`,
@@ -156,13 +172,14 @@ function writePacket(root, scale, overrides = {}) {
           ? (name === 'update_product_batch' ? 2000 : 8000)
           : null,
         affected_links: name === 'delete_product_batch' ? 2000 : null,
-        repetitions: repetitions(),
+        repetitions: repetitions(mutationRepetitionCount),
       })),
     })),
   };
 
   const maintenance = {
     dataset_scale: values.serialized,
+    cycles: overrides.maintenanceCycles ?? 5,
     prototypes: prototypeNames.map((prototype, index) => {
       const fieldRowsOverride = overrides.fieldRowsByPrototype?.[prototype];
       return {
@@ -239,6 +256,7 @@ test('same-commit packet-v2 100k and 1m evidence is decision-ready', () => {
       same_repetitions: true,
       same_churn_cycles: true,
       same_database_settings: true,
+      same_dataset_shape: true,
       same_source_oracle_shape: true,
       same_report_shape: true,
       same_mutation_effect_contract: true,
@@ -291,6 +309,49 @@ test('rejects non-v2 packet contract', () => {
 
     assert.notEqual(result.status, 0, 'expected comparator to fail closed');
     assert.match(result.stderr, /packet contract version 2/);
+  });
+});
+
+test('rejects missing PostgreSQL metadata', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', { database: { work_mem: null } });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /database\.work_mem must be a non-empty string/);
+  });
+});
+
+test('rejects report repetition drift from provenance', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', { readRepetitions: 2 });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /read repetitions mismatch/);
+  });
+});
+
+test('rejects maintenance cycle drift from provenance', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k', { maintenanceCycles: 4 });
+    const result = runComparator([lower], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /churn_cycles mismatch/);
+  });
+});
+
+test('rejects cross-scale non-scale dataset shape drift', () => {
+  withFixture((root) => {
+    const lower = writePacket(root, '100k');
+    const upper = writePacket(root, '1m', {
+      dataset: { locales: ['ru-RU', 'en-US'] },
+    });
+    const result = runComparator([lower, upper], path.join(root, 'comparison'));
+
+    assert.notEqual(result.status, 0, 'expected comparator to fail closed');
+    assert.match(result.stderr, /cross-scale dataset shape mismatch/);
   });
 });
 
