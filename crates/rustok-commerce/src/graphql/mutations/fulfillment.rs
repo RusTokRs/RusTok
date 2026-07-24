@@ -1,12 +1,14 @@
-use async_graphql::{Context, FieldError, Object, Result};
+use async_graphql::{Context, ErrorExtensions, FieldError, Object, Result};
 use rustok_api::Permission;
 use rustok_api::{
     AuthContext,
     graphql::{GraphQLError, require_module_enabled},
 };
-use rustok_order::OrderService;
+use rustok_order::{OrderError, OrderService};
+use rustok_payment::error::PaymentError;
 use uuid::Uuid;
 
+use crate::{PaymentOrchestrationError, PostOrderOrchestrationError};
 use crate::graphql_runtime::{
     order_change_orchestration_from_context, post_order_orchestration_from_context,
     return_completion_orchestration_from_context,
@@ -14,6 +16,143 @@ use crate::graphql_runtime::{
 
 use super::super::{MODULE_SLUG, current_tenant_scope, require_commerce_permission, types::*};
 use super::helpers::*;
+
+fn public_fulfillment_graphql_error(
+    message: &'static str,
+    code: &'static str,
+    retryable: bool,
+) -> async_graphql::Error {
+    async_graphql::Error::new(message).extend_with(|_, extensions| {
+        extensions.set("code", code);
+        extensions.set("retryable", retryable);
+    })
+}
+
+fn order_error_envelope(error: &OrderError) -> (&'static str, &'static str, bool) {
+    match error {
+        OrderError::Validation(_) => ("Order request is invalid", "ORDER_REQUEST_INVALID", false),
+        OrderError::OrderNotFound(_)
+        | OrderError::OrderReturnNotFound(_)
+        | OrderError::OrderChangeNotFound(_) => (
+            "Order resource was not found",
+            "ORDER_RESOURCE_NOT_FOUND",
+            false,
+        ),
+        OrderError::InvalidTransition { .. } => (
+            "Order operation conflicts with the current state",
+            "ORDER_STATE_CONFLICT",
+            false,
+        ),
+        OrderError::Database(_) => (
+            "Order service is temporarily unavailable",
+            "ORDER_TEMPORARILY_UNAVAILABLE",
+            true,
+        ),
+        OrderError::Core(_) => (
+            "Order operation could not be completed safely",
+            "ORDER_OPERATION_FAILED",
+            false,
+        ),
+    }
+}
+
+fn payment_error_envelope(error: &PaymentError) -> (&'static str, &'static str, bool) {
+    match error {
+        PaymentError::Validation(_) => (
+            "Payment request is invalid",
+            "PAYMENT_REQUEST_INVALID",
+            false,
+        ),
+        PaymentError::PaymentCollectionNotFound(_)
+        | PaymentError::PaymentNotFound(_)
+        | PaymentError::RefundNotFound(_) => (
+            "Payment resource was not found",
+            "PAYMENT_RESOURCE_NOT_FOUND",
+            false,
+        ),
+        PaymentError::InvalidTransition { .. } | PaymentError::ProviderRejected { .. } => (
+            "Payment operation conflicts with the current state",
+            "PAYMENT_STATE_CONFLICT",
+            false,
+        ),
+        PaymentError::ProviderUnavailable { .. } | PaymentError::Database(_) => (
+            "Payment service is temporarily unavailable",
+            "PAYMENT_TEMPORARILY_UNAVAILABLE",
+            true,
+        ),
+        PaymentError::ProviderInvalidResponse { .. }
+        | PaymentError::ProviderOutcomeUnknown { .. } => (
+            "Payment operation requires reconciliation",
+            "PAYMENT_RECONCILIATION_REQUIRED",
+            false,
+        ),
+        PaymentError::ProviderConfiguration { .. } => (
+            "Payment operation is not configured",
+            "PAYMENT_CONFIGURATION_ERROR",
+            false,
+        ),
+    }
+}
+
+fn payment_orchestration_error_envelope(
+    error: &PaymentOrchestrationError,
+) -> (&'static str, &'static str, bool) {
+    match error {
+        PaymentOrchestrationError::Provider(source)
+        | PaymentOrchestrationError::Payment(source) => payment_error_envelope(source),
+        PaymentOrchestrationError::ProviderAfterRefundReservation { .. } => (
+            "Payment operation requires reconciliation",
+            "PAYMENT_RECONCILIATION_REQUIRED",
+            false,
+        ),
+    }
+}
+
+fn order_mutation_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    operation: &'static str,
+    error: OrderError,
+) -> async_graphql::Error {
+    tracing::error!(
+        error = ?error,
+        tenant_id = %tenant_id,
+        resource_id = %resource_id,
+        operation,
+        "commerce GraphQL fulfillment order mutation failed"
+    );
+    let (message, code, retryable) = order_error_envelope(&error);
+    public_fulfillment_graphql_error(message, code, retryable)
+}
+
+fn post_order_graphql_error(
+    tenant_id: Uuid,
+    resource_id: Uuid,
+    operation: &'static str,
+    error: PostOrderOrchestrationError,
+) -> async_graphql::Error {
+    tracing::error!(
+        error = ?error,
+        tenant_id = %tenant_id,
+        resource_id = %resource_id,
+        operation,
+        "commerce GraphQL post-order orchestration failed"
+    );
+
+    let (message, code, retryable) = match &error {
+        PostOrderOrchestrationError::Order(source) => order_error_envelope(source),
+        PostOrderOrchestrationError::Payment(source) => payment_error_envelope(source),
+        PostOrderOrchestrationError::PaymentOrchestration(source) => {
+            payment_orchestration_error_envelope(source)
+        }
+        PostOrderOrchestrationError::Validation(_) => (
+            "Post-order request is invalid",
+            "POST_ORDER_REQUEST_INVALID",
+            false,
+        ),
+    };
+    public_fulfillment_graphql_error(message, code, retryable)
+}
 
 #[derive(Default)]
 pub struct CommerceFulfillmentMutation;
@@ -39,7 +178,14 @@ impl CommerceFulfillmentMutation {
         let item = OrderService::new(db.clone(), event_bus.clone())
             .create_return(tenant_id, order_id, build_create_order_return_input(input)?)
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| {
+                order_mutation_graphql_error(
+                    tenant_id,
+                    order_id,
+                    "create_storefront_order_return",
+                    error,
+                )
+            })?;
 
         Ok(item.into())
     }
@@ -221,7 +367,9 @@ impl CommerceFulfillmentMutation {
         let result = order_change_orchestration_from_context(ctx, db.clone(), event_bus.clone())
             .apply_order_change(tenant_id, id, difference_refund, metadata)
             .await
-            .map_err(|err| FieldError::new(err.to_string()))?;
+            .map_err(|error| {
+                post_order_graphql_error(tenant_id, id, "apply_order_change", error)
+            })?;
 
         Ok(result.order_change.into())
     }
@@ -317,7 +465,14 @@ impl CommerceFulfillmentMutation {
                 build_create_return_decision_input(input)?,
             )
             .await
-            .map_err(|err| async_graphql::Error::new(err.to_string()))?;
+            .map_err(|error| {
+                post_order_graphql_error(
+                    tenant_id,
+                    order_id,
+                    "create_order_return_decision",
+                    error,
+                )
+            })?;
 
         Ok(decision.into())
     }
@@ -395,7 +550,9 @@ impl CommerceFulfillmentMutation {
         let item = return_completion_orchestration_from_context(ctx, db.clone(), event_bus.clone())
             .complete_return(tenant_id, auth.user_id, id, command)
             .await
-            .map_err(|err| FieldError::new(err.to_string()))?;
+            .map_err(|error| {
+                post_order_graphql_error(tenant_id, id, "complete_order_return", error)
+            })?;
 
         Ok(item.into())
     }

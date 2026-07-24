@@ -212,7 +212,7 @@ at the end of this file remain authoritative.
 | `FORUM-13` | `in_progress` | Verified FORUM-13A/B add bounded presentation policy and explicit optional Media capability behavior; Media quarantine/deletion state, persistence, transport composition, runtime evidence and UI remain. |
 | `FORUM-14` | `planned` | Topic/reply attachment relations and upload-session lifecycle. |
 | `FORUM-15` | `planned` | Profile/member summary and avatar integration. |
-| `FORUM-16` | `in_progress` | FORUM-16A adds tenant-scoped monotonic topic read position/revision persistence and authenticated owner commands; unread projections, filters and bounded category/all-read commands remain. |
+| `FORUM-16` | `in_progress` | FORUM-16A/B add tenant-scoped monotonic topic read state, authenticated owner commands and a bounded unread topic projection/filter; bulk category/all-read commands, transports and PostgreSQL concurrency evidence remain. |
 | `FORUM-17` | `planned` | Drafts, autosave, bookmarks and optional reminders. |
 | `FORUM-18` | `planned` | Atomic votes, reactions, reputation ledger and badges. |
 | `FORUM-19` | `planned` | Reports, moderation queue, restrictions and audit. |
@@ -854,21 +854,38 @@ accelerate the badge but database position/revision remains canonical.
   SQLite owner scenario covers future-bound rejection plus the direct database
   regression guard.
 
+### Delivered in `FORUM-16B`
+
+- `ForumReadModelService::list_topics_with_unread` exposes a separate
+  authenticated owner projection without changing the existing public topic
+  list contract;
+- each bounded cursor page is enriched through one aggregate owner query with
+  explicit read-state presence, last-read position/revision, approved-reply
+  unread count, topic-revision unread state and a canonical `is_unread` result;
+- a missing read-state row keeps a newly discovered topic unread even when it has
+  no replies, while an explicit zero row records that an empty topic was opened;
+- `unread_only` is applied before cursor pagination and includes unseen topics,
+  approved replies after the high-water mark and newer immutable topic revisions;
+- hidden, rejected and deleted replies are excluded by the approved-public
+  predicate, and the SQLite scenario covers visibility changes plus two-page
+  unread cursor behavior without N+1 reply reads.
+
 ### Compatibility and degraded mode
 
-No backfill is required: an absent row means position/revision zero. Existing
-Forum reads and commands remain source-compatible, and no transport or UI is
-opened in this slice. Cache and realtime accelerators remain optional and never
-replace the database owner state.
+No backfill is required: an absent row means position/revision zero and also
+preserves unseen-topic identity. Existing Forum topic reads and commands remain
+source-compatible. The unread projection is an additive authenticated owner
+contract and is not wired to REST, GraphQL, storefront or realtime in this
+slice. Cache and realtime accelerators remain optional and never replace the
+database owner state.
 
 ### Remaining scope
 
-- join bounded topic projections with last-read position/revision, canonical
-  unread counts and unread filters that exclude hidden or deleted replies;
 - add bounded, resumable mark-category-read and mark-all-read owner commands;
-- expose verified REST/GraphQL/storefront integration only after the projection
-  contract is stable;
-- add PostgreSQL and concurrent-device execution evidence.
+- expose the stable owner projection through verified REST/GraphQL/storefront
+  integration without duplicating unread policy in transports;
+- add PostgreSQL aggregate/concurrent-device execution evidence and query-plan
+  evidence for production-sized topic/reply histories.
 
 ### Definition of done
 
@@ -880,6 +897,7 @@ bounded.
 
 ```bash
 cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
 cargo xtask module validate forum
 ```
 
@@ -1672,6 +1690,7 @@ cargo test -p rustok-forum inline_quote
 cargo test -p rustok-forum --test mention_quote_runtime_postgres -- --nocapture --test-threads=1
 cargo test -p rustok-forum --test notification_source_sqlite -- --nocapture
 cargo test -p rustok-forum --test topic_read_state_sqlite -- --nocapture
+cargo test -p rustok-forum --test topic_unread_projection_sqlite -- --nocapture
 
 cargo xtask module validate forum
 cargo xtask module test forum
@@ -1736,7 +1755,8 @@ Recommended next slices:
 7. `FORUM-14`: attachment relations and upload sessions;
 8. `FORUM-15`: batched member/avatar projection;
 9. `LINK-FORUM-02`: profiles/media runtime proof;
-10. finish `FORUM-16` unread projections, filters and bounded bulk mark-read;
+10. finish `FORUM-16` bounded category/all-read commands, transport composition
+    and PostgreSQL concurrency/query-plan evidence;
 11. `FORUM-19`: reports/moderation/restrictions;
 12. `FORUM-20`: ACL and visibility policy;
 13. `FORUM-23`: index projections;
