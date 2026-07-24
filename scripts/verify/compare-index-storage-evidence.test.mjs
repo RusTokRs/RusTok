@@ -133,6 +133,10 @@ function writePacket(root, scale, overrides = {}) {
       work_mem: '4MB',
       random_page_cost: '4',
       jit: 'off',
+      standard_conforming_strings: 'on',
+      timezone: 'UTC',
+      date_style: 'ISO, YMD',
+      extra_float_digits: '3',
       ...overrides.database,
     },
     dataset: {
