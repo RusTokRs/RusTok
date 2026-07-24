@@ -14,12 +14,12 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::{SeoTargetCapabilityKind, SeoTargetRegistryEntry, SeoTargetSlug};
 
 use crate::{
-    SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord,
-    SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage, SeoCrossLinkSuggestionRecord,
-    SeoDiagnosticsSummaryRecord, SeoError, SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput,
-    SeoIndexRepairReplayResultRecord, SeoMetaInput, SeoMetaRecord, SeoPageContext,
-    SeoRedirectInput, SeoRedirectRecord, SeoRevisionRecord, SeoApplicationServices, SeoSitemapJobRecord,
-    SeoSitemapStatusRecord,
+    SeoApplicationServices, SeoBulkApplyInput, SeoBulkApplyMode, SeoBulkExportInput,
+    SeoBulkImportInput, SeoBulkJobRecord, SeoBulkJobStatus, SeoBulkListInput, SeoBulkPage,
+    SeoCrossLinkSuggestionRecord, SeoDiagnosticsSummaryRecord, SeoError,
+    SeoIndexDeliveryStatusRecord, SeoIndexRepairReplayInput, SeoIndexRepairReplayResultRecord,
+    SeoMetaInput, SeoMetaRecord, SeoPageContext, SeoRedirectInput, SeoRedirectRecord,
+    SeoRevisionRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
 };
 
 const MODULE_SLUG: &str = "seo";
@@ -45,7 +45,8 @@ impl SeoQuery {
             .data_opt::<RequestContext>()
             .and_then(|request| request.channel_slug.as_deref());
         seo_service_from_graphql(ctx)?
-            .routing().resolve_page_context_for_channel(tenant, locale.as_str(), route.as_str(), channel_slug)
+            .routing()
+            .resolve_page_context_for_channel(tenant, locale.as_str(), route.as_str(), channel_slug)
             .await
             .map_err(map_seo_error)
     }
@@ -61,7 +62,8 @@ impl SeoQuery {
         require_seo_permission(ctx, &[Permission::SEO_READ], "seo:read required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .metadata().seo_meta(tenant, target_kind, target_id, locale.as_deref())
+            .metadata()
+            .seo_meta(tenant, target_kind, target_id, locale.as_deref())
             .await
             .map_err(map_seo_error)
     }
@@ -71,7 +73,8 @@ impl SeoQuery {
         require_seo_permission(ctx, &[Permission::SEO_READ], "seo:read required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .redirects().list_redirects(tenant.id)
+            .redirects()
+            .list_redirects(tenant.id)
             .await
             .map_err(map_seo_error)
     }
@@ -85,7 +88,8 @@ impl SeoQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .sitemaps().sitemap_status(tenant)
+            .sitemaps()
+            .sitemap_status(tenant)
             .await
             .map_err(map_seo_error)
     }
@@ -103,7 +107,8 @@ impl SeoQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .sitemaps().list_sitemap_jobs(tenant.id, limit.unwrap_or(20).clamp(1, 100) as usize)
+            .sitemaps()
+            .list_sitemap_jobs(tenant.id, limit.unwrap_or(20).clamp(1, 100) as usize)
             .await
             .map_err(map_seo_error)
     }
@@ -121,7 +126,8 @@ impl SeoQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .sitemaps().sitemap_job(tenant.id, job_id)
+            .sitemaps()
+            .sitemap_job(tenant.id, job_id)
             .await
             .map_err(map_seo_error)
     }
@@ -135,7 +141,8 @@ impl SeoQuery {
         require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .bulk().list_bulk_items(tenant, input)
+            .bulk()
+            .list_bulk_items(tenant, input)
             .await
             .map_err(map_seo_error)
     }
@@ -150,7 +157,8 @@ impl SeoQuery {
         require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .bulk().list_bulk_jobs(
+            .bulk()
+            .list_bulk_jobs(
                 tenant.id,
                 limit.unwrap_or(20).clamp(1, 100) as usize,
                 status,
@@ -168,7 +176,8 @@ impl SeoQuery {
         require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .bulk().bulk_job(tenant.id, job_id)
+            .bulk()
+            .bulk_job(tenant.id, job_id)
             .await
             .map_err(map_seo_error)
     }
@@ -182,7 +191,8 @@ impl SeoQuery {
         require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .operations().index_delivery_status(tenant.id, target_type.as_deref())
+            .operations()
+            .index_delivery_status(tenant.id, target_type.as_deref())
             .await
             .map_err(map_seo_error)
     }
@@ -194,7 +204,9 @@ impl SeoQuery {
     ) -> Result<Vec<SeoTargetRegistryEntry>> {
         require_module_enabled(ctx, MODULE_SLUG).await?;
         require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
-        Ok(seo_service_from_graphql(ctx)?.routing().target_registry_entries(capability))
+        Ok(seo_service_from_graphql(ctx)?
+            .routing()
+            .target_registry_entries(capability))
     }
 
     async fn seo_diagnostics(
@@ -210,7 +222,8 @@ impl SeoQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .operations().diagnostics_summary(tenant, locale.as_deref())
+            .operations()
+            .diagnostics_summary(tenant, locale.as_deref())
             .await
             .map_err(map_seo_error)
     }
@@ -229,7 +242,8 @@ impl SeoQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .routing().cross_link_suggestions(
+            .routing()
+            .cross_link_suggestions(
                 tenant,
                 locale.as_deref(),
                 per_target_limit.map(|value| value.max(1) as usize),
@@ -250,7 +264,8 @@ impl SeoMutation {
         require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .metadata().upsert_meta(tenant, input)
+            .metadata()
+            .upsert_meta(tenant, input)
             .await
             .map_err(map_seo_error)
     }
@@ -266,7 +281,8 @@ impl SeoMutation {
         require_seo_permission(ctx, &[Permission::SEO_PUBLISH], "seo:publish required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .metadata().publish_revision(tenant, target_kind, target_id, note)
+            .metadata()
+            .publish_revision(tenant, target_kind, target_id, note)
             .await
             .map_err(map_seo_error)
     }
@@ -282,7 +298,8 @@ impl SeoMutation {
         require_seo_permission(ctx, &[Permission::SEO_PUBLISH], "seo:publish required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .metadata().rollback_revision(tenant, target_kind, target_id, revision)
+            .metadata()
+            .rollback_revision(tenant, target_kind, target_id, revision)
             .await
             .map_err(map_seo_error)
     }
@@ -296,7 +313,8 @@ impl SeoMutation {
         require_seo_permission(ctx, &[Permission::SEO_UPDATE], "seo:update required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .redirects().upsert_redirect(tenant, input)
+            .redirects()
+            .upsert_redirect(tenant, input)
             .await
             .map_err(map_seo_error)
     }
@@ -306,7 +324,8 @@ impl SeoMutation {
         require_seo_permission(ctx, &[Permission::SEO_GENERATE], "seo:generate required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .sitemaps().generate_sitemaps(tenant)
+            .sitemaps()
+            .generate_sitemaps(tenant)
             .await
             .map_err(map_seo_error)
     }
@@ -331,7 +350,8 @@ impl SeoMutation {
         };
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .bulk().queue_bulk_apply(tenant, Some(auth.user_id), input)
+            .bulk()
+            .queue_bulk_apply(tenant, Some(auth.user_id), input)
             .await
             .map_err(map_seo_error)
     }
@@ -349,7 +369,8 @@ impl SeoMutation {
         }
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .bulk().queue_bulk_import(tenant, Some(auth.user_id), input)
+            .bulk()
+            .queue_bulk_import(tenant, Some(auth.user_id), input)
             .await
             .map_err(map_seo_error)
     }
@@ -363,7 +384,8 @@ impl SeoMutation {
         let auth = require_seo_permission(ctx, &[Permission::SEO_MANAGE], "seo:manage required")?;
         let tenant = ctx.data::<TenantContext>()?;
         seo_service_from_graphql(ctx)?
-            .bulk().queue_bulk_export(tenant, Some(auth.user_id), input)
+            .bulk()
+            .queue_bulk_export(tenant, Some(auth.user_id), input)
             .await
             .map_err(map_seo_error)
     }
@@ -379,7 +401,8 @@ impl SeoMutation {
         let limit = input.limit.clamp(1, 500) as usize;
 
         seo_service_from_graphql(ctx)?
-            .operations().run_index_repair_replay(
+            .operations()
+            .run_index_repair_replay(
                 tenant.id,
                 input.target_type.as_deref(),
                 limit,
@@ -394,8 +417,12 @@ fn seo_service_from_graphql(ctx: &Context<'_>) -> Result<SeoApplicationServices>
     let db = ctx.data::<DatabaseConnection>()?;
     let event_bus = ctx.data::<TransactionalEventBus>()?;
     let extensions = ctx.data::<Arc<ModuleRuntimeExtensions>>()?;
-    SeoApplicationServices::from_runtime_extensions(db.clone(), event_bus.clone(), extensions.as_ref())
-        .map_err(map_seo_error)
+    SeoApplicationServices::from_runtime_extensions(
+        db.clone(),
+        event_bus.clone(),
+        extensions.as_ref(),
+    )
+    .map_err(map_seo_error)
 }
 
 fn require_seo_permission(
@@ -449,7 +476,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        SeoModuleSettings, SeoApplicationServices, entities::seo_redirect, migrations as seo_migrations,
+        SeoApplicationServices, SeoModuleSettings, entities::seo_redirect,
+        migrations as seo_migrations,
     };
     use rustok_taxonomy::migrations as taxonomy_migrations;
 
@@ -737,7 +765,8 @@ mod tests {
             runtime_extensions.as_ref(),
         )
         .expect("runtime extensions should provide SEO registry")
-        .routing().resolve_page_context(&tenant, "en-US", "/legacy")
+        .routing()
+        .resolve_page_context(&tenant, "en-US", "/legacy")
         .await
         .expect("service seo page context should resolve")
         .expect("redirect route should resolve");
@@ -844,7 +873,8 @@ mod tests {
             runtime_extensions.as_ref(),
         )
         .expect("runtime extensions should provide SEO registry")
-        .sitemaps().sitemap_status(&tenant)
+        .sitemaps()
+        .sitemap_status(&tenant)
         .await
         .expect("service sitemap status should resolve");
 

@@ -49,7 +49,8 @@ async fn sitemap_generation_rolls_back_when_transactional_event_fails() {
     );
 
     let error = service
-        .sitemaps().generate_sitemaps(&tenant_context(tenant_id))
+        .sitemaps()
+        .generate_sitemaps(&tenant_context(tenant_id))
         .await
         .expect_err("event failure must abort the sitemap transaction");
 

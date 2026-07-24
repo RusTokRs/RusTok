@@ -6,7 +6,9 @@ use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{seo_event_delivery, seo_redirect};
-use rustok_seo::{SeoRedirectInput, SeoRedirectMatchType, SeoApplicationServices, SeoTargetRegistry};
+use rustok_seo::{
+    SeoApplicationServices, SeoRedirectInput, SeoRedirectMatchType, SeoTargetRegistry,
+};
 use rustok_tenant::entities::tenant_module;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
@@ -49,7 +51,8 @@ async fn redirect_write_rolls_back_when_transactional_event_fails() {
     );
 
     let error = service
-        .redirects().upsert_redirect(
+        .redirects()
+        .upsert_redirect(
             &tenant_context(tenant_id),
             SeoRedirectInput {
                 id: None,

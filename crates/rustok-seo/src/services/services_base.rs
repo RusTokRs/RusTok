@@ -28,8 +28,8 @@ use rustok_core::{MemoryTransport, RusToKModule};
 use rustok_media::MediaAssetReadPort;
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo_targets::{
-    seo_target_registry_from_extensions, SeoTargetCapabilityKind, SeoTargetRegistry,
-    SeoTargetRegistryEntry, SeoTargetSlug,
+    SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
+    seo_target_registry_from_extensions,
 };
 use rustok_tenant::entities::tenant_module;
 
@@ -237,9 +237,9 @@ impl SeoService {
 }
 
 fn parse_persisted_settings(value: serde_json::Value) -> SeoResult<SeoModuleSettings> {
-    let object = value.as_object().ok_or_else(|| {
-        SeoError::configuration("persisted SEO settings must be a JSON object")
-    })?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| SeoError::configuration("persisted SEO settings must be a JSON object"))?;
     if let Some(unknown) = object
         .keys()
         .find(|key| !SEO_SETTINGS_KEYS.contains(&key.as_str()))
@@ -266,8 +266,14 @@ fn validate_persisted_settings(settings: &SeoModuleSettings) -> SeoResult<()> {
     }
 
     for (field, hosts) in [
-        ("allowed_redirect_hosts", settings.allowed_redirect_hosts.as_slice()),
-        ("allowed_canonical_hosts", settings.allowed_canonical_hosts.as_slice()),
+        (
+            "allowed_redirect_hosts",
+            settings.allowed_redirect_hosts.as_slice(),
+        ),
+        (
+            "allowed_canonical_hosts",
+            settings.allowed_canonical_hosts.as_slice(),
+        ),
     ] {
         for host in hosts {
             validate_settings_host(host, field)?;

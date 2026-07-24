@@ -8,12 +8,12 @@ use rustok_api::TenantContext;
 use rustok_core::{Error, EventEnvelope, EventTransport, ReliabilityLevel};
 use rustok_outbox::TransactionalEventBus;
 use rustok_seo::entities::{
-    self as seo_meta, meta_translation, seo_event_delivery, seo_index_cursor,
-    seo_index_delivery, seo_revision,
+    self as seo_meta, meta_translation, seo_event_delivery, seo_index_cursor, seo_index_delivery,
+    seo_revision,
 };
 use rustok_seo::{
-    SeoMetaInput, SeoMetaTranslationInput, SeoApplicationServices, SeoTargetRegistry, SeoTargetSlug,
-    seo_builtin_slug,
+    SeoApplicationServices, SeoMetaInput, SeoMetaTranslationInput, SeoTargetRegistry,
+    SeoTargetSlug, seo_builtin_slug,
 };
 use rustok_seo_targets::{
     SeoLoadedTargetRecord, SeoTargetAlternateRoute, SeoTargetCapabilities, SeoTargetLoadRequest,
@@ -21,8 +21,8 @@ use rustok_seo_targets::{
 };
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database,
-    DatabaseConnection, DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, Statement,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -133,7 +133,8 @@ async fn metadata_transaction_rolls_back_when_reindex_event_fails() {
     );
 
     let error = service
-        .metadata().upsert_meta(
+        .metadata()
+        .upsert_meta(
             &tenant,
             SeoMetaInput {
                 target_kind: page_slug(),
@@ -248,7 +249,8 @@ async fn revision_creation_rolls_back_when_reindex_event_fails() {
         Arc::new(SeoTargetRegistry::default()),
     );
     let error = service
-        .metadata().publish_revision(
+        .metadata()
+        .publish_revision(
             &tenant,
             page_slug(),
             target_id,
@@ -387,7 +389,8 @@ async fn revision_rollback_rolls_back_when_rollback_reindex_fails() {
         Arc::new(registry),
     );
     let error = service
-        .metadata().rollback_revision(&tenant, page_slug(), target_id, 1)
+        .metadata()
+        .rollback_revision(&tenant, page_slug(), target_id, 1)
         .await
         .expect_err("rollback reindex failure must abort the whole revision rollback");
     assert!(

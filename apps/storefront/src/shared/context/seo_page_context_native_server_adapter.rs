@@ -56,7 +56,8 @@ pub(crate) async fn resolve_seo_page_context(
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| rustok_api::PLATFORM_FALLBACK_LOCALE.to_string());
         let resolved = service
-            .routing().resolve_page_context_for_channel(
+            .routing()
+            .resolve_page_context_for_channel(
                 &rustok_api::TenantContext {
                     id: tenant.id,
                     name: tenant.name,

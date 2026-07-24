@@ -11,16 +11,16 @@ use rustok_seo_targets::{
     SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
 };
 
+use crate::SeoResult;
 use crate::dto::{
     SeoBulkApplyInput, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord, SeoBulkJobStatus,
     SeoBulkListInput, SeoBulkPage, SeoBulkSelectionInput, SeoBulkSelectionPreviewRecord,
     SeoCrossLinkSuggestionRecord, SeoDiagnosticsSummaryRecord, SeoIndexDeliveryStatusRecord,
     SeoIndexRepairReplayResultRecord, SeoMetaInput, SeoMetaRecord, SeoModuleSettings,
-    SeoPageContext, SeoRedirectInput, SeoRedirectRecord, SeoRevisionRecord,
-    SeoRobotsPreviewRecord, SeoSitemapJobRecord, SeoSitemapStatusRecord,
+    SeoPageContext, SeoRedirectInput, SeoRedirectRecord, SeoRevisionRecord, SeoRobotsPreviewRecord,
+    SeoSitemapJobRecord, SeoSitemapStatusRecord,
 };
 use crate::entities::{seo_bulk_job_artifact, seo_sitemap_file};
-use crate::SeoResult;
 
 use super::SeoService;
 
@@ -182,7 +182,9 @@ impl SeoRoutingService {
         locale: &str,
         route: &str,
     ) -> SeoResult<Option<SeoPageContext>> {
-        self.runtime.resolve_page_context(tenant, locale, route).await
+        self.runtime
+            .resolve_page_context(tenant, locale, route)
+            .await
     }
 
     pub async fn resolve_page_context_for_channel(

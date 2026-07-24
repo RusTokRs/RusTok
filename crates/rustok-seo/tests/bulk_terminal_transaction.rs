@@ -74,7 +74,8 @@ async fn bulk_terminal_state_rolls_back_when_transactional_event_fails() {
     );
 
     let error = service
-        .bulk().execute_next_bulk_job()
+        .bulk()
+        .execute_next_bulk_job()
         .await
         .expect_err("event failure must abort the bulk terminal transaction");
     assert!(
