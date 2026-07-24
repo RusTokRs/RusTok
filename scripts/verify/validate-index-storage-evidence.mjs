@@ -34,6 +34,7 @@ const contracts = {
     productsPerTenant: 100,
     productRows: 400,
     entityRows: 1_216,
+    eavFieldRows: 5_632,
     linkRows: 2_400,
     mutationBatch: 100,
     deletedLinks: 200,
@@ -45,6 +46,7 @@ const contracts = {
     productsPerTenant: 5_000,
     productRows: 100_000,
     entityRows: 300_080,
+    eavFieldRows: 1_400_160,
     linkRows: 600_000,
     mutationBatch: 1_000,
     deletedLinks: 2_000,
@@ -56,6 +58,7 @@ const contracts = {
     productsPerTenant: 25_000,
     productRows: 1_000_000,
     entityRows: 3_000_160,
+    eavFieldRows: 14_000_320,
     linkRows: 6_000_000,
     mutationBatch: 1_000,
     deletedLinks: 2_000,
@@ -322,11 +325,14 @@ const statFields = [
 ];
 for (const [prototypeIndex, prototype] of maintenance.prototypes.entries()) {
   const expectedPrototype = canonicalPrototypes[prototypeIndex];
+  const expectedFieldRows = prototype.prototype === 'typed_eav' ? contract.eavFieldRows : null;
   for (const phase of ['baseline', 'after_churn', 'after_vacuum']) {
     const snapshot = requireObject(prototype[phase], `${prototype.prototype}/${phase}`);
     requireTimestamp(snapshot.captured_at, `${prototype.prototype}/${phase}.captured_at`);
     requirePositiveInteger(snapshot.schema_bytes, `${prototype.prototype}/${phase}.schema_bytes`);
-    if (snapshot.entity_rows !== contract.entityRows || snapshot.link_rows !== contract.linkRows) {
+    if (snapshot.entity_rows !== contract.entityRows
+        || snapshot.field_rows !== expectedFieldRows
+        || snapshot.link_rows !== contract.linkRows) {
       fail(`${prototype.prototype}/${phase} maintenance cardinality mismatch`);
     }
     requireExactOrder(
@@ -376,7 +382,7 @@ if (process.env.INDEX_BENCH_REQUIRE_GITHUB_PROVENANCE === '1') {
 writeFileSync(
   path.join(root, 'provenance.json'),
   JSON.stringify({
-    packet_contract_version: 1,
+    packet_contract_version: 2,
     generated_at: new Date().toISOString(),
     ...githubProvenance,
     postgres_image: 'postgres:16',
@@ -385,6 +391,7 @@ writeFileSync(
     churn_cycles: 5,
     expected_product_rows: contract.productRows,
     expected_entity_rows: contract.entityRows,
+    expected_eav_field_rows: contract.eavFieldRows,
     expected_link_rows: contract.linkRows,
     reports: files,
     runner_resource_files: resourceFiles,
@@ -393,5 +400,5 @@ writeFileSync(
 
 console.log(
   `[validate-index-storage-evidence] ${scale} packet is consistent: `
-  + `${contract.entityRows} entities, ${contract.linkRows} links`,
+  + `${contract.entityRows} entities, ${contract.eavFieldRows} EAV fields, ${contract.linkRows} links`,
 );
