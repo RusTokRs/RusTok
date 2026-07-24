@@ -1,3 +1,5 @@
+mod bulk_read_model;
+
 include!("services_base.rs");
 
 /// Durable cursor for the transactionally persisted SEO redirect delivery log.
