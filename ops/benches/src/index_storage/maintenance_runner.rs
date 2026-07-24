@@ -35,6 +35,7 @@ pub struct MaintenanceSnapshot {
     pub captured_at: DateTime<Utc>,
     pub schema_bytes: i64,
     pub entity_rows: i64,
+    pub field_rows: Option<i64>,
     pub link_rows: i64,
     pub table_stats: Vec<TableMaintenanceStats>,
 }
@@ -57,6 +58,7 @@ pub struct TableMaintenanceStats {
 #[derive(Debug, Clone, Copy)]
 struct Cardinality {
     entity_rows: i64,
+    field_rows: Option<i64>,
     link_rows: i64,
 }
 
@@ -152,12 +154,13 @@ async fn snapshot(
         .await
         .context("failed to flush and clear PostgreSQL statistics snapshot")?;
     let cardinality = prototype_cardinality(db, prototype).await?;
-    validate_cardinality(prototype.schema(), cardinality, dataset)?;
+    validate_cardinality(prototype, cardinality, dataset)?;
 
     Ok(MaintenanceSnapshot {
         captured_at: Utc::now(),
         schema_bytes: schema_size_bytes(db, prototype.schema()).await?,
         entity_rows: cardinality.entity_rows,
+        field_rows: cardinality.field_rows,
         link_rows: cardinality.link_rows,
         table_stats: table_stats(db, prototype.schema()).await?,
     })
@@ -211,9 +214,9 @@ async fn prototype_cardinality(
     prototype: Prototype,
 ) -> Result<Cardinality> {
     let sql = match prototype {
-        Prototype::Jsonb => "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows",
-        Prototype::TypedEav => "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows",
-        Prototype::HotProjection => "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows",
+        Prototype::Jsonb => "SELECT (SELECT count(*) FROM idx_bench_jsonb.entity)::bigint AS entity_rows, NULL::bigint AS field_rows, (SELECT count(*) FROM idx_bench_jsonb.link)::bigint AS link_rows",
+        Prototype::TypedEav => "SELECT (SELECT count(*) FROM idx_bench_eav.entity)::bigint AS entity_rows, (SELECT count(*) FROM idx_bench_eav.field_value)::bigint AS field_rows, (SELECT count(*) FROM idx_bench_eav.link)::bigint AS link_rows",
+        Prototype::HotProjection => "SELECT ((SELECT count(*) FROM idx_bench_hot.product) + (SELECT count(*) FROM idx_bench_hot.variant) + (SELECT count(*) FROM idx_bench_hot.sales_channel))::bigint AS entity_rows, NULL::bigint AS field_rows, (SELECT count(*) FROM idx_bench_hot.link)::bigint AS link_rows",
     };
     let row = db
         .query_one(Statement::from_string(DbBackend::Postgres, sql.to_owned()))
@@ -221,25 +224,38 @@ async fn prototype_cardinality(
         .context("maintenance cardinality query returned no row")?;
     Ok(Cardinality {
         entity_rows: row.try_get("", "entity_rows")?,
+        field_rows: row.try_get("", "field_rows")?,
         link_rows: row.try_get("", "link_rows")?,
     })
 }
 
 fn validate_cardinality(
-    label: &str,
+    prototype: Prototype,
     actual: Cardinality,
     dataset: &DatasetConfig,
 ) -> Result<()> {
     let expected_entities = i64::try_from(dataset.total_entity_rows())?;
+    let expected_fields = match prototype {
+        Prototype::TypedEav => Some(i64::try_from(dataset.total_eav_field_rows())?),
+        Prototype::Jsonb | Prototype::HotProjection => None,
+    };
     let expected_links = i64::try_from(dataset.total_link_rows())?;
     ensure!(
         actual.entity_rows == expected_entities,
-        "{label} entity cardinality drift after maintenance: expected {expected_entities}, got {}",
+        "{} entity cardinality drift after maintenance: expected {expected_entities}, got {}",
+        prototype.schema(),
         actual.entity_rows
     );
     ensure!(
+        actual.field_rows == expected_fields,
+        "{} field cardinality drift after maintenance: expected {expected_fields:?}, got {:?}",
+        prototype.schema(),
+        actual.field_rows
+    );
+    ensure!(
         actual.link_rows == expected_links,
-        "{label} link cardinality drift after maintenance: expected {expected_links}, got {}",
+        "{} link cardinality drift after maintenance: expected {expected_links}, got {}",
+        prototype.schema(),
         actual.link_rows
     );
     Ok(())
