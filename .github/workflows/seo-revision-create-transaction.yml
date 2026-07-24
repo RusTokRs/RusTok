@@ -1,0 +1,39 @@
+name: SEO revision creation transaction patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: seo-revision-create-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-patch:
+    if: github.head_ref == 'agent/seo-revision-create-transaction' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply revision creation transaction patch
+        run: python scripts/seo/apply_revision_create_transaction.py
+
+      - name: Commit clean SEO slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/seo-revision-create-transaction.yml
+          rm -f scripts/seo/apply_revision_create_transaction.py
+          git config user.name "RusTok Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(seo): persist revision creation atomically"
+          git push origin HEAD:${{ github.head_ref }}
