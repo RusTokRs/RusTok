@@ -7,7 +7,7 @@ use rustok_api::{AuthContext, TenantContext};
 use rustok_fulfillment::FulfillmentService;
 use rustok_order::OrderService;
 use rustok_payment::PaymentService;
-use rustok_web::{HttpError, HttpResult};
+use rustok_web::HttpResult;
 use uuid::Uuid;
 
 use super::{
@@ -57,7 +57,7 @@ pub async fn list_orders(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_order_error)?;
 
     Ok(Json(PaginatedResponse {
         data: orders,
@@ -97,22 +97,15 @@ pub async fn show_order(
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(|err| match err {
-            rustok_order::error::OrderError::OrderNotFound(_)
-            | rustok_order::error::OrderError::OrderReturnNotFound(_)
-            | rustok_order::error::OrderError::OrderChangeNotFound(_) => {
-                HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-            }
-            other => HttpError::bad_request("commerce_operation_failed", other.to_string()),
-        })?;
+        .map_err(super::map_order_error)?;
     let payment_collection = PaymentService::new(runtime.db_clone())
         .find_latest_collection_by_order(tenant.id, id)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_payment_error)?;
     let fulfillment = FulfillmentService::new(runtime.db_clone())
         .find_by_order(tenant.id, id)
         .await
-        .map_err(|err| HttpError::bad_request("commerce_operation_failed", err.to_string()))?;
+        .map_err(super::map_fulfillment_error)?;
 
     Ok(Json(AdminOrderDetailResponse {
         order,

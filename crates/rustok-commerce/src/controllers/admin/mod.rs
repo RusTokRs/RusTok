@@ -18,6 +18,8 @@ pub use shipping::*;
 mod tests;
 
 use rust_decimal::Decimal;
+use rustok_fulfillment::error::FulfillmentError;
+use rustok_order::error::OrderError;
 use rustok_payment::PaymentError;
 use rustok_web::{HttpError, HttpResult};
 use serde::{Deserialize, Serialize};
@@ -324,6 +326,29 @@ pub fn axum_router() -> axum::Router<super::CommerceHttpRuntime> {
         )
 }
 
+fn admin_public_error<E>(
+    error: &E,
+    owner: &'static str,
+    error_kind: &'static str,
+    status: axum::http::StatusCode,
+    code: &'static str,
+    message: &'static str,
+) -> HttpError
+where
+    E: std::fmt::Debug,
+{
+    tracing::error!(
+        error = ?error,
+        owner,
+        error_kind,
+        public_code = code,
+        status = %status,
+        boundary = "commerce_admin_http",
+        "commerce admin operation failed"
+    );
+    HttpError::new(status, code, message)
+}
+
 pub(crate) fn map_payment_orchestration_error(
     error: crate::PaymentOrchestrationError,
 ) -> HttpError {
@@ -399,61 +424,147 @@ fn map_reserved_refund_provider_error(error: PaymentError) -> HttpError {
     }
 }
 
-pub(crate) fn map_order_error(error: rustok_order::error::OrderError) -> HttpError {
-    match error {
-        rustok_order::error::OrderError::OrderNotFound(_)
-        | rustok_order::error::OrderError::OrderReturnNotFound(_)
-        | rustok_order::error::OrderError::OrderChangeNotFound(_) => {
-            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-        }
-        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
-    }
+pub(crate) fn map_order_error(error: OrderError) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        OrderError::Validation(_) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_order_invalid",
+            "Order request is invalid",
+            "validation",
+        ),
+        OrderError::OrderNotFound(_)
+        | OrderError::OrderReturnNotFound(_)
+        | OrderError::OrderChangeNotFound(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        OrderError::InvalidTransition { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_order_state_conflict",
+            "Order operation conflicts with the current state",
+            "state_conflict",
+        ),
+        OrderError::Database(_) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_order_storage_unavailable",
+            "Order storage is temporarily unavailable",
+            "database",
+        ),
+        OrderError::Core(_) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "commerce_admin_order_failed",
+            "Order operation could not be completed safely",
+            "core",
+        ),
+    };
+    admin_public_error(
+        &error,
+        "rustok_order",
+        error_kind,
+        status,
+        code,
+        message,
+    )
 }
 
-pub(crate) fn map_fulfillment_error(
-    error: rustok_fulfillment::error::FulfillmentError,
-) -> HttpError {
-    match error {
-        rustok_fulfillment::error::FulfillmentError::FulfillmentNotFound(_) => {
-            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
-        }
-        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
-    }
+pub(crate) fn map_fulfillment_error(error: FulfillmentError) -> HttpError {
+    let (status, code, message, error_kind) = match &error {
+        FulfillmentError::Validation(_) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+            "validation",
+        ),
+        FulfillmentError::ShippingOptionNotFound(_)
+        | FulfillmentError::FulfillmentNotFound(_) => (
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+            "not_found",
+        ),
+        FulfillmentError::InvalidTransition { .. } => (
+            axum::http::StatusCode::CONFLICT,
+            "commerce_admin_fulfillment_state_conflict",
+            "Fulfillment operation conflicts with the current state",
+            "state_conflict",
+        ),
+        FulfillmentError::Database(_) => (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+            "database",
+        ),
+    };
+    admin_public_error(
+        &error,
+        "rustok_fulfillment",
+        error_kind,
+        status,
+        code,
+        message,
+    )
 }
 
 pub(crate) fn map_fulfillment_orchestration_error(
     error: FulfillmentOrchestrationError,
 ) -> HttpError {
     match error {
-        FulfillmentOrchestrationError::OrderNotFound(_) => {
-            HttpError::not_found("commerce_admin_not_found", "Commerce resource not found")
+        FulfillmentOrchestrationError::Fulfillment(error) => map_fulfillment_error(error),
+        error @ FulfillmentOrchestrationError::OrderNotFound(_) => admin_public_error(
+            &error,
+            "rustok_commerce",
+            "order_not_found",
+            axum::http::StatusCode::NOT_FOUND,
+            "commerce_admin_not_found",
+            "Commerce resource not found",
+        ),
+        error @ FulfillmentOrchestrationError::Database(_) => admin_public_error(
+            &error,
+            "rustok_commerce",
+            "database",
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "commerce_admin_fulfillment_storage_unavailable",
+            "Fulfillment storage is temporarily unavailable",
+        ),
+        error @ FulfillmentOrchestrationError::Validation(_) => admin_public_error(
+            &error,
+            "rustok_commerce",
+            "validation",
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_fulfillment_invalid",
+            "Fulfillment request is invalid",
+        ),
+        error @ FulfillmentOrchestrationError::ProviderAfterPersistence { .. }
+        | error @ FulfillmentOrchestrationError::PersistenceAfterProvider { .. } => {
+            admin_public_error(
+                &error,
+                "rustok_commerce",
+                "reconciliation_required",
+                axum::http::StatusCode::CONFLICT,
+                "commerce_admin_fulfillment_reconciliation_required",
+                "Fulfillment operation requires reconciliation",
+            )
         }
-        other => HttpError::bad_request("commerce_admin_invalid", other.to_string()),
     }
 }
 
 pub(crate) fn map_post_order_orchestration_error(error: PostOrderOrchestrationError) -> HttpError {
     match error {
-        PostOrderOrchestrationError::Order(
-            rustok_order::error::OrderError::OrderNotFound(_)
-            | rustok_order::error::OrderError::OrderReturnNotFound(_)
-            | rustok_order::error::OrderError::OrderChangeNotFound(_),
-        )
-        | PostOrderOrchestrationError::Payment(
-            PaymentError::PaymentCollectionNotFound(_)
-            | PaymentError::PaymentNotFound(_)
-            | PaymentError::RefundNotFound(_),
-        ) => HttpError::not_found("commerce_admin_not_found", "Commerce resource not found"),
-        PostOrderOrchestrationError::Order(other) => {
-            HttpError::bad_request("commerce_admin_invalid", other.to_string())
-        }
+        PostOrderOrchestrationError::Order(error) => map_order_error(error),
         PostOrderOrchestrationError::Payment(error) => map_payment_error(error),
         PostOrderOrchestrationError::PaymentOrchestration(error) => {
             map_payment_orchestration_error(error)
         }
-        PostOrderOrchestrationError::Validation(_) => {
-            HttpError::bad_request("commerce_admin_invalid", "Post-order request is invalid")
-        }
+        error @ PostOrderOrchestrationError::Validation(_) => admin_public_error(
+            &error,
+            "rustok_commerce",
+            "validation",
+            axum::http::StatusCode::BAD_REQUEST,
+            "commerce_admin_post_order_invalid",
+            "Post-order request is invalid",
+        ),
     }
 }
 
