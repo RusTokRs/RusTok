@@ -70,25 +70,33 @@ if (validator.includes('baselineReadWorkloads')) {
 }
 
 for (const marker of [
+  'validateDatabase',
+  'validateDataset',
+  'validateExecutionContract',
   'validateSourceOracle',
   'source_workload_names',
+  'same_dataset_shape',
   'same_source_oracle_shape',
   'cross-scale source oracle workload ordering mismatch',
   'result_rows_ratio_1m_to_100k',
   '### Source oracle',
 ]) {
-  if (!comparator.includes(marker)) fail(`evidence comparator missing source oracle guard ${marker}`);
+  if (!comparator.includes(marker)) fail(`evidence comparator missing contract guard ${marker}`);
 }
 
 for (const marker of [
+  "test('rejects missing PostgreSQL metadata'",
+  "test('rejects report repetition drift from provenance'",
+  "test('rejects maintenance cycle drift from provenance'",
+  "test('rejects cross-scale non-scale dataset shape drift'",
   "test('rejects missing source oracle'",
   "test('rejects source oracle order drift'",
   "test('rejects provenance source oracle shape drift'",
   "test('rejects candidate result drift from source oracle'",
 ]) {
   if (!comparatorFixture.includes(marker)) {
-    fail(`source oracle fixture coverage missing ${marker}`);
+    fail(`evidence comparator fixture coverage missing ${marker}`);
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle contract is statically guarded');
+console.log('[verify-index-storage-source-oracle] source oracle and report contracts are statically guarded');
