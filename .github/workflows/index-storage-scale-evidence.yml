@@ -62,7 +62,7 @@ jobs:
     steps:
       - name: Publish push-run identity
         if: ${{ github.event_name == 'push' && github.ref_name == 'agent/index-m2-1m-standard-runner' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.issues.createComment({
@@ -126,13 +126,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Download validated 100k evidence
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: index-storage-100k-${{ github.sha }}
           path: evidence/index-storage/100k
 
       - name: Download validated 1m evidence
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v8.0.1
         with:
           name: index-storage-1m-${{ github.sha }}
           path: evidence/index-storage/1m
