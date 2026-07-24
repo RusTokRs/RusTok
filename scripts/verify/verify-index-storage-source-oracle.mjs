@@ -214,21 +214,35 @@ for (const marker of [
 }
 
 for (const marker of [
-  'sql.trimEnd().endsWith(marker)',
+  'const maskSqlText = (text) =>',
+  'const executableSqlText = (sql, label) =>',
+  "sql.startsWith('--', index)",
+  "sql.startsWith('/*', index)",
+  'unterminated block comment',
+  'contains an unterminated ${kind}',
+  'unterminated dollar-quoted string',
+  'executableSql.trimEnd().endsWith(marker)',
   'must end with canonical ordering marker',
+  'in executable SQL',
   'validatePacketReadOrdering',
   'source workload order',
   'prototype order',
 ]) {
   if (!orderingPreflight.includes(marker)) fail(`terminal ordering preflight missing ${marker}`);
 }
-if (orderingPreflight.includes('sql.includes(marker)')) {
-  fail('terminal ordering preflight restored substring-only ordering validation');
+for (const forbidden of ['sql.includes(marker)', 'sql.trimEnd().endsWith(marker)']) {
+  if (orderingPreflight.includes(forbidden)) {
+    fail(`terminal ordering preflight restored unsafe raw-SQL validation: ${forbidden}`);
+  }
 }
 for (const marker of [
   "test('accepts canonical terminal ordering with trailing whitespace'",
+  "test('accepts comment tokens inside strings and comments after executable ordering'",
   "test('rejects a source ordering marker that exists only in a nested query'",
-  "test('rejects a candidate ordering marker that exists only in a comment'",
+  "test('rejects a candidate ordering marker that exists only in a block comment'",
+  "test('rejects a terminal ordering marker hidden in a line comment'",
+  "test('rejects an ordering marker hidden in a dollar-quoted string'",
+  "test('rejects unterminated SQL comments before ordering validation'",
   "test('rejects workload order drift before checking SQL text'",
 ]) {
   if (!orderingFixture.includes(marker)) fail(`terminal ordering fixture coverage missing ${marker}`);
@@ -236,6 +250,9 @@ for (const marker of [
 for (const marker of [
   "const preflight = read('scripts/verify/check-index-storage-read-ordering.mjs')",
   "const fixture = read('scripts/verify/check-index-storage-read-ordering.test.mjs')",
+  'executableSql.trimEnd().endsWith(marker)',
+  "test('packet runs terminal ordering preflight before the canonical validator'",
+  "test('compare runs terminal ordering preflight before the canonical comparator'",
   'packet terminal ordering preflight must run before the canonical validator',
   'comparison terminal ordering preflight must run before the canonical comparator',
   'scripts/verify/verify-index-storage-read-ordering-contract.mjs',
@@ -256,7 +273,9 @@ for (const marker of [
 for (const marker of [
   "const prefix = '[verify-index-storage-adr-integrity]'",
   "const orderingGuard = read('scripts/verify/verify-index-storage-read-ordering-contract.mjs')",
-  'sql.trimEnd().endsWith(marker)',
+  'executableSql.trimEnd().endsWith(marker)',
+  "test('packet runs terminal ordering preflight before the canonical validator'",
+  "test('compare runs terminal ordering preflight before the canonical comparator'",
   "runScript('finalize-index-storage-adr.mjs', args)",
   "runScript('verify-index-storage-adr.mjs', args)",
   'ADR bytes differ from deterministic finalization',
@@ -282,4 +301,4 @@ for (const [label, workflow] of [
   }
 }
 
-console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, complete evidence metrics, terminal ordering acceptance, and ADR integrity wiring are independently guarded');
+console.log('[verify-index-storage-source-oracle] source oracle, self-described ordered digests, complete evidence metrics, executable SQL ordering acceptance, and ADR integrity wiring are independently guarded');
