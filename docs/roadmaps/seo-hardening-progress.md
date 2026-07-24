@@ -46,4 +46,4 @@ Automated verification is recorded separately because direct pushes currently do
 - [x] Compile all SEO tests and run the bulk terminal integration, bulk service unit, and bulk event unit scopes. (#2022)
 - [ ] Confirm GitHub Actions status checks for the hardening commits.
 
-The current execution environment does not provide a Rust toolchain, and direct commits have not received GitHub status checks. These verification boxes must remain open until they are actually executed.
+The connected local execution environment does not provide a Rust toolchain. PR #2022 supplied scoped Rust verification through GitHub Actions; the full-suite checkbox remains open because nine pre-existing failures outside this slice still need resolution.

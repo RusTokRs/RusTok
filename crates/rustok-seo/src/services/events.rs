@@ -252,7 +252,7 @@ impl SeoService {
         processed_count: i32,
         succeeded_count: i32,
         failed_count: i32,
-    ) -> SeoResult<()> {
+    ) -> SeoResult<Option<(String, DomainEvent)>> {
         let event_scope = match status {
             "partial" => "seo.bulk.partial",
             "failed" => "seo.bulk.failed",
@@ -277,7 +277,7 @@ impl SeoService {
             .one(txn)
             .await?;
         if existing.is_some() {
-            return Ok(());
+            return Ok(None);
         }
 
         let event = seo_bulk_terminal_event(
@@ -290,6 +290,7 @@ impl SeoService {
             failed_count,
             idempotency_key.clone(),
         );
+        let index_reindex_event = event.clone();
         let outbox_event_id = self
             .event_bus
             .publish_in_tx_with_envelope_id(txn, tenant_id, None, event)
@@ -305,7 +306,7 @@ impl SeoService {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             event_type: Set(event_scope.to_string()),
-            idempotency_key: Set(idempotency_key),
+            idempotency_key: Set(idempotency_key.clone()),
             source_kind: Set(Some("bulk_job".to_string())),
             source_id: Set(Some(job_id)),
             status: Set(DELIVERY_STATUS_SENT.to_string()),
@@ -318,7 +319,25 @@ impl SeoService {
         .insert(txn)
         .await?;
 
-        Ok(())
+        Ok(Some((idempotency_key, index_reindex_event)))
+    }
+
+    pub(super) async fn dispatch_seo_bulk_terminal_reindex(
+        &self,
+        tenant_id: Uuid,
+        dispatch: Option<(String, DomainEvent)>,
+    ) {
+        let Some((idempotency_key, event)) = dispatch else {
+            return;
+        };
+        let event_type = event.event_type().to_string();
+        self.dispatch_index_reindex_for_event(
+            tenant_id,
+            event_type.as_str(),
+            idempotency_key.as_str(),
+            &event,
+        )
+        .await;
     }
 
     #[cfg(test)]
@@ -339,22 +358,25 @@ impl SeoService {
             .begin()
             .await
             .expect("bulk terminal test transaction should begin");
-        self.publish_seo_bulk_terminal_event_in_tx(
-            &txn,
-            tenant_id,
-            job_id,
-            target_kind,
-            locale,
-            status,
-            processed_count,
-            succeeded_count,
-            failed_count,
-        )
-        .await
-        .expect("bulk terminal test event should enqueue transactionally");
+        let dispatch = self
+            .publish_seo_bulk_terminal_event_in_tx(
+                &txn,
+                tenant_id,
+                job_id,
+                target_kind,
+                locale,
+                status,
+                processed_count,
+                succeeded_count,
+                failed_count,
+            )
+            .await
+            .expect("bulk terminal test event should enqueue transactionally");
         txn.commit()
             .await
             .expect("bulk terminal test transaction should commit");
+        self.dispatch_seo_bulk_terminal_reindex(tenant_id, dispatch)
+            .await;
     }
 
     pub async fn index_delivery_status(
@@ -1840,6 +1862,23 @@ mod tests {
             .await
             .expect("outbox events should load");
         assert_eq!(outbox_events.len(), 1);
+
+        let index_deliveries = seo_index_delivery::Entity::find()
+            .filter(seo_index_delivery::Column::TenantId.eq(tenant_id))
+            .all(&db)
+            .await
+            .expect("bulk index deliveries should load");
+        assert_eq!(index_deliveries.len(), 1);
+        assert_eq!(index_deliveries[0].target_type, "product");
+        assert_eq!(index_deliveries[0].target_scope, INDEX_TARGET_SCOPE_KIND);
+        assert_eq!(index_deliveries[0].status, INDEX_DELIVERY_STATUS_SENT);
+
+        let reindex_events = outbox_entity::Entity::find()
+            .filter(outbox_entity::Column::EventType.eq("index.reindex_requested"))
+            .all(&db)
+            .await
+            .expect("bulk reindex events should load");
+        assert_eq!(reindex_events.len(), 1);
     }
 
     #[tokio::test]

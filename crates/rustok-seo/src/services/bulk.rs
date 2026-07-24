@@ -1775,19 +1775,22 @@ impl SeoService {
         active.updated_at = Set(now);
         let updated = active.update(&txn).await?;
 
-        self.publish_seo_bulk_terminal_event_in_tx(
-            &txn,
-            updated.tenant_id,
-            updated.id,
-            updated.target_kind.as_str(),
-            updated.locale.as_str(),
-            updated.status.as_str(),
-            updated.processed_count,
-            updated.succeeded_count,
-            updated.failed_count,
-        )
-        .await?;
+        let terminal_dispatch = self
+            .publish_seo_bulk_terminal_event_in_tx(
+                &txn,
+                updated.tenant_id,
+                updated.id,
+                updated.target_kind.as_str(),
+                updated.locale.as_str(),
+                updated.status.as_str(),
+                updated.processed_count,
+                updated.succeeded_count,
+                updated.failed_count,
+            )
+            .await?;
         txn.commit().await?;
+        self.dispatch_seo_bulk_terminal_reindex(updated.tenant_id, terminal_dispatch)
+            .await;
 
         Ok(())
     }
@@ -1821,19 +1824,22 @@ impl SeoService {
         active.updated_at = Set(now);
         let updated = active.update(&txn).await?;
 
-        self.publish_seo_bulk_terminal_event_in_tx(
-            &txn,
-            updated.tenant_id,
-            updated.id,
-            updated.target_kind.as_str(),
-            updated.locale.as_str(),
-            updated.status.as_str(),
-            updated.processed_count,
-            updated.succeeded_count,
-            updated.failed_count,
-        )
-        .await?;
+        let terminal_dispatch = self
+            .publish_seo_bulk_terminal_event_in_tx(
+                &txn,
+                updated.tenant_id,
+                updated.id,
+                updated.target_kind.as_str(),
+                updated.locale.as_str(),
+                updated.status.as_str(),
+                updated.processed_count,
+                updated.succeeded_count,
+                updated.failed_count,
+            )
+            .await?;
         txn.commit().await?;
+        self.dispatch_seo_bulk_terminal_reindex(updated.tenant_id, terminal_dispatch)
+            .await;
 
         Ok(())
     }
