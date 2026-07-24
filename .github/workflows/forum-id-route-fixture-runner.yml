@@ -1,0 +1,178 @@
+name: Forum ID route fixture runner
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: forum-id-route-fixture-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/forum-id-route-fixture' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Apply guarded Forum route contract patch
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one {label}, found {count}")
+              return source.replace(old, new, 1)
+
+          category_id = "11111111-1111-4111-8111-111111111111"
+          topic_id = "22222222-2222-4222-8222-222222222222"
+
+          fixture_path = Path("apps/next-frontend/contracts/seo/runtime-parity-fixtures.json")
+          fixture = fixture_path.read_text()
+          fixture = replace_once(
+              fixture,
+              '  "updatedAt": "2026-06-26T00:00:00Z",',
+              '  "updatedAt": "2026-07-24T00:00:00Z",',
+              "fixture updatedAt",
+          )
+          old_forum = '''    {
+              "ownerModule": "rustok-forum",
+              "routePatterns": [
+                "/modules/forum?topic=:slug",
+                "/forum/:slug"
+              ],
+              "targetKind": "forum_topic",
+              "nextSmokeRoute": {
+                "locale": "en",
+                "routeSegment": "forum",
+                "query": {
+                  "topic": "welcome"
+                }
+              },
+              "rustStorefrontRoute": "/modules/forum?topic=welcome"
+            }'''
+          new_forum = f'''    {{
+              "ownerModule": "rustok-forum",
+              "routePatterns": [
+                "/modules/forum?category=:category_id",
+                "/modules/forum?topic=:topic_id",
+                "/modules/forum?category=:category_id&topic=:topic_id"
+              ],
+              "targetKind": "forum_topic",
+              "nextSmokeRoute": {{
+                "locale": "en",
+                "routeSegment": "forum",
+                "query": {{
+                  "category": "{category_id}",
+                  "topic": "{topic_id}"
+                }}
+              }},
+              "rustStorefrontRoute": "/modules/forum?category={category_id}&topic={topic_id}"
+            }}'''
+          fixture = replace_once(fixture, old_forum, new_forum, "Forum route ownership fixture")
+          if "/forum/:slug" in fixture or "topic=welcome" in fixture or '"topic": "welcome"' in fixture:
+              raise SystemExit("legacy Forum slug fixture remains")
+          json.loads(fixture)
+          fixture_path.write_text(fixture)
+
+          verifier_path = Path("apps/next-frontend/scripts/verify-seo-runtime-fixtures.mjs")
+          verifier = verifier_path.read_text()
+          marker = "const smokeRows = fixtures.smokeEvidence ?? [];"
+          guard = f'''const forumRoute = routeRows.find((item) => item.targetKind === "forum_topic");
+          const forumCategoryId = "{category_id}";
+          const forumTopicId = "{topic_id}";
+          const expectedForumRoutePatterns = [
+            "/modules/forum?category=:category_id",
+            "/modules/forum?topic=:topic_id",
+            "/modules/forum?category=:category_id&topic=:topic_id",
+          ];
+          assert(
+            JSON.stringify(forumRoute?.routePatterns) === JSON.stringify(expectedForumRoutePatterns),
+            "Forum route fixtures must remain on the accepted ID-based compatibility contract until FORUM-24",
+          );
+          assert(
+            forumRoute?.nextSmokeRoute?.query?.category === forumCategoryId &&
+              forumRoute?.nextSmokeRoute?.query?.topic === forumTopicId,
+            "Forum Next route fixture must use deterministic UUID category/topic values",
+          );
+          assert(
+            forumRoute?.rustStorefrontRoute ===
+              `/modules/forum?category=${{forumCategoryId}}&topic=${{forumTopicId}}`,
+            "Forum Rust storefront fixture must match the canonical ID-based topic route",
+          );
+          assert(
+            !(forumRoute?.routePatterns ?? []).some((pattern) => pattern.includes(":slug")),
+            "Forum route fixtures must not advertise localized slug paths before FORUM-24",
+          );
+
+          {marker}'''
+          if "const expectedForumRoutePatterns" in verifier:
+              raise SystemExit("Forum route verifier guard already exists")
+          verifier = replace_once(verifier, marker, guard, "smokeRows verifier marker")
+          verifier_path.write_text(verifier)
+
+          plan_path = Path("crates/rustok-forum/docs/implementation-plan.md")
+          plan = plan_path.read_text()
+          plan = replace_once(
+              plan,
+              "last_reviewed: 2026-07-22",
+              "last_reviewed: 2026-07-24",
+              "Forum plan review date",
+          )
+          plan_marker = "ID routes remain internal compatibility paths, not the primary storefront UX.\n"
+          plan_guard = '''ID routes remain internal compatibility paths, not the primary storefront UX.
+
+          ### Current compatibility contract
+
+          Until FORUM-24 is implemented atomically, runtime route resolution and SEO
+          parity evidence remain UUID-based:
+
+          - category compatibility routes use `/modules/forum?category=<uuid>`;
+          - topic compatibility routes accept `/modules/forum?topic=<uuid>` and emit
+            `/modules/forum?category=<uuid>&topic=<uuid>` as the canonical owner route;
+          - `/forum/:slug`, `topic=<slug>` and localized slug claims are rejected;
+          - the compile-free SEO fixture verifier and
+            `forum_route_contract_remains_id_based` backend test must stay aligned;
+          - no Forum smoke-evidence row is claimed until seeded UUID runtime evidence
+            is captured.
+'''
+          if "### Current compatibility contract" in plan:
+              raise SystemExit("FORUM-24 compatibility contract already documented")
+          plan = replace_once(plan, plan_marker, plan_guard, "FORUM-24 compatibility marker")
+          plan_path.write_text(plan)
+
+          bootstrap = Path(".github/workflows/apply-forum-id-route-fixture-once.yml")
+          if not bootstrap.exists():
+              raise SystemExit("missing agent branch bootstrap workflow")
+          bootstrap.unlink()
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/next-frontend/contracts/seo/runtime-parity-fixtures.json \
+            apps/next-frontend/scripts/verify-seo-runtime-fixtures.mjs \
+            crates/rustok-forum/docs/implementation-plan.md \
+            .github/workflows/apply-forum-id-route-fixture-once.yml
+          git commit -m "fix(forum): align SEO fixture with ID routes"
+          git push origin HEAD:"${HEAD_REF}"
