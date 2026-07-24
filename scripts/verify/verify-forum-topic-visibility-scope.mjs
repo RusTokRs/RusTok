@@ -131,8 +131,8 @@ for (const marker of [
   );
 }
 
+requireText(services, "pub mod topic_visibility;", "services must declare topic_visibility");
 for (const marker of [
-  "pub mod topic_visibility;",
   "ForumTopicVisibilityScope",
   "ForumTopicVisibilityService",
   "MAX_FORUM_TOPIC_VISIBILITY_CANDIDATES",
