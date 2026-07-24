@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -59,6 +60,19 @@ const readJson = (filename, label) => {
     return JSON.parse(readFileSync(filename, 'utf8'));
   } catch (error) {
     fail(`invalid JSON in ${label} ${filename}: ${error.message}`);
+  }
+};
+
+const readComparison = (filename) => {
+  if (!existsSync(filename)) fail(`missing comparison: ${filename}`);
+  const bytes = readFileSync(filename);
+  try {
+    return {
+      comparison: JSON.parse(bytes.toString('utf8')),
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+  } catch (error) {
+    fail(`invalid JSON in comparison ${filename}: ${error.message}`);
   }
 };
 
@@ -236,7 +250,7 @@ const validateComparison = (comparison) => {
   return { lower, upper, commit: lowerCommit, crossScale };
 };
 
-const validateDecision = (decision, comparisonCommit) => {
+const validateDecision = (decision, comparisonCommit, comparisonSha256) => {
   requireObject(decision, 'decision');
   if (!['proposed', 'accepted'].includes(decision.status)) {
     fail('decision.status must be proposed or accepted');
@@ -248,6 +262,12 @@ const validateDecision = (decision, comparisonCommit) => {
   }
   if (decision.comparison_commit !== comparisonCommit) {
     fail('decision.comparison_commit must match the evidence comparison commit');
+  }
+  if (!/^[0-9a-f]{64}$/iu.test(decision.comparison_sha256 ?? '')) {
+    fail('decision.comparison_sha256 must be a SHA-256 digest');
+  }
+  if (decision.comparison_sha256.toLowerCase() !== comparisonSha256) {
+    fail('decision.comparison_sha256 must match the exact comparison.json bytes');
   }
   for (const field of [
     'selection_rationale',
@@ -348,9 +368,9 @@ const mutationRows = (lower, upper, crossScale) => {
   return rows;
 };
 
-const render = (comparison, decision) => {
+const render = (comparison, decision, comparisonSha256) => {
   const { lower, upper, commit, crossScale } = validateComparison(comparison);
-  validateDecision(decision, commit);
+  validateDecision(decision, commit, comparisonSha256);
   const storage = storageRows(lower, upper, crossScale);
   const reads = readRows(lower, upper, crossScale);
   const mutations = mutationRows(lower, upper, crossScale);
@@ -362,6 +382,7 @@ const render = (comparison, decision) => {
     `- Decision date: **${decision.decision_date}**`,
     `- Owner: **${decision.owner}**`,
     `- Evidence commit: \`${commit}\``,
+    `- Comparison SHA-256: \`${comparisonSha256}\``,
     `- Packet contract: \`v${lower.provenance.packet_contract_version}\``,
     `- Result digest contract: \`${lower.provenance.result_digest_contract}\``,
     `- PostgreSQL image: \`${lower.provenance.postgres_image}\``,
@@ -434,9 +455,9 @@ const render = (comparison, decision) => {
 };
 
 const args = parseArgs();
-const comparison = readJson(args.comparison, 'comparison');
+const { comparison, sha256: comparisonSha256 } = readComparison(args.comparison);
 const decision = readJson(args.decision, 'decision');
-const markdown = render(comparison, decision);
+const markdown = render(comparison, decision, comparisonSha256);
 const parent = path.dirname(args.output);
 if (parent && parent !== '.') mkdirSync(parent, { recursive: true });
 writeFileSync(args.output, markdown);
