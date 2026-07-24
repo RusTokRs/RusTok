@@ -11,7 +11,6 @@ use rustok_seo_targets::{
     SeoTargetCapabilityKind, SeoTargetRegistry, SeoTargetRegistryEntry, SeoTargetSlug,
 };
 
-use crate::SeoResult;
 use crate::dto::{
     SeoBulkApplyInput, SeoBulkExportInput, SeoBulkImportInput, SeoBulkJobRecord, SeoBulkJobStatus,
     SeoBulkListInput, SeoBulkPage, SeoBulkSelectionInput, SeoBulkSelectionPreviewRecord,
@@ -21,6 +20,7 @@ use crate::dto::{
     SeoSitemapJobRecord, SeoSitemapStatusRecord,
 };
 use crate::entities::{seo_bulk_job_artifact, seo_sitemap_file};
+use crate::{SeoResult, SeoWorkerAuthorization};
 
 use super::SeoService;
 
@@ -258,7 +258,10 @@ impl SeoSitemapService {
         self.runtime.queue_sitemap_generation_background(tenant).await
     }
 
-    pub async fn execute_next_sitemap_job(&self) -> SeoResult<Option<SeoSitemapJobRecord>> {
+    pub async fn execute_next_sitemap_job(
+        &self,
+        _authorization: &SeoWorkerAuthorization,
+    ) -> SeoResult<Option<SeoSitemapJobRecord>> {
         self.runtime.execute_next_sitemap_job_background().await
     }
 
@@ -401,7 +404,10 @@ impl SeoBulkService {
             .await
     }
 
-    pub async fn execute_next_bulk_job(&self) -> SeoResult<Option<SeoBulkJobRecord>> {
+    pub async fn execute_next_bulk_job(
+        &self,
+        _authorization: &SeoWorkerAuthorization,
+    ) -> SeoResult<Option<SeoBulkJobRecord>> {
         self.runtime.execute_next_bulk_job_with_bounded_io().await
     }
 }
@@ -453,6 +459,7 @@ impl SeoOperationsService {
 
     pub async fn execute_next_index_repair_replay_job(
         &self,
+        _authorization: &SeoWorkerAuthorization,
     ) -> SeoResult<Option<SeoIndexRepairReplayResultRecord>> {
         self.runtime
             .execute_next_index_repair_replay_job_background()
