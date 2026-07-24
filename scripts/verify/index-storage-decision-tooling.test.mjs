@@ -137,6 +137,7 @@ test('prepares an exact-comparison-bound manual decision draft', () => {
     const { result, decisionPath, comparisonBytes } = prepare(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const decision = JSON.parse(readFileSync(decisionPath, 'utf8'));
+    assert.equal(Object.hasOwn(decision, '$schema'), false);
     assert.equal(decision.comparison_commit, commit);
     assert.equal(decision.comparison_sha256, sha256(comparisonBytes));
     assert.equal(decision.selected_prototype, 'typed_eav');
@@ -161,6 +162,24 @@ test('refuses to overwrite an existing decision without force', () => {
   });
 });
 
+test('never overwrites the comparison input even with force', () => {
+  withFixture((root) => {
+    const comparisonPath = path.join(root, 'comparison.json');
+    const original = writeJson(comparisonPath, comparison());
+    const result = run(prepareScript, [
+      '--comparison', comparisonPath,
+      '--selected', 'typed_eav',
+      '--owner', 'Index maintainers',
+      '--date', '2026-07-24',
+      '--output', comparisonPath,
+      '--force',
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--output must not overwrite the comparison input/u);
+    assert.deepEqual(readFileSync(comparisonPath), original);
+  });
+});
+
 test('rejects an unedited prepared decision', () => {
   withFixture((root) => {
     const fixture = prepare(root);
@@ -172,6 +191,23 @@ test('rejects an unedited prepared decision', () => {
     ]);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /still contains a preparation placeholder/u);
+  });
+});
+
+test('rejects unsupported fields in the decision envelope', () => {
+  withFixture((root) => {
+    const fixture = prepare(root);
+    assert.equal(fixture.result.status, 0, fixture.result.stderr || fixture.result.stdout);
+    const decision = completeDecision(JSON.parse(readFileSync(fixture.decisionPath, 'utf8')));
+    decision.unreviewed_note = 'This field must not be silently ignored.';
+    writeJson(fixture.decisionPath, decision);
+    const result = run(finalizeScript, [
+      '--comparison', fixture.comparisonPath,
+      '--decision', fixture.decisionPath,
+      '--output', path.join(root, 'adr.md'),
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /decision contains unsupported field unreviewed_note/u);
   });
 });
 
