@@ -114,9 +114,16 @@ const loadScale = (directory) => {
   return {
     scale: names[0], directory,
     provenance: {
-      commit: provenance.commit ?? null, run_id: provenance.run_id ?? null,
-      run_attempt: provenance.run_attempt ?? null, postgres_image: provenance.postgres_image ?? null,
-      runner_os: provenance.runner_os ?? null, runner_arch: provenance.runner_arch ?? null,
+      repository: provenance.repository ?? null,
+      commit: provenance.commit ?? null,
+      ref: provenance.ref ?? null,
+      run_id: provenance.run_id ?? null,
+      run_attempt: provenance.run_attempt ?? null,
+      postgres_image: provenance.postgres_image ?? null,
+      runner_os: provenance.runner_os ?? null,
+      runner_arch: provenance.runner_arch ?? null,
+      repetitions: provenance.repetitions ?? null,
+      churn_cycles: provenance.churn_cycles ?? null,
     },
     database: read.database, dataset: read.dataset, source_load_ms: read.source_load_ms,
     source_entity_rows: read.source_entity_rows, source_link_rows: read.source_link_rows,
@@ -159,6 +166,92 @@ const loadScale = (directory) => {
 
 const candidate = (scale, section, name) => scale[section].find((item) => item.prototype === name);
 const workload = (item, name) => item.workloads.find((entry) => entry.name === name);
+
+const namesOf = (items) => items.map((item) => item.prototype);
+const workloadNamesOf = (items) => Object.fromEntries(
+  items.map((item) => [item.prototype, item.workloads.map((entry) => entry.name)]),
+);
+const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+const requireDecisionProvenance = (scales) => {
+  const lower = scales.find((item) => item.scale === '100k');
+  const upper = scales.find((item) => item.scale === '1m');
+  if (!lower || !upper) {
+    return {
+      required_scales_present: false,
+      same_repository: null,
+      same_commit: null,
+      same_postgres_image: null,
+      same_repetitions: null,
+      same_churn_cycles: null,
+      same_database_settings: null,
+      same_report_shape: null,
+    };
+  }
+
+  const requiredText = ['repository', 'commit', 'postgres_image'];
+  for (const scale of [lower, upper]) {
+    for (const field of requiredText) {
+      if (typeof scale.provenance[field] !== 'string' || scale.provenance[field].length === 0) {
+        die(`${scale.scale} provenance is missing ${field}`);
+      }
+    }
+    for (const field of ['repetitions', 'churn_cycles']) {
+      if (!Number.isInteger(scale.provenance[field]) || scale.provenance[field] <= 0) {
+        die(`${scale.scale} provenance has invalid ${field}`);
+      }
+    }
+  }
+
+  const equalField = (field, label = field) => {
+    if (lower.provenance[field] !== upper.provenance[field]) {
+      die(`cross-scale provenance ${label} mismatch: 100k=${lower.provenance[field]} 1m=${upper.provenance[field]}`);
+    }
+  };
+  equalField('repository');
+  equalField('commit');
+  equalField('postgres_image', 'PostgreSQL image');
+  equalField('repetitions');
+  equalField('churn_cycles');
+
+  const databaseFields = [
+    'server_version_num',
+    'shared_buffers',
+    'effective_cache_size',
+    'work_mem',
+    'random_page_cost',
+    'jit',
+  ];
+  for (const field of databaseFields) {
+    if (lower.database?.[field] !== upper.database?.[field]) {
+      die(`cross-scale database setting ${field} mismatch: 100k=${lower.database?.[field]} 1m=${upper.database?.[field]}`);
+    }
+  }
+
+  for (const section of ['read', 'mutation', 'maintenance']) {
+    if (!sameJson(namesOf(lower[section]), namesOf(upper[section]))) {
+      die(`cross-scale ${section} prototype ordering mismatch`);
+    }
+  }
+  if (!sameJson(workloadNamesOf(lower.read), workloadNamesOf(upper.read))) {
+    die('cross-scale read workload ordering mismatch');
+  }
+  if (!sameJson(workloadNamesOf(lower.mutation), workloadNamesOf(upper.mutation))) {
+    die('cross-scale mutation workload ordering mismatch');
+  }
+
+  return {
+    required_scales_present: true,
+    same_repository: true,
+    same_commit: true,
+    same_postgres_image: true,
+    same_repetitions: true,
+    same_churn_cycles: true,
+    same_database_settings: true,
+    same_report_shape: true,
+  };
+};
+
 const crossScale = (scales) => {
   const lower = scales.find((item) => item.scale === '100k');
   const upper = scales.find((item) => item.scale === '1m');
@@ -214,11 +307,21 @@ const markdown = (report) => {
     '# Index storage evidence comparison', '', `Generated: ${report.generated_at}`, '',
     '> Evidence summary only. The first repetition is a first-run signal and later repetitions form the warm median; this is not a guaranteed OS cold-cache test.',
     '', `Decision ready: **${report.decision_ready ? 'yes' : 'no'}**`, '',
+    '## Decision contract', '',
+    `- Required 100k/1m scales: **${report.decision_contract.required_scales_present ? 'yes' : 'no'}**`,
+    `- Same repository: **${report.decision_contract.same_repository === true ? 'yes' : 'n/a'}**`,
+    `- Same commit: **${report.decision_contract.same_commit === true ? 'yes' : 'n/a'}**`,
+    `- Same PostgreSQL image/settings: **${report.decision_contract.same_postgres_image === true && report.decision_contract.same_database_settings === true ? 'yes' : 'n/a'}**`,
+    `- Same repetitions/churn contract: **${report.decision_contract.same_repetitions === true && report.decision_contract.same_churn_cycles === true ? 'yes' : 'n/a'}**`,
+    `- Same candidate/workload shape: **${report.decision_contract.same_report_shape === true ? 'yes' : 'n/a'}**`,
+    '',
   ];
   for (const scale of report.scales) {
     lines.push(`## ${scale.scale} evidence`, '',
+      `- Repository: \`${scale.provenance.repository ?? 'unknown'}\``,
       `- Commit: \`${scale.provenance.commit ?? 'unknown'}\``,
       `- Workflow run: \`${scale.provenance.run_id ?? 'unknown'}\``,
+      `- PostgreSQL image: \`${scale.provenance.postgres_image ?? 'unknown'}\``,
       `- Source load: ${fixed(scale.source_load_ms, 0)} ms`, '',
       '| Prototype | Load | Schema size | Churn growth | Dead tuples after churn | VACUUM |',
       '| --- | ---: | ---: | ---: | ---: | ---: |');
@@ -259,6 +362,7 @@ const { inputs, output } = parseArgs();
 const order = ['smoke', '100k', '1m'];
 const scales = inputs.map(loadScale).sort((a, b) => order.indexOf(a.scale) - order.indexOf(b.scale));
 if (new Set(scales.map((item) => item.scale)).size !== scales.length) die('duplicate scale input');
+const decisionContract = requireDecisionProvenance(scales);
 const report = {
   generated_at: new Date().toISOString(),
   methodology: {
@@ -266,7 +370,8 @@ const report = {
     warm_run: 'median after the first repetition; not a guaranteed OS cold-cache comparison',
     automatic_winner_selection: false,
   },
-  decision_ready: scales.some((item) => item.scale === '100k') && scales.some((item) => item.scale === '1m'),
+  decision_ready: decisionContract.required_scales_present,
+  decision_contract: decisionContract,
   scales,
   cross_scale_ratios: crossScale(scales),
 };
