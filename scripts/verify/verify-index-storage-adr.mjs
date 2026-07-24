@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -58,7 +59,7 @@ const readBytes = (filename, label) => {
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 const requireDigestLine = (markdown, label, expected) => {
-  const expression = new RegExp(`^- ${label} SHA-256: \\`([0-9a-f]{64})\\`$`, 'gmu');
+  const expression = new RegExp(`^- ${label} SHA-256: \x60([0-9a-f]{64})\x60$`, 'gmu');
   const matches = [...markdown.matchAll(expression)];
   if (matches.length !== 1) fail(`ADR must contain exactly one ${label} SHA-256 line`);
   if (matches[0][1] !== expected) {
@@ -79,11 +80,15 @@ const main = () => {
 
   const temporaryRoot = mkdtempSync(path.join(tmpdir(), 'rustok-index-storage-adr-verify-'));
   try {
+    const comparisonPath = path.join(temporaryRoot, 'comparison.json');
+    const decisionPath = path.join(temporaryRoot, 'decision.json');
     const renderedPath = path.join(temporaryRoot, 'adr.md');
+    writeFileSync(comparisonPath, comparisonBytes);
+    writeFileSync(decisionPath, decisionBytes);
     const result = spawnSync(process.execPath, [
       path.join(scriptDirectory, 'finalize-index-storage-adr.mjs'),
-      '--comparison', args.comparison,
-      '--decision', args.decision,
+      '--comparison', comparisonPath,
+      '--decision', decisionPath,
       '--output', renderedPath,
     ], { encoding: 'utf8' });
     if (result.error) fail(`failed to start ADR finalizer: ${result.error.message}`);
