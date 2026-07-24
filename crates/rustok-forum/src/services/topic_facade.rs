@@ -1,7 +1,7 @@
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
-use rustok_core::SecurityContext;
+use rustok_core::{Error as CoreError, SecurityContext};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::dto::{
@@ -192,10 +192,10 @@ impl TopicService {
             .filter_visible_topic_ids(tenant_id, &candidate_ids, &scope)
             .await?;
         if visible_ids != candidate_ids {
-            return Err(ForumError::Internal(
+            return Err(ForumError::Internal(CoreError::Validation(
                 "Forum storefront topic selection diverged from the owner visibility scope"
                     .to_string(),
-            ));
+            )));
         }
         require_localized_topic_page(page)
     }
