@@ -17,6 +17,8 @@ pub struct StorefrontForumData {
     pub selected_topic_id: Option<String>,
     pub selected_topic: Option<ForumTopicDetail>,
     pub replies: ForumReplyConnection,
+    #[serde(default)]
+    pub read_state_available: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -72,6 +74,18 @@ pub struct ForumTopicListItem {
     pub reply_count: i32,
     #[serde(rename = "createdAt")]
     pub created_at: String,
+    #[serde(default, rename = "readStateExplicit")]
+    pub read_state_explicit: Option<bool>,
+    #[serde(default, rename = "lastReadPosition")]
+    pub last_read_position: Option<i64>,
+    #[serde(default, rename = "lastReadRevision")]
+    pub last_read_revision: Option<i64>,
+    #[serde(default, rename = "unreadCount")]
+    pub unread_count: Option<i64>,
+    #[serde(default, rename = "hasUnreadTopicRevision")]
+    pub has_unread_topic_revision: Option<bool>,
+    #[serde(default, rename = "isUnread")]
+    pub is_unread: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -123,7 +137,7 @@ pub struct ForumReplyDetail {
 
 #[cfg(test)]
 mod tests {
-    use super::ForumCategoryListItem;
+    use super::{ForumCategoryListItem, ForumTopicListItem};
 
     fn category_json(color: &str) -> String {
         serde_json::json!({
@@ -154,5 +168,24 @@ mod tests {
         )
         .expect("category");
         assert_eq!(category.color, None);
+    }
+
+    #[test]
+    fn public_topic_payload_keeps_unread_state_absent() {
+        let topic: ForumTopicListItem = serde_json::from_value(serde_json::json!({
+            "id": "topic-1",
+            "effectiveLocale": "en",
+            "categoryId": "category-1",
+            "title": "Welcome",
+            "slug": "welcome",
+            "status": "open",
+            "isPinned": false,
+            "isLocked": false,
+            "replyCount": 0,
+            "createdAt": "2026-07-24T00:00:00Z"
+        }))
+        .expect("topic");
+        assert_eq!(topic.is_unread, None);
+        assert_eq!(topic.unread_count, None);
     }
 }
