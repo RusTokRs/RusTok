@@ -1,6 +1,6 @@
 # Index PostgreSQL storage decision
 
-The storage benchmark comparison is evidence, not an automatic model selector. After replacement `100k` and `1m` packets have been generated from the same commit and the comparator reports `decision_ready: true`, maintainers record the decision in a separate JSON file and render the ADR.
+The storage benchmark comparison is evidence, not an automatic model selector. After replacement `100k` and `1m` packets have been generated from the same commit and the comparator reports `decision_ready: true`, maintainers record a manual decision and finalize the ADR.
 
 ## Tooling entrypoint
 
@@ -10,7 +10,7 @@ Use the stable command router instead of remembering individual script names:
 # Static repository contracts; does not execute PostgreSQL benchmarks.
 node scripts/verify/index-storage-tooling.mjs contract
 
-# Comparator and ADR fixture suites.
+# Comparator, decision, and ADR fixture suites.
 node scripts/verify/index-storage-tooling.mjs fixtures
 
 # Validate an already generated packet.
@@ -25,50 +25,45 @@ node scripts/verify/index-storage-tooling.mjs compare \
   --output evidence/index-storage/comparison
 ```
 
-The router invokes `verify-index-storage-source-oracle.mjs`, `validate-index-storage-evidence.mjs`, `compare-index-storage-evidence.mjs`, `hash-index-storage-comparison.mjs`, and `render-index-storage-adr.mjs` without shell evaluation. It forwards comparator and renderer arguments unchanged and supplies packet scale/root values through the validator's existing environment contract.
+The router dispatches Node directly without shell evaluation. It exposes the canonical static guards, packet validator, comparator, exact-byte hashing, decision preparation, and ADR finalization paths.
 
-## Decision input
+## Prepare the decision
 
-Start from [`storage-decision.example.json`](storage-decision.example.json). It references [`storage-decision.schema.json`](storage-decision.schema.json), so editors and external validation environments can check the same structural contract used by the renderer.
+Create a draft from the exact `comparison.json` that will be reviewed:
 
-Calculate the digest of the exact comparison file that will be reviewed:
+```bash
+node scripts/verify/index-storage-tooling.mjs prepare \
+  --comparison evidence/index-storage/comparison/comparison.json \
+  --selected typed_eav \
+  --owner "Index maintainers" \
+  --date 2026-07-24 \
+  --output evidence/index-storage/comparison/decision.json
+```
+
+`prepare` requires an explicit prototype choice. It does not rank candidates or select a winner. It validates the decision-ready comparison, copies the evidence commit, computes the SHA-256 of the exact comparison-file bytes, creates rejection entries for exactly the two unselected prototypes, and refuses to overwrite an existing decision unless `--force` is provided.
+
+The generated draft contains `TODO(index-storage-decision):` markers. Replace every marker with measured and operational reasoning before finalization. The finalizer rejects any remaining preparation marker.
+
+[`storage-decision.example.json`](storage-decision.example.json) shows the same draft shape and references [`storage-decision.schema.json`](storage-decision.schema.json). The example is intentionally not finalizable until its markers are replaced.
+
+The decision must explain:
+
+- why the selected prototype is preferred;
+- why each of the other two prototypes was rejected;
+- operational trade-offs;
+- migration strategy;
+- rollback strategy.
+
+`selected_prototype` must be one of `jsonb`, `typed_eav`, or `hot_projection`. `comparison_commit` must match the full Git commit recorded by both scale packets, and `comparison_sha256` must match the exact bytes of the reviewed `comparison.json`.
+
+For an independent digest check:
 
 ```bash
 node scripts/verify/index-storage-tooling.mjs hash \
   evidence/index-storage/comparison/comparison.json
 ```
 
-Copy the printed 64-character digest into `comparison_sha256`. Recalculate it whenever `comparison.json` is regenerated, reformatted, or otherwise changed.
-
-```json
-{
-  "$schema": "./storage-decision.schema.json",
-  "status": "proposed",
-  "decision_date": "2026-07-24",
-  "owner": "Index maintainers",
-  "comparison_commit": "0123456789abcdef0123456789abcdef01234567",
-  "comparison_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "selected_prototype": "typed_eav",
-  "selection_rationale": "Explain why this model is preferred using measured and operational evidence.",
-  "rejection_rationales": {
-    "jsonb": "Explain why JSONB was not selected.",
-    "hot_projection": "Explain why hot projection was not selected."
-  },
-  "operational_tradeoffs": "Document indexing, schema evolution, relation growth, WAL, VACUUM and observability implications.",
-  "migration_strategy": "Document table creation, backfill, verification and persistence-port cutover.",
-  "rollback_strategy": "Document how the previous persistence path remains recoverable during cutover."
-}
-```
-
-`selected_prototype` must be one of:
-
-- `jsonb`
-- `typed_eav`
-- `hot_projection`
-
-`rejection_rationales` must contain exactly the other two prototypes. The `comparison_commit` must match the full Git commit recorded by both scale packets. The `comparison_sha256` must match the exact bytes of the reviewed `comparison.json`.
-
-## Render the ADR
+## Finalize the ADR
 
 ```bash
 node scripts/verify/index-storage-tooling.mjs render \
@@ -77,7 +72,9 @@ node scripts/verify/index-storage-tooling.mjs render \
   --output crates/rustok-index/docs/adr-postgresql-storage.md
 ```
 
-The renderer fails closed unless:
+Finalization snapshots the exact comparison and decision bytes before rendering. The generated ADR records both `Comparison SHA-256` and `Decision SHA-256`, so reviewers can verify the two source documents used to produce it.
+
+The finalizer fails closed unless:
 
 - the comparison is decision-ready;
 - every decision-contract flag is true;
@@ -85,11 +82,12 @@ The renderer fails closed unless:
 - automatic winner selection is explicitly disabled;
 - every displayed metric and cross-scale ratio is present and numeric;
 - the decision identifies the same comparison commit;
-- the decision SHA-256 matches the exact comparison-file bytes;
-- selection, rejection, operations, migration and rollback rationales are all present.
+- `comparison_sha256` matches the exact comparison-file bytes;
+- no preparation placeholder remains;
+- selection, rejection, operations, migration, and rollback rationales are all present.
 
-The generated ADR includes storage size, read latency, mutation latency, WAL, churn and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem path used to invoke the renderer.
+The generated ADR includes storage size, read latency, mutation latency, WAL, churn, and VACUUM evidence for all candidates. It never infers or ranks a winner. Its Markdown depends on evidence and decision content, not on the filesystem paths used to invoke the tooling.
 
 ## Validation boundary
 
-The tooling router and ADR renderer do not replace benchmark execution, evidence-packet validation, production migration rehearsal or production observability. They only expose the existing contracts consistently and turn an already validated comparison plus an explicit human decision into a reviewable document.
+The tooling router and ADR finalizer do not replace benchmark execution, evidence-packet validation, production migration rehearsal, or production observability. They expose the existing contracts consistently and turn an already validated comparison plus an explicit human decision into a reviewable, byte-bound document.
