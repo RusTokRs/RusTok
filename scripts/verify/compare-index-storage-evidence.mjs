@@ -138,8 +138,11 @@ const loadScale = (directory) => {
     mutation: mutation.prototypes.map((item) => ({
       prototype: item.prototype, schema: item.schema,
       workloads: item.workloads.map((workload) => ({
-        name: workload.name, affected_entities: workload.affected_entities,
-        affected_links: workload.affected_links, ...explain(workload.repetitions),
+        name: workload.name,
+        affected_entities: workload.affected_entities,
+        affected_fields: workload.affected_fields,
+        affected_links: workload.affected_links,
+        ...explain(workload.repetitions),
         median_maximum_node_wal_records: median(workload.repetitions.map((r) => r.maximum_node_wal_records)),
         median_maximum_node_wal_fpi: median(workload.repetitions.map((r) => r.maximum_node_wal_fpi)),
         median_maximum_node_wal_bytes: median(workload.repetitions.map((r) => r.maximum_node_wal_bytes)),
@@ -171,6 +174,15 @@ const namesOf = (items) => items.map((item) => item.prototype);
 const workloadNamesOf = (items) => Object.fromEntries(
   items.map((item) => [item.prototype, item.workloads.map((entry) => entry.name)]),
 );
+const mutationEffectsOf = (items) => Object.fromEntries(items.map((item) => [
+  item.prototype,
+  item.workloads.map((entry) => ({
+    name: entry.name,
+    affected_entities: entry.affected_entities,
+    affected_fields: entry.affected_fields,
+    affected_links: entry.affected_links,
+  })),
+]));
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 const requireDecisionProvenance = (scales) => {
@@ -186,6 +198,7 @@ const requireDecisionProvenance = (scales) => {
       same_churn_cycles: null,
       same_database_settings: null,
       same_report_shape: null,
+      same_mutation_effect_contract: null,
     };
   }
 
@@ -239,6 +252,9 @@ const requireDecisionProvenance = (scales) => {
   if (!sameJson(workloadNamesOf(lower.mutation), workloadNamesOf(upper.mutation))) {
     die('cross-scale mutation workload ordering mismatch');
   }
+  if (!sameJson(mutationEffectsOf(lower.mutation), mutationEffectsOf(upper.mutation))) {
+    die('cross-scale mutation effect contract mismatch');
+  }
 
   return {
     required_scales_present: true,
@@ -249,6 +265,7 @@ const requireDecisionProvenance = (scales) => {
     same_churn_cycles: true,
     same_database_settings: true,
     same_report_shape: true,
+    same_mutation_effect_contract: true,
   };
 };
 
@@ -314,6 +331,7 @@ const markdown = (report) => {
     `- Same PostgreSQL image/settings: **${report.decision_contract.same_postgres_image === true && report.decision_contract.same_database_settings === true ? 'yes' : 'n/a'}**`,
     `- Same repetitions/churn contract: **${report.decision_contract.same_repetitions === true && report.decision_contract.same_churn_cycles === true ? 'yes' : 'n/a'}**`,
     `- Same candidate/workload shape: **${report.decision_contract.same_report_shape === true ? 'yes' : 'n/a'}**`,
+    `- Same mutation effect contract: **${report.decision_contract.same_mutation_effect_contract === true ? 'yes' : 'n/a'}**`,
     '',
   ];
   for (const scale of report.scales) {
@@ -336,10 +354,10 @@ const markdown = (report) => {
       lines.push(`| ${item.prototype} | ${entry.name} | ${fixed(entry.first_execution_ms)} ms | ${fixed(entry.warm_median_execution_ms)} ms | ${integer(entry.first_shared_read_blocks)} | ${integer(entry.warm_median_shared_read_blocks)} | ${entry.plan_shape_variants} |`);
     }
     lines.push('', '### Mutation/WAL', '',
-      '| Prototype | Workload | Median execution | Median WAL bytes (max node) | Peak WAL bytes (max node) | Plan shapes |',
-      '| --- | --- | ---: | ---: | ---: | ---: |');
+      '| Prototype | Workload | Entities | Fields | Links | Median execution | Median WAL bytes (max node) | Peak WAL bytes (max node) | Plan shapes |',
+      '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
     for (const item of scale.mutation) for (const entry of item.workloads) {
-      lines.push(`| ${item.prototype} | ${entry.name} | ${fixed(entry.median_execution_ms)} ms | ${integer(entry.median_maximum_node_wal_bytes)} | ${integer(entry.peak_maximum_node_wal_bytes)} | ${entry.plan_shape_variants} |`);
+      lines.push(`| ${item.prototype} | ${entry.name} | ${integer(entry.affected_entities)} | ${integer(entry.affected_fields)} | ${integer(entry.affected_links)} | ${fixed(entry.median_execution_ms)} ms | ${integer(entry.median_maximum_node_wal_bytes)} | ${integer(entry.peak_maximum_node_wal_bytes)} | ${entry.plan_shape_variants} |`);
     }
     lines.push('');
   }
